@@ -25,5 +25,13 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest
 
-      - name: Run deterministic journey assertions
-        run: pytest -q tests/test_e2e_display_assertions.py
+      - name: Run full test suite
+        run: pytest -q
+
+      - name: Audit local artwork
+        run: python scripts/audit_assets.py
+
+      - name: Build and verify package
+        run: |
+          python scripts/package_addon.py
+          python -m zipfile -t dist/anki_garden.ankiaddon

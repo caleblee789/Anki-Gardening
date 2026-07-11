@@ -14,7 +14,7 @@ def test_manifest_svg_refs_exist_and_are_versioned():
         p = ROOT / "ankigarden" / rel
         if not p.exists():
             missing.append(rel)
-        if not rel.startswith("assets/v2_cozy_handpainted/"):
+        if not rel.startswith(("assets/v2_cozy_handpainted/", "assets/v3_storybook_gouache/")):
             unversioned.append(rel)
     assert not missing, f"Missing SVG files: {missing}"
     assert not unversioned, f"Unversioned file refs: {unversioned[:10]}"
@@ -36,3 +36,17 @@ def test_svgs_include_viewbox_and_trimmed_whitespace():
         if "<!--" in text:
             offenders.append((svg.as_posix(), "contains comment"))
     assert not offenders, f"SVG optimization guardrail failures: {offenders[:10]}"
+
+
+def test_manifest_mixed_formats_match_extensions_and_signatures():
+    data = json.loads(MANIFEST.read_text())
+    for asset in data["assets"]:
+        path = ROOT / "ankigarden" / asset["file"]
+        fmt = asset["format"]
+        assert fmt in {"svg", "png", "webp"}
+        assert path.suffix == f".{fmt}"
+        header = path.read_bytes()[:12]
+        if fmt == "png":
+            assert header[:8] == b"\x89PNG\r\n\x1a\n"
+        elif fmt == "webp":
+            assert header[:4] == b"RIFF" and header[8:12] == b"WEBP"

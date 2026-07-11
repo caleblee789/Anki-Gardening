@@ -1,0 +1,8 @@
+.pytest_cache/
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+ankigarden/user_files/*.json
+ankigarden/user_files/cache/

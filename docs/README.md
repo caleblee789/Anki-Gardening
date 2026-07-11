@@ -1,13 +1,9 @@
-# Documentation Index
+# Documentation index
 
-This folder centralizes project documentation to keep the repository root focused on runtime code and tooling.
-
-## UI docs
-- `ui/entrypoint_matrix.md`: UI surface map with data dependencies and risk matrix.
-- `ui/state_scenarios.md`: runtime UI state scenarios and expected rendering behavior.
-
-## Asset migration docs
-- `asset_migration_checklist.md`: checklist for SVG migration completion.
-- `svg_asset_migration.md`: migration plan and implementation details.
-- `asset_visual_diff_report.md`: before/after checksum evidence.
-- `background_adequacy_report.md`: background coverage analysis and quality notes.
+- `codebase-audit.md`: resolved issue ledger, product focus, and validation evidence.
+- `display-validation-matrix.md`: current user-visible values and their sources.
+- `e2e_display_assertions.md`: automated and isolated-Anki journey coverage.
+- `ui/entrypoint_matrix.md`: supported UI entry points.
+- `ui/state_scenarios.md`: required empty, active, error, and persistence states.
+- `ui/data_contracts.md`: persisted state boundary used by the focused UI.
+- Asset migration reports document the bundled hand-painted SVG catalog and remain historical evidence.

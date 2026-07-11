@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pathlib import Path
 
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import GardenState, Plant
+from ankigarden.models.state import GardenState, Plant, Quest
 
 
 class FakeConfig:
@@ -64,6 +64,41 @@ def test_growth_increases_after_review():
     before = st.state.plants[0].growth_points
     engine.register_review({"queue": 2, "ease": 3, "deck_id": 1, "difficulty": 0.8, "lapse_count": 1})
     assert st.state.plants[0].growth_points >= before
+
+
+def test_daily_goal_does_not_stop_growth():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    engine = GardenGameEngine(cfg, st)
+    st.state.daily_stats.growth_earned = cfg.value("daily_goal") + 50
+    before = st.state.daily_stats.growth_earned
+
+    engine.register_review({"queue": 2, "ease": 3, "difficulty": 0.4})
+
+    assert st.state.daily_stats.growth_earned > before
+
+
+def test_quest_bonus_uses_daily_growth_accounting():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    engine = GardenGameEngine(cfg, st)
+    st.state.daily_quests = [Quest("one", "Review once", 1, "reviewed", reward_growth=20)]
+
+    engine.register_review({"queue": 2, "ease": 3, "difficulty": 0.4})
+
+    assert st.state.daily_quests[0].completed is True
+    assert st.state.daily_stats.growth_earned >= 20
+
+
+def test_engine_startup_preserves_same_day_quest_progress():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.daily_quests = [Quest("reviews", "Complete reviews", 50, "reviewed", progress=7)]
+
+    GardenGameEngine(cfg, st)
+
+    assert len(st.state.daily_quests) == 1
+    assert st.state.daily_quests[0].progress == 7
 
 
 def test_focus_session_completes():

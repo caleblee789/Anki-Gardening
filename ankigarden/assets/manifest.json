@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_by": "local catalog migration",
   "assets": [
     {
@@ -2510,6 +2510,189 @@
       "quality_score": 0.82,
       "source": "cozy_handpainted_v2 migration",
       "attribution": "CC0 bundled vector"
+    },
+    {
+      "asset_id": "bg_verdant_dusk_summer_storybook_v3",
+      "category": "backgrounds",
+      "slot": {
+        "season": "summer",
+        "weather": "any",
+        "theme": "verdant_dusk"
+      },
+      "variants": [
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/backgrounds/verdant_dusk/summer.webp",
+      "width": 1448,
+      "height": 1086,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "bg_verdant_dusk_summer_breeze",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_seed_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "seed"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/seed/rose_seed.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_seed_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_sprout_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "sprout"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/sprout/rose_sprout.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_sprout_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_young_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "young"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/young/rose_young.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_young_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_mature_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "mature"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/mature/rose_mature.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_mature_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_flowering_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "flowering"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/flowering/rose_flowering.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_flowering_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_rose_rare_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "rose",
+        "stage": "rare"
+      },
+      "variants": [
+        "rare",
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/rose/rare/rose_rare.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_rose_rare_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "decor_lantern_storybook_v3",
+      "category": "decorations",
+      "slot": {
+        "decoration_id": "lantern"
+      },
+      "variants": [
+        "storybook_gouache"
+      ],
+      "file": "assets/v3_storybook_gouache/decorations/lantern/lantern.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "decor_lantern",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
     }
-  ]
+  ],
+  "style_family": "mixed_v2_v3"
 }

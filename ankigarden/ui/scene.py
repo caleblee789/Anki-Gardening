@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from aqt.qt import QLinearGradient, QPainter, QPainterPath, QPen, QRectF, QTimer, QWidget, Qt, QColor
+from aqt.qt import QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRectF, QTimer, QWidget, Qt, QColor
 
 try:
     from aqt.qt import QSvgRenderer
@@ -36,9 +36,26 @@ class GardenSceneWidget(QWidget):
         self.phase = 0.0
         self.scene: dict[str, Any] = {"plants": [], "weather": "breeze", "health": 0.7, "growth": 0.2}
         self._svg_cache: dict[str, Any] = {}
+        self._raster_cache: dict[str, QPixmap] = {}
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(42)
+
+    def set_motion_enabled(self, enabled: bool) -> None:
+        if enabled and not self.timer.isActive():
+            self.timer.start(42)
+        elif not enabled and self.timer.isActive():
+            self.timer.stop()
+        self.update()
+
+    def hideEvent(self, event: Any) -> None:
+        self.timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event: Any) -> None:
+        if bool(self.scene.get("motion_enabled", True)):
+            self.timer.start(42)
+        super().showEvent(event)
 
     def set_scene(self, payload: dict[str, Any]) -> None:
         self.scene = self._sanitize_scene_payload(payload)
@@ -67,6 +84,8 @@ class GardenSceneWidget(QWidget):
         safe_scene["plants"] = plants if isinstance(plants, list) else []
         asset_paths = safe_scene.get("asset_paths", {})
         safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
+        safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
+        self.set_motion_enabled(safe_scene["motion_enabled"])
         return safe_scene
 
     def _tick(self) -> None:
@@ -92,22 +111,24 @@ class GardenSceneWidget(QWidget):
                 sky.setColorAt(0.55, QColor(27, 60, 72))
                 sky.setColorAt(1.0, QColor(16, 30, 26))
             painter.fillRect(r, sky)
-            self._draw_background_asset(painter, r)
+            background_drawn = self._draw_background_asset(painter, r)
             growth = self._clamp(self._coerce_float(self.scene.get("growth", 0.0), 0.0), 0.0, 1.0)
 
-            sun_x = r.width() * (0.75 + 0.02 * math.sin(self.phase / 4))
-            sun_y = r.height() * 0.2
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(255, 220, 130, 95 if self.scene.get("weather") != "cloudy" else 35))
-            painter.drawEllipse(QRectF(sun_x - 55, sun_y - 55, 110, 110))
-            painter.setBrush(QColor(150, 255, 170, int(18 + growth * 40)))
-            painter.drawEllipse(QRectF(sun_x - 80, sun_y - 80, 160, 160))
+            if not background_drawn:
+                sun_x = r.width() * (0.75 + 0.02 * math.sin(self.phase / 4))
+                sun_y = r.height() * 0.2
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(255, 220, 130, 95 if self.scene.get("weather") != "cloudy" else 35))
+                painter.drawEllipse(QRectF(sun_x - 55, sun_y - 55, 110, 110))
+                painter.setBrush(QColor(150, 255, 170, int(18 + growth * 40)))
+                painter.drawEllipse(QRectF(sun_x - 80, sun_y - 80, 160, 160))
 
-            ground = QLinearGradient(0, r.height() * 0.56, 0, r.height())
-            ground.setColorAt(0.0, QColor(45, 90, 54))
-            ground.setColorAt(1.0, QColor(26, 54, 32))
-            painter.setBrush(ground)
-            painter.drawRoundedRect(QRectF(0, r.height() * 0.56, r.width(), r.height() * 0.44), 0, 0)
+                ground = QLinearGradient(0, r.height() * 0.56, 0, r.height())
+                ground.setColorAt(0.0, QColor(45, 90, 54))
+                ground.setColorAt(1.0, QColor(26, 54, 32))
+                painter.setBrush(ground)
+                painter.drawRoundedRect(QRectF(0, r.height() * 0.56, r.width(), r.height() * 0.44), 0, 0)
+            self._draw_decoration_asset(painter, r)
 
             for i in range(26):
                 x = (i * 67 + int(self.phase * 15)) % max(1, r.width())
@@ -173,7 +194,7 @@ class GardenSceneWidget(QWidget):
         if not value:
             return None
         path = Path(str(value)).expanduser()
-        if not path.exists() or not path.is_file() or path.suffix.lower() != ".svg":
+        if not path.exists() or not path.is_file() or path.suffix.lower() not in {".svg", ".png", ".webp"}:
             return None
         return str(path)
 
@@ -187,6 +208,44 @@ class GardenSceneWidget(QWidget):
                 return None
             self._svg_cache[path] = renderer
         return renderer if renderer.isValid() else None
+
+    def _pixmap_for(self, path: str) -> QPixmap | None:
+        pixmap = self._raster_cache.get(path)
+        if pixmap is None:
+            pixmap = QPixmap(path)
+            if pixmap.isNull():
+                return None
+            self._raster_cache[path] = pixmap
+        return pixmap if not pixmap.isNull() else None
+
+    def _draw_raster(self, painter: QPainter, path: str, box: QRectF, cover: bool, opacity: float) -> bool:
+        pixmap = self._pixmap_for(path)
+        if pixmap is None:
+            return False
+        source_w = max(1, pixmap.width())
+        source_h = max(1, pixmap.height())
+        scale = max(box.width() / source_w, box.height() / source_h) if cover else min(
+            box.width() / source_w, box.height() / source_h
+        )
+        draw_w = source_w * scale
+        draw_h = source_h * scale
+        target = QRectF(box.x() + (box.width() - draw_w) / 2, box.y() + (box.height() - draw_h) / 2, draw_w, draw_h)
+        painter.save()
+        painter.setOpacity(opacity)
+        painter.setClipRect(box)
+        painter.drawPixmap(target, pixmap, QRectF(pixmap.rect()))
+        painter.restore()
+        return True
+
+    def _draw_asset_contain(self, painter: QPainter, path: str, box: QRectF, opacity: float = 1.0) -> bool:
+        if Path(path).suffix.lower() == ".svg":
+            return self._draw_svg_contain(painter, path, box, opacity)
+        return self._draw_raster(painter, path, box, cover=False, opacity=opacity)
+
+    def _draw_asset_cover(self, painter: QPainter, path: str, box: QRectF, opacity: float = 1.0) -> bool:
+        if Path(path).suffix.lower() == ".svg":
+            return self._draw_svg_cover(painter, path, box, opacity)
+        return self._draw_raster(painter, path, box, cover=True, opacity=opacity)
 
     def _draw_svg_contain(self, painter: QPainter, path: str, box: QRectF, opacity: float = 1.0) -> bool:
         renderer = self._renderer_for(path)
@@ -226,13 +285,20 @@ class GardenSceneWidget(QWidget):
         path = self._asset_path("background")
         if not path:
             return False
-        return self._draw_svg_cover(painter, path, QRectF(rect), opacity=0.88)
+        return self._draw_asset_cover(painter, path, QRectF(rect), opacity=0.92)
 
     def _draw_weather_asset(self, painter: QPainter, rect: Any) -> bool:
         path = self._asset_path("weather")
         if not path:
             return False
-        return self._draw_svg_cover(painter, path, QRectF(rect), opacity=0.26)
+        return self._draw_asset_cover(painter, path, QRectF(rect), opacity=0.26)
+
+    def _draw_decoration_asset(self, painter: QPainter, rect: Any) -> bool:
+        path = self._asset_path("decoration")
+        if not path:
+            return False
+        box = QRectF(rect.width() * 0.68, rect.height() * 0.48, rect.width() * 0.27, rect.height() * 0.38)
+        return self._draw_asset_contain(painter, path, box, opacity=0.96)
 
     def _draw_plant_asset(self, painter: QPainter, x: float, y: float, plant: dict[str, Any]) -> bool:
         path = plant.get("image_path") or self._asset_path("plant")
@@ -241,7 +307,7 @@ class GardenSceneWidget(QWidget):
         stage_scale = {"seed": 0.44, "sprout": 0.52, "young": 0.66, "mature": 0.84, "flowering": 0.94, "rare": 1.0}
         scale = stage_scale.get(str(plant.get("stage", "young")), 0.7)
         box = QRectF(x - (88 * scale), y - (178 * scale), 176 * scale, 184 * scale)
-        return self._draw_svg_contain(painter, str(path), box, opacity=0.98)
+        return self._draw_asset_contain(painter, str(path), box, opacity=0.98)
 
     def _draw_plant(self, painter: QPainter, x: float, y: float, plant: dict[str, Any], idx: int) -> None:
         stage_scale = {"seed": 0.35, "sprout": 0.5, "young": 0.72, "mature": 0.93, "flowering": 1.08, "rare": 1.15}

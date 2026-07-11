@@ -4,11 +4,11 @@ import logging
 from html import escape
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from aqt import mw
-from aqt.gui_hooks import reviewer_did_answer_card, reviewer_did_show_question
-from aqt.qt import QAction, QPushButton
-from aqt.utils import showInfo
+from aqt.gui_hooks import reviewer_did_answer_card
+from aqt.qt import QAction
 
 from .config import ConfigManager
 from .display_telemetry import DISPLAY_TELEMETRY
@@ -32,17 +32,19 @@ class AnkiGardenApp:
         self.engine = GardenGameEngine(self.config, self.storage)
         self.reviewer_hooks = ReviewerHookHandler(self.engine, self.storage)
         self.dashboard: Optional[GardenDashboard] = None
-        self._reviewer_button: Optional[QPushButton] = None
         self._menu_action: Optional[QAction] = None
         self._home_widget_hooked = False
+        self._home_bridge_hooked = False
         self._home_widget_controller = HomeWidgetStateController()
 
     def setup(self) -> None:
+        try:
+            mw.addonManager.setWebExports(__name__, r"assets/.*\.svg")
+        except Exception:
+            logger.exception("Anki Garden: unable to register bundled web assets")
         self._setup_menu()
-        if self.config.value("show_toolbar_button", True):
-            self._setup_toolbar()
-        self._setup_reviewer_button()
-        self._setup_home_screen_widget()
+        if self.config.value("show_home_widget", True):
+            self._setup_home_screen_widget()
         reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
         self._setup_sync_hooks()
         self._apply_retrospective_growth()
@@ -70,36 +72,6 @@ class AnkiGardenApp:
         action.triggered.connect(self.open_dashboard)
         mw.form.menuTools.addAction(action)
         self._menu_action = action
-
-    def _setup_toolbar(self) -> None:
-        action = QAction("Garden", mw)
-        action.triggered.connect(self.open_dashboard)
-        toolbar = getattr(getattr(mw, "form", None), "toolbar", None)
-        if toolbar is None:
-            logger.warning("Anki Garden: toolbar not available on this Anki version; skipping toolbar action")
-            return
-        toolbar.addAction(action)
-
-    def _setup_reviewer_button(self) -> None:
-        if not self.config.value("show_reviewer_button"):
-            return
-
-        def add_button() -> None:
-            reviewer = mw.reviewer
-            if not reviewer or not reviewer.bottom:
-                return
-            if self._reviewer_button and self._reviewer_button.parent() is reviewer.bottom.web:
-                return
-            button = QPushButton("🌱 Garden", reviewer.bottom.web)
-            button.clicked.connect(self.open_dashboard)
-            button.setToolTip("Open Anki Garden")
-            reviewer.bottom.hlayout.insertWidget(0, button)
-            self._reviewer_button = button
-
-        try:
-            reviewer_did_show_question.append(lambda _card: add_button())
-        except Exception:
-            showInfo("Anki Garden: Unable to add reviewer button.")
 
     def open_dashboard(self) -> None:
         self._apply_retrospective_growth()
@@ -131,24 +103,40 @@ class AnkiGardenApp:
 
         attached_hooks: list[str] = []
 
-        # Prefer the modern webview hook to avoid duplicate rendering on versions
-        # where both legacy render hooks and webview hook fire for the same screen.
         if hasattr(gui_hooks, "webview_will_set_content"):
             gui_hooks.webview_will_set_content.append(self._inject_home_garden_webview)
             attached_hooks.append("webview_will_set_content")
-        else:
-            if hasattr(gui_hooks, "deck_browser_will_render_content"):
-                gui_hooks.deck_browser_will_render_content.append(self._inject_home_garden)
-                attached_hooks.append("deck_browser_will_render_content")
-            if hasattr(gui_hooks, "overview_will_render_content"):
-                gui_hooks.overview_will_render_content.append(self._inject_home_garden)
-                attached_hooks.append("overview_will_render_content")
+        if hasattr(gui_hooks, "deck_browser_will_render_content"):
+            gui_hooks.deck_browser_will_render_content.append(self._inject_home_garden)
+            attached_hooks.append("deck_browser_will_render_content")
+        if hasattr(gui_hooks, "overview_will_render_content"):
+            gui_hooks.overview_will_render_content.append(self._inject_home_garden)
+            attached_hooks.append("overview_will_render_content")
 
         if attached_hooks:
             self._home_widget_hooked = True
             logger.info("Anki Garden attached home-screen hooks: %s", ", ".join(attached_hooks))
+            if hasattr(gui_hooks, "webview_did_receive_js_message") and not self._home_bridge_hooked:
+                gui_hooks.webview_did_receive_js_message.append(self._handle_home_bridge_message)
+                self._home_bridge_hooked = True
         else:
             logger.warning("Anki Garden: no supported home-screen hooks available on this Anki version")
+
+    def _handle_home_bridge_message(self, handled: tuple[bool, object], message: str, context: object) -> tuple[bool, object]:
+        if not message.startswith("anki-garden:") or not self._is_main_screen_context(context):
+            return handled
+        command = message.partition(":")[2]
+        if command == "open":
+            self.open_dashboard()
+            return True, None
+        if command == "refresh":
+            self.engine.rollover_if_needed()
+            self._apply_retrospective_growth()
+            reset = getattr(mw, "reset", None)
+            if callable(reset):
+                reset()
+            return True, None
+        return handled
 
     def _inject_home_garden(self, _page: object, content: object) -> None:
         self.engine.rollover_if_needed()
@@ -199,7 +187,7 @@ class AnkiGardenApp:
                 state=state,
                 cards_today=self._cards_reviewed_today(),
                 health_ratio=self.engine.garden_health_index(),
-                growth_cap=max(1, int(self.config.value("daily_growth_cap", 220))),
+                growth_cap=max(1, int(self.config.value("daily_goal", 140))),
                 plants_html=self._plant_badges_html(),
                 event=self.engine.get_weekly_event_summary(),
             )
@@ -241,7 +229,10 @@ class AnkiGardenApp:
             image_path = Path(str(path)).expanduser()
             if not image_path.exists() or not image_path.is_file() or image_path.suffix.lower() != ".svg":
                 return ""
-            src = escape(image_path.resolve().as_uri(), quote=True)
+            addon_dir = Path(__file__).parent.resolve()
+            relative = image_path.resolve().relative_to(addon_dir).as_posix()
+            package = mw.addonManager.addonFromModule(__name__)
+            src = f"/_addons/{quote(str(package), safe='')}/{quote(relative, safe='/')}"
         except Exception:
             return ""
         plant_name = escape(str(getattr(plant, "name", "Plant")), quote=True)
@@ -273,7 +264,7 @@ class AnkiGardenApp:
                 )
                 DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="cards_today")
                 return fallback
-            cutoff_ms = int(day_cutoff) * 1000
+            cutoff_ms = max(0, (int(day_cutoff) - 86_400) * 1000)
             count = collection.db.scalar("select count(distinct cid) from revlog where id > ?", cutoff_ms)
             return max(0, int(count or 0))
         except Exception as exc:
@@ -304,8 +295,13 @@ class AnkiGardenApp:
 
         payloads = []
         latest_id = last_id
+        current_day_start_ms = self.storage.current_day_cutoff_ms()
         for rid, cid, ease, ivl, last_ivl, factor, _ms, qtype in rows:
             latest_id = max(latest_id, int(rid))
+            # Synced historical reviews must advance the cursor without being
+            # misreported as reviews completed today.
+            if current_day_start_ms and int(rid) < current_day_start_ms:
+                continue
             deck_id = None
             try:
                 card = mw.col.get_card(int(cid))

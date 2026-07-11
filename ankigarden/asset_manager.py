@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 
 class AssetManager:
+    SUPPORTED_FORMATS = {".svg", ".png", ".webp"}
     MIN_DIMENSIONS = {
         "plants": (128, 128),
         "backgrounds": (512, 384),
@@ -136,6 +137,24 @@ class AssetManager:
             if all(str(entry_slot.get(k)) == str(v) for k, v in slot.items() if v):
                 preferred.append(entry)
 
+        if category == "backgrounds":
+            preferred.extend(
+                e
+                for e in entries
+                if e not in preferred
+                and (e.get("slot", {}) or {}).get("season") == slot.get("season")
+                and (e.get("slot", {}) or {}).get("weather") == "any"
+                and (e.get("slot", {}) or {}).get("theme") == slot.get("theme")
+            )
+
+        if not preferred and category == "backgrounds":
+            preferred = [
+                e
+                for e in entries
+                if (e.get("slot", {}) or {}).get("season") == slot.get("season")
+                and (e.get("slot", {}) or {}).get("weather") == "any"
+                and (e.get("slot", {}) or {}).get("theme") == slot.get("theme")
+            ]
         if not preferred and category == "backgrounds":
             preferred = [e for e in entries if (e.get("slot", {}) or {}).get("season") == slot.get("season") and (e.get("slot", {}) or {}).get("weather") == slot.get("weather")]
         if not preferred and category in {"plants", "weather", "decorations", "ui"}:
@@ -152,6 +171,7 @@ class AssetManager:
 
         preferred.sort(
             key=lambda e: (
+                0 if e.get("style_family") == "storybook_gouache" else 1,
                 quality_distance(e),
                 -float(e.get("quality_score", 0.0)),
                 str(e.get("file", "")),
@@ -192,22 +212,36 @@ class AssetManager:
             return False
         if not resolved.exists() or not resolved.is_file():
             return False
-        if resolved.suffix.lower() != ".svg":
+        suffix = resolved.suffix.lower()
+        if suffix not in self.SUPPORTED_FORMATS:
             return False
         try:
             rel_path = str(resolved.relative_to(self.storage.addon_dir.resolve()))
         except ValueError:
             return False
+        expected_format = self._manifest_format_for(rel_path)
+        if expected_format and expected_format != suffix.lstrip("."):
+            return False
         dims = self._manifest_dimensions_for(rel_path)
         min_w, min_h = self.MIN_DIMENSIONS.get(category, (1, 1))
         return int(dims.get("width", 0)) >= min_w and int(dims.get("height", 0)) >= min_h
+
+    def _manifest_format_for(self, rel_path: str) -> str:
+        for rows in self._catalog.values():
+            for row in rows:
+                if row.get("file") == rel_path:
+                    return str(row.get("format", "")).lower()
+        return ""
 
     def _placeholder_candidates(self) -> list[dict[str, Any]]:
         rel = str(self._ensure_placeholder_asset().relative_to(self.storage.addon_dir))
         return [{"file": rel, "width": 1200, "height": 675, "quality_tier": "performance", "quality_score": 0.5, "slot": {"fallback": "placeholder"}}]
 
     def _ensure_placeholder_asset(self) -> Path:
-        placeholder = self.storage.assets_root / "ui" / "fallback_placeholder.svg"
+        bundled = self.storage.assets_root / "ui" / "fallback_placeholder.svg"
+        if bundled.exists():
+            return bundled
+        placeholder = self.storage.cache_dir / "fallback_placeholder.svg"
         placeholder.parent.mkdir(parents=True, exist_ok=True)
         if not placeholder.exists():
             placeholder.write_text(

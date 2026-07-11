@@ -56,8 +56,7 @@ class GardenGameEngine:
         self.assets = AssetManager(config, storage)
         self._apply_weekly_event(force=True)
         self._ensure_achievements()
-        self._ensure_daily_quests(force_refresh=True)
-        self._passive_daily_reward()
+        self._ensure_daily_quests(force_refresh=False)
 
     def rollover_if_needed(self) -> None:
         today = date.today().isoformat()
@@ -83,7 +82,6 @@ class GardenGameEngine:
         self.state.daily_stats.focus_sessions_completed = 0
         self._ensure_daily_quests(force_refresh=True)
         self._update_weather()
-        self._passive_daily_reward()
         self.storage.save()
 
     def register_review(self, review_payload: Dict[str, Any]) -> None:
@@ -126,21 +124,15 @@ class GardenGameEngine:
 
         growth = self._calculate_growth(card_type, is_correct, difficulty, lapse_count, deck_id)
         if growth > 0:
-            self._apply_growth(growth, deck_id)
-            today.growth_earned += growth
+            self._award_growth(growth, deck_id)
         self._update_quests()
         self._update_achievements()
         self._update_mastery()
         self._maybe_unlock_slot()
-        self._maybe_trigger_rare_event()
         self._update_weather()
         self.storage.save()
 
     def _calculate_growth(self, card_type: str, is_correct: bool, difficulty: float, lapse_count: int, deck_id: Optional[int]) -> int:
-        cap = int(self.config.value("daily_growth_cap", 220)) + (self.state.mastery_tree.get("volume", 0) * 12)
-        if self.state.daily_stats.growth_earned >= cap:
-            return 0
-
         mapping = self.config.value("points_per_card", {})
         base = float(mapping.get(card_type, 2))
         base *= float(self.current_weekly_event().get("growth_multiplier", 1.0))
@@ -170,8 +162,16 @@ class GardenGameEngine:
             focus_mult *= float(self.config.nested("exam_mode", "deck_weight_boost", default=1.25))
 
         points = int(max(0, round(base * accuracy_weight * difficulty_weight * recovery_weight * streak_weight * quality_weight * focus_mult)))
-        available = cap - self.state.daily_stats.growth_earned
-        return min(points, available)
+        return points
+
+    def _award_growth(self, growth: int, deck_id: Optional[int] = None) -> int:
+        """Apply and record all growth through one accounting path."""
+        awarded = max(0, int(growth))
+        if awarded == 0:
+            return 0
+        self._apply_growth(awarded, deck_id)
+        self.state.daily_stats.growth_earned += awarded
+        return awarded
 
     def _session_quality_score(self) -> float:
         s = self.state.daily_stats
@@ -196,29 +196,9 @@ class GardenGameEngine:
         plants = self._eligible_plants(deck_id)
         if not plants:
             return
-        gain = max(1, growth // len(plants))
-        hour = datetime.now().hour
-        for plant in plants:
-            personality = plant.personality or "balanced"
-            adjusted = gain
-            if personality == "volume" and self.state.daily_stats.reviewed >= 100:
-                adjusted += 2
-            elif personality == "streak" and self.state.streak_days >= 7:
-                adjusted += 2
-            elif personality == "accuracy" and self.state.daily_stats.accuracy >= 0.9:
-                adjusted += 2
-            elif personality == "difficult" and self.state.daily_stats.difficult_count >= 8:
-                adjusted += 2
-            elif personality == "night" and hour >= 22:
-                adjusted += 2
-            elif personality == "morning" and hour <= 7:
-                adjusted += 2
-            elif personality == "recovery" and self.state.recovery_mode:
-                adjusted += 3
-            elif personality == "cumulative" and self.state.total_reviews >= 2000:
-                adjusted += 2
-
-            plant.growth_points += adjusted
+        base, remainder = divmod(max(0, int(growth)), len(plants))
+        for index, plant in enumerate(plants):
+            plant.growth_points += base + (1 if index < remainder else 0)
             vitality_gain = 0.03 + (0.005 * self.state.mastery_tree.get("recovery", 0))
             plant.vitality = min(1.0, plant.vitality + vitality_gain)
             if plant.growth_stage == "flowering" and self.state.streak_days >= 10 and random.random() < 0.006:
@@ -229,18 +209,14 @@ class GardenGameEngine:
             "streak_7": ("7-Day Rhythm", "Study seven days in a row."),
             "streak_30": ("Evergreen Month", "Study 30 days in a row."),
             "reviews_100_day": ("Century Day", "Complete 100 reviews in one day."),
-            "reviews_500_day": ("Marathon Bloom", "Complete 500 reviews in one day."),
             "reviews_1000_total": ("Deep Roots", "Complete 1000 total reviews."),
-            "reviews_10000_total": ("Forest Keeper", "Complete 10000 total reviews."),
             "retention_90": ("Clear Recall", "Reach at least 90% accuracy in a day."),
             "retention_100": ("Perfect Canopy", "Perfect retention on at least 30 cards in a day."),
             "all_due_done": ("Inbox Zero", "Finish all due cards for today."),
-            "moonflower": ("Moonflower Unlock", "Study after 10 PM."),
-            "sunbloom": ("Sunbloom Unlock", "Study before 7 AM."),
-            "revival": ("Revival", "Return strongly after missed days."),
-            "deep_work_10": ("Deep Work", "Complete 10 focus sessions."),
             "no_lapse": ("No-Lapse Session", "Review at least 40 cards with no incorrect answers."),
-            "exam_ready": ("Exam Steward", "Enable exam mode and finish a focused day."),
+        }
+        self.state.achievements = {
+            key: value for key, value in self.state.achievements.items() if key in defs
         }
         for aid, (name, desc) in defs.items():
             if aid not in self.state.achievements:
@@ -253,18 +229,15 @@ class GardenGameEngine:
         difficulty = self.config.value("quest_difficulty", "normal")
         base = {"easy": 35, "normal": 50, "hard": 80}.get(difficulty, 50)
         quest_pool = [
-            Quest("reviews", f"Complete {base} reviews", base, "reviewed", reward_growth=20, reward_currency=12),
-            Quest("accuracy", "Maintain at least 85% accuracy", 85, "accuracy", reward_growth=15, reward_currency=8),
-            Quest("learning", f"Finish {int(base * 0.6)} learning/review cards", int(base * 0.6), "lr_total", reward_growth=18, reward_currency=10),
-            Quest("focus", "Complete one focus block", 1, "focus", reward_growth=22, reward_currency=10),
-            Quest("recovery", "Recover 8 previously lapsed cards", 8, "recoveries", reward_growth=18, reward_currency=9),
+            Quest("reviews", f"Complete {base} reviews", base, "reviewed", reward_growth=20),
+            Quest("accuracy", "Maintain at least 85% accuracy", 85, "accuracy", reward_growth=15),
+            Quest("learning", f"Finish {int(base * 0.6)} learning/review cards", int(base * 0.6), "lr_total", reward_growth=18),
+            Quest("growth", f"Earn {int(self.config.value('daily_goal', 140))} garden growth", int(self.config.value("daily_goal", 140)), "growth", reward_growth=20),
         ]
         if s.accuracy < 0.8 and s.reviewed >= 30:
-            picks = [quest_pool[1], quest_pool[0], quest_pool[3]]
-        elif self.state.recovery_mode:
-            picks = [quest_pool[4], quest_pool[0], quest_pool[3]]
+            picks = [quest_pool[1], quest_pool[0], quest_pool[2]]
         elif s.reviewed < 20:
-            picks = [quest_pool[0], quest_pool[3], quest_pool[1]]
+            picks = [quest_pool[0], quest_pool[2], quest_pool[3]]
         else:
             rng = random.Random(date.today().toordinal())
             picks = rng.sample(quest_pool, k=min(self.config.value("max_daily_quests", 3), len(quest_pool)))
@@ -284,6 +257,8 @@ class GardenGameEngine:
             return stats.focus_sessions_completed
         if metric == "recoveries":
             return stats.recovered_lapses
+        if metric == "growth":
+            return stats.growth_earned
         return 0
 
     def _update_quests(self) -> None:
@@ -294,9 +269,7 @@ class GardenGameEngine:
             if quest.progress >= quest.target:
                 quest.completed = True
                 self.state.quest_history.append(f"{date.today().isoformat()}:{quest.quest_id}")
-                reward = quest.reward_currency + int(self.current_weekly_event().get("quest_currency_bonus", 0))
-                self.state.currency += reward
-                self._apply_growth(quest.reward_growth, None)
+                self._award_growth(quest.reward_growth, None)
 
     def set_due_completion(self, completed: bool) -> None:
         self.state.daily_stats.completed_due_cards = completed
@@ -354,9 +327,7 @@ class GardenGameEngine:
                 stats.review_count += 1
             growth = self._calculate_growth(card_type, is_correct, difficulty, lapse_count, deck_id)
             if growth > 0:
-                self._apply_growth(growth, deck_id)
-                stats.growth_earned += growth
-                total_growth += growth
+                total_growth += self._award_growth(growth, deck_id)
         self._update_quests()
         self._update_achievements()
         self._update_mastery()
@@ -394,7 +365,8 @@ class GardenGameEngine:
         fs.deep_work_streak += 1
         bonus = 16 + (2 * fs.deep_work_streak)
         self.state.currency += 8
-        self._apply_growth(bonus, None)
+        self._award_growth(bonus, None)
+        self._update_quests()
         self._update_achievements()
         self.storage.save()
         return True, "Deep work session complete. Bonus growth applied."
@@ -478,23 +450,15 @@ class GardenGameEngine:
 
     def _update_achievements(self) -> None:
         stats = self.state.daily_stats
-        hour = datetime.now().hour
         checks = {
             "streak_7": self.state.streak_days >= 7,
             "streak_30": self.state.streak_days >= 30,
             "reviews_100_day": stats.reviewed >= 100,
-            "reviews_500_day": stats.reviewed >= 500,
             "reviews_1000_total": self.state.total_reviews >= 1000,
-            "reviews_10000_total": self.state.total_reviews >= 10000,
             "retention_90": stats.reviewed >= 20 and stats.accuracy >= 0.9,
             "retention_100": stats.reviewed >= 30 and stats.accuracy == 1.0,
             "all_due_done": stats.completed_due_cards,
-            "moonflower": hour >= 22,
-            "sunbloom": hour <= 7,
-            "revival": self.state.recovery_mode and stats.reviewed >= 40,
-            "deep_work_10": self.state.total_focus_sessions >= 10,
             "no_lapse": stats.reviewed >= 40 and stats.wrong == 0,
-            "exam_ready": self.state.exam_mode.enabled and stats.reviewed >= 80,
         }
         for aid, achieved in checks.items():
             ach = self.state.achievements[aid]
@@ -503,7 +467,6 @@ class GardenGameEngine:
                 ach.unlocked = True
                 if not was_unlocked:
                     ach.unlocked_at = iso_now()
-                    self.state.currency += 24
             ach.progress = 1.0 if ach.unlocked else 0.0
 
     def _maybe_unlock_slot(self) -> None:
@@ -523,14 +486,14 @@ class GardenGameEngine:
             self.state.selected_weather = str(override)
         elif self.state.recovery_mode:
             self.state.selected_weather = "gentle_rain"
-        elif s.reviewed >= 120:
-            self.state.selected_weather = "sunny"
         elif s.reviewed > 350 and s.accuracy < 0.72:
             self.state.selected_weather = "cloudy"
         elif s.wrong > s.correct and s.reviewed > 25:
             self.state.selected_weather = "cloudy"
         elif s.accuracy >= 0.9 and s.reviewed >= 50:
             self.state.selected_weather = "fireflies"
+        elif s.reviewed >= 120:
+            self.state.selected_weather = "sunny"
         else:
             self.state.selected_weather = "breeze"
 
@@ -705,13 +668,13 @@ class GardenGameEngine:
 
     def _update_mastery(self) -> None:
         s = self.state.daily_stats
-        if s.reviewed and s.reviewed % 120 == 0:
+        if s.reviewed in {120, 360, 720, 1200}:
             self.state.mastery_tree["volume"] = min(10, self.state.mastery_tree["volume"] + 1)
-        if s.accuracy >= 0.9 and s.reviewed >= 30:
+        if s.accuracy >= 0.9 and s.reviewed in {30, 100, 250, 500}:
             self.state.mastery_tree["accuracy"] = min(10, self.state.mastery_tree["accuracy"] + 1)
-        if self.state.streak_days and self.state.streak_days % 7 == 0:
+        if s.reviewed == 1 and self.state.streak_days in {7, 14, 30, 60, 100}:
             self.state.mastery_tree["consistency"] = min(10, self.state.mastery_tree["consistency"] + 1)
-        if self.state.recovery_mode and s.reviewed >= 40:
+        if self.state.recovery_mode and s.reviewed in {40, 100, 250}:
             self.state.mastery_tree["recovery"] = min(10, self.state.mastery_tree["recovery"] + 1)
 
     def _maybe_trigger_rare_event(self) -> None:
@@ -723,6 +686,8 @@ class GardenGameEngine:
             return
         event_id, desc = random.choice(self.RARE_EVENTS)
         today = date.today().isoformat()
+        if any(entry.startswith(f"{today}:") for entry in self.state.rare_event_log):
+            return
         self.state.rare_event_log.append(f"{today}:{event_id}")
         self.state.currency += 10
         if event_id == "golden_bloom" and self.state.plants:

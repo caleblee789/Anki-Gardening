@@ -54,6 +54,7 @@ class _Hooks:
         self.deck_browser_will_render_content = []
         self.overview_will_render_content = []
         self.webview_will_set_content = []
+        self.webview_did_receive_js_message = []
         self.sync_did_finish = []
         self.reviewer_did_answer_card = []
         self.reviewer_did_show_question = []
@@ -78,6 +79,10 @@ def _install_fake_aqt(monkeypatch):
         form=SimpleNamespace(menuTools=menu_tools, toolbar=toolbar),
         reviewer=None,
         col=SimpleNamespace(db=_DB(), sched=SimpleNamespace(day_cutoff=123)),
+        addonManager=SimpleNamespace(
+            addonFromModule=lambda _module: "anki_garden",
+            setWebExports=lambda *_args: None,
+        ),
     )
     aqt_mod.gui_hooks = hooks
 
@@ -123,8 +128,8 @@ def _new_app(addon_module):
     app = addon_module.AnkiGardenApp.__new__(addon_module.AnkiGardenApp)
     app._menu_action = None
     app.dashboard = None
-    app._reviewer_button = None
     app._home_widget_hooked = False
+    app._home_bridge_hooked = False
     app._home_widget_controller = HomeWidgetStateController()
     app._apply_retrospective_growth = lambda: None
     app.engine = SimpleNamespace(
@@ -141,7 +146,7 @@ def _new_app(addon_module):
             retrospective_last_revlog_id=0,
         )
     )
-    app.config = SimpleNamespace(value=lambda key, default=None: 220 if key == "daily_growth_cap" else default)
+    app.config = SimpleNamespace(value=lambda key, default=None: 220 if key == "daily_goal" else default)
     app.open_dashboard = lambda: setattr(app, "_opened", True)
     return app
 
@@ -194,7 +199,9 @@ def test_home_badges_use_resolved_svg_thumbnail_when_available(monkeypatch, tmp_
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
-    plant_svg = tmp_path / "rose.svg"
+    monkeypatch.setattr(addon, "__file__", str(tmp_path / "addon.py"))
+    plant_svg = tmp_path / "assets" / "rose.svg"
+    plant_svg.parent.mkdir()
     plant_svg.write_text('<svg viewBox="0 0 10 10"></svg>', encoding="utf-8")
     app.storage.state.plants = [
         SimpleNamespace(name="Rose", species="rose", growth_stage="young", rare_variant=False),
@@ -204,7 +211,7 @@ def test_home_badges_use_resolved_svg_thumbnail_when_available(monkeypatch, tmp_
     html = app._plant_badges_html()
 
     assert 'class="ag-home__plant-thumb"' in html
-    assert plant_svg.resolve().as_uri() in html
+    assert '/_addons/anki_garden/assets/rose.svg' in html
     assert "ag-home__plant-emoji" not in html
 
 
@@ -221,19 +228,6 @@ def test_home_badges_fall_back_to_emoji_when_svg_unavailable(monkeypatch):
 
     assert "ag-home__plant-emoji" in html
     assert "ag-home__plant-thumb" not in html
-
-
-def test_setup_toolbar_skips_when_toolbar_unavailable(monkeypatch, caplog):
-    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
-    delattr(aqt_mod.mw.form, "toolbar")
-    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
-    addon.mw = aqt_mod.mw
-    app = _new_app(addon)
-
-    caplog.set_level(logging.WARNING)
-    app._setup_toolbar()
-
-    assert "toolbar not available" in caplog.text
 
 
 def test_injection_idempotent_for_render_and_webview(monkeypatch):
@@ -263,8 +257,26 @@ def test_setup_home_widget_registers_available_hooks(monkeypatch):
     app._setup_home_screen_widget()
 
     assert app._inject_home_garden_webview in hooks.webview_will_set_content
-    assert app._inject_home_garden not in hooks.deck_browser_will_render_content
-    assert app._inject_home_garden not in hooks.overview_will_render_content
+    assert app._inject_home_garden in hooks.deck_browser_will_render_content
+    assert app._inject_home_garden in hooks.overview_will_render_content
+    assert app._handle_home_bridge_message in hooks.webview_did_receive_js_message
+
+
+def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    opened = []
+    resets = []
+    app.open_dashboard = lambda: opened.append(True)
+    aqt_mod.mw.reset = lambda: resets.append(True)
+    deck_ctx = type("DeckBrowser", (), {})()
+
+    assert app._handle_home_bridge_message((False, None), "anki-garden:open", deck_ctx)[0] is True
+    assert app._handle_home_bridge_message((False, None), "anki-garden:refresh", deck_ctx)[0] is True
+    assert opened == [True]
+    assert resets == [True]
 
 
 def test_setup_home_widget_is_idempotent(monkeypatch):
@@ -289,8 +301,8 @@ def test_cards_today_uses_collection_revlog_count(monkeypatch):
 
     html = app._build_home_garden_html()
 
-    assert "42" in html
-    assert "999" not in html
+    assert 'data-testid="home-cards">Cards Today: 42' in html
+    assert 'data-testid="home-cards">Cards Today: 999' not in html
 
 
 def test_webview_injection_skips_bottom_bar_context(monkeypatch):

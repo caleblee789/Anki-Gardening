@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, Callable
 
 from aqt.qt import (
@@ -8,14 +7,10 @@ from aqt.qt import (
     QComboBox,
     QFormLayout,
     QFrame,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
     Qt,
-    QFontMetrics,
 )
 
 from .scene import GardenSceneWidget
@@ -23,6 +18,7 @@ from .scene import GardenSceneWidget
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
     "night_mode_preview": "Preview Night Mode",
+    "animations_label": "Animate the garden",
     "theme_label": "Select visual theme",
     "asset_quality_label": "Select asset quality",
     "day_night_label": "Toggle day/night preview",
@@ -30,36 +26,25 @@ STUDIO_TEXT = {
     "growth_stage_label": "Select preview growth stage",
     "animation_label": "Set animation intensity",
     "particle_label": "Set weather particle density",
-    "asset_sources": "Asset Sources",
-    "missing_source": "Source details unavailable. Default built-in artwork is still active.",
-    "refresh_asset": "Refresh {slot} Asset",
-    "source_label": "{slot} source: {author} • {license_name} • {source}. If this source is unavailable, the preview still uses a built-in fallback.",
 }
 
 
 class GardenStudioWidget(QWidget):
-    ATTRIBUTION_MAX_CHARS = 210
-    ATTRIBUTION_ELIDE_WIDTH = 760
-
     def __init__(
         self,
         config: Any,
-        on_reroll: Callable[[str], None] | None = None,
         asset_resolver: Callable[[str, str, str, str], dict[str, str | None]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
-        self.on_reroll = on_reroll
         self.asset_resolver = asset_resolver
         self.preview = self._default_preview()
         self.scene = GardenSceneWidget()
-        self.attribution_cards: dict[str, QLabel] = {}
         self._build_ui()
         self._apply_preview()
 
     def _default_preview(self) -> dict[str, Any]:
-        palette = deepcopy(self.config.nested("theme_overrides", "palette", default={}))
         return {
             "theme": self._normalize_theme(str(self.config.value("visual_theme", "verdant_dusk"))),
             "weather": "breeze",
@@ -69,8 +54,6 @@ class GardenStudioWidget(QWidget):
             "weather_particle_density": float(
                 self.config.nested("theme_overrides", "weather_particle_density", default=1.0)
             ),
-            "panel_opacity": float(self.config.nested("theme_overrides", "panel_opacity", default=0.9)),
-            "palette": palette,
         }
 
     def _build_ui(self) -> None:
@@ -103,6 +86,13 @@ class GardenStudioWidget(QWidget):
         self.day_night = QCheckBox(STUDIO_TEXT["night_mode_preview"])
         self.day_night.toggled.connect(self._on_preview_toggle)
 
+        self.animations_enabled = QCheckBox()
+        self.animations_enabled.setChecked(
+            bool(self.config.value("enable_animations", True))
+            and not bool(self.config.value("reduced_motion", False))
+        )
+        self.animations_enabled.toggled.connect(self._apply_preview)
+
         self.weather_combo = QComboBox()
         for weather in ["breeze", "cloudy", "gentle_rain", "fireflies", "sunny"]:
             self.weather_combo.addItem(weather.replace("_", " ").title(), weather)
@@ -127,6 +117,7 @@ class GardenStudioWidget(QWidget):
         form.addRow(STUDIO_TEXT["theme_label"], self.theme_combo)
         form.addRow(STUDIO_TEXT["asset_quality_label"], self.asset_quality_combo)
         form.addRow(STUDIO_TEXT["day_night_label"], self.day_night)
+        form.addRow(STUDIO_TEXT["animations_label"], self.animations_enabled)
         form.addRow(STUDIO_TEXT["weather_label"], self.weather_combo)
         form.addRow(STUDIO_TEXT["growth_stage_label"], self.growth_stage_combo)
         form.addRow(STUDIO_TEXT["animation_label"], self.anim_slider)
@@ -134,23 +125,6 @@ class GardenStudioWidget(QWidget):
 
         root.addWidget(controls)
         root.addWidget(self.scene, 1)
-
-        attribution_frame = QFrame()
-        attribution_layout = QVBoxLayout(attribution_frame)
-        attribution_layout.addWidget(QLabel(STUDIO_TEXT["asset_sources"]))
-        for slot in ["background", "plant", "weather"]:
-            card = QFrame()
-            card_layout = QHBoxLayout(card)
-            label = QLabel(f"{slot.title()}: {STUDIO_TEXT['missing_source']}")
-            label.setWordWrap(True)
-            reroll = QPushButton(STUDIO_TEXT["refresh_asset"].format(slot=slot.title()))
-            reroll.setProperty("variant", "secondary")
-            reroll.clicked.connect(lambda _checked=False, s=slot: self._reroll_slot(s))
-            card_layout.addWidget(label, 1)
-            card_layout.addWidget(reroll)
-            attribution_layout.addWidget(card)
-            self.attribution_cards[slot] = label
-        root.addWidget(attribution_frame)
 
     def _on_theme_changed(self) -> None:
         self.preview["theme"] = self._normalize_theme(str(self.theme_combo.currentData()))
@@ -191,6 +165,7 @@ class GardenStudioWidget(QWidget):
             "night_mode": self.preview["night_mode"],
             "animation_intensity": self.preview["animation_intensity"],
             "weather_particle_density": self.preview["weather_particle_density"],
+            "motion_enabled": self.animations_enabled.isChecked(),
             "asset_paths": {
                 "background": asset_paths.get("background"),
                 "weather": asset_paths.get("weather"),
@@ -207,42 +182,18 @@ class GardenStudioWidget(QWidget):
         }
         self.scene.set_scene(scene_payload)
 
-    def set_asset_attributions(self, attributions: dict[str, dict[str, str]]) -> None:
-        for slot, label in self.attribution_cards.items():
-            attr = attributions.get(slot, {})
-            source = attr.get("page_url") or attr.get("source_url") or "unknown source"
-            author = attr.get("author") or "unknown author"
-            license_name = attr.get("license") or "license unknown"
-            full_text = STUDIO_TEXT["source_label"].format(
-                slot=slot.title(), author=author, license_name=license_name, source=source
-            )
-            limited_text = full_text if len(full_text) <= self.ATTRIBUTION_MAX_CHARS else f"{full_text[: self.ATTRIBUTION_MAX_CHARS - 1]}…"
-            metrics = QFontMetrics(label.font())
-            max_width = max(220, label.width() - 12, self.ATTRIBUTION_ELIDE_WIDTH)
-            display_text = metrics.elidedText(limited_text, Qt.TextElideMode.ElideRight, max_width)
-            label.setText(display_text)
-            if display_text != full_text:
-                label.setToolTip(full_text)
-            else:
-                label.setToolTip("")
-
-    def _reroll_slot(self, slot: str) -> None:
-        if self.on_reroll:
-            self.on_reroll(slot)
-
     def build_theme_payload(self) -> dict[str, Any]:
         quality = str(self.asset_quality_combo.currentData())
         return {
             "visual_theme": self._normalize_theme(str(self.theme_combo.currentData())),
-            "asset_quality": quality,
+            "enable_animations": self.animations_enabled.isChecked(),
+            "reduced_motion": not self.animations_enabled.isChecked(),
             "assets": {
                 "quality_preference": quality,
             },
             "theme_overrides": {
                 "animation_intensity": self.anim_slider.value() / 100.0,
                 "weather_particle_density": self.particle_slider.value() / 100.0,
-                "panel_opacity": self.preview["panel_opacity"],
-                "typography_scale": 1.0,
             },
         }
 

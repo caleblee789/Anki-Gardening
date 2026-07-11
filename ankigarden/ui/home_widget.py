@@ -180,7 +180,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             '<div id="ag-home-root" data-state="error">'
             f'<div data-testid="home-error">{message}</div>'
-            '<button data-testid="home-retry" type="button">Retry</button>'
+            '<button data-testid="home-retry" type="button" onclick="pycmd(\'anki-garden:refresh\')">Retry</button>'
             "</div>"
         )
 
@@ -211,6 +211,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         partial_error = escape(snapshot.error_message or "Some details are temporarily unavailable.")
         partial_banner = f'<div data-testid="home-partial-error">{partial_error}</div>'
 
+    event_html = ""
+    if data.event and not data.event.startswith("No Active Event") and data.event != "N/A":
+        event_html = f'<div class="ag-home__event"><div data-testid="home-event">Event: {escape(data.event)}</div></div>'
+
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" data-state=\"{escape(phase)}\">
   {partial_banner}
@@ -226,8 +230,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Growth today: {format_integer(data.growth_earned)}/{format_integer(growth_cap)}</div></div>
   </div>
   <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
-  <div class=\"ag-home__event\"><div data-testid=\"home-event\">Event: {escape(data.event)}</div></div>
-  <button data-testid=\"home-refresh\" type=\"button\">Refresh</button>
+  {event_html}
+  <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
+  <button data-testid=\"home-refresh\" type=\"button\" onclick=\"pycmd('anki-garden:refresh')\">Refresh</button>
 </div>
 """
 

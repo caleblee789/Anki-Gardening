@@ -111,7 +111,7 @@ class Snapshot:
 
 @dataclass
 class GardenState:
-    version: int = 4
+    version: int = 5
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
@@ -131,7 +131,7 @@ class GardenState:
         "plants": ["bonsai", "rose", "ivy", "fern"],
         "pots": ["ceramic_minimal"],
         "backgrounds": ["default"],
-        "decorations": ["stone_lantern"],
+        "decorations": ["lantern"],
         "weather": ["sunny"],
         "sounds": [],
         "skins": [],
@@ -139,7 +139,7 @@ class GardenState:
     equipped: Dict[str, str] = field(default_factory=lambda: {
         "pot": "ceramic_minimal",
         "background": "default",
-        "decoration": "stone_lantern",
+        "decoration": "lantern",
         "weather": "sunny",
     })
     purchased_items: List[str] = field(default_factory=list)
@@ -468,9 +468,28 @@ def _sanitize_garden_state_payload(data: dict, issues: list[str]) -> dict:
                     normalized[key] = plant[key]
                 else:
                     issues.append(f"plants[{idx}].{key}: expected {kind}, got {type(plant[key]).__name__}")
-        normalized["vitality"] = float(normalized["vitality"])
+        normalized["growth_points"] = max(0, int(normalized["growth_points"]))
+        normalized["slot_index"] = max(0, int(normalized["slot_index"]))
+        normalized["vitality"] = max(0.0, min(1.0, float(normalized["vitality"])))
         cleaned_plants.append(normalized)
     sanitized["plants"] = cleaned_plants
+
+    for key in (
+        "streak_days", "total_reviews", "total_correct", "total_wrong",
+        "total_focus_sessions", "currency", "unlocked_slots",
+        "streak_freeze_tokens", "retrospective_last_revlog_id",
+    ):
+        sanitized[key] = max(0, int(sanitized[key]))
+
+    stats = sanitized["daily_stats"]
+    for key in (
+        "reviewed", "correct", "wrong", "new_count", "learning_count",
+        "review_count", "difficult_count", "recovered_lapses",
+        "growth_earned", "focus_sessions_completed",
+    ):
+        stats[key] = max(0, int(stats[key]))
+    stats["correct"] = min(stats["correct"], stats["reviewed"])
+    stats["wrong"] = min(stats["wrong"], max(0, stats["reviewed"] - stats["correct"]))
 
     return sanitized
 

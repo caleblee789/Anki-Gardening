@@ -43,6 +43,7 @@ class _Hooks:
         self.deck_browser_will_render_content = []
         self.overview_will_render_content = []
         self.webview_will_set_content = []
+        self.webview_did_receive_js_message = []
         self.sync_did_finish = []
         self.reviewer_did_answer_card = []
         self.reviewer_did_show_question = []
@@ -120,8 +121,8 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220, 
     app = addon.AnkiGardenApp.__new__(addon.AnkiGardenApp)
     app._menu_action = None
     app.dashboard = None
-    app._reviewer_button = None
     app._home_widget_hooked = False
+    app._home_bridge_hooked = False
     app._home_widget_controller = addon.HomeWidgetStateController()
     app._apply_retrospective_growth = lambda: None
     app.engine = SimpleNamespace(
@@ -130,7 +131,7 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220, 
         get_weekly_event_summary=lambda: event,
     )
     app.storage = SimpleNamespace(state=_seed_state())
-    app.config = SimpleNamespace(value=lambda key, default=None: growth_cap if key == "daily_growth_cap" else default)
+    app.config = SimpleNamespace(value=lambda key, default=None: growth_cap if key == "daily_goal" else default)
     return app
 
 
@@ -186,8 +187,8 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     app._inject_home_garden_webview(overview_content, overview_ctx)
     app._inject_home_garden_webview(deck_content, deck_ctx)
 
-    assert deck_content.body.count("ag-home-root") == 1
-    assert overview_content.body.count("ag-home-root") == 1
+    assert deck_content.body.count('<div id="ag-home-root"') == 1
+    assert overview_content.body.count('<div id="ag-home-root"') == 1
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'Cards Today: 42' in rendered

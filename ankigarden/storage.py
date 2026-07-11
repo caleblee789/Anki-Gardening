@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
@@ -8,25 +10,42 @@ from typing import Any, Dict
 from .models.state import GardenState, Plant
 
 
+logger = logging.getLogger(__name__)
+
+
 class GardenStorage:
     def __init__(self, mw: Any, config: Any) -> None:
         self.mw = mw
         self.config = config
         self.addon_dir = Path(__file__).parent
-        self.data_path = self.addon_dir / "garden_state.json"
+        # Anki removes everything outside user_files/ when an add-on is upgraded.
+        # Progress and mutable metadata must therefore never live beside source.
+        self.user_files_dir = self.addon_dir / "user_files"
+        self.data_path = self.user_files_dir / "garden_state.json"
         self.assets_root = self.addon_dir / "assets"
-        self.metadata_dir = self.assets_root / "metadata"
-        self.cache_dir = self.assets_root / "cache"
-        self.asset_metadata = self.metadata_dir / "asset_metadata.json"
+        self.metadata_dir = self.user_files_dir
+        self.cache_dir = self.user_files_dir / "cache"
+        self.asset_metadata = self.user_files_dir / "asset_metadata.json"
         self.state = self._load()
         self._ensure_defaults()
 
     def _load(self) -> GardenState:
         try:
             if self.data_path.exists():
-                return GardenState.from_dict(json.loads(self.data_path.read_text("utf-8")))
+                raw = json.loads(self.data_path.read_text("utf-8"))
+                if isinstance(raw, dict) and int(raw.get("version", GardenState().version)) != GardenState().version:
+                    backup = self.data_path.with_suffix(".legacy.json")
+                    shutil.copy2(self.data_path, backup)
+                    logger.warning("Anki Garden: legacy state preserved at %s; starting the focused garden format", backup)
+                    return GardenState()
+                return GardenState.from_dict(raw)
         except Exception:
-            pass
+            logger.exception("Anki Garden: saved state is unreadable; preserving it and starting fresh")
+            try:
+                backup = self.data_path.with_suffix(".invalid.json")
+                shutil.copy2(self.data_path, backup)
+            except Exception:
+                logger.exception("Anki Garden: could not preserve invalid state")
         return GardenState()
 
     def _atomic_write_json(self, path: Path, payload: Dict[str, Any]) -> None:
@@ -40,11 +59,8 @@ class GardenStorage:
         self._atomic_write_json(self.data_path, self.state.to_dict())
 
     def _ensure_defaults(self) -> None:
-        self.assets_root.mkdir(parents=True, exist_ok=True)
-        for folder in ["plants", "backgrounds", "decorations", "weather", "ui", "cache", "metadata"]:
-            (self.assets_root / folder).mkdir(exist_ok=True)
-        for folder in ["plants", "backgrounds", "decorations", "weather", "ui"]:
-            (self.assets_root / "starter_pack" / folder).mkdir(parents=True, exist_ok=True)
+        self.user_files_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         if not self.state.plants:
             starters = [("bonsai", "streak"), ("rose", "accuracy")]
             for idx, species in enumerate(starters[: self.config.value("initial_slots", 2)]):
@@ -88,4 +104,16 @@ class GardenStorage:
                 int(limit),
             )
         except Exception:
+            logger.exception("Anki Garden: unable to read new review history")
             return []
+
+    def current_day_cutoff_ms(self) -> int:
+        """Return the start of Anki's current scheduler day in milliseconds."""
+        try:
+            sched = self.mw.col.sched
+            cutoff = getattr(sched, "day_cutoff", getattr(sched, "dayCutoff", None))
+            if cutoff is None:
+                return 0
+            return max(0, (int(cutoff) - 86_400) * 1000)
+        except Exception:
+            return 0

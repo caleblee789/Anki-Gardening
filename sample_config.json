@@ -1,68 +1,17 @@
 {
-  "enable_sounds": false,
   "enable_animations": true,
-  "daily_growth_cap": 220,
+  "reduced_motion": false,
   "daily_goal": 140,
-  "points_per_card": {
-    "new": 4,
-    "learning": 3,
-    "review": 2
-  },
-  "correct_answer_bonus": 1.08,
-  "incorrect_answer_penalty": 0.6,
-  "difficulty_weight": 0.12,
-  "recovery_weight": 0.2,
-  "session_quality_weight": 0.25,
-  "streak_grace_period_days": 1,
-  "quest_difficulty": "normal",
-  "deck_specific_growth_mode": false,
-  "show_reviewer_button": true,
-  "show_toolbar_button": true,
-  "vitality_decay_sensitivity": 0.08,
+  "show_home_widget": true,
   "seasonal_visuals": true,
-  "time_of_day_bonus": true,
-  "allow_streak_freeze": true,
-  "max_daily_quests": 3,
-  "daily_snapshot": true,
-  "snapshot_frequency_days": 1,
-  "burnout_detection": true,
-  "burnout_volume_threshold": 500,
-  "rare_event_frequency": 1.0,
-  "image_api": {
-    "provider_priority": [
-      "wikimedia"
-    ],
-    "enable_builtin_no_key_sources": true,
-    "unsplash_access_key": "",
-    "pexels_api_key": "",
-    "pixabay_api_key": "",
-    "request_timeout_sec": 8,
-    "max_retries": 3,
-    "rate_limit_seconds": 1.2
+  "visual_theme": "verdant_dusk",
+  "assets": {
+    "mode": "local_only",
+    "quality_preference": "balanced",
+    "allow_fallback_placeholder": true
   },
-  "initial_slots": 2,
-  "max_slots": 6,
-  "currency_name": "dew drops",
-  "focus_target_bonus": 1.2,
-  "focus_mode": {
-    "durations": [
-      25,
-      45,
-      60
-    ],
-    "growth_multiplier": 1.15
-  },
-  "exam_mode": {
-    "deck_weight_boost": 1.25
-  },
-  "sound_cues": {
-    "growth": "",
-    "achievement": "",
-    "quest": ""
-  },
-  "future_features": {
-    "enable_cloud_sync": true,
-    "enable_social_gardens": true,
-    "enable_weekly_events": true
+  "theme_overrides": {
+    "animation_intensity": 0.7,
+    "weather_particle_density": 1.0
   }
 }

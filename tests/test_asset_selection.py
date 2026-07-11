@@ -172,6 +172,68 @@ def test_catalog_svg_manifest_dimensions_are_accepted(tmp_path):
     assert picked.name == "rose_young.svg"
 
 
+def test_storybook_png_is_preferred_over_matching_v2_svg(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "rose_v2",
+            "category": "plants",
+            "slot": {"species": "rose", "stage": "young"},
+            "file": "assets/v2/rose.svg",
+            "format": "svg",
+            "width": 256,
+            "height": 256,
+            "quality_tier": "balanced",
+            "quality_score": 0.9,
+        },
+        {
+            "asset_id": "rose_v3",
+            "category": "plants",
+            "slot": {"species": "rose", "stage": "young"},
+            "file": "assets/v3/rose.png",
+            "format": "png",
+            "style_family": "storybook_gouache",
+            "width": 1024,
+            "height": 1024,
+            "quality_tier": "ultra",
+            "quality_score": 0.98,
+        },
+    ]
+    _build_manifest(storage, assets)
+    for row in assets:
+        _touch_asset(storage, row["file"])
+
+    picked = AssetManager(DummyConfig(), storage).get_or_fetch("plants", "rose_young", "ignored")
+
+    assert picked is not None and picked.name == "rose.png"
+
+
+def test_storybook_season_master_serves_every_weather(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "summer_master",
+            "category": "backgrounds",
+            "slot": {"season": "summer", "weather": "any", "theme": "verdant_dusk"},
+            "file": "assets/v3/summer.webp",
+            "format": "webp",
+            "style_family": "storybook_gouache",
+            "width": 1448,
+            "height": 1086,
+            "quality_tier": "ultra",
+            "quality_score": 0.98,
+        }
+    ]
+    _build_manifest(storage, assets)
+    _touch_asset(storage, assets[0]["file"])
+
+    picked = AssetManager(DummyConfig(), storage).get_or_fetch(
+        "backgrounds", "bg_summer_gentle_rain", "ignored", theme="verdant_dusk"
+    )
+
+    assert picked is not None and picked.name == "summer.webp"
+
+
 def test_morning_bloom_theme_alias_selects_verdant_dawn_assets(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [

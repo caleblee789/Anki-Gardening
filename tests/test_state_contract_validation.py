@@ -6,6 +6,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ankigarden.models.state import GardenState
 
 
+def test_numeric_state_is_clamped_to_safe_ranges() -> None:
+    state = GardenState.from_dict(
+        {
+            "streak_days": -5,
+            "daily_stats": {
+                "day": "2026-07-10", "reviewed": 2, "correct": 9, "wrong": 8,
+                "new_count": -1, "learning_count": 0, "review_count": 2,
+                "difficult_count": 0, "recovered_lapses": 0, "growth_earned": -20,
+                "completed_due_cards": False, "focus_sessions_completed": 0,
+            },
+            "plants": [{
+                "plant_id": "p", "species": "rose", "name": "Rose", "slot_index": -1,
+                "growth_points": -50, "vitality": 4.2,
+            }],
+        }
+    )
+
+    assert state.streak_days == 0
+    assert state.daily_stats.correct == 2
+    assert state.daily_stats.wrong == 0
+    assert state.daily_stats.growth_earned == 0
+    assert state.plants[0].growth_points == 0
+    assert state.plants[0].vitality == 1.0
+
+
 def _base_payload() -> dict:
     return GardenState().to_dict()
 
