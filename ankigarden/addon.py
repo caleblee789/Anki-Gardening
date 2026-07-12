@@ -21,6 +21,7 @@ from .ui.home_widget import (
     build_home_widget_success_data,
     render_home_widget,
 )
+from .ui.plant_display import growth_display
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,10 @@ class AnkiGardenApp:
         request_id = self._home_widget_controller.begin_request()
         try:
             state = self.storage.state
+            focus_resolver = getattr(self.engine, "focus_plant", None)
+            focus_plant = focus_resolver() if callable(focus_resolver) else None
+            next_milestone_resolver = getattr(self.engine, "next_milestone", None)
+            pending_milestone_resolver = getattr(self.engine, "pending_milestone", None)
             consume_transitions = getattr(self.engine, "consume_stage_transitions", None)
             transitions = consume_transitions() if callable(consume_transitions) else []
             transition_message_builder = getattr(self.engine, "stage_transition_message", None)
@@ -196,6 +201,15 @@ class AnkiGardenApp:
                 event=self.engine.get_weekly_event_summary(),
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
+                focus_plant=focus_plant,
+                focus_display=(
+                    growth_display(focus_plant.growth_points, focus_plant.rare_variant)
+                    if focus_plant is not None else None
+                ),
+                next_milestone=(next_milestone_resolver() if callable(next_milestone_resolver) else None),
+                milestone_ready=(
+                    pending_milestone_resolver() is not None if callable(pending_milestone_resolver) else False
+                ),
             )
             self._home_widget_controller.resolve_success(request_id, data)
         except Exception:
@@ -237,6 +251,7 @@ class AnkiGardenApp:
                 "name": plant.name,
                 "species": plant.species,
                 "stage": plant.growth_stage,
+                "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
                 "url": self._asset_web_url(asset.path),
                 "placement": asset.placement.to_dict(),
                 "background_placement": background_placement,

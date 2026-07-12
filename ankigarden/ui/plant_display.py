@@ -170,15 +170,18 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
                     card_width: float = 252.0, card_height: float = 184.0,
                     obstacles: Iterable[Rect] = (), planting_top: float | None = None) -> tuple[float, float, float, float]:
     margin = 12.0
-    safe_width, safe_height = max(card_width + 2 * margin, width), max(card_height + 2 * margin, height)
+    safe_width, safe_height = max(1.0, width), max(1.0, height)
+    card_width = max(136.0, min(card_width, safe_width - 2 * margin))
+    card_height = max(132.0, min(card_height, safe_height - 2 * margin))
     candidates = [
         Rect(anchor_x + 24, anchor_y - card_height, card_width, card_height),
         Rect(anchor_x - card_width - 24, anchor_y - card_height, card_width, card_height),
         Rect(anchor_x - card_width / 2, anchor_y + 18, card_width, card_height),
     ]
     def clamp(r: Rect) -> Rect:
-        return Rect(max(margin, min(r.x, safe_width - card_width - margin)),
-                    max(margin, min(r.y, safe_height - card_height - margin)), card_width, card_height)
+        max_x = max(0.0, safe_width - card_width)
+        max_y = max(0.0, safe_height - card_height)
+        return Rect(max(0.0, min(r.x, max_x)), max(0.0, min(r.y, max_y)), card_width, card_height)
     obstacles = list(obstacles)
     for candidate in map(clamp, candidates):
         if not any(candidate.intersects(obstacle) for obstacle in obstacles):

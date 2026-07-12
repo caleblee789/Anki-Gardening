@@ -6,12 +6,13 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 
 ## What it does
 
-- Gives every answered card visible growth; difficult answers still contribute without removing progress.
+- Gives every answered card visible growth; a chosen focus plant receives most of it while the rest keep growing.
 - Tracks a daily goal, streak, garden vitality, quests, milestones, and plant stages.
 - Adds a compact painted garden preview to Deck Browser and Overview with one clear Open Garden action.
 - Provides a responsive garden dashboard with local storybook-gouache raster art plus scalable SVG UI and weather overlays.
 - Saves garden appearance and motion preferences through Anki's configuration system.
 - Stores progress only in `user_files/`, where Anki preserves it during add-on upgrades.
+- Offers a choice of new plants at calm review milestones instead of using a shop or spendable currency.
 
 The focused 2.0 experience intentionally does not expose focus timers, exam mode, deck mapping, a shop, cloud/social features, or remote image downloads.
 

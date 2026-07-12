@@ -90,6 +90,15 @@ def test_smart_card_is_constrained_to_scene_edges():
         assert 0 <= y <= 320 - height
 
 
+@pytest.mark.parametrize("size", [(150, 150), (220, 160), (252, 184)])
+def test_smart_card_shrinks_to_unusually_small_scenes(size):
+    width, height = size
+    x, y, card_width, card_height = smart_card_rect(width, height, width / 2, height / 2)
+    assert x >= 0 and y >= 0
+    assert x + card_width <= width
+    assert y + card_height <= height
+
+
 def test_hover_pin_transfer_and_dismissal():
     state = PlantInteractionState()
     state.hover("rose")
@@ -129,3 +138,8 @@ def test_dashboard_is_garden_first_with_compact_secondary_tabs():
     assert 'self.details_tabs.addTab(self.quest_list' in dashboard
     assert "self.hero_summary" not in dashboard
     assert "self.streak_chip" not in dashboard
+
+
+def test_potted_plants_do_not_receive_detached_ground_focus_ring():
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    assert 'if emphasized and base_type != "pot":' in scene

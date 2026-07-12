@@ -219,6 +219,17 @@ class GardenDashboard(QDialog):
         h_layout.setContentsMargins(*self.CARD_PADDING)
         h_layout.setSpacing(self.CARD_SPACING)
         self.scene = GardenSceneWidget()
+        self.focus_note = QLabel("")
+        self._apply_typography(self.focus_note, "muted-body")
+        self.nurture_selected_btn = QPushButton("Nurture selected plant")
+        _set_button_variant(self.nurture_selected_btn, BUTTON_VARIANT_SECONDARY)
+        self.nurture_selected_btn.setAccessibleName("Make the selected plant your focus plant")
+        self.nurture_selected_btn.clicked.connect(self._nurture_selected_plant)
+        self.focus_note.setWordWrap(True)
+        focus_row = QVBoxLayout()
+        focus_row.setSpacing(6)
+        focus_row.addWidget(self.focus_note)
+        focus_row.addWidget(self.nurture_selected_btn, 0, Qt.AlignmentFlag.AlignLeft)
         self.stage_transition_note = QLabel("")
         self.stage_transition_note.setWordWrap(True)
         self.stage_transition_note.setMinimumHeight(24)
@@ -231,9 +242,26 @@ class GardenDashboard(QDialog):
         self._apply_typography(self.retrospective_note, "muted-body")
         self.retrospective_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
         h_layout.addWidget(self.scene)
+        h_layout.addLayout(focus_row)
         h_layout.addWidget(self.stage_transition_note)
         h_layout.addWidget(self.retrospective_note)
         root.addWidget(hero_card, 4)
+
+        self.milestone_card = self._card_frame()
+        milestone_layout = QVBoxLayout(self.milestone_card)
+        milestone_layout.setContentsMargins(*self.CARD_PADDING)
+        milestone_layout.setSpacing(self.CARD_SPACING)
+        self.milestone_title = QLabel("Next garden addition")
+        self._apply_typography(self.milestone_title, "section-title")
+        self.milestone_note = QLabel("")
+        self.milestone_note.setWordWrap(True)
+        self._apply_typography(self.milestone_note, "muted-body")
+        self.milestone_choices = QVBoxLayout()
+        self.milestone_choices.setSpacing(6)
+        milestone_layout.addWidget(self.milestone_title)
+        milestone_layout.addWidget(self.milestone_note)
+        milestone_layout.addLayout(self.milestone_choices)
+        root.addWidget(self.milestone_card)
 
         self.quest_list = QListWidget()
         self.quest_list.setAlternatingRowColors(True)
@@ -292,6 +320,11 @@ class GardenDashboard(QDialog):
         stats = state.daily_stats
         health = self.engine.garden_health_index()
         daily_goal = max(1, int(self.config.value("daily_goal", 140)))
+        focus = self.engine.focus_plant()
+        self.focus_note.setText(
+            f"Nurturing {focus.name}: 80% of new growth" if focus is not None else "Select a plant to nurture."
+        )
+        self._refresh_milestone_card()
 
         transitions = self.engine.consume_stage_transitions()
         transition_message = self.engine.stage_transition_message(transitions)
@@ -382,6 +415,7 @@ class GardenDashboard(QDialog):
             "points_remaining": display.points_remaining,
             "stage_progress": display.progress,
             "fully_grown": display.fully_grown,
+            "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
             "asset": self._resolved_asset_payload(
                 "resolve_plant_asset",
                 "resolve_plant_image",
@@ -399,6 +433,51 @@ class GardenDashboard(QDialog):
                 return asset.to_payload()
         legacy = getattr(self.engine, legacy_name, None)
         return legacy(*args) if callable(legacy) else None
+
+    def _nurture_selected_plant(self) -> None:
+        plant_id = self.scene.active_plant_id()
+        ok, message = self.engine.set_focus_plant(plant_id)
+        if not ok:
+            QMessageBox.information(self, UI_TEXT["app_title"], "Select a plant in the garden first.")
+            return
+        self.refresh_all()
+        QMessageBox.information(self, UI_TEXT["app_title"], message)
+
+    def _clear_layout(self, layout: Any) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _refresh_milestone_card(self) -> None:
+        self._clear_layout(self.milestone_choices)
+        pending = self.engine.pending_milestone()
+        next_milestone = self.engine.next_milestone()
+        if pending is not None:
+            self.milestone_title.setText(f"{pending.review_count:,}-review garden reward")
+            self.milestone_note.setText("Choose one new plant for the next garden space.")
+            for species in pending.offered_species:
+                button = QPushButton(f"Choose {format_status_label(species)}")
+                _set_button_variant(button, BUTTON_VARIANT_PRIMARY)
+                button.clicked.connect(lambda _checked=False, choice=species: self._claim_milestone(choice))
+                self.milestone_choices.addWidget(button, 0, Qt.AlignmentFlag.AlignLeft)
+            return
+        if next_milestone is None:
+            self.milestone_title.setText("Garden collection complete")
+            self.milestone_note.setText("All six garden spaces are unlocked.")
+        else:
+            remaining = max(0, next_milestone - int(self.storage.state.total_reviews))
+            self.milestone_title.setText("Next garden addition")
+            self.milestone_note.setText(
+                f"{remaining:,} more reviews until you can choose a new plant ({next_milestone:,} total)."
+            )
+
+    def _claim_milestone(self, species: str) -> None:
+        ok, message = self.engine.claim_milestone_reward(species)
+        if ok:
+            self.refresh_all()
+        QMessageBox.information(self, UI_TEXT["app_title"], message)
 
     def _open_settings(self) -> None:
         if self.settings_dialog is None:

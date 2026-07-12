@@ -251,6 +251,27 @@ def test_invalid_placement_values_fall_back_or_clamp():
     assert placement.visible_bounds == (0.08, 0.04, 0.84, 0.92)
 
 
+def test_storybook_bonsai_stages_use_alpha_aware_grounding_metadata():
+    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
+    assets = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
+    bonsai = {
+        row["slot"]["stage"]: row
+        for row in assets
+        if row.get("style_family") == "storybook_gouache"
+        and row.get("slot", {}).get("species") == "bonsai"
+    }
+
+    assert set(bonsai) == {"seed", "sprout", "young", "mature", "flowering", "rare"}
+    for row in bonsai.values():
+        placement = row["placement"]
+        visible = placement["visible_bounds"]
+        ground = placement["ground_anchor"]
+        assert len(visible) == 4 and visible[2] > 0 and visible[3] > 0
+        assert len(ground) == 2
+        assert abs((visible[1] + visible[3]) - ground[1]) < 0.001
+        assert placement["display_scale"] > 0
+
+
 def test_storybook_season_master_serves_every_weather(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [

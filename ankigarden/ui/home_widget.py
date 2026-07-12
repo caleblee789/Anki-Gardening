@@ -21,6 +21,12 @@ class HomeWidgetData:
     scene_items: tuple[dict[str, Any], ...] = ()
     stage_transition_message: str = ""
     background_url: str = ""
+    focus_plant_name: str = ""
+    focus_stage: str = ""
+    focus_points_remaining: int = 0
+    next_milestone: int | None = None
+    total_reviews: int = 0
+    milestone_ready: bool = False
 
 
 @dataclass(frozen=True)
@@ -99,6 +105,8 @@ HOME_WIDGET_STYLE = """
 .ag-home__art { position:relative; width:100%; height:clamp(180px,24vw,240px); overflow:hidden; }
 .ag-home__plant { position:absolute; object-fit:contain; transform-origin:50% 100%; }
 .ag-home__contact { position:absolute; border-radius:50%; background:rgba(5,12,10,.34); filter:blur(2px); }
+.ag-home__plant-fallback { position:absolute; display:flex; align-items:flex-end; justify-content:center; line-height:1; }
+.ag-home__focus-marker { position:absolute; display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#eef2a6; color:#173425; font-size:12px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.38); }
 .ag-home__metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -142,6 +150,8 @@ HOME_WIDGET_STYLE = """
 .ag-home__event {
   color: #c4d7d0;
 }
+.ag-home__progress-note { margin-top: 8px; color: #cfe4d4; }
+.ag-home__plant--focus { filter: drop-shadow(0 0 8px rgba(232, 242, 166, .72)); }
 #ag-home-root button {
   margin-top: 6px;
   padding: 6px 10px;
@@ -151,8 +161,27 @@ HOME_WIDGET_STYLE = """
   color: #eef9f0;
   font-weight: 600;
 }
+@media (max-width: 520px) {
+  .ag-home__header { align-items:flex-start; flex-direction:column; gap:4px; }
+  .ag-home__metrics { grid-template-columns:1fr; }
+  .ag-home__details, .ag-home__footer { padding-left:10px; padding-right:10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ag-home__plant { transition:none !important; animation:none !important; }
+}
 </style>
 """
+
+
+def _plant_fallback(stage: Any) -> str:
+    return {
+        "seed": "🌰",
+        "sprout": "🌱",
+        "young": "🌿",
+        "mature": "🪴",
+        "flowering": "🌼",
+        "rare": "✨",
+    }.get(str(stage or "").lower(), "🌱")
 
 
 def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
@@ -235,12 +264,46 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     for layout in layouts:
         item = by_slot.get(layout.slot_index, {})
         src = escape(str(item.get("url", "")), quote=True)
-        if not src:
-            continue
         base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
-        shadow = f'<span class="ag-home__contact" style="left:{layout.footprint.x/12:.3f}%;top:{layout.footprint.y/9:.3f}%;width:{layout.footprint.width/12:.3f}%;height:{layout.footprint.height/9:.3f}%"></span>'
+        depth_index = max(1, int(round(layout.depth * 10)))
+        shadow = f'<span class="ag-home__contact" aria-hidden="true" style="left:{layout.footprint.x/12:.3f}%;top:{layout.footprint.y/9:.3f}%;width:{layout.footprint.width/12:.3f}%;height:{layout.footprint.height/9:.3f}%;z-index:{depth_index}"></span>'
         alt = escape(str(item.get("name", "Plant")), quote=True)
-        plant_markup.append(shadow + f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="left:{layout.draw.x/12:.3f}%;top:{layout.draw.y/9:.3f}%;width:{layout.draw.width/12:.3f}%;height:{layout.draw.height/9:.3f}%;z-index:{int(layout.depth)}" data-base-type="{escape(base_type, quote=True)}">')
+        focus_class = " ag-home__plant--focus" if item.get("is_focus") else ""
+        common = f'left:{layout.draw.x/12:.3f}%;top:{layout.draw.y/9:.3f}%;width:{layout.draw.width/12:.3f}%;height:{layout.draw.height/9:.3f}%;z-index:{depth_index + 1}'
+        if src:
+            plant = f'<img class="ag-home__plant{focus_class}" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="{common}" data-base-type="{escape(base_type, quote=True)}">'
+        else:
+            fallback = _plant_fallback(item.get("stage"))
+            font_size = max(24, min(58, int(layout.visible.height / 5)))
+            plant = f'<span class="ag-home__plant-fallback{focus_class}" data-slot-index="{layout.slot_index}" role="img" aria-label="{alt}" style="{common};font-size:{font_size}px">{fallback}</span>'
+        marker = ""
+        if item.get("is_focus"):
+            marker_x = (layout.visible.right / 12) - 1.667
+            marker_y = (layout.visible.y / 9) + 0.5
+            marker = f'<span class="ag-home__focus-marker" aria-label="Focus plant" title="Focus plant" style="left:{marker_x:.3f}%;top:{marker_y:.3f}%;z-index:{depth_index + 2}">★</span>'
+        plant_markup.append(shadow + plant + marker)
+
+    focus_html = ""
+    if data.focus_plant_name:
+        detail = f" • {escape(format_status_label(data.focus_stage))}"
+        if data.focus_points_remaining > 0:
+            detail += f" • {format_integer(data.focus_points_remaining)} GP to next stage"
+        focus_html = (
+            '<div class="ag-home__progress-note" data-testid="home-focus">'
+            f'Nurturing {escape(data.focus_plant_name)}{detail}</div>'
+        )
+    milestone_html = ""
+    if data.milestone_ready:
+        milestone_html = (
+            '<div class="ag-home__stage-up" data-testid="home-milestone">'
+            'A new garden plant is ready to choose. Open Garden to claim it.</div>'
+        )
+    elif data.next_milestone is not None:
+        remaining = max(0, data.next_milestone - data.total_reviews)
+        milestone_html = (
+            '<div class="ag-home__progress-note" data-testid="home-milestone-progress">'
+            f'{format_integer(remaining)} reviews until your next plant choice.</div>'
+        )
 
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" data-state=\"{escape(phase)}\">
@@ -254,6 +317,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
   </div>
   <div class=\"ag-home__details\">
     {stage_up_html}
+    {milestone_html}
     <div class=\"ag-home__metrics\">
       <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards Today: {format_integer(data.cards_today)}</div></div>
       <div class=\"ag-home__metric\"><div data-testid=\"home-health\">Garden Health: {format_percent(data.health_ratio, places=0)}</div></div>
@@ -261,6 +325,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Growth today: {format_integer(data.growth_earned)}/{format_integer(growth_cap)}</div></div>
     </div>
     <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
+    {focus_html}
   </div>
   <div class=\"ag-home__footer\">{event_html}
     <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
@@ -269,7 +334,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 """
 
 
-def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, scene_items: list[dict[str, Any]], event: str, stage_transition_message: str = "", background_url: str = "") -> HomeWidgetData:
+def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, scene_items: list[dict[str, Any]], event: str, stage_transition_message: str = "", background_url: str = "", focus_plant: Any = None, focus_display: Any = None, next_milestone: int | None = None, milestone_ready: bool = False) -> HomeWidgetData:
     stats = state.daily_stats
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
@@ -296,4 +361,10 @@ def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio
         scene_items=tuple(scene_items),
         stage_transition_message=stage_transition_message,
         background_url=background_url,
+        focus_plant_name=str(getattr(focus_plant, "name", "") or ""),
+        focus_stage=str(getattr(focus_display, "stage", "") or ""),
+        focus_points_remaining=max(0, int(getattr(focus_display, "points_remaining", 0) or 0)),
+        next_milestone=next_milestone,
+        total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),
+        milestone_ready=milestone_ready,
     )

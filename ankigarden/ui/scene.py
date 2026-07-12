@@ -145,6 +145,9 @@ class GardenSceneWidget(QWidget):
                 return plant
         return None
 
+    def active_plant_id(self) -> str | None:
+        return self._interaction.active_id or self._interaction.focused_id(self._plant_ids())
+
     def _layout_plants(self, width: float, height: float) -> list[tuple[dict[str, Any], PlantPlacement]]:
         plants = sorted(self.scene.get("plants", []), key=lambda row: int(row.get("slot_index", 0)))[:6]
         background = self.scene.get("asset_paths", {}).get("background", {})
@@ -224,6 +227,8 @@ class GardenSceneWidget(QWidget):
                     self._interaction.pinned_id,
                     focused_id,
                 }
+                if plant.get("is_focus"):
+                    emphasized = True
                 sway = 6 * math.sin(self.phase + idx) if self.scene.get("motion_enabled", True) else 0.0
                 self._draw_plant_footprint(painter, layout, plant, emphasized)
                 transition = self._transition_for_plant(plant)
@@ -280,8 +285,10 @@ class GardenSceneWidget(QWidget):
             f"{format_percent(growth)} growth today",
             f"{format_percent(self.scene.get('health', 0.0))} garden health",
         ]
-        panel_width = min(470.0, max(300.0, rect.width() - 32.0))
-        panel = QRectF(16, 14, panel_width, 62)
+        panel_width = min(470.0, max(1.0, rect.width() - 32.0))
+        compact = panel_width < 390
+        panel_height = 78 if compact else 62
+        panel = QRectF(16, 14, panel_width, panel_height)
         painter.save()
         painter.setPen(QPen(QColor(226, 239, 222, 62), 1))
         painter.setBrush(QColor(9, 22, 20, 192))
@@ -295,7 +302,11 @@ class GardenSceneWidget(QWidget):
         font.setPointSize(max(8, font.pointSize() - 1))
         painter.setFont(font)
         painter.setPen(QColor(205, 225, 211))
-        painter.drawText(30, 61, "   •   ".join(labels))
+        if compact:
+            painter.drawText(30, 59, " • ".join(labels[:2]))
+            painter.drawText(30, 75, labels[2])
+        else:
+            painter.drawText(30, 61, "   •   ".join(labels))
         painter.restore()
 
     def _plant_placement(self, plant: dict[str, Any]) -> dict[str, Any]:
@@ -309,11 +320,12 @@ class GardenSceneWidget(QWidget):
         base_type = str(self._plant_placement(plant).get("base_type", "legacy"))
         painter.save()
         painter.setPen(Qt.PenStyle.NoPen)
-        if emphasized:
+        footprint = QRectF(layout.footprint.x, layout.footprint.y, layout.footprint.width, layout.footprint.height)
+        if emphasized and base_type != "pot":
             painter.setPen(QPen(QColor(229, 242, 166, 125), 1.4))
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawEllipse(QRectF(x - 58, base_y - 17, 116, 31))
-        footprint = QRectF(layout.footprint.x, layout.footprint.y, layout.footprint.width, layout.footprint.height)
+            focus_ring = footprint.adjusted(-18, -5, 18, 5)
+            painter.drawEllipse(focus_ring)
         painter.setBrush(QColor(7, 15, 13, 104 if emphasized else 68))
         painter.drawEllipse(footprint)
         if base_type == "legacy":
@@ -341,7 +353,11 @@ class GardenSceneWidget(QWidget):
         if plant is None or anchor is None:
             self._card_rect = None
             return
-        obstacles = [Rect(hit.x(), hit.y(), hit.width(), hit.height()) for hit in self._plant_hit_rects.values()]
+        obstacles = [
+            Rect(hit.x(), hit.y(), hit.width(), hit.height())
+            for obstacle_id, hit in self._plant_hit_rects.items()
+            if obstacle_id != plant_id
+        ]
         background = self.scene.get("asset_paths", {}).get("background", {})
         placement = background.get("placement", {}) if isinstance(background, dict) else {}
         zone = placement.get("planting_zone", {}) if isinstance(placement, dict) else {}
@@ -392,7 +408,12 @@ class GardenSceneWidget(QWidget):
             status = f"{remaining} GP until {next_stage}"
         painter.drawText(int(left), int(top + 101), status)
         painter.setPen(QColor(151, 181, 163))
-        hint = "Pinned • click outside or press Esc" if self._interaction.pinned_id else "Click plant to keep this open"
+        if plant.get("is_focus"):
+            hint = "Focus plant • receives most new growth"
+        elif self._interaction.pinned_id:
+            hint = "Pinned • use Nurture selected plant below"
+        else:
+            hint = "Click plant to keep this open"
         painter.drawText(int(left), int(top + 137), hint)
         painter.restore()
 
