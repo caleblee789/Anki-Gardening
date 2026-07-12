@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 from .asset_manager import AssetManager, ResolvedAsset
-from .models.state import Achievement, GardenState, MilestoneReward, Plant, Quest, SessionSummary, Snapshot, iso_now
+from .models.state import Achievement, GardenState, MilestoneReward, Plant, Quest, iso_now
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,15 @@ class StageTransition:
         }
 
 
+@dataclass(frozen=True)
+class PlacementChange:
+    before: dict[str, int]
+    after: dict[str, int]
+
+    def to_dict(self) -> dict[str, dict[str, int]]:
+        return {"before": dict(self.before), "after": dict(self.after)}
+
+
 class GardenGameEngine:
     MILESTONE_REVIEWS = (250, 700, 1500, 2600)
     REWARD_SPECIES = ("fern", "cactus", "ivy", "orchid", "sunbloom", "moonflower")
@@ -39,26 +48,6 @@ class GardenGameEngine:
         "fern": "recovery",
         "ivy": "cumulative",
     }
-    SHOP_ITEMS = {
-        "plants:cactus": 140,
-        "plants:orchid": 220,
-        "plants:moonflower": 280,
-        "plants:sunbloom": 280,
-        "plants:ivy": 200,
-        "plants:fern": 180,
-        "pots:charcoal_modern": 80,
-        "backgrounds:zen_path": 120,
-        "decorations:butterflies": 130,
-        "weather:fireflies": 160,
-        "sounds:rain_ambient": 140,
-        "skins:winter_glass": 200,
-    }
-    WEEKLY_EVENTS = [
-        {"event_id": "growth_festival", "name": "Growth Festival", "description": "Review growth +25%.", "growth_multiplier": 1.25, "quest_currency_bonus": 0, "shop_discount": 0.0, "weather_override": None},
-        {"event_id": "dew_market", "name": "Dew Market", "description": "Shop 15% off.", "growth_multiplier": 1.0, "quest_currency_bonus": 0, "shop_discount": 0.15, "weather_override": None},
-        {"event_id": "community_bloom", "name": "Community Bloom", "description": "Quests grant bonus currency.", "growth_multiplier": 1.0, "quest_currency_bonus": 4, "shop_discount": 0.0, "weather_override": "fireflies"},
-        {"event_id": "storm_recovery", "name": "Storm Recovery", "description": "Recovery sessions get boosted.", "growth_multiplier": 1.1, "quest_currency_bonus": 2, "shop_discount": 0.0, "weather_override": "breeze"},
-    ]
 
     def _effective_stage(self, plant: Plant) -> str:
         return "rare" if plant.rare_variant else plant.growth_stage
@@ -82,36 +71,41 @@ class GardenGameEngine:
         if len(transitions) > 3:
             names += f" and {len(transitions) - 3} more"
         return f"Garden milestone! {names} reached new growth stages."
-    RARE_EVENTS = [
-        ("golden_bloom", "Golden Bloom: one random plant glows with extra growth."),
-        ("rainfall_blessing", "Rainfall Blessing: vitality restoration is amplified today."),
-        ("meteor_shower", "Meteor Shower: rare variant chance is elevated."),
-        ("firefly_night", "Firefly Night: calm focus bonus tonight."),
-        ("rainbow_morning", "Rainbow Morning: morning bonuses strengthened."),
-        ("moonlit_garden", "Moonlit Garden: night species gain extra affinity."),
-    ]
-
     def __init__(self, config: Any, storage: Any) -> None:
         self.config = config
         self.storage = storage
         self.state: GardenState = storage.state
         self._pending_stage_transitions: list[StageTransition] = []
         self.assets = AssetManager(config, storage)
-        self._apply_weekly_event(force=True)
+        snapshot = self._state_snapshot()
         self._ensure_achievements()
         self._ensure_daily_quests(force_refresh=False)
         self._repair_focus_plant()
         self._ensure_pending_milestone()
+        if self.state.to_dict() != snapshot:
+            self._persist_or_restore(snapshot)
 
-    def rollover_if_needed(self) -> None:
+    def _state_snapshot(self) -> dict[str, Any]:
+        return self.state.to_dict()
+
+    def _restore_state(self, snapshot: dict[str, Any]) -> None:
+        restored = GardenState.from_dict(snapshot)
+        self.state.__dict__.clear()
+        self.state.__dict__.update(restored.__dict__)
+        self.storage.state = self.state
+
+    def _persist_or_restore(self, snapshot: dict[str, Any]) -> None:
+        try:
+            self.storage.save()
+        except Exception:
+            self._restore_state(snapshot)
+            raise
+
+    def rollover_if_needed(self, *, persist: bool = True) -> None:
         today = date.today().isoformat()
         if self.state.daily_stats.day == today:
             return
-        prev = self.state.daily_stats
-        if prev.reviewed > 0:
-            self._append_summary(prev)
-            self._snapshot_if_needed(prev.day)
-        self._apply_weekly_event(force=True)
+        snapshot = self._state_snapshot()
         self._apply_streak_rollover(today)
         self.state.daily_stats.day = today
         self.state.daily_stats.reviewed = 0
@@ -124,13 +118,14 @@ class GardenGameEngine:
         self.state.daily_stats.recovered_lapses = 0
         self.state.daily_stats.growth_earned = 0
         self.state.daily_stats.completed_due_cards = False
-        self.state.daily_stats.focus_sessions_completed = 0
         self._ensure_daily_quests(force_refresh=True)
         self._update_weather()
-        self.storage.save()
+        if persist:
+            self._persist_or_restore(snapshot)
 
     def register_review(self, review_payload: Dict[str, Any]) -> None:
-        self.rollover_if_needed()
+        snapshot = self._state_snapshot()
+        self.rollover_if_needed(persist=False)
         today = self.state.daily_stats
         first_review_today = today.reviewed == 0
         if first_review_today:
@@ -140,11 +135,7 @@ class GardenGameEngine:
         today.reviewed += 1
         self.state.total_reviews += 1
 
-        queue = review_payload.get("queue", 2)
-        ease = int(review_payload.get("ease", 1))
-        deck_id = review_payload.get("deck_id")
-        difficulty = float(review_payload.get("difficulty", 0.4))
-        lapse_count = int(review_payload.get("lapse_count", 0))
+        queue, ease, deck_id, difficulty, lapse_count = self._normalized_review(review_payload)
 
         is_correct = ease > 1
         if is_correct:
@@ -172,15 +163,18 @@ class GardenGameEngine:
             self._award_growth(growth, deck_id)
         self._update_quests()
         self._update_achievements()
-        self._update_mastery()
         self._maybe_unlock_slot()
         self._update_weather()
-        self.storage.save()
+        try:
+            revlog_id = max(0, int(review_payload.get("revlog_id", 0)))
+        except (AttributeError, TypeError, ValueError):
+            revlog_id = 0
+        self.state.retrospective_last_revlog_id = max(self.state.retrospective_last_revlog_id, revlog_id)
+        self._persist_or_restore(snapshot)
 
     def _calculate_growth(self, card_type: str, is_correct: bool, difficulty: float, lapse_count: int, deck_id: Optional[int]) -> int:
         mapping = self.config.value("points_per_card", {})
         base = float(mapping.get(card_type, 2))
-        base *= float(self.current_weekly_event().get("growth_multiplier", 1.0))
         base *= float(self.config.value("correct_answer_bonus", 1.08) if is_correct else self.config.value("incorrect_answer_penalty", 0.6))
 
         accuracy_weight = 0.9 + (self.state.daily_stats.accuracy * 0.3)
@@ -189,10 +183,6 @@ class GardenGameEngine:
         streak_weight = 1.0 + min(0.2, self.state.streak_days / 100)
         session_quality = self._session_quality_score()
         quality_weight = 0.9 + (session_quality * float(self.config.value("session_quality_weight", 0.25)))
-        focus_mult = 1.0
-        if self.state.focus_session.active:
-            focus_mult = float(self.config.nested("focus_mode", "growth_multiplier", default=1.15))
-
         if self.config.value("time_of_day_bonus", True):
             hour = datetime.now().hour
             if hour <= 7:
@@ -200,14 +190,35 @@ class GardenGameEngine:
             elif hour >= 22:
                 streak_weight += 0.05
 
-        if self.state.recovery_mode:
-            recovery_weight += 0.15
-
-        if self.state.exam_mode.enabled and deck_id is not None and deck_id in self.state.exam_mode.target_deck_ids:
-            focus_mult *= float(self.config.nested("exam_mode", "deck_weight_boost", default=1.25))
-
-        points = int(max(0, round(base * accuracy_weight * difficulty_weight * recovery_weight * streak_weight * quality_weight * focus_mult)))
+        points = int(max(0, round(base * accuracy_weight * difficulty_weight * recovery_weight * streak_weight * quality_weight)))
         return points
+
+    @staticmethod
+    def _normalized_review(payload: Any) -> tuple[int, int, Optional[int], float, int]:
+        """Return bounded review inputs without allowing malformed hook data to abort saving."""
+        source = payload if isinstance(payload, dict) else {}
+        try:
+            queue = int(source.get("queue", 2))
+        except (TypeError, ValueError):
+            queue = 2
+        try:
+            ease = max(1, min(4, int(source.get("ease", 1))))
+        except (TypeError, ValueError):
+            ease = 1
+        try:
+            difficulty = max(0.1, min(1.0, float(source.get("difficulty", 0.4))))
+        except (TypeError, ValueError):
+            difficulty = 0.4
+        try:
+            lapse_count = max(0, min(100, int(source.get("lapse_count", 0))))
+        except (TypeError, ValueError):
+            lapse_count = 0
+        raw_deck_id = source.get("deck_id")
+        try:
+            deck_id = int(raw_deck_id) if raw_deck_id is not None else None
+        except (TypeError, ValueError):
+            deck_id = None
+        return queue, ease, deck_id, difficulty, lapse_count
 
     def _award_growth(self, growth: int, deck_id: Optional[int] = None) -> int:
         """Apply and record all growth through one accounting path."""
@@ -247,10 +258,7 @@ class GardenGameEngine:
         for plant in plants:
             previous_stage = self._effective_stage(plant)
             plant.growth_points += allocations[plant.plant_id]
-            vitality_gain = 0.03 + (0.005 * self.state.mastery_tree.get("recovery", 0))
-            plant.vitality = min(1.0, plant.vitality + vitality_gain)
-            if plant.growth_stage == "flowering" and self.state.streak_days >= 10 and random.random() < 0.006:
-                plant.rare_variant = True
+            plant.vitality = min(1.0, plant.vitality + 0.03)
             new_stage = self._effective_stage(plant)
             if new_stage != previous_stage:
                 self._pending_stage_transitions.append(
@@ -311,8 +319,6 @@ class GardenGameEngine:
             return stats.learning_count + stats.review_count
         if metric == "difficult":
             return stats.difficult_count
-        if metric == "focus":
-            return stats.focus_sessions_completed
         if metric == "recoveries":
             return stats.recovered_lapses
         if metric == "growth":
@@ -330,13 +336,10 @@ class GardenGameEngine:
                 self._award_growth(quest.reward_growth, None)
 
     def set_due_completion(self, completed: bool) -> None:
+        snapshot = self._state_snapshot()
         self.state.daily_stats.completed_due_cards = completed
         self._update_achievements()
-        self.storage.save()
-
-    def set_journal_note(self, day: str, note: str) -> None:
-        self.state.journal[day] = note.strip()
-        self.storage.save()
+        self._persist_or_restore(snapshot)
 
     def assign_focus_plant(self, plant_id: Optional[str]) -> None:
         self.set_focus_plant(plant_id)
@@ -359,9 +362,76 @@ class GardenGameEngine:
         plant = next((plant for plant in self.state.plants if plant.plant_id == plant_id), None)
         if plant is None:
             return False, "That plant is no longer in your garden."
+        snapshot = self._state_snapshot()
         self.state.focus_plant_id = plant.plant_id
-        self.storage.save()
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The focus plant could not be saved. Your previous choice is still active."
         return True, f"Now nurturing {plant.name}."
+
+    def place_plant(self, plant_id: str, destination_slot: int) -> tuple[bool, str, Optional[PlacementChange]]:
+        """Atomically move a plant to an unlocked slot, swapping when occupied."""
+        plants_by_id = {plant.plant_id: plant for plant in self.state.plants}
+        if len(plants_by_id) != len(self.state.plants):
+            return False, "The garden has duplicate plant IDs and cannot be rearranged safely.", None
+        plant = plants_by_id.get(str(plant_id))
+        if plant is None:
+            return False, "That plant is no longer in your garden.", None
+        if isinstance(destination_slot, bool):
+            return False, "Choose an unlocked garden space.", None
+        try:
+            destination = int(destination_slot)
+        except (TypeError, ValueError):
+            return False, "Choose an unlocked garden space.", None
+        unlocked = max(0, min(6, int(self.state.unlocked_slots)))
+        if destination < 0 or destination >= unlocked:
+            return False, "That garden space is still locked.", None
+        if plant.slot_index == destination:
+            return False, "That plant is already in this space.", None
+        occupants = [item for item in self.state.plants if item.slot_index == destination]
+        if len(occupants) > 1:
+            return False, "That garden space has conflicting plants and cannot be rearranged safely.", None
+        affected = [plant] + occupants
+        if len({item.plant_id for item in affected}) != len(affected):
+            return False, "The selected plants could not be rearranged safely.", None
+        before = {item.plant_id: item.slot_index for item in affected}
+        origin = plant.slot_index
+        plant.slot_index = destination
+        if occupants:
+            occupants[0].slot_index = origin
+        after = {item.plant_id: item.slot_index for item in affected}
+        try:
+            self.storage.save()
+        except Exception:
+            for item in affected:
+                item.slot_index = before[item.plant_id]
+            return False, "The new arrangement could not be saved. Your plants stayed where they were.", None
+        return True, "Plants moved.", PlacementChange(before=before, after=after)
+
+    def restore_placement(self, change: PlacementChange) -> tuple[bool, str, Optional[PlacementChange]]:
+        """Persist the inverse of the latest session-local placement change."""
+        plants_by_id = {plant.plant_id: plant for plant in self.state.plants}
+        if len(plants_by_id) != len(self.state.plants) or not change.before:
+            return False, "That move can no longer be undone.", None
+        affected = [plants_by_id.get(plant_id) for plant_id in change.before]
+        if any(plant is None for plant in affected):
+            return False, "That move can no longer be undone.", None
+        current = {plant.plant_id: plant.slot_index for plant in affected if plant is not None}
+        if current != change.after:
+            return False, "The garden changed after that move, so it cannot be undone.", None
+        for plant in affected:
+            if plant is not None:
+                plant.slot_index = change.before[plant.plant_id]
+        try:
+            self.storage.save()
+        except Exception:
+            for plant in affected:
+                if plant is not None:
+                    plant.slot_index = current[plant.plant_id]
+            return False, "The previous arrangement could not be restored.", None
+        inverse = PlacementChange(before=current, after=dict(change.before))
+        return True, "Move undone.", inverse
 
     def _owned_species(self) -> set[str]:
         return {plant.species for plant in self.state.plants}
@@ -412,13 +482,20 @@ class GardenGameEngine:
         if self.state.unlocked_slots >= max_slots:
             return False, "Your garden is already full."
         slot_index = self.state.unlocked_slots
+        used_ids = {plant.plant_id for plant in self.state.plants}
+        next_id = slot_index + 1
+        plant_id = f"plant_{next_id}"
+        while plant_id in used_ids:
+            next_id += 1
+            plant_id = f"plant_{next_id}"
         plant = Plant(
-            plant_id=f"plant_{slot_index + 1}",
+            plant_id=plant_id,
             species=species,
             name=species.title(),
             slot_index=slot_index,
             personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
         )
+        snapshot = self._state_snapshot()
         self.state.unlocked_slots += 1
         self.state.plants.append(plant)
         self.state.inventory.setdefault("plants", [])
@@ -426,28 +503,20 @@ class GardenGameEngine:
             self.state.inventory["plants"].append(species)
         self.state.pending_milestone_reward = None
         self._ensure_pending_milestone()
-        self.storage.save()
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The new plant could not be saved. Your garden was not changed."
         return True, f"{plant.name} joined your garden."
 
-    def assign_deck_to_plant(self, deck_id: int, plant_id: str) -> None:
-        self.state.deck_plant_map[str(deck_id)] = plant_id
-        self.storage.save()
-
-    def set_garden_mode(self, mode: str) -> None:
-        self.state.garden_mode = "deck-by-deck" if mode == "deck-by-deck" else "unified"
-        self.storage.save()
-
-    def apply_retrospective_reviews(self, reviews: list[Dict[str, Any]]) -> int:
+    def apply_retrospective_reviews(self, reviews: list[Dict[str, Any]], *, latest_revlog_id: int = 0) -> int:
         if not reviews:
             return 0
-        self.rollover_if_needed()
+        snapshot = self._state_snapshot()
+        self.rollover_if_needed(persist=False)
         total_growth = 0
         for review in reviews:
-            ease = int(review.get("ease", 1))
-            deck_id = review.get("deck_id")
-            difficulty = float(review.get("difficulty", 0.45))
-            lapse_count = int(review.get("lapse_count", 0))
-            queue = int(review.get("queue", 2))
+            queue, ease, deck_id, difficulty, lapse_count = self._normalized_review(review)
             is_correct = ease > 1
             stats = self.state.daily_stats
             stats.reviewed += 1
@@ -475,123 +544,14 @@ class GardenGameEngine:
                 total_growth += self._award_growth(growth, deck_id)
         self._update_quests()
         self._update_achievements()
-        self._update_mastery()
         self._maybe_unlock_slot()
         self._update_weather()
-        self.storage.save()
+        self.state.retrospective_last_revlog_id = max(
+            self.state.retrospective_last_revlog_id,
+            max(0, int(latest_revlog_id)),
+        )
+        self._persist_or_restore(snapshot)
         return total_growth
-
-    def set_deck_difficulty(self, deck_id: int, weight: float) -> None:
-        self.state.deck_difficulty_map[str(deck_id)] = max(0.6, min(weight, 2.0))
-        self.storage.save()
-
-    def start_focus_session(self, duration_minutes: int) -> tuple[bool, str]:
-        if self.state.focus_session.active:
-            return False, "Focus session already active."
-        self.state.focus_session.active = True
-        self.state.focus_session.duration_minutes = duration_minutes
-        self.state.focus_session.started_at = iso_now()
-        self.storage.save()
-        return True, f"Focus session started for {duration_minutes} minutes."
-
-    def complete_focus_session(self) -> tuple[bool, str]:
-        fs = self.state.focus_session
-        if not fs.active or not fs.started_at:
-            return False, "No active focus session."
-        started = datetime.fromisoformat(fs.started_at)
-        elapsed = (datetime.now() - started).total_seconds() / 60
-        fs.active = False
-        fs.started_at = None
-        if elapsed < fs.duration_minutes * 0.8:
-            self.storage.save()
-            return False, "Session ended early (no bonus)."
-        self.state.daily_stats.focus_sessions_completed += 1
-        self.state.total_focus_sessions += 1
-        fs.deep_work_streak += 1
-        bonus = 16 + (2 * fs.deep_work_streak)
-        self.state.currency += 8
-        self._award_growth(bonus, None)
-        self._update_quests()
-        self._update_achievements()
-        self.storage.save()
-        return True, "Deep work session complete. Bonus growth applied."
-
-    def cancel_focus_session(self) -> None:
-        self.state.focus_session.active = False
-        self.state.focus_session.started_at = None
-        self.storage.save()
-
-    def configure_exam_mode(self, enabled: bool, exam_date: Optional[str], deck_ids: list[int]) -> None:
-        self.state.exam_mode.enabled = enabled
-        self.state.exam_mode.exam_date = exam_date
-        self.state.exam_mode.target_deck_ids = deck_ids
-        self.storage.save()
-
-    def exam_countdown_days(self) -> Optional[int]:
-        if not self.state.exam_mode.enabled or not self.state.exam_mode.exam_date:
-            return None
-        try:
-            target = date.fromisoformat(self.state.exam_mode.exam_date)
-            return (target - date.today()).days
-        except Exception:
-            return None
-
-    def purchase_item(self, item_key: str) -> tuple[bool, str]:
-        cost = self.SHOP_ITEMS.get(item_key)
-        if cost is None:
-            return False, "Item not found"
-        if item_key in self.state.purchased_items:
-            return False, "Already purchased"
-        effective_cost = self.get_shop_price(item_key)
-        if self.state.currency < effective_cost:
-            return False, "Not enough currency"
-        self.state.currency -= effective_cost
-        self.state.purchased_items.append(item_key)
-        category, item = item_key.split(":", 1)
-        self.state.inventory.setdefault(category, [])
-        if item not in self.state.inventory[category]:
-            self.state.inventory[category].append(item)
-        self.storage.save()
-        return True, "Purchased"
-
-    def current_weekly_event(self) -> Dict[str, Any]:
-        if not self.config.nested("future_features", "enable_weekly_events", default=False):
-            return {"event_id": "none", "name": "No Active Event", "description": "Weekly events disabled.", "growth_multiplier": 1.0, "quest_currency_bonus": 0, "shop_discount": 0.0, "weather_override": None}
-        idx = date.today().isocalendar().week % len(self.WEEKLY_EVENTS)
-        return self.WEEKLY_EVENTS[idx]
-
-    def _apply_weekly_event(self, force: bool = False) -> None:
-        event = self.current_weekly_event()
-        today = date.today().isoformat()
-        if force or self.state.weekly_event_applied_for_day != today:
-            self.state.weekly_event_applied_for_day = today
-            self.state.weekly_event_id = event["event_id"]
-
-    def get_weekly_event_summary(self) -> str:
-        event = self.current_weekly_event()
-        return f"{event['name']}: {event['description']}"
-
-    def get_shop_price(self, item_key: str) -> int:
-        base = self.SHOP_ITEMS[item_key]
-        discount = float(self.current_weekly_event().get("shop_discount", 0.0))
-        return max(1, int(round(base * (1.0 - discount))))
-
-    def set_gardener_name(self, name: str) -> None:
-        cleaned = name.strip()
-        if cleaned:
-            self.state.gardener_name = cleaned[:40]
-            self.storage.save()
-
-    def add_plant_to_slot(self, species: str, slot_index: int) -> bool:
-        if slot_index >= self.state.unlocked_slots:
-            return False
-        if any(p.slot_index == slot_index for p in self.state.plants):
-            return False
-        personality = self.SPECIES_PERSONALITY.get(species, "balanced")
-        plant = Plant(plant_id=f"plant_{len(self.state.plants)+1}", species=species, name=species.capitalize(), slot_index=slot_index, personality=personality)
-        self.state.plants.append(plant)
-        self.storage.save()
-        return True
 
     def _update_achievements(self) -> None:
         stats = self.state.daily_stats
@@ -619,12 +579,7 @@ class GardenGameEngine:
 
     def _update_weather(self) -> None:
         s = self.state.daily_stats
-        override = self.current_weekly_event().get("weather_override")
-        if override:
-            self.state.selected_weather = str(override)
-        elif self.state.recovery_mode:
-            self.state.selected_weather = "gentle_rain"
-        elif s.reviewed > 350 and s.accuracy < 0.72:
+        if s.reviewed > 350 and s.accuracy < 0.72:
             self.state.selected_weather = "cloudy"
         elif s.wrong > s.correct and s.reviewed > 25:
             self.state.selected_weather = "cloudy"
@@ -769,7 +724,6 @@ class GardenGameEngine:
             "streak": self.state.streak_days,
             "total_reviews": self.state.total_reviews,
             "garden_health": round(self.garden_health_index(), 2),
-            "currency": self.state.currency,
             "plants": [{"name": p.name, "species": p.species, "stage": p.growth_stage, "vitality": p.vitality} for p in self.state.plants],
         }
         return json.dumps(payload, indent=2)
@@ -783,102 +737,15 @@ class GardenGameEngine:
         acc = s.accuracy if s.reviewed else 0.7
         return round((0.27 * vitality) + (0.23 * recency) + (0.2 * streak_factor) + (0.15 * volume_factor) + (0.15 * acc), 4)
 
-    def burnout_risk(self) -> bool:
-        if not self.config.value("burnout_detection", True):
-            return False
-        s = self.state.daily_stats
-        high_volume = s.reviewed >= self.config.value("burnout_volume_threshold", 500)
-        low_quality = s.reviewed > 100 and s.accuracy < 0.72
-        return bool(high_volume and low_quality)
-
     def _apply_streak_rollover(self, today: str) -> None:
-        last = date.fromisoformat(self.state.last_active_day)
+        try:
+            last = date.fromisoformat(self.state.last_active_day)
+        except (TypeError, ValueError):
+            last = date.fromisoformat(today)
         now = date.fromisoformat(today)
         missed = max(0, (now - last).days - 1)
-        grace = self.config.value("streak_grace_period_days", 1)
-        if missed <= grace:
-            self.state.recovery_mode = False
-        elif missed > 0:
-            if self.state.streak_freeze_tokens > 0:
-                self.state.streak_freeze_tokens -= 1
-            else:
-                self.state.streak_days = max(0, self.state.streak_days - min(missed, 4))
-                decay = float(self.config.value("vitality_decay_sensitivity", 0.08))
-                if self.current_weekly_event()["event_id"] == "storm_recovery":
-                    decay *= 0.6
-                decay *= max(0.75, 1 - (0.05 * self.state.mastery_tree.get("recovery", 0)))
-                for plant in self.state.plants:
-                    plant.vitality = max(0.42, plant.vitality - decay * missed)
-                self.state.recovery_mode = True
+        if missed > 0:
+            self.state.streak_days = 0
+            for plant in self.state.plants:
+                plant.vitality = max(0.42, plant.vitality - (0.08 * missed))
         self.state.last_active_day = today
-
-    def _update_mastery(self) -> None:
-        s = self.state.daily_stats
-        if s.reviewed in {120, 360, 720, 1200}:
-            self.state.mastery_tree["volume"] = min(10, self.state.mastery_tree["volume"] + 1)
-        if s.accuracy >= 0.9 and s.reviewed in {30, 100, 250, 500}:
-            self.state.mastery_tree["accuracy"] = min(10, self.state.mastery_tree["accuracy"] + 1)
-        if s.reviewed == 1 and self.state.streak_days in {7, 14, 30, 60, 100}:
-            self.state.mastery_tree["consistency"] = min(10, self.state.mastery_tree["consistency"] + 1)
-        if self.state.recovery_mode and s.reviewed in {40, 100, 250}:
-            self.state.mastery_tree["recovery"] = min(10, self.state.mastery_tree["recovery"] + 1)
-
-    def _maybe_trigger_rare_event(self) -> None:
-        if self.state.daily_stats.reviewed < 25:
-            return
-        chance = 0.005 * float(self.config.value("rare_event_frequency", 1.0))
-        chance += 0.0005 * self.state.mastery_tree.get("consistency", 0)
-        if random.random() > chance:
-            return
-        event_id, desc = random.choice(self.RARE_EVENTS)
-        today = date.today().isoformat()
-        if any(entry.startswith(f"{today}:") for entry in self.state.rare_event_log):
-            return
-        self.state.rare_event_log.append(f"{today}:{event_id}")
-        self.state.currency += 10
-        if event_id == "golden_bloom" and self.state.plants:
-            random.choice(self.state.plants).growth_points += 24
-        elif event_id == "rainfall_blessing":
-            for p in self.state.plants:
-                p.vitality = min(1.0, p.vitality + 0.08)
-        elif event_id == "meteor_shower" and self.state.plants:
-            if random.random() < 0.2:
-                random.choice(self.state.plants).rare_variant = True
-        self.state.recent_summaries.append(SessionSummary(day=today, summary=desc, quality_score=self._session_quality_score(), growth=self.state.daily_stats.growth_earned))
-
-    def _append_summary(self, stats: Any) -> None:
-        quality = self._session_quality_score()
-        if self.state.recovery_mode and stats.reviewed >= 30:
-            text = "Recovery day: steady effort revived your garden."
-        elif quality >= 0.8:
-            text = "Strong accuracy day: your garden responded with vibrant growth."
-        elif self.burnout_risk():
-            text = "Heavy workload detected: consider a lighter focus block tomorrow."
-        else:
-            text = "Consistent study keeps the garden healthy and resilient."
-        self.state.recent_summaries.append(SessionSummary(day=stats.day, summary=text, quality_score=quality, growth=stats.growth_earned))
-        self.state.recent_summaries = self.state.recent_summaries[-30:]
-
-    def _snapshot_if_needed(self, snapshot_day: str) -> None:
-        if not self.config.value("daily_snapshot", True):
-            return
-        every = int(self.config.value("snapshot_frequency_days", 1))
-        if len(self.state.snapshots) > 0 and every > 1:
-            if len(self.state.snapshots) % every != 0:
-                return
-        snap = Snapshot(
-            day=snapshot_day,
-            streak_days=self.state.streak_days,
-            health_index=self.garden_health_index(),
-            total_reviews=self.state.total_reviews,
-            plant_stages={p.name: p.growth_stage for p in self.state.plants},
-        )
-        self.state.snapshots.append(snap)
-        self.state.snapshots = self.state.snapshots[-180:]
-
-    def _passive_daily_reward(self) -> None:
-        today = date.today().isoformat()
-        if today in self.state.passive_reward_days:
-            return
-        self.state.passive_reward_days.append(today)
-        self.state.currency += 2

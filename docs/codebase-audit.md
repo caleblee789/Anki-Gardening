@@ -1,4 +1,4 @@
-# Anki Garden 2.0 codebase audit
+# Anki Garden 2.1 codebase audit
 
 This ledger records the comprehensive stabilization and focused-product rework.
 
@@ -22,18 +22,31 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Plant interaction | Plants read as floating cutouts and their data was duplicated in a distant roster. | Added soil contact, directional shadows, foreground grass, persistent rim separation, hover/focus emphasis, contextual data cards, click-to-pin behavior, and keyboard navigation; removed the duplicate roster. | Plant-display interaction tests plus isolated dashboard QA. |
 | Startup timing | Retrospective review discovery could query `mw.col.db` before a collection existed and log an avoidable startup exception. | Collection-dependent retrospective and storage queries now no-op until Anki has a live collection/database. | Storage regression test and clean disposable-profile startup. |
 | Progression | Growth was divided equally, plant interaction did not affect future progress, and slot unlocks happened invisibly. | Added a repaired focus-plant invariant, exact-total 80/20 growth allocation, persistent milestone choices, and home/dashboard progression feedback. | Engine allocation/reward tests, state-contract tests, and home-widget assertions. |
+| State contract | Hidden v6 focus, exam, shop, event, mastery, and recovery flags could still alter the supposedly focused core. | Added a progress-preserving v6→v7 migration and removed dormant fields and engine entry points from the persisted/runtime contract. | Migration, serializer, hidden-interface, and package tests. |
+| State integrity | Duplicate IDs/slots, invalid focus IDs, and incoherent unlocked-slot counts could break movement or milestones. | Load-time repair now assigns deterministic unique IDs/slots, clamps bounds, repairs focus, and reconciles unlocked spaces. | State-contract and placement tests. |
+| Settings | Malformed config values could crash rendering, and `writeConfig` failure left unsaved values active in memory. | Added a typed whitelist with bounded values and persist-before-activate transactions; daily goal and home visibility are now first-class controls. | Configuration validation/rollback and home-injection tests. |
+| Review ingestion | Malformed hook values could abort the reviewer callback, and the revlog cursor was saved separately from progress. | Normalize/bound review inputs, register hooks idempotently, and save live/catch-up progress with its cursor in one transaction. | Engine failure/normalization, hook, and retrospective tests. |
+| Plant arrangement | The new move/swap work lacked full rollback, keyboard exit, and visible action-focus guarantees. | Preserve atomic move/swap/undo, cancel placement on focus traversal, let Tab leave normally, and render the selected action/destination focus. | Placement/interaction regressions plus isolated keyboard/mouse QA. |
 
 ## Product focus
 
-The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, a local hand-painted scene, and appearance customization. Focus/exam/deck-mapping controls were removed from the visible product because they were incomplete and distracted from the primary loop. Legacy fields remain readable where needed to safely sanitize old payloads; they are not presented as supported features.
+The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, a local hand-painted scene, plant care/arrangement, and appearance customization. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are removed from the v7 state and engine contract rather than merely hidden.
 
 ## Visual coverage
 
-The manifest contains 76 backgrounds, 63 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets, including the curated storybook-gouache slice. `scripts/audit_assets.py` enforces parsing, dimensions, uniqueness, and coverage. `scripts/build_asset_gallery.py` produces the full inspection gallery used alongside real-Anki theme, scaling, interaction, and fallback checks.
+The manifest contains the complete background, plant-stage, weather, decoration, and UI catalogs, including the curated storybook-gouache slice. `scripts/audit_assets.py` is the count and validity source of truth; it enforces parsing, dimensions, uniqueness, coverage, alpha-family, and fallback requirements. `scripts/build_asset_gallery.py` produces the inspection gallery used alongside real-Anki theme, scaling, interaction, and fallback checks.
 
-## Current validation snapshot
+## Current validation gates
 
-- 123 automated tests pass, including focus allocation, milestone claims, plant growth-display math, responsive layout, card interaction, and collection-not-ready startup behavior.
-- The 165 manifest assets pass mixed-format signature, dimensions, uniqueness, coverage, alpha-family, and fallback checks.
-- Python compilation, `.ankiaddon` packaging, ZIP integrity, source/archive parity, and `git diff --check` pass.
-- A fresh disposable Anki 26.5 base verified clean startup, home-widget rendering, centered grounded plants, click-to-pin cards, Escape dismissal, arrow-key selection, Enter pinning, and absence of the former bottom roster.
+- Run the complete pytest suite, asset audit, Python compilation, package build, ZIP integrity, source/archive parity, and `git diff --check`; do not rely on a hard-coded historical test or asset count.
+- Install the exact rebuilt archive into a disposable, sync-disabled Anki 26.5 base/profile and verify every live scenario in `feature-evidence-matrix.md`.
+- Record the final package hash, automated results, and live acceptance result here after the release pass.
+
+## 2026-07-12 release acceptance
+
+- Automated gates: 157 tests passed; the asset audit reported 78 backgrounds, 69 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets; compilation and `git diff --check` passed.
+- Package gates: ZIP integrity and byte-for-byte parity passed for all 196 packaged files. SHA-256: `7866c3491899829f1584da45008fdca67cd3fad58aaaba59e1dfebf8c5d5d21d`.
+- Anki 26.05 fresh-profile pass: startup completed without an add-on error after correcting generated-hook registration; one Tools action, both home-card states, immediate visibility changes, a real Anki card through the reviewer hook, focus selection, move/swap/undo, milestone claim, settings save, reduced motion, and minimum-size dashboard rendering passed.
+- Anki 26.05 interaction pass: real Qt mouse pin/nurture/drag events and keyboard move/undo, Tab exit, Escape dismissal, and visible action focus passed in the isolated dashboard.
+- Anki 26.05 migration/restart pass: seeded v6 totals, daily stats, plants, focus, quests, appearance, and review cursor migrated to v7; the untouched v6 backup remained; unsupported fields were absent; settings, home rendering, dashboard rendering, and reduced motion persisted after restart.
+- Isolation: every successful runtime pass used a separately keyed disposable base/profile with sync unused. The existing normal Anki window was never controlled.

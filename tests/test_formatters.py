@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 
 from ankigarden.ui.formatters import (
-    format_currency,
     format_decimal,
     format_integer,
     format_local_date,
@@ -23,13 +22,10 @@ def test_percent_and_decimal_rounding_boundaries() -> None:
     assert format_decimal(999_999_999.995, places=2) == "1,000,000,000.00"
 
 
-def test_points_currency_and_integer_boundaries() -> None:
+def test_points_and_integer_boundaries() -> None:
     assert format_integer(0) == "0"
     assert format_integer(1234567890) == "1,234,567,890"
     assert format_points(-42) == "GP -42"
-    assert format_currency(0) == "0 dew drops"
-    assert format_currency(-1) == "-1 dew drop"
-    assert format_currency(1_000_000, singular_name="point") == "1,000,000 points"
 
 
 def test_pluralization_and_status_labels() -> None:

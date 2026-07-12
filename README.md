@@ -9,12 +9,23 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 - Gives every answered card visible growth; a chosen focus plant receives most of it while the rest keep growing.
 - Tracks a daily goal, streak, garden vitality, quests, milestones, and plant stages.
 - Adds a compact painted garden preview to Deck Browser and Overview with one clear Open Garden action.
-- Provides a responsive garden dashboard with local storybook-gouache raster art plus scalable SVG UI and weather overlays.
-- Saves garden appearance and motion preferences through Anki's configuration system.
+- Provides a responsive garden dashboard with local storybook-gouache raster art, scalable SVG UI, weather overlays, and keyboard-friendly plant interactions.
+- Lets you focus, nurture, move, swap, and undo plant arrangements while keeping growth totals consistent.
+- Saves the daily goal, home visibility, garden appearance, and motion preferences through Anki's configuration system.
 - Stores progress only in `user_files/`, where Anki preserves it during add-on upgrades.
 - Offers a choice of new plants at calm review milestones instead of using a shop or spendable currency.
 
-The focused 2.0 experience intentionally does not expose focus timers, exam mode, deck mapping, a shop, cloud/social features, or remote image downloads.
+The focused 2.1 experience intentionally does not expose or persist focus timers, exam mode, deck mapping, a shop, currency/events/mastery systems, cloud/social features, or remote image downloads.
+
+## What's new in 2.1
+
+- Migrates version 6 garden saves to the smaller version 7 state contract while preserving reviews, plants, growth, quests, milestones, appearance, and the review-history cursor. The original save is retained as a backup.
+- Repairs malformed plant IDs, slots, focus selection, and unlocked-space counts during load.
+- Makes settings validation transactional so invalid values or a failed Anki config write cannot partially change the active experience.
+- Hardens live and catch-up review processing so progress and its review cursor are saved together.
+- Improves plant cards, placement controls, keyboard navigation, reduced-motion behavior, and narrow-window rendering.
+
+The detailed release contract and validation scenarios are in [`docs/feature-evidence-matrix.md`](docs/feature-evidence-matrix.md).
 
 ## Install from source
 
@@ -47,6 +58,7 @@ The current runtime target is Anki 25.07 through 26.5. Release acceptance uses t
 - `scripts/`: asset audit/gallery and package tooling.
 - `tests/`: engine, state, UI-contract, integration, asset, and package checks.
 - `docs/codebase-audit.md`: issue ledger and resolution evidence.
+- `docs/feature-evidence-matrix.md`: automated and live-Anki release acceptance contract.
 - `docs/storybook-gouache-assets.md`: production art direction, format policy, and v3 rollout rules.
 - `docs/ui/`: UI state and data-contract references.
 

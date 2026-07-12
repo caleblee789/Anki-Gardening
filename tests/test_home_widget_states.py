@@ -19,7 +19,6 @@ def _sample_data(cards_today: int = 12, growth_earned: int = 30, weather: str = 
         growth_cap=220,
         streak_days=7,
         weather=weather,
-        event="Calm weather",
         scene_items=({
             "slot_index": 0,
             "name": "Bonsai",
@@ -74,7 +73,6 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-cards">Cards Today: 12' in html
     assert 'data-testid="home-health">Garden Health: 84%' in html
     assert 'data-testid="home-growth">Growth today: 30/220' in html
-    assert 'data-testid="home-event">Event: Calm weather' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
 

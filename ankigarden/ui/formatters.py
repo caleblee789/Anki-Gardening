@@ -55,12 +55,6 @@ def pluralize(count: Any, singular: str, plural: str | None = None) -> str:
     return plural if plural is not None else f"{singular}s"
 
 
-def format_currency(value: Any, singular_name: str = "dew drop", plural_name: str | None = None) -> str:
-    amount = int(_to_decimal(value))
-    unit = pluralize(amount, singular_name, plural_name)
-    return f"{amount:,} {unit}"
-
-
 def format_status_label(value: str) -> str:
     return str(value).replace("_", " ").strip().title()
 

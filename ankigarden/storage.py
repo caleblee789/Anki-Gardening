@@ -33,10 +33,16 @@ class GardenStorage:
         try:
             if self.data_path.exists():
                 raw = json.loads(self.data_path.read_text("utf-8"))
-                if isinstance(raw, dict) and int(raw.get("version", GardenState().version)) != GardenState().version:
+                version = int(raw.get("version", GardenState().version)) if isinstance(raw, dict) else -1
+                if version == 6:
+                    backup = self.data_path.with_suffix(".v6.json")
+                    shutil.copy2(self.data_path, backup)
+                    logger.info("Anki Garden: preserved v6 state at %s and migrated visible progress to v7", backup)
+                    return GardenState.from_dict(raw)
+                if version != GardenState().version:
                     backup = self.data_path.with_suffix(".legacy.json")
                     shutil.copy2(self.data_path, backup)
-                    logger.warning("Anki Garden: legacy state preserved at %s; starting the focused garden format", backup)
+                    logger.warning("Anki Garden: unsupported state preserved at %s; starting the focused garden format", backup)
                     return GardenState()
                 return GardenState.from_dict(raw)
         except Exception:
@@ -50,10 +56,17 @@ class GardenStorage:
 
     def _atomic_write_json(self, path: Path, payload: Dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile("w", delete=False, dir=path.parent, encoding="utf-8") as tf:
-            json.dump(payload, tf, indent=2, ensure_ascii=False)
-            temp_name = tf.name
-        Path(temp_name).replace(path)
+        temp_path: Path | None = None
+        try:
+            with NamedTemporaryFile("w", delete=False, dir=path.parent, encoding="utf-8") as tf:
+                json.dump(payload, tf, indent=2, ensure_ascii=False)
+                tf.flush()
+                temp_path = Path(tf.name)
+            temp_path.replace(path)
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
     def save(self) -> None:
         self._atomic_write_json(self.data_path, self.state.to_dict())

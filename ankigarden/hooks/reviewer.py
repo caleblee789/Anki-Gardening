@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aqt import mw
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReviewerHookHandler:
@@ -19,11 +23,13 @@ class ReviewerHookHandler:
             "deck_id": getattr(card, "did", None),
             "difficulty": difficulty,
             "lapse_count": int(getattr(card, "lapses", 0)),
+            "revlog_id": self.storage.max_revlog_id() if hasattr(self.storage, "max_revlog_id") else 0,
         }
-        self.engine.register_review(payload)
-        latest = self.storage.max_revlog_id() if hasattr(self.storage, "max_revlog_id") else 0
-        self.storage.state.retrospective_last_revlog_id = max(int(self.storage.state.retrospective_last_revlog_id or 0), int(latest or 0))
-        self.storage.save()
+        try:
+            self.engine.register_review(payload)
+        except Exception:
+            logger.exception("Anki Garden: review progress could not be saved")
+            return
 
         try:
             due = mw.col.sched.counts()

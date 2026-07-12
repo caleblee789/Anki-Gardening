@@ -36,6 +36,9 @@ class AnkiGardenApp:
         self._menu_action: Optional[QAction] = None
         self._home_widget_hooked = False
         self._home_bridge_hooked = False
+        self._reviewer_hooked = False
+        self._sync_hooked = False
+        self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
 
     def setup(self) -> None:
@@ -44,12 +47,17 @@ class AnkiGardenApp:
         except Exception:
             logger.exception("Anki Garden: unable to register bundled web assets")
         self._setup_menu()
-        if self.config.value("show_home_widget", True):
-            self._setup_home_screen_widget()
-        reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
+        self._setup_home_screen_widget()
+        self._setup_reviewer_hook()
         self._setup_sync_hooks()
         self._apply_retrospective_growth()
         self.engine.rollover_if_needed()
+
+    def _setup_reviewer_hook(self) -> None:
+        if self._reviewer_hooked:
+            return
+        reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
+        self._reviewer_hooked = True
 
     def _setup_menu(self) -> None:
         if self._menu_action is not None:
@@ -84,13 +92,19 @@ class AnkiGardenApp:
         self.dashboard.raise_()
 
     def _setup_sync_hooks(self) -> None:
+        if self._sync_hooked:
+            return
         try:
             from aqt import gui_hooks
 
             if hasattr(gui_hooks, "sync_did_finish"):
-                gui_hooks.sync_did_finish.append(lambda *_args, **_kwargs: self._apply_retrospective_growth())
+                gui_hooks.sync_did_finish.append(self._sync_callback)
+                self._sync_hooked = True
         except Exception:
             logger.exception("Anki Garden: failed to attach sync hooks")
+
+    def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
+        self._apply_retrospective_growth()
 
     def _setup_home_screen_widget(self) -> None:
         if self._home_widget_hooked:
@@ -140,6 +154,8 @@ class AnkiGardenApp:
         return handled
 
     def _inject_home_garden(self, _page: object, content: object) -> None:
+        if not self.config.value("show_home_widget", True):
+            return
         self.engine.rollover_if_needed()
         self._apply_retrospective_growth()
 
@@ -166,6 +182,8 @@ class AnkiGardenApp:
         return is_primary_home_context and not is_lower_bar_context
 
     def _inject_home_garden_webview(self, web_content: object, context: object) -> None:
+        if not self.config.value("show_home_widget", True):
+            return
         context_name = self._context_name(context)
         if not self._is_main_screen_context(context):
             logger.debug("Anki Garden: skipping home injection for non-primary context %s", context_name)
@@ -198,7 +216,6 @@ class AnkiGardenApp:
                 health_ratio=self.engine.garden_health_index(),
                 growth_cap=max(1, int(self.config.value("daily_goal", 140))),
                 scene_items=self._home_scene_items(),
-                event=self.engine.get_weekly_event_summary(),
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 focus_plant=focus_plant,
@@ -386,9 +403,7 @@ class AnkiGardenApp:
                     "interval_delta": delta_ivl,
                 }
             )
-        gained = self.engine.apply_retrospective_reviews(payloads)
-        self.storage.state.retrospective_last_revlog_id = latest_id
-        self.storage.save()
+        gained = self.engine.apply_retrospective_reviews(payloads, latest_revlog_id=latest_id)
         if self.dashboard:
             self.dashboard.show_retrospective_feedback(len(payloads), gained)
 

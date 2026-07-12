@@ -36,3 +36,15 @@
 
 - Disabling animation stops scene timers immediately and persists through restart.
 - Static artwork, progress, weather, plants, and controls remain available.
+
+## Version 6 upgrade
+
+- Preserve totals, today's progress, plants and growth, focus selection, quests, achievements, milestones, appearance inventory, weather, and the retrospective review cursor.
+- Save the untouched source payload as `garden_state.v6.json` before the migrated v7 state is written.
+- Drop unsupported subsystem keys so old hidden flags cannot change focused-core behavior.
+
+## Plant arrangement
+
+- Moving to an empty unlocked space preserves every other plant; moving to an occupied space swaps both plants atomically.
+- A failed save restores the previous layout. The latest successful move in the open dashboard can be undone once.
+- Arrow keys select plants and destinations, Enter/Space activates, Escape cancels, and Tab leaves the scene normally.
