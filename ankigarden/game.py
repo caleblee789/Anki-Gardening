@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Optional
 
-from .asset_manager import AssetManager
-from .models.state import Achievement, GardenState, Plant, Quest, SessionSummary, Snapshot, iso_now
+from .asset_manager import AssetManager, ResolvedAsset
+from .models.state import Achievement, GardenState, MilestoneReward, Plant, Quest, SessionSummary, Snapshot, iso_now
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,8 @@ class StageTransition:
 
 
 class GardenGameEngine:
+    MILESTONE_REVIEWS = (250, 700, 1500, 2600)
+    REWARD_SPECIES = ("fern", "cactus", "ivy", "orchid", "sunbloom", "moonflower")
     SPECIES_PERSONALITY = {
         "bonsai": "streak",
         "rose": "accuracy",
@@ -98,6 +100,8 @@ class GardenGameEngine:
         self._apply_weekly_event(force=True)
         self._ensure_achievements()
         self._ensure_daily_quests(force_refresh=False)
+        self._repair_focus_plant()
+        self._ensure_pending_milestone()
 
     def rollover_if_needed(self) -> None:
         today = date.today().isoformat()
@@ -223,24 +227,26 @@ class GardenGameEngine:
         error_pressure = min(0.25, s.wrong / max(1, s.reviewed))
         return max(0.2, (0.55 * accuracy_component) + (0.45 * volume_component) - error_pressure)
 
-    def _eligible_plants(self, deck_id: Optional[int]) -> list[Plant]:
-        plants = self.state.plants
-        if self.state.garden_mode == "deck-by-deck" and deck_id is not None:
-            mapped = self.state.deck_plant_map.get(str(deck_id))
-            if mapped:
-                selected = [p for p in plants if p.plant_id == mapped]
-                if selected:
-                    return selected
-        return plants
-
     def _apply_growth(self, growth: int, deck_id: Optional[int]) -> None:
-        plants = self._eligible_plants(deck_id)
+        plants = sorted(self.state.plants, key=lambda plant: (plant.slot_index, plant.plant_id))
         if not plants:
             return
-        base, remainder = divmod(max(0, int(growth)), len(plants))
-        for index, plant in enumerate(plants):
+        focus = self._repair_focus_plant()
+        awarded = max(0, int(growth))
+        allocations = {plant.plant_id: 0 for plant in plants}
+        if len(plants) == 1 or focus is None:
+            allocations[plants[0].plant_id] = awarded
+        else:
+            focus_points = (awarded * 80 + 50) // 100
+            focus_points = min(awarded, focus_points)
+            allocations[focus.plant_id] = focus_points
+            others = [plant for plant in plants if plant.plant_id != focus.plant_id]
+            base, remainder = divmod(awarded - focus_points, len(others))
+            for index, plant in enumerate(others):
+                allocations[plant.plant_id] = base + (1 if index < remainder else 0)
+        for plant in plants:
             previous_stage = self._effective_stage(plant)
-            plant.growth_points += base + (1 if index < remainder else 0)
+            plant.growth_points += allocations[plant.plant_id]
             vitality_gain = 0.03 + (0.005 * self.state.mastery_tree.get("recovery", 0))
             plant.vitality = min(1.0, plant.vitality + vitality_gain)
             if plant.growth_stage == "flowering" and self.state.streak_days >= 10 and random.random() < 0.006:
@@ -333,8 +339,95 @@ class GardenGameEngine:
         self.storage.save()
 
     def assign_focus_plant(self, plant_id: Optional[str]) -> None:
-        self.state.focus_plant_id = plant_id
+        self.set_focus_plant(plant_id)
+
+    def _repair_focus_plant(self) -> Optional[Plant]:
+        plants = sorted(self.state.plants, key=lambda plant: (plant.slot_index, plant.plant_id))
+        if not plants:
+            self.state.focus_plant_id = None
+            return None
+        focus = next((plant for plant in plants if plant.plant_id == self.state.focus_plant_id), None)
+        if focus is None:
+            focus = plants[0]
+            self.state.focus_plant_id = focus.plant_id
+        return focus
+
+    def focus_plant(self) -> Optional[Plant]:
+        return self._repair_focus_plant()
+
+    def set_focus_plant(self, plant_id: Optional[str]) -> tuple[bool, str]:
+        plant = next((plant for plant in self.state.plants if plant.plant_id == plant_id), None)
+        if plant is None:
+            return False, "That plant is no longer in your garden."
+        self.state.focus_plant_id = plant.plant_id
         self.storage.save()
+        return True, f"Now nurturing {plant.name}."
+
+    def _owned_species(self) -> set[str]:
+        return {plant.species for plant in self.state.plants}
+
+    def _next_unclaimed_milestone(self) -> Optional[int]:
+        claimed = max(0, self.state.unlocked_slots - int(self.config.value("initial_slots", 2)))
+        if claimed >= len(self.MILESTONE_REVIEWS):
+            return None
+        milestone = self.MILESTONE_REVIEWS[claimed]
+        return milestone if self.state.total_reviews >= milestone else None
+
+    def next_milestone(self) -> Optional[int]:
+        claimed = max(0, self.state.unlocked_slots - int(self.config.value("initial_slots", 2)))
+        if claimed >= len(self.MILESTONE_REVIEWS):
+            return None
+        return self.MILESTONE_REVIEWS[claimed]
+
+    def _ensure_pending_milestone(self) -> Optional[MilestoneReward]:
+        pending = self.state.pending_milestone_reward
+        if pending is not None:
+            valid_offers = [
+                species for species in pending.offered_species
+                if species in self.REWARD_SPECIES and species not in self._owned_species()
+            ]
+            if pending.review_count in self.MILESTONE_REVIEWS and valid_offers:
+                pending.offered_species = valid_offers[:3]
+                return pending
+            self.state.pending_milestone_reward = None
+        milestone = self._next_unclaimed_milestone()
+        if milestone is None or self.state.unlocked_slots >= int(self.config.value("max_slots", 6)):
+            return None
+        offers = [species for species in self.REWARD_SPECIES if species not in self._owned_species()][:3]
+        if not offers:
+            return None
+        self.state.pending_milestone_reward = MilestoneReward(milestone, offers)
+        return self.state.pending_milestone_reward
+
+    def pending_milestone(self) -> Optional[MilestoneReward]:
+        return self._ensure_pending_milestone()
+
+    def claim_milestone_reward(self, species: str) -> tuple[bool, str]:
+        pending = self._ensure_pending_milestone()
+        if pending is None:
+            return False, "There is no garden reward ready to claim."
+        if species not in pending.offered_species or species in self._owned_species():
+            return False, "That plant is not available for this reward."
+        max_slots = int(self.config.value("max_slots", 6))
+        if self.state.unlocked_slots >= max_slots:
+            return False, "Your garden is already full."
+        slot_index = self.state.unlocked_slots
+        plant = Plant(
+            plant_id=f"plant_{slot_index + 1}",
+            species=species,
+            name=species.title(),
+            slot_index=slot_index,
+            personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
+        )
+        self.state.unlocked_slots += 1
+        self.state.plants.append(plant)
+        self.state.inventory.setdefault("plants", [])
+        if species not in self.state.inventory["plants"]:
+            self.state.inventory["plants"].append(species)
+        self.state.pending_milestone_reward = None
+        self._ensure_pending_milestone()
+        self.storage.save()
+        return True, f"{plant.name} joined your garden."
 
     def assign_deck_to_plant(self, deck_id: int, plant_id: str) -> None:
         self.state.deck_plant_map[str(deck_id)] = plant_id
@@ -522,14 +615,7 @@ class GardenGameEngine:
             ach.progress = 1.0 if ach.unlocked else 0.0
 
     def _maybe_unlock_slot(self) -> None:
-        unlocked = self.state.unlocked_slots
-        max_slots = self.config.value("max_slots", 6)
-        if unlocked >= max_slots:
-            return
-        milestones = [250, 700, 1500, 2600, 4200]
-        idx = unlocked - self.config.value("initial_slots", 2)
-        if 0 <= idx < len(milestones) and self.state.total_reviews >= milestones[idx]:
-            self.state.unlocked_slots += 1
+        self._ensure_pending_milestone()
 
     def _update_weather(self) -> None:
         s = self.state.daily_stats
@@ -562,78 +648,86 @@ class GardenGameEngine:
         return "autumn"
 
     def resolve_plant_image(self, species: str, stage: str, rare: bool) -> Optional[str]:
+        asset = self.resolve_plant_asset(species, stage, rare)
+        return str(asset.path) if asset else None
+
+    def resolve_plant_asset(self, species: str, stage: str, rare: bool) -> Optional[ResolvedAsset]:
         effective = "rare" if rare else stage
-        path = self.assets.get_or_fetch(
+        return self.assets.resolve(
             "plants",
             f"{species}_{effective}",
             f"slot:plants:{species}:{effective}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
-    def resolve_preview_assets(self, theme: str, weather: str, stage: str, quality_preference: str) -> dict[str, Optional[str]]:
+    def resolve_preview_assets(self, theme: str, weather: str, stage: str, quality_preference: str) -> dict[str, Any]:
         seasonal = self.seasonal_theme()
         normalized_theme = self.assets.normalize_theme(theme)
-        background = self.assets.get_or_fetch(
+        background = self.assets.resolve(
             "backgrounds",
             f"bg_{seasonal}_{weather}",
             f"slot:backgrounds:{seasonal}:{weather}",
             theme=normalized_theme,
             quality_preference=quality_preference,
         )
-        weather_overlay = self.assets.get_or_fetch(
+        weather_overlay = self.assets.resolve(
             "weather",
             f"weather_{weather}",
             f"slot:weather:{weather}",
             theme=normalized_theme,
             quality_preference=quality_preference,
         )
-        plant = self.assets.get_or_fetch(
-            "plants",
-            f"rose_{stage}",
-            f"slot:plants:rose:{stage}",
-            theme=normalized_theme,
-            quality_preference=quality_preference,
-        )
+        plants = {}
+        for species in ("bonsai", "rose", "sunbloom"):
+            asset = self.assets.resolve(
+                "plants", f"{species}_{stage}", f"slot:plants:{species}:{stage}",
+                theme=normalized_theme, quality_preference=quality_preference,
+            )
+            plants[species] = asset.to_payload() if asset else None
         return {
-            "background": str(background) if background else None,
-            "weather": str(weather_overlay) if weather_overlay else None,
-            "plant": str(plant) if plant else None,
+            "background": background.to_payload() if background else None,
+            "weather": weather_overlay.to_payload() if weather_overlay else None,
+            "plant": plants["rose"],
+            "plants": plants,
         }
 
     def resolve_background_image(self) -> Optional[str]:
+        asset = self.resolve_background_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_background_asset(self) -> Optional[ResolvedAsset]:
         seasonal = self.seasonal_theme()
         weather = self.state.selected_weather
-        return (
-            str(
-                self.assets.get_or_fetch(
-                    "backgrounds",
-                    f"bg_{seasonal}_{weather}",
-                    f"slot:backgrounds:{seasonal}:{weather}",
-                    theme=self.config.value("visual_theme", "verdant_dusk"),
-                )
-                or ""
-            )
-            or None
+        return self.assets.resolve(
+            "backgrounds",
+            f"bg_{seasonal}_{weather}",
+            f"slot:backgrounds:{seasonal}:{weather}",
+            theme=self.config.value("visual_theme", "verdant_dusk"),
         )
 
     def resolve_weather_overlay(self) -> Optional[str]:
-        path = self.assets.get_or_fetch(
+        asset = self.resolve_weather_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_weather_asset(self) -> Optional[ResolvedAsset]:
+        return self.assets.resolve(
             "weather",
             f"weather_{self.state.selected_weather}",
             f"slot:weather:{self.state.selected_weather}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
     def resolve_decoration_image(self, decoration: str) -> Optional[str]:
-        path = self.assets.get_or_fetch(
+        asset = self.resolve_decoration_asset(decoration)
+        return str(asset.path) if asset else None
+
+    def resolve_decoration_asset(self, decoration: str) -> Optional[ResolvedAsset]:
+        return self.assets.resolve(
             "decorations",
             f"decor_{decoration}",
             f"slot:decorations:{decoration}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
     def reroll_asset_slot(self, slot: str) -> Optional[str]:
         if slot == "background":

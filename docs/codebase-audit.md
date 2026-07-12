@@ -21,6 +21,7 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Packaging | There was no reproducible `.ankiaddon` build and `meta.json` was tracked as source. | Added a distribution manifest, deterministic builder, exclusions, archive tests, and full CI checks. | Package test plus archive integrity check. |
 | Plant interaction | Plants read as floating cutouts and their data was duplicated in a distant roster. | Added soil contact, directional shadows, foreground grass, persistent rim separation, hover/focus emphasis, contextual data cards, click-to-pin behavior, and keyboard navigation; removed the duplicate roster. | Plant-display interaction tests plus isolated dashboard QA. |
 | Startup timing | Retrospective review discovery could query `mw.col.db` before a collection existed and log an avoidable startup exception. | Collection-dependent retrospective and storage queries now no-op until Anki has a live collection/database. | Storage regression test and clean disposable-profile startup. |
+| Progression | Growth was divided equally, plant interaction did not affect future progress, and slot unlocks happened invisibly. | Added a repaired focus-plant invariant, exact-total 80/20 growth allocation, persistent milestone choices, and home/dashboard progression feedback. | Engine allocation/reward tests, state-contract tests, and home-widget assertions. |
 
 ## Product focus
 
@@ -32,7 +33,7 @@ The manifest contains 76 backgrounds, 63 plant variants, 10 weather overlays, 5 
 
 ## Current validation snapshot
 
-- 80 automated tests pass, including plant growth-display math, responsive layout, generous hit areas, card constraints, hover/pin/focus state, and collection-not-ready startup behavior.
-- The 157 manifest assets pass mixed-format signature, dimensions, uniqueness, coverage, alpha-family, and fallback checks.
+- 123 automated tests pass, including focus allocation, milestone claims, plant growth-display math, responsive layout, card interaction, and collection-not-ready startup behavior.
+- The 165 manifest assets pass mixed-format signature, dimensions, uniqueness, coverage, alpha-family, and fallback checks.
 - Python compilation, `.ankiaddon` packaging, ZIP integrity, source/archive parity, and `git diff --check` pass.
 - A fresh disposable Anki 26.5 base verified clean startup, home-widget rendering, centered grounded plants, click-to-pin cards, Escape dismissal, arrow-key selection, Enter pinning, and absence of the former bottom roster.

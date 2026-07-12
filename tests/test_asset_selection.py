@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ankigarden.asset_manager import AssetManager
+from ankigarden.asset_manager import AssetManager, AssetPlacement
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
 
 
@@ -206,6 +206,70 @@ def test_storybook_png_is_preferred_over_matching_v2_svg(tmp_path):
     picked = AssetManager(DummyConfig(), storage).get_or_fetch("plants", "rose_young", "ignored")
 
     assert picked is not None and picked.name == "rose.png"
+
+
+def test_resolved_asset_carries_sanitized_placement_metadata(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [{
+        "asset_id": "bonsai_v3",
+        "category": "plants",
+        "slot": {"species": "bonsai", "stage": "young"},
+        "file": "assets/v3/bonsai.png",
+        "format": "png",
+        "width": 1254,
+        "height": 1254,
+        "quality_tier": "ultra",
+        "quality_score": 0.98,
+        "style_family": "storybook_gouache",
+        "placement": {"anchor_x": 0.48, "baseline_y": 0.91, "scale": 0.86, "crop": "contain", "layer": "plants"},
+    }]
+    _build_manifest(storage, assets)
+    _touch_asset(storage, assets[0]["file"])
+
+    resolved = AssetManager(DummyConfig(), storage).resolve("plants", "bonsai_young", "ignored")
+
+    assert resolved is not None
+    assert resolved.asset_id == "bonsai_v3"
+    assert resolved.placement.anchor_x == 0.48
+    assert resolved.placement.baseline_y == 0.91
+    assert resolved.placement.display_scale == 0.86
+    assert resolved.to_payload()["metadata"]["style_family"] == "storybook_gouache"
+    assert resolved.to_payload()["placement"]["baseline_y"] == 0.91
+
+
+def test_invalid_placement_values_fall_back_or_clamp():
+    placement = AssetPlacement.from_manifest(
+        {"anchor_x": 9, "baseline_y": -2, "scale": "bad", "crop": "stretch"},
+        category="plants",
+    )
+
+    assert placement.anchor_x == 1.0
+    assert placement.baseline_y == 0.0
+    assert placement.scale == 1.0
+    assert placement.crop == "contain"
+    assert placement.base_type == "legacy"
+    assert placement.visible_bounds == (0.08, 0.04, 0.84, 0.92)
+
+
+def test_storybook_bonsai_stages_use_alpha_aware_grounding_metadata():
+    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
+    assets = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
+    bonsai = {
+        row["slot"]["stage"]: row
+        for row in assets
+        if row.get("style_family") == "storybook_gouache"
+        and row.get("slot", {}).get("species") == "bonsai"
+    }
+
+    assert set(bonsai) == {"seed", "sprout", "young", "mature", "flowering", "rare"}
+    for row in bonsai.values():
+        placement = row["placement"]
+        visible = placement["visible_bounds"]
+        ground = placement["ground_anchor"]
+        assert len(visible) == 4 and visible[2] > 0 and visible[3] > 0
+        assert len(ground) == 2
+        assert abs((visible[1] + visible[3]) - ground[1]) < 0.001
+        assert placement["display_scale"] > 0
 
 
 def test_storybook_season_master_serves_every_weather(tmp_path):

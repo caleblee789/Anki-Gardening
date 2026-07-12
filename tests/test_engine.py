@@ -109,11 +109,84 @@ def test_growth_combines_multiple_plant_transitions():
     st.state.plants[0].growth_points = 79
     engine = GardenGameEngine(cfg, st)
 
-    engine._award_growth(2)
+    engine._award_growth(6)
 
     transitions = engine.consume_stage_transitions()
     assert len(transitions) == 2
     assert engine.stage_transition_message(transitions).startswith("Garden milestone!")
+
+
+def test_focus_growth_preserves_total_and_favors_selected_plant():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.plants.extend([
+        Plant(plant_id="p2", species="rose", name="Rose", slot_index=1),
+        Plant(plant_id="p3", species="fern", name="Fern", slot_index=2),
+    ])
+    engine = GardenGameEngine(cfg, st)
+    assert engine.set_focus_plant("p2")[0] is True
+
+    engine._award_growth(11)
+
+    growth = {plant.plant_id: plant.growth_points for plant in st.state.plants}
+    assert sum(growth.values()) == 11
+    assert growth == {"p1": 1, "p2": 9, "p3": 1}
+
+
+def test_invalid_focus_is_repaired_to_first_slot():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
+    st.state.focus_plant_id = "missing"
+
+    engine = GardenGameEngine(cfg, st)
+
+    assert engine.focus_plant().plant_id == "p1"
+    assert engine.set_focus_plant("missing")[0] is False
+
+
+def test_milestone_offer_is_stable_and_claim_unlocks_one_slot():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.total_reviews = 250
+    engine = GardenGameEngine(cfg, st)
+
+    pending = engine.pending_milestone()
+    assert pending is not None
+    assert pending.review_count == 250
+    assert pending.offered_species == ["fern", "cactus", "ivy"]
+    assert engine.pending_milestone().offered_species == pending.offered_species
+
+    ok, _message = engine.claim_milestone_reward("fern")
+
+    assert ok is True
+    assert st.state.unlocked_slots == 3
+    assert st.state.plants[-1].species == "fern"
+    assert engine.pending_milestone() is None
+    assert engine.next_milestone() == 700
+
+
+def test_multiple_earned_milestones_are_claimed_one_at_a_time():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.total_reviews = 2000
+    engine = GardenGameEngine(cfg, st)
+
+    assert engine.pending_milestone().review_count == 250
+    assert engine.claim_milestone_reward("fern")[0] is True
+    assert engine.pending_milestone().review_count == 700
+    assert engine.claim_milestone_reward("cactus")[0] is True
+    assert engine.pending_milestone().review_count == 1500
+
+
+def test_milestone_rejects_stale_or_unoffered_choice():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.total_reviews = 250
+    engine = GardenGameEngine(cfg, st)
+
+    assert engine.claim_milestone_reward("moonflower")[0] is False
+    assert st.state.unlocked_slots == 2
 
 
 def test_rare_threshold_emits_rare_transition():

@@ -20,7 +20,12 @@ def _sample_data(cards_today: int = 12, growth_earned: int = 30, weather: str = 
         streak_days=7,
         weather=weather,
         event="Calm weather",
-        plants_html='<div data-testid="plant">Bonsai</div>',
+        scene_items=({
+            "slot_index": 0,
+            "name": "Bonsai",
+            "url": "/_addons/123/assets/bonsai.png",
+            "placement": {"visible_bounds": [0.1, 0.05, 0.8, 0.9], "base_type": "pot"},
+        },),
     )
 
 
@@ -70,6 +75,21 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-health">Garden Health: 84%' in html
     assert 'data-testid="home-growth">Growth today: 30/220' in html
     assert 'data-testid="home-event">Event: Calm weather' in html
+    assert html.count('data-testid="home-open"') == 1
+    assert 'data-testid="home-refresh"' not in html
+
+
+def test_success_state_uses_resolved_background_as_compact_scene() -> None:
+    base = _sample_data()
+    data = HomeWidgetData(**{**base.__dict__, "background_url": "/_addons/123/assets/garden.webp"})
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
+
+    assert 'data-testid="home-scene"' in html
+    assert 'data-slot-index="0"' in html
+    assert 'data-base-type="pot"' in html
+    assert "garden.webp" in html
+    assert "background-size: cover" in html
 
 
 def test_success_state_renders_stage_transition_message() -> None:
@@ -79,6 +99,62 @@ def test_success_state_renders_stage_transition_message() -> None:
 
     assert 'data-testid="home-stage-up"' in html
     assert "Your Rose reached Flowering!" in html
+
+
+def test_success_state_renders_focus_and_milestone_progress() -> None:
+    base = _sample_data()
+    data = HomeWidgetData(**{
+        **base.__dict__,
+        "focus_plant_name": "Rose",
+        "focus_stage": "young",
+        "focus_points_remaining": 42,
+        "next_milestone": 250,
+        "total_reviews": 100,
+    })
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
+
+    assert 'data-testid="home-focus"' in html
+    assert "Nurturing Rose" in html
+    assert "42 GP to next stage" in html
+    assert "150 reviews until your next plant choice" in html
+
+
+def test_success_state_renders_ready_milestone_call_to_action() -> None:
+    base = _sample_data()
+    data = HomeWidgetData(**{**base.__dict__, "milestone_ready": True})
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
+
+    assert 'data-testid="home-milestone"' in html
+    assert "Open Garden to claim it" in html
+
+
+def test_scene_preserves_depth_order_and_marks_focus_plant() -> None:
+    base = _sample_data()
+    plants = (
+        {"slot_index": 0, "name": "Rose", "stage": "flowering", "url": "rose.svg", "is_focus": True},
+        {"slot_index": 1, "name": "Fern", "stage": "young", "url": "fern.svg"},
+    )
+    data = HomeWidgetData(**{**base.__dict__, "scene_items": plants})
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=8, phase="success", data=data))
+
+    assert "z-index:0" not in html
+    assert 'aria-label="Focus plant"' in html
+    assert "ag-home__plant--focus" in html
+
+
+def test_scene_uses_readable_fallback_when_plant_asset_is_missing() -> None:
+    base = _sample_data()
+    plants = ({"slot_index": 0, "name": "Rose", "stage": "flowering", "url": ""},)
+    data = HomeWidgetData(**{**base.__dict__, "scene_items": plants})
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=9, phase="success", data=data))
+
+    assert 'class="ag-home__plant-fallback"' in html
+    assert 'role="img" aria-label="Rose"' in html
+    assert "🌼" in html
 
 
 def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() -> None:

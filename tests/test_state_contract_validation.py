@@ -109,3 +109,26 @@ def test_field_level_contract_mismatches_are_logged(caplog) -> None:
 
     assert "exam_mode.exam_date" in caplog.text
     assert "exam_mode.target_deck_ids" in caplog.text
+
+
+def test_v6_pending_milestone_round_trips() -> None:
+    payload = _base_payload()
+    payload["pending_milestone_reward"] = {
+        "review_count": 250,
+        "offered_species": ["fern", "cactus", "ivy"],
+    }
+
+    state = GardenState.from_dict(payload)
+
+    assert state.version == 6
+    assert state.pending_milestone_reward is not None
+    assert state.pending_milestone_reward.offered_species == ["fern", "cactus", "ivy"]
+
+
+def test_malformed_pending_milestone_is_discarded() -> None:
+    payload = _base_payload()
+    payload["pending_milestone_reward"] = {"review_count": "250", "offered_species": "fern"}
+
+    state = GardenState.from_dict(payload)
+
+    assert state.pending_milestone_reward is None

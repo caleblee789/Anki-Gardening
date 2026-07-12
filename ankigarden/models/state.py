@@ -110,8 +110,14 @@ class Snapshot:
 
 
 @dataclass
+class MilestoneReward:
+    review_count: int
+    offered_species: List[str] = field(default_factory=list)
+
+
+@dataclass
 class GardenState:
-    version: int = 5
+    version: int = 6
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
@@ -147,6 +153,7 @@ class GardenState:
     recovery_mode: bool = False
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     focus_plant_id: Optional[str] = None
+    pending_milestone_reward: Optional[MilestoneReward] = None
     deck_plant_map: Dict[str, str] = field(default_factory=dict)
     deck_difficulty_map: Dict[str, float] = field(default_factory=dict)
     gardener_name: str = "Gardener"
@@ -192,6 +199,9 @@ class GardenState:
             "recovery_mode": self.recovery_mode,
             "last_active_day": self.last_active_day,
             "focus_plant_id": self.focus_plant_id,
+            "pending_milestone_reward": (
+                self.pending_milestone_reward.__dict__ if self.pending_milestone_reward else None
+            ),
             "deck_plant_map": self.deck_plant_map,
             "deck_difficulty_map": self.deck_difficulty_map,
             "gardener_name": self.gardener_name,
@@ -248,6 +258,8 @@ class GardenState:
             state.focus_session = FocusSession(**payload["focus_session"])
         if isinstance(payload.get("exam_mode"), dict):
             state.exam_mode = ExamMode(**payload["exam_mode"])
+        if isinstance(payload.get("pending_milestone_reward"), dict):
+            state.pending_milestone_reward = MilestoneReward(**payload["pending_milestone_reward"])
         state.snapshots = [Snapshot(**s) for s in payload.get("snapshots", []) if isinstance(s, dict)]
         state.recent_summaries = [SessionSummary(**s) for s in payload.get("recent_summaries", []) if isinstance(s, dict)]
         return state
@@ -422,6 +434,33 @@ def _sanitize_garden_state_payload(data: dict, issues: list[str]) -> dict:
             else:
                 issues.append(f"exam_mode.focus_species: expected str, got {type(focus_species).__name__}")
             sanitized["exam_mode"] = clean
+
+    if "pending_milestone_reward" in data:
+        raw = data["pending_milestone_reward"]
+        if raw is None:
+            sanitized["pending_milestone_reward"] = None
+        elif not isinstance(raw, dict):
+            issues.append(
+                "pending_milestone_reward: expected object|null, "
+                f"got {type(raw).__name__}"
+            )
+            sanitized["pending_milestone_reward"] = None
+        else:
+            review_count = raw.get("review_count")
+            offered = raw.get("offered_species")
+            if not isinstance(review_count, int) or review_count < 0:
+                issues.append("pending_milestone_reward.review_count: expected non-negative int")
+                sanitized["pending_milestone_reward"] = None
+            elif not isinstance(offered, list) or not all(
+                isinstance(species, str) and species for species in offered
+            ):
+                issues.append("pending_milestone_reward.offered_species: expected list[str]")
+                sanitized["pending_milestone_reward"] = None
+            else:
+                sanitized["pending_milestone_reward"] = {
+                    "review_count": review_count,
+                    "offered_species": list(dict.fromkeys(offered))[:3],
+                }
 
     cleaned_plants = []
     for idx, plant in enumerate(sanitized.get("plants", [])):
