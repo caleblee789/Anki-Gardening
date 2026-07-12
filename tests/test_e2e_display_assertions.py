@@ -113,7 +113,7 @@ def _seed_state() -> GardenState:
     )
 
 
-def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220, event: str = "Weekly bloom"):
+def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220):
     aqt_mod = _install_fake_aqt(monkeypatch, review_count=review_count)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -128,7 +128,6 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220, 
     app.engine = SimpleNamespace(
         rollover_if_needed=lambda: None,
         garden_health_index=lambda: 0.86,
-        get_weekly_event_summary=lambda: event,
     )
     app.storage = SimpleNamespace(state=_seed_state())
     app.config = SimpleNamespace(value=lambda key, default=None: growth_cap if key == "daily_goal" else default)
@@ -136,7 +135,7 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220, 
 
 
 def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
-    app = _build_seeded_app(monkeypatch, review_count=27, growth_cap=240, event="Weekly bloom")
+    app = _build_seeded_app(monkeypatch, review_count=27, growth_cap=240)
 
     html = app._build_home_garden_html()
 
@@ -145,12 +144,11 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-testid="home-health">Garden Health: 86%' in html
     assert 'data-testid="home-growth">Growth today: 36/240' in html
     assert 'data-testid="home-weather">Weather: Gentle Rain' in html
-    assert 'data-testid="home-event">Event: Weekly bloom' in html
     assert 'data-testid="home-growth-bar" style="width:15%"' in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
-    app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240, event="Calm weather")
+    app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240)
 
     before = app._build_home_garden_html()
     assert 'Cards Today: 18' in before
@@ -159,7 +157,6 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     app.storage.state.daily_stats.growth_earned = 60
     app.storage.state.streak_days = 9
     app.storage.state.selected_weather = "cloudy"
-    app.engine.get_weekly_event_summary = lambda: "Recovery week"
 
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
@@ -167,16 +164,14 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     assert 'data-testid="home-streak">9d streak' in updated
     assert 'data-testid="home-growth">Growth today: 60/240' in updated
     assert 'data-testid="home-weather">Weather: Cloudy' in updated
-    assert 'data-testid="home-event">Event: Recovery week' in updated
 
     assert 'data-testid="home-streak">9d streak' in refreshed
     assert 'data-testid="home-growth">Growth today: 60/240' in refreshed
     assert 'data-testid="home-weather">Weather: Cloudy' in refreshed
-    assert 'data-testid="home-event">Event: Recovery week' in refreshed
 
 
 def test_journey_navigation_between_home_contexts_keeps_values_without_duplication(monkeypatch):
-    app = _build_seeded_app(monkeypatch, review_count=42, growth_cap=210, event="Focus bonus")
+    app = _build_seeded_app(monkeypatch, review_count=42, growth_cap=210)
 
     deck_content = SimpleNamespace(body="<main>Deck Browser</main>")
     overview_content = SimpleNamespace(body="<main>Overview</main>")
@@ -194,4 +189,3 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
         assert 'Cards Today: 42' in rendered
         assert 'Garden Health: 86%' in rendered
         assert 'Growth today: 36/210' in rendered
-        assert 'Event: Focus bonus' in rendered

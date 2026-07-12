@@ -17,7 +17,6 @@ class HomeWidgetData:
     growth_cap: int
     streak_days: int
     weather: str
-    event: str
     scene_items: tuple[dict[str, Any], ...] = ()
     stage_transition_message: str = ""
     background_url: str = ""
@@ -74,7 +73,7 @@ class HomeWidgetStateController:
         return True
 
 
-DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh." 
+DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh."
 
 
 HOME_WIDGET_STYLE = """
@@ -146,9 +145,6 @@ HOME_WIDGET_STYLE = """
   background: rgba(117, 82, 35, 0.34);
   color: #f4d58a;
   font-weight: 700;
-}
-.ag-home__event {
-  color: #c4d7d0;
 }
 .ag-home__progress-note { margin-top: 8px; color: #cfe4d4; }
 .ag-home__plant--focus { filter: drop-shadow(0 0 8px rgba(232, 242, 166, .72)); }
@@ -229,8 +225,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div data-testid="home-error">Invalid home widget payload.</div>'
             "</div>"
         )
-    if not data.event:
-        DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="event")
     if not data.weather:
         DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="weather")
 
@@ -240,10 +234,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     if phase == "partial":
         partial_error = escape(snapshot.error_message or "Some details are temporarily unavailable.")
         partial_banner = f'<div data-testid="home-partial-error">{partial_error}</div>'
-
-    event_html = ""
-    if data.event and not data.event.startswith("No Active Event") and data.event != "N/A":
-        event_html = f'<div class="ag-home__event"><div data-testid="home-event">Event: {escape(data.event)}</div></div>'
 
     stage_up_html = ""
     if data.stage_transition_message:
@@ -327,14 +317,14 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
     {focus_html}
   </div>
-  <div class=\"ag-home__footer\">{event_html}
+  <div class=\"ag-home__footer\">
     <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
   </div>
 </div>
 """
 
 
-def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, scene_items: list[dict[str, Any]], event: str, stage_transition_message: str = "", background_url: str = "", focus_plant: Any = None, focus_display: Any = None, next_milestone: int | None = None, milestone_ready: bool = False) -> HomeWidgetData:
+def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, scene_items: list[dict[str, Any]], stage_transition_message: str = "", background_url: str = "", focus_plant: Any = None, focus_display: Any = None, next_milestone: int | None = None, milestone_ready: bool = False) -> HomeWidgetData:
     stats = state.daily_stats
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
@@ -343,13 +333,6 @@ def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio
             reason="missing_or_empty",
             value=getattr(state, "selected_weather", None),
         )
-    if event in (None, ""):
-        DISPLAY_TELEMETRY.record_missing_or_invalid_field(
-            route="home_widget",
-            field="event",
-            reason="missing_or_empty",
-            value=event,
-        )
     return HomeWidgetData(
         cards_today=cards_today,
         health_ratio=health_ratio,
@@ -357,7 +340,6 @@ def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio
         growth_cap=int(growth_cap),
         streak_days=int(state.streak_days),
         weather=str(state.selected_weather or "N/A"),
-        event=event or "N/A",
         scene_items=tuple(scene_items),
         stage_transition_message=stage_transition_message,
         background_url=background_url,

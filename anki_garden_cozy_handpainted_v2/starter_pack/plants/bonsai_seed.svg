@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-    
+
     <defs>
       <linearGradient id="potBody" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#c97b4a"/>
@@ -43,11 +43,11 @@
         <stop offset="0%" stop-color="#ffffff" stop-opacity="0.05"/>
         <stop offset="100%" stop-color="#9bb39a" stop-opacity="0.08"/>
       </radialGradient>
-      
+
     </defs>
-    
-    
-    
+
+
+
     <g filter="url(#softShadow)">
       <ellipse cx="128" cy="232" rx="48" ry="10" fill="#2b241f" opacity="0.12"/>
       <path d="M82 185 C88 178, 168 178, 174 185 L166 228 C165 234, 91 234, 90 228 Z" fill="url(#potBody)" stroke="#7a4730" stroke-width="2"/>
@@ -55,7 +55,7 @@
       <ellipse cx="128" cy="188" rx="39" ry="6.8" fill="url(#soilGrad)" opacity="0.96"/>
       <path d="M94 189 C107 185, 119 193, 130 189 C142 185, 152 191, 163 188" stroke="#7a5c4b" stroke-width="1.2" opacity="0.45" fill="none"/>
     </g>
-    
+
 <ellipse cx="128" cy="186" rx="7" ry="5" fill="#6b8a44" stroke="#41562a" stroke-width="2" filter="url(#paint)"/>
 <path d="M120 188 C124 183, 132 183, 136 188" stroke="#d0b18e" stroke-width="1.2" opacity="0.45" fill="none"/>
     </svg>

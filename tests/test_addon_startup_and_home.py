@@ -60,6 +60,14 @@ class _Hooks:
         self.reviewer_did_show_question = []
 
 
+class _NonIterableHook:
+    def __init__(self):
+        self.callbacks = []
+
+    def append(self, callback):
+        self.callbacks.append(callback)
+
+
 def _install_fake_aqt(monkeypatch):
     hooks = _Hooks()
     menu_tools = _Menu()
@@ -130,12 +138,14 @@ def _new_app(addon_module):
     app.dashboard = None
     app._home_widget_hooked = False
     app._home_bridge_hooked = False
+    app._reviewer_hooked = False
+    app._sync_hooked = False
+    app._sync_callback = app._on_sync_finished
     app._home_widget_controller = HomeWidgetStateController()
     app._apply_retrospective_growth = lambda: None
     app.engine = SimpleNamespace(
         rollover_if_needed=lambda: None,
         garden_health_index=lambda: 0.73,
-        get_weekly_event_summary=lambda: "Calm weather",
     )
     app.storage = SimpleNamespace(
         state=SimpleNamespace(
@@ -249,6 +259,21 @@ def test_injection_idempotent_for_render_and_webview(monkeypatch):
     assert first_body == web_content.body
 
 
+def test_home_visibility_setting_gates_both_injection_paths(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    app.config = SimpleNamespace(value=lambda key, default=None: False if key == "show_home_widget" else default)
+
+    content = SimpleNamespace(stats="<div>stats</div>")
+    web_content = SimpleNamespace(body="<main></main>")
+    app._inject_home_garden(object(), content)
+    app._inject_home_garden_webview(web_content, type("DeckBrowser", (), {})())
+
+    assert "ag-home-root" not in content.stats
+    assert "ag-home-root" not in web_content.body
+
+
 def test_setup_home_widget_registers_available_hooks(monkeypatch):
     _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -289,6 +314,36 @@ def test_setup_home_widget_is_idempotent(monkeypatch):
     app._setup_home_screen_widget()
 
     assert hooks.webview_will_set_content.count(app._inject_home_garden_webview) == 1
+
+
+def test_setup_sync_hook_is_idempotent(monkeypatch):
+    _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+
+    app._setup_sync_hooks()
+    app._setup_sync_hooks()
+
+    assert hooks.sync_did_finish.count(app._sync_callback) == 1
+
+
+def test_generated_non_iterable_hooks_register_idempotently(monkeypatch):
+    _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    reviewer_hook = _NonIterableHook()
+    sync_hook = _NonIterableHook()
+    monkeypatch.setattr(addon, "reviewer_did_answer_card", reviewer_hook)
+    hooks.sync_did_finish = sync_hook
+
+    app.reviewer_hooks = SimpleNamespace(on_answer=lambda *_args: None)
+    app._setup_reviewer_hook()
+    app._setup_reviewer_hook()
+    app._setup_sync_hooks()
+    app._setup_sync_hooks()
+
+    assert len(reviewer_hook.callbacks) == 1
+    assert len(sync_hook.callbacks) == 1
 
 
 def test_cards_today_uses_collection_revlog_count(monkeypatch):

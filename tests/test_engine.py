@@ -1,4 +1,5 @@
 import sys
+from datetime import date
 from types import SimpleNamespace
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -8,6 +9,7 @@ from pathlib import Path
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, Plant, Quest
 from ankigarden.storage import GardenStorage
+import ankigarden.game as game_module
 
 
 class FakeConfig:
@@ -145,6 +147,72 @@ def test_invalid_focus_is_repaired_to_first_slot():
     assert engine.set_focus_plant("missing")[0] is False
 
 
+def test_place_plant_moves_to_empty_slot_and_persists_once():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    saves = []
+    st.save = lambda: saves.append(st.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), st)
+    saves.clear()
+
+    ok, message, change = engine.place_plant("p1", 2)
+
+    assert ok is True and message == "Plants moved."
+    assert st.state.plants[0].slot_index == 2
+    assert change.to_dict() == {"before": {"p1": 0}, "after": {"p1": 2}}
+    assert len(saves) == 1
+
+
+def test_place_plant_swaps_occupied_slots_atomically():
+    st = FakeStorage()
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    ok, _message, change = engine.place_plant("p1", 1)
+
+    assert ok is True
+    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 1, "p2": 0}
+    assert change.before == {"p1": 0, "p2": 1}
+
+
+def test_place_plant_rejects_invalid_locked_and_duplicate_ids_without_saving():
+    st = FakeStorage()
+    saves = []
+    st.save = lambda: saves.append(True)
+    engine = GardenGameEngine(FakeConfig(), st)
+    saves.clear()
+    assert engine.place_plant("missing", 1)[0] is False
+    assert engine.place_plant("p1", 2)[0] is False
+    st.state.plants.append(Plant(plant_id="p1", species="rose", name="Rose", slot_index=1))
+    assert engine.place_plant("p1", 1)[0] is False
+    assert saves == []
+
+
+def test_place_plant_rolls_back_when_persistence_fails():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    engine = GardenGameEngine(FakeConfig(), st)
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    ok, _message, change = engine.place_plant("p1", 2)
+
+    assert ok is False and change is None
+    assert st.state.plants[0].slot_index == 0
+
+
+def test_restore_placement_supports_exactly_the_latest_move():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    engine = GardenGameEngine(FakeConfig(), st)
+    change = engine.place_plant("p1", 2)[2]
+
+    ok, _message, _inverse = engine.restore_placement(change)
+
+    assert ok is True
+    assert st.state.plants[0].slot_index == 0
+    assert engine.restore_placement(change)[0] is False
+
+
 def test_milestone_offer_is_stable_and_claim_unlocks_one_slot():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -225,23 +293,115 @@ def test_engine_startup_preserves_same_day_quest_progress():
     assert st.state.daily_quests[0].progress == 7
 
 
-def test_focus_session_completes():
+def test_hidden_legacy_systems_are_not_engine_interfaces():
     cfg = FakeConfig()
     st = FakeStorage()
     engine = GardenGameEngine(cfg, st)
-    ok, _ = engine.start_focus_session(25)
-    assert ok
-    st.state.focus_session.started_at = "2000-01-01T00:00:00"
-    ok, _ = engine.complete_focus_session()
-    assert ok
-    assert st.state.total_focus_sessions >= 1
+    assert not hasattr(engine, "start_focus_session")
+    assert not hasattr(engine, "configure_exam_mode")
+    assert not hasattr(engine, "purchase_item")
+    assert not hasattr(engine, "assign_deck_to_plant")
 
 
-def test_exam_countdown_off_by_default():
-    cfg = FakeConfig()
+def test_malformed_review_payload_is_bounded_and_saved():
     st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    assert engine.exam_countdown_days() is None
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine.register_review({"queue": object(), "ease": "bad", "difficulty": 99, "lapse_count": -8})
+
+    assert st.state.daily_stats.reviewed == 1
+    assert st.state.daily_stats.wrong == 1
+    assert st.state.daily_stats.growth_earned >= 0
+
+
+def test_review_save_failure_restores_entire_state():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    before = st.state.to_dict()
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    try:
+        engine.register_review({"queue": 2, "ease": 3, "revlog_id": 99})
+    except OSError:
+        pass
+
+    assert st.state.to_dict() == before
+
+
+def test_focus_save_failure_restores_previous_selection():
+    st = FakeStorage()
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
+    engine = GardenGameEngine(FakeConfig(), st)
+    assert engine.focus_plant().plant_id == "p1"
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    ok, message = engine.set_focus_plant("p2")
+
+    assert ok is False and "previous choice" in message
+    assert st.state.focus_plant_id == "p1"
+
+
+def test_live_review_persists_revlog_cursor_with_progress():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine.register_review({"queue": 2, "ease": 3, "revlog_id": 321})
+
+    assert st.state.retrospective_last_revlog_id == 321
+
+
+def test_consecutive_day_rollover_preserves_streak_until_first_review(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 11)
+
+    monkeypatch.setattr(game_module, "date", Today)
+    st = FakeStorage()
+    st.state.daily_stats.day = "2026-07-10"
+    st.state.last_active_day = "2026-07-10"
+    st.state.streak_days = 5
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine.rollover_if_needed()
+    assert st.state.streak_days == 5
+    engine.register_review({"ease": 3})
+    assert st.state.streak_days == 6
+
+
+def test_missed_day_resets_streak_and_applies_bounded_vitality_decay(monkeypatch):
+    class Today(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 7, 12)
+
+    monkeypatch.setattr(game_module, "date", Today)
+    st = FakeStorage()
+    st.state.daily_stats.day = "2026-07-10"
+    st.state.last_active_day = "2026-07-10"
+    st.state.streak_days = 8
+    st.state.plants[0].vitality = 0.45
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine.rollover_if_needed()
+
+    assert st.state.streak_days == 0
+    assert st.state.plants[0].vitality == 0.42
+
+
+def test_retrospective_batch_saves_cursor_with_progress_once():
+    st = FakeStorage()
+    saves = []
+    st.save = lambda: saves.append(st.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), st)
+    saves.clear()
+
+    gained = engine.apply_retrospective_reviews([{"ease": 3, "queue": 2}], latest_revlog_id=88)
+
+    assert gained > 0
+    assert st.state.daily_stats.reviewed == 1
+    assert st.state.retrospective_last_revlog_id == 88
+    assert len(saves) == 1
 
 
 def test_reroll_asset_slot_uses_local_catalog_cycle():

@@ -41,23 +41,19 @@ def test_missing_required_keys_in_nested_plant_are_filtered() -> None:
 
     state = GardenState.from_dict(payload)
 
-    assert state.plants == []
+    assert len(state.plants) == 1
+    assert state.plants[0].plant_id == "plant_1"
 
 
 def test_null_values_for_nullable_fields_are_supported() -> None:
     payload = _base_payload()
     payload["focus_plant_id"] = None
-    payload["exam_mode"] = {
-        "enabled": True,
-        "exam_date": None,
-        "target_deck_ids": [1, 2],
-        "focus_species": "bonsai",
-    }
+    payload["exam_mode"] = {"enabled": True, "exam_date": None}
 
     state = GardenState.from_dict(payload)
 
     assert state.focus_plant_id is None
-    assert state.exam_mode.exam_date is None
+    assert "exam_mode" not in state.to_dict()
 
 
 def test_unexpected_status_enum_falls_back_to_default() -> None:
@@ -68,7 +64,7 @@ def test_unexpected_status_enum_falls_back_to_default() -> None:
     state = GardenState.from_dict(payload)
 
     assert state.selected_weather == "sunny"
-    assert state.garden_mode == "unified"
+    assert "garden_mode" not in state.to_dict()
 
 
 def test_type_mismatches_and_malformed_dates_fall_back_to_defaults() -> None:
@@ -96,7 +92,7 @@ def test_type_mismatches_and_malformed_dates_fall_back_to_defaults() -> None:
     assert state.daily_stats.day == GardenState().daily_stats.day
 
 
-def test_field_level_contract_mismatches_are_logged(caplog) -> None:
+def test_hidden_v6_fields_are_dropped_without_affecting_core(caplog) -> None:
     payload = _base_payload()
     payload["exam_mode"] = {
         "enabled": True,
@@ -107,12 +103,14 @@ def test_field_level_contract_mismatches_are_logged(caplog) -> None:
 
     GardenState.from_dict(payload)
 
-    assert "exam_mode.exam_date" in caplog.text
-    assert "exam_mode.target_deck_ids" in caplog.text
+    state = GardenState.from_dict(payload)
+    assert "exam_mode" not in state.to_dict()
+    assert state.version == 7
 
 
-def test_v6_pending_milestone_round_trips() -> None:
+def test_v6_pending_milestone_migrates_to_v7() -> None:
     payload = _base_payload()
+    payload["version"] = 6
     payload["pending_milestone_reward"] = {
         "review_count": 250,
         "offered_species": ["fern", "cactus", "ivy"],
@@ -120,9 +118,47 @@ def test_v6_pending_milestone_round_trips() -> None:
 
     state = GardenState.from_dict(payload)
 
-    assert state.version == 6
+    assert state.version == 7
     assert state.pending_milestone_reward is not None
     assert state.pending_milestone_reward.offered_species == ["fern", "cactus", "ivy"]
+
+
+def test_duplicate_ids_slots_and_out_of_range_slot_count_are_repaired() -> None:
+    payload = _base_payload()
+    payload["unlocked_slots"] = 99
+    payload["plants"] = [
+        {"plant_id": "same", "species": "rose", "name": "Rose", "slot_index": 9},
+        {"plant_id": "same", "species": "fern", "name": "Fern", "slot_index": 9},
+    ]
+
+    state = GardenState.from_dict(payload)
+
+    assert state.unlocked_slots == 2
+    assert len({plant.plant_id for plant in state.plants}) == 2
+    assert {plant.slot_index for plant in state.plants} == {0, 1}
+
+
+def test_v7_serializer_omits_all_dormant_system_state() -> None:
+    payload = GardenState().to_dict()
+    for key in (
+        "currency", "focus_session", "exam_mode", "deck_plant_map", "deck_difficulty_map",
+        "weekly_event_id", "mastery_tree", "rare_event_log", "passive_reward_days",
+    ):
+        assert key not in payload
+
+
+def test_unsupported_species_and_focus_quest_are_removed() -> None:
+    payload = _base_payload()
+    payload["plants"] = [{"plant_id": "x", "species": "money_tree", "name": "Money", "slot_index": 0}]
+    payload["daily_quests"] = [{
+        "quest_id": "focus", "description": "Use focus mode", "target": 1,
+        "metric": "focus", "progress": 0, "reward_growth": 50, "completed": False,
+    }]
+
+    state = GardenState.from_dict(payload)
+
+    assert state.plants == []
+    assert state.daily_quests == []
 
 
 def test_malformed_pending_milestone_is_discarded() -> None:

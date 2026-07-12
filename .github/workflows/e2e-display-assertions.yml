@@ -31,7 +31,28 @@ jobs:
       - name: Audit local artwork
         run: python scripts/audit_assets.py
 
+      - name: Compile runtime and tests
+        run: PYTHONPYCACHEPREFIX=/tmp/anki-garden-pycache python -m compileall -q ankigarden scripts tests
+
+      - name: Check patch whitespace
+        run: git show --check --oneline --format= HEAD
+
       - name: Build and verify package
         run: |
           python scripts/package_addon.py
           python -m zipfile -t dist/anki_garden.ankiaddon
+
+      - name: Verify source/archive parity
+        run: |
+          python - <<'PY'
+          import hashlib
+          import zipfile
+          from scripts.package_addon import ADDON, OUTPUT, package_files
+
+          with zipfile.ZipFile(OUTPUT) as archive:
+              names = set(archive.namelist())
+              expected = {path.relative_to(ADDON).as_posix(): path for path in package_files()}
+              assert names == set(expected), (sorted(set(expected) - names), sorted(names - set(expected)))
+              for name, path in expected.items():
+                  assert hashlib.sha256(path.read_bytes()).digest() == hashlib.sha256(archive.read(name)).digest(), name
+          PY

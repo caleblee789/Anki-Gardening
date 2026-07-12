@@ -123,12 +123,32 @@ def test_keyboard_focus_cycles_and_reconciles_removed_plants():
     assert state.focused_index == 0
 
 
+def test_keyboard_placement_cycles_confirms_and_cancels():
+    state = PlantInteractionState()
+    assert state.begin_placement("rose", 0, [0, 1, 2], keyboard=True)
+    assert state.cycle_destination([0, 1, 2], 1) == 1
+    assert state.complete_placement() == ("rose", 1)
+    assert state.placing is False
+    state.begin_placement("rose", 1, [0, 1, 2], keyboard=True)
+    state.cancel_placement()
+    assert state.complete_placement() is None
+
+
+def test_invalid_placement_destination_is_not_selected():
+    state = PlantInteractionState()
+    state.begin_placement("rose", 0, [0, 1], keyboard=False)
+    assert state.choose_destination(4, [0, 1]) is False
+    assert state.destination_slot == 0
+
+
 def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
     assert "_plant_scene_payload" in dashboard
     assert '"points_remaining"' in dashboard
     assert "roster_grid" not in dashboard
     assert "_refresh_roster_cards" not in dashboard
+    assert "Nurture selected plant" not in dashboard
+    assert "plant_interaction_hint_seen" in dashboard
 
 
 def test_dashboard_is_garden_first_with_compact_secondary_tabs():
@@ -143,3 +163,24 @@ def test_dashboard_is_garden_first_with_compact_secondary_tabs():
 def test_potted_plants_do_not_receive_detached_ground_focus_ring():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
     assert 'if emphasized and base_type != "pot":' in scene
+
+
+def test_scene_keyboard_contract_avoids_tab_trap_and_shows_action_focus():
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    key_handler = scene.index("def keyPressEvent")
+    tab_branch = scene.index('if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):', key_handler)
+    move_branch = scene.index("if self._interaction.move_mode:", key_handler)
+    assert tab_branch < move_branch
+    assert "super().keyPressEvent(event)" in scene[tab_branch:move_branch]
+    assert "selected = self.hasFocus() and action_index == self._card_action_index" in scene
+    assert "event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)" in scene
+
+
+def test_settings_expose_daily_goal_home_visibility_and_transaction_errors():
+    root = Path(__file__).resolve().parents[1]
+    studio = (root / "ankigarden/ui/garden_studio.py").read_text()
+    dashboard = (root / "ankigarden/ui/dashboard.py").read_text()
+    assert '"daily_goal": self.daily_goal.value()' in studio
+    assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
+    assert "except ConfigError as exc:" in dashboard
+    assert "QMessageBox.warning" in dashboard

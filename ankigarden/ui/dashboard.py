@@ -29,6 +29,7 @@ from .garden_studio import GardenStudioWidget
 from .plant_display import growth_display
 from .scene import GardenSceneWidget
 from ..display_telemetry import DISPLAY_TELEMETRY
+from ..config import ConfigError
 
 UI_TEXT = {
     "settings_window_title": "Anki Garden Settings",
@@ -108,12 +109,20 @@ class GardenSettingsDialog(QDialog):
         tabs.addTab(advanced, UI_TEXT["tab_advanced"])
 
     def _save_visual_settings(self) -> None:
-        self.config.update(self.behavior.build_theme_payload())
+        try:
+            self.config.update(self.behavior.build_theme_payload())
+        except ConfigError as exc:
+            QMessageBox.warning(self, UI_TEXT["app_title"], str(exc))
+            return
         self.engine.assets.metadata.clear()
         parent = self.parent()
         if parent is not None and hasattr(parent, "refresh_all"):
             parent.refresh_all()
-        QMessageBox.information(self, UI_TEXT["app_title"], "Garden appearance saved.")
+            mw_window = parent.parent()
+            reset = getattr(mw_window, "reset", None)
+            if callable(reset):
+                reset()
+        QMessageBox.information(self, UI_TEXT["app_title"], "Garden settings saved.")
 
     def _refresh_debug_report(self) -> None:
         self.debug_report.setPlainText("\\n".join(DISPLAY_TELEMETRY.report_lines()))
@@ -158,6 +167,8 @@ class GardenDashboard(QDialog):
         self.storage = storage
         self.config = config
         self.settings_dialog: GardenSettingsDialog | None = None
+        self._undo_placement: Any = None
+        self._move_feedback_generation = 0
         self.setWindowTitle(UI_TEXT["app_title"])
         self.setMinimumSize(self.MIN_WINDOW_WIDTH, self.MIN_WINDOW_HEIGHT)
         self.resize(*self._recommended_window_size())
@@ -219,17 +230,29 @@ class GardenDashboard(QDialog):
         h_layout.setContentsMargins(*self.CARD_PADDING)
         h_layout.setSpacing(self.CARD_SPACING)
         self.scene = GardenSceneWidget()
+        self.scene.nurtureRequested.connect(self._nurture_plant)
+        self.scene.placementRequested.connect(self._place_plant)
+        self.scene.cardOpened.connect(self._dismiss_interaction_hint)
+        self.interaction_hint = QLabel("Click a plant to nurture or move it.")
+        self.interaction_hint.setWordWrap(True)
+        self._apply_typography(self.interaction_hint, "muted-body")
+        self.interaction_hint.setVisible(not bool(self.config.value("plant_interaction_hint_seen", False)))
         self.focus_note = QLabel("")
         self._apply_typography(self.focus_note, "muted-body")
-        self.nurture_selected_btn = QPushButton("Nurture selected plant")
-        _set_button_variant(self.nurture_selected_btn, BUTTON_VARIANT_SECONDARY)
-        self.nurture_selected_btn.setAccessibleName("Make the selected plant your focus plant")
-        self.nurture_selected_btn.clicked.connect(self._nurture_selected_plant)
         self.focus_note.setWordWrap(True)
-        focus_row = QVBoxLayout()
-        focus_row.setSpacing(6)
-        focus_row.addWidget(self.focus_note)
-        focus_row.addWidget(self.nurture_selected_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        self.placement_note = QLabel("")
+        self._apply_typography(self.placement_note, "muted-body")
+        self.placement_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
+        self.undo_move_btn = QPushButton("Undo")
+        _set_button_variant(self.undo_move_btn, BUTTON_VARIANT_SECONDARY)
+        self.undo_move_btn.setAccessibleName("Undo the most recent plant move")
+        self.undo_move_btn.clicked.connect(self._undo_move)
+        self.undo_move_btn.hide()
+        placement_row = QHBoxLayout()
+        placement_row.setSpacing(8)
+        placement_row.addWidget(self.placement_note)
+        placement_row.addWidget(self.undo_move_btn)
+        placement_row.addStretch(1)
         self.stage_transition_note = QLabel("")
         self.stage_transition_note.setWordWrap(True)
         self.stage_transition_note.setMinimumHeight(24)
@@ -242,7 +265,9 @@ class GardenDashboard(QDialog):
         self._apply_typography(self.retrospective_note, "muted-body")
         self.retrospective_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
         h_layout.addWidget(self.scene)
-        h_layout.addLayout(focus_row)
+        h_layout.addWidget(self.interaction_hint)
+        h_layout.addWidget(self.focus_note)
+        h_layout.addLayout(placement_row)
         h_layout.addWidget(self.stage_transition_note)
         h_layout.addWidget(self.retrospective_note)
         root.addWidget(hero_card, 4)
@@ -337,6 +362,7 @@ class GardenDashboard(QDialog):
                 "weather": state.selected_weather,
                 "health": health,
                 "growth": min(1.0, stats.growth_earned / daily_goal),
+                "unlocked_slots": state.unlocked_slots,
                 "streak_days": state.streak_days,
                 "cards_today": stats.reviewed,
                 "motion_enabled": bool(
@@ -434,14 +460,56 @@ class GardenDashboard(QDialog):
         legacy = getattr(self.engine, legacy_name, None)
         return legacy(*args) if callable(legacy) else None
 
-    def _nurture_selected_plant(self) -> None:
-        plant_id = self.scene.active_plant_id()
+    def _nurture_plant(self, plant_id: str) -> None:
         ok, message = self.engine.set_focus_plant(plant_id)
         if not ok:
-            QMessageBox.information(self, UI_TEXT["app_title"], "Select a plant in the garden first.")
+            self.scene.keep_card_open(plant_id, message)
             return
         self.refresh_all()
-        QMessageBox.information(self, UI_TEXT["app_title"], message)
+        self.scene.keep_card_open(plant_id, message)
+
+    def _place_plant(self, plant_id: str, destination_slot: int) -> None:
+        ok, message, change = self.engine.place_plant(plant_id, destination_slot)
+        if not ok or change is None:
+            self.scene.keep_card_open(plant_id, message)
+            return
+        self._undo_placement = change
+        self.refresh_all()
+        self.scene.keep_card_open(plant_id, "Plants moved")
+        self.placement_note.setText("Plants moved —")
+        self.undo_move_btn.show()
+        self._move_feedback_generation += 1
+        generation = self._move_feedback_generation
+        QTimer.singleShot(6000, lambda: self._clear_move_feedback(generation))
+
+    def _undo_move(self) -> None:
+        if self._undo_placement is None:
+            return
+        ok, message, _inverse = self.engine.restore_placement(self._undo_placement)
+        if ok:
+            self._undo_placement = None
+            self.refresh_all()
+            self.placement_note.setText("Move undone.")
+            self.undo_move_btn.hide()
+            self._move_feedback_generation += 1
+            generation = self._move_feedback_generation
+            QTimer.singleShot(3000, lambda: self._clear_move_feedback(generation))
+        else:
+            self.placement_note.setText(message)
+            self._undo_placement = None
+            self.undo_move_btn.hide()
+
+    def _clear_move_feedback(self, generation: int | None = None) -> None:
+        if generation is not None and generation != self._move_feedback_generation:
+            return
+        self.placement_note.setText("")
+        self.undo_move_btn.hide()
+
+    def _dismiss_interaction_hint(self) -> None:
+        if bool(self.config.value("plant_interaction_hint_seen", False)):
+            return
+        self.config.update({"plant_interaction_hint_seen": True})
+        self.interaction_hint.hide()
 
     def _clear_layout(self, layout: Any) -> None:
         while layout.count():

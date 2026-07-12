@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aqt.qt import QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRectF, QTimer, QWidget, Qt, QColor
+from aqt.qt import QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRectF, QTimer, QWidget, Qt, QColor, pyqtSignal
 
 try:
     from aqt.qt import QSvgRenderer
@@ -31,6 +31,10 @@ SCENE_TEXT = {
 
 
 class GardenSceneWidget(QWidget):
+    nurtureRequested = pyqtSignal(str)
+    placementRequested = pyqtSignal(str, int)
+    cardOpened = pyqtSignal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumHeight(420)
@@ -44,6 +48,15 @@ class GardenSceneWidget(QWidget):
         self._plant_hit_rects: dict[str, QRectF] = {}
         self._plant_anchors: dict[str, tuple[float, float]] = {}
         self._card_rect: QRectF | None = None
+        self._nurture_rect: QRectF | None = None
+        self._move_rect: QRectF | None = None
+        self._slot_placements: dict[int, PlantPlacement] = {}
+        self._press_position: Any = None
+        self._press_plant_id: str | None = None
+        self._drag_started = False
+        self._drag_position: Any = None
+        self._inline_message = ""
+        self._card_action_index = 0
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAccessibleName("Interactive study garden")
@@ -146,18 +159,27 @@ class GardenSceneWidget(QWidget):
         return None
 
     def active_plant_id(self) -> str | None:
-        return self._interaction.active_id or self._interaction.focused_id(self._plant_ids())
+        return self._interaction.pinned_id or self._interaction.focused_id(self._plant_ids())
+
+    def keep_card_open(self, plant_id: str, message: str = "") -> None:
+        if plant_id in self._plant_ids():
+            self._interaction.pinned_id = plant_id
+        self._inline_message = message
+        self.update()
 
     def _layout_plants(self, width: float, height: float) -> list[tuple[dict[str, Any], PlantPlacement]]:
         plants = sorted(self.scene.get("plants", []), key=lambda row: int(row.get("slot_index", 0)))[:6]
         background = self.scene.get("asset_paths", {}).get("background", {})
         background_placement = background.get("placement", {}) if isinstance(background, dict) else {}
         zone = background_placement.get("planting_zone", {})
-        rows = plant_layout(width, height, plants, zone if isinstance(zone, dict) else None)
         by_slot = {int(plant.get("slot_index", index)): plant for index, plant in enumerate(plants)}
+        unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", len(plants)))))
+        slot_items = [dict(by_slot.get(index, {}), slot_index=index) for index in range(unlocked)]
+        rows = plant_layout(width, height, slot_items, zone if isinstance(zone, dict) else None)
         result: list[tuple[dict[str, Any], PlantPlacement]] = []
         self._plant_hit_rects = {}
         self._plant_anchors = {}
+        self._slot_placements = {row.slot_index: row for row in rows}
         for row in rows:
             plant = by_slot.get(row.slot_index, {})
             plant_id = str(plant.get("plant_id", ""))
@@ -165,7 +187,8 @@ class GardenSceneWidget(QWidget):
             if plant_id:
                 self._plant_hit_rects[plant_id] = hit_rect
                 self._plant_anchors[plant_id] = (row.smart_card_anchor.x + row.smart_card_anchor.width / 2, row.smart_card_anchor.y)
-            result.append((plant, row))
+            if plant_id:
+                result.append((plant, row))
         return result
 
     def paintEvent(self, _event: Any) -> None:
@@ -217,6 +240,7 @@ class GardenSceneWidget(QWidget):
                 return
 
             plant_rows = self._layout_plants(r.width(), r.height())
+            self._draw_slot_placeholders(painter)
             focused_id = self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
             for idx, (plant, layout) in enumerate(plant_rows):
                 x = layout.footprint.x + layout.footprint.width / 2
@@ -236,6 +260,11 @@ class GardenSceneWidget(QWidget):
                 if transition:
                     self._draw_transition_glow(painter, x, base_y, transition, transition_progress)
                 painter.save()
+                if plant_id == self._interaction.dragged_id and self._drag_started:
+                    painter.setOpacity(0.78)
+                    painter.translate(x, base_y)
+                    painter.scale(1.06, 1.06)
+                    painter.translate(-x, -base_y - 8)
                 if transition_progress is not None and self.scene.get("motion_enabled", True):
                     reveal_scale = self._transition_scale(transition_progress)
                     painter.translate(x, base_y)
@@ -347,23 +376,28 @@ class GardenSceneWidget(QWidget):
         painter.restore()
 
     def _draw_smart_card(self, painter: QPainter, rect: Any) -> None:
-        plant_id = self._interaction.active_id
+        plant_id = self._interaction.pinned_id
         plant = self._plant_for_id(plant_id)
         anchor = self._plant_anchors.get(plant_id or "")
         if plant is None or anchor is None:
             self._card_rect = None
+            self._nurture_rect = None
+            self._move_rect = None
             return
         obstacles = [
             Rect(hit.x(), hit.y(), hit.width(), hit.height())
             for obstacle_id, hit in self._plant_hit_rects.items()
             if obstacle_id != plant_id
         ]
+        panel_width = min(470.0, max(1.0, rect.width() - 32.0))
+        obstacles.append(Rect(16.0, 14.0, panel_width, 78.0 if panel_width < 390 else 62.0))
         background = self.scene.get("asset_paths", {}).get("background", {})
         placement = background.get("placement", {}) if isinstance(background, dict) else {}
         zone = placement.get("planting_zone", {}) if isinstance(placement, dict) else {}
         planting_top = rect.height() * float(zone.get("far_y", 0.62)) if isinstance(zone, dict) else rect.height() * 0.62
         x, y, width, height = smart_card_rect(
-            rect.width(), rect.height(), anchor[0], anchor[1], obstacles=obstacles, planting_top=planting_top
+            rect.width(), rect.height(), anchor[0], anchor[1], card_height=214.0,
+            obstacles=obstacles, planting_top=planting_top
         )
         card = QRectF(x, y, width, height)
         self._card_rect = card
@@ -408,14 +442,42 @@ class GardenSceneWidget(QWidget):
             status = f"{remaining} GP until {next_stage}"
         painter.drawText(int(left), int(top + 101), status)
         painter.setPen(QColor(151, 181, 163))
-        if plant.get("is_focus"):
-            hint = "Focus plant • receives most new growth"
-        elif self._interaction.pinned_id:
-            hint = "Pinned • use Nurture selected plant below"
-        else:
-            hint = "Click plant to keep this open"
-        painter.drawText(int(left), int(top + 137), hint)
+        hint = self._inline_message or ("Focus plant • receives most new growth" if plant.get("is_focus") else "Choose how to care for this plant")
+        painter.drawText(int(left), int(top + 127), hint)
+        button_top = card.bottom() - 44
+        button_width = (card.width() - 42) / 2
+        self._nurture_rect = QRectF(left, button_top, button_width, 30)
+        self._move_rect = QRectF(left + button_width + 10, button_top, button_width, 30)
+        for action_index, (button, label, primary) in enumerate((
+            (self._nurture_rect, "Nurture", True),
+            (self._move_rect, "Move", False),
+        )):
+            selected = self.hasFocus() and action_index == self._card_action_index
+            painter.setPen(QPen(QColor(229, 242, 166) if selected else QColor(112, 167, 127), 3 if selected else 1))
+            painter.setBrush(QColor(47, 111, 72) if primary else QColor(38, 68, 86))
+            painter.drawRoundedRect(button, 8, 8)
+            painter.setPen(QColor(242, 255, 246))
+            painter.drawText(button, Qt.AlignmentFlag.AlignCenter, label)
         painter.restore()
+
+    def _draw_slot_placeholders(self, painter: QPainter) -> None:
+        if self._interaction.pinned_id is None and not self._interaction.placing:
+            return
+        occupied = {int(plant.get("slot_index", -1)) for plant in self.scene.get("plants", [])}
+        for slot, layout in self._slot_placements.items():
+            empty = slot not in occupied
+            active = slot == self._interaction.destination_slot
+            if not empty and not self._interaction.placing:
+                continue
+            footprint = QRectF(layout.footprint.x, layout.footprint.y, layout.footprint.width, layout.footprint.height)
+            painter.save()
+            painter.setPen(QPen(QColor(229, 242, 166, 190 if active else 70), 2 if active else 1))
+            painter.setBrush(QColor(94, 68, 45, 125 if active else 52))
+            painter.drawEllipse(footprint.adjusted(-10, -4, 10, 4))
+            if self._interaction.placing:
+                painter.setPen(QColor(242, 247, 211, 210 if active else 115))
+                painter.drawText(footprint.adjusted(-18, -22, 18, 4), Qt.AlignmentFlag.AlignCenter, str(slot + 1))
+            painter.restore()
 
     def _event_position(self, event: Any) -> Any:
         return event.position() if hasattr(event, "position") else event.pos()
@@ -426,6 +488,30 @@ class GardenSceneWidget(QWidget):
                 return plant_id
         return None
 
+    def _slot_at(self, position: Any) -> int | None:
+        for slot, layout in self._slot_placements.items():
+            target = QRectF(layout.hit.x, layout.hit.y, layout.hit.width, layout.hit.height).adjusted(-12, -8, 12, 12)
+            if target.contains(position):
+                return slot
+        return None
+
+    def _slot_for_plant(self, plant_id: str) -> int | None:
+        plant = self._plant_for_id(plant_id)
+        return int(plant.get("slot_index")) if plant is not None else None
+
+    def _valid_slots(self) -> list[int]:
+        return sorted(self._slot_placements)
+
+    def _begin_move(self, plant_id: str, *, keyboard: bool) -> bool:
+        origin = self._slot_for_plant(plant_id)
+        if origin is None:
+            return False
+        started = self._interaction.begin_placement(plant_id, origin, self._valid_slots(), keyboard=keyboard)
+        if started:
+            self._inline_message = "Choose a garden space • Enter to place • Esc to cancel" if keyboard else "Drag to an outlined garden space"
+            self.setAccessibleName(f"Moving {self._plant_for_id(plant_id).get('name', 'plant')}; choose garden space")
+        return started
+
     def _clear_unpinned_hover(self) -> None:
         if self._interaction.pinned_id is None:
             self._interaction.hover(None)
@@ -434,6 +520,17 @@ class GardenSceneWidget(QWidget):
 
     def mouseMoveEvent(self, event: Any) -> None:
         position = self._event_position(event)
+        if self._press_plant_id and self._press_position is not None:
+            delta = position - self._press_position
+            if not self._drag_started and (abs(delta.x()) + abs(delta.y())) >= 8:
+                self._drag_started = self._begin_move(self._press_plant_id, keyboard=False)
+            if self._drag_started:
+                self._drag_position = position
+                slot = self._slot_at(position)
+                self._interaction.choose_destination(slot, self._valid_slots()) if slot is not None else None
+                self.setCursor(Qt.CursorShape.ClosedHandCursor if slot is not None else Qt.CursorShape.ForbiddenCursor)
+                self.update()
+                return
         plant_id = self._plant_at(position)
         over_card = self._card_rect is not None and self._card_rect.contains(position)
         if plant_id:
@@ -456,30 +553,109 @@ class GardenSceneWidget(QWidget):
 
     def mousePressEvent(self, event: Any) -> None:
         position = self._event_position(event)
+        if self._nurture_rect is not None and self._nurture_rect.contains(position) and self._interaction.pinned_id:
+            self.nurtureRequested.emit(self._interaction.pinned_id)
+            return
+        if self._move_rect is not None and self._move_rect.contains(position) and self._interaction.pinned_id:
+            self._begin_move(self._interaction.pinned_id, keyboard=True)
+            self.update()
+            return
         plant_id = self._plant_at(position)
         if plant_id:
-            self._interaction.toggle_pin(plant_id)
-            ids = self._plant_ids()
-            if plant_id in ids:
-                self._interaction.focused_index = ids.index(plant_id)
+            self._press_position = position
+            self._press_plant_id = plant_id
+            self._drag_started = False
             self.setFocus()
         elif self._card_rect is None or not self._card_rect.contains(position):
+            self._interaction.cancel_placement()
             self._interaction.dismiss()
+            self._inline_message = ""
         self.update()
         super().mousePressEvent(event)
 
+    def mouseReleaseEvent(self, event: Any) -> None:
+        position = self._event_position(event)
+        if self._drag_started:
+            slot = self._slot_at(position)
+            if slot is not None:
+                self._interaction.choose_destination(slot, self._valid_slots())
+            request = self._interaction.complete_placement() if slot is not None else None
+            if request is not None and request[1] != self._slot_for_plant(request[0]):
+                self.placementRequested.emit(request[0], request[1])
+            else:
+                self._inline_message = "Move cancelled"
+            self.unsetCursor()
+        elif self._press_plant_id:
+            plant_id = self._plant_at(position)
+            if plant_id == self._press_plant_id:
+                was_pinned = self._interaction.pinned_id == plant_id
+                self._interaction.toggle_pin(plant_id)
+                self._inline_message = ""
+                ids = self._plant_ids()
+                if plant_id in ids:
+                    self._interaction.focused_index = ids.index(plant_id)
+                if not was_pinned and self._interaction.pinned_id:
+                    self._card_action_index = 0
+                    self.setAccessibleDescription("Plant action card. Tab between Nurture and Move; Enter activates.")
+                    self.cardOpened.emit()
+        self._press_position = None
+        self._press_plant_id = None
+        self._drag_started = False
+        self._drag_position = None
+        self.update()
+        super().mouseReleaseEvent(event)
+
     def keyPressEvent(self, event: Any) -> None:
         plant_ids = self._plant_ids()
-        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+        if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+            if self._interaction.placing:
+                self._interaction.cancel_placement()
+                self._inline_message = "Move cancelled"
+            super().keyPressEvent(event)
+            self.update()
+            return
+        if self._interaction.move_mode:
+            if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+                self._interaction.cycle_destination(self._valid_slots(), -1)
+            elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down):
+                self._interaction.cycle_destination(self._valid_slots(), 1)
+            elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+                request = self._interaction.complete_placement()
+                if request is not None and request[1] != self._slot_for_plant(request[0]):
+                    self.placementRequested.emit(request[0], request[1])
+                else:
+                    self._inline_message = "Move cancelled"
+            elif event.key() == Qt.Key.Key_Escape:
+                self._interaction.cancel_placement()
+                self._inline_message = "Move cancelled"
+            else:
+                super().keyPressEvent(event)
+                return
+        elif self._interaction.pinned_id and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self._card_action_index = (self._card_action_index + (-1 if event.key() == Qt.Key.Key_Left else 1)) % 2
+            action = "Nurture" if self._card_action_index == 0 else "Move"
+            self.setAccessibleName(f"{action} selected for plant action card")
+        elif self._interaction.pinned_id and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            if self._card_action_index == 0:
+                self.nurtureRequested.emit(self._interaction.pinned_id)
+            else:
+                self._begin_move(self._interaction.pinned_id, keyboard=True)
+        elif event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
             self._interaction.cycle_focus(plant_ids, -1)
-        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down, Qt.Key.Key_Tab):
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down):
             self._interaction.cycle_focus(plant_ids, 1)
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             focused = self._interaction.focused_id(plant_ids)
             if focused:
                 self._interaction.toggle_pin(focused)
+                self._inline_message = ""
+                if self._interaction.pinned_id:
+                    self._card_action_index = 0
+                    self.setAccessibleDescription("Plant action card. Tab between Nurture and Move; Enter activates.")
+                    self.cardOpened.emit()
         elif event.key() == Qt.Key.Key_Escape:
             self._interaction.dismiss()
+            self._inline_message = ""
         else:
             super().keyPressEvent(event)
             return

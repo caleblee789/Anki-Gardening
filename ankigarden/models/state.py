@@ -5,10 +5,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
+
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1400]
-GARDEN_MODES = {"unified", "deck-by-deck"}
 WEATHER_TYPES = {"sunny", "cloudy", "breeze", "gentle_rain", "fireflies"}
+PLANT_SPECIES = {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
+MAX_GARDEN_SLOTS = 6
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,6 @@ class Plant:
     growth_points: int = 0
     vitality: float = 1.0
     rare_variant: bool = False
-    assigned_deck_id: Optional[int] = None
     personality: str = "balanced"
 
     @property
@@ -46,7 +47,6 @@ class DailyStats:
     recovered_lapses: int = 0
     growth_earned: int = 0
     completed_due_cards: bool = False
-    focus_sessions_completed: int = 0
 
     @property
     def accuracy(self) -> float:
@@ -62,7 +62,6 @@ class Quest:
     metric: str
     progress: int = 0
     reward_growth: int = 0
-    reward_currency: int = 0
     completed: bool = False
 
 
@@ -77,39 +76,6 @@ class Achievement:
 
 
 @dataclass
-class FocusSession:
-    active: bool = False
-    started_at: Optional[str] = None
-    duration_minutes: int = 25
-    deep_work_streak: int = 0
-
-
-@dataclass
-class ExamMode:
-    enabled: bool = False
-    exam_date: Optional[str] = None
-    target_deck_ids: List[int] = field(default_factory=list)
-    focus_species: str = "bonsai"
-
-
-@dataclass
-class SessionSummary:
-    day: str
-    summary: str
-    quality_score: float
-    growth: int
-
-
-@dataclass
-class Snapshot:
-    day: str
-    streak_days: int
-    health_index: float
-    total_reviews: int
-    plant_stages: Dict[str, str]
-
-
-@dataclass
 class MilestoneReward:
     review_count: int
     offered_species: List[str] = field(default_factory=list)
@@ -117,13 +83,11 @@ class MilestoneReward:
 
 @dataclass
 class GardenState:
-    version: int = 6
+    version: int = 7
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
     total_wrong: int = 0
-    total_focus_sessions: int = 0
-    currency: int = 0
     unlocked_slots: int = 2
     selected_background: str = "default"
     selected_weather: str = "sunny"
@@ -132,15 +96,12 @@ class GardenState:
     daily_quests: List[Quest] = field(default_factory=list)
     quest_history: List[str] = field(default_factory=list)
     daily_stats: DailyStats = field(default_factory=DailyStats)
-    journal: Dict[str, str] = field(default_factory=dict)
     inventory: Dict[str, List[str]] = field(default_factory=lambda: {
         "plants": ["bonsai", "rose", "ivy", "fern"],
         "pots": ["ceramic_minimal"],
         "backgrounds": ["default"],
         "decorations": ["lantern"],
         "weather": ["sunny"],
-        "sounds": [],
-        "skins": [],
     })
     equipped: Dict[str, str] = field(default_factory=lambda: {
         "pot": "ceramic_minimal",
@@ -148,389 +109,293 @@ class GardenState:
         "decoration": "lantern",
         "weather": "sunny",
     })
-    purchased_items: List[str] = field(default_factory=list)
-    streak_freeze_tokens: int = 1
-    recovery_mode: bool = False
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     focus_plant_id: Optional[str] = None
     pending_milestone_reward: Optional[MilestoneReward] = None
-    deck_plant_map: Dict[str, str] = field(default_factory=dict)
-    deck_difficulty_map: Dict[str, float] = field(default_factory=dict)
-    gardener_name: str = "Gardener"
-    garden_mode: str = "unified"
     retrospective_last_revlog_id: int = 0
-    weekly_event_id: str = ""
-    weekly_event_applied_for_day: str = ""
-    mastery_tree: Dict[str, int] = field(default_factory=lambda: {
-        "consistency": 0,
-        "accuracy": 0,
-        "volume": 0,
-        "recovery": 0,
-    })
-    rare_event_log: List[str] = field(default_factory=list)
-    focus_session: FocusSession = field(default_factory=FocusSession)
-    exam_mode: ExamMode = field(default_factory=ExamMode)
-    snapshots: List[Snapshot] = field(default_factory=list)
-    recent_summaries: List[SessionSummary] = field(default_factory=list)
-    passive_reward_days: List[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "version": self.version,
             "streak_days": self.streak_days,
             "total_reviews": self.total_reviews,
             "total_correct": self.total_correct,
             "total_wrong": self.total_wrong,
-            "total_focus_sessions": self.total_focus_sessions,
-            "currency": self.currency,
             "unlocked_slots": self.unlocked_slots,
             "selected_background": self.selected_background,
             "selected_weather": self.selected_weather,
             "plants": [p.__dict__ for p in self.plants],
-            "achievements": {k: v.__dict__ for k, v in self.achievements.items()},
+            "achievements": {key: value.__dict__ for key, value in self.achievements.items()},
             "daily_quests": [q.__dict__ for q in self.daily_quests],
-            "quest_history": self.quest_history,
+            "quest_history": list(self.quest_history),
             "daily_stats": self.daily_stats.__dict__,
-            "journal": self.journal,
             "inventory": self.inventory,
             "equipped": self.equipped,
-            "purchased_items": self.purchased_items,
-            "streak_freeze_tokens": self.streak_freeze_tokens,
-            "recovery_mode": self.recovery_mode,
             "last_active_day": self.last_active_day,
             "focus_plant_id": self.focus_plant_id,
             "pending_milestone_reward": (
                 self.pending_milestone_reward.__dict__ if self.pending_milestone_reward else None
             ),
-            "deck_plant_map": self.deck_plant_map,
-            "deck_difficulty_map": self.deck_difficulty_map,
-            "gardener_name": self.gardener_name,
-            "garden_mode": self.garden_mode,
             "retrospective_last_revlog_id": self.retrospective_last_revlog_id,
-            "weekly_event_id": self.weekly_event_id,
-            "weekly_event_applied_for_day": self.weekly_event_applied_for_day,
-            "mastery_tree": self.mastery_tree,
-            "rare_event_log": self.rare_event_log,
-            "focus_session": self.focus_session.__dict__,
-            "exam_mode": {
-                "enabled": self.exam_mode.enabled,
-                "exam_date": self.exam_mode.exam_date,
-                "target_deck_ids": self.exam_mode.target_deck_ids,
-                "focus_species": self.exam_mode.focus_species,
-            },
-            "snapshots": [s.__dict__ for s in self.snapshots],
-            "recent_summaries": [s.__dict__ for s in self.recent_summaries],
-            "passive_reward_days": self.passive_reward_days,
         }
 
     @staticmethod
-    def from_dict(data: dict) -> "GardenState":
+    def from_dict(data: Any) -> "GardenState":
         if not isinstance(data, dict):
             logger.error("Garden state contract mismatch at root: expected object, got %s", type(data).__name__)
             return GardenState()
-
         issues: list[str] = []
-        payload = _sanitize_garden_state_payload(data, issues)
-        if issues:
-            logger.error(
-                "Garden state contract mismatches (%s): %s",
-                len(issues),
-                "; ".join(issues),
-            )
-
         state = GardenState()
-        for key in [
-            "version", "streak_days", "total_reviews", "total_correct", "total_wrong", "total_focus_sessions",
-            "currency", "unlocked_slots", "selected_background", "selected_weather", "journal", "inventory",
-            "equipped", "purchased_items", "streak_freeze_tokens", "recovery_mode", "last_active_day",
-            "focus_plant_id", "deck_plant_map", "deck_difficulty_map", "gardener_name", "garden_mode",
-            "retrospective_last_revlog_id", "weekly_event_id",
-            "weekly_event_applied_for_day", "mastery_tree", "rare_event_log", "quest_history", "passive_reward_days",
-        ]:
-            if key in payload:
-                setattr(state, key, payload[key])
-        state.plants = [Plant(**p) for p in payload.get("plants", [])]
-        state.achievements = {k: Achievement(**v) for k, v in payload.get("achievements", {}).items()}
-        state.daily_quests = [Quest(**q) for q in payload.get("daily_quests", []) if isinstance(q, dict)]
-        if "daily_stats" in payload and isinstance(payload["daily_stats"], dict):
-            state.daily_stats = DailyStats(**payload["daily_stats"])
-        if isinstance(payload.get("focus_session"), dict):
-            state.focus_session = FocusSession(**payload["focus_session"])
-        if isinstance(payload.get("exam_mode"), dict):
-            state.exam_mode = ExamMode(**payload["exam_mode"])
-        if isinstance(payload.get("pending_milestone_reward"), dict):
-            state.pending_milestone_reward = MilestoneReward(**payload["pending_milestone_reward"])
-        state.snapshots = [Snapshot(**s) for s in payload.get("snapshots", []) if isinstance(s, dict)]
-        state.recent_summaries = [SessionSummary(**s) for s in payload.get("recent_summaries", []) if isinstance(s, dict)]
+        state.streak_days = _nonnegative_int(data.get("streak_days"), 0, "streak_days", issues)
+        state.total_reviews = _nonnegative_int(data.get("total_reviews"), 0, "total_reviews", issues)
+        state.total_correct = min(
+            state.total_reviews,
+            _nonnegative_int(data.get("total_correct"), 0, "total_correct", issues),
+        )
+        state.total_wrong = min(
+            max(0, state.total_reviews - state.total_correct),
+            _nonnegative_int(data.get("total_wrong"), 0, "total_wrong", issues),
+        )
+        state.selected_background = _string(data.get("selected_background"), "default", "selected_background", issues)
+        weather = _string(data.get("selected_weather"), "sunny", "selected_weather", issues)
+        if weather not in WEATHER_TYPES:
+            issues.append(f"selected_weather: unexpected value {weather!r}")
+            weather = "sunny"
+        state.selected_weather = weather
+        state.daily_stats = _daily_stats(data.get("daily_stats"), issues)
+        state.plants = _plants(data.get("plants"), issues)
+        requested_slots = _nonnegative_int(data.get("unlocked_slots"), 2, "unlocked_slots", issues)
+        occupied_slots = max((plant.slot_index + 1 for plant in state.plants), default=0)
+        coherent_slots = min(MAX_GARDEN_SLOTS, max(2, occupied_slots, len(state.plants)))
+        state.unlocked_slots = coherent_slots
+        if requested_slots != coherent_slots:
+            issues.append(f"unlocked_slots: repaired {requested_slots} to {coherent_slots}")
+        state.achievements = _achievements(data.get("achievements"), issues)
+        state.daily_quests = _quests(data.get("daily_quests"), issues)
+        state.quest_history = _string_list(data.get("quest_history"), "quest_history", issues)
+        state.inventory = _inventory(data.get("inventory"), state.inventory, issues)
+        state.equipped = _equipped(data.get("equipped"), state.equipped, issues)
+        state.last_active_day = _iso_date(data.get("last_active_day"), date.today().isoformat(), "last_active_day", issues)
+        state.retrospective_last_revlog_id = _nonnegative_int(
+            data.get("retrospective_last_revlog_id"), 0, "retrospective_last_revlog_id", issues
+        )
+        plant_ids = {plant.plant_id for plant in state.plants}
+        focus = data.get("focus_plant_id")
+        state.focus_plant_id = focus if isinstance(focus, str) and focus in plant_ids else None
+        if state.focus_plant_id is None and state.plants:
+            state.focus_plant_id = min(state.plants, key=lambda plant: (plant.slot_index, plant.plant_id)).plant_id
+            if focus not in (None, state.focus_plant_id):
+                issues.append("focus_plant_id: repaired to the first valid plant")
+        state.pending_milestone_reward = _milestone(data.get("pending_milestone_reward"), issues)
+        if issues:
+            logger.error("Garden state contract mismatches (%s): %s", len(issues), "; ".join(issues))
         return state
 
 
-def _is_iso_date(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    try:
-        date.fromisoformat(value)
-    except ValueError:
-        return False
-    return True
+def _nonnegative_int(value: Any, default: int, label: str, issues: list[str]) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        if value is not None:
+            issues.append(f"{label}: expected int, got {type(value).__name__}")
+        return default
+    return max(0, value)
 
 
-def _expect_type(payload: dict, key: str, expected_type: Any, issues: list[str], *, allow_none: bool = False) -> Any:
-    value = payload.get(key)
-    if value is None and allow_none:
-        return value
-    if not isinstance(value, expected_type):
-        issues.append(f"{key}: expected {getattr(expected_type, '__name__', expected_type)}, got {type(value).__name__}")
-        return None
+def _number(value: Any, default: float, low: float, high: float, label: str, issues: list[str]) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if value is not None:
+            issues.append(f"{label}: expected number, got {type(value).__name__}")
+        return default
+    return max(low, min(high, float(value)))
+
+
+def _string(value: Any, default: str, label: str, issues: list[str]) -> str:
+    if not isinstance(value, str) or not value:
+        if value is not None:
+            issues.append(f"{label}: expected non-empty string")
+        return default
     return value
 
 
-def _sanitize_garden_state_payload(data: dict, issues: list[str]) -> dict:
-    defaults = GardenState().to_dict()
-    sanitized: dict[str, Any] = dict(defaults)
+def _iso_date(value: Any, default: str, label: str, issues: list[str]) -> str:
+    if isinstance(value, str):
+        try:
+            date.fromisoformat(value)
+            return value
+        except ValueError:
+            pass
+    if value is not None:
+        issues.append(f"{label}: expected ISO date string YYYY-MM-DD")
+    return default
 
-    scalar_types = {
-        "version": int,
-        "streak_days": int,
-        "total_reviews": int,
-        "total_correct": int,
-        "total_wrong": int,
-        "total_focus_sessions": int,
-        "currency": int,
-        "unlocked_slots": int,
-        "selected_background": str,
-        "selected_weather": str,
-        "streak_freeze_tokens": int,
-        "recovery_mode": bool,
-        "last_active_day": str,
-        "focus_plant_id": str,
-        "gardener_name": str,
-        "garden_mode": str,
-        "retrospective_last_revlog_id": int,
-        "weekly_event_id": str,
-        "weekly_event_applied_for_day": str,
-    }
 
-    for key, expected in scalar_types.items():
-        if key not in data:
-            continue
-        if data[key] is None and key == "focus_plant_id":
-            sanitized[key] = None
-            continue
-        if isinstance(data[key], expected):
-            sanitized[key] = data[key]
-        else:
-            issues.append(f"{key}: expected {expected.__name__}, got {type(data[key]).__name__}")
-
-    if sanitized["garden_mode"] not in GARDEN_MODES:
-        issues.append(f"garden_mode: unexpected value '{sanitized['garden_mode']}'")
-        sanitized["garden_mode"] = defaults["garden_mode"]
-
-    if sanitized["selected_weather"] not in WEATHER_TYPES:
-        issues.append(f"selected_weather: unexpected value '{sanitized['selected_weather']}'")
-        sanitized["selected_weather"] = defaults["selected_weather"]
-
-    for date_field in ("last_active_day", "weekly_event_applied_for_day"):
-        value = sanitized.get(date_field)
-        if value and not _is_iso_date(value):
-            issues.append(f"{date_field}: expected ISO date string YYYY-MM-DD, got {value!r}")
-            sanitized[date_field] = defaults[date_field]
-
-    # object/list sections used by UI
-    for dict_key in ("journal", "inventory", "equipped", "deck_plant_map", "deck_difficulty_map", "mastery_tree", "achievements"):
-        if dict_key in data and isinstance(data[dict_key], dict):
-            sanitized[dict_key] = data[dict_key]
-        elif dict_key in data:
-            issues.append(f"{dict_key}: expected object, got {type(data[dict_key]).__name__}")
-
-    for list_key in ("purchased_items", "quest_history", "rare_event_log", "passive_reward_days", "plants", "daily_quests", "snapshots", "recent_summaries"):
-        if list_key in data and isinstance(data[list_key], list):
-            sanitized[list_key] = data[list_key]
-        elif list_key in data:
-            issues.append(f"{list_key}: expected list, got {type(data[list_key]).__name__}")
-
-    if "daily_stats" in data:
-        if not isinstance(data["daily_stats"], dict):
-            issues.append(f"daily_stats: expected object, got {type(data['daily_stats']).__name__}")
-        else:
-            ds = dict(defaults["daily_stats"])
-            raw_ds = data["daily_stats"]
-            for key, expected in {
-                "day": str,
-                "reviewed": int,
-                "correct": int,
-                "wrong": int,
-                "new_count": int,
-                "learning_count": int,
-                "review_count": int,
-                "difficult_count": int,
-                "recovered_lapses": int,
-                "growth_earned": int,
-                "completed_due_cards": bool,
-                "focus_sessions_completed": int,
-            }.items():
-                if key not in raw_ds:
-                    issues.append(f"daily_stats.{key}: required field missing")
-                    continue
-                if isinstance(raw_ds[key], expected):
-                    ds[key] = raw_ds[key]
-                else:
-                    issues.append(f"daily_stats.{key}: expected {expected.__name__}, got {type(raw_ds[key]).__name__}")
-            if ds["day"] and not _is_iso_date(ds["day"]):
-                issues.append(f"daily_stats.day: expected ISO date string YYYY-MM-DD, got {ds['day']!r}")
-                ds["day"] = defaults["daily_stats"]["day"]
-            sanitized["daily_stats"] = ds
-
-    if "focus_session" in data:
-        if not isinstance(data["focus_session"], dict):
-            issues.append(f"focus_session: expected object, got {type(data['focus_session']).__name__}")
-        else:
-            raw = data["focus_session"]
-            clean = dict(defaults["focus_session"])
-            active = _expect_type(raw, "active", bool, issues)
-            duration = _expect_type(raw, "duration_minutes", int, issues)
-            streak = _expect_type(raw, "deep_work_streak", int, issues)
-            started_at = raw.get("started_at")
-            if started_at is not None and not isinstance(started_at, str):
-                issues.append(f"focus_session.started_at: expected str|null, got {type(started_at).__name__}")
-                started_at = None
-            if active is not None:
-                clean["active"] = active
-            if duration is not None:
-                clean["duration_minutes"] = duration
-            if streak is not None:
-                clean["deep_work_streak"] = streak
-            clean["started_at"] = started_at
-            sanitized["focus_session"] = clean
-
-    if "exam_mode" in data:
-        if not isinstance(data["exam_mode"], dict):
-            issues.append(f"exam_mode: expected object, got {type(data['exam_mode']).__name__}")
-        else:
-            raw = data["exam_mode"]
-            clean = dict(defaults["exam_mode"])
-            enabled = _expect_type(raw, "enabled", bool, issues)
-            if enabled is not None:
-                clean["enabled"] = enabled
-            exam_date = raw.get("exam_date")
-            if exam_date is not None:
-                if not isinstance(exam_date, str):
-                    issues.append(f"exam_mode.exam_date: expected str|null, got {type(exam_date).__name__}")
-                    exam_date = None
-                elif not _is_iso_date(exam_date):
-                    issues.append(f"exam_mode.exam_date: malformed date {exam_date!r}")
-                    exam_date = None
-            clean["exam_date"] = exam_date
-
-            target_ids = raw.get("target_deck_ids", [])
-            if not isinstance(target_ids, list) or not all(isinstance(i, int) for i in target_ids):
-                issues.append("exam_mode.target_deck_ids: expected list[int]")
-                target_ids = []
-            clean["target_deck_ids"] = target_ids
-
-            focus_species = raw.get("focus_species", clean["focus_species"])
-            if isinstance(focus_species, str):
-                clean["focus_species"] = focus_species
-            else:
-                issues.append(f"exam_mode.focus_species: expected str, got {type(focus_species).__name__}")
-            sanitized["exam_mode"] = clean
-
-    if "pending_milestone_reward" in data:
-        raw = data["pending_milestone_reward"]
-        if raw is None:
-            sanitized["pending_milestone_reward"] = None
-        elif not isinstance(raw, dict):
-            issues.append(
-                "pending_milestone_reward: expected object|null, "
-                f"got {type(raw).__name__}"
-            )
-            sanitized["pending_milestone_reward"] = None
-        else:
-            review_count = raw.get("review_count")
-            offered = raw.get("offered_species")
-            if not isinstance(review_count, int) or review_count < 0:
-                issues.append("pending_milestone_reward.review_count: expected non-negative int")
-                sanitized["pending_milestone_reward"] = None
-            elif not isinstance(offered, list) or not all(
-                isinstance(species, str) and species for species in offered
-            ):
-                issues.append("pending_milestone_reward.offered_species: expected list[str]")
-                sanitized["pending_milestone_reward"] = None
-            else:
-                sanitized["pending_milestone_reward"] = {
-                    "review_count": review_count,
-                    "offered_species": list(dict.fromkeys(offered))[:3],
-                }
-
-    cleaned_plants = []
-    for idx, plant in enumerate(sanitized.get("plants", [])):
-        if not isinstance(plant, dict):
-            issues.append(f"plants[{idx}]: expected object, got {type(plant).__name__}")
-            continue
-        required = {
-            "plant_id": str,
-            "species": str,
-            "name": str,
-            "slot_index": int,
-        }
-        optional = {
-            "growth_points": int,
-            "vitality": (int, float),
-            "rare_variant": bool,
-            "assigned_deck_id": (int, type(None)),
-            "personality": str,
-        }
-        valid = True
-        for key, kind in required.items():
-            if key not in plant:
-                issues.append(f"plants[{idx}].{key}: required field missing")
-                valid = False
-            elif not isinstance(plant[key], kind):
-                issues.append(f"plants[{idx}].{key}: expected {kind.__name__}, got {type(plant[key]).__name__}")
-                valid = False
-        if not valid:
-            continue
-        normalized = {
-            "plant_id": plant["plant_id"],
-            "species": plant["species"],
-            "name": plant["name"],
-            "slot_index": plant["slot_index"],
-            "growth_points": 0,
-            "vitality": 1.0,
-            "rare_variant": False,
-            "assigned_deck_id": None,
-            "personality": "balanced",
-        }
-        for key, kind in optional.items():
-            if key in plant:
-                if isinstance(plant[key], kind):
-                    normalized[key] = plant[key]
-                else:
-                    issues.append(f"plants[{idx}].{key}: expected {kind}, got {type(plant[key]).__name__}")
-        normalized["growth_points"] = max(0, int(normalized["growth_points"]))
-        normalized["slot_index"] = max(0, int(normalized["slot_index"]))
-        normalized["vitality"] = max(0.0, min(1.0, float(normalized["vitality"])))
-        cleaned_plants.append(normalized)
-    sanitized["plants"] = cleaned_plants
-
+def _daily_stats(value: Any, issues: list[str]) -> DailyStats:
+    result = DailyStats()
+    if not isinstance(value, dict):
+        if value is not None:
+            issues.append("daily_stats: expected object")
+        return result
+    result.day = _iso_date(value.get("day"), result.day, "daily_stats.day", issues)
     for key in (
-        "streak_days", "total_reviews", "total_correct", "total_wrong",
-        "total_focus_sessions", "currency", "unlocked_slots",
-        "streak_freeze_tokens", "retrospective_last_revlog_id",
+        "reviewed", "correct", "wrong", "new_count", "learning_count", "review_count",
+        "difficult_count", "recovered_lapses", "growth_earned",
     ):
-        sanitized[key] = max(0, int(sanitized[key]))
+        setattr(result, key, _nonnegative_int(value.get(key), 0, f"daily_stats.{key}", issues))
+    result.correct = min(result.correct, result.reviewed)
+    result.wrong = min(result.wrong, max(0, result.reviewed - result.correct))
+    completed = value.get("completed_due_cards", False)
+    result.completed_due_cards = completed if isinstance(completed, bool) else False
+    return result
 
-    stats = sanitized["daily_stats"]
-    for key in (
-        "reviewed", "correct", "wrong", "new_count", "learning_count",
-        "review_count", "difficult_count", "recovered_lapses",
-        "growth_earned", "focus_sessions_completed",
-    ):
-        stats[key] = max(0, int(stats[key]))
-    stats["correct"] = min(stats["correct"], stats["reviewed"])
-    stats["wrong"] = min(stats["wrong"], max(0, stats["reviewed"] - stats["correct"]))
 
-    return sanitized
+def _plants(value: Any, issues: list[str]) -> list[Plant]:
+    if not isinstance(value, list):
+        if value is not None:
+            issues.append("plants: expected list")
+        return []
+    result: list[Plant] = []
+    used_ids: set[str] = set()
+    used_slots: set[int] = set()
+    for index, raw in enumerate(value[:MAX_GARDEN_SLOTS]):
+        if not isinstance(raw, dict):
+            issues.append(f"plants[{index}]: expected object")
+            continue
+        species = raw.get("species")
+        name = raw.get("name")
+        if not isinstance(species, str) or not species or not isinstance(name, str) or not name:
+            issues.append(f"plants[{index}]: missing valid species or name")
+            continue
+        if species not in PLANT_SPECIES:
+            issues.append(f"plants[{index}].species: unsupported value {species!r}")
+            continue
+        raw_id = raw.get("plant_id")
+        plant_id = raw_id if isinstance(raw_id, str) and raw_id and raw_id not in used_ids else ""
+        if not plant_id:
+            seed = index + 1
+            plant_id = f"plant_{seed}"
+            while plant_id in used_ids:
+                seed += 1
+                plant_id = f"plant_{seed}"
+            issues.append(f"plants[{index}].plant_id: repaired duplicate or invalid value")
+        raw_slot = raw.get("slot_index")
+        slot = raw_slot if isinstance(raw_slot, int) and not isinstance(raw_slot, bool) else -1
+        if slot < 0 or slot >= MAX_GARDEN_SLOTS or slot in used_slots:
+            slot = next((candidate for candidate in range(MAX_GARDEN_SLOTS) if candidate not in used_slots), -1)
+            issues.append(f"plants[{index}].slot_index: repaired duplicate or invalid value")
+        if slot < 0:
+            break
+        used_ids.add(plant_id)
+        used_slots.add(slot)
+        result.append(Plant(
+            plant_id=plant_id,
+            species=species,
+            name=name,
+            slot_index=slot,
+            growth_points=_nonnegative_int(raw.get("growth_points"), 0, f"plants[{index}].growth_points", issues),
+            vitality=_number(raw.get("vitality"), 1.0, 0.0, 1.0, f"plants[{index}].vitality", issues),
+            rare_variant=raw.get("rare_variant", False) if isinstance(raw.get("rare_variant", False), bool) else False,
+            personality=raw.get("personality", "balanced") if isinstance(raw.get("personality", "balanced"), str) else "balanced",
+        ))
+    return sorted(result, key=lambda plant: (plant.slot_index, plant.plant_id))
+
+
+def _quests(value: Any, issues: list[str]) -> list[Quest]:
+    if not isinstance(value, list):
+        return []
+    result = []
+    for index, raw in enumerate(value[:3]):
+        if not isinstance(raw, dict):
+            issues.append(f"daily_quests[{index}]: expected object")
+            continue
+        required = (raw.get("quest_id"), raw.get("description"), raw.get("metric"))
+        if not all(isinstance(item, str) and item for item in required):
+            issues.append(f"daily_quests[{index}]: missing required strings")
+            continue
+        if required[2] not in {"reviewed", "accuracy", "lr_total", "difficult", "recoveries", "growth"}:
+            issues.append(f"daily_quests[{index}].metric: unsupported value {required[2]!r}")
+            continue
+        result.append(Quest(
+            quest_id=required[0],
+            description=required[1],
+            target=max(1, _nonnegative_int(raw.get("target"), 1, f"daily_quests[{index}].target", issues)),
+            metric=required[2],
+            progress=_nonnegative_int(raw.get("progress"), 0, f"daily_quests[{index}].progress", issues),
+            reward_growth=_nonnegative_int(raw.get("reward_growth"), 0, f"daily_quests[{index}].reward_growth", issues),
+            completed=raw.get("completed", False) if isinstance(raw.get("completed", False), bool) else False,
+        ))
+    return result
+
+
+def _achievements(value: Any, issues: list[str]) -> dict[str, Achievement]:
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key, raw in value.items():
+        if not isinstance(key, str) or not isinstance(raw, dict):
+            continue
+        name, description = raw.get("name"), raw.get("description")
+        if not isinstance(name, str) or not isinstance(description, str):
+            issues.append(f"achievements.{key}: invalid record")
+            continue
+        result[key] = Achievement(
+            achievement_id=key,
+            name=name,
+            description=description,
+            unlocked=raw.get("unlocked", False) if isinstance(raw.get("unlocked", False), bool) else False,
+            progress=_number(raw.get("progress"), 0.0, 0.0, 1.0, f"achievements.{key}.progress", issues),
+            unlocked_at=raw.get("unlocked_at") if isinstance(raw.get("unlocked_at"), str) else None,
+        )
+    return result
+
+
+def _milestone(value: Any, issues: list[str]) -> Optional[MilestoneReward]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        issues.append("pending_milestone_reward: expected object or null")
+        return None
+    review_count = value.get("review_count")
+    offered = value.get("offered_species")
+    if isinstance(review_count, bool) or not isinstance(review_count, int) or review_count < 0:
+        issues.append("pending_milestone_reward.review_count: expected non-negative int")
+        return None
+    if not isinstance(offered, list) or not all(isinstance(item, str) and item for item in offered):
+        issues.append("pending_milestone_reward.offered_species: expected list[str]")
+        return None
+    return MilestoneReward(review_count=review_count, offered_species=list(dict.fromkeys(offered))[:3])
+
+
+def _string_list(value: Any, label: str, issues: list[str]) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append(f"{label}: expected list")
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return default
+    result = {key: list(items) for key, items in default.items()}
+    for key in result:
+        if key in value:
+            if isinstance(value[key], list):
+                result[key] = list(dict.fromkeys(item for item in value[key] if isinstance(item, str) and item))
+            else:
+                issues.append(f"inventory.{key}: expected list")
+    return result
+
+
+def _equipped(value: Any, default: dict[str, str], issues: list[str]) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return default
+    result = dict(default)
+    for key in result:
+        if key in value and isinstance(value[key], str) and value[key]:
+            result[key] = value[key]
+        elif key in value:
+            issues.append(f"equipped.{key}: expected non-empty string")
+    return result
 
 
 def iso_now() -> str:

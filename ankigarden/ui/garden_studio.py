@@ -9,6 +9,7 @@ from aqt.qt import (
     QFrame,
     QHBoxLayout,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
     Qt,
@@ -25,6 +26,8 @@ STUDIO_TEXT = {
     "growth_stage_label": "Preview growth stage",
     "animation_label": "Motion amount",
     "particle_label": "Weather detail",
+    "daily_goal_label": "Daily growth goal",
+    "home_widget_label": "Show garden on home screens",
 }
 
 
@@ -89,6 +92,14 @@ class GardenStudioWidget(QWidget):
         )
         self.animations_enabled.toggled.connect(self._apply_preview)
 
+        self.daily_goal = QSpinBox()
+        self.daily_goal.setRange(10, 2000)
+        self.daily_goal.setSingleStep(10)
+        self.daily_goal.setValue(int(self.config.value("daily_goal", 140)))
+
+        self.show_home_widget = QCheckBox()
+        self.show_home_widget.setChecked(bool(self.config.value("show_home_widget", True)))
+
         self.weather_combo = QComboBox()
         for weather in ["breeze", "cloudy", "gentle_rain", "fireflies", "sunny"]:
             self.weather_combo.addItem(weather.replace("_", " ").title(), weather)
@@ -113,6 +124,8 @@ class GardenStudioWidget(QWidget):
         form.addRow(STUDIO_TEXT["theme_label"], self.theme_combo)
         form.addRow(STUDIO_TEXT["asset_quality_label"], self.asset_quality_combo)
         form.addRow(STUDIO_TEXT["animations_label"], self.animations_enabled)
+        form.addRow(STUDIO_TEXT["daily_goal_label"], self.daily_goal)
+        form.addRow(STUDIO_TEXT["home_widget_label"], self.show_home_widget)
         form.addRow(STUDIO_TEXT["weather_label"], self.weather_combo)
         form.addRow(STUDIO_TEXT["growth_stage_label"], self.growth_stage_combo)
         form.addRow(STUDIO_TEXT["animation_label"], self.anim_slider)
@@ -185,6 +198,8 @@ class GardenStudioWidget(QWidget):
             "visual_theme": self._normalize_theme(str(self.theme_combo.currentData())),
             "enable_animations": self.animations_enabled.isChecked(),
             "reduced_motion": not self.animations_enabled.isChecked(),
+            "daily_goal": self.daily_goal.value(),
+            "show_home_widget": self.show_home_widget.isChecked(),
             "assets": {
                 "quality_preference": quality,
             },

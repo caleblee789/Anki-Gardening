@@ -166,6 +166,18 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
     return sorted(build(scale), key=lambda p: (p.depth, p.slot_index))
 
 
+def slot_layout(width: float, height: float, slot_count: int,
+                planting_zone: dict[str, Any] | None = None) -> list[PlantPlacement]:
+    """Return the stable composition-safe positions for unlocked garden slots."""
+    count = max(0, min(6, int(slot_count)))
+    return plant_layout(
+        width,
+        height,
+        [{"slot_index": index} for index in range(count)],
+        planting_zone,
+    )
+
+
 def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: float,
                     card_width: float = 252.0, card_height: float = 184.0,
                     obstacles: Iterable[Rect] = (), planting_top: float | None = None) -> tuple[float, float, float, float]:
@@ -200,19 +212,61 @@ def hit_test(layouts: list[PlantPlacement], point_x: float, point_y: float) -> i
 
 class PlantInteractionState:
     def __init__(self) -> None:
-        self.hovered_id: str | None = None; self.pinned_id: str | None = None; self.focused_index = -1
+        self.hovered_id: str | None = None
+        self.pinned_id: str | None = None
+        self.focused_index = -1
+        self.dragged_id: str | None = None
+        self.drag_origin_slot: int | None = None
+        self.destination_slot: int | None = None
+        self.move_mode = False
     @property
     def active_id(self) -> str | None: return self.pinned_id or self.hovered_id
     def reconcile(self, plant_ids: list[str]) -> None:
         valid = set(plant_ids)
         if self.hovered_id not in valid: self.hovered_id = None
         if self.pinned_id not in valid: self.pinned_id = None
+        if self.dragged_id not in valid: self.cancel_placement()
         self.focused_index = -1 if not plant_ids else min(self.focused_index, len(plant_ids) - 1)
     def hover(self, plant_id: str | None) -> None: self.hovered_id = plant_id
     def toggle_pin(self, plant_id: str | None) -> None:
         self.pinned_id = None if plant_id is None or self.pinned_id == plant_id else plant_id
         if plant_id is not None: self.hovered_id = plant_id
     def dismiss(self) -> None: self.pinned_id = self.hovered_id = None
+    @property
+    def placing(self) -> bool:
+        return self.dragged_id is not None or self.move_mode
+    def begin_placement(self, plant_id: str, origin_slot: int, valid_slots: list[int], *, keyboard: bool) -> bool:
+        if not plant_id or origin_slot not in valid_slots:
+            return False
+        self.dragged_id = plant_id
+        self.drag_origin_slot = origin_slot
+        self.destination_slot = origin_slot
+        self.move_mode = keyboard
+        self.pinned_id = plant_id
+        return True
+    def cycle_destination(self, valid_slots: list[int], direction: int) -> int | None:
+        if not valid_slots or not self.placing:
+            return None
+        current = self.destination_slot
+        index = valid_slots.index(current) if current in valid_slots else 0
+        self.destination_slot = valid_slots[(index + direction) % len(valid_slots)]
+        return self.destination_slot
+    def choose_destination(self, slot_index: int, valid_slots: list[int]) -> bool:
+        if not self.placing or slot_index not in valid_slots:
+            return False
+        self.destination_slot = slot_index
+        return True
+    def cancel_placement(self) -> None:
+        self.dragged_id = None
+        self.drag_origin_slot = None
+        self.destination_slot = None
+        self.move_mode = False
+    def complete_placement(self) -> tuple[str, int] | None:
+        if self.dragged_id is None or self.destination_slot is None:
+            return None
+        result = (self.dragged_id, self.destination_slot)
+        self.cancel_placement()
+        return result
     def cycle_focus(self, plant_ids: list[str], direction: int) -> str | None:
         if not plant_ids: self.focused_index = -1; return None
         self.focused_index = (0 if direction >= 0 else len(plant_ids)-1) if self.focused_index < 0 else (self.focused_index + direction) % len(plant_ids)

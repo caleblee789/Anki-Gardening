@@ -3,6 +3,7 @@
   "reduced_motion": false,
   "daily_goal": 140,
   "show_home_widget": true,
+  "plant_interaction_hint_seen": false,
   "seasonal_visuals": true,
   "visual_theme": "verdant_dusk",
   "assets": {
