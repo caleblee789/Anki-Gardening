@@ -16,6 +16,7 @@ from aqt.qt import (
 )
 
 from .scene import GardenSceneWidget
+from .plant_display import growth_display
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
@@ -165,6 +166,11 @@ class GardenStudioWidget(QWidget):
             except Exception:
                 asset_paths = {}
         preview_assets = asset_paths.get("plants", {}) if isinstance(asset_paths.get("plants"), dict) else {}
+        preview_points = {
+            "seed": 0, "sprout": 80, "young": 220,
+            "mature": 480, "flowering": 900, "rare": 1400,
+        }.get(str(self.preview["growth_stage"]), 0)
+        preview_growth = growth_display(preview_points, self.preview["growth_stage"] == "rare")
         scene_payload = {
             "weather": self.preview["weather"],
             "growth": growth,
@@ -185,6 +191,14 @@ class GardenStudioWidget(QWidget):
                     "species": species,
                     "stage": self.preview["growth_stage"],
                     "vitality": 0.95,
+                    "health_label": "Thriving",
+                    "growth_points": preview_points,
+                    "next_stage": preview_growth.next_stage,
+                    "stage_progress": preview_growth.progress,
+                    "stage_points": preview_growth.stage_points,
+                    "stage_goal": preview_growth.stage_goal,
+                    "fully_grown": preview_growth.fully_grown,
+                    "is_focus": slot_index == 0,
                     "asset": preview_assets.get(species) or (asset_paths.get("plant") if species == "rose" else None),
                 }
                 for slot_index, species in enumerate(("bonsai", "rose", "sunbloom"))

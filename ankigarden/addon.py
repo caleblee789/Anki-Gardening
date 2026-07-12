@@ -12,7 +12,7 @@ from aqt.qt import QAction
 
 from .config import ConfigManager
 from .display_telemetry import DISPLAY_TELEMETRY
-from .game import GardenGameEngine
+from .game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
 from .hooks.reviewer import ReviewerHookHandler
 from .storage import GardenStorage
 from .ui.dashboard import GardenDashboard
@@ -383,6 +383,12 @@ class AnkiGardenApp:
             # misreported as reviews completed today.
             if current_day_start_ms and int(rid) < current_day_start_ms:
                 continue
+            retrospective_kind = queue_and_lapse_from_revlog_type(qtype, ease)
+            # Manual and rescheduled revlog rows are not answered cards and must
+            # advance the cursor without producing garden progress.
+            if retrospective_kind is None:
+                continue
+            queue, lapse_count = retrospective_kind
             deck_id = None
             try:
                 card = mw.col.get_card(int(cid))
@@ -390,7 +396,7 @@ class AnkiGardenApp:
             except Exception:
                 pass
             delta_ivl = max(0, int(ivl) - max(0, int(last_ivl)))
-            difficulty = max(0.1, min(1.0, (3000 - int(factor or 2500)) / 2000))
+            difficulty = difficulty_from_factor(factor)
             if int(ease) == 1:
                 difficulty = min(1.0, difficulty + 0.15)
             payloads.append(
@@ -398,15 +404,14 @@ class AnkiGardenApp:
                     "ease": int(ease),
                     "deck_id": deck_id,
                     "difficulty": difficulty,
-                    "lapse_count": 1 if int(ease) == 1 else 0,
-                    "queue": 2 if int(qtype) in (1, 2, 3) else 0,
+                    "lapse_count": lapse_count,
+                    "queue": queue,
                     "interval_delta": delta_ivl,
                 }
             )
         gained = self.engine.apply_retrospective_reviews(payloads, latest_revlog_id=latest_id)
         if self.dashboard:
             self.dashboard.show_retrospective_feedback(len(payloads), gained)
-
 
 _app: Optional[AnkiGardenApp] = None
 

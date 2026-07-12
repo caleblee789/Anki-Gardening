@@ -6,8 +6,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pathlib import Path
 
-from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import GardenState, Plant, Quest
+from ankigarden.game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
+from ankigarden.models.state import GardenState, Plant, PlantMemory, Quest
 from ankigarden.storage import GardenStorage
 import ankigarden.game as game_module
 
@@ -70,6 +70,16 @@ def test_growth_increases_after_review():
     assert st.state.plants[0].growth_points >= before
 
 
+def test_zero_factor_uses_neutral_difficulty_for_live_and_catchup_reviews():
+    assert difficulty_from_factor(0) == difficulty_from_factor(None) == 0.25
+    assert difficulty_from_factor(2500) == 0.25
+    assert difficulty_from_factor(1000) == 1.0
+
+
+def test_learning_revlog_type_is_stable_when_card_queue_changes_after_answer():
+    assert queue_and_lapse_from_revlog_type(0, 3) == (1, 0)
+
+
 def test_daily_goal_does_not_stop_growth():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -118,6 +128,18 @@ def test_growth_combines_multiple_plant_transitions():
     assert engine.stage_transition_message(transitions).startswith("Garden milestone!")
 
 
+def test_large_growth_records_each_crossed_stage_once():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine._award_growth(500)
+    engine._award_growth(10)
+
+    assert [memory.memory_id for memory in st.state.plants[0].memories] == [
+        "stage:sprout", "stage:young", "stage:mature",
+    ]
+
+
 def test_focus_growth_preserves_total_and_favors_selected_plant():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -145,6 +167,51 @@ def test_invalid_focus_is_repaired_to_first_slot():
 
     assert engine.focus_plant().plant_id == "p1"
     assert engine.set_focus_plant("missing")[0] is False
+
+
+def test_first_focus_memory_is_deduplicated_and_rename_is_transactional():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    assert engine.set_focus_plant("p1")[0] is True
+    assert engine.set_focus_plant("p1")[0] is True
+    assert [memory.memory_id for memory in st.state.plants[0].memories] == ["focus:first"]
+    assert engine.rename_plant("p1", "  Little   Moss  ") == (True, "This plant is now named Little Moss.")
+    assert st.state.plants[0].name == "Little Moss"
+    assert engine.rename_plant("p1", " ")[0] is False
+
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+    assert engine.rename_plant("p1", "Juniper")[0] is False
+    assert st.state.plants[0].name == "Little Moss"
+
+
+def test_generated_names_avoid_duplicates_with_stable_suffixes():
+    st = FakeStorage()
+    st.state.plants = [
+        Plant("p1", "fern", "Fiddle", 0),
+        Plant("p2", "fern", "Frond", 1),
+        Plant("p3", "fern", "Clover", 2),
+        Plant("p4", "fern", "Fiddle 2", 3),
+    ]
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    assert engine._generated_name("fern") == "Fiddle 3"
+
+
+def test_focus_plant_owns_streak_and_review_memories_at_thresholds(monkeypatch):
+    st = FakeStorage()
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Briar", slot_index=1))
+    st.state.focus_plant_id = "p2"
+    st.state.streak_days = 6
+    st.state.total_reviews = 249
+    st.state.daily_stats.reviewed = 0
+    engine = GardenGameEngine(FakeConfig(), st)
+
+    engine.register_review({"queue": 2, "ease": 3})
+
+    focus_memories = {memory.memory_id for memory in st.state.plants[1].memories}
+    assert {"streak:7", "reviews:250"} <= focus_memories
+    assert st.state.plants[0].memories == []
 
 
 def test_place_plant_moves_to_empty_slot_and_persists_once():
@@ -230,6 +297,8 @@ def test_milestone_offer_is_stable_and_claim_unlocks_one_slot():
     assert ok is True
     assert st.state.unlocked_slots == 3
     assert st.state.plants[-1].species == "fern"
+    assert st.state.plants[-1].name == "Fiddle"
+    assert [memory.memory_id for memory in st.state.plants[-1].memories] == ["planted"]
     assert engine.pending_milestone() is None
     assert engine.next_milestone() == 700
 
@@ -337,7 +406,7 @@ def test_focus_save_failure_restores_previous_selection():
 
     ok, message = engine.set_focus_plant("p2")
 
-    assert ok is False and "previous choice" in message
+    assert ok is False and "previous plant" in message
     assert st.state.focus_plant_id == "p1"
 
 
@@ -402,6 +471,21 @@ def test_retrospective_batch_saves_cursor_with_progress_once():
     assert st.state.daily_stats.reviewed == 1
     assert st.state.retrospective_last_revlog_id == 88
     assert len(saves) == 1
+
+
+def test_retrospective_first_review_matches_live_growth_and_streak():
+    live_storage = FakeStorage()
+    catchup_storage = FakeStorage()
+    live_engine = GardenGameEngine(FakeConfig(), live_storage)
+    catchup_engine = GardenGameEngine(FakeConfig(), catchup_storage)
+    payload = {"ease": 3, "queue": 1, "difficulty": 0.25, "lapse_count": 0}
+
+    live_engine.register_review(payload)
+    catchup_growth = catchup_engine.apply_retrospective_reviews([payload], latest_revlog_id=88)
+
+    assert catchup_growth == live_storage.state.daily_stats.growth_earned
+    assert catchup_storage.state.streak_days == live_storage.state.streak_days == 1
+    assert catchup_storage.state.last_active_day == live_storage.state.last_active_day
 
 
 def test_reroll_asset_slot_uses_local_catalog_cycle():

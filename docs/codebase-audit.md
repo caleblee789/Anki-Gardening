@@ -27,10 +27,11 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Settings | Malformed config values could crash rendering, and `writeConfig` failure left unsaved values active in memory. | Added a typed whitelist with bounded values and persist-before-activate transactions; daily goal and home visibility are now first-class controls. | Configuration validation/rollback and home-injection tests. |
 | Review ingestion | Malformed hook values could abort the reviewer callback, and the revlog cursor was saved separately from progress. | Normalize/bound review inputs, register hooks idempotently, and save live/catch-up progress with its cursor in one transaction. | Engine failure/normalization, hook, and retrospective tests. |
 | Plant arrangement | The new move/swap work lacked full rollback, keyboard exit, and visible action-focus guarantees. | Preserve atomic move/swap/undo, cancel placement on focus traversal, let Tab leave normally, and render the selected action/destination focus. | Placement/interaction regressions plus isolated keyboard/mouse QA. |
+| Plant attachment | Plants had growth and interaction but no durable individual identity or history. | Added generated/editable names and semantic, deduplicated milestone stories opened from each plant's action card; stories use study activity only. | State, engine, rename, scene-action, package, and isolated dialog/restart QA. |
 
 ## Product focus
 
-The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, a local hand-painted scene, plant care/arrangement, and appearance customization. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are removed from the v7 state and engine contract rather than merely hidden.
+The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, local plant stories, a hand-painted scene, plant care/arrangement, and appearance customization. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are absent from the v8 state and engine contract.
 
 ## Visual coverage
 
@@ -44,9 +45,21 @@ The manifest contains the complete background, plant-stage, weather, decoration,
 
 ## 2026-07-12 release acceptance
 
+The following acceptance record predates the unreleased v8 Plant Stories reset and remains historical evidence for the underlying 2.1 core. Plant Stories require a fresh packaged acceptance pass.
+
 - Automated gates: 157 tests passed; the asset audit reported 78 backgrounds, 69 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets; compilation and `git diff --check` passed.
 - Package gates: ZIP integrity and byte-for-byte parity passed for all 196 packaged files. SHA-256: `7866c3491899829f1584da45008fdca67cd3fad58aaaba59e1dfebf8c5d5d21d`.
 - Anki 26.05 fresh-profile pass: startup completed without an add-on error after correcting generated-hook registration; one Tools action, both home-card states, immediate visibility changes, a real Anki card through the reviewer hook, focus selection, move/swap/undo, milestone claim, settings save, reduced motion, and minimum-size dashboard rendering passed.
 - Anki 26.05 interaction pass: real Qt mouse pin/nurture/drag events and keyboard move/undo, Tab exit, Escape dismissal, and visible action focus passed in the isolated dashboard.
 - Anki 26.05 migration/restart pass: seeded v6 totals, daily stats, plants, focus, quests, appearance, and review cursor migrated to v7; the untouched v6 backup remained; unsupported fields were absent; settings, home rendering, dashboard rendering, and reduced motion persisted after restart.
 - Isolation: every successful runtime pass used a separately keyed disposable base/profile with sync unused. The existing normal Anki window was never controlled.
+
+## 2026-07-12 Plant Stories release-candidate acceptance
+
+- Automated gates: 180 tests passed; compilation, the full asset audit, and `git diff --check` passed.
+- Package gates: ZIP integrity and byte-for-byte parity passed for all 196 packaged files. SHA-256: `bf38a8b403e4e4ec43d340a90da4bdaef4824b77200d9ddb0485655bb04e1d89`.
+- Anki 26.05 startup/display pass: the exact packaged artifact loaded in a separately keyed, sync-disabled disposable base/profile; one Tools action, Deck Browser and Overview cards, the responsive dashboard, appearance settings, dark presentation, and restart registration rendered without an add-on warning.
+- Plant interaction and Stories pass: mouse-opened action cards, keyboard swap and immediate undo, story artwork/timeline, inline rename, first-nurture memory, focus selection, and restart persistence passed. The first-use interaction hint dismissed and persisted after use.
+- Review/state pass: a real disposable card updated review totals, quests, streak, weather, and exact 80/20 plant growth. Seeded v7 state was retained as `garden_state.legacy.json`, reset to v8, and current-day revlog rows were replayed once without duplication.
+- Defects found and re-verified: Qt 6 tooltip events returned `QPoint` values incompatible with `QRectF.contains`, and live/catch-up review paths derived card type and zero-factor difficulty differently. Both paths now normalize Qt points and use the same authoritative revlog semantics; two catch-up learning answers earned 8 growth and the next live learning answer earned 4.
+- Isolation: the normal Anki profile was never controlled or modified.

@@ -140,9 +140,9 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     html = app._build_home_garden_html()
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-cards">Cards Today: 27' in html
-    assert 'data-testid="home-health">Garden Health: 86%' in html
-    assert 'data-testid="home-growth">Growth today: 36/240' in html
+    assert 'data-testid="home-cards">Cards today: 27' in html
+    assert 'data-testid="home-health">Garden health: 86%' in html
+    assert 'data-testid="home-growth">Study growth today: 36 of 240' in html
     assert 'data-testid="home-weather">Weather: Gentle Rain' in html
     assert 'data-testid="home-growth-bar" style="width:15%"' in html
 
@@ -151,8 +151,8 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240)
 
     before = app._build_home_garden_html()
-    assert 'Cards Today: 18' in before
-    assert 'Growth today: 36/240' in before
+    assert 'Cards today: 18' in before
+    assert 'Study growth today: 36 of 240' in before
 
     app.storage.state.daily_stats.growth_earned = 60
     app.storage.state.streak_days = 9
@@ -161,12 +161,12 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-streak">9d streak' in updated
-    assert 'data-testid="home-growth">Growth today: 60/240' in updated
+    assert 'data-testid="home-streak">9-day streak' in updated
+    assert 'data-testid="home-growth">Study growth today: 60 of 240' in updated
     assert 'data-testid="home-weather">Weather: Cloudy' in updated
 
-    assert 'data-testid="home-streak">9d streak' in refreshed
-    assert 'data-testid="home-growth">Growth today: 60/240' in refreshed
+    assert 'data-testid="home-streak">9-day streak' in refreshed
+    assert 'data-testid="home-growth">Study growth today: 60 of 240' in refreshed
     assert 'data-testid="home-weather">Weather: Cloudy' in refreshed
 
 
@@ -186,6 +186,6 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     assert overview_content.body.count('<div id="ag-home-root"') == 1
 
     for rendered in (deck_content.body, overview_content.body):
-        assert 'Cards Today: 42' in rendered
-        assert 'Garden Health: 86%' in rendered
-        assert 'Growth today: 36/210' in rendered
+        assert 'Cards today: 42' in rendered
+        assert 'Garden health: 86%' in rendered
+        assert 'Study growth today: 36 of 210' in rendered

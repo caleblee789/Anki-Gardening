@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ankigarden.models.state import GardenState
+from ankigarden.models.state import GardenState, PlantMemory
 
 
 def test_numeric_state_is_clamped_to_safe_ranges() -> None:
@@ -105,10 +105,10 @@ def test_hidden_v6_fields_are_dropped_without_affecting_core(caplog) -> None:
 
     state = GardenState.from_dict(payload)
     assert "exam_mode" not in state.to_dict()
-    assert state.version == 7
+    assert state.version == 8
 
 
-def test_v6_pending_milestone_migrates_to_v7() -> None:
+def test_old_payload_deserializes_only_when_explicitly_inspected() -> None:
     payload = _base_payload()
     payload["version"] = 6
     payload["pending_milestone_reward"] = {
@@ -118,7 +118,7 @@ def test_v6_pending_milestone_migrates_to_v7() -> None:
 
     state = GardenState.from_dict(payload)
 
-    assert state.version == 7
+    assert state.version == 8
     assert state.pending_milestone_reward is not None
     assert state.pending_milestone_reward.offered_species == ["fern", "cactus", "ivy"]
 
@@ -138,7 +138,7 @@ def test_duplicate_ids_slots_and_out_of_range_slot_count_are_repaired() -> None:
     assert {plant.slot_index for plant in state.plants} == {0, 1}
 
 
-def test_v7_serializer_omits_all_dormant_system_state() -> None:
+def test_v8_serializer_omits_all_dormant_system_state() -> None:
     payload = GardenState().to_dict()
     for key in (
         "currency", "focus_session", "exam_mode", "deck_plant_map", "deck_difficulty_map",
@@ -168,3 +168,34 @@ def test_malformed_pending_milestone_is_discarded() -> None:
     state = GardenState.from_dict(payload)
 
     assert state.pending_milestone_reward is None
+
+
+def test_plant_memories_round_trip_and_invalid_entries_are_filtered() -> None:
+    payload = _base_payload()
+    payload["plants"] = [{
+        "plant_id": "p1", "species": "rose", "name": "Briar", "slot_index": 0,
+        "planted_on": "2026-07-12", "memories": [
+            PlantMemory("planted", "planted", "2026-07-12").__dict__,
+            {"memory_id": "bad", "kind": "currency", "occurred_on": "2026-07-12"},
+            {"memory_id": "stage:sprout", "kind": "stage", "occurred_on": "2026-07-13", "new_stage": "sprout"},
+        ],
+    }]
+
+    state = GardenState.from_dict(payload)
+
+    assert state.plants[0].planted_on == "2026-07-12"
+    assert [memory.memory_id for memory in state.plants[0].memories] == ["planted", "stage:sprout"]
+    assert state.to_dict()["plants"][0]["memories"][1]["new_stage"] == "sprout"
+
+
+def test_plant_names_are_normalized_and_bounded_on_load() -> None:
+    payload = _base_payload()
+    payload["plants"] = [{
+        "plant_id": "p1", "species": "rose", "name": f"  {'Petal ' * 20}  ", "slot_index": 0,
+    }]
+
+    plant = GardenState.from_dict(payload).plants[0]
+
+    assert plant.name == plant.name.strip()
+    assert "  " not in plant.name
+    assert len(plant.name) == 40

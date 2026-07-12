@@ -6,7 +6,7 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 
 ## What it does
 
-- Gives every answered card visible growth; a chosen focus plant receives most of it while the rest keep growing.
+- Gives every answered card visible growth; the plant you nurture receives 80% while the rest share the remaining 20%.
 - Tracks a daily goal, streak, garden vitality, quests, milestones, and plant stages.
 - Adds a compact painted garden preview to Deck Browser and Overview with one clear Open Garden action.
 - Provides a responsive garden dashboard with local storybook-gouache raster art, scalable SVG UI, weather overlays, and keyboard-friendly plant interactions.
@@ -14,12 +14,14 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 - Saves the daily goal, home visibility, garden appearance, and motion preferences through Anki's configuration system.
 - Stores progress only in `user_files/`, where Anki preserves it during add-on upgrades.
 - Offers a choice of new plants at calm review milestones instead of using a shop or spendable currency.
+- Gives every plant a generated, editable name and a private milestone story built from growth, focus, streak, and review landmarks.
 
 The focused 2.1 experience intentionally does not expose or persist focus timers, exam mode, deck mapping, a shop, currency/events/mastery systems, cloud/social features, or remote image downloads.
 
 ## What's new in 2.1
 
-- Migrates version 6 garden saves to the smaller version 7 state contract while preserving reviews, plants, growth, quests, milestones, appearance, and the review-history cursor. The original save is retained as a backup.
+- Introduces the pre-release version 8 garden state; older development saves are backed up and reset before the first public release.
+- Adds local plant stories with warm, factual milestone memories and inline renaming. No deck names or card content are stored.
 - Repairs malformed plant IDs, slots, focus selection, and unlocked-space counts during load.
 - Makes settings validation transactional so invalid values or a failed Anki config write cannot partially change the active experience.
 - Hardens live and catch-up review processing so progress and its review cursor are saved together.

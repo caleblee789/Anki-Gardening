@@ -7,9 +7,11 @@ from aqt.qt import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QMessageBox,
     QProgressBar,
+    QPixmap,
     QPushButton,
     QScrollArea,
     QTabWidget,
@@ -26,10 +28,11 @@ from aqt.qt import (
 )
 from .formatters import format_integer, format_percent, format_status_label, pluralize
 from .garden_studio import GardenStudioWidget
-from .plant_display import growth_display
+from .plant_display import growth_display, plant_health_display
 from .scene import GardenSceneWidget
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..config import ConfigError
+from ..models.state import MAX_PLANT_NAME_LENGTH
 
 UI_TEXT = {
     "settings_window_title": "Anki Garden Settings",
@@ -78,11 +81,12 @@ class GardenSettingsDialog(QDialog):
         self.setMinimumSize(640, 460)
         self.resize(*self._recommended_window_size(920, 640, width_ratio=0.72, height_ratio=0.72))
         self.setStyleSheet(_button_stylesheet())
+
         root = QHBoxLayout(self)
         tabs = QTabWidget()
         root.addWidget(tabs)
 
-        self.behavior = GardenStudioWidget(config, asset_resolver=engine.resolve_preview_assets)
+        self.behavior = GardenStudioWidget(self.config, asset_resolver=self.engine.resolve_preview_assets)
         save_visuals = QPushButton("Save Garden Appearance")
         _set_button_variant(save_visuals, BUTTON_VARIANT_PRIMARY)
         save_visuals.clicked.connect(self._save_visual_settings)
@@ -137,6 +141,151 @@ class GardenSettingsDialog(QDialog):
         width = min(default_width, max(self.minimumWidth(), int(available.width() * width_ratio)))
         height = min(default_height, max(self.minimumHeight(), int(available.height() * height_ratio)))
         return width, height
+
+
+class PlantStoryDialog(QDialog):
+    def __init__(self, parent: QWidget, engine: Any, plant_id: str) -> None:
+        super().__init__(parent)
+        self.engine = engine
+        self.plant_id = plant_id
+        self.setWindowTitle("Plant story")
+        self.setMinimumSize(520, 480)
+        self.resize(620, 620)
+        self.setStyleSheet(_button_stylesheet())
+        root = QVBoxLayout(self)
+        self.name_heading = QLabel()
+        self.name_heading.setStyleSheet("font-size:22px; font-weight:800;")
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        self.summary.setStyleSheet("color:#b2c4c8;")
+        identity_row = QHBoxLayout()
+        self.artwork = QLabel()
+        self.artwork.setFixedSize(120, 120)
+        self.artwork.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.artwork.setAccessibleName("Plant artwork")
+        identity_text = QVBoxLayout()
+        identity_text.addWidget(self.name_heading)
+        identity_text.addWidget(self.summary)
+        identity_row.addWidget(self.artwork)
+        identity_row.addLayout(identity_text, 1)
+        root.addLayout(identity_row)
+
+        self.rename_row = QHBoxLayout()
+        self.name_edit = QLineEdit()
+        self.name_edit.setMaxLength(MAX_PLANT_NAME_LENGTH)
+        self.name_edit.setAccessibleName("Plant name")
+        self.save_name_btn = QPushButton("Save")
+        self.cancel_name_btn = QPushButton("Cancel")
+        self.edit_name_btn = QPushButton("Edit name")
+        _set_button_variant(self.save_name_btn, BUTTON_VARIANT_PRIMARY)
+        _set_button_variant(self.cancel_name_btn, BUTTON_VARIANT_SECONDARY)
+        _set_button_variant(self.edit_name_btn, BUTTON_VARIANT_SECONDARY)
+        self.rename_row.addWidget(self.name_edit, 1)
+        self.rename_row.addWidget(self.save_name_btn)
+        self.rename_row.addWidget(self.cancel_name_btn)
+        self.rename_row.addWidget(self.edit_name_btn)
+        root.addLayout(self.rename_row)
+        self.feedback = QLabel()
+        self.feedback.setWordWrap(True)
+        root.addWidget(self.feedback)
+
+        timeline_label = QLabel("Milestone memories")
+        timeline_label.setStyleSheet("font-size:16px; font-weight:700;")
+        root.addWidget(timeline_label)
+        self.timeline = QListWidget()
+        self.timeline.setAccessibleName("Plant milestone timeline")
+        root.addWidget(self.timeline, 1)
+        close_btn = QPushButton("Close")
+        _set_button_variant(close_btn, BUTTON_VARIANT_SECONDARY)
+        close_btn.clicked.connect(self.accept)
+        root.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
+
+        self.edit_name_btn.clicked.connect(self._begin_rename)
+        self.cancel_name_btn.clicked.connect(self._cancel_rename)
+        self.save_name_btn.clicked.connect(self._save_name)
+        self.name_edit.returnPressed.connect(self._save_name)
+        self._set_editing(False)
+        self.refresh()
+
+    def _plant(self) -> Any:
+        return self.engine.plant_story(self.plant_id)
+
+    def _set_editing(self, editing: bool) -> None:
+        self.name_edit.setVisible(editing)
+        self.save_name_btn.setVisible(editing)
+        self.cancel_name_btn.setVisible(editing)
+        self.edit_name_btn.setVisible(not editing)
+        if editing:
+            self.name_edit.setFocus()
+            self.name_edit.selectAll()
+
+    def _begin_rename(self) -> None:
+        plant = self._plant()
+        if plant is None:
+            return
+        self.name_edit.setText(plant.name)
+        self.feedback.setText("")
+        self._set_editing(True)
+
+    def _cancel_rename(self) -> None:
+        self.feedback.setText("")
+        self._set_editing(False)
+
+    def _save_name(self) -> None:
+        ok, message = self.engine.rename_plant(self.plant_id, self.name_edit.text())
+        self.feedback.setText(message)
+        if ok:
+            self._set_editing(False)
+            self.refresh()
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "refresh_all"):
+                parent.refresh_all()
+
+    @staticmethod
+    def _memory_text(memory: Any, name: str) -> str:
+        if memory.kind == "planted":
+            return f"{name} joined your garden."
+        if memory.kind == "first_focus":
+            return f"You chose to nurture {name} for the first time."
+        if memory.kind == "stage":
+            return f"{name} reached {format_status_label(memory.new_stage or 'new growth')}."
+        if memory.kind == "streak":
+            return f"{name} witnessed your {memory.value}-day study streak."
+        if memory.kind == "reviews":
+            return f"{name} witnessed your {memory.value:,}th review."
+        return "A garden milestone was reached."
+
+    def refresh(self) -> None:
+        plant = self._plant()
+        if plant is None:
+            self.name_heading.setText("Plant unavailable")
+            self.summary.setText("This plant is no longer in your garden.")
+            self.edit_name_btn.setEnabled(False)
+            self.timeline.clear()
+            return
+        self.name_heading.setText(plant.name)
+        stage = "Rare bloom" if plant.rare_variant else format_status_label(plant.growth_stage)
+        focus = " • Currently nurturing" if self.engine.state.focus_plant_id == plant.plant_id else ""
+        self.summary.setText(
+            f"{format_status_label(plant.species)} • {stage} • {plant.growth_points:,} growth points{focus}\n"
+            f"Planted {plant.planted_on}"
+        )
+        image_path = self.engine.resolve_plant_image(plant.species, plant.growth_stage, plant.rare_variant)
+        pixmap = QPixmap(str(image_path)) if image_path else QPixmap()
+        if pixmap.isNull():
+            self.artwork.setText(format_status_label(plant.species))
+        else:
+            self.artwork.setPixmap(pixmap.scaled(
+                self.artwork.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            ))
+        self.timeline.clear()
+        memories = sorted(plant.memories, key=lambda item: (item.occurred_on, item.memory_id), reverse=True)
+        if not memories:
+            item = QListWidgetItem("Its first milestone memory will appear here as it grows.")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.timeline.addItem(item)
+        for memory in memories:
+            self.timeline.addItem(f"{memory.occurred_on}  •  {self._memory_text(memory, plant.name)}")
 
 class GardenDashboard(QDialog):
     ROOT_MARGINS = (18, 18, 18, 18)
@@ -232,14 +381,19 @@ class GardenDashboard(QDialog):
         self.scene = GardenSceneWidget()
         self.scene.nurtureRequested.connect(self._nurture_plant)
         self.scene.placementRequested.connect(self._place_plant)
+        self.scene.storyRequested.connect(self._open_plant_story)
         self.scene.cardOpened.connect(self._dismiss_interaction_hint)
-        self.interaction_hint = QLabel("Click a plant to nurture or move it.")
+        self.interaction_hint = QLabel("Click a plant to nurture it, move it, or view its story.")
         self.interaction_hint.setWordWrap(True)
         self._apply_typography(self.interaction_hint, "muted-body")
         self.interaction_hint.setVisible(not bool(self.config.value("plant_interaction_hint_seen", False)))
         self.focus_note = QLabel("")
         self._apply_typography(self.focus_note, "muted-body")
         self.focus_note.setWordWrap(True)
+        self.focus_note.setToolTip(
+            "The nurtured plant gets 80% of growth earned from reviews. "
+            "The remaining 20% is shared among your other plants."
+        )
         self.placement_note = QLabel("")
         self._apply_typography(self.placement_note, "muted-body")
         self.placement_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
@@ -347,7 +501,8 @@ class GardenDashboard(QDialog):
         daily_goal = max(1, int(self.config.value("daily_goal", 140)))
         focus = self.engine.focus_plant()
         self.focus_note.setText(
-            f"Nurturing {focus.name}: 80% of new growth" if focus is not None else "Select a plant to nurture."
+            f"Nurturing {focus.name} — receives 80% of growth earned from reviews."
+            if focus is not None else "Select a plant to nurture."
         )
         self._refresh_milestone_card()
 
@@ -440,7 +595,10 @@ class GardenDashboard(QDialog):
             "next_threshold": display.next_threshold,
             "points_remaining": display.points_remaining,
             "stage_progress": display.progress,
+            "stage_points": display.stage_points,
+            "stage_goal": display.stage_goal,
             "fully_grown": display.fully_grown,
+            "health_label": plant_health_display(plant.vitality).label,
             "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
             "asset": self._resolved_asset_payload(
                 "resolve_plant_asset",
@@ -461,12 +619,23 @@ class GardenDashboard(QDialog):
         return legacy(*args) if callable(legacy) else None
 
     def _nurture_plant(self, plant_id: str) -> None:
+        if self.storage.state.focus_plant_id == plant_id:
+            self.scene.keep_card_open(
+                plant_id,
+                "Currently nurturing this plant — it receives 80% of review growth.",
+            )
+            return
         ok, message = self.engine.set_focus_plant(plant_id)
         if not ok:
             self.scene.keep_card_open(plant_id, message)
             return
         self.refresh_all()
         self.scene.keep_card_open(plant_id, message)
+
+    def _open_plant_story(self, plant_id: str) -> None:
+        dialog = PlantStoryDialog(self, self.engine, plant_id)
+        dialog.exec()
+        self.refresh_all()
 
     def _place_plant(self, plant_id: str, destination_slot: int) -> None:
         ok, message, change = self.engine.place_plant(plant_id, destination_slot)

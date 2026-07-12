@@ -356,8 +356,8 @@ def test_cards_today_uses_collection_revlog_count(monkeypatch):
 
     html = app._build_home_garden_html()
 
-    assert 'data-testid="home-cards">Cards Today: 42' in html
-    assert 'data-testid="home-cards">Cards Today: 999' not in html
+    assert 'data-testid="home-cards">Cards today: 42' in html
+    assert 'data-testid="home-cards">Cards today: 999' not in html
 
 
 def test_webview_injection_skips_bottom_bar_context(monkeypatch):
@@ -385,3 +385,14 @@ def test_main_screen_context_detection_excludes_lower_bars(monkeypatch):
     assert app._is_main_screen_context(deck_ctx) is True
     assert app._is_main_screen_context(overview_ctx) is True
     assert app._is_main_screen_context(bottom_ctx) is False
+
+
+def test_retrospective_revlog_mapping_matches_live_queue_semantics(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    game = importlib.reload(importlib.import_module("ankigarden.game"))
+
+    assert game.queue_and_lapse_from_revlog_type(0, 3) == (1, 0)
+    assert game.queue_and_lapse_from_revlog_type(1, 3) == (2, 0)
+    assert game.queue_and_lapse_from_revlog_type(2, 3) == (1, 1)
+    assert game.queue_and_lapse_from_revlog_type(3, 1) == (2, 1)
+    assert game.queue_and_lapse_from_revlog_type(4, 3) is None
