@@ -50,3 +50,26 @@ def test_manifest_mixed_formats_match_extensions_and_signatures():
             assert header[:8] == b"\x89PNG\r\n\x1a\n"
         elif fmt == "webp":
             assert header[:4] == b"RIFF" and header[8:12] == b"WEBP"
+
+
+def test_sunbloom_storybook_family_covers_every_growth_stage():
+    data = json.loads(MANIFEST.read_text())
+    rows = [
+        asset
+        for asset in data["assets"]
+        if asset.get("slot", {}).get("species") == "sunbloom"
+        and asset.get("style_family") == "storybook_gouache"
+    ]
+
+    assert {asset["slot"]["stage"] for asset in rows} == {
+        "seed",
+        "sprout",
+        "young",
+        "mature",
+        "flowering",
+        "rare",
+    }
+    assert all(asset.get("alpha") is True for asset in rows)
+    assert all(asset.get("growth_base") == "dirt_mound" for asset in rows)
+    assert all("dirt_mound" in asset.get("variants", []) for asset in rows)
+    assert all(asset.get("fallback_asset_id") for asset in rows)

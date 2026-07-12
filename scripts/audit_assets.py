@@ -48,7 +48,7 @@ def audit() -> dict[str, int]:
             raise ValueError(f"manifest dimensions are invalid: {rel}")
         counts[category] += 1
 
-    expected = {"backgrounds": 76, "decorations": 5, "plants": 57, "ui": 3, "weather": 10}
+    expected = {"backgrounds": 76, "decorations": 5, "plants": 63, "ui": 3, "weather": 10}
     if dict(counts) != expected:
         raise ValueError(f"asset coverage changed: expected {expected}, got {dict(counts)}")
     return dict(counts)

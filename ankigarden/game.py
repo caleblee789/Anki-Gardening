@@ -2,11 +2,28 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 from .asset_manager import AssetManager
 from .models.state import Achievement, GardenState, Plant, Quest, SessionSummary, Snapshot, iso_now
+
+
+@dataclass(frozen=True)
+class StageTransition:
+    plant_id: str
+    species: str
+    previous_stage: str
+    new_stage: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "plant_id": self.plant_id,
+            "species": self.species,
+            "previous_stage": self.previous_stage,
+            "new_stage": self.new_stage,
+        }
 
 
 class GardenGameEngine:
@@ -40,6 +57,29 @@ class GardenGameEngine:
         {"event_id": "community_bloom", "name": "Community Bloom", "description": "Quests grant bonus currency.", "growth_multiplier": 1.0, "quest_currency_bonus": 4, "shop_discount": 0.0, "weather_override": "fireflies"},
         {"event_id": "storm_recovery", "name": "Storm Recovery", "description": "Recovery sessions get boosted.", "growth_multiplier": 1.1, "quest_currency_bonus": 2, "shop_discount": 0.0, "weather_override": "breeze"},
     ]
+
+    def _effective_stage(self, plant: Plant) -> str:
+        return "rare" if plant.rare_variant else plant.growth_stage
+
+    def peek_stage_transitions(self) -> list[StageTransition]:
+        return list(self._pending_stage_transitions)
+
+    def consume_stage_transitions(self) -> list[StageTransition]:
+        transitions = list(self._pending_stage_transitions)
+        self._pending_stage_transitions.clear()
+        return transitions
+
+    @staticmethod
+    def stage_transition_message(transitions: list[StageTransition]) -> str:
+        if not transitions:
+            return ""
+        if len(transitions) == 1:
+            item = transitions[0]
+            return f"Your {item.species.title()} reached {item.new_stage.title()}!"
+        names = ", ".join(item.species.title() for item in transitions[:3])
+        if len(transitions) > 3:
+            names += f" and {len(transitions) - 3} more"
+        return f"Garden milestone! {names} reached new growth stages."
     RARE_EVENTS = [
         ("golden_bloom", "Golden Bloom: one random plant glows with extra growth."),
         ("rainfall_blessing", "Rainfall Blessing: vitality restoration is amplified today."),
@@ -53,6 +93,7 @@ class GardenGameEngine:
         self.config = config
         self.storage = storage
         self.state: GardenState = storage.state
+        self._pending_stage_transitions: list[StageTransition] = []
         self.assets = AssetManager(config, storage)
         self._apply_weekly_event(force=True)
         self._ensure_achievements()
@@ -198,11 +239,22 @@ class GardenGameEngine:
             return
         base, remainder = divmod(max(0, int(growth)), len(plants))
         for index, plant in enumerate(plants):
+            previous_stage = self._effective_stage(plant)
             plant.growth_points += base + (1 if index < remainder else 0)
             vitality_gain = 0.03 + (0.005 * self.state.mastery_tree.get("recovery", 0))
             plant.vitality = min(1.0, plant.vitality + vitality_gain)
             if plant.growth_stage == "flowering" and self.state.streak_days >= 10 and random.random() < 0.006:
                 plant.rare_variant = True
+            new_stage = self._effective_stage(plant)
+            if new_stage != previous_stage:
+                self._pending_stage_transitions.append(
+                    StageTransition(
+                        plant_id=plant.plant_id,
+                        species=plant.species,
+                        previous_stage=previous_stage,
+                        new_stage=new_stage,
+                    )
+                )
 
     def _ensure_achievements(self) -> None:
         defs = {

@@ -18,6 +18,7 @@ class HomeWidgetData:
     weather: str
     event: str
     plants_html: str
+    stage_transition_message: str = ""
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,15 @@ HOME_WIDGET_STYLE = """
   border-radius: 999px;
   background: linear-gradient(90deg, #55c77c, #d6f58f);
 }
+.ag-home__stage-up {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(244, 213, 138, 0.44);
+  border-radius: 8px;
+  background: rgba(117, 82, 35, 0.34);
+  color: #f4d58a;
+  font-weight: 700;
+}
 .ag-home__event {
   color: #c4d7d0;
 }
@@ -215,6 +225,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     if data.event and not data.event.startswith("No Active Event") and data.event != "N/A":
         event_html = f'<div class="ag-home__event"><div data-testid="home-event">Event: {escape(data.event)}</div></div>'
 
+    stage_up_html = ""
+    if data.stage_transition_message:
+        stage_up_html = (
+            '<div class="ag-home__stage-up" data-testid="home-stage-up">'
+            f'{escape(data.stage_transition_message)}</div>'
+        )
+
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" data-state=\"{escape(phase)}\">
   {partial_banner}
@@ -223,6 +240,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div data-testid=\"home-streak\">{format_integer(data.streak_days)}d streak</div>
   </div>
   <div class=\"ag-home__plants\"><div data-testid=\"home-plants\">{data.plants_html}</div></div>
+  {stage_up_html}
   <div class=\"ag-home__metrics\">
     <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards Today: {format_integer(data.cards_today)}</div></div>
     <div class=\"ag-home__metric\"><div data-testid=\"home-health\">Garden Health: {format_percent(data.health_ratio, places=0)}</div></div>
@@ -237,7 +255,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 """
 
 
-def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, plants_html: str, event: str) -> HomeWidgetData:
+def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, plants_html: str, event: str, stage_transition_message: str = "") -> HomeWidgetData:
     stats = state.daily_stats
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
@@ -262,4 +280,5 @@ def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio
         weather=str(state.selected_weather or "N/A"),
         event=event or "N/A",
         plants_html=plants_html,
+        stage_transition_message=stage_transition_message,
     )

@@ -5,8 +5,6 @@ from typing import Any
 from aqt.qt import (
     QDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -15,6 +13,7 @@ from aqt.qt import (
     QPushButton,
     QScrollArea,
     QTabWidget,
+    QTimer,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -25,8 +24,9 @@ from aqt.qt import (
     QSizePolicy,
     QGuiApplication,
 )
-from .formatters import format_integer, format_percent, format_points, format_status_label, pluralize
+from .formatters import format_integer, format_percent, format_status_label, pluralize
 from .garden_studio import GardenStudioWidget
+from .plant_display import growth_display
 from .scene import GardenSceneWidget
 from ..display_telemetry import DISPLAY_TELEMETRY
 
@@ -39,11 +39,9 @@ UI_TEXT = {
     "open_settings": "⚙ Open Settings",
     "hero_growth_format": "Daily growth %p%",
     "quest_progress_title": "Quest Progress",
-    "garden_roster_title": "Garden Roster",
     "no_quests": "No quest progress yet today. Review a card to start progress.",
     "no_achievements": "Achievement progress will appear as you keep studying.",
     "no_boosts": "No active inventory boosts yet.",
-    "no_roster": "No plants in your roster yet. Add reviews to grow your first companion.",
 }
 
 BUTTON_VARIANT_PRIMARY = "primary"
@@ -142,7 +140,6 @@ class GardenDashboard(QDialog):
     CHIP_PADDING = (5, 10)
     CHIP_SPACING = 8
     MID_ROW_SPACING = 12
-    ROSTER_GRID_SPACING = 12
     CARD_BG = "#18252e"
     CARD_BORDER = "#2f4652"
     APP_BG = "#101820"
@@ -230,6 +227,11 @@ class GardenDashboard(QDialog):
         h_layout.setContentsMargins(*self.CARD_PADDING)
         h_layout.setSpacing(self.CARD_SPACING)
         self.scene = GardenSceneWidget()
+        self.stage_transition_note = QLabel("")
+        self.stage_transition_note.setWordWrap(True)
+        self.stage_transition_note.setMinimumHeight(24)
+        self._apply_typography(self.stage_transition_note, "muted-body")
+        self.stage_transition_note.setStyleSheet("color:#f4d58a; font-size:14px; font-weight:700;")
         self.hero_summary = QLabel()
         self.hero_summary.setWordWrap(True)
         self.hero_summary.setMinimumHeight(48)
@@ -249,6 +251,7 @@ class GardenDashboard(QDialog):
         self._apply_typography(self.retrospective_note, "muted-body")
         self.retrospective_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
         h_layout.addWidget(self.scene)
+        h_layout.addWidget(self.stage_transition_note)
         h_layout.addWidget(self.hero_summary)
         h_layout.addWidget(self.hero_growth)
         h_layout.addWidget(self.retrospective_note)
@@ -269,25 +272,6 @@ class GardenDashboard(QDialog):
         mid_row.addWidget(self._simple_card("Milestones", self.achievement_list), 1)
         mid_row.addWidget(self._simple_card("Garden Collection", self.inventory_list), 1)
         root.addLayout(mid_row, 1)
-
-        lower = self._card_frame()
-        l_layout = QVBoxLayout(lower)
-        l_layout.setContentsMargins(*self.CARD_PADDING)
-        l_layout.setSpacing(self.CARD_SPACING)
-        self.roster_title = QLabel(UI_TEXT["garden_roster_title"])
-        self._apply_typography(self.roster_title, "section-title")
-        self.roster_grid = QGridLayout()
-        self.roster_grid.setSpacing(self.ROSTER_GRID_SPACING)
-        roster_wrap = QWidget()
-        roster_wrap.setLayout(self.roster_grid)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setMinimumHeight(210)
-        scroll.setWidget(roster_wrap)
-        l_layout.addWidget(self.roster_title)
-        l_layout.addWidget(scroll)
-        root.addWidget(lower, 2)
 
     def _card_frame(self) -> QFrame:
         frame = QFrame()
@@ -340,6 +324,12 @@ class GardenDashboard(QDialog):
         growth_pct = int(min(100, (stats.growth_earned / daily_goal) * 100))
         self.hero_growth.setValue(growth_pct)
 
+        transitions = self.engine.consume_stage_transitions()
+        transition_message = self.engine.stage_transition_message(transitions)
+        self.stage_transition_note.setText(transition_message)
+        if transition_message:
+            QTimer.singleShot(4200, lambda: self.stage_transition_note.setText(""))
+
         self.scene.set_scene(
             {
                 "weather": state.selected_weather,
@@ -356,17 +346,8 @@ class GardenDashboard(QDialog):
                     "weather": self.engine.resolve_weather_overlay(),
                     "decoration": self.engine.resolve_decoration_image(state.equipped.get("decoration", "lantern")),
                 },
-                "plants": [
-                    {
-                        "name": p.name,
-                        "species": p.species,
-                        "stage": p.growth_stage,
-                        "vitality": p.vitality,
-                        "rare_variant": p.rare_variant,
-                        "image_path": self.engine.resolve_plant_image(p.species, p.growth_stage, p.rare_variant),
-                    }
-                    for p in state.plants
-                ],
+                "stage_transitions": [transition.to_dict() for transition in transitions],
+                "plants": [self._plant_scene_payload(plant) for plant in state.plants],
             }
         )
 
@@ -402,8 +383,6 @@ class GardenDashboard(QDialog):
             )
             self._add_list_entry(self.inventory_list, UI_TEXT["no_boosts"], empty_state=True)
 
-        self._refresh_roster_cards()
-
     def show_retrospective_feedback(self, review_count: int, growth_gain: int) -> None:
         if review_count <= 0:
             self.retrospective_note.setText("")
@@ -412,47 +391,23 @@ class GardenDashboard(QDialog):
             f"✨ Applied catch-up from synced reviews: +{growth_gain} growth from {review_count} reviews."
         )
 
-    def _refresh_roster_cards(self) -> None:
-        while self.roster_grid.count():
-            item = self.roster_grid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        state = self.storage.state
-        self.roster_title.setText("Your Plants")
-        if not state.plants:
-            DISPLAY_TELEMETRY.track_empty_state(route="dashboard", view="roster_grid", expected_non_empty=False)
-            empty = QLabel(UI_TEXT["no_roster"])
-            self._apply_typography(empty, "muted-body")
-            empty.setWordWrap(True)
-            self.roster_grid.addWidget(empty, 0, 0, 1, 3)
-            return
-        for idx, plant in enumerate(state.plants):
-            card = QFrame()
-            card.setProperty("card", True)
-            effect = QGraphicsDropShadowEffect(card)
-            effect.setBlurRadius(16)
-            effect.setColor(QColor(0, 0, 0, 120))
-            effect.setOffset(0, 4)
-            card.setGraphicsEffect(effect)
-            card.setMinimumSize(220, 160)
-            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            l = QVBoxLayout(card)
-            title = QLabel(f"{plant.name} • {plant.species.title()}")
-            self._apply_typography(title, "section-title")
-            stage = QLabel(f"Stage: {format_status_label(plant.growth_stage)} {'✨' if plant.rare_variant else ''}")
-            self._apply_typography(stage, "muted-body")
-            vit = QProgressBar()
-            vit.setMaximum(100)
-            vit.setValue(int(plant.vitality * 100))
-            vit.setFormat("Vitality %p%")
-            growth = QLabel(f"Growth: {format_points(plant.growth_points)}")
-            self._apply_typography(growth, "muted-body")
-            l.addWidget(title)
-            l.addWidget(stage)
-            l.addWidget(vit)
-            l.addWidget(growth)
-            self.roster_grid.addWidget(card, idx // 3, idx % 3)
+    def _plant_scene_payload(self, plant: Any) -> dict[str, Any]:
+        display = growth_display(plant.growth_points, plant.rare_variant)
+        return {
+            "plant_id": plant.plant_id,
+            "name": plant.name,
+            "species": plant.species,
+            "stage": display.stage,
+            "vitality": plant.vitality,
+            "growth_points": plant.growth_points,
+            "rare_variant": plant.rare_variant,
+            "next_stage": display.next_stage,
+            "next_threshold": display.next_threshold,
+            "points_remaining": display.points_remaining,
+            "stage_progress": display.progress,
+            "fully_grown": display.fully_grown,
+            "image_path": self.engine.resolve_plant_image(plant.species, plant.growth_stage, plant.rare_variant),
+        }
 
     def _open_settings(self) -> None:
         if self.settings_dialog is None:

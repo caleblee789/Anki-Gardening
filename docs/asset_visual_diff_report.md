@@ -1,5 +1,7 @@
 # Asset Visual Diff Report
 
+> Status update (2026-07-11): this table remains the historical v1-to-v2 checksum ledger. The current manifest additionally includes the v3 storybook-gouache background, unified rose family, sunbloom family, and lantern. Mixed-format signatures, manifest coverage, alpha assets, fallbacks, and runtime SVG/PNG selection are enforced by the current asset audit and test suite.
+
 | Asset ID | Old path | New path | Old SHA1 (HEAD~1) | New SHA1 | Changed |
 |---|---|---|---|---|---|
 | plant_bonsai_seed_v1 | `assets/plants/bonsai/seed/bonsai_seed.svg` | `assets/v2_cozy_handpainted/plants/bonsai/seed/bonsai_seed.svg` | `52833dc67ff8` | `5908fbfd907d` | yes |

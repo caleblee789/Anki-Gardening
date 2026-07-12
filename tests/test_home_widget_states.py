@@ -72,6 +72,15 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-event">Event: Calm weather' in html
 
 
+def test_success_state_renders_stage_transition_message() -> None:
+    base = _sample_data()
+    data = HomeWidgetData(**{**base.__dict__, "stage_transition_message": "Your Rose reached Flowering!"})
+    html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
+
+    assert 'data-testid="home-stage-up"' in html
+    assert "Your Rose reached Flowering!" in html
+
+
 def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() -> None:
     controller = HomeWidgetStateController()
 

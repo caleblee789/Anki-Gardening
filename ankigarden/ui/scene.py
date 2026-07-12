@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ except Exception:
             QSvgRenderer = None  # type: ignore[assignment]
 
 from .formatters import format_percent
+from .plant_display import PlantInteractionState, plant_layout, smart_card_rect
 
 SCENE_TEXT = {
     "live_garden_label": "Your live study garden",
@@ -37,6 +39,19 @@ class GardenSceneWidget(QWidget):
         self.scene: dict[str, Any] = {"plants": [], "weather": "breeze", "health": 0.7, "growth": 0.2}
         self._svg_cache: dict[str, Any] = {}
         self._raster_cache: dict[str, QPixmap] = {}
+        self._transition_started_at: float | None = None
+        self._transition_duration = 1.4
+        self._interaction = PlantInteractionState()
+        self._plant_hit_rects: dict[str, QRectF] = {}
+        self._plant_anchors: dict[str, tuple[float, float]] = {}
+        self._card_rect: QRectF | None = None
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAccessibleName("Interactive study garden")
+        self._hover_close_timer = QTimer(self)
+        self._hover_close_timer.setSingleShot(True)
+        self._hover_close_timer.setInterval(180)
+        self._hover_close_timer.timeout.connect(self._clear_unpinned_hover)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(42)
@@ -58,7 +73,26 @@ class GardenSceneWidget(QWidget):
         super().showEvent(event)
 
     def set_scene(self, payload: dict[str, Any]) -> None:
+        previous_ids = {
+            str(item.get("plant_id"))
+            for item in self.scene.get("stage_transitions", [])
+            if isinstance(item, dict)
+        }
         self.scene = self._sanitize_scene_payload(payload)
+        self._interaction.reconcile(self._plant_ids())
+        transition_ids = {
+            str(item.get("plant_id"))
+            for item in self.scene.get("stage_transitions", [])
+            if isinstance(item, dict)
+        }
+        if transition_ids and transition_ids != previous_ids:
+            self._transition_started_at = time.monotonic()
+            QTimer.singleShot(int(self._transition_duration * 1000), self._finish_stage_transition)
+        self.update()
+
+    def _finish_stage_transition(self) -> None:
+        self._transition_started_at = None
+        self.scene["stage_transitions"] = []
         self.update()
 
     def _coerce_float(self, value: Any, default: float) -> float:
@@ -81,7 +115,9 @@ class GardenSceneWidget(QWidget):
             self._coerce_float(safe_scene.get("weather_particle_density", 1.0), 1.0), 0.2, 1.25
         )
         plants = safe_scene.get("plants", [])
-        safe_scene["plants"] = plants if isinstance(plants, list) else []
+        safe_scene["plants"] = [plant for plant in plants if isinstance(plant, dict)] if isinstance(plants, list) else []
+        transitions = safe_scene.get("stage_transitions", [])
+        safe_scene["stage_transitions"] = transitions if isinstance(transitions, list) else []
         asset_paths = safe_scene.get("asset_paths", {})
         safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
         safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
@@ -92,6 +128,32 @@ class GardenSceneWidget(QWidget):
         intensity = self._clamp(self._coerce_float(self.scene.get("animation_intensity", 0.7), 0.7), 0.1, 1.6)
         self.phase += 0.02 + (0.06 * intensity)
         self.update()
+
+    def _plant_ids(self) -> list[str]:
+        return [str(plant.get("plant_id", "")) for plant in self.scene.get("plants", []) if plant.get("plant_id")]
+
+    def _plant_for_id(self, plant_id: str | None) -> dict[str, Any] | None:
+        if not plant_id:
+            return None
+        for plant in self.scene.get("plants", []):
+            if str(plant.get("plant_id", "")) == plant_id:
+                return plant
+        return None
+
+    def _layout_plants(self, width: float, height: float) -> list[tuple[dict[str, Any], float, float, QRectF]]:
+        plants = self.scene.get("plants", [])
+        rows = plant_layout(width, height, len(plants))
+        result: list[tuple[dict[str, Any], float, float, QRectF]] = []
+        self._plant_hit_rects = {}
+        self._plant_anchors = {}
+        for plant, (x, baseline, hit_x, hit_y, hit_w, hit_h) in zip(plants, rows):
+            plant_id = str(plant.get("plant_id", ""))
+            hit_rect = QRectF(hit_x, hit_y, hit_w, hit_h)
+            if plant_id:
+                self._plant_hit_rects[plant_id] = hit_rect
+                self._plant_anchors[plant_id] = (x, baseline)
+            result.append((plant, x, baseline, hit_rect))
+        return result
 
     def paintEvent(self, _event: Any) -> None:
         painter = QPainter(self)
@@ -141,12 +203,31 @@ class GardenSceneWidget(QWidget):
                 self._draw_fallback_scene(painter, r)
                 return
 
-            for idx, plant in enumerate(plants):
-                x = (idx + 1) * (r.width() / (len(plants) + 1))
-                base_y = r.height() * 0.76
-                sway = 6 * math.sin(self.phase + idx)
+            plant_rows = self._layout_plants(r.width(), r.height())
+            focused_id = self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
+            for idx, (plant, x, base_y, _hit_rect) in enumerate(plant_rows):
+                plant_id = str(plant.get("plant_id", ""))
+                emphasized = plant_id in {
+                    self._interaction.hovered_id,
+                    self._interaction.pinned_id,
+                    focused_id,
+                }
+                sway = 6 * math.sin(self.phase + idx) if self.scene.get("motion_enabled", True) else 0.0
+                self._draw_plant_footprint(painter, x, base_y, idx, emphasized)
+                transition = self._transition_for_plant(plant)
+                transition_progress = self._transition_progress() if transition else None
+                if transition:
+                    self._draw_transition_glow(painter, x, base_y, transition, transition_progress)
+                painter.save()
+                if transition_progress is not None and self.scene.get("motion_enabled", True):
+                    reveal_scale = self._transition_scale(transition_progress)
+                    painter.translate(x, base_y)
+                    painter.scale(reveal_scale, reveal_scale)
+                    painter.translate(-x, -base_y)
                 if not self._draw_plant_asset(painter, x + sway, base_y, plant):
                     self._draw_plant(painter, x + sway, base_y, plant, idx)
+                painter.restore()
+                self._draw_foreground_growth(painter, x, base_y, idx, emphasized)
                 if growth > 0.05:
                     painter.setPen(Qt.PenStyle.NoPen)
                     pulse_alpha = int(25 + 40 * (0.5 + 0.5 * math.sin(self.phase * 2 + idx)))
@@ -183,8 +264,174 @@ class GardenSceneWidget(QWidget):
             painter.setPen(QColor(222, 249, 233, glow))
             painter.drawText(18, 32, SCENE_TEXT["live_garden_label"])
             painter.drawText(18, 52, SCENE_TEXT["growth_energy_label"].format(growth=growth_label))
+            self._draw_smart_card(painter, r)
         except Exception:
             self._draw_fallback_scene(painter, r)
+
+    def _draw_plant_footprint(self, painter: QPainter, x: float, base_y: float, index: int, emphasized: bool) -> None:
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        if emphasized:
+            painter.setBrush(QColor(229, 242, 166, 52))
+            painter.drawEllipse(QRectF(x - 68, base_y - 176, 136, 168))
+        else:
+            painter.setBrush(QColor(210, 232, 174, 18))
+            painter.drawEllipse(QRectF(x - 55, base_y - 158, 110, 148))
+        painter.setBrush(QColor(7, 15, 13, 104 if emphasized else 78))
+        painter.drawEllipse(QRectF(x - 53, base_y - 9, 112, 24))
+        painter.setBrush(QColor(72, 55, 39, 142))
+        painter.drawEllipse(QRectF(x - 42, base_y - 7, 84, 17))
+        painter.setPen(QPen(QColor(238, 218, 154, 120 if emphasized else 52), 1.2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(QRectF(x - 47, base_y - 13, 94, 25), 20 * 16, 140 * 16)
+        painter.restore()
+
+    def _draw_foreground_growth(self, painter: QPainter, x: float, base_y: float, index: int, emphasized: bool) -> None:
+        painter.save()
+        painter.setPen(QPen(QColor(63, 112, 63, 215), 2.0))
+        for offset in (-39, -29, 31, 42):
+            lean = -5 if (index + int(offset)) % 2 else 5
+            painter.drawLine(int(x + offset), int(base_y + 4), int(x + offset + lean), int(base_y - 11 - abs(offset) % 6))
+        if emphasized:
+            painter.setPen(QPen(QColor(174, 221, 135, 210), 1.5))
+            painter.drawLine(int(x - 34), int(base_y + 2), int(x - 39), int(base_y - 12))
+            painter.drawLine(int(x + 36), int(base_y + 2), int(x + 41), int(base_y - 13))
+        painter.restore()
+
+    def _draw_smart_card(self, painter: QPainter, rect: Any) -> None:
+        plant_id = self._interaction.active_id
+        plant = self._plant_for_id(plant_id)
+        anchor = self._plant_anchors.get(plant_id or "")
+        if plant is None or anchor is None:
+            self._card_rect = None
+            return
+        x, y, width, height = smart_card_rect(rect.width(), rect.height(), anchor[0], anchor[1])
+        card = QRectF(x, y, width, height)
+        self._card_rect = card
+        painter.save()
+        painter.setPen(QPen(QColor(119, 151, 126, 225), 1.4))
+        painter.setBrush(QColor(18, 32, 32, 242))
+        painter.drawRoundedRect(card, 14, 14)
+        left = card.left() + 16
+        top = card.top() + 24
+        name = str(plant.get("name") or plant.get("species") or "Plant")
+        species = str(plant.get("species") or "Plant").title()
+        stage = str(plant.get("stage") or "Seed").title()
+        rare = bool(plant.get("rare_variant")) or stage.lower() == "rare"
+        painter.setPen(QColor(241, 249, 230))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(max(11, font.pointSize() + 1))
+        painter.setFont(font)
+        painter.drawText(int(left), int(top), f"{name}  {'✦' if rare else ''}")
+        font.setBold(False)
+        font.setPointSize(max(9, font.pointSize() - 2))
+        painter.setFont(font)
+        painter.setPen(QColor(183, 207, 194))
+        painter.drawText(int(left), int(top + 24), f"{species} • {stage}")
+        vitality = int(round(self._clamp(self._coerce_float(plant.get("vitality", 0.0), 0.0), 0.0, 1.0) * 100))
+        points = max(0, int(self._coerce_float(plant.get("growth_points", 0), 0)))
+        painter.setPen(QColor(222, 235, 221))
+        painter.drawText(int(left), int(top + 51), f"Vitality  {vitality}%     Growth  {points} GP")
+        bar = QRectF(left, top + 66, card.width() - 32, 12)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(42, 62, 58))
+        painter.drawRoundedRect(bar, 6, 6)
+        progress = self._clamp(self._coerce_float(plant.get("stage_progress", 1.0), 1.0), 0.0, 1.0)
+        painter.setBrush(QColor(92, 190, 123))
+        painter.drawRoundedRect(QRectF(bar.left(), bar.top(), bar.width() * progress, bar.height()), 6, 6)
+        painter.setPen(QColor(214, 231, 209))
+        if plant.get("fully_grown"):
+            status = "Fully grown"
+        else:
+            next_stage = str(plant.get("next_stage") or "next stage").title()
+            remaining = max(0, int(self._coerce_float(plant.get("points_remaining", 0), 0)))
+            status = f"{remaining} GP until {next_stage}"
+        painter.drawText(int(left), int(top + 101), status)
+        painter.setPen(QColor(151, 181, 163))
+        hint = "Pinned • click outside or press Esc" if self._interaction.pinned_id else "Click plant to keep this open"
+        painter.drawText(int(left), int(top + 137), hint)
+        painter.restore()
+
+    def _event_position(self, event: Any) -> Any:
+        return event.position() if hasattr(event, "position") else event.pos()
+
+    def _plant_at(self, position: Any) -> str | None:
+        for plant_id, hit_rect in reversed(list(self._plant_hit_rects.items())):
+            if hit_rect.contains(position):
+                return plant_id
+        return None
+
+    def _clear_unpinned_hover(self) -> None:
+        if self._interaction.pinned_id is None:
+            self._interaction.hover(None)
+            self.unsetCursor()
+            self.update()
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        position = self._event_position(event)
+        plant_id = self._plant_at(position)
+        over_card = self._card_rect is not None and self._card_rect.contains(position)
+        if plant_id:
+            self._hover_close_timer.stop()
+            self._interaction.hover(plant_id)
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.update()
+        elif over_card:
+            self._hover_close_timer.stop()
+            self.unsetCursor()
+        elif self._interaction.pinned_id is None:
+            self._hover_close_timer.start()
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: Any) -> None:
+        if self._interaction.pinned_id is None:
+            self._hover_close_timer.start()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event: Any) -> None:
+        position = self._event_position(event)
+        plant_id = self._plant_at(position)
+        if plant_id:
+            self._interaction.toggle_pin(plant_id)
+            ids = self._plant_ids()
+            if plant_id in ids:
+                self._interaction.focused_index = ids.index(plant_id)
+            self.setFocus()
+        elif self._card_rect is None or not self._card_rect.contains(position):
+            self._interaction.dismiss()
+        self.update()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event: Any) -> None:
+        plant_ids = self._plant_ids()
+        if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+            self._interaction.cycle_focus(plant_ids, -1)
+        elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down, Qt.Key.Key_Tab):
+            self._interaction.cycle_focus(plant_ids, 1)
+        elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            focused = self._interaction.focused_id(plant_ids)
+            if focused:
+                self._interaction.toggle_pin(focused)
+        elif event.key() == Qt.Key.Key_Escape:
+            self._interaction.dismiss()
+        else:
+            super().keyPressEvent(event)
+            return
+        self.update()
+
+    def focusInEvent(self, event: Any) -> None:
+        if self._interaction.focused_index < 0:
+            self._interaction.cycle_focus(self._plant_ids(), 1)
+        self.update()
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event: Any) -> None:
+        if self._interaction.pinned_id is None:
+            self._interaction.hover(None)
+        self.update()
+        super().focusOutEvent(event)
 
     def _asset_path(self, key: str) -> str | None:
         asset_paths = self.scene.get("asset_paths", {})
@@ -304,10 +551,67 @@ class GardenSceneWidget(QWidget):
         path = plant.get("image_path") or self._asset_path("plant")
         if not path:
             return False
-        stage_scale = {"seed": 0.44, "sprout": 0.52, "young": 0.66, "mature": 0.84, "flowering": 0.94, "rare": 1.0}
-        scale = stage_scale.get(str(plant.get("stage", "young")), 0.7)
+        stage = str(plant.get("stage", "young"))
+        normalized_path = str(path).replace("\\", "/")
+        is_mound_based_v3 = (
+            "/v3_storybook_gouache/plants/" in normalized_path
+            and "/plants/rose/" not in normalized_path
+        )
+        if is_mound_based_v3:
+            # Dirt-mound families share a full-size canvas and ground baseline.
+            # Their internal silhouette bounds carry the dramatic stage growth.
+            scale = 1.0
+        elif "_unified.png" in normalized_path:
+            # The seed and sprout paintings devote more of their canvas to the
+            # shared pot. Normalize those two canvases so the pot remains a
+            # stable visual anchor while the plant silhouette grows around it.
+            scale = {"seed": 0.72, "sprout": 0.72}.get(stage, 1.0)
+        else:
+            scale = {"seed": 0.44, "sprout": 0.52, "young": 0.66, "mature": 0.84, "flowering": 0.94, "rare": 1.0}.get(stage, 0.7)
         box = QRectF(x - (88 * scale), y - (178 * scale), 176 * scale, 184 * scale)
         return self._draw_asset_contain(painter, str(path), box, opacity=0.98)
+
+    def _transition_for_plant(self, plant: dict[str, Any]) -> dict[str, Any] | None:
+        plant_id = str(plant.get("plant_id", ""))
+        for transition in self.scene.get("stage_transitions", []):
+            if isinstance(transition, dict) and str(transition.get("plant_id", "")) == plant_id:
+                return transition
+        return None
+
+    def _transition_progress(self) -> float:
+        if self._transition_started_at is None:
+            return 0.0
+        return self._clamp((time.monotonic() - self._transition_started_at) / self._transition_duration, 0.0, 1.0)
+
+    def _transition_scale(self, progress: float) -> float:
+        # Quick rise with a gentle overshoot, settling at the normal scale.
+        if progress < 0.45:
+            return 0.84 + (0.24 * (progress / 0.45))
+        return 1.08 - (0.08 * ((progress - 0.45) / 0.55))
+
+    def _draw_transition_glow(
+        self,
+        painter: QPainter,
+        x: float,
+        base_y: float,
+        transition: dict[str, Any],
+        progress: float | None,
+    ) -> None:
+        rare = str(transition.get("new_stage", "")) == "rare"
+        fade = 1.0 if progress is None or not self.scene.get("motion_enabled", True) else max(0.0, 1.0 - progress)
+        painter.setPen(Qt.PenStyle.NoPen)
+        color = QColor(255, 211, 105, int((118 if rare else 82) * fade))
+        painter.setBrush(color)
+        radius = 92 if rare else 76
+        painter.drawEllipse(QRectF(x - radius, base_y - 160, radius * 2, radius * 1.55))
+        particle_count = 8 if rare else 5
+        for index in range(particle_count):
+            angle = (math.pi * 2 * index / particle_count) + self.phase
+            distance = 54 + (index % 3) * 10
+            px = x + math.cos(angle) * distance
+            py = base_y - 96 + math.sin(angle) * distance * 0.65
+            painter.setBrush(QColor(255, 226, 139, int((190 if rare else 145) * fade)))
+            painter.drawEllipse(QRectF(px - 2.5, py - 2.5, 5, 5))
 
     def _draw_plant(self, painter: QPainter, x: float, y: float, plant: dict[str, Any], idx: int) -> None:
         stage_scale = {"seed": 0.35, "sprout": 0.5, "young": 0.72, "mature": 0.93, "flowering": 1.08, "rare": 1.15}

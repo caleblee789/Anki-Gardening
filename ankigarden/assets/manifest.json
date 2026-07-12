@@ -2545,7 +2545,7 @@
         "default",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/seed/rose_seed.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/seed/rose_seed_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2568,7 +2568,7 @@
         "default",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/sprout/rose_sprout.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/sprout/rose_sprout_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2591,7 +2591,7 @@
         "default",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/young/rose_young.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/young/rose_young_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2614,7 +2614,7 @@
         "default",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/mature/rose_mature.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/mature/rose_mature_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2637,7 +2637,7 @@
         "default",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/flowering/rose_flowering.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/flowering/rose_flowering_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2660,7 +2660,7 @@
         "rare",
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/plants/rose/rare/rose_rare.png",
+      "file": "assets/v3_storybook_gouache/plants/rose/rare/rose_rare_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",
@@ -2673,6 +2673,156 @@
       "attribution": "Generated for Anki Garden"
     },
     {
+      "asset_id": "plant_sunbloom_seed_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "seed"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/seed/sunbloom_seed.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_seed_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_sunbloom_sprout_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "sprout"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/sprout/sunbloom_sprout.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_sprout_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_sunbloom_young_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "young"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/young/sunbloom_young.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_young_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_sunbloom_mature_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "mature"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/mature/sunbloom_mature.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_mature_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_sunbloom_flowering_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "flowering"
+      },
+      "variants": [
+        "default",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/flowering/sunbloom_flowering.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_flowering_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "plant_sunbloom_rare_storybook_v3",
+      "category": "plants",
+      "slot": {
+        "species": "sunbloom",
+        "stage": "rare"
+      },
+      "variants": [
+        "rare",
+        "storybook_gouache",
+        "dirt_mound"
+      ],
+      "file": "assets/v3_storybook_gouache/plants/sunbloom/rare/sunbloom_rare.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "growth_base": "dirt_mound",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "fallback_asset_id": "plant_sunbloom_rare_v1",
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
       "asset_id": "decor_lantern_storybook_v3",
       "category": "decorations",
       "slot": {
@@ -2681,7 +2831,7 @@
       "variants": [
         "storybook_gouache"
       ],
-      "file": "assets/v3_storybook_gouache/decorations/lantern/lantern.png",
+      "file": "assets/v3_storybook_gouache/decorations/lantern/lantern_unified.png",
       "width": 1254,
       "height": 1254,
       "format": "png",

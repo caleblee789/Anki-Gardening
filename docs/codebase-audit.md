@@ -19,6 +19,8 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Animation | The scene timer ran continuously, including while hidden or when animation was disabled. | Motion follows settings and stops when the widget is hidden. | Scene tests and runtime observation. |
 | Assets | Placeholder generation could mutate packaged artwork. | The bundled fallback is read-only; emergency generation uses the user cache. | Asset and package tests. |
 | Packaging | There was no reproducible `.ankiaddon` build and `meta.json` was tracked as source. | Added a distribution manifest, deterministic builder, exclusions, archive tests, and full CI checks. | Package test plus archive integrity check. |
+| Plant interaction | Plants read as floating cutouts and their data was duplicated in a distant roster. | Added soil contact, directional shadows, foreground grass, persistent rim separation, hover/focus emphasis, contextual data cards, click-to-pin behavior, and keyboard navigation; removed the duplicate roster. | Plant-display interaction tests plus isolated dashboard QA. |
+| Startup timing | Retrospective review discovery could query `mw.col.db` before a collection existed and log an avoidable startup exception. | Collection-dependent retrospective and storage queries now no-op until Anki has a live collection/database. | Storage regression test and clean disposable-profile startup. |
 
 ## Product focus
 
@@ -26,4 +28,11 @@ The supported experience is review-driven growth, streak/vitality feedback, dail
 
 ## Visual coverage
 
-The manifest contains 75 backgrounds, 51 plant variants, 10 weather overlays, 4 decorations, and 3 UI assets. `scripts/audit_assets.py` enforces parsing, dimensions, uniqueness, and coverage. `scripts/build_asset_gallery.py` produces the full inspection gallery used alongside real-Anki theme, scaling, and fallback checks.
+The manifest contains 76 backgrounds, 63 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets, including the curated storybook-gouache slice. `scripts/audit_assets.py` enforces parsing, dimensions, uniqueness, and coverage. `scripts/build_asset_gallery.py` produces the full inspection gallery used alongside real-Anki theme, scaling, interaction, and fallback checks.
+
+## Current validation snapshot
+
+- 80 automated tests pass, including plant growth-display math, responsive layout, generous hit areas, card constraints, hover/pin/focus state, and collection-not-ready startup behavior.
+- The 157 manifest assets pass mixed-format signature, dimensions, uniqueness, coverage, alpha-family, and fallback checks.
+- Python compilation, `.ankiaddon` packaging, ZIP integrity, source/archive parity, and `git diff --check` pass.
+- A fresh disposable Anki 26.5 base verified clean startup, home-widget rendering, centered grounded plants, click-to-pin cards, Escape dismissal, arrow-key selection, Enter pinning, and absence of the former bottom roster.

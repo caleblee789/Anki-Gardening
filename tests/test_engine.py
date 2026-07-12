@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, Plant, Quest
+from ankigarden.storage import GardenStorage
 
 
 class FakeConfig:
@@ -78,6 +80,55 @@ def test_daily_goal_does_not_stop_growth():
     assert st.state.daily_stats.growth_earned > before
 
 
+def test_growth_emits_transition_only_when_stage_changes():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    engine = GardenGameEngine(cfg, st)
+    plant = st.state.plants[0]
+    plant.growth_points = 79
+
+    engine._award_growth(1)
+
+    transitions = engine.consume_stage_transitions()
+    assert [item.to_dict() for item in transitions] == [
+        {
+            "plant_id": "p1",
+            "species": "bonsai",
+            "previous_stage": "seed",
+            "new_stage": "sprout",
+        }
+    ]
+    engine._award_growth(1)
+    assert engine.consume_stage_transitions() == []
+
+
+def test_growth_combines_multiple_plant_transitions():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1, growth_points=79))
+    st.state.plants[0].growth_points = 79
+    engine = GardenGameEngine(cfg, st)
+
+    engine._award_growth(2)
+
+    transitions = engine.consume_stage_transitions()
+    assert len(transitions) == 2
+    assert engine.stage_transition_message(transitions).startswith("Garden milestone!")
+
+
+def test_rare_threshold_emits_rare_transition():
+    cfg = FakeConfig()
+    st = FakeStorage()
+    engine = GardenGameEngine(cfg, st)
+    st.state.plants[0].growth_points = 1399
+
+    engine._award_growth(1)
+
+    transition = engine.consume_stage_transitions()[0]
+    assert transition.previous_stage == "flowering"
+    assert transition.new_stage == "rare"
+
+
 def test_quest_bonus_uses_daily_growth_accounting():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -128,3 +179,12 @@ def test_reroll_asset_slot_uses_local_catalog_cycle():
     second = engine.reroll_asset_slot("plant")
     assert first is not None
     assert second is not None
+
+
+def test_storage_revlog_queries_wait_for_live_collection():
+    storage = object.__new__(GardenStorage)
+    storage.mw = SimpleNamespace(col=None)
+
+    assert storage.load_new_revlog_entries(0) == []
+    assert storage.max_revlog_id() == 0
+    assert storage.current_day_cutoff_ms() == 0

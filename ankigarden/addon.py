@@ -39,7 +39,7 @@ class AnkiGardenApp:
 
     def setup(self) -> None:
         try:
-            mw.addonManager.setWebExports(__name__, r"assets/.*\.svg")
+            mw.addonManager.setWebExports(__name__, r"assets/.*\.(svg|png|webp)")
         except Exception:
             logger.exception("Anki Garden: unable to register bundled web assets")
         self._setup_menu()
@@ -183,6 +183,10 @@ class AnkiGardenApp:
         request_id = self._home_widget_controller.begin_request()
         try:
             state = self.storage.state
+            consume_transitions = getattr(self.engine, "consume_stage_transitions", None)
+            transitions = consume_transitions() if callable(consume_transitions) else []
+            transition_message_builder = getattr(self.engine, "stage_transition_message", None)
+            transition_message = transition_message_builder(transitions) if callable(transition_message_builder) else ""
             data = build_home_widget_success_data(
                 state=state,
                 cards_today=self._cards_reviewed_today(),
@@ -190,6 +194,7 @@ class AnkiGardenApp:
                 growth_cap=max(1, int(self.config.value("daily_goal", 140))),
                 plants_html=self._plant_badges_html(),
                 event=self.engine.get_weekly_event_summary(),
+                stage_transition_message=transition_message,
             )
             self._home_widget_controller.resolve_success(request_id, data)
         except Exception:
@@ -227,7 +232,7 @@ class AnkiGardenApp:
             return ""
         try:
             image_path = Path(str(path)).expanduser()
-            if not image_path.exists() or not image_path.is_file() or image_path.suffix.lower() != ".svg":
+            if not image_path.exists() or not image_path.is_file() or image_path.suffix.lower() not in {".svg", ".png", ".webp"}:
                 return ""
             addon_dir = Path(__file__).parent.resolve()
             relative = image_path.resolve().relative_to(addon_dir).as_posix()
@@ -285,6 +290,9 @@ class AnkiGardenApp:
         }.get(stage, "🌱")
 
     def _apply_retrospective_growth(self) -> None:
+        collection = getattr(mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            return
         last_id = int(self.storage.state.retrospective_last_revlog_id or 0)
         rows = self.storage.load_new_revlog_entries(last_id)
         if not rows:

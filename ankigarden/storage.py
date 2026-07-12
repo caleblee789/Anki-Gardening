@@ -88,8 +88,11 @@ class GardenStorage:
         self._atomic_write_json(self.asset_metadata, data)
 
     def max_revlog_id(self) -> int:
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            return 0
         try:
-            rows = self.mw.col.db.first("select max(id) from revlog")
+            rows = collection.db.first("select max(id) from revlog")
             if rows and rows[0]:
                 return int(rows[0])
         except Exception:
@@ -97,8 +100,11 @@ class GardenStorage:
         return 0
 
     def load_new_revlog_entries(self, after_id: int, limit: int = 6000) -> list[tuple[Any, ...]]:
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            return []
         try:
-            return self.mw.col.db.all(
+            return collection.db.all(
                 "select id, cid, ease, ivl, lastIvl, factor, time, type from revlog where id > ? order by id asc limit ?",
                 int(after_id),
                 int(limit),
@@ -109,8 +115,11 @@ class GardenStorage:
 
     def current_day_cutoff_ms(self) -> int:
         """Return the start of Anki's current scheduler day in milliseconds."""
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "sched", None) is None:
+            return 0
         try:
-            sched = self.mw.col.sched
+            sched = collection.sched
             cutoff = getattr(sched, "day_cutoff", getattr(sched, "dayCutoff", None))
             if cutoff is None:
                 return 0

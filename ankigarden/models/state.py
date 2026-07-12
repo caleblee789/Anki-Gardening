@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
+GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1400]
 GARDEN_MODES = {"unified", "deck-by-deck"}
 WEATHER_TYPES = {"sunny", "cloudy", "breeze", "gentle_rain", "fireflies"}
 
@@ -26,10 +27,9 @@ class Plant:
 
     @property
     def growth_stage(self) -> str:
-        thresholds = [0, 80, 220, 480, 900, 1400]
-        for idx, threshold in enumerate(reversed(thresholds)):
+        for idx, threshold in enumerate(reversed(GROWTH_THRESHOLDS)):
             if self.growth_points >= threshold:
-                return GROWTH_STAGES[len(thresholds) - 1 - idx]
+                return GROWTH_STAGES[len(GROWTH_THRESHOLDS) - 1 - idx]
         return "seed"
 
 
