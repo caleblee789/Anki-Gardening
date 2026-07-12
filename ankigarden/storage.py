@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
 
-from .models.state import GardenState, Plant
+from .models.state import GardenState, Plant, PlantMemory
 
 
 logger = logging.getLogger(__name__)
@@ -34,11 +34,6 @@ class GardenStorage:
             if self.data_path.exists():
                 raw = json.loads(self.data_path.read_text("utf-8"))
                 version = int(raw.get("version", GardenState().version)) if isinstance(raw, dict) else -1
-                if version == 6:
-                    backup = self.data_path.with_suffix(".v6.json")
-                    shutil.copy2(self.data_path, backup)
-                    logger.info("Anki Garden: preserved v6 state at %s and migrated visible progress to v7", backup)
-                    return GardenState.from_dict(raw)
                 if version != GardenState().version:
                     backup = self.data_path.with_suffix(".legacy.json")
                     shutil.copy2(self.data_path, backup)
@@ -75,16 +70,19 @@ class GardenStorage:
         self.user_files_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         if not self.state.plants:
-            starters = [("bonsai", "streak"), ("rose", "accuracy")]
+            starters = [("bonsai", "streak", "Moss"), ("rose", "accuracy", "Briar")]
             for idx, species in enumerate(starters[: self.config.value("initial_slots", 2)]):
-                name, personality = species
+                name, personality, generated_name = species
+                today = GardenState().daily_stats.day
                 self.state.plants.append(
                     Plant(
                         plant_id=f"plant_{idx+1}",
                         species=name,
-                        name=name.capitalize(),
+                        name=generated_name,
                         slot_index=idx,
                         personality=personality,
+                        planted_on=today,
+                        memories=[PlantMemory("planted", "planted", today)],
                     )
                 )
         self.save()
@@ -111,6 +109,16 @@ class GardenStorage:
         except Exception:
             pass
         return 0
+
+    def review_type_for_revlog_id(self, revlog_id: int) -> int | None:
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None or int(revlog_id) <= 0:
+            return None
+        try:
+            value = collection.db.scalar("select type from revlog where id = ?", int(revlog_id))
+            return int(value) if value is not None else None
+        except Exception:
+            return None
 
     def load_new_revlog_entries(self, after_id: int, limit: int = 6000) -> list[tuple[Any, ...]]:
         collection = getattr(self.mw, "col", None)

@@ -16,10 +16,11 @@ This matrix is the release contract for Anki Garden 2.1. A feature is complete o
 | Plant interaction | Hover/pin, Nurture, move to empty slot, swap, cancel, one-level undo, and save rollback work with mouse and keyboard. | Placement engine and interaction-state tests. | Mouse and keyboard journeys, including invalid drop and Undo. |
 | Accessibility | Arrow keys navigate; Enter/Space activate; Escape cancels; Tab/Shift+Tab leave the scene; selected actions and destinations have visible focus. | Interaction source/geometry regressions. | Keyboard-only pass and macOS accessibility inspection. |
 | Settings | Daily goal, home visibility, theme, quality, animation, and weather detail validate and save transactionally. | Configuration validation/rollback and home visibility tests. | Change every control, force refresh, restart, verify persistence. |
-| Persistence | v6 migrates to v7 while preserving visible progress; malformed layouts repair; invalid/unsupported files are backed up. | State contract and storage migration tests. | Upgrade seeded v6 state and inspect `user_files/` backups. |
+| Persistence | Pre-release schemas are backed up and reset for v8; malformed layouts and plant memories repair safely. | State contract and storage migration tests. | Seed an old development save and inspect `user_files/` backups. |
+| Plant stories | Generated names, inline rename, and planting/focus/stage/streak/review memories remain attached to stable plant IDs without storing study content. | State, engine, scene-action, and rename tests. | Open by mouse/keyboard, rename, earn milestones, restart, and inspect the timeline. |
 | Artwork and layout | Bundled local assets render with safe fallback, responsive geometry, light/dark readability, and reduced motion. | Asset audit, geometry, fallback, and package tests. | All themes, narrow window, light/dark mode, reduced motion. |
 | Packaging | Archive contains current runtime/assets and excludes mutable progress/cache; source and archive match byte-for-byte. | Package, ZIP, and parity gates. | Install the exact rebuilt archive into the disposable profile. |
 
 ## Unsupported systems
 
-Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, passive rewards, and remote/social/cloud systems are not release features. Their v6 keys are intentionally ignored during migration and are absent from the v7 serializer and engine interface.
+Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, passive rewards, and remote/social/cloud systems are not release features and are absent from the v8 serializer and engine interface.

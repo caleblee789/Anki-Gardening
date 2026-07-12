@@ -13,7 +13,7 @@ def _storage_at(path):
     return storage
 
 
-def test_v6_load_preserves_backup_and_visible_progress(tmp_path) -> None:
+def test_pre_release_old_schema_is_backed_up_and_reset(tmp_path) -> None:
     state_path = tmp_path / "garden_state.json"
     payload = GardenState().to_dict()
     payload.update({
@@ -26,10 +26,9 @@ def test_v6_load_preserves_backup_and_visible_progress(tmp_path) -> None:
 
     state = _storage_at(state_path)._load()
 
-    assert state.version == 7
-    assert state.total_reviews == 321
-    assert "currency" not in state.to_dict()
-    backup = state_path.with_suffix(".v6.json")
+    assert state.version == 8
+    assert state.total_reviews == 0
+    backup = state_path.with_suffix(".legacy.json")
     assert backup.exists()
     assert json.loads(backup.read_text(encoding="utf-8"))["currency"] == 999
 

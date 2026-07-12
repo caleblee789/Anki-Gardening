@@ -54,6 +54,24 @@ class PlantGrowthDisplay:
     points_remaining: int
     progress: float
     fully_grown: bool
+    stage_points: int
+    stage_goal: int
+
+
+@dataclass(frozen=True)
+class PlantHealthDisplay:
+    label: str
+    percent: int
+
+
+def plant_health_display(vitality: Any) -> PlantHealthDisplay:
+    try:
+        ratio = max(0.0, min(1.0, float(vitality)))
+    except (TypeError, ValueError):
+        ratio = 0.0
+    percent = int(round(ratio * 100))
+    label = "Thriving" if percent >= 85 else "Healthy" if percent >= 65 else "Needs care"
+    return PlantHealthDisplay(label, percent)
 
 
 def growth_display(growth_points: Any, rare_variant: bool = False) -> PlantGrowthDisplay:
@@ -70,12 +88,16 @@ def growth_display(growth_points: Any, rare_variant: bool = False) -> PlantGrowt
     stage = GROWTH_STAGES[stage_index]
     fully_grown = stage_index >= len(GROWTH_STAGES) - 1
     if fully_grown:
-        return PlantGrowthDisplay(stage, stage_index, None, GROWTH_THRESHOLDS[stage_index], None, 0, 1.0, True)
+        return PlantGrowthDisplay(
+            stage, stage_index, None, GROWTH_THRESHOLDS[stage_index], None, 0, 1.0, True, 0, 0
+        )
     next_threshold = GROWTH_THRESHOLDS[stage_index + 1]
     stage_start = GROWTH_THRESHOLDS[stage_index]
-    progress = max(0.0, min(1.0, (points - stage_start) / max(1, next_threshold - stage_start)))
+    stage_points = max(0, points - stage_start)
+    stage_goal = max(1, next_threshold - stage_start)
+    progress = max(0.0, min(1.0, stage_points / stage_goal))
     return PlantGrowthDisplay(stage, stage_index, GROWTH_STAGES[stage_index + 1], stage_start, next_threshold,
-                              max(0, next_threshold - points), progress, False)
+                              max(0, next_threshold - points), progress, False, stage_points, stage_goal)
 
 
 def _number(value: Any, default: float, low: float, high: float) -> float:
@@ -141,9 +163,13 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             visible_w = visible_h * (vb[2] / vb[3])
             base_x = left + available_w * x_ratio
             base_y = far_y + (near_y - far_y) * depth
-            visible = Rect(base_x - visible_w / 2, base_y - visible_h, visible_w, visible_h)
             draw_w, draw_h = visible_w / vb[2], visible_h / vb[3]
-            draw = Rect(visible.x - vb[0] * draw_w, visible.y - vb[1] * draw_h, draw_w, draw_h)
+            # Anchor the artwork's declared point of ground contact to the scene
+            # baseline. This works for both potted plants and dirt mounds and avoids
+            # treating transparent image padding as part of the plant's height.
+            draw = Rect(base_x - anchor[0] * draw_w, base_y - anchor[1] * draw_h, draw_w, draw_h)
+            visible = Rect(draw.x + vb[0] * draw_w, draw.y + vb[1] * draw_h,
+                           vb[2] * draw_w, vb[3] * draw_h)
             motion = max(4.0, visible_w * 0.045)
             hit = visible.expanded(motion + max(5.0, visible_w * 0.05), max(5.0, visible_h * 0.025))
             footprint = Rect(base_x - visible_w * 0.28, base_y - max(2.0, visible_h * 0.025), visible_w * 0.56,
@@ -164,6 +190,31 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             return sorted(result, key=lambda p: (p.depth, p.slot_index))
         scale *= 0.94
     return sorted(build(scale), key=lambda p: (p.depth, p.slot_index))
+
+
+def compact_plant_layout(width: float, height: float, plants: Iterable[dict[str, Any]],
+                         planting_zone: dict[str, Any] | None = None) -> list[PlantPlacement]:
+    """Lay out a garden snapshot with larger, tightly grouped plant artwork."""
+    items = [dict(item) for item in list(plants)[:6]]
+    if not items:
+        return []
+    compact_zone = dict(planting_zone or {})
+    compact_zone.update({
+        "left": max(0.04, float(compact_zone.get("left", 0.08))),
+        "right": min(0.96, float(compact_zone.get("right", 0.92))),
+        "far_y": 0.67,
+        "near_y": 0.92,
+    })
+    # Compact cards need stronger artwork than the full 4:3 scene. Preserve the
+    # asset-specific proportions while applying a bounded context multiplier.
+    multiplier = 1.75 if len(items) <= 2 else 1.45 if len(items) <= 4 else 1.2
+    for item in items:
+        placement = dict(item.get("placement", {})) if isinstance(item.get("placement"), dict) else {}
+        base_scale = _number(placement.get("display_scale", placement.get("scale", 1.0)), 1.0, 0.1, 2.5)
+        minimum = 0.65 if len(items) <= 2 else 0.5 if len(items) <= 4 else 0.4
+        placement["display_scale"] = min(2.5, max(minimum, base_scale * multiplier))
+        item["placement"] = placement
+    return plant_layout(width, height, items, compact_zone)
 
 
 def slot_layout(width: float, height: float, slot_count: int,

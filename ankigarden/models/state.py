@@ -11,8 +11,20 @@ GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1400]
 WEATHER_TYPES = {"sunny", "cloudy", "breeze", "gentle_rain", "fireflies"}
 PLANT_SPECIES = {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
 MAX_GARDEN_SLOTS = 6
+PLANT_MEMORY_KINDS = {"planted", "first_focus", "stage", "streak", "reviews"}
+MAX_PLANT_NAME_LENGTH = 40
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PlantMemory:
+    memory_id: str
+    kind: str
+    occurred_on: str
+    value: int = 0
+    previous_stage: Optional[str] = None
+    new_stage: Optional[str] = None
 
 
 @dataclass
@@ -25,6 +37,8 @@ class Plant:
     vitality: float = 1.0
     rare_variant: bool = False
     personality: str = "balanced"
+    planted_on: str = field(default_factory=lambda: date.today().isoformat())
+    memories: List[PlantMemory] = field(default_factory=list)
 
     @property
     def growth_stage(self) -> str:
@@ -83,7 +97,7 @@ class MilestoneReward:
 
 @dataclass
 class GardenState:
-    version: int = 7
+    version: int = 8
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
@@ -124,7 +138,13 @@ class GardenState:
             "unlocked_slots": self.unlocked_slots,
             "selected_background": self.selected_background,
             "selected_weather": self.selected_weather,
-            "plants": [p.__dict__ for p in self.plants],
+            "plants": [
+                {
+                    **{key: value for key, value in p.__dict__.items() if key != "memories"},
+                    "memories": [memory.__dict__ for memory in p.memories],
+                }
+                for p in self.plants
+            ],
             "achievements": {key: value.__dict__ for key, value in self.achievements.items()},
             "daily_quests": [q.__dict__ for q in self.daily_quests],
             "quest_history": list(self.quest_history),
@@ -267,6 +287,11 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
         if species not in PLANT_SPECIES:
             issues.append(f"plants[{index}].species: unsupported value {species!r}")
             continue
+        clean_name = " ".join(name.split())[:MAX_PLANT_NAME_LENGTH]
+        if clean_name != name:
+            issues.append(f"plants[{index}].name: normalized to a safe display name")
+        if not clean_name:
+            clean_name = species.title()
         raw_id = raw.get("plant_id")
         plant_id = raw_id if isinstance(raw_id, str) and raw_id and raw_id not in used_ids else ""
         if not plant_id:
@@ -288,14 +313,58 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
         result.append(Plant(
             plant_id=plant_id,
             species=species,
-            name=name,
+            name=clean_name,
             slot_index=slot,
             growth_points=_nonnegative_int(raw.get("growth_points"), 0, f"plants[{index}].growth_points", issues),
             vitality=_number(raw.get("vitality"), 1.0, 0.0, 1.0, f"plants[{index}].vitality", issues),
             rare_variant=raw.get("rare_variant", False) if isinstance(raw.get("rare_variant", False), bool) else False,
             personality=raw.get("personality", "balanced") if isinstance(raw.get("personality", "balanced"), str) else "balanced",
+            planted_on=_iso_date(
+                raw.get("planted_on"), date.today().isoformat(), f"plants[{index}].planted_on", issues
+            ),
+            memories=_plant_memories(raw.get("memories"), index, issues),
         ))
     return sorted(result, key=lambda plant: (plant.slot_index, plant.plant_id))
+
+
+def _plant_memories(value: Any, plant_index: int, issues: list[str]) -> list[PlantMemory]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append(f"plants[{plant_index}].memories: expected list")
+        return []
+    result: list[PlantMemory] = []
+    used_ids: set[str] = set()
+    for index, raw in enumerate(value[:32]):
+        label = f"plants[{plant_index}].memories[{index}]"
+        if not isinstance(raw, dict):
+            issues.append(f"{label}: expected object")
+            continue
+        memory_id, kind = raw.get("memory_id"), raw.get("kind")
+        if not isinstance(memory_id, str) or not memory_id or memory_id in used_ids:
+            issues.append(f"{label}.memory_id: invalid or duplicate")
+            continue
+        if kind not in PLANT_MEMORY_KINDS:
+            issues.append(f"{label}.kind: unsupported value {kind!r}")
+            continue
+        occurred_on = _iso_date(raw.get("occurred_on"), "", f"{label}.occurred_on", issues)
+        if not occurred_on:
+            continue
+        previous_stage = raw.get("previous_stage") if raw.get("previous_stage") in GROWTH_STAGES else None
+        new_stage = raw.get("new_stage") if raw.get("new_stage") in GROWTH_STAGES else None
+        if kind == "stage" and new_stage is None:
+            issues.append(f"{label}.new_stage: required for stage memory")
+            continue
+        used_ids.add(memory_id)
+        result.append(PlantMemory(
+            memory_id=memory_id,
+            kind=kind,
+            occurred_on=occurred_on,
+            value=_nonnegative_int(raw.get("value"), 0, f"{label}.value", issues),
+            previous_stage=previous_stage,
+            new_stage=new_stage,
+        ))
+    return sorted(result, key=lambda memory: (memory.occurred_on, memory.memory_id))
 
 
 def _quests(value: Any, issues: list[str]) -> list[Quest]:

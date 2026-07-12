@@ -7,7 +7,34 @@ from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 from .asset_manager import AssetManager, ResolvedAsset
-from .models.state import Achievement, GardenState, MilestoneReward, Plant, Quest, iso_now
+from .models.state import (
+    Achievement, GardenState, GROWTH_STAGES, MAX_PLANT_NAME_LENGTH, MilestoneReward, Plant, PlantMemory, Quest, iso_now,
+)
+
+
+def difficulty_from_factor(value: Any) -> float:
+    """Normalize Anki's ease factor, treating zero on new cards as unknown."""
+    try:
+        factor = int(value)
+    except (TypeError, ValueError):
+        factor = 2500
+    if factor <= 0:
+        factor = 2500
+    return max(0.1, min(1.0, (3000 - factor) / 2000))
+
+
+def queue_and_lapse_from_revlog_type(qtype: object, ease: object) -> tuple[int, int] | None:
+    """Map answered revlog rows to stable queue semantics shared by live and catch-up paths."""
+    try:
+        review_type = int(qtype)
+        rating = int(ease)
+    except (TypeError, ValueError):
+        return None
+    if review_type not in (0, 1, 2, 3):
+        return None
+    queue = 1 if review_type in (0, 2) else 2
+    lapse_count = 1 if review_type == 2 or rating == 1 else 0
+    return queue, lapse_count
 
 
 @dataclass(frozen=True)
@@ -37,6 +64,7 @@ class PlacementChange:
 
 class GardenGameEngine:
     MILESTONE_REVIEWS = (250, 700, 1500, 2600)
+    STREAK_MEMORY_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
     REWARD_SPECIES = ("fern", "cactus", "ivy", "orchid", "sunbloom", "moonflower")
     SPECIES_PERSONALITY = {
         "bonsai": "streak",
@@ -47,6 +75,12 @@ class GardenGameEngine:
         "sunbloom": "morning",
         "fern": "recovery",
         "ivy": "cumulative",
+    }
+    SPECIES_NAMES = {
+        "bonsai": ("Moss", "Juniper", "Sage"), "rose": ("Briar", "Rosie", "Petal"),
+        "cactus": ("Pip", "Prickle", "Sol"), "orchid": ("Opal", "Iris", "Luma"),
+        "moonflower": ("Luna", "Nox", "Selene"), "sunbloom": ("Sunny", "Marigold", "Dawn"),
+        "fern": ("Fiddle", "Frond", "Clover"), "ivy": ("Vine", "Ever", "Sylvan"),
     }
 
     def _effective_stage(self, plant: Plant) -> str:
@@ -125,6 +159,8 @@ class GardenGameEngine:
 
     def register_review(self, review_payload: Dict[str, Any]) -> None:
         snapshot = self._state_snapshot()
+        previous_reviews = self.state.total_reviews
+        previous_streak = self.state.streak_days
         self.rollover_if_needed(persist=False)
         today = self.state.daily_stats
         first_review_today = today.reviewed == 0
@@ -162,6 +198,7 @@ class GardenGameEngine:
         if growth > 0:
             self._award_growth(growth, deck_id)
         self._update_quests()
+        self._record_shared_memories(previous_reviews, previous_streak)
         self._update_achievements()
         self._maybe_unlock_slot()
         self._update_weather()
@@ -261,6 +298,14 @@ class GardenGameEngine:
             plant.vitality = min(1.0, plant.vitality + 0.03)
             new_stage = self._effective_stage(plant)
             if new_stage != previous_stage:
+                previous_index = GROWTH_STAGES.index(previous_stage)
+                new_index = GROWTH_STAGES.index(new_stage)
+                for stage_index in range(previous_index + 1, new_index + 1):
+                    reached_stage = GROWTH_STAGES[stage_index]
+                    self._add_memory(
+                        plant, f"stage:{reached_stage}", "stage",
+                        previous_stage=GROWTH_STAGES[stage_index - 1], new_stage=reached_stage,
+                    )
                 self._pending_stage_transitions.append(
                     StageTransition(
                         plant_id=plant.plant_id,
@@ -364,11 +409,68 @@ class GardenGameEngine:
             return False, "That plant is no longer in your garden."
         snapshot = self._state_snapshot()
         self.state.focus_plant_id = plant.plant_id
+        self._add_memory(plant, "focus:first", "first_focus")
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The focus plant could not be saved. Your previous choice is still active."
-        return True, f"Now nurturing {plant.name}."
+            return False, "That nurturing choice could not be saved. Your previous plant is still being nurtured."
+        return True, (
+            f"Now nurturing {plant.name}. It receives 80% of growth earned from reviews; "
+            "the remaining 20% is shared among your other plants."
+        )
+
+    def rename_plant(self, plant_id: str, name: str) -> tuple[bool, str]:
+        plant = next((item for item in self.state.plants if item.plant_id == plant_id), None)
+        if plant is None:
+            return False, "That plant is no longer in your garden."
+        clean = " ".join(str(name).split())
+        if not clean:
+            return False, "Enter a name for this plant."
+        if len(clean) > MAX_PLANT_NAME_LENGTH:
+            return False, f"Plant names can be at most {MAX_PLANT_NAME_LENGTH} characters."
+        snapshot = self._state_snapshot()
+        plant.name = clean
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The new name could not be saved. The previous name is still active."
+        return True, f"This plant is now named {clean}."
+
+    def plant_story(self, plant_id: str) -> Optional[Plant]:
+        return next((item for item in self.state.plants if item.plant_id == plant_id), None)
+
+    def _add_memory(self, plant: Plant, memory_id: str, kind: str, *, value: int = 0,
+                    previous_stage: Optional[str] = None, new_stage: Optional[str] = None) -> bool:
+        if any(memory.memory_id == memory_id for memory in plant.memories):
+            return False
+        plant.memories.append(PlantMemory(
+            memory_id=memory_id, kind=kind, occurred_on=self.state.daily_stats.day,
+            value=max(0, int(value)), previous_stage=previous_stage, new_stage=new_stage,
+        ))
+        return True
+
+    def _record_shared_memories(self, previous_reviews: int, previous_streak: int) -> None:
+        focus = self.focus_plant()
+        if focus is None:
+            return
+        for threshold in self.STREAK_MEMORY_MILESTONES:
+            if previous_streak < threshold <= self.state.streak_days:
+                self._add_memory(focus, f"streak:{threshold}", "streak", value=threshold)
+        for threshold in self.MILESTONE_REVIEWS:
+            if previous_reviews < threshold <= self.state.total_reviews:
+                self._add_memory(focus, f"reviews:{threshold}", "reviews", value=threshold)
+
+    def _generated_name(self, species: str) -> str:
+        used = {plant.name.casefold() for plant in self.state.plants}
+        choices = self.SPECIES_NAMES.get(species, (species.title(),))
+        for choice in choices:
+            if choice.casefold() not in used:
+                return choice
+        base = choices[0]
+        suffix = 2
+        while f"{base} {suffix}".casefold() in used:
+            suffix += 1
+        return f"{base} {suffix}"
 
     def place_plant(self, plant_id: str, destination_slot: int) -> tuple[bool, str, Optional[PlacementChange]]:
         """Atomically move a plant to an unlocked slot, swapping when occupied."""
@@ -491,9 +593,11 @@ class GardenGameEngine:
         plant = Plant(
             plant_id=plant_id,
             species=species,
-            name=species.title(),
+            name=self._generated_name(species),
             slot_index=slot_index,
             personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
+            planted_on=self.state.daily_stats.day,
+            memories=[PlantMemory("planted", "planted", self.state.daily_stats.day)],
         )
         snapshot = self._state_snapshot()
         self.state.unlocked_slots += 1
@@ -513,7 +617,12 @@ class GardenGameEngine:
         if not reviews:
             return 0
         snapshot = self._state_snapshot()
+        previous_reviews = self.state.total_reviews
+        previous_streak = self.state.streak_days
         self.rollover_if_needed(persist=False)
+        if self.state.daily_stats.reviewed == 0:
+            self.state.streak_days += 1
+            self.state.last_active_day = date.today().isoformat()
         total_growth = 0
         for review in reviews:
             queue, ease, deck_id, difficulty, lapse_count = self._normalized_review(review)
@@ -543,6 +652,7 @@ class GardenGameEngine:
             if growth > 0:
                 total_growth += self._award_growth(growth, deck_id)
         self._update_quests()
+        self._record_shared_memories(previous_reviews, previous_streak)
         self._update_achievements()
         self._maybe_unlock_slot()
         self._update_weather()

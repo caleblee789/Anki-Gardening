@@ -62,7 +62,7 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
 
     assert 'data-state="partial"' in html
     assert 'data-testid="home-partial-error"' in html
-    assert "Cards Today: 5" in html
+    assert "Cards today: 5" in html
     assert "Weather: Cloudy" in html
 
 
@@ -70,9 +70,9 @@ def test_success_state_renders_key_fields() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=4, phase="success", data=_sample_data()))
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-cards">Cards Today: 12' in html
-    assert 'data-testid="home-health">Garden Health: 84%' in html
-    assert 'data-testid="home-growth">Growth today: 30/220' in html
+    assert 'data-testid="home-cards">Cards today: 12' in html
+    assert 'data-testid="home-health">Garden health: 84%' in html
+    assert 'data-testid="home-growth">Study growth today: 30 of 220' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
 
@@ -114,7 +114,8 @@ def test_success_state_renders_focus_and_milestone_progress() -> None:
 
     assert 'data-testid="home-focus"' in html
     assert "Nurturing Rose" in html
-    assert "42 GP to next stage" in html
+    assert "42 growth points to the next stage" in html
+    assert "receives 80% of growth earned from reviews" in html
     assert "150 reviews until your next plant choice" in html
 
 
@@ -139,8 +140,10 @@ def test_scene_preserves_depth_order_and_marks_focus_plant() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=8, phase="success", data=data))
 
     assert "z-index:0" not in html
-    assert 'aria-label="Focus plant"' in html
+    assert 'aria-label="Nurtured plant"' in html
     assert "ag-home__plant--focus" in html
+    assert ">Nurturing</span>" in html
+    assert ">★</span>" not in html
 
 
 def test_scene_uses_readable_fallback_when_plant_asset_is_missing() -> None:
@@ -168,9 +171,9 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
 
     assert stale_applied is False
     assert fresh_applied is True
-    assert "Cards Today: 7" in html
-    assert "Growth today: 14/220" in html
-    assert "Cards Today: 99" not in html
+    assert "Cards today: 7" in html
+    assert "Study growth today: 14 of 220" in html
+    assert "Cards today: 99" not in html
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
@@ -190,5 +193,5 @@ def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
     success_html = render_home_widget(controller.snapshot)
 
     assert 'data-state="success"' in success_html
-    assert "Cards Today: 21" in success_html
+    assert "Cards today: 21" in success_html
     assert "Temporary backend failure" not in success_html

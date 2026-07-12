@@ -4,8 +4,10 @@ import pytest
 
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
+    compact_plant_layout,
     growth_display,
     hit_test,
+    plant_health_display,
     plant_layout,
     smart_card_rect,
 )
@@ -44,6 +46,22 @@ def test_growth_display_sanitizes_invalid_points():
     assert growth_display(-20).points_remaining == 80
 
 
+def test_growth_display_exposes_plain_language_stage_progress():
+    display = growth_display(105)
+    assert display.stage_points == 25
+    assert display.stage_goal == 140
+
+
+@pytest.mark.parametrize(
+    ("vitality", "label", "percent"),
+    [(1.0, "Thriving", 100), (0.84, "Healthy", 84), (0.64, "Needs care", 64)],
+)
+def test_plant_health_display_uses_plain_language_states(vitality, label, percent):
+    display = plant_health_display(vitality)
+    assert display.label == label
+    assert display.percent == percent
+
+
 def test_layout_is_responsive_and_hit_areas_are_generous():
     rows = plant_layout(760, 320, 3)
     assert len(rows) == 3
@@ -63,6 +81,35 @@ def test_two_plants_stay_in_the_compositional_center():
     rows = plant_layout(900, 360, 2)
     centers = sorted(row.visible.x + row.visible.width / 2 for row in rows)
     assert centers == pytest.approx([370.1664, 529.8336])
+
+
+def test_declared_ground_anchor_lands_on_scene_baseline():
+    placement = {
+        "visible_bounds": [0.1, 0.3, 0.8, 0.55],
+        "ground_anchor": [0.47, 0.82],
+        "display_scale": 0.8,
+    }
+    row = plant_layout(900, 500, [{"slot_index": 0, "placement": placement}])[0]
+    anchor_x = row.draw.x + row.draw.width * placement["ground_anchor"][0]
+    anchor_y = row.draw.y + row.draw.height * placement["ground_anchor"][1]
+    assert anchor_x == pytest.approx(row.footprint.x + row.footprint.width / 2)
+    assert anchor_y == pytest.approx(row.depth)
+
+
+@pytest.mark.parametrize("count", [1, 2, 4, 6])
+def test_compact_layout_keeps_all_plants_grounded_and_visible(count):
+    plants = [
+        {"slot_index": index, "placement": {
+            "visible_bounds": [0.08, 0.04, 0.84, 0.92],
+            "ground_anchor": [0.5, 0.96],
+            "display_scale": 0.7,
+        }}
+        for index in range(count)
+    ]
+    rows = compact_plant_layout(1000, 420, plants)
+    assert len(rows) == count
+    assert all(0 <= row.visible.x < row.visible.right <= 1000 for row in rows)
+    assert all(0 <= row.visible.y < row.visible.bottom <= 420 for row in rows)
 
 
 @pytest.mark.parametrize("size", [(420, 315), (760, 570), (1200, 900), (1600, 900), (320, 240)])
@@ -174,6 +221,40 @@ def test_scene_keyboard_contract_avoids_tab_trap_and_shows_action_focus():
     assert "super().keyPressEvent(event)" in scene[tab_branch:move_branch]
     assert "selected = self.hasFocus() and action_index == self._card_action_index" in scene
     assert "event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)" in scene
+    assert "storyRequested = pyqtSignal(str)" in scene
+    assert '"View story"' in scene
+    assert "% 3" in scene
+
+
+def test_scene_tooltips_convert_legacy_qpoint_for_qrectf_hit_testing():
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    assert "position = QPointF(raw_position)" in scene
+
+
+def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
+    dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    assert "class PlantStoryDialog(QDialog):" in dashboard
+    assert 'setAccessibleName("Plant milestone timeline")' in dashboard
+    assert "self.engine.rename_plant" in dashboard
+    assert "self.scene.storyRequested.connect(self._open_plant_story)" in dashboard
+
+
+def test_dialog_class_boundaries_keep_appearance_ui_out_of_story_refresh():
+    dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
+    story_block = dashboard.split("class PlantStoryDialog", 1)[1].split("class GardenDashboard", 1)[0]
+    assert "GardenStudioWidget(self.config" in settings_block
+    assert "self.engine.resolve_preview_assets" in settings_block
+    assert "GardenStudioWidget(" not in story_block
+    assert "asset_resolver=engine" not in story_block
+
+
+def test_scene_explains_nurturing_and_only_shows_slots_while_moving():
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    assert '"Nurture this plant"' in scene
+    assert "gets 80% of growth earned from reviews" in scene
+    assert "if not self._interaction.placing:" in scene
+    assert "target_x - x, target_y - base_y" in scene
 
 
 def test_settings_expose_daily_goal_home_visibility_and_transaction_errors():

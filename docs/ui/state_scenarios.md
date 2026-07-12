@@ -40,7 +40,7 @@
 ## Version 6 upgrade
 
 - Preserve totals, today's progress, plants and growth, focus selection, quests, achievements, milestones, appearance inventory, weather, and the retrospective review cursor.
-- Save the untouched source payload as `garden_state.v6.json` before the migrated v7 state is written.
+- Before the first public release, save any non-v8 source payload as `garden_state.legacy.json` and begin a clean v8 garden.
 - Drop unsupported subsystem keys so old hidden flags cannot change focused-core behavior.
 
 ## Plant arrangement

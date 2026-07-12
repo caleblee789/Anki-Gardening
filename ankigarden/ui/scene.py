@@ -5,7 +5,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aqt.qt import QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRectF, QTimer, QWidget, Qt, QColor, pyqtSignal
+from aqt.qt import (
+    QColor, QEvent, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+    QPointF, QRectF, QTimer, QToolTip, QWidget, Qt, pyqtSignal,
+)
 
 try:
     from aqt.qt import QSvgRenderer
@@ -33,6 +36,7 @@ SCENE_TEXT = {
 class GardenSceneWidget(QWidget):
     nurtureRequested = pyqtSignal(str)
     placementRequested = pyqtSignal(str, int)
+    storyRequested = pyqtSignal(str)
     cardOpened = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -49,7 +53,10 @@ class GardenSceneWidget(QWidget):
         self._plant_anchors: dict[str, tuple[float, float]] = {}
         self._card_rect: QRectF | None = None
         self._nurture_rect: QRectF | None = None
+        self._health_rect: QRectF | None = None
         self._move_rect: QRectF | None = None
+        self._story_rect: QRectF | None = None
+        self._status_rect: QRectF | None = None
         self._slot_placements: dict[int, PlantPlacement] = {}
         self._press_position: Any = None
         self._press_plant_id: str | None = None
@@ -228,9 +235,9 @@ class GardenSceneWidget(QWidget):
                 painter.drawRoundedRect(QRectF(0, r.height() * 0.56, r.width(), r.height() * 0.44), 0, 0)
             self._draw_decoration_asset(painter, r)
 
-            for i in range(26):
+            for i in range(16):
                 x = (i * 67 + int(self.phase * 15)) % max(1, r.width())
-                y = r.height() * 0.7 + 26 * math.sin(self.phase + i / 2)
+                y = r.height() * 0.28 + (i % 5) * r.height() * 0.07 + 14 * math.sin(self.phase + i / 2)
                 painter.setBrush(QColor(255, 255, 255, 18))
                 painter.drawEllipse(QRectF(x, y, 2.5, 2.5))
 
@@ -262,6 +269,15 @@ class GardenSceneWidget(QWidget):
                 painter.save()
                 if plant_id == self._interaction.dragged_id and self._drag_started:
                     painter.setOpacity(0.78)
+                    target_x, target_y = x, base_y
+                    destination = self._interaction.destination_slot
+                    target = self._slot_placements.get(destination) if destination is not None else None
+                    if target is not None:
+                        target_x = target.footprint.x + target.footprint.width / 2
+                        target_y = target.depth
+                    elif self._drag_position is not None:
+                        target_x, target_y = self._drag_position.x(), self._drag_position.y()
+                    painter.translate(target_x - x, target_y - base_y)
                     painter.translate(x, base_y)
                     painter.scale(1.06, 1.06)
                     painter.translate(-x, -base_y - 8)
@@ -273,6 +289,8 @@ class GardenSceneWidget(QWidget):
                 if not self._draw_plant_asset(painter, layout, plant, sway):
                     self._draw_plant(painter, x + sway, base_y, plant, idx)
                 painter.restore()
+                if plant.get("is_focus") and plant_id != self._interaction.dragged_id:
+                    self._draw_nurture_badge(painter, layout)
                 if str(self._plant_placement(plant).get("base_type", "legacy")) == "legacy":
                     self._draw_foreground_growth(painter, x, base_y, idx, emphasized)
                 if growth > 0.05:
@@ -311,13 +329,14 @@ class GardenSceneWidget(QWidget):
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
         labels = [
             f"{max(0, int(self._coerce_float(self.scene.get('streak_days', 0), 0)))} day streak",
-            f"{format_percent(growth)} growth today",
+            f"{format_percent(growth)} of today's growth goal",
             f"{format_percent(self.scene.get('health', 0.0))} garden health",
         ]
         panel_width = min(470.0, max(1.0, rect.width() - 32.0))
         compact = panel_width < 390
         panel_height = 78 if compact else 62
         panel = QRectF(16, 14, panel_width, panel_height)
+        self._status_rect = panel
         painter.save()
         painter.setPen(QPen(QColor(226, 239, 222, 62), 1))
         painter.setBrush(QColor(9, 22, 20, 192))
@@ -350,6 +369,10 @@ class GardenSceneWidget(QWidget):
         painter.save()
         painter.setPen(Qt.PenStyle.NoPen)
         footprint = QRectF(layout.footprint.x, layout.footprint.y, layout.footprint.width, layout.footprint.height)
+        footprint.translate(0, -footprint.height() * 0.38)
+        if plant.get("is_focus"):
+            painter.setBrush(QColor(229, 242, 166, 35))
+            painter.drawEllipse(footprint.adjusted(-20, -7, 20, 7))
         if emphasized and base_type != "pot":
             painter.setPen(QPen(QColor(229, 242, 166, 125), 1.4))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -361,6 +384,26 @@ class GardenSceneWidget(QWidget):
             soil = QRectF(footprint.x() + footprint.width() * .12, footprint.y(), footprint.width() * .76, footprint.height() * .72)
             painter.setBrush(QColor(72, 55, 39, 142))
             painter.drawEllipse(soil)
+        painter.restore()
+
+    def _draw_nurture_badge(self, painter: QPainter, layout: PlantPlacement) -> None:
+        label_width = 84.0
+        badge = QRectF(
+            layout.visible.x + (layout.visible.width - label_width) / 2,
+            max(8.0, layout.visible.y - 7.0),
+            label_width,
+            23.0,
+        )
+        painter.save()
+        painter.setPen(QPen(QColor(231, 242, 166, 220), 1))
+        painter.setBrush(QColor(25, 59, 43, 232))
+        painter.drawRoundedRect(badge, 11, 11)
+        painter.setPen(QColor(244, 250, 216))
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(max(8, font.pointSize() - 1))
+        painter.setFont(font)
+        painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, "Nurturing")
         painter.restore()
 
     def _draw_foreground_growth(self, painter: QPainter, x: float, base_y: float, index: int, emphasized: bool) -> None:
@@ -382,7 +425,9 @@ class GardenSceneWidget(QWidget):
         if plant is None or anchor is None:
             self._card_rect = None
             self._nurture_rect = None
+            self._health_rect = None
             self._move_rect = None
+            self._story_rect = None
             return
         obstacles = [
             Rect(hit.x(), hit.y(), hit.width(), hit.height())
@@ -396,7 +441,7 @@ class GardenSceneWidget(QWidget):
         zone = placement.get("planting_zone", {}) if isinstance(placement, dict) else {}
         planting_top = rect.height() * float(zone.get("far_y", 0.62)) if isinstance(zone, dict) else rect.height() * 0.62
         x, y, width, height = smart_card_rect(
-            rect.width(), rect.height(), anchor[0], anchor[1], card_height=214.0,
+            rect.width(), rect.height(), anchor[0], anchor[1], card_width=340.0, card_height=236.0,
             obstacles=obstacles, planting_top=planting_top
         )
         card = QRectF(x, y, width, height)
@@ -423,9 +468,10 @@ class GardenSceneWidget(QWidget):
         painter.setPen(QColor(183, 207, 194))
         painter.drawText(int(left), int(top + 24), f"{species} • {stage}")
         vitality = int(round(self._clamp(self._coerce_float(plant.get("vitality", 0.0), 0.0), 0.0, 1.0) * 100))
-        points = max(0, int(self._coerce_float(plant.get("growth_points", 0), 0)))
+        health_label = str(plant.get("health_label") or ("Thriving" if vitality >= 85 else "Healthy" if vitality >= 65 else "Needs care"))
         painter.setPen(QColor(222, 235, 221))
-        painter.drawText(int(left), int(top + 51), f"Vitality  {vitality}%     Growth  {points} GP")
+        self._health_rect = QRectF(left, top + 35, card.width() - 32, 22)
+        painter.drawText(int(left), int(top + 51), f"Plant health: {health_label} ({vitality}%)")
         bar = QRectF(left, top + 66, card.width() - 32, 12)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(42, 62, 58))
@@ -438,46 +484,87 @@ class GardenSceneWidget(QWidget):
             status = "Fully grown"
         else:
             next_stage = str(plant.get("next_stage") or "next stage").title()
-            remaining = max(0, int(self._coerce_float(plant.get("points_remaining", 0), 0)))
-            status = f"{remaining} GP until {next_stage}"
+            stage_points = max(0, int(self._coerce_float(plant.get("stage_points", 0), 0)))
+            stage_goal = max(1, int(self._coerce_float(plant.get("stage_goal", 1), 1)))
+            status = f"{stage_points} of {stage_goal} growth points toward {next_stage}"
         painter.drawText(int(left), int(top + 101), status)
         painter.setPen(QColor(151, 181, 163))
-        hint = self._inline_message or ("Focus plant • receives most new growth" if plant.get("is_focus") else "Choose how to care for this plant")
+        hint = self._inline_message or (
+            "Currently nurturing • receives 80% of review growth"
+            if plant.get("is_focus") else "Review cards to earn growth"
+        )
         painter.drawText(int(left), int(top + 127), hint)
         button_top = card.bottom() - 44
-        button_width = (card.width() - 42) / 2
-        self._nurture_rect = QRectF(left, button_top, button_width, 30)
-        self._move_rect = QRectF(left + button_width + 10, button_top, button_width, 30)
+        available = card.width() - 32
+        nurture_width = available * 0.44
+        move_width = available * 0.22
+        story_width = available - nurture_width - move_width - 20
+        self._nurture_rect = QRectF(left, button_top, nurture_width, 30)
+        self._move_rect = QRectF(left + nurture_width + 10, button_top, move_width, 30)
+        self._story_rect = QRectF(self._move_rect.right() + 10, button_top, story_width, 30)
         for action_index, (button, label, primary) in enumerate((
-            (self._nurture_rect, "Nurture", True),
+            (self._nurture_rect, "Currently nurturing" if plant.get("is_focus") else "Nurture this plant", True),
             (self._move_rect, "Move", False),
+            (self._story_rect, "View story", False),
         )):
             selected = self.hasFocus() and action_index == self._card_action_index
             painter.setPen(QPen(QColor(229, 242, 166) if selected else QColor(112, 167, 127), 3 if selected else 1))
-            painter.setBrush(QColor(47, 111, 72) if primary else QColor(38, 68, 86))
+            if primary and plant.get("is_focus"):
+                painter.setBrush(QColor(37, 75, 52))
+            else:
+                painter.setBrush(QColor(47, 111, 72) if primary else QColor(38, 68, 86))
             painter.drawRoundedRect(button, 8, 8)
             painter.setPen(QColor(242, 255, 246))
             painter.drawText(button, Qt.AlignmentFlag.AlignCenter, label)
         painter.restore()
 
     def _draw_slot_placeholders(self, painter: QPainter) -> None:
-        if self._interaction.pinned_id is None and not self._interaction.placing:
+        if not self._interaction.placing:
             return
         occupied = {int(plant.get("slot_index", -1)) for plant in self.scene.get("plants", [])}
         for slot, layout in self._slot_placements.items():
             empty = slot not in occupied
             active = slot == self._interaction.destination_slot
-            if not empty and not self._interaction.placing:
-                continue
             footprint = QRectF(layout.footprint.x, layout.footprint.y, layout.footprint.width, layout.footprint.height)
             painter.save()
             painter.setPen(QPen(QColor(229, 242, 166, 190 if active else 70), 2 if active else 1))
             painter.setBrush(QColor(94, 68, 45, 125 if active else 52))
             painter.drawEllipse(footprint.adjusted(-10, -4, 10, 4))
-            if self._interaction.placing:
-                painter.setPen(QColor(242, 247, 211, 210 if active else 115))
-                painter.drawText(footprint.adjusted(-18, -22, 18, 4), Qt.AlignmentFlag.AlignCenter, str(slot + 1))
+            painter.setPen(QColor(242, 247, 211, 230 if active else 125))
+            label = "Move here" if active else ("Swap here" if not empty else "Open space")
+            painter.drawText(footprint.adjusted(-34, -24, 34, 4), Qt.AlignmentFlag.AlignCenter, label)
             painter.restore()
+
+    def event(self, event: Any) -> bool:
+        if event.type() == QEvent.Type.ToolTip:
+            # QHelpEvent.pos() still returns QPoint on Qt 6, while QRectF.contains()
+            # accepts QPointF (or numeric coordinates). Normal mouse events expose
+            # position(), so this incompatibility only appears during a tooltip.
+            raw_position = event.position() if hasattr(event, "position") else event.pos()
+            position = QPointF(raw_position)
+            text = ""
+            if self._nurture_rect is not None and self._nurture_rect.contains(position):
+                text = (
+                    "The nurtured plant gets 80% of growth earned from reviews. "
+                    "The remaining 20% is shared among your other plants."
+                )
+                if len(self.scene.get("plants", [])) <= 1:
+                    text = "Your only plant receives all growth earned from reviews."
+            elif self._health_rect is not None and self._health_rect.contains(position):
+                text = (
+                    "Plant health reflects recent study consistency. "
+                    "Reviewing restores it; missed days lower it."
+                )
+            elif self._status_rect is not None and self._status_rect.contains(position):
+                text = (
+                    "Review cards to fill today's growth goal. Garden health combines plant health, "
+                    "recent activity, streak, review volume, and accuracy."
+                )
+            if text:
+                global_position = event.globalPosition().toPoint() if hasattr(event, "globalPosition") else event.globalPos()
+                QToolTip.showText(global_position, text, self)
+                return True
+        return super().event(event)
 
     def _event_position(self, event: Any) -> Any:
         return event.position() if hasattr(event, "position") else event.pos()
@@ -554,11 +641,16 @@ class GardenSceneWidget(QWidget):
     def mousePressEvent(self, event: Any) -> None:
         position = self._event_position(event)
         if self._nurture_rect is not None and self._nurture_rect.contains(position) and self._interaction.pinned_id:
-            self.nurtureRequested.emit(self._interaction.pinned_id)
+            plant = self._plant_for_id(self._interaction.pinned_id)
+            if plant is not None and not plant.get("is_focus"):
+                self.nurtureRequested.emit(self._interaction.pinned_id)
             return
         if self._move_rect is not None and self._move_rect.contains(position) and self._interaction.pinned_id:
             self._begin_move(self._interaction.pinned_id, keyboard=True)
             self.update()
+            return
+        if self._story_rect is not None and self._story_rect.contains(position) and self._interaction.pinned_id:
+            self.storyRequested.emit(self._interaction.pinned_id)
             return
         plant_id = self._plant_at(position)
         if plant_id:
@@ -596,7 +688,10 @@ class GardenSceneWidget(QWidget):
                     self._interaction.focused_index = ids.index(plant_id)
                 if not was_pinned and self._interaction.pinned_id:
                     self._card_action_index = 0
-                    self.setAccessibleDescription("Plant action card. Tab between Nurture and Move; Enter activates.")
+                    self.setAccessibleDescription(
+                        "Plant action card. Nurture gives this plant 80 percent of review growth; "
+                        "the rest is shared. Use left and right for Nurture, Move, or View story; Enter activates."
+                    )
                     self.cardOpened.emit()
         self._press_position = None
         self._press_plant_id = None
@@ -632,14 +727,18 @@ class GardenSceneWidget(QWidget):
                 super().keyPressEvent(event)
                 return
         elif self._interaction.pinned_id and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-            self._card_action_index = (self._card_action_index + (-1 if event.key() == Qt.Key.Key_Left else 1)) % 2
-            action = "Nurture" if self._card_action_index == 0 else "Move"
+            self._card_action_index = (self._card_action_index + (-1 if event.key() == Qt.Key.Key_Left else 1)) % 3
+            action = ("Nurture", "Move", "View story")[self._card_action_index]
             self.setAccessibleName(f"{action} selected for plant action card")
         elif self._interaction.pinned_id and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             if self._card_action_index == 0:
-                self.nurtureRequested.emit(self._interaction.pinned_id)
-            else:
+                plant = self._plant_for_id(self._interaction.pinned_id)
+                if plant is not None and not plant.get("is_focus"):
+                    self.nurtureRequested.emit(self._interaction.pinned_id)
+            elif self._card_action_index == 1:
                 self._begin_move(self._interaction.pinned_id, keyboard=True)
+            else:
+                self.storyRequested.emit(self._interaction.pinned_id)
         elif event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
             self._interaction.cycle_focus(plant_ids, -1)
         elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down):
@@ -651,7 +750,10 @@ class GardenSceneWidget(QWidget):
                 self._inline_message = ""
                 if self._interaction.pinned_id:
                     self._card_action_index = 0
-                    self.setAccessibleDescription("Plant action card. Tab between Nurture and Move; Enter activates.")
+                    self.setAccessibleDescription(
+                        "Plant action card. Nurture gives this plant 80 percent of review growth; "
+                        "the rest is shared. Use left and right for Nurture, Move, or View story; Enter activates."
+                    )
                     self.cardOpened.emit()
         elif event.key() == Qt.Key.Key_Escape:
             self._interaction.dismiss()

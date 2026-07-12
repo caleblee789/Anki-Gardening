@@ -25,7 +25,7 @@ def test_percent_and_decimal_rounding_boundaries() -> None:
 def test_points_and_integer_boundaries() -> None:
     assert format_integer(0) == "0"
     assert format_integer(1234567890) == "1,234,567,890"
-    assert format_points(-42) == "GP -42"
+    assert format_points(-42) == "-42 growth points"
 
 
 def test_pluralization_and_status_labels() -> None:

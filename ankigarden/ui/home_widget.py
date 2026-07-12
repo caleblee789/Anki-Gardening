@@ -6,7 +6,7 @@ from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
 from .formatters import format_integer, format_percent, format_status_label
-from .plant_display import plant_layout
+from .plant_display import compact_plant_layout
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,8 @@ DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh
 HOME_WIDGET_STYLE = """
 <style>
 #ag-home-root {
-  margin: 14px 0;
+  max-width: 1100px;
+  margin: 14px auto;
   padding: 0;
   overflow: hidden;
   border: 1px solid rgba(75, 117, 90, 0.36);
@@ -101,11 +102,12 @@ HOME_WIDGET_STYLE = """
   font-size: 15px;
   font-weight: 700;
 }
-.ag-home__art { position:relative; width:100%; height:clamp(180px,24vw,240px); overflow:hidden; }
+.ag-home__body { display:grid; grid-template-columns:minmax(320px,42%) minmax(0,58%); min-height:210px; }
+.ag-home__art { position:relative; width:100%; height:100%; min-height:210px; overflow:hidden; }
 .ag-home__plant { position:absolute; object-fit:contain; transform-origin:50% 100%; }
 .ag-home__contact { position:absolute; border-radius:50%; background:rgba(5,12,10,.34); filter:blur(2px); }
 .ag-home__plant-fallback { position:absolute; display:flex; align-items:flex-end; justify-content:center; line-height:1; }
-.ag-home__focus-marker { position:absolute; display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:#eef2a6; color:#173425; font-size:12px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.38); }
+.ag-home__focus-marker { position:absolute; display:flex; align-items:center; justify-content:center; min-width:66px; height:22px; padding:0 8px; transform:translateX(-50%); border:1px solid rgba(238,242,166,.82); border-radius:999px; background:rgba(25,59,43,.94); color:#f4fad8; font-size:11px; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,.38); }
 .ag-home__metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -147,6 +149,9 @@ HOME_WIDGET_STYLE = """
   font-weight: 700;
 }
 .ag-home__progress-note { margin-top: 8px; color: #cfe4d4; }
+.ag-home__focus-summary { margin-bottom:10px; padding:9px 10px; border:1px solid rgba(91,163,112,.42); border-radius:8px; background:rgba(24,61,43,.58); }
+.ag-home__focus-title { font-weight:800; color:#f0f6d0; }
+.ag-home__focus-help { margin-top:3px; color:#cfe4d4; font-size:12px; }
 .ag-home__plant--focus { filter: drop-shadow(0 0 8px rgba(232, 242, 166, .72)); }
 #ag-home-root button {
   margin-top: 6px;
@@ -161,6 +166,10 @@ HOME_WIDGET_STYLE = """
   .ag-home__header { align-items:flex-start; flex-direction:column; gap:4px; }
   .ag-home__metrics { grid-template-columns:1fr; }
   .ag-home__details, .ag-home__footer { padding-left:10px; padding-right:10px; }
+}
+@media (max-width: 720px) {
+  .ag-home__body { grid-template-columns:1fr; }
+  .ag-home__art { height:190px; min-height:190px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ag-home__plant { transition:none !important; animation:none !important; }
@@ -248,7 +257,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     background_placement = data.scene_items[0].get("background_placement", {}) if data.scene_items else {}
     zone = background_placement.get("planting_zone", {}) if isinstance(background_placement, dict) else {}
-    layouts = plant_layout(1200, 900, data.scene_items, zone if isinstance(zone, dict) else None)
+    layouts = compact_plant_layout(1000, 420, data.scene_items, zone if isinstance(zone, dict) else None)
     by_slot = {int(item.get("slot_index", index)): item for index, item in enumerate(data.scene_items)}
     plant_markup = []
     for layout in layouts:
@@ -256,10 +265,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         src = escape(str(item.get("url", "")), quote=True)
         base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
         depth_index = max(1, int(round(layout.depth * 10)))
-        shadow = f'<span class="ag-home__contact" aria-hidden="true" style="left:{layout.footprint.x/12:.3f}%;top:{layout.footprint.y/9:.3f}%;width:{layout.footprint.width/12:.3f}%;height:{layout.footprint.height/9:.3f}%;z-index:{depth_index}"></span>'
+        shadow = f'<span class="ag-home__contact" aria-hidden="true" style="left:{layout.footprint.x/10:.3f}%;top:{layout.footprint.y/4.2:.3f}%;width:{layout.footprint.width/10:.3f}%;height:{layout.footprint.height/4.2:.3f}%;z-index:{depth_index}"></span>'
         alt = escape(str(item.get("name", "Plant")), quote=True)
         focus_class = " ag-home__plant--focus" if item.get("is_focus") else ""
-        common = f'left:{layout.draw.x/12:.3f}%;top:{layout.draw.y/9:.3f}%;width:{layout.draw.width/12:.3f}%;height:{layout.draw.height/9:.3f}%;z-index:{depth_index + 1}'
+        common = f'left:{layout.draw.x/10:.3f}%;top:{layout.draw.y/4.2:.3f}%;width:{layout.draw.width/10:.3f}%;height:{layout.draw.height/4.2:.3f}%;z-index:{depth_index + 1}'
         if src:
             plant = f'<img class="ag-home__plant{focus_class}" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="{common}" data-base-type="{escape(base_type, quote=True)}">'
         else:
@@ -268,19 +277,21 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             plant = f'<span class="ag-home__plant-fallback{focus_class}" data-slot-index="{layout.slot_index}" role="img" aria-label="{alt}" style="{common};font-size:{font_size}px">{fallback}</span>'
         marker = ""
         if item.get("is_focus"):
-            marker_x = (layout.visible.right / 12) - 1.667
-            marker_y = (layout.visible.y / 9) + 0.5
-            marker = f'<span class="ag-home__focus-marker" aria-label="Focus plant" title="Focus plant" style="left:{marker_x:.3f}%;top:{marker_y:.3f}%;z-index:{depth_index + 2}">★</span>'
+            marker_x = (layout.visible.x + layout.visible.width / 2) / 10
+            marker_y = max(2.0, (layout.visible.y / 4.2) - 2.0)
+            marker = f'<span class="ag-home__focus-marker" aria-label="Nurtured plant" title="This plant receives 80% of review growth" style="left:{marker_x:.3f}%;top:{marker_y:.3f}%;z-index:{depth_index + 2}">Nurturing</span>'
         plant_markup.append(shadow + plant + marker)
 
     focus_html = ""
     if data.focus_plant_name:
-        detail = f" • {escape(format_status_label(data.focus_stage))}"
+        detail = escape(format_status_label(data.focus_stage))
         if data.focus_points_remaining > 0:
-            detail += f" • {format_integer(data.focus_points_remaining)} GP to next stage"
+            detail += f" • {format_integer(data.focus_points_remaining)} growth points to the next stage"
         focus_html = (
-            '<div class="ag-home__progress-note" data-testid="home-focus">'
-            f'Nurturing {escape(data.focus_plant_name)}{detail}</div>'
+            '<div class="ag-home__focus-summary" data-testid="home-focus">'
+            f'<div class="ag-home__focus-title">Nurturing {escape(data.focus_plant_name)} — {detail}</div>'
+            '<div class="ag-home__focus-help">This plant receives 80% of growth earned from reviews; '
+            'the remaining 20% is shared among the others.</div></div>'
         )
     milestone_html = ""
     if data.milestone_ready:
@@ -300,25 +311,25 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
   {partial_banner}
   <div class=\"ag-home__header\">
     <div class=\"ag-home__title\">Anki Garden</div>
-    <div data-testid=\"home-streak\">{format_integer(data.streak_days)}d streak</div>
+    <div data-testid=\"home-streak\">{format_integer(data.streak_days)}-day streak</div>
   </div>
-  <div class=\"ag-home__scene\" data-testid=\"home-scene\"{background_style}>
-    <div class=\"ag-home__art\" data-testid=\"home-plants\">{''.join(plant_markup)}</div>
-  </div>
-  <div class=\"ag-home__details\">
-    {stage_up_html}
-    {milestone_html}
-    <div class=\"ag-home__metrics\">
-      <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards Today: {format_integer(data.cards_today)}</div></div>
-      <div class=\"ag-home__metric\"><div data-testid=\"home-health\">Garden Health: {format_percent(data.health_ratio, places=0)}</div></div>
-      <div class=\"ag-home__metric\"><div data-testid=\"home-weather\">Weather: {format_status_label(data.weather)}</div></div>
-      <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Growth today: {format_integer(data.growth_earned)}/{format_integer(growth_cap)}</div></div>
+  <div class=\"ag-home__body\">
+    <div class=\"ag-home__scene\" data-testid=\"home-scene\"{background_style}>
+      <div class=\"ag-home__art\" data-testid=\"home-plants\">{''.join(plant_markup)}</div>
     </div>
-    <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
-    {focus_html}
-  </div>
-  <div class=\"ag-home__footer\">
-    <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
+    <div class=\"ag-home__details\">
+      {stage_up_html}
+      {focus_html}
+      {milestone_html}
+      <div class=\"ag-home__metrics\">
+        <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards today: {format_integer(data.cards_today)}</div></div>
+        <div class=\"ag-home__metric\" title=\"Garden health combines plant health, recent activity, streak, review volume, and accuracy.\"><div data-testid=\"home-health\">Garden health: {format_percent(data.health_ratio, places=0)}</div></div>
+        <div class=\"ag-home__metric\"><div data-testid=\"home-weather\">Weather: {format_status_label(data.weather)}</div></div>
+        <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Study growth today: {format_integer(data.growth_earned)} of {format_integer(growth_cap)}</div></div>
+      </div>
+      <div class=\"ag-home__bar-track\" title=\"Review cards to earn growth toward today's goal.\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
+      <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
+    </div>
   </div>
 </div>
 """

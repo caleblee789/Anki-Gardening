@@ -44,8 +44,8 @@ def format_percent(value: Any, places: int = 0) -> str:
         return "N/A"
 
 
-def format_points(value: Any, label: str = "GP") -> str:
-    return f"{label} {format_integer(value)}"
+def format_points(value: Any, label: str = "growth points") -> str:
+    return f"{format_integer(value)} {label}"
 
 
 def pluralize(count: Any, singular: str, plural: str | None = None) -> str:
