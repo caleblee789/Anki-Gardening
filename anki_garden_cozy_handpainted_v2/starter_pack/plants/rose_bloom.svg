@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-    
+
     <defs>
       <linearGradient id="potBody" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="#c97b4a"/>
@@ -43,16 +43,16 @@
         <stop offset="0%" stop-color="#ffffff" stop-opacity="0.05"/>
         <stop offset="100%" stop-color="#9bb39a" stop-opacity="0.08"/>
       </radialGradient>
-      
+
     </defs>
-    
-    
-    
+
+
+
     <g transform="translate(128 160) scale(3.2)" filter="url(#paint)">
       <circle cx="0" cy="-12" r="10" fill="#d86172" stroke="#8c3644" stroke-width="2"/>
       <path d="M-8 -12 C-4 -22, 6 -21, 8 -12 C3 -17, -3 -17, -8 -12Z" fill="#ef9aaa" opacity="0.8"/>
       <path d="M-7 -9 C-1 -16, 4 -13, 7 -9 C2 -10, -3 -10, -7 -9Z" fill="#f7c2cf" opacity="0.7"/>
       <circle cx="0" cy="-12" r="3" fill="#8c3644" opacity="0.45"/>
     </g>
-    
+
     </svg>

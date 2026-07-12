@@ -73,7 +73,7 @@ class HomeWidgetStateController:
         return True
 
 
-DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh." 
+DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh."
 
 
 HOME_WIDGET_STYLE = """
