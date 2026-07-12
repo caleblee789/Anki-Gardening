@@ -8,7 +8,7 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 
 - Gives every answered card visible growth; difficult answers still contribute without removing progress.
 - Tracks a daily goal, streak, garden vitality, quests, milestones, and plant stages.
-- Adds a compact home widget to Deck Browser and Overview with working Open Garden and Refresh actions.
+- Adds a compact painted garden preview to Deck Browser and Overview with one clear Open Garden action.
 - Provides a responsive garden dashboard with local storybook-gouache raster art plus scalable SVG UI and weather overlays.
 - Saves garden appearance and motion preferences through Anki's configuration system.
 - Stores progress only in `user_files/`, where Anki preserves it during add-on upgrades.

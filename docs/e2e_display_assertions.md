@@ -6,7 +6,7 @@ Release QA additionally installs `dist/anki_garden.ankiaddon` into a disposable 
 
 1. Clean startup and Tools menu registration.
 2. Deck Browser and Overview home cards with rendered local plant artwork.
-3. Functional Open Garden and Refresh commands.
+3. Functional Open Garden command plus quiet retry behavior for recoverable errors.
 4. Dashboard layout, grounded plant scene layers, hover smart cards, click-to-pin and dismissal behavior, keyboard plant navigation, quests, milestones, collection labels, and appearance settings.
 5. A real card answer updates Anki counts, streak, growth, plants, and quests without a reviewer error.
 6. Restart preserves progress, quest state, appearance, and reduced-motion settings.

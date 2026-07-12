@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ankigarden.asset_manager import AssetManager
+from ankigarden.asset_manager import AssetManager, AssetPlacement
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
 
 
@@ -206,6 +206,49 @@ def test_storybook_png_is_preferred_over_matching_v2_svg(tmp_path):
     picked = AssetManager(DummyConfig(), storage).get_or_fetch("plants", "rose_young", "ignored")
 
     assert picked is not None and picked.name == "rose.png"
+
+
+def test_resolved_asset_carries_sanitized_placement_metadata(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [{
+        "asset_id": "bonsai_v3",
+        "category": "plants",
+        "slot": {"species": "bonsai", "stage": "young"},
+        "file": "assets/v3/bonsai.png",
+        "format": "png",
+        "width": 1254,
+        "height": 1254,
+        "quality_tier": "ultra",
+        "quality_score": 0.98,
+        "style_family": "storybook_gouache",
+        "placement": {"anchor_x": 0.48, "baseline_y": 0.91, "scale": 0.86, "crop": "contain", "layer": "plants"},
+    }]
+    _build_manifest(storage, assets)
+    _touch_asset(storage, assets[0]["file"])
+
+    resolved = AssetManager(DummyConfig(), storage).resolve("plants", "bonsai_young", "ignored")
+
+    assert resolved is not None
+    assert resolved.asset_id == "bonsai_v3"
+    assert resolved.placement.anchor_x == 0.48
+    assert resolved.placement.baseline_y == 0.91
+    assert resolved.placement.display_scale == 0.86
+    assert resolved.to_payload()["metadata"]["style_family"] == "storybook_gouache"
+    assert resolved.to_payload()["placement"]["baseline_y"] == 0.91
+
+
+def test_invalid_placement_values_fall_back_or_clamp():
+    placement = AssetPlacement.from_manifest(
+        {"anchor_x": 9, "baseline_y": -2, "scale": "bad", "crop": "stretch"},
+        category="plants",
+    )
+
+    assert placement.anchor_x == 1.0
+    assert placement.baseline_y == 0.0
+    assert placement.scale == 1.0
+    assert placement.crop == "contain"
+    assert placement.base_type == "legacy"
+    assert placement.visible_bounds == (0.08, 0.04, 0.84, 0.92)
 
 
 def test_storybook_season_master_serves_every_weather(tmp_path):

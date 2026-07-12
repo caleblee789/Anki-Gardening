@@ -35,9 +35,8 @@ UI_TEXT = {
     "advanced_hint": "Use advanced and debug controls here to keep the dashboard focused.",
     "tab_advanced": "Advanced",
     "app_title": "Anki Garden",
-    "title_banner": "🌿 Anki Garden",
-    "open_settings": "⚙ Open Settings",
-    "hero_growth_format": "Daily growth %p%",
+    "title_banner": "Anki Garden",
+    "open_settings": "Garden appearance",
     "quest_progress_title": "Quest Progress",
     "no_quests": "No quest progress yet today. Review a card to start progress.",
     "no_achievements": "Achievement progress will appear as you keep studying.",
@@ -149,7 +148,7 @@ class GardenDashboard(QDialog):
     LIST_ELIDE_WIDTH = 340
     LIST_MAX_LENGTH = 170
     MIN_WINDOW_WIDTH = 760
-    MIN_WINDOW_HEIGHT = 560
+    MIN_WINDOW_HEIGHT = 620
     DEFAULT_WINDOW_WIDTH = 1240
     DEFAULT_WINDOW_HEIGHT = 840
 
@@ -207,18 +206,11 @@ class GardenDashboard(QDialog):
         t_layout.setSpacing(self.CHIP_SPACING)
         self.title_label = QLabel(UI_TEXT["title_banner"])
         self._apply_typography(self.title_label, "title")
-        self.streak_chip = QLabel()
-        self.progress_chip = QLabel()
-        self.health_chip = QLabel()
         self.settings_btn = QPushButton(UI_TEXT["open_settings"])
         _set_button_variant(self.settings_btn, BUTTON_VARIANT_SECONDARY)
         self.settings_btn.clicked.connect(self._open_settings)
         t_layout.addWidget(self.title_label)
         t_layout.addStretch(1)
-        for chip in (self.streak_chip, self.progress_chip, self.health_chip):
-            chip.setProperty("chip", True)
-            self._apply_typography(chip, "status-chip")
-            t_layout.addWidget(chip)
         t_layout.addWidget(self.settings_btn)
         root.addWidget(top)
 
@@ -232,18 +224,6 @@ class GardenDashboard(QDialog):
         self.stage_transition_note.setMinimumHeight(24)
         self._apply_typography(self.stage_transition_note, "muted-body")
         self.stage_transition_note.setStyleSheet("color:#f4d58a; font-size:14px; font-weight:700;")
-        self.hero_summary = QLabel()
-        self.hero_summary.setWordWrap(True)
-        self.hero_summary.setMinimumHeight(48)
-        self.hero_summary.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
-        self._apply_typography(self.hero_summary, "muted-body")
-        self.hero_summary.setStyleSheet("line-height: 1.35;")
-        self.hero_growth = QProgressBar()
-        self.hero_growth.setMaximum(100)
-        self.hero_growth.setFormat(UI_TEXT["hero_growth_format"])
-        self.hero_growth.setStyleSheet(
-            "QProgressBar{height:18px;font-weight:700;} QProgressBar::chunk{background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #5fd484, stop:1 #d7ff8f);}"
-        )
         self.retrospective_note = QLabel("")
         self.retrospective_note.setWordWrap(True)
         self.retrospective_note.setMinimumHeight(24)
@@ -252,13 +232,9 @@ class GardenDashboard(QDialog):
         self.retrospective_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
         h_layout.addWidget(self.scene)
         h_layout.addWidget(self.stage_transition_note)
-        h_layout.addWidget(self.hero_summary)
-        h_layout.addWidget(self.hero_growth)
         h_layout.addWidget(self.retrospective_note)
-        root.addWidget(hero_card, 2)
+        root.addWidget(hero_card, 4)
 
-        mid_row = QHBoxLayout()
-        mid_row.setSpacing(self.MID_ROW_SPACING)
         self.quest_list = QListWidget()
         self.quest_list.setAlternatingRowColors(True)
         self.quest_list.setMinimumHeight(180)
@@ -268,10 +244,13 @@ class GardenDashboard(QDialog):
         self.inventory_list = QListWidget()
         self.inventory_list.setAlternatingRowColors(True)
         self.inventory_list.setMinimumHeight(180)
-        mid_row.addWidget(self._simple_card(UI_TEXT["quest_progress_title"], self.quest_list), 1)
-        mid_row.addWidget(self._simple_card("Milestones", self.achievement_list), 1)
-        mid_row.addWidget(self._simple_card("Garden Collection", self.inventory_list), 1)
-        root.addLayout(mid_row, 1)
+        self.details_tabs = QTabWidget()
+        self.details_tabs.setAccessibleName("Garden progress details")
+        self.details_tabs.setMaximumHeight(230)
+        self.details_tabs.addTab(self.quest_list, UI_TEXT["quest_progress_title"])
+        self.details_tabs.addTab(self.achievement_list, "Milestones")
+        self.details_tabs.addTab(self.inventory_list, "Collection")
+        root.addWidget(self.details_tabs, 1)
 
     def _card_frame(self) -> QFrame:
         frame = QFrame()
@@ -312,17 +291,7 @@ class GardenDashboard(QDialog):
         state = self.storage.state
         stats = state.daily_stats
         health = self.engine.garden_health_index()
-        streak_unit = pluralize(state.streak_days, "day")
-        self.streak_chip.setText(f"Streak {format_integer(state.streak_days)} {streak_unit}")
-        self.progress_chip.setText(f"Today {format_integer(stats.reviewed)} • {format_percent(stats.accuracy)}")
-        self.health_chip.setText(f"Health {format_percent(health)}")
-        self.hero_summary.setText(
-            f"Weather: {format_status_label(state.selected_weather)}\n"
-            "Every review helps your plants grow. Daily quests add a little extra progress without taking anything away."
-        )
         daily_goal = max(1, int(self.config.value("daily_goal", 140)))
-        growth_pct = int(min(100, (stats.growth_earned / daily_goal) * 100))
-        self.hero_growth.setValue(growth_pct)
 
         transitions = self.engine.consume_stage_transitions()
         transition_message = self.engine.stage_transition_message(transitions)
@@ -335,6 +304,8 @@ class GardenDashboard(QDialog):
                 "weather": state.selected_weather,
                 "health": health,
                 "growth": min(1.0, stats.growth_earned / daily_goal),
+                "streak_days": state.streak_days,
+                "cards_today": stats.reviewed,
                 "motion_enabled": bool(
                     self.config.value("enable_animations", True)
                     and not self.config.value("reduced_motion", False)
@@ -342,9 +313,13 @@ class GardenDashboard(QDialog):
                 "animation_intensity": self.config.nested("theme_overrides", "animation_intensity", default=0.7),
                 "weather_particle_density": self.config.nested("theme_overrides", "weather_particle_density", default=1.0),
                 "asset_paths": {
-                    "background": self.engine.resolve_background_image(),
-                    "weather": self.engine.resolve_weather_overlay(),
-                    "decoration": self.engine.resolve_decoration_image(state.equipped.get("decoration", "lantern")),
+                    "background": self._resolved_asset_payload("resolve_background_asset", "resolve_background_image"),
+                    "weather": self._resolved_asset_payload("resolve_weather_asset", "resolve_weather_overlay"),
+                    "decoration": self._resolved_asset_payload(
+                        "resolve_decoration_asset",
+                        "resolve_decoration_image",
+                        state.equipped.get("decoration", "lantern"),
+                    ),
                 },
                 "stage_transitions": [transition.to_dict() for transition in transitions],
                 "plants": [self._plant_scene_payload(plant) for plant in state.plants],
@@ -395,6 +370,7 @@ class GardenDashboard(QDialog):
         display = growth_display(plant.growth_points, plant.rare_variant)
         return {
             "plant_id": plant.plant_id,
+            "slot_index": plant.slot_index,
             "name": plant.name,
             "species": plant.species,
             "stage": display.stage,
@@ -406,8 +382,23 @@ class GardenDashboard(QDialog):
             "points_remaining": display.points_remaining,
             "stage_progress": display.progress,
             "fully_grown": display.fully_grown,
-            "image_path": self.engine.resolve_plant_image(plant.species, plant.growth_stage, plant.rare_variant),
+            "asset": self._resolved_asset_payload(
+                "resolve_plant_asset",
+                "resolve_plant_image",
+                plant.species,
+                plant.growth_stage,
+                plant.rare_variant,
+            ),
         }
+
+    def _resolved_asset_payload(self, structured_name: str, legacy_name: str, *args: Any) -> Any:
+        resolver = getattr(self.engine, structured_name, None)
+        if callable(resolver):
+            asset = resolver(*args)
+            if asset is not None and hasattr(asset, "to_payload"):
+                return asset.to_payload()
+        legacy = getattr(self.engine, legacy_name, None)
+        return legacy(*args) if callable(legacy) else None
 
     def _open_settings(self) -> None:
         if self.settings_dialog is None:

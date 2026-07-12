@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Optional
 
-from .asset_manager import AssetManager
+from .asset_manager import AssetManager, ResolvedAsset
 from .models.state import Achievement, GardenState, Plant, Quest, SessionSummary, Snapshot, iso_now
 
 
@@ -562,78 +562,86 @@ class GardenGameEngine:
         return "autumn"
 
     def resolve_plant_image(self, species: str, stage: str, rare: bool) -> Optional[str]:
+        asset = self.resolve_plant_asset(species, stage, rare)
+        return str(asset.path) if asset else None
+
+    def resolve_plant_asset(self, species: str, stage: str, rare: bool) -> Optional[ResolvedAsset]:
         effective = "rare" if rare else stage
-        path = self.assets.get_or_fetch(
+        return self.assets.resolve(
             "plants",
             f"{species}_{effective}",
             f"slot:plants:{species}:{effective}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
-    def resolve_preview_assets(self, theme: str, weather: str, stage: str, quality_preference: str) -> dict[str, Optional[str]]:
+    def resolve_preview_assets(self, theme: str, weather: str, stage: str, quality_preference: str) -> dict[str, Any]:
         seasonal = self.seasonal_theme()
         normalized_theme = self.assets.normalize_theme(theme)
-        background = self.assets.get_or_fetch(
+        background = self.assets.resolve(
             "backgrounds",
             f"bg_{seasonal}_{weather}",
             f"slot:backgrounds:{seasonal}:{weather}",
             theme=normalized_theme,
             quality_preference=quality_preference,
         )
-        weather_overlay = self.assets.get_or_fetch(
+        weather_overlay = self.assets.resolve(
             "weather",
             f"weather_{weather}",
             f"slot:weather:{weather}",
             theme=normalized_theme,
             quality_preference=quality_preference,
         )
-        plant = self.assets.get_or_fetch(
-            "plants",
-            f"rose_{stage}",
-            f"slot:plants:rose:{stage}",
-            theme=normalized_theme,
-            quality_preference=quality_preference,
-        )
+        plants = {}
+        for species in ("bonsai", "rose", "sunbloom"):
+            asset = self.assets.resolve(
+                "plants", f"{species}_{stage}", f"slot:plants:{species}:{stage}",
+                theme=normalized_theme, quality_preference=quality_preference,
+            )
+            plants[species] = asset.to_payload() if asset else None
         return {
-            "background": str(background) if background else None,
-            "weather": str(weather_overlay) if weather_overlay else None,
-            "plant": str(plant) if plant else None,
+            "background": background.to_payload() if background else None,
+            "weather": weather_overlay.to_payload() if weather_overlay else None,
+            "plant": plants["rose"],
+            "plants": plants,
         }
 
     def resolve_background_image(self) -> Optional[str]:
+        asset = self.resolve_background_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_background_asset(self) -> Optional[ResolvedAsset]:
         seasonal = self.seasonal_theme()
         weather = self.state.selected_weather
-        return (
-            str(
-                self.assets.get_or_fetch(
-                    "backgrounds",
-                    f"bg_{seasonal}_{weather}",
-                    f"slot:backgrounds:{seasonal}:{weather}",
-                    theme=self.config.value("visual_theme", "verdant_dusk"),
-                )
-                or ""
-            )
-            or None
+        return self.assets.resolve(
+            "backgrounds",
+            f"bg_{seasonal}_{weather}",
+            f"slot:backgrounds:{seasonal}:{weather}",
+            theme=self.config.value("visual_theme", "verdant_dusk"),
         )
 
     def resolve_weather_overlay(self) -> Optional[str]:
-        path = self.assets.get_or_fetch(
+        asset = self.resolve_weather_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_weather_asset(self) -> Optional[ResolvedAsset]:
+        return self.assets.resolve(
             "weather",
             f"weather_{self.state.selected_weather}",
             f"slot:weather:{self.state.selected_weather}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
     def resolve_decoration_image(self, decoration: str) -> Optional[str]:
-        path = self.assets.get_or_fetch(
+        asset = self.resolve_decoration_asset(decoration)
+        return str(asset.path) if asset else None
+
+    def resolve_decoration_asset(self, decoration: str) -> Optional[ResolvedAsset]:
+        return self.assets.resolve(
             "decorations",
             f"decor_{decoration}",
             f"slot:decorations:{decoration}",
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
-        return str(path) if path else None
 
     def reroll_asset_slot(self, slot: str) -> Optional[str]:
         if slot == "background":

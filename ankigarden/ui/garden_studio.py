@@ -7,6 +7,7 @@ from aqt.qt import (
     QComboBox,
     QFormLayout,
     QFrame,
+    QHBoxLayout,
     QSlider,
     QVBoxLayout,
     QWidget,
@@ -17,15 +18,13 @@ from .scene import GardenSceneWidget
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
-    "night_mode_preview": "Preview Night Mode",
-    "animations_label": "Animate the garden",
-    "theme_label": "Select visual theme",
-    "asset_quality_label": "Select asset quality",
-    "day_night_label": "Toggle day/night preview",
-    "weather_label": "Select preview weather",
-    "growth_stage_label": "Select preview growth stage",
-    "animation_label": "Set animation intensity",
-    "particle_label": "Set weather particle density",
+    "animations_label": "Animate garden",
+    "theme_label": "Theme",
+    "asset_quality_label": "Artwork quality",
+    "weather_label": "Preview weather",
+    "growth_stage_label": "Preview growth stage",
+    "animation_label": "Motion amount",
+    "particle_label": "Weather detail",
 }
 
 
@@ -49,7 +48,6 @@ class GardenStudioWidget(QWidget):
             "theme": self._normalize_theme(str(self.config.value("visual_theme", "verdant_dusk"))),
             "weather": "breeze",
             "growth_stage": "young",
-            "night_mode": False,
             "animation_intensity": float(self.config.nested("theme_overrides", "animation_intensity", default=0.7)),
             "weather_particle_density": float(
                 self.config.nested("theme_overrides", "weather_particle_density", default=1.0)
@@ -57,8 +55,9 @@ class GardenStudioWidget(QWidget):
         }
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        root = QHBoxLayout(self)
         controls = QFrame()
+        controls.setMaximumWidth(340)
         form = QFormLayout(controls)
 
         self.theme_combo = QComboBox()
@@ -82,9 +81,6 @@ class GardenStudioWidget(QWidget):
         idx = max(0, self.asset_quality_combo.findData(current_quality))
         self.asset_quality_combo.setCurrentIndex(idx)
         self.asset_quality_combo.currentIndexChanged.connect(self._apply_preview)
-
-        self.day_night = QCheckBox(STUDIO_TEXT["night_mode_preview"])
-        self.day_night.toggled.connect(self._on_preview_toggle)
 
         self.animations_enabled = QCheckBox()
         self.animations_enabled.setChecked(
@@ -116,14 +112,13 @@ class GardenStudioWidget(QWidget):
 
         form.addRow(STUDIO_TEXT["theme_label"], self.theme_combo)
         form.addRow(STUDIO_TEXT["asset_quality_label"], self.asset_quality_combo)
-        form.addRow(STUDIO_TEXT["day_night_label"], self.day_night)
         form.addRow(STUDIO_TEXT["animations_label"], self.animations_enabled)
         form.addRow(STUDIO_TEXT["weather_label"], self.weather_combo)
         form.addRow(STUDIO_TEXT["growth_stage_label"], self.growth_stage_combo)
         form.addRow(STUDIO_TEXT["animation_label"], self.anim_slider)
         form.addRow(STUDIO_TEXT["particle_label"], self.particle_slider)
 
-        root.addWidget(controls)
+        root.addWidget(controls, 0)
         root.addWidget(self.scene, 1)
 
     def _on_theme_changed(self) -> None:
@@ -131,7 +126,6 @@ class GardenStudioWidget(QWidget):
         self._apply_preview()
 
     def _on_preview_toggle(self) -> None:
-        self.preview["night_mode"] = self.day_night.isChecked()
         self.preview["weather"] = str(self.weather_combo.currentData())
         self.preview["growth_stage"] = str(self.growth_stage_combo.currentData())
         self._apply_preview()
@@ -157,12 +151,12 @@ class GardenStudioWidget(QWidget):
                 )
             except Exception:
                 asset_paths = {}
+        preview_assets = asset_paths.get("plants", {}) if isinstance(asset_paths.get("plants"), dict) else {}
         scene_payload = {
             "weather": self.preview["weather"],
             "growth": growth,
             "health": 0.85,
             "theme": self.preview["theme"],
-            "night_mode": self.preview["night_mode"],
             "animation_intensity": self.preview["animation_intensity"],
             "weather_particle_density": self.preview["weather_particle_density"],
             "motion_enabled": self.animations_enabled.isChecked(),
@@ -172,12 +166,15 @@ class GardenStudioWidget(QWidget):
             },
             "plants": [
                 {
-                    "name": STUDIO_TEXT["preview_plant_name"],
-                    "species": "rose",
+                    "plant_id": f"preview-{species}",
+                    "slot_index": slot_index,
+                    "name": species.title(),
+                    "species": species,
                     "stage": self.preview["growth_stage"],
                     "vitality": 0.95,
-                    "image_path": asset_paths.get("plant"),
+                    "asset": preview_assets.get(species) or (asset_paths.get("plant") if species == "rose" else None),
                 }
+                for slot_index, species in enumerate(("bonsai", "rose", "sunbloom"))
             ],
         }
         self.scene.set_scene(scene_payload)

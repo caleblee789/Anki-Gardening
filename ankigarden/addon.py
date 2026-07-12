@@ -192,9 +192,10 @@ class AnkiGardenApp:
                 cards_today=self._cards_reviewed_today(),
                 health_ratio=self.engine.garden_health_index(),
                 growth_cap=max(1, int(self.config.value("daily_goal", 140))),
-                plants_html=self._plant_badges_html(),
+                scene_items=self._home_scene_items(),
                 event=self.engine.get_weekly_event_summary(),
                 stage_transition_message=transition_message,
+                background_url=self._home_background_url(),
             )
             self._home_widget_controller.resolve_success(request_id, data)
         except Exception:
@@ -219,6 +220,29 @@ class AnkiGardenApp:
             )
         return "".join(badges)
 
+    def _home_scene_items(self) -> list[dict[str, object]]:
+        background = getattr(self.engine, "resolve_background_asset", lambda: None)()
+        background_placement = background.placement.to_dict() if background is not None else {}
+        items: list[dict[str, object]] = []
+        for plant in sorted(self.storage.state.plants, key=lambda row: row.slot_index)[:6]:
+            try:
+                asset = self.engine.resolve_plant_asset(plant.species, plant.growth_stage, plant.rare_variant)
+            except Exception:
+                asset = None
+            if asset is None:
+                continue
+            items.append({
+                "plant_id": plant.plant_id,
+                "slot_index": plant.slot_index,
+                "name": plant.name,
+                "species": plant.species,
+                "stage": plant.growth_stage,
+                "url": self._asset_web_url(asset.path),
+                "placement": asset.placement.to_dict(),
+                "background_placement": background_placement,
+            })
+        return items
+
     def _plant_badge_image_html(self, plant: object) -> str:
         resolver = getattr(self.engine, "resolve_plant_image", None)
         if resolver is None:
@@ -230,6 +254,25 @@ class AnkiGardenApp:
             return ""
         if not path:
             return ""
+        src = self._asset_web_url(path)
+        if not src:
+            return ""
+        plant_name = escape(str(getattr(plant, "name", "Plant")), quote=True)
+        return f'<img class="ag-home__plant-thumb" src="{src}" alt="{plant_name}">'
+
+    def _home_background_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_background_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else self.engine.resolve_background_image()
+        except Exception:
+            logger.debug("Anki Garden: unable to resolve home widget background", exc_info=True)
+            return ""
+        return self._asset_web_url(path)
+
+    def _asset_web_url(self, path: object) -> str:
+        if not path:
+            return ""
         try:
             image_path = Path(str(path)).expanduser()
             if not image_path.exists() or not image_path.is_file() or image_path.suffix.lower() not in {".svg", ".png", ".webp"}:
@@ -237,11 +280,9 @@ class AnkiGardenApp:
             addon_dir = Path(__file__).parent.resolve()
             relative = image_path.resolve().relative_to(addon_dir).as_posix()
             package = mw.addonManager.addonFromModule(__name__)
-            src = f"/_addons/{quote(str(package), safe='')}/{quote(relative, safe='/')}"
+            return f"/_addons/{quote(str(package), safe='')}/{quote(relative, safe='/')}"
         except Exception:
             return ""
-        plant_name = escape(str(getattr(plant, "name", "Plant")), quote=True)
-        return f'<img class="ag-home__plant-thumb" src="{src}" alt="{plant_name}">'
 
     def _cards_reviewed_today(self) -> int:
         fallback = int(getattr(self.storage.state.daily_stats, "reviewed", 0))

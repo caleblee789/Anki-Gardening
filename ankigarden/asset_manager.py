@@ -2,8 +2,120 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+
+@dataclass(frozen=True)
+class AssetPlacement:
+    anchor_x: float = 0.5
+    baseline_y: float = 0.86
+    scale: float = 1.0
+    crop: str = "contain"
+    layer: str = "content"
+    visible_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.92)
+    ground_anchor: tuple[float, float] = (0.5, 0.96)
+    display_scale: float = 1.0
+    base_type: str = "legacy"
+    focal_point: tuple[float, float] = (0.5, 0.5)
+    planting_zone: tuple[float, float, float, float] = (0.08, 0.92, 0.62, 0.91)
+    scene_anchor: tuple[float, float] = (0.82, 0.86)
+
+    @classmethod
+    def from_manifest(cls, value: Any, *, category: str) -> "AssetPlacement":
+        row = value if isinstance(value, dict) else {}
+        defaults = {
+            "backgrounds": cls(0.5, 0.5, 1.0, "cover", "background", focal_point=(0.5, 0.43)),
+            "weather": cls(0.5, 0.5, 1.0, "cover", "weather"),
+            "decorations": cls(0.82, 0.86, 0.72, "contain", "decoration"),
+            "plants": cls(0.5, 0.9, 1.0, "contain", "plants"),
+            "ui": cls(),
+        }.get(category, cls())
+
+        def number(key: str, default: float, low: float, high: float) -> float:
+            try:
+                return max(low, min(high, float(row.get(key, default))))
+            except (TypeError, ValueError):
+                return default
+
+        crop = str(row.get("crop", defaults.crop))
+        if crop not in {"contain", "cover"}:
+            crop = defaults.crop
+        def pair(key: str, default: tuple[float, float]) -> tuple[float, float]:
+            value = row.get(key, default)
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                return default
+            return (number_from(value[0], default[0]), number_from(value[1], default[1]))
+
+        def quad(key: str, default: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+            value = row.get(key, default)
+            if key == "planting_zone" and isinstance(value, dict):
+                value = [value.get("left"), value.get("right"), value.get("far_y"), value.get("near_y")]
+            if not isinstance(value, (list, tuple)) or len(value) != 4:
+                return default
+            return tuple(number_from(v, d) for v, d in zip(value, default))  # type: ignore[return-value]
+
+        def number_from(value: Any, default: float) -> float:
+            try:
+                return max(0.0, min(1.0, float(value)))
+            except (TypeError, ValueError):
+                return default
+
+        base_type = str(row.get("base_type", defaults.base_type))
+        if base_type not in {"pot", "dirt_mound", "legacy"}:
+            base_type = defaults.base_type
+        return cls(
+            anchor_x=number("anchor_x", defaults.anchor_x, 0.0, 1.0),
+            baseline_y=number("baseline_y", defaults.baseline_y, 0.0, 1.0),
+            scale=number("scale", defaults.scale, 0.1, 2.5),
+            crop=crop,
+            layer=str(row.get("layer", defaults.layer)),
+            visible_bounds=quad("visible_bounds", defaults.visible_bounds),
+            ground_anchor=pair("ground_anchor", defaults.ground_anchor),
+            display_scale=number("display_scale", number("scale", defaults.display_scale, 0.1, 2.5), 0.1, 2.5),
+            base_type=base_type,
+            focal_point=pair("focal_point", defaults.focal_point),
+            planting_zone=quad("planting_zone", defaults.planting_zone),
+            scene_anchor=pair("scene_anchor", (number("anchor_x", defaults.anchor_x, 0, 1), number("baseline_y", defaults.baseline_y, 0, 1))),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "anchor_x": self.anchor_x,
+            "baseline_y": self.baseline_y,
+            "scale": self.scale,
+            "crop": self.crop,
+            "layer": self.layer,
+            "visible_bounds": list(self.visible_bounds),
+            "ground_anchor": list(self.ground_anchor),
+            "display_scale": self.display_scale,
+            "base_type": self.base_type,
+            "focal_point": list(self.focal_point),
+            "planting_zone": {
+                "left": self.planting_zone[0], "right": self.planting_zone[1],
+                "far_y": self.planting_zone[2], "near_y": self.planting_zone[3],
+            },
+            "scene_anchor": list(self.scene_anchor),
+        }
+
+
+@dataclass(frozen=True)
+class ResolvedAsset:
+    path: Path
+    asset_id: str
+    category: str
+    placement: AssetPlacement
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "asset_id": self.asset_id,
+            "category": self.category,
+            "placement": self.placement.to_dict(),
+            "metadata": dict(self.metadata),
+        }
 
 
 class AssetManager:
@@ -36,6 +148,27 @@ class AssetManager:
         reroll: bool = False,
         quality_preference: Optional[str] = None,
     ) -> Optional[Path]:
+        resolved = self.resolve(
+            category,
+            key,
+            query,
+            provider_hint=provider_hint,
+            theme=theme,
+            reroll=reroll,
+            quality_preference=quality_preference,
+        )
+        return resolved.path if resolved else None
+
+    def resolve(
+        self,
+        category: str,
+        key: str,
+        query: str,
+        provider_hint: Optional[str] = None,
+        theme: Optional[str] = None,
+        reroll: bool = False,
+        quality_preference: Optional[str] = None,
+    ) -> Optional[ResolvedAsset]:
         del query, provider_hint
         cache_key = f"{category}:{key}"
         slot = self._slot_for(category, key, theme)
@@ -52,16 +185,37 @@ class AssetManager:
             else:
                 return None
 
-        candidate_paths = [self.storage.addon_dir / entry["file"] for entry in candidates]
-        candidate_paths = [p for p in candidate_paths if self._valid_local_asset(p, category)]
-        if not candidate_paths:
+        valid_candidates = [
+            entry for entry in candidates
+            if self._valid_local_asset(self.storage.addon_dir / entry["file"], category)
+        ]
+        if not valid_candidates:
             if not self.config.nested("assets", "allow_fallback_placeholder", default=True):
                 return None
-            candidate_paths = [self._ensure_placeholder_asset()]
+            placeholder = self._ensure_placeholder_asset()
+            valid_candidates = [{
+                "asset_id": "fallback_placeholder",
+                "category": category,
+                "file": str(placeholder.relative_to(self.storage.addon_dir)),
+                "width": 1200,
+                "height": 675,
+                "quality_score": 0.5,
+            }]
 
-        idx = self._pick_index(cache_key, key, candidate_paths, reroll)
-        picked = candidate_paths[idx]
+        idx = self._pick_index(cache_key, key, [self.storage.addon_dir / row["file"] for row in valid_candidates], reroll)
+        picked_entry = valid_candidates[idx]
+        picked = self.storage.addon_dir / picked_entry["file"]
         rel = str(picked.relative_to(self.storage.addon_dir))
+        raw_placement = dict(picked_entry.get("placement", {})) if isinstance(picked_entry.get("placement"), dict) else {}
+        if category == "plants" and "base_type" not in raw_placement:
+            growth_base = str(picked_entry.get("growth_base", ""))
+            species = str((picked_entry.get("slot", {}) or {}).get("species", ""))
+            if growth_base == "bonsai_pot" or "pot" in picked_entry.get("variants", []) or (
+                species == "rose" and picked_entry.get("style_family") == "storybook_gouache"
+            ):
+                raw_placement["base_type"] = "pot"
+            elif growth_base == "dirt_mound" or "dirt_mound" in picked_entry.get("variants", []):
+                raw_placement["base_type"] = "dirt_mound"
         self.metadata[cache_key] = {
             "provider": "local_catalog",
             "source_kind": "local_catalog",
@@ -74,10 +228,19 @@ class AssetManager:
             "derivatives": {"thumbnail": rel, "preview": rel, "full": rel},
             "catalog_slot": slot,
             "catalog_cycle_index": idx,
+            "asset_id": str(picked_entry.get("asset_id", "")),
+            "placement": AssetPlacement.from_manifest(raw_placement, category=category).to_dict(),
             "legacy_remote_preserved": bool(self.metadata.get(cache_key, {}).get("legacy_remote_preserved", False)),
         }
         self.storage.save_asset_metadata(self.metadata)
-        return picked
+        placement = AssetPlacement.from_manifest(raw_placement, category=category)
+        return ResolvedAsset(
+            path=picked,
+            asset_id=str(picked_entry.get("asset_id", "")),
+            category=category,
+            placement=placement,
+            metadata=dict(picked_entry),
+        )
 
     def _load_catalog(self) -> dict[str, list[dict[str, Any]]]:
         manifest = self.storage.assets_root / "manifest.json"

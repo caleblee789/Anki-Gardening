@@ -6,6 +6,7 @@ from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
 from .formatters import format_integer, format_percent, format_status_label
+from .plant_display import plant_layout
 
 
 @dataclass(frozen=True)
@@ -17,8 +18,9 @@ class HomeWidgetData:
     streak_days: int
     weather: str
     event: str
-    plants_html: str
+    scene_items: tuple[dict[str, Any], ...] = ()
     stage_transition_message: str = ""
+    background_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -73,10 +75,11 @@ HOME_WIDGET_STYLE = """
 <style>
 #ag-home-root {
   margin: 14px 0;
-  padding: 14px;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid rgba(75, 117, 90, 0.36);
   border-radius: 8px;
-  background: linear-gradient(180deg, #182a25 0%, #10201d 100%);
+  background: #10201d;
   color: #e9f5ee;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -85,42 +88,30 @@ HOME_WIDGET_STYLE = """
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  background: rgba(8, 20, 17, 0.84);
 }
 .ag-home__title {
   font-size: 15px;
   font-weight: 700;
 }
-.ag-home__plants [data-testid="home-plants"] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 12px;
-}
-.ag-home__plant {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 180px;
-  padding: 5px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-}
-.ag-home__plant-thumb {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  object-fit: contain;
-}
-.ag-home__plant-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.ag-home__art { position:relative; width:100%; height:clamp(180px,24vw,240px); overflow:hidden; }
+.ag-home__plant { position:absolute; object-fit:contain; transform-origin:50% 100%; }
+.ag-home__contact { position:absolute; border-radius:50%; background:rgba(5,12,10,.34); filter:blur(2px); }
 .ag-home__metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   gap: 8px;
+}
+.ag-home__scene {
+  padding: 0;
+  background-position: center;
+  background-size: cover;
+}
+.ag-home__details { padding:10px 14px; background:#10201d; }
+.ag-home__footer {
+  padding: 0 14px 10px;
 }
 .ag-home__metric {
   padding: 8px;
@@ -129,7 +120,7 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__bar-track {
   height: 8px;
-  margin: 8px 0 10px;
+  margin: 8px 0 0;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
@@ -152,7 +143,7 @@ HOME_WIDGET_STYLE = """
   color: #c4d7d0;
 }
 #ag-home-root button {
-  margin-top: 10px;
+  margin-top: 6px;
   padding: 6px 10px;
   border: 1px solid #49725a;
   border-radius: 8px;
@@ -232,6 +223,25 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             f'{escape(data.stage_transition_message)}</div>'
         )
 
+    background_style = ""
+    if data.background_url:
+        background_style = f' style="background-image:linear-gradient(180deg,rgba(5,14,12,.08),rgba(5,14,12,.58)),url(&quot;{escape(data.background_url, quote=True)}&quot;)"'
+
+    background_placement = data.scene_items[0].get("background_placement", {}) if data.scene_items else {}
+    zone = background_placement.get("planting_zone", {}) if isinstance(background_placement, dict) else {}
+    layouts = plant_layout(1200, 900, data.scene_items, zone if isinstance(zone, dict) else None)
+    by_slot = {int(item.get("slot_index", index)): item for index, item in enumerate(data.scene_items)}
+    plant_markup = []
+    for layout in layouts:
+        item = by_slot.get(layout.slot_index, {})
+        src = escape(str(item.get("url", "")), quote=True)
+        if not src:
+            continue
+        base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
+        shadow = f'<span class="ag-home__contact" style="left:{layout.footprint.x/12:.3f}%;top:{layout.footprint.y/9:.3f}%;width:{layout.footprint.width/12:.3f}%;height:{layout.footprint.height/9:.3f}%"></span>'
+        alt = escape(str(item.get("name", "Plant")), quote=True)
+        plant_markup.append(shadow + f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="left:{layout.draw.x/12:.3f}%;top:{layout.draw.y/9:.3f}%;width:{layout.draw.width/12:.3f}%;height:{layout.draw.height/9:.3f}%;z-index:{int(layout.depth)}" data-base-type="{escape(base_type, quote=True)}">')
+
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" data-state=\"{escape(phase)}\">
   {partial_banner}
@@ -239,23 +249,27 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div class=\"ag-home__title\">Anki Garden</div>
     <div data-testid=\"home-streak\">{format_integer(data.streak_days)}d streak</div>
   </div>
-  <div class=\"ag-home__plants\"><div data-testid=\"home-plants\">{data.plants_html}</div></div>
-  {stage_up_html}
-  <div class=\"ag-home__metrics\">
-    <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards Today: {format_integer(data.cards_today)}</div></div>
-    <div class=\"ag-home__metric\"><div data-testid=\"home-health\">Garden Health: {format_percent(data.health_ratio, places=0)}</div></div>
-    <div class=\"ag-home__metric\"><div data-testid=\"home-weather\">Weather: {format_status_label(data.weather)}</div></div>
-    <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Growth today: {format_integer(data.growth_earned)}/{format_integer(growth_cap)}</div></div>
+  <div class=\"ag-home__scene\" data-testid=\"home-scene\"{background_style}>
+    <div class=\"ag-home__art\" data-testid=\"home-plants\">{''.join(plant_markup)}</div>
   </div>
-  <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
-  {event_html}
-  <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
-  <button data-testid=\"home-refresh\" type=\"button\" onclick=\"pycmd('anki-garden:refresh')\">Refresh</button>
+  <div class=\"ag-home__details\">
+    {stage_up_html}
+    <div class=\"ag-home__metrics\">
+      <div class=\"ag-home__metric\"><div data-testid=\"home-cards\">Cards Today: {format_integer(data.cards_today)}</div></div>
+      <div class=\"ag-home__metric\"><div data-testid=\"home-health\">Garden Health: {format_percent(data.health_ratio, places=0)}</div></div>
+      <div class=\"ag-home__metric\"><div data-testid=\"home-weather\">Weather: {format_status_label(data.weather)}</div></div>
+      <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Growth today: {format_integer(data.growth_earned)}/{format_integer(growth_cap)}</div></div>
+    </div>
+    <div class=\"ag-home__bar-track\"><div data-testid=\"home-growth-bar\" style=\"width:{growth_pct}%\"></div></div>
+  </div>
+  <div class=\"ag-home__footer\">{event_html}
+    <button data-testid=\"home-open\" type=\"button\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
+  </div>
 </div>
 """
 
 
-def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, plants_html: str, event: str, stage_transition_message: str = "") -> HomeWidgetData:
+def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio: float, growth_cap: int, scene_items: list[dict[str, Any]], event: str, stage_transition_message: str = "", background_url: str = "") -> HomeWidgetData:
     stats = state.daily_stats
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
@@ -279,6 +293,7 @@ def build_home_widget_success_data(*, state: Any, cards_today: int, health_ratio
         streak_days=int(state.streak_days),
         weather=str(state.selected_weather or "N/A"),
         event=event or "N/A",
-        plants_html=plants_html,
+        scene_items=tuple(scene_items),
         stage_transition_message=stage_transition_message,
+        background_url=background_url,
     )
