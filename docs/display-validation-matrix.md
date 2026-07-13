@@ -9,13 +9,13 @@
 | Weather | `selected_weather` | Friendly title-case label and local overlay fallback. |
 | Plant thumbnails | Manifest-selected SVG | Exported `/_addons/...` URL in webviews; emoji fallback. |
 | Plant composition | Shared placement metadata and slot order | One-to-six plants remain grounded, collision-free, and depth ordered in both the dashboard and home widget; missing artwork keeps a named stage-appropriate fallback. |
-| Plant stage/growth | Plant growth points | The plant card shows stage progress in full words, plain-language plant health, the next stage, and a proportional progress bar; flowering/rare states show fully grown. |
-| Plant interaction | Stable plant ID plus painted selection and native Qt actions | The scene selects and optionally drags plants; a focusable action panel provides Nurture, Move, View story, Cancel move, and status semantics. Preview scenes are explicitly noninteractive. |
-| Nurtured plant | Valid `focus_plant_id` | A grounded glow/ring identifies it without covering the artwork; the adjacent focus summary explains that it receives 80% of future growth, and invalid IDs repair to the first slot. |
-| Garden milestone | Total reviews plus persistent pending reward | Home shows progress/readiness; dashboard offers up to three stable unowned species and claims one slot at a time. |
+| Plant stage/growth | Plant growth points | The selected-plant bar shows stage progress in full words, plain-language plant vitality, the next stage, and a proportional progress bar; flowering/rare states show fully grown. |
+| Plant interaction | Stable plant ID plus painted selection and native Qt actions | The scene selects and optionally drags plants; a focusable compact action bar provides Nurture, Move, Story, Cancel move, and status semantics. Preview scenes are explicitly noninteractive. |
+| Nurtured plant | Valid `focus_plant_id` | A grounded glow/ring identifies it without covering the artwork; a passive green Nurturing pill replaces the action for the current recipient, and invalid IDs repair to the first slot. |
+| Garden milestone | Total reviews plus persistent pending reward | Dashboard shows numeric plant-choice progress, offers up to three stable unowned species, and claims one slot at a time. |
 | Plant story | Stable plant ID plus semantic milestone memories | View story opens a keyboard-accessible detail dialog with generated/editable name, planted date, current growth, and newest-first warm factual timeline. |
 | Quest progress | Daily quest metric | Preserved through same-day restart; regenerated only at rollover. |
-| Appearance | Whitelisted Anki add-on config | Guided, documented preferences save transactionally; the labeled Preview only scene is removed from the tab order. |
+| Appearance | Whitelisted Anki add-on config | Guided preferences stage until Save and roll back transactionally on failure; Preview only weather and stage controls update the demonstration scene without entering the persisted payload. |
 | Responsive layout | Available dialog/webview geometry | Dashboard content scrolls, settings controls stack above the preview below 720 px, home metrics collapse to one column, and cards and overlays remain inside unusually small scenes. |
 
 Strict acceptance requires Deck Browser, Overview, dashboard, persisted state, and Anki's own studied-today count to agree after a real review.

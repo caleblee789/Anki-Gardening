@@ -10,6 +10,6 @@ Release QA additionally installs `dist/anki_garden.ankiaddon` into a disposable 
 4. Dashboard layout, grounded plant scene layers, immersive focus glow, hover smart cards, nurture, move/swap/undo, keyboard navigation without a Tab trap, quests, milestones, collection labels, and responsive settings.
 5. A real card answer updates Anki counts, streak, growth, plants, and quests without a reviewer error.
 6. Restart preserves progress, quest state, appearance, daily goal, home visibility, and reduced-motion settings.
-7. Every theme and a narrow window keep plant hit areas and smart cards inside the visible scene; narrow settings stack and scroll; reduced motion removes sway while preserving grounded focus and interaction cues.
+7. Every theme and a narrow window keep plant hit areas and actions inside the visible scene; narrow settings stack and scroll; plants remain stationary while weather motion preserves atmosphere.
 
 The final release pass must use the exact rebuilt archive and record results in `codebase-audit.md`; historical smoke results are not treated as proof for a newer package. Full theme/asset coverage remains enforced by the manifest audit and responsive geometry tests.

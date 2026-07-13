@@ -72,6 +72,54 @@ class PlantHealthDisplay:
     percent: int
 
 
+@dataclass(frozen=True)
+class AchievementProgressDisplay:
+    current: int
+    target: int
+    value_text: str
+    criteria_text: str
+
+
+def achievement_progress_display(achievement: Any, state: Any) -> AchievementProgressDisplay:
+    """Map persisted achievement state to useful, numeric presentation data."""
+    stats = getattr(state, "daily_stats", None)
+    reviewed = max(0, int(getattr(stats, "reviewed", 0) or 0))
+    wrong = max(0, int(getattr(stats, "wrong", 0) or 0))
+    accuracy = int(round(float(getattr(stats, "accuracy", 0.0) or 0.0) * 100))
+    achievement_id = str(getattr(achievement, "achievement_id", ""))
+    definitions = {
+        "streak_7": (max(0, int(getattr(state, "streak_days", 0) or 0)), 7, "days", "Study 7 days in a row."),
+        "streak_30": (max(0, int(getattr(state, "streak_days", 0) or 0)), 30, "days", "Study 30 days in a row."),
+        "reviews_100_day": (reviewed, 100, "reviews", "Complete 100 reviews in one day."),
+        "reviews_1000_total": (
+            max(0, int(getattr(state, "total_reviews", 0) or 0)), 1000, "reviews", "Complete 1,000 total reviews."
+        ),
+        "retention_90": (accuracy, 90, "% accuracy", "Reach 90% accuracy after at least 20 reviews today."),
+        "retention_100": (
+            reviewed if wrong == 0 else 0, 30, "perfect reviews", "Complete 30 reviews today with 100% accuracy."
+        ),
+        "all_due_done": (
+            1 if bool(getattr(stats, "completed_due_cards", False)) else 0, 1, "complete", "Finish all due cards today."
+        ),
+        "no_lapse": (
+            reviewed if wrong == 0 else 0, 40, "reviews", "Complete 40 reviews today with no incorrect answers."
+        ),
+    }
+    current, target, unit, criteria = definitions.get(
+        achievement_id,
+        (int(round(float(getattr(achievement, "progress", 0.0) or 0.0) * 100)), 100, "%", str(getattr(achievement, "description", ""))),
+    )
+    current = max(0, int(current))
+    target = max(1, int(target))
+    if achievement_id == "retention_90":
+        value_text = f"{current} / {target}% accuracy; {reviewed} / 20 reviews"
+    elif achievement_id == "all_due_done":
+        value_text = "1 / 1 complete" if current else "0 / 1 complete"
+    else:
+        value_text = f"{current:,} / {target:,} {unit}"
+    return AchievementProgressDisplay(current, target, value_text, criteria)
+
+
 def plant_health_display(vitality: Any) -> PlantHealthDisplay:
     try:
         ratio = max(0.0, min(1.0, float(vitality)))
@@ -120,6 +168,18 @@ def _rect(value: Any, default: tuple[float, float, float, float]) -> tuple[float
         return default
     x, y, w, h = (_number(v, d, 0.0, 1.0) for v, d in zip(value, default))
     return x, y, max(0.01, min(w, 1.0 - x)), max(0.01, min(h, 1.0 - y))
+
+
+def plant_layout_item(item: Any, slot_index: int) -> dict[str, Any]:
+    """Normalize resolved scene payloads for the shared layout engine."""
+    result = dict(item) if isinstance(item, dict) else {}
+    asset = result.get("asset")
+    if not isinstance(result.get("placement"), dict) and isinstance(asset, dict):
+        placement = asset.get("placement")
+        if isinstance(placement, dict):
+            result["placement"] = dict(placement)
+    result["slot_index"] = int(slot_index)
+    return result
 
 
 def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, Any]],
@@ -180,8 +240,18 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                            vb[2] * draw_w, vb[3] * draw_h)
             motion = max(4.0, visible_w * 0.045)
             hit = visible.expanded(motion + max(5.0, visible_w * 0.05), max(5.0, visible_h * 0.025))
-            footprint = Rect(base_x - visible_w * 0.28, base_y - max(2.0, visible_h * 0.025), visible_w * 0.56,
-                             max(4.0, visible_h * 0.055))
+            base_type = str(placement.get("base_type", "legacy"))
+            default_contact = {
+                "pot": (0.52, 0.045),
+                "dirt_mound": (0.68, 0.04),
+                "legacy": (0.56, 0.055),
+            }.get(base_type, (0.56, 0.055))
+            contact = placement.get("contact_shadow", default_contact)
+            if not isinstance(contact, (list, tuple)) or len(contact) != 2:
+                contact = default_contact
+            contact_w = visible_w * _number(contact[0], default_contact[0], 0.2, 1.0)
+            contact_h = max(3.0, visible_h * _number(contact[1], default_contact[1], 0.015, 0.12))
+            footprint = Rect(base_x - contact_w / 2, base_y - contact_h / 2, contact_w, contact_h)
             slot = int(item.get("slot_index", order)) if isinstance(item, dict) else order
             result.append(PlantPlacement(slot, draw, visible, hit, footprint, base_y,
                                          Rect(visible.x, visible.y, visible.width, min(24.0, visible.height)),
