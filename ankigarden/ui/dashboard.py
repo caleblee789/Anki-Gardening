@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aqt.qt import (
@@ -33,18 +34,21 @@ from .scene import GardenSceneWidget
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..config import ConfigError
 from ..models.state import MAX_PLANT_NAME_LENGTH
+from ..notices import USER_NOTICES
+
+logger = logging.getLogger(__name__)
 
 UI_TEXT = {
     "settings_window_title": "Anki Garden Settings",
-    "advanced_hint": "Use advanced and debug controls here to keep the dashboard focused.",
-    "tab_advanced": "Advanced",
+    "advanced_hint": "Start with the plain-language status below. Copy the report if you need help troubleshooting.",
+    "tab_advanced": "Troubleshooting",
     "app_title": "Anki Garden",
     "title_banner": "Anki Garden",
-    "open_settings": "Garden appearance",
+    "open_settings": "Garden settings",
     "quest_progress_title": "Quest Progress",
     "no_quests": "No quest progress yet today. Review a card to start progress.",
     "no_achievements": "Achievement progress will appear as you keep studying.",
-    "no_boosts": "No active inventory boosts yet.",
+    "no_collection": "No collected garden items yet.",
 }
 
 BUTTON_VARIANT_PRIMARY = "primary"
@@ -69,6 +73,7 @@ def _button_stylesheet() -> str:
             QPushButton[variant='destructive'] { background: #6d2d2d; border: 1px solid #a44a4a; color: #ffecec; }
             QPushButton[variant='destructive']:hover { background: #823636; }
             QPushButton:disabled { background: #1c2a32; border: 1px solid #2c3b44; color: #7a8a92; }
+            QPushButton:focus { border: 2px solid #e5f2a6; padding: 6px 11px; }
     """
 
 
@@ -82,18 +87,31 @@ class GardenSettingsDialog(QDialog):
         self.resize(*self._recommended_window_size(920, 640, width_ratio=0.72, height_ratio=0.72))
         self.setStyleSheet(_button_stylesheet())
 
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         tabs = QTabWidget()
+        tabs.setAccessibleName("Anki Garden settings sections")
         root.addWidget(tabs)
 
         self.behavior = GardenStudioWidget(self.config, asset_resolver=self.engine.resolve_preview_assets)
-        save_visuals = QPushButton("Save Garden Appearance")
-        _set_button_variant(save_visuals, BUTTON_VARIANT_PRIMARY)
-        save_visuals.clicked.connect(self._save_visual_settings)
+        save_settings = QPushButton("Save settings")
+        save_settings.setAccessibleName("Save Anki Garden settings")
+        _set_button_variant(save_settings, BUTTON_VARIANT_PRIMARY)
+        save_settings.clicked.connect(self._save_visual_settings)
+        cancel_settings = QPushButton("Cancel")
+        _set_button_variant(cancel_settings, BUTTON_VARIANT_SECONDARY)
+        cancel_settings.clicked.connect(self.reject)
         behavior = QWidget()
         behavior_layout = QVBoxLayout(behavior)
-        behavior_layout.addWidget(self.behavior)
-        behavior_layout.addWidget(save_visuals)
+        behavior_scroll = QScrollArea()
+        behavior_scroll.setWidgetResizable(True)
+        behavior_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        behavior_scroll.setWidget(self.behavior)
+        behavior_layout.addWidget(behavior_scroll, 1)
+        settings_actions = QHBoxLayout()
+        settings_actions.addStretch(1)
+        settings_actions.addWidget(cancel_settings)
+        settings_actions.addWidget(save_settings)
+        behavior_layout.addLayout(settings_actions)
 
         advanced = QWidget()
         a_layout = QVBoxLayout(advanced)
@@ -101,40 +119,61 @@ class GardenSettingsDialog(QDialog):
         self.debug_report = QTextEdit()
         self.debug_report.setReadOnly(True)
         self.debug_report.setPlaceholderText("Display telemetry report appears here.")
-        refresh_debug = QPushButton("Refresh Debug Report")
+        self.troubleshooting_status = QLabel("Anki Garden is ready. The technical report below contains display diagnostics only.")
+        self.troubleshooting_status.setWordWrap(True)
+        a_layout.addWidget(self.troubleshooting_status)
+        refresh_debug = QPushButton("Refresh report")
+        copy_debug = QPushButton("Copy report")
         _set_button_variant(refresh_debug, BUTTON_VARIANT_SECONDARY)
         refresh_debug.clicked.connect(self._refresh_debug_report)
-        a_layout.addWidget(refresh_debug)
+        copy_debug.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.debug_report.toPlainText()))
+        report_actions = QHBoxLayout()
+        report_actions.addWidget(refresh_debug)
+        report_actions.addWidget(copy_debug)
+        report_actions.addStretch(1)
+        a_layout.addLayout(report_actions)
         a_layout.addWidget(self.debug_report)
         self._refresh_debug_report()
         a_layout.addStretch(1)
 
-        tabs.addTab(behavior, "Garden Appearance")
+        tabs.addTab(behavior, "Garden settings")
         tabs.addTab(advanced, UI_TEXT["tab_advanced"])
 
     def _save_visual_settings(self) -> None:
+        old_goal = int(self.config.value("daily_goal", 140))
+        payload = self.behavior.build_theme_payload()
         try:
-            self.config.update(self.behavior.build_theme_payload())
+            self.config.update(payload)
+            self.engine.reconcile_daily_goal(int(payload["daily_goal"]))
         except ConfigError as exc:
+            self.behavior.setAccessibleDescription(f"Settings error: {exc}")
             QMessageBox.warning(self, UI_TEXT["app_title"], str(exc))
+            return
+        except Exception as exc:
+            try:
+                self.config.update({"daily_goal": old_goal})
+            except ConfigError:
+                logger.exception("Anki Garden: unable to roll back the daily goal setting")
+            self.behavior.setAccessibleDescription("Settings error: Garden progress could not be updated.")
+            QMessageBox.warning(self, UI_TEXT["app_title"], "Garden progress could not be updated. Your previous daily goal is still active.")
+            logger.exception("Anki Garden: daily goal reconciliation failed", exc_info=exc)
             return
         self.engine.assets.metadata.clear()
         parent = self.parent()
         if parent is not None and hasattr(parent, "refresh_all"):
             parent.refresh_all()
-            mw_window = parent.parent()
-            reset = getattr(mw_window, "reset", None)
-            if callable(reset):
-                reset()
+            refresh_external = getattr(parent, "refresh_external_surfaces", None)
+            if callable(refresh_external):
+                refresh_external()
         QMessageBox.information(self, UI_TEXT["app_title"], "Garden settings saved.")
 
     def _refresh_debug_report(self) -> None:
-        self.debug_report.setPlainText("\\n".join(DISPLAY_TELEMETRY.report_lines()))
+        self.debug_report.setPlainText("\n".join(DISPLAY_TELEMETRY.report_lines()))
 
     def _recommended_window_size(
         self, default_width: int, default_height: int, *, width_ratio: float, height_ratio: float
     ) -> tuple[int, int]:
-        screen = QGuiApplication.primaryScreen()
+        screen = (self.parent().screen() if self.parent() is not None and hasattr(self.parent(), "screen") else None) or self.screen()
         if screen is None:
             return default_width, default_height
         available = screen.availableGeometry()
@@ -149,11 +188,12 @@ class PlantStoryDialog(QDialog):
         self.engine = engine
         self.plant_id = plant_id
         self.setWindowTitle("Plant story")
-        self.setMinimumSize(520, 480)
+        self.setMinimumSize(480, 440)
         self.resize(620, 620)
         self.setStyleSheet(_button_stylesheet())
         root = QVBoxLayout(self)
         self.name_heading = QLabel()
+        self.name_heading.setWordWrap(True)
         self.name_heading.setStyleSheet("font-size:22px; font-weight:800;")
         self.summary = QLabel()
         self.summary.setWordWrap(True)
@@ -240,6 +280,9 @@ class PlantStoryDialog(QDialog):
             parent = self.parent()
             if parent is not None and hasattr(parent, "refresh_all"):
                 parent.refresh_all()
+                refresh_external = getattr(parent, "refresh_external_surfaces", None)
+                if callable(refresh_external):
+                    refresh_external()
 
     @staticmethod
     def _memory_text(memory: Any, name: str) -> str:
@@ -261,6 +304,7 @@ class PlantStoryDialog(QDialog):
             self.name_heading.setText("Plant unavailable")
             self.summary.setText("This plant is no longer in your garden.")
             self.edit_name_btn.setEnabled(False)
+            self.artwork.clear()
             self.timeline.clear()
             return
         self.name_heading.setText(plant.name)
@@ -268,9 +312,13 @@ class PlantStoryDialog(QDialog):
         focus = " • Currently nurturing" if self.engine.state.focus_plant_id == plant.plant_id else ""
         self.summary.setText(
             f"{format_status_label(plant.species)} • {stage} • {plant.growth_points:,} growth points{focus}\n"
-            f"Planted {plant.planted_on}"
+            f"Planted {self._local_date(plant.planted_on)}"
         )
-        image_path = self.engine.resolve_plant_image(plant.species, plant.growth_stage, plant.rare_variant)
+        try:
+            image_path = self.engine.resolve_plant_image(plant.species, plant.growth_stage, plant.rare_variant)
+        except Exception:
+            logger.exception("Anki Garden: unable to resolve Plant Story artwork")
+            image_path = None
         pixmap = QPixmap(str(image_path)) if image_path else QPixmap()
         if pixmap.isNull():
             self.artwork.setText(format_status_label(plant.species))
@@ -285,7 +333,75 @@ class PlantStoryDialog(QDialog):
             item.setFlags(Qt.ItemFlag.NoItemFlags)
             self.timeline.addItem(item)
         for memory in memories:
-            self.timeline.addItem(f"{memory.occurred_on}  •  {self._memory_text(memory, plant.name)}")
+            self.timeline.addItem(f"{self._local_date(memory.occurred_on)}  •  {self._memory_text(memory, plant.name)}")
+
+    @staticmethod
+    def _local_date(value: str) -> str:
+        try:
+            from datetime import date
+            return date.fromisoformat(str(value)[:10]).strftime("%b %-d, %Y")
+        except Exception:
+            return str(value)
+
+
+class PlantActionPanel(QFrame):
+    """Native, keyboard-accessible controls for the selected painted plant."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("card", True)
+        self.plant_id = ""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        self.heading = QLabel("Select a plant")
+        self.heading.setWordWrap(True)
+        self.heading.setAccessibleName("Selected plant")
+        self.guidance = QLabel("Choose a plant in the garden to see its actions.")
+        self.guidance.setWordWrap(True)
+        actions = QHBoxLayout()
+        self.nurture = QPushButton("Nurture")
+        self.move = QPushButton("Move")
+        self.story = QPushButton("View story")
+        self.cancel_move = QPushButton("Cancel move")
+        self.cancel_move.hide()
+        for button in (self.nurture, self.move, self.story, self.cancel_move):
+            _set_button_variant(button, BUTTON_VARIANT_SECONDARY)
+            actions.addWidget(button)
+        actions.addStretch(1)
+        layout.addWidget(self.heading)
+        layout.addWidget(self.guidance)
+        layout.addLayout(actions)
+        self.set_selected(None)
+
+    def set_selected(self, plant: Any | None) -> None:
+        self.plant_id = str(plant.get("plant_id", "")) if isinstance(plant, dict) else ""
+        available = bool(self.plant_id)
+        for button in (self.nurture, self.move, self.story):
+            button.setEnabled(available)
+        if not available:
+            self.heading.setText("Select a plant")
+            self.guidance.setText("Choose a plant in the garden to see its actions.")
+            self.nurture.setText("Nurture")
+            return
+        name = str(plant.get("name") or plant.get("species") or "Plant")
+        focused = bool(plant.get("is_focus"))
+        self.heading.setText(name)
+        self.nurture.setText("Currently nurturing" if focused else "Nurture")
+        self.nurture.setEnabled(not focused)
+        self.nurture.setAccessibleDescription(
+            "Selected status. This plant currently receives most review growth."
+            if focused else "Give this plant most of the growth earned from reviews."
+        )
+        self.guidance.setText(
+            "Currently nurturing. It receives 80% of review growth; other plants share 20%."
+            if focused else "Nurture, move, or open this plant's story."
+        )
+
+    def set_move_active(self, active: bool) -> None:
+        self.cancel_move.setVisible(active)
+        self.move.setEnabled(bool(self.plant_id) and not active)
+        if active:
+            self.guidance.setText("Choose any outlined space. Occupied spaces swap plants. Press Enter to place or Escape to cancel.")
 
 class GardenDashboard(QDialog):
     ROOT_MARGINS = (18, 18, 18, 18)
@@ -315,6 +431,7 @@ class GardenDashboard(QDialog):
         self.engine = engine
         self.storage = storage
         self.config = config
+        self.mw_window = mw_window
         self.settings_dialog: GardenSettingsDialog | None = None
         self._undo_placement: Any = None
         self._move_feedback_generation = 0
@@ -324,7 +441,7 @@ class GardenDashboard(QDialog):
         self._build_ui()
 
     def _recommended_window_size(self) -> tuple[int, int]:
-        screen = QGuiApplication.primaryScreen()
+        screen = (self.parent().screen() if self.parent() is not None and hasattr(self.parent(), "screen") else None) or self.screen()
         if screen is None:
             return self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT
         available = screen.availableGeometry()
@@ -383,6 +500,8 @@ class GardenDashboard(QDialog):
         self.scene.placementRequested.connect(self._place_plant)
         self.scene.storyRequested.connect(self._open_plant_story)
         self.scene.cardOpened.connect(self._dismiss_interaction_hint)
+        self.scene.selectionChanged.connect(self._on_scene_selection)
+        self.scene.placementStateChanged.connect(self._on_placement_state)
         self.interaction_hint = QLabel("Click a plant to nurture it, move it, or view its story.")
         self.interaction_hint.setWordWrap(True)
         self._apply_typography(self.interaction_hint, "muted-body")
@@ -394,6 +513,14 @@ class GardenDashboard(QDialog):
             "The nurtured plant gets 80% of growth earned from reviews. "
             "The remaining 20% is shared among your other plants."
         )
+        self.action_panel = PlantActionPanel()
+        self.action_panel.nurture.clicked.connect(lambda: self._nurture_plant(self.action_panel.plant_id))
+        self.action_panel.move.clicked.connect(lambda: self.scene.begin_move(self.action_panel.plant_id))
+        self.action_panel.story.clicked.connect(lambda: self._open_plant_story(self.action_panel.plant_id))
+        self.action_panel.cancel_move.clicked.connect(self.scene.cancel_move)
+        self.garden_help_btn = QPushButton("How to use the garden")
+        _set_button_variant(self.garden_help_btn, BUTTON_VARIANT_SECONDARY)
+        self.garden_help_btn.clicked.connect(self._show_garden_help)
         self.placement_note = QLabel("")
         self._apply_typography(self.placement_note, "muted-body")
         self.placement_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
@@ -418,12 +545,18 @@ class GardenDashboard(QDialog):
         self.retrospective_note.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
         self._apply_typography(self.retrospective_note, "muted-body")
         self.retrospective_note.setStyleSheet("color:#9ef3b0; font-size:13px;")
+        self.status_notice = QLabel("")
+        self.status_notice.setWordWrap(True)
+        self.status_notice.setAccessibleName("Garden save status")
         h_layout.addWidget(self.scene)
+        h_layout.addWidget(self.action_panel)
         h_layout.addWidget(self.interaction_hint)
+        h_layout.addWidget(self.garden_help_btn, 0, Qt.AlignmentFlag.AlignLeft)
         h_layout.addWidget(self.focus_note)
         h_layout.addLayout(placement_row)
         h_layout.addWidget(self.stage_transition_note)
         h_layout.addWidget(self.retrospective_note)
+        h_layout.addWidget(self.status_notice)
         root.addWidget(hero_card, 4)
 
         self.milestone_card = self._card_frame()
@@ -448,15 +581,11 @@ class GardenDashboard(QDialog):
         self.achievement_list = QListWidget()
         self.achievement_list.setAlternatingRowColors(True)
         self.achievement_list.setMinimumHeight(180)
-        self.inventory_list = QListWidget()
-        self.inventory_list.setAlternatingRowColors(True)
-        self.inventory_list.setMinimumHeight(180)
         self.details_tabs = QTabWidget()
         self.details_tabs.setAccessibleName("Garden progress details")
         self.details_tabs.setMaximumHeight(230)
         self.details_tabs.addTab(self.quest_list, UI_TEXT["quest_progress_title"])
-        self.details_tabs.addTab(self.achievement_list, "Milestones")
-        self.details_tabs.addTab(self.inventory_list, "Collection")
+        self.details_tabs.addTab(self.achievement_list, "Achievements")
         root.addWidget(self.details_tabs, 1)
 
     def _card_frame(self) -> QFrame:
@@ -496,6 +625,7 @@ class GardenDashboard(QDialog):
     def refresh_all(self) -> None:
         DISPLAY_TELEMETRY.track_render("dashboard")
         state = self.storage.state
+        self.status_notice.setText(USER_NOTICES.current.message)
         stats = state.daily_stats
         health = self.engine.garden_health_index()
         daily_goal = max(1, int(self.config.value("daily_goal", 140)))
@@ -539,6 +669,8 @@ class GardenDashboard(QDialog):
                 "plants": [self._plant_scene_payload(plant) for plant in state.plants],
             }
         )
+        active = self.scene.active_plant_id()
+        self._on_scene_selection(active or "")
 
         self.quest_list.clear()
         for quest in state.daily_quests:
@@ -554,23 +686,49 @@ class GardenDashboard(QDialog):
         self.achievement_list.clear()
         for ach in state.achievements.values():
             marker = "🏅" if ach.unlocked else "🔒"
-            self._add_list_entry(self.achievement_list, f"{marker} {ach.name}")
+            progress = format_percent(ach.progress)
+            unlocked = f" • Unlocked {self._local_date(ach.unlocked_on)}" if ach.unlocked and ach.unlocked_on else ""
+            self._add_list_entry(
+                self.achievement_list,
+                f"{marker} {ach.name} — {ach.description} • {progress}{unlocked}",
+            )
         if self.achievement_list.count() == 0:
             DISPLAY_TELEMETRY.track_empty_state(route="dashboard", view="achievement_list", expected_non_empty=bool(state.achievements))
             self._add_list_entry(self.achievement_list, UI_TEXT["no_achievements"], empty_state=True)
 
-        self.inventory_list.clear()
-        for category, items in state.inventory.items():
-            if items:
-                label = format_status_label(category)
-                item_labels = ", ".join(format_status_label(item) for item in items[:3])
-                self._add_list_entry(self.inventory_list, f"{label}: {item_labels}")
-        if self.inventory_list.count() == 0:
-            expected_non_empty_inventory = any(items for items in state.inventory.values())
-            DISPLAY_TELEMETRY.track_empty_state(
-                route="dashboard", view="inventory_list", expected_non_empty=expected_non_empty_inventory
-            )
-            self._add_list_entry(self.inventory_list, UI_TEXT["no_boosts"], empty_state=True)
+
+    @staticmethod
+    def _local_date(value: str) -> str:
+        try:
+            from datetime import date
+            return date.fromisoformat(str(value)[:10]).strftime("%b %-d, %Y")
+        except Exception:
+            return str(value)
+
+    def _on_scene_selection(self, plant_id: str) -> None:
+        plant = next((row for row in self.scene.scene.get("plants", []) if str(row.get("plant_id")) == plant_id), None)
+        self.action_panel.set_selected(plant)
+
+    def _on_placement_state(self, active: bool) -> None:
+        self.action_panel.set_move_active(active)
+
+    def _show_garden_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "How to use the garden",
+            "Select a plant to open its actions. Nurturing sends 80% of review growth to that plant. "
+            "Choose Move, then select an outlined space; occupied spaces swap plants. Use Enter to place, "
+            "Escape or Cancel move to stop, and Undo after a completed move.",
+        )
+
+    def refresh_external_surfaces(self) -> None:
+        """Refresh Anki webviews after a dashboard mutation changes home-card data."""
+        reset = getattr(self.mw_window, "reset", None)
+        if callable(reset):
+            try:
+                reset()
+            except Exception:
+                logger.exception("Anki Garden: unable to refresh Anki home surfaces")
 
     def show_retrospective_feedback(self, review_count: int, growth_gain: int) -> None:
         if review_count <= 0:
@@ -611,12 +769,19 @@ class GardenDashboard(QDialog):
 
     def _resolved_asset_payload(self, structured_name: str, legacy_name: str, *args: Any) -> Any:
         resolver = getattr(self.engine, structured_name, None)
-        if callable(resolver):
-            asset = resolver(*args)
-            if asset is not None and hasattr(asset, "to_payload"):
-                return asset.to_payload()
+        try:
+            if callable(resolver):
+                asset = resolver(*args)
+                if asset is not None and hasattr(asset, "to_payload"):
+                    return asset.to_payload()
+        except Exception:
+            logger.exception("Anki Garden: structured artwork resolution failed for %s", structured_name)
         legacy = getattr(self.engine, legacy_name, None)
-        return legacy(*args) if callable(legacy) else None
+        try:
+            return legacy(*args) if callable(legacy) else None
+        except Exception:
+            logger.exception("Anki Garden: fallback artwork resolution failed for %s", legacy_name)
+            return None
 
     def _nurture_plant(self, plant_id: str) -> None:
         if self.storage.state.focus_plant_id == plant_id:
@@ -631,6 +796,7 @@ class GardenDashboard(QDialog):
             return
         self.refresh_all()
         self.scene.keep_card_open(plant_id, message)
+        self.refresh_external_surfaces()
 
     def _open_plant_story(self, plant_id: str) -> None:
         dialog = PlantStoryDialog(self, self.engine, plant_id)
@@ -638,14 +804,24 @@ class GardenDashboard(QDialog):
         self.refresh_all()
 
     def _place_plant(self, plant_id: str, destination_slot: int) -> None:
+        moving = next((p for p in self.storage.state.plants if p.plant_id == plant_id), None)
+        occupant = next((p for p in self.storage.state.plants if p.slot_index == destination_slot), None)
         ok, message, change = self.engine.place_plant(plant_id, destination_slot)
         if not ok or change is None:
             self.scene.keep_card_open(plant_id, message)
             return
         self._undo_placement = change
         self.refresh_all()
-        self.scene.keep_card_open(plant_id, "Plants moved")
-        self.placement_note.setText("Plants moved —")
+        if moving is not None and occupant is not None:
+            result = f"Swapped {moving.name} and {occupant.name}."
+        elif moving is not None:
+            result = f"Moved {moving.name} to space {destination_slot + 1}."
+        else:
+            result = message
+        self.scene.keep_card_open(plant_id, result)
+        self.action_panel.set_move_active(False)
+        self.refresh_external_surfaces()
+        self.placement_note.setText(result)
         self.undo_move_btn.show()
         self._move_feedback_generation += 1
         generation = self._move_feedback_generation
@@ -658,6 +834,7 @@ class GardenDashboard(QDialog):
         if ok:
             self._undo_placement = None
             self.refresh_all()
+            self.refresh_external_surfaces()
             self.placement_note.setText("Move undone.")
             self.undo_move_btn.hide()
             self._move_feedback_generation += 1
@@ -677,7 +854,10 @@ class GardenDashboard(QDialog):
     def _dismiss_interaction_hint(self) -> None:
         if bool(self.config.value("plant_interaction_hint_seen", False)):
             return
-        self.config.update({"plant_interaction_hint_seen": True})
+        try:
+            self.config.update({"plant_interaction_hint_seen": True})
+        except ConfigError:
+            logger.warning("Anki Garden: could not persist the interaction-hint preference", exc_info=True)
         self.interaction_hint.hide()
 
     def _clear_layout(self, layout: Any) -> None:
@@ -714,6 +894,7 @@ class GardenDashboard(QDialog):
         ok, message = self.engine.claim_milestone_reward(species)
         if ok:
             self.refresh_all()
+            self.refresh_external_surfaces()
         QMessageBox.information(self, UI_TEXT["app_title"], message)
 
     def _open_settings(self) -> None:

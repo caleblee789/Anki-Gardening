@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
@@ -129,7 +130,7 @@ class GardenState:
     retrospective_last_revlog_id: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        return deepcopy({
             "version": self.version,
             "streak_days": self.streak_days,
             "total_reviews": self.total_reviews,
@@ -157,7 +158,7 @@ class GardenState:
                 self.pending_milestone_reward.__dict__ if self.pending_milestone_reward else None
             ),
             "retrospective_last_revlog_id": self.retrospective_last_revlog_id,
-        }
+        })
 
     @staticmethod
     def from_dict(data: Any) -> "GardenState":

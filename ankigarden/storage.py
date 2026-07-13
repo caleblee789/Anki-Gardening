@@ -141,7 +141,9 @@ class GardenStorage:
             return 0
         try:
             sched = collection.sched
-            cutoff = getattr(sched, "day_cutoff", getattr(sched, "dayCutoff", None))
+            cutoff = getattr(sched, "day_cutoff", None)
+            if cutoff is None:
+                cutoff = getattr(sched, "dayCutoff", None)
             if cutoff is None:
                 return 0
             return max(0, (int(cutoff) - 86_400) * 1000)

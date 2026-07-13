@@ -11,9 +11,9 @@ from ankigarden.ui.home_widget import (
 )
 
 
-def _sample_data(cards_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
+def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
     return HomeWidgetData(
-        cards_today=cards_today,
+        reviews_today=reviews_today,
         health_ratio=0.84,
         growth_earned=growth_earned,
         growth_cap=220,
@@ -33,6 +33,8 @@ def test_loading_state_renders_spinner_placeholder() -> None:
 
     assert 'data-state="loading"' in html
     assert 'data-testid="home-loading"' in html
+    assert 'role="status" aria-live="polite"' in html
+    assert 'class="ag-home__state"' in html
 
 
 def test_empty_state_renders_empty_message() -> None:
@@ -40,6 +42,7 @@ def test_empty_state_renders_empty_message() -> None:
 
     assert 'data-state="empty"' in html
     assert 'data-testid="home-empty"' in html
+    assert 'role="region" aria-label="Anki Garden"' in html
 
 
 def test_recoverable_error_renders_retry_action() -> None:
@@ -48,6 +51,8 @@ def test_recoverable_error_renders_retry_action() -> None:
     assert 'data-state="error"' in html
     assert "Network timeout" in html
     assert 'data-testid="home-retry"' in html
+    assert 'role="alert"' in html
+    assert 'aria-label="Retry loading Anki Garden"' in html
 
 
 def test_partial_state_renders_available_data_and_error_banner() -> None:
@@ -55,14 +60,15 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
         HomeWidgetSnapshot(
             request_id=3,
             phase="partial",
-            data=_sample_data(cards_today=5, weather="cloudy"),
+            data=_sample_data(reviews_today=5, weather="cloudy"),
             error_message="Achievements are temporarily unavailable",
         )
     )
 
     assert 'data-state="partial"' in html
     assert 'data-testid="home-partial-error"' in html
-    assert "Cards today: 5" in html
+    assert 'class="ag-home__partial-message"' in html
+    assert "Reviews today: 5" in html
     assert "Weather: Cloudy" in html
 
 
@@ -70,11 +76,14 @@ def test_success_state_renders_key_fields() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=4, phase="success", data=_sample_data()))
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-cards">Cards today: 12' in html
+    assert 'data-testid="home-reviews">Reviews today: 12' in html
     assert 'data-testid="home-health">Garden health: 84%' in html
     assert 'data-testid="home-growth">Study growth today: 30 of 220' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
+    assert 'role="progressbar"' in html
+    assert 'aria-valuenow="13"' in html
+    assert 'aria-label="Open Anki Garden"' in html
 
 
 def test_success_state_uses_resolved_background_as_compact_scene() -> None:
@@ -140,9 +149,9 @@ def test_scene_preserves_depth_order_and_marks_focus_plant() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=8, phase="success", data=data))
 
     assert "z-index:0" not in html
-    assert 'aria-label="Nurtured plant"' in html
     assert "ag-home__plant--focus" in html
-    assert ">Nurturing</span>" in html
+    assert "ag-home__contact--focus" in html
+    assert "ag-home__focus-marker" not in html
     assert ">★</span>" not in html
 
 
@@ -164,16 +173,16 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     request_1 = controller.begin_request()
     request_2 = controller.begin_request()
 
-    stale_applied = controller.resolve_success(request_1, _sample_data(cards_today=99, growth_earned=99, weather="sunny"))
-    fresh_applied = controller.resolve_success(request_2, _sample_data(cards_today=7, growth_earned=14, weather="breeze"))
+    stale_applied = controller.resolve_success(request_1, _sample_data(reviews_today=99, growth_earned=99, weather="sunny"))
+    fresh_applied = controller.resolve_success(request_2, _sample_data(reviews_today=7, growth_earned=14, weather="breeze"))
 
     html = render_home_widget(controller.snapshot)
 
     assert stale_applied is False
     assert fresh_applied is True
-    assert "Cards today: 7" in html
+    assert "Reviews today: 7" in html
     assert "Study growth today: 14 of 220" in html
-    assert "Cards today: 99" not in html
+    assert "Reviews today: 99" not in html
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
@@ -189,9 +198,9 @@ def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
     assert 'data-state="loading"' in loading_html
     assert "Temporary backend failure" not in loading_html
 
-    controller.resolve_success(retry_request, _sample_data(cards_today=21, growth_earned=33, weather="gentle_rain"))
+    controller.resolve_success(retry_request, _sample_data(reviews_today=21, growth_earned=33, weather="gentle_rain"))
     success_html = render_home_widget(controller.snapshot)
 
     assert 'data-state="success"' in success_html
-    assert "Cards today: 21" in success_html
+    assert "Reviews today: 21" in success_html
     assert "Temporary backend failure" not in success_html

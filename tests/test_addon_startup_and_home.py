@@ -240,6 +240,62 @@ def test_home_badges_fall_back_to_emoji_when_svg_unavailable(monkeypatch):
     assert "ag-home__plant-thumb" not in html
 
 
+def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    app.storage.state.focus_plant_id = "plant-1"
+    app.storage.state.plants = [
+        SimpleNamespace(
+            plant_id="plant-1",
+            name="Rose",
+            species="rose",
+            growth_stage="flowering",
+            rare_variant=False,
+            slot_index=0,
+        ),
+    ]
+    app.engine.resolve_background_asset = lambda: None
+    app.engine.resolve_plant_asset = lambda *_args: None
+
+    items = app._home_scene_items()
+
+    assert items == [{
+        "plant_id": "plant-1",
+        "slot_index": 0,
+        "name": "Rose",
+        "species": "rose",
+        "stage": "flowering",
+        "is_focus": True,
+        "url": "",
+        "placement": {},
+        "background_placement": {},
+    }]
+
+
+def test_home_render_peeks_at_stage_transition_without_consuming_it(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    transition = SimpleNamespace(species="rose", new_stage="flowering")
+    calls = {"peek": 0, "consume": 0}
+
+    def peek():
+        calls["peek"] += 1
+        return [transition]
+
+    app.engine.peek_stage_transitions = peek
+    app.engine.consume_stage_transitions = lambda: calls.__setitem__("consume", calls["consume"] + 1)
+    app.engine.stage_transition_message = lambda _items: "Your Rose reached Flowering!"
+
+    first = app._build_home_garden_html()
+    second = app._build_home_garden_html()
+
+    assert "Your Rose reached Flowering!" in first
+    assert "Your Rose reached Flowering!" in second
+    assert calls == {"peek": 2, "consume": 0}
+
+
 def test_injection_idempotent_for_render_and_webview(monkeypatch):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -346,7 +402,7 @@ def test_generated_non_iterable_hooks_register_idempotently(monkeypatch):
     assert len(sync_hook.callbacks) == 1
 
 
-def test_cards_today_uses_collection_revlog_count(monkeypatch):
+def test_reviews_today_counts_supported_revlog_answers(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
@@ -356,8 +412,8 @@ def test_cards_today_uses_collection_revlog_count(monkeypatch):
 
     html = app._build_home_garden_html()
 
-    assert 'data-testid="home-cards">Cards today: 42' in html
-    assert 'data-testid="home-cards">Cards today: 999' not in html
+    assert 'data-testid="home-reviews">Reviews today: 42' in html
+    assert 'data-testid="home-reviews">Reviews today: 999' not in html
 
 
 def test_webview_injection_skips_bottom_bar_context(monkeypatch):

@@ -140,18 +140,20 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     html = app._build_home_garden_html()
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-cards">Cards today: 27' in html
+    assert 'data-testid="home-reviews">Reviews today: 27' in html
     assert 'data-testid="home-health">Garden health: 86%' in html
     assert 'data-testid="home-growth">Study growth today: 36 of 240' in html
     assert 'data-testid="home-weather">Weather: Gentle Rain' in html
-    assert 'data-testid="home-growth-bar" style="width:15%"' in html
+    assert 'data-testid="home-growth-bar"' in html
+    assert 'aria-valuenow="15"' in html
+    assert 'style="width:15%"' in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240)
 
     before = app._build_home_garden_html()
-    assert 'Cards today: 18' in before
+    assert 'Reviews today: 18' in before
     assert 'Study growth today: 36 of 240' in before
 
     app.storage.state.daily_stats.growth_earned = 60
@@ -186,6 +188,6 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     assert overview_content.body.count('<div id="ag-home-root"') == 1
 
     for rendered in (deck_content.body, overview_content.body):
-        assert 'Cards today: 42' in rendered
+        assert 'Reviews today: 42' in rendered
         assert 'Garden health: 86%' in rendered
         assert 'Study growth today: 36 of 210' in rendered
