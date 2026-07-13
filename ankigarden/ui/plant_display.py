@@ -6,6 +6,14 @@ from typing import Any, Iterable
 from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
 
 
+SETTINGS_STACK_BREAKPOINT = 720
+
+
+def settings_layout_is_compact(width: int) -> bool:
+    """Return whether settings controls should stack above the preview."""
+    return max(0, int(width)) < SETTINGS_STACK_BREAKPOINT
+
+
 @dataclass(frozen=True)
 class Rect:
     x: float

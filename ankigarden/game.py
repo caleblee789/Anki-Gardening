@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Dict, Optional
@@ -120,7 +121,10 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
 
     def _state_snapshot(self) -> dict[str, Any]:
-        return self.state.to_dict()
+        # State serializers intentionally return plain dictionaries, but nested
+        # dataclass dictionaries may still alias live objects. Transactions need
+        # an isolated snapshot so rollback remains trustworthy.
+        return deepcopy(self.state.to_dict())
 
     def _restore_state(self, snapshot: dict[str, Any]) -> None:
         restored = GardenState.from_dict(snapshot)
@@ -379,6 +383,27 @@ class GardenGameEngine:
                 quest.completed = True
                 self.state.quest_history.append(f"{date.today().isoformat()}:{quest.quest_id}")
                 self._award_growth(quest.reward_growth, None)
+
+    def reconcile_daily_goal(self, new_goal: int) -> None:
+        """Reconcile today's active growth quest without revoking earned rewards."""
+        goal = max(10, min(2000, int(new_goal)))
+        snapshot = self._state_snapshot()
+        changed = False
+        for quest in self.state.daily_quests:
+            if quest.metric != "growth" or quest.completed:
+                continue
+            quest.target = goal
+            quest.description = f"Earn {goal} garden growth"
+            quest.progress = self._metric_value("growth")
+            changed = True
+            if quest.progress >= quest.target:
+                quest.completed = True
+                history_key = f"{date.today().isoformat()}:{quest.quest_id}"
+                if history_key not in self.state.quest_history:
+                    self.state.quest_history.append(history_key)
+                    self._award_growth(quest.reward_growth, None)
+        if changed:
+            self._persist_or_restore(snapshot)
 
     def set_due_completion(self, completed: bool) -> None:
         snapshot = self._state_snapshot()

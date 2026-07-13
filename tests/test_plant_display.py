@@ -9,6 +9,7 @@ from ankigarden.ui.plant_display import (
     hit_test,
     plant_health_display,
     plant_layout,
+    settings_layout_is_compact,
     smart_card_rect,
 )
 
@@ -39,6 +40,14 @@ def test_growth_display_handles_fully_grown_and_rare_override():
     assert grown.progress == 1.0
     assert rare.stage == "rare"
     assert rare.fully_grown is True
+
+
+@pytest.mark.parametrize(
+    ("width", "compact"),
+    [(0, True), (640, True), (719, True), (720, False), (920, False)],
+)
+def test_settings_layout_breakpoint_is_deterministic(width, compact):
+    assert settings_layout_is_compact(width) is compact
 
 
 def test_growth_display_sanitizes_invalid_points():
@@ -212,18 +221,23 @@ def test_potted_plants_do_not_receive_detached_ground_focus_ring():
     assert 'if emphasized and base_type != "pot":' in scene
 
 
-def test_scene_keyboard_contract_avoids_tab_trap_and_shows_action_focus():
+def test_nurtured_plant_uses_grounded_emphasis_without_floating_text_badge():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
-    key_handler = scene.index("def keyPressEvent")
-    tab_branch = scene.index('if event.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):', key_handler)
-    move_branch = scene.index("if self._interaction.move_mode:", key_handler)
-    assert tab_branch < move_branch
-    assert "super().keyPressEvent(event)" in scene[tab_branch:move_branch]
-    assert "selected = self.hasFocus() and action_index == self._card_action_index" in scene
-    assert "event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)" in scene
-    assert "storyRequested = pyqtSignal(str)" in scene
-    assert '"View story"' in scene
-    assert "% 3" in scene
+    assert "_draw_nurture_badge" not in scene
+    assert 'if plant.get("is_focus"):' in scene
+
+
+def test_keyboard_move_cycles_places_and_cancels_without_losing_selection():
+    state = PlantInteractionState()
+    assert state.begin_placement("rose", 0, [0, 1, 2], keyboard=True)
+    assert state.cycle_destination([0, 1, 2], 1) == 1
+    assert state.complete_placement() == ("rose", 1)
+    assert not state.placing
+    assert state.pinned_id == "rose"
+    assert state.begin_placement("rose", 1, [0, 1, 2], keyboard=True)
+    state.cancel_placement()
+    assert not state.placing
+    assert state.pinned_id == "rose"
 
 
 def test_scene_tooltips_convert_legacy_qpoint_for_qrectf_hit_testing():
@@ -249,12 +263,14 @@ def test_dialog_class_boundaries_keep_appearance_ui_out_of_story_refresh():
     assert "asset_resolver=engine" not in story_block
 
 
-def test_scene_explains_nurturing_and_only_shows_slots_while_moving():
-    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
-    assert '"Nurture this plant"' in scene
-    assert "gets 80% of growth earned from reviews" in scene
-    assert "if not self._interaction.placing:" in scene
-    assert "target_x - x, target_y - base_y" in scene
+def test_placement_rejects_invalid_targets_and_reconciles_removed_plants():
+    state = PlantInteractionState()
+    assert state.begin_placement("rose", 0, [0, 1], keyboard=False)
+    assert not state.choose_destination(3, [0, 1])
+    assert state.choose_destination(1, [0, 1])
+    state.reconcile(["bonsai"])
+    assert not state.placing
+    assert state.pinned_id is None
 
 
 def test_settings_expose_daily_goal_home_visibility_and_transaction_errors():
@@ -263,5 +279,25 @@ def test_settings_expose_daily_goal_home_visibility_and_transaction_errors():
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text()
     assert '"daily_goal": self.daily_goal.value()' in studio
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
+    assert "behavior_scroll.setWidgetResizable(True)" in dashboard
+    assert 'QPushButton("Save settings")' in dashboard
+    assert '"Garden settings"' in dashboard
     assert "except ConfigError as exc:" in dashboard
     assert "QMessageBox.warning" in dashboard
+    assert "self.particle_slider.setRange(20, 125)" in studio
+    assert "self._update_motion_controls" in studio
+    assert 'return "Standard"' in studio
+
+
+def test_supported_ui_copy_does_not_restore_retired_boost_language():
+    dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    assert "inventory boosts" not in dashboard.lower()
+    assert "No collected garden items yet." in dashboard
+
+
+def test_dashboard_uses_explicit_main_window_refresh_after_mutations():
+    dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    assert "self.mw_window = mw_window" in dashboard
+    assert "def refresh_external_surfaces" in dashboard
+    assert "parent.parent()" not in dashboard
+    assert dashboard.count("self.refresh_external_surfaces()") >= 4

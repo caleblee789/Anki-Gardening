@@ -92,6 +92,47 @@ def test_daily_goal_does_not_stop_growth():
     assert st.state.daily_stats.growth_earned > before
 
 
+def test_daily_goal_reconciliation_preserves_progress_and_awards_once():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    st.state.daily_stats.growth_earned = 120
+    st.state.daily_quests = [Quest("growth", "Earn 140 garden growth", 140, "growth", progress=80, reward_growth=20)]
+
+    engine.reconcile_daily_goal(100)
+
+    quest = st.state.daily_quests[0]
+    assert quest.description == "Earn 100 garden growth"
+    assert quest.progress == 120
+    assert quest.completed is True
+    assert st.state.daily_stats.growth_earned == 140
+    history = list(st.state.quest_history)
+
+    engine.reconcile_daily_goal(90)
+
+    assert st.state.daily_stats.growth_earned == 140
+    assert st.state.quest_history == history
+
+
+def test_daily_goal_reconciliation_rolls_back_on_persistence_failure():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    st.state.daily_stats.growth_earned = 50
+    st.state.daily_quests = [Quest("growth", "Earn 140 garden growth", 140, "growth", progress=50, reward_growth=20)]
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    try:
+        engine.reconcile_daily_goal(100)
+    except OSError:
+        pass
+    else:
+        raise AssertionError("expected persistence failure")
+
+    quest = st.state.daily_quests[0]
+    assert quest.target == 140
+    assert quest.progress == 50
+    assert quest.completed is False
+
+
 def test_growth_emits_transition_only_when_stage_changes():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -505,3 +546,17 @@ def test_storage_revlog_queries_wait_for_live_collection():
     assert storage.load_new_revlog_entries(0) == []
     assert storage.max_revlog_id() == 0
     assert storage.current_day_cutoff_ms() == 0
+
+
+def test_storage_prefers_modern_day_cutoff_without_touching_deprecated_property():
+    class Scheduler:
+        day_cutoff = 200_000
+
+        @property
+        def dayCutoff(self):
+            raise AssertionError("deprecated scheduler property should not be accessed")
+
+    storage = object.__new__(GardenStorage)
+    storage.mw = SimpleNamespace(col=SimpleNamespace(sched=Scheduler(), db=SimpleNamespace()))
+
+    assert storage.current_day_cutoff_ms() == (200_000 - 86_400) * 1000

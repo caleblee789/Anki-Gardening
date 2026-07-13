@@ -14,6 +14,7 @@ from .config import ConfigManager
 from .display_telemetry import DISPLAY_TELEMETRY
 from .game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
 from .hooks.reviewer import ReviewerHookHandler
+from .notices import USER_NOTICES
 from .storage import GardenStorage
 from .ui.dashboard import GardenDashboard
 from .ui.home_widget import (
@@ -206,13 +207,13 @@ class AnkiGardenApp:
             focus_plant = focus_resolver() if callable(focus_resolver) else None
             next_milestone_resolver = getattr(self.engine, "next_milestone", None)
             pending_milestone_resolver = getattr(self.engine, "pending_milestone", None)
-            consume_transitions = getattr(self.engine, "consume_stage_transitions", None)
-            transitions = consume_transitions() if callable(consume_transitions) else []
+            peek_transitions = getattr(self.engine, "peek_stage_transitions", None)
+            transitions = peek_transitions() if callable(peek_transitions) else []
             transition_message_builder = getattr(self.engine, "stage_transition_message", None)
             transition_message = transition_message_builder(transitions) if callable(transition_message_builder) else ""
             data = build_home_widget_success_data(
                 state=state,
-                cards_today=self._cards_reviewed_today(),
+                reviews_today=self._reviews_today(),
                 health_ratio=self.engine.garden_health_index(),
                 growth_cap=max(1, int(self.config.value("daily_goal", 140))),
                 scene_items=self._home_scene_items(),
@@ -227,6 +228,7 @@ class AnkiGardenApp:
                 milestone_ready=(
                     pending_milestone_resolver() is not None if callable(pending_milestone_resolver) else False
                 ),
+                status_notice=USER_NOTICES.current.message,
             )
             self._home_widget_controller.resolve_success(request_id, data)
         except Exception:
@@ -252,16 +254,19 @@ class AnkiGardenApp:
         return "".join(badges)
 
     def _home_scene_items(self) -> list[dict[str, object]]:
-        background = getattr(self.engine, "resolve_background_asset", lambda: None)()
+        try:
+            background = getattr(self.engine, "resolve_background_asset", lambda: None)()
+        except Exception:
+            logger.debug("Anki Garden: unable to resolve home scene background placement", exc_info=True)
+            background = None
         background_placement = background.placement.to_dict() if background is not None else {}
         items: list[dict[str, object]] = []
         for plant in sorted(self.storage.state.plants, key=lambda row: row.slot_index)[:6]:
             try:
                 asset = self.engine.resolve_plant_asset(plant.species, plant.growth_stage, plant.rare_variant)
             except Exception:
+                logger.debug("Anki Garden: unable to resolve home scene plant artwork", exc_info=True)
                 asset = None
-            if asset is None:
-                continue
             items.append({
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
@@ -269,8 +274,8 @@ class AnkiGardenApp:
                 "species": plant.species,
                 "stage": plant.growth_stage,
                 "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
-                "url": self._asset_web_url(asset.path),
-                "placement": asset.placement.to_dict(),
+                "url": self._asset_web_url(asset.path) if asset is not None else "",
+                "placement": asset.placement.to_dict() if asset is not None else {},
                 "background_placement": background_placement,
             })
         return items
@@ -316,7 +321,7 @@ class AnkiGardenApp:
         except Exception:
             return ""
 
-    def _cards_reviewed_today(self) -> int:
+    def _reviews_today(self) -> int:
         fallback = int(getattr(self.storage.state.daily_stats, "reviewed", 0))
         try:
             collection = getattr(mw, "col", None)
@@ -327,7 +332,7 @@ class AnkiGardenApp:
                     reason="missing_collection_db",
                     required=True,
                 )
-                DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="cards_today")
+                DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
                 return fallback
             sched = getattr(collection, "sched", None)
             day_cutoff = getattr(sched, "day_cutoff", None)
@@ -340,14 +345,16 @@ class AnkiGardenApp:
                     reason="missing_day_cutoff",
                     required=True,
                 )
-                DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="cards_today")
+                DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
                 return fallback
             cutoff_ms = max(0, (int(day_cutoff) - 86_400) * 1000)
-            count = collection.db.scalar("select count(distinct cid) from revlog where id > ?", cutoff_ms)
+            count = collection.db.scalar(
+                "select count(*) from revlog where id > ? and type in (0, 1, 2, 3)", cutoff_ms
+            )
             return max(0, int(count or 0))
         except Exception as exc:
-            DISPLAY_TELEMETRY.track_parsing_exception(route="home_widget", field="cards_today", exc=exc)
-            DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="cards_today")
+            DISPLAY_TELEMETRY.track_parsing_exception(route="home_widget", field="reviews_today", exc=exc)
+            DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
             return fallback
 
     def _plant_emoji_for_stage(self, stage: str, rare: bool) -> str:

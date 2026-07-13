@@ -6,6 +6,7 @@ from typing import Any
 from aqt import mw
 
 from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
+from ..notices import USER_NOTICES
 
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,13 @@ class ReviewerHookHandler:
             self.engine.register_review(payload)
         except Exception:
             logger.exception("Anki Garden: review progress could not be saved")
+            message = "Your Anki review was saved, but garden growth could not be saved. Open Anki Garden to retry after the problem is resolved."
+            if USER_NOTICES.publish(message):
+                try:
+                    from aqt.utils import tooltip
+                    tooltip(message, period=7000, parent=mw)
+                except Exception:
+                    logger.debug("Anki Garden: unable to show review-save notice", exc_info=True)
             return
 
         try:

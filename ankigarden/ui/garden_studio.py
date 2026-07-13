@@ -4,19 +4,21 @@ from typing import Any, Callable
 
 from aqt.qt import (
     QCheckBox,
+    QBoxLayout,
     QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QSlider,
     QSpinBox,
+    QLabel,
     QVBoxLayout,
     QWidget,
     Qt,
 )
 
 from .scene import GardenSceneWidget
-from .plant_display import growth_display
+from .plant_display import growth_display, settings_layout_is_compact
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
@@ -43,7 +45,9 @@ class GardenStudioWidget(QWidget):
         self.config = config
         self.asset_resolver = asset_resolver
         self.preview = self._default_preview()
-        self.scene = GardenSceneWidget()
+        self.scene = GardenSceneWidget(interactive=False)
+        self.scene.setMinimumHeight(320)
+        self._compact_layout: bool | None = None
         self._build_ui()
         self._apply_preview()
 
@@ -59,12 +63,13 @@ class GardenStudioWidget(QWidget):
         }
 
     def _build_ui(self) -> None:
-        root = QHBoxLayout(self)
-        controls = QFrame()
-        controls.setMaximumWidth(340)
-        form = QFormLayout(controls)
+        self.root_layout = QHBoxLayout(self)
+        self.controls = QFrame()
+        self.controls.setMaximumWidth(340)
+        form = QFormLayout(self.controls)
 
         self.theme_combo = QComboBox()
+        self.theme_combo.setAccessibleName(STUDIO_TEXT["theme_label"])
         self.theme_combo.addItem("Verdant Dusk", "verdant_dusk")
         self.theme_combo.addItem("Morning Bloom", "verdant_dawn")
         self.theme_combo.addItem("Moonlit Study", "moonlit_study")
@@ -74,6 +79,7 @@ class GardenStudioWidget(QWidget):
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
 
         self.asset_quality_combo = QComboBox()
+        self.asset_quality_combo.setAccessibleName(STUDIO_TEXT["asset_quality_label"])
         self.asset_quality_combo.addItem("Balanced", "balanced")
         self.asset_quality_combo.addItem("Performance", "performance")
         self.asset_quality_combo.addItem("Ultra", "ultra")
@@ -87,38 +93,46 @@ class GardenStudioWidget(QWidget):
         self.asset_quality_combo.currentIndexChanged.connect(self._apply_preview)
 
         self.animations_enabled = QCheckBox()
+        self.animations_enabled.setAccessibleName(STUDIO_TEXT["animations_label"])
         self.animations_enabled.setChecked(
             bool(self.config.value("enable_animations", True))
             and not bool(self.config.value("reduced_motion", False))
         )
         self.animations_enabled.toggled.connect(self._apply_preview)
+        self.animations_enabled.toggled.connect(self._update_motion_controls)
 
         self.daily_goal = QSpinBox()
+        self.daily_goal.setAccessibleName(STUDIO_TEXT["daily_goal_label"])
         self.daily_goal.setRange(10, 2000)
         self.daily_goal.setSingleStep(10)
         self.daily_goal.setValue(int(self.config.value("daily_goal", 140)))
 
         self.show_home_widget = QCheckBox()
+        self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
         self.show_home_widget.setChecked(bool(self.config.value("show_home_widget", True)))
 
         self.weather_combo = QComboBox()
+        self.weather_combo.setAccessibleName(STUDIO_TEXT["weather_label"])
         for weather in ["breeze", "cloudy", "gentle_rain", "fireflies", "sunny"]:
             self.weather_combo.addItem(weather.replace("_", " ").title(), weather)
         self.weather_combo.currentIndexChanged.connect(self._on_preview_toggle)
 
         self.growth_stage_combo = QComboBox()
+        self.growth_stage_combo.setAccessibleName(STUDIO_TEXT["growth_stage_label"])
         for stage in ["seed", "sprout", "young", "mature", "flowering", "rare"]:
             self.growth_stage_combo.addItem(stage.title(), stage)
         self.growth_stage_combo.setCurrentIndex(2)
         self.growth_stage_combo.currentIndexChanged.connect(self._on_preview_toggle)
 
         self.anim_slider = QSlider(Qt.Orientation.Horizontal)
+        self.anim_slider.setAccessibleName(STUDIO_TEXT["animation_label"])
         self.anim_slider.setRange(0, 100)
         self.anim_slider.setValue(int(self.preview["animation_intensity"] * 100))
         self.anim_slider.valueChanged.connect(self._on_slider_changed)
 
         self.particle_slider = QSlider(Qt.Orientation.Horizontal)
-        self.particle_slider.setRange(10, 200)
+        self.particle_slider.setAccessibleName(STUDIO_TEXT["particle_label"])
+        self.particle_slider.setRange(20, 125)
         self.particle_slider.setValue(int(self.preview["weather_particle_density"] * 100))
         self.particle_slider.valueChanged.connect(self._on_slider_changed)
 
@@ -129,11 +143,55 @@ class GardenStudioWidget(QWidget):
         form.addRow(STUDIO_TEXT["home_widget_label"], self.show_home_widget)
         form.addRow(STUDIO_TEXT["weather_label"], self.weather_combo)
         form.addRow(STUDIO_TEXT["growth_stage_label"], self.growth_stage_combo)
-        form.addRow(STUDIO_TEXT["animation_label"], self.anim_slider)
-        form.addRow(STUDIO_TEXT["particle_label"], self.particle_slider)
+        self.anim_value = QLabel()
+        self.anim_value.setAccessibleName("Motion amount value")
+        anim_row = QHBoxLayout()
+        anim_row.addWidget(self.anim_slider, 1)
+        anim_row.addWidget(self.anim_value)
+        self.particle_value = QLabel()
+        self.particle_value.setAccessibleName("Weather detail value")
+        particle_row = QHBoxLayout()
+        particle_row.addWidget(self.particle_slider, 1)
+        particle_row.addWidget(self.particle_value)
+        form.addRow(STUDIO_TEXT["animation_label"], anim_row)
+        form.addRow(STUDIO_TEXT["particle_label"], particle_row)
 
-        root.addWidget(controls, 0)
-        root.addWidget(self.scene, 1)
+        self.root_layout.addWidget(self.controls, 0)
+        self.root_layout.addWidget(self.scene, 1)
+        self._update_slider_labels()
+        self._update_motion_controls()
+        self._apply_responsive_layout(self.width())
+
+    def _apply_responsive_layout(self, width: int) -> None:
+        compact = settings_layout_is_compact(width)
+        if compact == self._compact_layout:
+            return
+        self._compact_layout = compact
+        self.root_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight
+        )
+        self.controls.setMaximumWidth(16777215 if compact else 340)
+
+    def resizeEvent(self, event: Any) -> None:
+        self._apply_responsive_layout(event.size().width())
+        super().resizeEvent(event)
+
+    def _update_slider_labels(self) -> None:
+        self.anim_value.setText(self._level_label(self.anim_slider.value(), 35, 75))
+        self.particle_value.setText(self._level_label(self.particle_slider.value(), 60, 110))
+
+    @staticmethod
+    def _level_label(value: int, low_max: int, standard_max: int) -> str:
+        if value <= low_max:
+            return "Low"
+        if value <= standard_max:
+            return "Standard"
+        return "High"
+
+    def _update_motion_controls(self) -> None:
+        enabled = self.animations_enabled.isChecked()
+        for widget in (self.anim_slider, self.particle_slider, self.anim_value, self.particle_value):
+            widget.setEnabled(enabled)
 
     def _on_theme_changed(self) -> None:
         self.preview["theme"] = self._normalize_theme(str(self.theme_combo.currentData()))
@@ -147,6 +205,7 @@ class GardenStudioWidget(QWidget):
     def _on_slider_changed(self) -> None:
         self.preview["animation_intensity"] = self.anim_slider.value() / 100.0
         self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
+        self._update_slider_labels()
         self._apply_preview()
 
     def _apply_preview(self) -> None:
