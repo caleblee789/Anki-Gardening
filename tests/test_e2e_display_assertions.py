@@ -141,11 +141,11 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
 
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews">Reviews today: 27' in html
-    assert 'data-testid="home-health">Garden health: 86%' in html
-    assert 'data-testid="home-growth">Study growth today: 36 of 240' in html
-    assert 'data-testid="home-weather">Weather: Gentle Rain' in html
+    assert 'data-testid="home-vitality">Garden vitality: 86%' in html
+    assert 'data-testid="home-growth">Daily growth: 36 / 240' in html
+    assert 'data-testid="home-weather"' not in html
     assert 'data-testid="home-growth-bar"' in html
-    assert 'aria-valuenow="15"' in html
+    assert 'aria-valuemax="240" aria-valuenow="36"' in html
     assert 'style="width:15%"' in html
 
 
@@ -154,7 +154,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     before = app._build_home_garden_html()
     assert 'Reviews today: 18' in before
-    assert 'Study growth today: 36 of 240' in before
+    assert 'Daily growth: 36 / 240' in before
 
     app.storage.state.daily_stats.growth_earned = 60
     app.storage.state.streak_days = 9
@@ -163,13 +163,13 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-streak">9-day streak' in updated
-    assert 'data-testid="home-growth">Study growth today: 60 of 240' in updated
-    assert 'data-testid="home-weather">Weather: Cloudy' in updated
+    assert 'data-testid="home-streak"' not in updated
+    assert 'data-testid="home-growth">Daily growth: 60 / 240' in updated
+    assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-streak">9-day streak' in refreshed
-    assert 'data-testid="home-growth">Study growth today: 60 of 240' in refreshed
-    assert 'data-testid="home-weather">Weather: Cloudy' in refreshed
+    assert 'data-testid="home-streak"' not in refreshed
+    assert 'data-testid="home-growth">Daily growth: 60 / 240' in refreshed
+    assert 'data-testid="home-weather"' not in refreshed
 
 
 def test_journey_navigation_between_home_contexts_keeps_values_without_duplication(monkeypatch):
@@ -189,5 +189,5 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'Reviews today: 42' in rendered
-        assert 'Garden health: 86%' in rendered
-        assert 'Study growth today: 36 of 210' in rendered
+        assert 'Garden vitality: 86%' in rendered
+        assert 'Daily growth: 36 / 210' in rendered

@@ -18,6 +18,7 @@ class AssetPlacement:
     ground_anchor: tuple[float, float] = (0.5, 0.96)
     display_scale: float = 1.0
     base_type: str = "legacy"
+    contact_shadow: tuple[float, float] = (0.56, 0.055)
     focal_point: tuple[float, float] = (0.5, 0.5)
     planting_zone: tuple[float, float, float, float] = (0.08, 0.92, 0.62, 0.91)
     scene_anchor: tuple[float, float] = (0.82, 0.86)
@@ -65,6 +66,11 @@ class AssetPlacement:
         base_type = str(row.get("base_type", defaults.base_type))
         if base_type not in {"pot", "dirt_mound", "legacy"}:
             base_type = defaults.base_type
+        contact_default = {
+            "pot": (0.52, 0.045),
+            "dirt_mound": (0.68, 0.04),
+            "legacy": defaults.contact_shadow,
+        }[base_type]
         return cls(
             anchor_x=number("anchor_x", defaults.anchor_x, 0.0, 1.0),
             baseline_y=number("baseline_y", defaults.baseline_y, 0.0, 1.0),
@@ -75,6 +81,7 @@ class AssetPlacement:
             ground_anchor=pair("ground_anchor", defaults.ground_anchor),
             display_scale=number("display_scale", number("scale", defaults.display_scale, 0.1, 2.5), 0.1, 2.5),
             base_type=base_type,
+            contact_shadow=pair("contact_shadow", contact_default),
             focal_point=pair("focal_point", defaults.focal_point),
             planting_zone=quad("planting_zone", defaults.planting_zone),
             scene_anchor=pair("scene_anchor", (number("anchor_x", defaults.anchor_x, 0, 1), number("baseline_y", defaults.baseline_y, 0, 1))),
@@ -91,6 +98,7 @@ class AssetPlacement:
             "ground_anchor": list(self.ground_anchor),
             "display_scale": self.display_scale,
             "base_type": self.base_type,
+            "contact_shadow": list(self.contact_shadow),
             "focal_point": list(self.focal_point),
             "planting_zone": {
                 "left": self.planting_zone[0], "right": self.planting_zone[1],

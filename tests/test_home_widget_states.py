@@ -69,7 +69,7 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
     assert 'data-testid="home-partial-error"' in html
     assert 'class="ag-home__partial-message"' in html
     assert "Reviews today: 5" in html
-    assert "Weather: Cloudy" in html
+    assert "Weather: Cloudy" not in html
 
 
 def test_success_state_renders_key_fields() -> None:
@@ -77,13 +77,16 @@ def test_success_state_renders_key_fields() -> None:
 
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews">Reviews today: 12' in html
-    assert 'data-testid="home-health">Garden health: 84%' in html
-    assert 'data-testid="home-growth">Study growth today: 30 of 220' in html
+    assert 'data-testid="home-vitality">Garden vitality: 84%' in html
+    assert 'data-testid="home-growth">Daily growth: 30 / 220' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
     assert 'role="progressbar"' in html
-    assert 'aria-valuenow="13"' in html
+    assert 'aria-valuemin="0" aria-valuemax="220" aria-valuenow="30"' in html
     assert 'aria-label="Open Anki Garden"' in html
+    assert "grid-template-columns:minmax(260px,38%) minmax(0,62%)" in html
+    assert "@media (max-width: 480px)" in html
+    assert html.count('class="ag-home__metric"') == 3
 
 
 def test_success_state_uses_resolved_background_as_compact_scene() -> None:
@@ -108,7 +111,7 @@ def test_success_state_renders_stage_transition_message() -> None:
     assert "Your Rose reached Flowering!" in html
 
 
-def test_success_state_renders_focus_and_milestone_progress() -> None:
+def test_success_state_renders_compact_focus_identity_without_dashboard_explanations() -> None:
     base = _sample_data()
     data = HomeWidgetData(**{
         **base.__dict__,
@@ -122,23 +125,26 @@ def test_success_state_renders_focus_and_milestone_progress() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
     assert 'data-testid="home-focus"' in html
-    assert "Nurturing Rose" in html
-    assert "42 growth points to the next stage" in html
-    assert "receives 80% of growth earned from reviews" in html
-    assert "150 reviews until your next plant choice" in html
+    assert '<div class="ag-home__focus-name">Rose</div>' in html
+    assert '<div class="ag-home__focus-stage">Young</div>' in html
+    assert "42 growth points to the next stage" not in html
+    assert "receives 80% of growth earned from reviews" not in html
+    assert "reviews until your next plant choice" not in html
+    assert "-webkit-line-clamp:2" in html
 
 
-def test_success_state_renders_ready_milestone_call_to_action() -> None:
+def test_ready_milestone_stays_on_dashboard_and_does_not_add_a_second_home_action() -> None:
     base = _sample_data()
     data = HomeWidgetData(**{**base.__dict__, "milestone_ready": True})
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
 
-    assert 'data-testid="home-milestone"' in html
-    assert "Open Garden to claim it" in html
+    assert 'data-testid="home-milestone"' not in html
+    assert "Open Garden to claim it" not in html
+    assert html.count('data-testid="home-open"') == 1
 
 
-def test_scene_preserves_depth_order_and_marks_focus_plant() -> None:
+def test_scene_preserves_depth_order_without_animating_or_highlighting_nurtured_plant() -> None:
     base = _sample_data()
     plants = (
         {"slot_index": 0, "name": "Rose", "stage": "flowering", "url": "rose.svg", "is_focus": True},
@@ -149,8 +155,9 @@ def test_scene_preserves_depth_order_and_marks_focus_plant() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=8, phase="success", data=data))
 
     assert "z-index:0" not in html
-    assert "ag-home__plant--focus" in html
-    assert "ag-home__contact--focus" in html
+    assert "ag-home__plant--focus" not in html
+    assert "ag-home__contact--focus" not in html
+    assert "animation:none !important; transition:none !important" in html
     assert "ag-home__focus-marker" not in html
     assert ">★</span>" not in html
 
@@ -181,7 +188,7 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert stale_applied is False
     assert fresh_applied is True
     assert "Reviews today: 7" in html
-    assert "Study growth today: 14 of 220" in html
+    assert "Daily growth: 14 / 220" in html
     assert "Reviews today: 99" not in html
 
 

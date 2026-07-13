@@ -4,14 +4,17 @@ import pytest
 
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
+    achievement_progress_display,
     compact_plant_layout,
     growth_display,
     hit_test,
     plant_health_display,
     plant_layout,
+    plant_layout_item,
     settings_layout_is_compact,
     smart_card_rect,
 )
+from ankigarden.models.state import Achievement, DailyStats, GardenState
 
 
 @pytest.mark.parametrize(
@@ -71,6 +74,17 @@ def test_plant_health_display_uses_plain_language_states(vitality, label, percen
     assert display.percent == percent
 
 
+def test_achievement_progress_adapter_exposes_numeric_criteria_without_schema_changes():
+    state = GardenState(streak_days=5, total_reviews=412, daily_stats=DailyStats(reviewed=18, correct=16, wrong=2))
+    streak = achievement_progress_display(Achievement("streak_7", "Rhythm", ""), state)
+    retention = achievement_progress_display(Achievement("retention_90", "Recall", ""), state)
+    total = achievement_progress_display(Achievement("reviews_1000_total", "Roots", ""), state)
+
+    assert (streak.current, streak.target, streak.value_text) == (5, 7, "5 / 7 days")
+    assert retention.value_text == "89 / 90% accuracy; 18 / 20 reviews"
+    assert (total.current, total.target) == (412, 1000)
+
+
 def test_layout_is_responsive_and_hit_areas_are_generous():
     rows = plant_layout(760, 320, 3)
     assert len(rows) == 3
@@ -90,6 +104,7 @@ def test_two_plants_stay_in_the_compositional_center():
     rows = plant_layout(900, 360, 2)
     centers = sorted(row.visible.x + row.visible.width / 2 for row in rows)
     assert centers == pytest.approx([370.1664, 529.8336])
+    assert rows[0].depth == pytest.approx(rows[1].depth)
 
 
 def test_declared_ground_anchor_lands_on_scene_baseline():
@@ -103,6 +118,36 @@ def test_declared_ground_anchor_lands_on_scene_baseline():
     anchor_y = row.draw.y + row.draw.height * placement["ground_anchor"][1]
     assert anchor_x == pytest.approx(row.footprint.x + row.footprint.width / 2)
     assert anchor_y == pytest.approx(row.depth)
+    assert row.footprint.y + row.footprint.height / 2 == pytest.approx(row.depth)
+
+
+def test_contact_shadow_uses_asset_specific_grounded_dimensions():
+    placement = {
+        "visible_bounds": [0.1, 0.1, 0.8, 0.85],
+        "ground_anchor": [0.5, 0.95],
+        "display_scale": 0.8,
+        "base_type": "pot",
+        "contact_shadow": [0.46, 0.045],
+    }
+    row = plant_layout(900, 500, [{"slot_index": 0, "placement": placement}])[0]
+
+    assert row.footprint.width == pytest.approx(row.visible.width * 0.46)
+    assert row.footprint.height == pytest.approx(max(3.0, row.visible.height * 0.045))
+    assert row.footprint.y < row.depth < row.footprint.bottom
+
+
+def test_resolved_asset_placement_is_promoted_before_dashboard_layout():
+    placement = {
+        "visible_bounds": [0.063, 0.4992, 0.8676, 0.3517],
+        "ground_anchor": [0.4968, 0.8509],
+        "contact_shadow": [0.64, 0.045],
+        "base_type": "pot",
+    }
+    item = plant_layout_item({"plant_id": "bonsai", "asset": {"path": "bonsai.png", "placement": placement}}, 2)
+
+    assert item["slot_index"] == 2
+    assert item["placement"] == placement
+    assert item["placement"] is not placement
 
 
 @pytest.mark.parametrize("count", [1, 2, 4, 6])
@@ -209,22 +254,28 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
 
 def test_dashboard_is_garden_first_with_compact_secondary_tabs():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    assert "root.addWidget(hero_card, 4)" in dashboard
+    assert "root.addWidget(hero_card)" in dashboard
+    assert 'self.daily_progress = LabeledProgress("Daily growth")' in dashboard
+    assert 'self.milestone_progress = LabeledProgress("Next plant choice")' in dashboard
     assert "self.details_tabs = QTabWidget()" in dashboard
     assert 'self.details_tabs.addTab(self.quest_list' in dashboard
+    assert 'self.quest_list = ProgressList("Quest progress")' in dashboard
     assert "self.hero_summary" not in dashboard
     assert "self.streak_chip" not in dashboard
 
 
-def test_potted_plants_do_not_receive_detached_ground_focus_ring():
+def test_selected_state_and_contact_shadow_share_the_ground_footprint():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
-    assert 'if emphasized and base_type != "pot":' in scene
+    assert "painter.drawEllipse(footprint.adjusted(-10, -4, 10, 4))" in scene
+    assert "painter.drawEllipse(footprint)" in scene
+    assert "footprint.translate" not in scene
 
 
-def test_nurtured_plant_uses_grounded_emphasis_without_floating_text_badge():
+def test_nurtured_plant_does_not_add_a_second_scene_highlight():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
     assert "_draw_nurture_badge" not in scene
-    assert 'if plant.get("is_focus"):' in scene
+    render_loop = scene.split("def paintEvent", 1)[1].split("def _draw_status_overlay", 1)[0]
+    assert "is_focus" not in render_loop
 
 
 def test_keyboard_move_cycles_places_and_cancels_without_losing_selection():
@@ -240,15 +291,31 @@ def test_keyboard_move_cycles_places_and_cancels_without_losing_selection():
     assert state.pinned_id == "rose"
 
 
-def test_scene_tooltips_convert_legacy_qpoint_for_qrectf_hit_testing():
+def test_statistics_help_is_explicit_hidden_and_keyboard_focusable():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
-    assert "position = QPointF(raw_position)" in scene
+    assert 'setAccessibleName("About garden statistics")' in scene
+    assert "self._stats_help_visible = False" in scene
+    assert "self._draw_stats_help(painter, r)" in scene
+    assert "self._stats_help_button.clicked.connect(self._focus_stats_help)" in scene
+    assert "QEvent.Type.Enter, QEvent.Type.FocusIn" in scene
+    assert "QToolTip" not in scene
+
+
+def test_plants_have_no_idle_or_drag_lift_transforms():
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    for retired in ("sway =", "pulse_alpha", "_transition_scale", "scale(1.06", "base_y - 8", "for i in range(16)"):
+        assert retired not in scene
+    assert "painter.setOpacity(0.78)" in scene
+    assert "painter.translate(target_x - x, target_y - base_y)" in scene
 
 
 def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
     assert "class PlantStoryDialog(QDialog):" in dashboard
-    assert 'setAccessibleName("Plant milestone timeline")' in dashboard
+    assert 'setAccessibleName("Plant memory timeline")' in dashboard
+    assert 'setAccessibleName("Rename plant")' in dashboard
+    assert "More memories will appear as this plant grows." in dashboard
+    assert "event.key() == Qt.Key.Key_Escape" in dashboard
     assert "self.engine.rename_plant" in dashboard
     assert "self.scene.storyRequested.connect(self._open_plant_story)" in dashboard
 
@@ -281,12 +348,51 @@ def test_settings_expose_daily_goal_home_visibility_and_transaction_errors():
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
     assert "behavior_scroll.setWidgetResizable(True)" in dashboard
     assert 'QPushButton("Save settings")' in dashboard
+    assert 'QPushButton("Restore defaults")' in dashboard
     assert '"Garden settings"' in dashboard
     assert "except ConfigError as exc:" in dashboard
-    assert "QMessageBox.warning" in dashboard
+    assert "QMessageBox.warning" not in dashboard
+    assert 'self.save_status.setText("Saved")' in dashboard
+    assert 'self.save_status.setText("Unsaved changes")' in dashboard
+    assert "self.behavior.reset_preview_defaults()" in dashboard
+    assert "self.config.update(old_payload)" in dashboard
     assert "self.particle_slider.setRange(20, 125)" in studio
     assert "self._update_motion_controls" in studio
     assert 'return "Standard"' in studio
+
+
+def test_dashboard_compact_action_bar_and_inline_move_guidance_are_real_controls():
+    dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
+    assert 'self.nurturing_pill = QLabel("Nurturing")' in dashboard
+    assert 'self.nurture = QPushButton("Nurture")' in dashboard
+    assert 'self.move = QPushButton("Move")' in dashboard
+    assert 'self.story = QPushButton("Story")' in dashboard
+    assert 'move_title = QLabel("Move a plant")' in dashboard
+    assert "Press Enter to place, Escape to cancel, or Undo after the move." in dashboard
+    assert 'self.cancel_move = QPushButton("Cancel move")' in dashboard
+    assert "QMessageBox.information(\n            self,\n            \"How to use the garden\"" not in dashboard
+    assert "Selected-plant details and real keyboard-focusable actions" in scene
+
+
+def test_settings_sections_and_preview_only_controls_match_persistence_contract():
+    studio = (Path(__file__).resolve().parents[1] / "ankigarden/ui/garden_studio.py").read_text()
+    for title in ("Appearance", "Motion and weather", "Progress", "Anki integration", "Preview only"):
+        assert f'"{title}"' in studio
+    assert "These demonstration controls update the preview and are never saved." in studio
+    assert '"weather"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
+    assert '"growth_stage"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
+    assert '"animations_label": "Animate weather"' in studio
+    assert '"animation_label": "Weather motion"' in studio
+
+
+def test_future_features_records_layered_foliage_motion_without_shipping_it():
+    root = Path(__file__).resolve().parents[1]
+    backlog = (root / "docs/future-features.md").read_text()
+    docs_index = (root / "docs/README.md").read_text()
+    assert "Layered foliage wind animation" in backlog
+    assert "pot, soil mound, and stem base fixed" in backlog
+    assert "future-features.md" in docs_index
 
 
 def test_supported_ui_copy_does_not_restore_retired_boost_language():

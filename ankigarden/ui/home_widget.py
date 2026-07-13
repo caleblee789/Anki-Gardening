@@ -120,19 +120,14 @@ HOME_WIDGET_STYLE = """
   font-size: 15px;
   font-weight: 700;
 }
-.ag-home__body { display:grid; grid-template-columns:minmax(320px,42%) minmax(0,58%); min-height:210px; }
-.ag-home__art { position:relative; width:100%; height:100%; min-height:210px; overflow:hidden; }
-.ag-home__plant { position:absolute; object-fit:contain; transform-origin:50% 100%; }
+.ag-home__body { display:grid; grid-template-columns:minmax(260px,38%) minmax(0,62%); min-height:176px; }
+.ag-home__art { position:relative; width:100%; height:176px; min-height:176px; overflow:hidden; }
+.ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; }
 .ag-home__contact { position:absolute; border-radius:50%; background:rgba(5,12,10,.34); filter:blur(2px); }
-.ag-home__contact--focus {
-  border: 2px solid rgba(229, 242, 166, .7);
-  background: radial-gradient(ellipse, rgba(164, 211, 128, .28), rgba(5, 12, 10, .3) 68%);
-  box-shadow: 0 0 14px rgba(190, 226, 143, .42);
-}
 .ag-home__plant-fallback { position:absolute; display:flex; align-items:flex-end; justify-content:center; line-height:1; }
 .ag-home__metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .ag-home__scene {
@@ -141,17 +136,28 @@ HOME_WIDGET_STYLE = """
   background-size: cover;
 }
 .ag-home__details { padding:10px 14px; background:#f4f7f1; }
+.ag-home__identity { margin-bottom:8px; }
+.ag-home__focus-name {
+  display:-webkit-box;
+  overflow:hidden;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  font-size:16px;
+  font-weight:800;
+  line-height:1.2;
+}
+.ag-home__focus-stage { margin-top:2px; color:#476354; font-size:12px; }
 .ag-home__footer {
   padding: 0 14px 10px;
 }
 .ag-home__metric {
-  padding: 8px;
+  padding: 7px 8px;
   border-radius: 8px;
   background: rgba(205, 223, 207, 0.62);
 }
 .ag-home__bar-track {
-  height: 8px;
-  margin: 8px 0 0;
+  height: 6px;
+  margin: 6px 0 0;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
@@ -170,11 +176,6 @@ HOME_WIDGET_STYLE = """
   color: #f4d58a;
   font-weight: 700;
 }
-.ag-home__progress-note { margin-top: 8px; color: #315b42; }
-.ag-home__focus-summary { margin-bottom:10px; padding:9px 10px; border:1px solid rgba(66,126,82,.5); border-radius:8px; background:rgba(215,235,216,.86); }
-.ag-home__focus-title { font-weight:800; color:#173b27; }
-.ag-home__focus-help { margin-top:3px; color:#315b42; font-size:12px; }
-.ag-home__plant--focus { filter: drop-shadow(0 0 8px rgba(232, 242, 166, .72)); }
 #ag-home-root button {
   margin-top: 6px;
   padding: 6px 10px;
@@ -194,21 +195,15 @@ HOME_WIDGET_STYLE = """
 .nightMode #ag-home-root .ag-home__header { background:rgba(8,20,17,.84); }
 .nightMode #ag-home-root .ag-home__details { background:#10201d; }
 .nightMode #ag-home-root .ag-home__metric { background:rgba(8,18,16,.42); }
-.nightMode #ag-home-root .ag-home__focus-summary { background:rgba(24,61,43,.58); }
-.nightMode #ag-home-root .ag-home__focus-title { color:#f0f6d0; }
-.nightMode #ag-home-root .ag-home__focus-help,
-.nightMode #ag-home-root .ag-home__progress-note { color:#cfe4d4; }
+.nightMode #ag-home-root .ag-home__focus-stage { color:#cfe4d4; }
 @media (max-width: 520px) {
   .ag-home__header { align-items:flex-start; flex-direction:column; gap:4px; }
   .ag-home__metrics { grid-template-columns:1fr; }
   .ag-home__details, .ag-home__footer { padding-left:10px; padding-right:10px; }
 }
-@media (max-width: 720px) {
+@media (max-width: 480px) {
   .ag-home__body { grid-template-columns:1fr; }
-  .ag-home__art { height:190px; min-height:190px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ag-home__plant { transition:none !important; animation:none !important; }
+  .ag-home__art { height:170px; min-height:170px; }
 }
 </style>
 """
@@ -313,41 +308,23 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         src = escape(str(item.get("url", "")), quote=True)
         base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
         depth_index = max(1, int(round(layout.depth * 10)))
-        contact_class = "ag-home__contact ag-home__contact--focus" if item.get("is_focus") else "ag-home__contact"
-        shadow = f'<span class="{contact_class}" aria-hidden="true" style="left:{layout.footprint.x/10:.3f}%;top:{layout.footprint.y/4.2:.3f}%;width:{layout.footprint.width/10:.3f}%;height:{layout.footprint.height/4.2:.3f}%;z-index:{depth_index}"></span>'
+        shadow = f'<span class="ag-home__contact" aria-hidden="true" style="left:{layout.footprint.x/10:.3f}%;top:{layout.footprint.y/4.2:.3f}%;width:{layout.footprint.width/10:.3f}%;height:{layout.footprint.height/4.2:.3f}%;z-index:{depth_index}"></span>'
         alt = escape(str(item.get("name", "Plant")), quote=True)
-        focus_class = " ag-home__plant--focus" if item.get("is_focus") else ""
         common = f'left:{layout.draw.x/10:.3f}%;top:{layout.draw.y/4.2:.3f}%;width:{layout.draw.width/10:.3f}%;height:{layout.draw.height/4.2:.3f}%;z-index:{depth_index + 1}'
         if src:
-            plant = f'<img class="ag-home__plant{focus_class}" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="{common}" data-base-type="{escape(base_type, quote=True)}">'
+            plant = f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="{common}" data-base-type="{escape(base_type, quote=True)}">'
         else:
             fallback = _plant_fallback(item.get("stage"))
             font_size = max(24, min(58, int(layout.visible.height / 5)))
-            plant = f'<span class="ag-home__plant-fallback{focus_class}" data-slot-index="{layout.slot_index}" role="img" aria-label="{alt}" style="{common};font-size:{font_size}px">{fallback}</span>'
+            plant = f'<span class="ag-home__plant-fallback" data-slot-index="{layout.slot_index}" role="img" aria-label="{alt}" style="{common};font-size:{font_size}px">{fallback}</span>'
         plant_markup.append(shadow + plant)
 
-    focus_html = ""
+    focus_html = '<div class="ag-home__identity"><div class="ag-home__focus-name">Your garden</div></div>'
     if data.focus_plant_name:
-        detail = escape(format_status_label(data.focus_stage))
-        if data.focus_points_remaining > 0:
-            detail += f" • {format_integer(data.focus_points_remaining)} growth points to the next stage"
         focus_html = (
-            '<div class="ag-home__focus-summary" data-testid="home-focus">'
-            f'<div class="ag-home__focus-title">Nurturing {escape(data.focus_plant_name)} — {detail}</div>'
-            '<div class="ag-home__focus-help">This plant receives 80% of growth earned from reviews; '
-            'the remaining 20% is shared among the others.</div></div>'
-        )
-    milestone_html = ""
-    if data.milestone_ready:
-        milestone_html = (
-            '<div class="ag-home__stage-up" data-testid="home-milestone">'
-            'A new garden plant is ready to choose. Open Garden to claim it.</div>'
-        )
-    elif data.next_milestone is not None:
-        remaining = max(0, data.next_milestone - data.total_reviews)
-        milestone_html = (
-            '<div class="ag-home__progress-note" data-testid="home-milestone-progress">'
-            f'{format_integer(remaining)} reviews until your next plant choice.</div>'
+            '<div class="ag-home__identity" data-testid="home-focus">'
+            f'<div class="ag-home__focus-name">{escape(data.focus_plant_name)}</div>'
+            f'<div class="ag-home__focus-stage">{escape(format_status_label(data.focus_stage))}</div></div>'
         )
 
     return f"""{HOME_WIDGET_STYLE}
@@ -355,7 +332,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
   {partial_banner}
   <div class=\"ag-home__header\">
     <div class=\"ag-home__title\">Anki Garden</div>
-    <div data-testid=\"home-streak\">{format_integer(data.streak_days)}-day streak</div>
   </div>
   <div class=\"ag-home__body\">
     <div class=\"ag-home__scene\" data-testid=\"home-scene\"{background_style}>
@@ -365,14 +341,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       {stage_up_html}
       {focus_html}
       {f'<p class="ag-home__partial-message" role="status">{escape(data.status_notice)}</p>' if data.status_notice else ''}
-      {milestone_html}
       <div class=\"ag-home__metrics\">
         <div class=\"ag-home__metric\"><div data-testid=\"home-reviews\">Reviews today: {format_integer(data.reviews_today)}</div></div>
-        <div class=\"ag-home__metric\" title=\"Garden health combines plant health, recent activity, streak, review volume, and accuracy.\"><div data-testid=\"home-health\">Garden health: {format_percent(data.health_ratio, places=0)}</div></div>
-        <div class=\"ag-home__metric\"><div data-testid=\"home-weather\">Weather: {format_status_label(data.weather)}</div></div>
-        <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Study growth today: {format_integer(data.growth_earned)} of {format_integer(growth_cap)}</div></div>
+        <div class=\"ag-home__metric\"><div data-testid=\"home-growth\">Daily growth: {format_integer(data.growth_earned)} / {format_integer(growth_cap)}</div>
+          <div class=\"ag-home__bar-track\" role=\"progressbar\" aria-label=\"Daily growth\" aria-valuemin=\"0\" aria-valuemax=\"{growth_cap}\" aria-valuenow=\"{min(max(0, data.growth_earned), growth_cap)}\"><div data-testid=\"home-growth-bar\" aria-hidden=\"true\" style=\"width:{growth_pct}%\"></div></div>
+        </div>
+        <div class=\"ag-home__metric\" title=\"Garden vitality combines plant vitality, recent activity, streak, review volume, and accuracy.\"><div data-testid=\"home-vitality\">Garden vitality: {format_percent(data.health_ratio, places=0)}</div></div>
       </div>
-      <div class=\"ag-home__bar-track\" role=\"progressbar\" aria-label=\"Today's garden growth\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"{growth_pct}\" title=\"Review cards to earn growth toward today's goal.\"><div data-testid=\"home-growth-bar\" aria-hidden=\"true\" style=\"width:{growth_pct}%\"></div></div>
       <button data-testid=\"home-open\" type=\"button\" aria-label=\"Open Anki Garden\" onclick=\"pycmd('anki-garden:open')\">Open Garden</button>
     </div>
   </div>

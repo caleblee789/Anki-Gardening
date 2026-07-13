@@ -69,6 +69,13 @@ def audit() -> dict[str, int]:
                     raise ValueError(f"placement scale out of range: {rel}")
             if placement.get("crop") not in {"contain", "cover"} or not placement.get("layer"):
                 raise ValueError(f"invalid placement crop/layer: {rel}")
+            contact_shadow = placement.get("contact_shadow")
+            if contact_shadow is not None:
+                if not isinstance(contact_shadow, list) or len(contact_shadow) != 2:
+                    raise ValueError(f"invalid contact shadow metadata: {rel}")
+                width_ratio, height_ratio = (float(value) for value in contact_shadow)
+                if not 0.2 <= width_ratio <= 1.0 or not 0.015 <= height_ratio <= 0.12:
+                    raise ValueError(f"contact shadow metadata out of range: {rel}")
         if category in {"plants", "backgrounds"}:
             # Every production profile must be resolvable to the complete
             # category contract, including assets that rely on legacy defaults.
@@ -78,7 +85,8 @@ def audit() -> dict[str, int]:
                 resolved.setdefault("ground_anchor", [0.5, 0.96])
                 resolved.setdefault("display_scale", resolved.get("scale", 1.0))
                 resolved.setdefault("base_type", "legacy")
-                required = {"visible_bounds", "ground_anchor", "display_scale", "base_type", "layer"}
+                resolved.setdefault("contact_shadow", [0.56, 0.055])
+                required = {"visible_bounds", "ground_anchor", "display_scale", "base_type", "contact_shadow", "layer"}
             else:
                 resolved.setdefault("focal_point", [0.5, 0.43])
                 resolved.setdefault("planting_zone", {"left": 0.08, "right": 0.92, "far_y": 0.62, "near_y": 0.91})
@@ -86,6 +94,16 @@ def audit() -> dict[str, int]:
             resolved.setdefault("layer", "plants" if category == "plants" else "background")
             if not required.issubset(resolved):
                 raise ValueError(f"resolved production placement metadata incomplete: {rel}")
+            if category == "plants" and row.get("style_family") == "storybook_gouache":
+                explicit = {"visible_bounds", "ground_anchor", "display_scale", "base_type", "contact_shadow"}
+                if not isinstance(placement, dict) or not explicit.issubset(placement):
+                    raise ValueError(f"storybook plant lacks explicit grounding metadata: {rel}")
+                visible = placement["visible_bounds"]
+                ground = placement["ground_anchor"]
+                if not isinstance(visible, list) or len(visible) != 4 or not isinstance(ground, list) or len(ground) != 2:
+                    raise ValueError(f"invalid storybook grounding geometry: {rel}")
+                if abs((float(visible[1]) + float(visible[3])) - float(ground[1])) > 0.001:
+                    raise ValueError(f"storybook ground anchor does not match visible base: {rel}")
         counts[category] += 1
 
     expected = {"backgrounds": 78, "decorations": 5, "plants": 69, "ui": 3, "weather": 10}

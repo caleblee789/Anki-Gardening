@@ -26,6 +26,10 @@ The focused 2.1 experience intentionally does not expose or persist focus timers
 - Makes settings validation transactional so invalid values or a failed Anki config write cannot partially change the active experience.
 - Hardens live and catch-up review processing so progress and its review cursor are saved together.
 - Improves plant cards, placement controls, keyboard navigation, reduced-motion behavior, and narrow-window rendering.
+- Unifies the dashboard, Plant Story, settings, Deck Browser, and Overview around a compact shared presentation system.
+- Clarifies status language: **Garden vitality** describes the whole garden, while **Plant vitality** describes the selected plant.
+- Shows numeric daily-goal, quest, achievement, and plant-choice progress, with plant-move guidance kept beside the garden.
+- Keeps settings edits staged until Save; preview weather and growth-stage controls remain temporary demonstrations.
 
 The detailed release contract and validation scenarios are in [`docs/feature-evidence-matrix.md`](docs/feature-evidence-matrix.md).
 
@@ -61,6 +65,7 @@ The current runtime target is Anki 25.07 through 26.5. Release acceptance uses t
 - `tests/`: engine, state, UI-contract, integration, asset, and package checks.
 - `docs/codebase-audit.md`: issue ledger and resolution evidence.
 - `docs/feature-evidence-matrix.md`: automated and live-Anki release acceptance contract.
+- `docs/future-features.md`: intentionally deferred ideas that need separate artwork or interaction design.
 - `docs/storybook-gouache-assets.md`: production art direction, format policy, and v3 rollout rules.
 - `docs/ui/`: UI state and data-contract references.
 
