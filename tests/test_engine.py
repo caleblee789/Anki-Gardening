@@ -321,6 +321,61 @@ def test_restore_placement_supports_exactly_the_latest_move():
     assert engine.restore_placement(change)[0] is False
 
 
+def test_placement_draft_stages_multiple_changes_without_saving_until_done():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
+    saves = []
+    st.save = lambda: saves.append(st.state.to_dict())
+    engine = GardenGameEngine(FakeConfig(), st)
+    saves.clear()
+
+    ok, _message, draft = engine.begin_placement_draft("p1")
+    assert ok and draft is not None
+    assert engine.stage_placement(draft, 1)[0]
+    assert engine.stage_placement(draft, 2)[0]
+    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 0, "p2": 1}
+    assert saves == []
+
+    ok, _message, change = engine.commit_placement_draft(draft)
+    assert ok and change is not None
+    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 2, "p2": 0}
+    assert len(saves) == 1
+
+
+def test_placement_draft_undo_cancel_and_stale_commit_fail_closed():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    engine = GardenGameEngine(FakeConfig(), st)
+    ok, _message, draft = engine.begin_placement_draft("p1")
+    assert ok and draft is not None
+    assert engine.stage_placement(draft, 2)[0]
+    assert draft.current["p1"] == 2
+    assert engine.undo_staged_placement(draft) == (True, "Move undone.")
+    assert draft.current == draft.original
+
+    assert engine.stage_placement(draft, 2)[0]
+    st.state.plants[0].slot_index = 1
+    ok, message, change = engine.commit_placement_draft(draft)
+    assert not ok and change is None
+    assert "changed while" in message
+    assert st.state.plants[0].slot_index == 1
+
+
+def test_placement_draft_rolls_back_if_done_cannot_save():
+    st = FakeStorage()
+    st.state.unlocked_slots = 3
+    engine = GardenGameEngine(FakeConfig(), st)
+    draft = engine.begin_placement_draft("p1")[2]
+    assert draft is not None and engine.stage_placement(draft, 2)[0]
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    ok, _message, change = engine.commit_placement_draft(draft)
+
+    assert not ok and change is None
+    assert st.state.plants[0].slot_index == 0
+
+
 def test_milestone_offer_is_stable_and_claim_unlocks_one_slot():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -529,6 +584,64 @@ def test_retrospective_first_review_matches_live_growth_and_streak():
     assert catchup_storage.state.last_active_day == live_storage.state.last_active_day
 
 
+def test_historical_reviews_award_growth_without_rewriting_daily_systems():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    before_daily = st.state.daily_stats.__dict__.copy()
+    before_streak = st.state.streak_days
+    before_weather = st.state.selected_weather
+    before_quests = [quest.__dict__.copy() for quest in st.state.daily_quests]
+    before_achievements = {
+        key: value.__dict__.copy() for key, value in st.state.achievements.items()
+    }
+
+    gained = engine.apply_historical_reviews(
+        [{"ease": 3, "review_type": 1, "factor": 2500, "deck_id": 1}],
+        imported_days=["2026-07-01"],
+    )
+
+    assert gained > 0
+    assert st.state.total_reviews == 1
+    assert st.state.imported_history_days == ["2026-07-01"]
+    assert st.state.daily_stats.__dict__ == before_daily
+    assert st.state.streak_days == before_streak
+    assert st.state.selected_weather == before_weather
+    assert [quest.__dict__ for quest in st.state.daily_quests] == before_quests
+    assert {key: value.__dict__ for key, value in st.state.achievements.items()} == before_achievements
+
+
+def test_historical_reviews_skip_days_already_imported():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    st.state.imported_history_days = ["2026-07-01"]
+
+    gained = engine.apply_historical_reviews(
+        [{"ease": 3, "review_type": 1, "factor": 2500}],
+        imported_days=["2026-07-01"],
+    )
+
+    assert gained == 0
+    assert st.state.total_reviews == 0
+
+
+def test_historical_reviews_restore_state_and_transitions_on_save_failure():
+    st = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), st)
+    before = st.state.to_dict()
+    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    try:
+        engine.apply_historical_reviews(
+            [{"ease": 3, "review_type": 1, "factor": 2500}],
+            imported_days=["2026-07-01"],
+        )
+    except OSError:
+        pass
+
+    assert st.state.to_dict() == before
+    assert engine.peek_stage_transitions() == []
+
+
 def test_reroll_asset_slot_uses_local_catalog_cycle():
     cfg = FakeConfig()
     st = FakeStorage()
@@ -560,3 +673,32 @@ def test_storage_prefers_modern_day_cutoff_without_touching_deprecated_property(
     storage.mw = SimpleNamespace(col=SimpleNamespace(sched=Scheduler(), db=SimpleNamespace()))
 
     assert storage.current_day_cutoff_ms() == (200_000 - 86_400) * 1000
+
+
+def test_history_preview_skips_imported_days_and_rejects_today(monkeypatch):
+    class DB:
+        def all(self, _query, lower, _upper):
+            return [(lower + 1, 10, 3, 20, 10, 2500, 1200, 1)]
+
+    storage = object.__new__(GardenStorage)
+    storage.state = GardenState(imported_history_days=["2026-07-01"])
+    storage.mw = SimpleNamespace(
+        col=SimpleNamespace(
+            db=DB(),
+            get_card=lambda _cid: SimpleNamespace(did=42),
+        )
+    )
+    monkeypatch.setattr(
+        storage, "_anki_day_bounds_ms",
+        lambda day: ((1 if day == "2026-07-01" else 100), (99 if day == "2026-07-01" else 199)),
+    )
+
+    preview = storage.preview_historical_reviews("2026-07-01", "2026-07-02")
+
+    assert preview.skipped_days == ("2026-07-01",)
+    assert preview.importable_days == ("2026-07-02",)
+    assert preview.eligible_reviews == 1
+    assert preview.reviews[0]["deck_id"] == 42
+    assert storage.preview_historical_reviews(
+        date.today().isoformat(), date.today().isoformat()
+    ).error

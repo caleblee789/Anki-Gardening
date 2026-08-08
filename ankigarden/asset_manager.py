@@ -8,6 +8,195 @@ from typing import Any, Optional
 
 
 @dataclass(frozen=True)
+class BedAnchor:
+    """One permanent planting bed in normalized scene coordinates."""
+
+    x: float
+    y: float
+    depth: float
+    plant_scale: float
+    footprint: tuple[float, float]
+    label_anchor: tuple[float, float]
+    physical_width_ratio: float = 0.125
+    surface_id: str = ""
+    contact_plane: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    shadow_depth: str = "front"
+    shadow_opacity: float = 0.34
+    occlusion_id: str = ""
+
+    @classmethod
+    def from_manifest(cls, value: Any, default: "BedAnchor") -> "BedAnchor":
+        row = value if isinstance(value, dict) else {}
+
+        def number(key: str, fallback: float, low: float = 0.0, high: float = 1.0) -> float:
+            try:
+                return max(low, min(high, float(row.get(key, fallback))))
+            except (TypeError, ValueError):
+                return fallback
+
+        def pair(key: str, fallback: tuple[float, float]) -> tuple[float, float]:
+            raw = row.get(key, fallback)
+            if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+                return fallback
+            result: list[float] = []
+            for item, default_item in zip(raw, fallback):
+                try:
+                    result.append(max(0.0, min(1.0, float(item))))
+                except (TypeError, ValueError):
+                    result.append(default_item)
+            return result[0], result[1]
+
+        def quad(
+            key: str, fallback: tuple[float, float, float, float]
+        ) -> tuple[float, float, float, float]:
+            raw = row.get(key, fallback)
+            if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+                return fallback
+            result: list[float] = []
+            for item, default_item in zip(raw, fallback):
+                try:
+                    result.append(max(0.0, min(1.0, float(item))))
+                except (TypeError, ValueError):
+                    result.append(default_item)
+            return result[0], result[1], result[2], result[3]
+
+        shadow_depth = str(row.get("shadow_depth", default.shadow_depth))
+        if shadow_depth not in {"rear", "front"}:
+            shadow_depth = default.shadow_depth
+
+        return cls(
+            x=number("x", default.x),
+            y=number("y", default.y),
+            depth=number("depth", default.depth),
+            plant_scale=number("plant_scale", default.plant_scale, 0.35, 1.4),
+            footprint=pair("footprint", default.footprint),
+            label_anchor=pair("label_anchor", default.label_anchor),
+            physical_width_ratio=number(
+                "physical_width_ratio", default.physical_width_ratio, 0.04, 0.30
+            ),
+            surface_id=str(row.get("surface_id", default.surface_id)),
+            contact_plane=quad("contact_plane", default.contact_plane),
+            shadow_depth=shadow_depth,
+            shadow_opacity=number("shadow_opacity", default.shadow_opacity, 0.0, 1.0),
+            occlusion_id=str(row.get("occlusion_id", default.occlusion_id)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "x": self.x,
+            "y": self.y,
+            "depth": self.depth,
+            "plant_scale": self.plant_scale,
+            "footprint": list(self.footprint),
+            "label_anchor": list(self.label_anchor),
+            "physical_width_ratio": self.physical_width_ratio,
+            "surface_id": self.surface_id,
+            "contact_plane": list(self.contact_plane),
+            "shadow_depth": self.shadow_depth,
+            "shadow_opacity": self.shadow_opacity,
+            "occlusion_id": self.occlusion_id,
+        }
+
+
+@dataclass(frozen=True)
+class SceneSurfaceProfile:
+    """Registered background variants and the physical surfaces painted into them."""
+
+    profile_id: str
+    geometry_version: int
+    theme: str
+    light_direction: tuple[float, float]
+    variant_breakpoints: dict[str, float]
+    variants: dict[str, dict[str, Any]]
+
+    @classmethod
+    def from_manifest(cls, value: Any) -> Optional["SceneSurfaceProfile"]:
+        row = value if isinstance(value, dict) else {}
+        profile_id = str(row.get("profile_id", "")).strip()
+        raw_variants = row.get("variants")
+        if not profile_id or not isinstance(raw_variants, dict):
+            return None
+
+        def number(raw: Any, default: float, low: float = 0.0, high: float = 4.0) -> float:
+            try:
+                return max(low, min(high, float(raw)))
+            except (TypeError, ValueError):
+                return default
+
+        direction = row.get("light_direction", [-0.22, 0.18])
+        light_direction = (
+            number(direction[0], -0.22, -1.0, 1.0),
+            number(direction[1], 0.18, -1.0, 1.0),
+        ) if isinstance(direction, (list, tuple)) and len(direction) == 2 else (-0.22, 0.18)
+        breakpoints = row.get("variant_breakpoints", {})
+        normalized_breakpoints = {
+            "four_three_max": number(
+                breakpoints.get("four_three_max") if isinstance(breakpoints, dict) else None,
+                1.42, 1.0, 2.0,
+            ),
+            "ultrawide_min": number(
+                breakpoints.get("ultrawide_min") if isinstance(breakpoints, dict) else None,
+                2.05, 1.4, 4.0,
+            ),
+        }
+        variants: dict[str, dict[str, Any]] = {}
+        for name in ("4:3", "16:9", "home"):
+            raw = raw_variants.get(name)
+            if not isinstance(raw, dict):
+                continue
+            asset_file = str(raw.get("file", ""))
+            occlusion_file = str(raw.get("occlusion_file", ""))
+            if not asset_file.startswith("assets/") or ".." in Path(asset_file).parts:
+                continue
+            if occlusion_file and (
+                not occlusion_file.startswith("assets/") or ".." in Path(occlusion_file).parts
+            ):
+                continue
+            surfaces = raw.get("surfaces")
+            if not isinstance(surfaces, list) or len(surfaces) != 6:
+                continue
+            variants[name] = {
+                "file": asset_file,
+                "occlusion_file": occlusion_file,
+                "width": max(1, int(number(raw.get("width"), 1, 1, 10000))),
+                "height": max(1, int(number(raw.get("height"), 1, 1, 10000))),
+                "focal_point": list(raw.get("focal_point", [0.5, 0.5])),
+                "planting_zone": dict(raw.get("planting_zone", {})),
+                "surfaces": [dict(surface) for surface in surfaces if isinstance(surface, dict)],
+            }
+        if set(variants) != {"4:3", "16:9", "home"}:
+            return None
+        return cls(
+            profile_id=profile_id,
+            geometry_version=max(1, int(number(row.get("geometry_version"), 1, 1, 99))),
+            theme=str(row.get("theme", "verdant_dusk")),
+            light_direction=light_direction,
+            variant_breakpoints=normalized_breakpoints,
+            variants=variants,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "profile_id": self.profile_id,
+            "geometry_version": self.geometry_version,
+            "theme": self.theme,
+            "light_direction": list(self.light_direction),
+            "variant_breakpoints": dict(self.variant_breakpoints),
+            "variants": {name: dict(value) for name, value in self.variants.items()},
+        }
+
+
+DEFAULT_BED_ANCHORS: tuple[BedAnchor, ...] = (
+    BedAnchor(0.27, 0.58, 0.58, 1.0, (0.125, 0.040), (0.27, 0.635), 0.125),
+    BedAnchor(0.47, 0.55, 0.55, 1.0, (0.130, 0.040), (0.47, 0.605), 0.130),
+    BedAnchor(0.75, 0.58, 0.58, 1.0, (0.125, 0.040), (0.75, 0.635), 0.125),
+    BedAnchor(0.31, 0.80, 0.80, 1.0, (0.155, 0.050), (0.31, 0.845), 0.155),
+    BedAnchor(0.53, 0.85, 0.85, 1.0, (0.170, 0.050), (0.53, 0.895), 0.170),
+    BedAnchor(0.69, 0.80, 0.80, 1.0, (0.155, 0.050), (0.69, 0.845), 0.155),
+)
+
+
+@dataclass(frozen=True)
 class AssetPlacement:
     anchor_x: float = 0.5
     baseline_y: float = 0.86
@@ -16,12 +205,27 @@ class AssetPlacement:
     layer: str = "content"
     visible_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.92)
     ground_anchor: tuple[float, float] = (0.5, 0.96)
+    art_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.92)
+    base_bounds: tuple[float, float, float, float] = (0.30, 0.72, 0.40, 0.24)
+    support_bounds: tuple[float, float, float, float] = (0.32, 0.86, 0.36, 0.10)
+    foliage_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.72)
+    plant_above_rim_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.68)
+    soil_contact: tuple[float, float] = (0.5, 0.96)
+    interaction_bounds: tuple[float, float, float, float] = (0.06, 0.02, 0.88, 0.96)
     display_scale: float = 1.0
     base_type: str = "legacy"
     contact_shadow: tuple[float, float] = (0.56, 0.055)
+    geometry_version: int = 0
+    review_provenance: str = ""
+    vessel_class: str = "legacy"
+    vessel_class_multiplier: float = 1.0
+    scene_scale_correction: float = 1.0
     focal_point: tuple[float, float] = (0.5, 0.5)
     planting_zone: tuple[float, float, float, float] = (0.08, 0.92, 0.62, 0.91)
     scene_anchor: tuple[float, float] = (0.82, 0.86)
+    bed_anchors: tuple[BedAnchor, ...] = DEFAULT_BED_ANCHORS
+    layout_profiles: dict[str, Any] = field(default_factory=dict)
+    surface_profile: Optional[SceneSurfaceProfile] = None
 
     @classmethod
     def from_manifest(cls, value: Any, *, category: str) -> "AssetPlacement":
@@ -45,6 +249,9 @@ class AssetPlacement:
             crop = defaults.crop
         def pair(key: str, default: tuple[float, float]) -> tuple[float, float]:
             value = row.get(key, default)
+            return pair_from(value, default)
+
+        def pair_from(value: Any, default: tuple[float, float]) -> tuple[float, float]:
             if not isinstance(value, (list, tuple)) or len(value) != 2:
                 return default
             return (number_from(value[0], default[0]), number_from(value[1], default[1]))
@@ -66,11 +273,70 @@ class AssetPlacement:
         base_type = str(row.get("base_type", defaults.base_type))
         if base_type not in {"pot", "dirt_mound", "legacy"}:
             base_type = defaults.base_type
+        vessel_class = str(row.get("vessel_class", defaults.vessel_class))
+        if vessel_class not in {
+            "standard_upright", "wide_planter", "bonsai_tray", "bowl_low",
+            "soil_only", "legacy",
+        }:
+            vessel_class = defaults.vessel_class
         contact_default = {
             "pot": (0.52, 0.045),
             "dirt_mound": (0.68, 0.04),
             "legacy": defaults.contact_shadow,
         }[base_type]
+        raw_beds = row.get("bed_anchors")
+        if isinstance(raw_beds, list) and len(raw_beds) == len(DEFAULT_BED_ANCHORS):
+            bed_anchors = tuple(
+                BedAnchor.from_manifest(item, DEFAULT_BED_ANCHORS[index])
+                for index, item in enumerate(raw_beds)
+            )
+        else:
+            bed_anchors = DEFAULT_BED_ANCHORS
+        layout_profiles: dict[str, Any] = {}
+        raw_profiles = row.get("layout_profiles")
+        if isinstance(raw_profiles, dict):
+            for profile_name in ("4:3", "3:2", "16:9", "home"):
+                raw_profile = raw_profiles.get(profile_name)
+                if not isinstance(raw_profile, dict):
+                    continue
+                profile: dict[str, Any] = {}
+                profile["focal_point"] = list(pair_from(raw_profile.get("focal_point"), defaults.focal_point))
+                coordinate_space = str(raw_profile.get("coordinate_space", "viewport"))
+                profile["coordinate_space"] = (
+                    coordinate_space
+                    if coordinate_space in {"viewport", "source_4_3", "source"}
+                    else "viewport"
+                )
+                if raw_profile.get("surface_variant") in {"4:3", "16:9", "home"}:
+                    profile["surface_variant"] = str(raw_profile["surface_variant"])
+                try:
+                    profile["source_aspect_ratio"] = max(
+                        0.5, min(4.0, float(raw_profile.get("source_aspect_ratio", 4 / 3)))
+                    )
+                except (TypeError, ValueError):
+                    profile["source_aspect_ratio"] = 4 / 3
+                raw_zone = raw_profile.get("planting_zone")
+                if isinstance(raw_zone, dict):
+                    profile["planting_zone"] = {
+                        "left": number_from(raw_zone.get("left"), defaults.planting_zone[0]),
+                        "right": number_from(raw_zone.get("right"), defaults.planting_zone[1]),
+                        "far_y": number_from(raw_zone.get("far_y"), defaults.planting_zone[2]),
+                        "near_y": number_from(raw_zone.get("near_y"), defaults.planting_zone[3]),
+                    }
+                compositions: dict[str, list[dict[str, Any]]] = {}
+                raw_compositions = raw_profile.get("compositions")
+                if isinstance(raw_compositions, dict):
+                    for count in range(1, 7):
+                        raw_composition = raw_compositions.get(str(count))
+                        if not isinstance(raw_composition, list) or len(raw_composition) != 6:
+                            continue
+                        compositions[str(count)] = [
+                            BedAnchor.from_manifest(item, DEFAULT_BED_ANCHORS[index]).to_dict()
+                            for index, item in enumerate(raw_composition)
+                        ]
+                if compositions:
+                    profile["compositions"] = compositions
+                layout_profiles[profile_name] = profile
         return cls(
             anchor_x=number("anchor_x", defaults.anchor_x, 0.0, 1.0),
             baseline_y=number("baseline_y", defaults.baseline_y, 0.0, 1.0),
@@ -79,12 +345,33 @@ class AssetPlacement:
             layer=str(row.get("layer", defaults.layer)),
             visible_bounds=quad("visible_bounds", defaults.visible_bounds),
             ground_anchor=pair("ground_anchor", defaults.ground_anchor),
+            art_bounds=quad("art_bounds", quad("visible_bounds", defaults.art_bounds)),
+            base_bounds=quad("base_bounds", defaults.base_bounds),
+            support_bounds=quad("support_bounds", quad("base_bounds", defaults.support_bounds)),
+            foliage_bounds=quad("foliage_bounds", quad("visible_bounds", defaults.foliage_bounds)),
+            plant_above_rim_bounds=quad(
+                "plant_above_rim_bounds", quad("foliage_bounds", defaults.plant_above_rim_bounds)
+            ),
+            soil_contact=pair("soil_contact", pair("ground_anchor", defaults.soil_contact)),
+            interaction_bounds=quad("interaction_bounds", quad("visible_bounds", defaults.interaction_bounds)),
             display_scale=number("display_scale", number("scale", defaults.display_scale, 0.1, 2.5), 0.1, 2.5),
             base_type=base_type,
             contact_shadow=pair("contact_shadow", contact_default),
+            geometry_version=int(number("geometry_version", defaults.geometry_version, 0, 99)),
+            review_provenance=str(row.get("review_provenance", defaults.review_provenance)),
+            vessel_class=vessel_class,
+            vessel_class_multiplier=number(
+                "vessel_class_multiplier", defaults.vessel_class_multiplier, 0.5, 1.5
+            ),
+            scene_scale_correction=number(
+                "scene_scale_correction", defaults.scene_scale_correction, 0.5, 1.5
+            ),
             focal_point=pair("focal_point", defaults.focal_point),
             planting_zone=quad("planting_zone", defaults.planting_zone),
             scene_anchor=pair("scene_anchor", (number("anchor_x", defaults.anchor_x, 0, 1), number("baseline_y", defaults.baseline_y, 0, 1))),
+            bed_anchors=bed_anchors,
+            layout_profiles=layout_profiles,
+            surface_profile=SceneSurfaceProfile.from_manifest(row.get("surface_profile")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -96,15 +383,30 @@ class AssetPlacement:
             "layer": self.layer,
             "visible_bounds": list(self.visible_bounds),
             "ground_anchor": list(self.ground_anchor),
+            "art_bounds": list(self.art_bounds),
+            "base_bounds": list(self.base_bounds),
+            "support_bounds": list(self.support_bounds),
+            "foliage_bounds": list(self.foliage_bounds),
+            "plant_above_rim_bounds": list(self.plant_above_rim_bounds),
+            "soil_contact": list(self.soil_contact),
+            "interaction_bounds": list(self.interaction_bounds),
             "display_scale": self.display_scale,
             "base_type": self.base_type,
             "contact_shadow": list(self.contact_shadow),
+            "geometry_version": self.geometry_version,
+            "review_provenance": self.review_provenance,
+            "vessel_class": self.vessel_class,
+            "vessel_class_multiplier": self.vessel_class_multiplier,
+            "scene_scale_correction": self.scene_scale_correction,
             "focal_point": list(self.focal_point),
             "planting_zone": {
                 "left": self.planting_zone[0], "right": self.planting_zone[1],
                 "far_y": self.planting_zone[2], "near_y": self.planting_zone[3],
             },
             "scene_anchor": list(self.scene_anchor),
+            "bed_anchors": [anchor.to_dict() for anchor in self.bed_anchors],
+            "layout_profiles": self.layout_profiles,
+            "surface_profile": self.surface_profile.to_dict() if self.surface_profile is not None else {},
         }
 
 
@@ -117,8 +419,16 @@ class ResolvedAsset:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
+        rel = Path(str(self.metadata.get("file", "")))
+        asset_root = self.path
+        if rel.parts:
+            for _part in rel.parts:
+                asset_root = asset_root.parent
+        else:
+            asset_root = self.path.parent
         return {
             "path": str(self.path),
+            "asset_root": str(asset_root),
             "asset_id": self.asset_id,
             "category": self.category,
             "placement": self.placement.to_dict(),
@@ -133,6 +443,7 @@ class AssetManager:
         "backgrounds": (512, 384),
         "decorations": (128, 128),
         "weather": (256, 192),
+        "overlays": (512, 384),
         "ui": (128, 96),
     }
 
@@ -293,6 +604,12 @@ class AssetManager:
             return {"weather": weather}
         if category == "decorations":
             return {"decoration_id": key.replace("decor_", "", 1)}
+        if category == "overlays":
+            configured_theme = theme or str(self.config.value("visual_theme", "verdant_dusk"))
+            return {
+                "overlay_id": key.replace("overlay_", "", 1),
+                "theme": self.normalize_theme(configured_theme),
+            }
         if category == "ui":
             return {"ui_id": key.replace("ui_", "", 1)}
         return {"key": key}
@@ -328,7 +645,7 @@ class AssetManager:
             ]
         if not preferred and category == "backgrounds":
             preferred = [e for e in entries if (e.get("slot", {}) or {}).get("season") == slot.get("season") and (e.get("slot", {}) or {}).get("weather") == slot.get("weather")]
-        if not preferred and category in {"plants", "weather", "decorations", "ui"}:
+        if not preferred and category in {"plants", "weather", "decorations", "overlays", "ui"}:
             k = next(iter(slot.keys()))
             preferred = [e for e in entries if (e.get("slot", {}) or {}).get(k) == slot.get(k)]
 
@@ -343,6 +660,11 @@ class AssetManager:
         preferred.sort(
             key=lambda e: (
                 0 if e.get("style_family") == "storybook_gouache" else 1,
+                (
+                    0 if category == "plants" and "continuity_v4" in e.get("variants", [])
+                    else 1 if category == "plants" and "continuity_v3" in e.get("variants", [])
+                    else 2
+                ),
                 quality_distance(e),
                 -float(e.get("quality_score", 0.0)),
                 str(e.get("file", "")),

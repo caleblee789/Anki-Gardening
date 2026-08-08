@@ -26,7 +26,7 @@ def test_pre_release_old_schema_is_backed_up_and_reset(tmp_path) -> None:
 
     state = _storage_at(state_path)._load()
 
-    assert state.version == 8
+    assert state.version == 10
     assert state.total_reviews == 0
     backup = state_path.with_suffix(".legacy.json")
     assert backup.exists()
@@ -50,3 +50,40 @@ def test_atomic_write_failure_removes_temporary_file(tmp_path, monkeypatch) -> N
 
     assert target.read_text(encoding="utf-8") == '{"old": true}'
     assert sorted(path.name for path in tmp_path.iterdir()) == ["state.json"]
+
+
+def test_v8_state_migrates_without_resetting_progress(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(total_reviews=321).to_dict()
+    payload["version"] = 8
+    payload.pop("imported_history_days")
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    state = _storage_at(state_path)._load()
+
+    assert state.version == 10
+    assert state.total_reviews == 321
+    assert state.imported_history_days == []
+    assert not state_path.with_suffix(".legacy.json").exists()
+
+
+def test_v9_state_preserves_intentional_lantern_selection(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(total_reviews=88).to_dict()
+    payload["version"] = 9
+    payload["equipped"]["decoration"] = "lantern"
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    state = _storage_at(state_path)._load()
+
+    assert state.version == 10
+    assert state.total_reviews == 88
+    assert state.equipped["decoration"] == "lantern"
+    assert state.plants == []
+
+
+def test_new_gardens_omit_default_decoration_but_keep_lantern_available() -> None:
+    state = GardenState()
+
+    assert state.equipped["decoration"] == "none"
+    assert "lantern" in state.inventory["decorations"]

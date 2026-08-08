@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
@@ -11,6 +13,17 @@ from .models.state import GardenState, Plant, PlantMemory
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class HistoricalReviewPreview:
+    start_date: str
+    end_date: str
+    eligible_reviews: int
+    importable_days: tuple[str, ...]
+    skipped_days: tuple[str, ...]
+    reviews: tuple[dict[str, Any], ...]
+    error: str = ""
 
 
 class GardenStorage:
@@ -34,7 +47,7 @@ class GardenStorage:
             if self.data_path.exists():
                 raw = json.loads(self.data_path.read_text("utf-8"))
                 version = int(raw.get("version", GardenState().version)) if isinstance(raw, dict) else -1
-                if version != GardenState().version:
+                if version not in (8, 9, GardenState().version):
                     backup = self.data_path.with_suffix(".legacy.json")
                     shutil.copy2(self.data_path, backup)
                     logger.warning("Anki Garden: unsupported state preserved at %s; starting the focused garden format", backup)
@@ -149,3 +162,103 @@ class GardenStorage:
             return max(0, (int(cutoff) - 86_400) * 1000)
         except Exception:
             return 0
+
+    def historical_review_bounds(self) -> tuple[str, str] | None:
+        collection = getattr(self.mw, "col", None)
+        today_start = self.current_day_cutoff_ms()
+        if collection is None or getattr(collection, "db", None) is None or today_start <= 0:
+            return None
+        try:
+            row = collection.db.first(
+                "select min(id), max(id) from revlog where id < ? and type in (0, 1, 2, 3)",
+                today_start,
+            )
+            if not row or not row[0] or not row[1]:
+                return None
+            return self._anki_day_for_ms(int(row[0])), self._anki_day_for_ms(int(row[1]))
+        except Exception:
+            logger.exception("Anki Garden: unable to inspect historical review bounds")
+            return None
+
+    def preview_historical_reviews(self, start_date: str, end_date: str) -> HistoricalReviewPreview:
+        try:
+            start = date.fromisoformat(str(start_date))
+            end = date.fromisoformat(str(end_date))
+        except ValueError:
+            return HistoricalReviewPreview(str(start_date), str(end_date), 0, (), (), (), "Choose valid dates.")
+        if start > end:
+            return HistoricalReviewPreview(start.isoformat(), end.isoformat(), 0, (), (), (), "Start date must be on or before end date.")
+        if end >= date.today():
+            return HistoricalReviewPreview(start.isoformat(), end.isoformat(), 0, (), (), (), "Review history can only be applied through yesterday.")
+        requested = tuple(
+            (start + timedelta(days=offset)).isoformat()
+            for offset in range((end - start).days + 1)
+        )
+        already_imported = set(self.state.imported_history_days)
+        skipped = tuple(day for day in requested if day in already_imported)
+        importable = tuple(day for day in requested if day not in already_imported)
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            return HistoricalReviewPreview(
+                start.isoformat(), end.isoformat(), 0, importable, skipped, (),
+                "Open an Anki collection before importing history.",
+            )
+        reviews: list[dict[str, Any]] = []
+        try:
+            for day in importable:
+                lower, upper = self._anki_day_bounds_ms(day)
+                rows = collection.db.all(
+                    "select id, cid, ease, ivl, lastIvl, factor, time, type from revlog "
+                    "where id >= ? and id < ? and type in (0, 1, 2, 3) order by id asc",
+                    lower,
+                    upper,
+                )
+                for rid, cid, ease, ivl, last_ivl, factor, elapsed, qtype in rows:
+                    deck_id = None
+                    try:
+                        deck_id = int(collection.get_card(int(cid)).did)
+                    except Exception:
+                        pass
+                    reviews.append({
+                        "revlog_id": int(rid),
+                        "day": day,
+                        "ease": int(ease),
+                        "interval": int(ivl),
+                        "last_interval": int(last_ivl),
+                        "factor": int(factor),
+                        "elapsed_ms": int(elapsed),
+                        "review_type": int(qtype),
+                        "deck_id": deck_id,
+                    })
+        except Exception:
+            logger.exception("Anki Garden: unable to preview historical reviews")
+            return HistoricalReviewPreview(
+                start.isoformat(), end.isoformat(), 0, importable, skipped, (),
+                "Anki could not read that review-history range.",
+            )
+        return HistoricalReviewPreview(
+            start.isoformat(), end.isoformat(), len(reviews), importable, skipped, tuple(reviews)
+        )
+
+    def _anki_day_for_ms(self, timestamp_ms: int) -> str:
+        today_start = self.current_day_cutoff_ms()
+        if today_start <= 0:
+            return datetime.fromtimestamp(timestamp_ms / 1000).date().isoformat()
+        anchor = datetime.fromtimestamp(today_start / 1000).astimezone()
+        candidate = datetime.fromtimestamp(timestamp_ms / 1000).astimezone()
+        cutoff = (anchor.hour, anchor.minute, anchor.second)
+        if (candidate.hour, candidate.minute, candidate.second) < cutoff:
+            candidate -= timedelta(days=1)
+        return candidate.date().isoformat()
+
+    def _anki_day_bounds_ms(self, day_value: str) -> tuple[int, int]:
+        requested = date.fromisoformat(day_value)
+        today_start = self.current_day_cutoff_ms()
+        if today_start <= 0:
+            start = datetime.combine(requested, datetime.min.time()).astimezone()
+        else:
+            anchor = datetime.fromtimestamp(today_start / 1000).astimezone()
+            start = anchor.replace(year=requested.year, month=requested.month, day=requested.day)
+        next_day = requested + timedelta(days=1)
+        end = start.replace(year=next_day.year, month=next_day.month, day=next_day.day)
+        return int(start.timestamp() * 1000), int(end.timestamp() * 1000)

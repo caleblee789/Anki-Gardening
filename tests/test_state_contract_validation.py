@@ -105,7 +105,7 @@ def test_hidden_v6_fields_are_dropped_without_affecting_core(caplog) -> None:
 
     state = GardenState.from_dict(payload)
     assert "exam_mode" not in state.to_dict()
-    assert state.version == 8
+    assert state.version == 10
 
 
 def test_old_payload_deserializes_only_when_explicitly_inspected() -> None:
@@ -118,7 +118,7 @@ def test_old_payload_deserializes_only_when_explicitly_inspected() -> None:
 
     state = GardenState.from_dict(payload)
 
-    assert state.version == 8
+    assert state.version == 10
     assert state.pending_milestone_reward is not None
     assert state.pending_milestone_reward.offered_species == ["fern", "cactus", "ivy"]
 
@@ -199,3 +199,15 @@ def test_plant_names_are_normalized_and_bounded_on_load() -> None:
     assert plant.name == plant.name.strip()
     assert "  " not in plant.name
     assert len(plant.name) == 40
+
+
+def test_imported_history_days_are_normalized_deduplicated_and_round_trip() -> None:
+    payload = _base_payload()
+    payload["imported_history_days"] = [
+        "2026-07-01", "not-a-date", "2026-07-01", "2026-06-30",
+    ]
+
+    state = GardenState.from_dict(payload)
+
+    assert state.imported_history_days == ["2026-06-30", "2026-07-01"]
+    assert state.to_dict()["imported_history_days"] == ["2026-06-30", "2026-07-01"]

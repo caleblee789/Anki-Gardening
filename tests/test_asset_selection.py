@@ -148,6 +148,36 @@ def test_quality_preference_prefers_higher_tier(tmp_path):
     assert picked.name == "ultra.svg"
 
 
+def test_final_art_revision_precedes_older_quality_variants(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "ivy_rare_old",
+            "category": "plants",
+            "slot": {"species": "ivy", "stage": "rare"},
+            "variants": ["rare", "storybook_gouache", "continuity_v3"],
+            "style_family": "storybook_gouache",
+            "file": "assets/plants/ivy_rare_v3.svg",
+            "width": 512, "height": 512, "quality_tier": "performance", "quality_score": 0.999,
+        },
+        {
+            "asset_id": "ivy_rare_final",
+            "category": "plants",
+            "slot": {"species": "ivy", "stage": "rare"},
+            "variants": ["rare", "storybook_gouache", "continuity_v4"],
+            "style_family": "storybook_gouache",
+            "file": "assets/plants/ivy_rare_v4.svg",
+            "width": 512, "height": 512, "quality_tier": "ultra", "quality_score": 0.9995,
+        },
+    ]
+    _build_manifest(storage, assets)
+    manager = AssetManager(DummyConfig(), storage)
+
+    candidates = manager._select_candidates("plants", {"species": "ivy", "stage": "rare"}, "performance")
+
+    assert candidates[0]["asset_id"] == "ivy_rare_final"
+
+
 def test_catalog_svg_manifest_dimensions_are_accepted(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
@@ -249,6 +279,26 @@ def test_invalid_placement_values_fall_back_or_clamp():
     assert placement.crop == "contain"
     assert placement.base_type == "legacy"
     assert placement.visible_bounds == (0.08, 0.04, 0.84, 0.92)
+    assert len(placement.bed_anchors) == 6
+
+
+def test_legacy_planting_zone_receives_stable_six_bed_fallback():
+    placement = AssetPlacement.from_manifest(
+        {"planting_zone": {"left": 0.1, "right": 0.9, "far_y": 0.6, "near_y": 0.94}},
+        category="backgrounds",
+    )
+    payload = placement.to_dict()
+
+    assert len(payload["bed_anchors"]) == 6
+    assert payload["planting_zone"] == {"left": 0.1, "right": 0.9, "far_y": 0.6, "near_y": 0.94}
+    assert all(
+        set(anchor) == {
+            "x", "y", "depth", "plant_scale", "footprint", "label_anchor",
+            "physical_width_ratio", "surface_id", "contact_plane", "shadow_depth",
+            "shadow_opacity", "occlusion_id",
+        }
+        for anchor in payload["bed_anchors"]
+    )
 
 
 def test_storybook_production_plants_use_alpha_aware_grounding_metadata():
@@ -273,6 +323,78 @@ def test_storybook_production_plants_use_alpha_aware_grounding_metadata():
         assert placement["base_type"] in {"pot", "dirt_mound"}
         assert 0.2 <= placement["contact_shadow"][0] <= 1.0
         assert 0.015 <= placement["contact_shadow"][1] <= 0.12
+
+
+def test_complete_catalog_supports_semantic_pot_normalization_without_system_seedling_cues():
+    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
+    rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
+    plants = [row for row in rows if row.get("category") == "plants"]
+    expected_scales = {
+        "seed": 0.52,
+        "sprout": 0.62,
+        "young": 0.76,
+        "mature": 0.90,
+        "flowering": 1.00,
+        "rare": 1.08,
+    }
+
+    assert len(plants) == 150
+    assert {
+        row["slot"]["species"] for row in plants
+    } == {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
+    for row in plants:
+        placement = row["placement"]
+        assert {
+            "visible_bounds", "ground_anchor", "contact_shadow", "base_type", "crop", "layer"
+        }.issubset(placement)
+        if not {"continuity_v3", "continuity_v4"}.intersection(row.get("variants", [])):
+            assert placement["display_scale"] == expected_scales[row["slot"]["stage"]]
+        assert "seedling_cue" not in row
+        assert "seedling_anchor" not in row
+
+    continuity = [row for row in plants if "continuity_v3" in row.get("variants", [])]
+    assert len(continuity) == 30
+    final_revisions = [row for row in plants if "continuity_v4" in row.get("variants", [])]
+    assert len(final_revisions) == 15
+    semantic = {"art_bounds", "base_bounds", "foliage_bounds", "soil_contact", "interaction_bounds"}
+    for row in continuity:
+        assert semantic.issubset(row["placement"])
+    selected = {}
+    for row in continuity + final_revisions:
+        key = (row["slot"]["species"], row["slot"]["stage"])
+        if key not in selected or row["quality_score"] > selected[key]["quality_score"]:
+            selected[key] = row
+    for species in {row["slot"]["species"] for row in continuity}:
+        renderer_base_factors = [
+            row["placement"]["base_bounds"][2] * (row["width"] / row["height"])
+            for (candidate_species, _stage), row in selected.items() if candidate_species == species
+        ]
+        assert min(renderer_base_factors) > 0
+
+    storybook = [row for row in plants if row.get("style_family") == "storybook_gouache"]
+    assert {
+        (row["slot"]["species"], row["slot"]["stage"]) for row in storybook
+    } == {
+        (species, stage)
+        for species in {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
+        for stage in expected_scales
+    }
+
+
+def test_storybook_backgrounds_expose_all_phase1_layout_profiles():
+    manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
+    rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
+    backgrounds = [
+        row for row in rows
+        if row.get("category") == "backgrounds" and row.get("style_family") == "storybook_gouache"
+    ]
+    assert len(backgrounds) == 3
+    for row in backgrounds:
+        profiles = row["placement"]["layout_profiles"]
+        assert set(profiles) == {"4:3", "3:2", "16:9", "home"}
+        for profile in profiles.values():
+            assert set(profile["compositions"]) == {str(count) for count in range(1, 7)}
+            assert all(len(anchors) == 6 for anchors in profile["compositions"].values())
 
 
 def test_storybook_season_master_serves_every_weather(tmp_path):
@@ -323,6 +445,42 @@ def test_morning_bloom_theme_alias_selects_verdant_dawn_assets(tmp_path):
 
     assert picked is not None
     assert "verdant_dawn" in picked.as_posix()
+
+
+def test_theme_aware_garden_overlay_uses_matching_bed_contract(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [{
+        "asset_id": "beds_dawn",
+        "category": "overlays",
+        "slot": {"overlay_id": "garden_beds", "theme": "verdant_dawn"},
+        "file": "assets/overlays/dawn.svg",
+        "format": "svg",
+        "width": 1200,
+        "height": 900,
+        "quality_tier": "balanced",
+        "quality_score": 0.98,
+        "placement": {
+            "anchor_x": 0.5,
+            "baseline_y": 0.5,
+            "scale": 1.0,
+            "crop": "cover",
+            "layer": "overlay",
+        },
+    }]
+    _build_manifest(storage, assets)
+    _touch_asset(storage, assets[0]["file"])
+
+    resolved = AssetManager(DummyConfig(), storage).resolve(
+        "overlays",
+        "overlay_garden_beds",
+        "ignored",
+        theme="morning_bloom",
+    )
+
+    assert resolved is not None
+    assert resolved.asset_id == "beds_dawn"
+    assert resolved.placement.layer == "overlay"
+    assert len(resolved.placement.bed_anchors) == 6
 
 
 def test_explicit_preview_quality_overrides_config_preference(tmp_path):

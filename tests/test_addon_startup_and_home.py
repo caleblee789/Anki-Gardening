@@ -225,7 +225,7 @@ def test_home_badges_use_resolved_svg_thumbnail_when_available(monkeypatch, tmp_
     assert "ag-home__plant-emoji" not in html
 
 
-def test_home_badges_fall_back_to_emoji_when_svg_unavailable(monkeypatch):
+def test_home_badges_never_fall_back_to_system_emoji_when_artwork_is_unavailable(monkeypatch):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
@@ -236,8 +236,9 @@ def test_home_badges_fall_back_to_emoji_when_svg_unavailable(monkeypatch):
 
     html = app._plant_badges_html()
 
-    assert "ag-home__plant-emoji" in html
+    assert "ag-home__plant-emoji" not in html
     assert "ag-home__plant-thumb" not in html
+    assert "Rose" in html
 
 
 def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
@@ -269,7 +270,9 @@ def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
         "is_focus": True,
         "url": "",
         "placement": {},
+        "canvas_aspect": 1.0,
         "background_placement": {},
+        "background_theme": "verdant_dusk",
     }]
 
 
@@ -372,6 +375,70 @@ def test_setup_home_widget_is_idempotent(monkeypatch):
     assert hooks.webview_will_set_content.count(app._inject_home_garden_webview) == 1
 
 
+def test_dashboard_open_coordinator_coalesces_repeated_requests(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    scheduled = []
+    app._dashboard_open_pending = False
+    app._schedule_dashboard_open = lambda delay: scheduled.append(delay)
+
+    app.open_dashboard()
+    app.open_dashboard()
+
+    assert scheduled == [0]
+
+
+def test_dashboard_construction_failure_does_not_poison_retry(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    app._dashboard_open_pending = True
+    app._dashboard_open_attempts = 0
+    app.dashboard = None
+    attempts = []
+
+    class Dashboard:
+        def __init__(self, *_args):
+            attempts.append("construct")
+            if len(attempts) == 1:
+                raise RuntimeError("first-open race")
+            self.destroyed = _Signal()
+            self.shown = False
+
+        def refresh_all(self):
+            attempts.append("refresh")
+
+        def showNormal(self):
+            self.shown = True
+
+        def raise_(self):
+            attempts.append("raise")
+
+        def activateWindow(self):
+            attempts.append("activate")
+
+        def isVisible(self):
+            return self.shown
+
+    monkeypatch.setattr(addon, "GardenDashboard", Dashboard)
+
+    app._open_dashboard_when_ready()
+    assert app.dashboard is None
+    assert app._dashboard_open_pending is False
+
+    app._dashboard_open_pending = True
+    app._open_dashboard_when_ready()
+
+    assert app.dashboard is not None
+    assert app.dashboard.shown is True
+    assert attempts.count("construct") == 2
+
+
 def test_setup_sync_hook_is_idempotent(monkeypatch):
     _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -412,8 +479,9 @@ def test_reviews_today_counts_supported_revlog_answers(monkeypatch):
 
     html = app._build_home_garden_html()
 
-    assert 'data-testid="home-reviews">Reviews today: 42' in html
-    assert 'data-testid="home-reviews">Reviews today: 999' not in html
+    assert 'data-testid="home-reviews">42</div>' in html
+    assert 'data-testid="home-reviews">999</div>' not in html
+    assert '<div class="ag-home__metric-label">Reviews today</div>' in html
 
 
 def test_webview_injection_skips_bottom_bar_context(monkeypatch):

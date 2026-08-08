@@ -42,7 +42,7 @@ This ledger records the comprehensive stabilization and focused-product rework.
 
 ## Product focus
 
-The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, local plant stories, a hand-painted scene, plant care/arrangement, and appearance customization. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are absent from the v8 state and engine contract.
+The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, local plant stories, a hand-painted scene, plant care/arrangement, appearance customization, and explicit past-review growth import. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are absent from the v9 state and engine contract.
 
 ## Visual coverage
 
@@ -94,3 +94,19 @@ The following acceptance record predates the unreleased v8 Plant Stories reset a
 - Story/settings/accessibility pass: Plant Story rendered artwork and locally formatted dates, accepted and announced an accented emoji rename, and exposed its timeline to the accessibility tree. The settings preview exposed no actions, Troubleshooting showed real line breaks and Copy report, and Save completed successfully.
 - Restart pass: the renamed plant, nurturing choice, home card, Tools action, and dashboard state survived a full disposable-process restart. Live inspection found motion controls were still enabled while animation was off and weather detail exceeded the renderer range; both were corrected, rebuilt, and rechecked in the exact final package, where the sliders became disabled and the spin box/home visibility controls had accessible values.
 - Isolation: the first attempt was abandoned immediately when Anki forwarded to the normal-profile window; no control was used there. Every successful interaction used `/private/tmp/anki-garden-ui-qa-retry.uoryX1`, a unique single-instance key, and sync was never used. The normal profile was not modified or controlled.
+
+## 2026-07-12 first-use clarity release-candidate verification
+
+- Automated gates: 204 tests passed; the asset audit reported 78 backgrounds, 69 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets; compilation, gallery generation, and `git diff --check` passed.
+- Package gates: ZIP integrity and byte-for-byte parity passed for every changed runtime file. SHA-256: `ab66d7bce7e1fd0b471816ecfec1237fcc817eab5a5d989c241340925017ca83`.
+- Candidate behavior: versioned inline guidance covers the first review and first Nurture action, legacy completed hints migrate without reappearing, dismissal is transactional, and no onboarding state enters `garden_state.json`.
+- Live acceptance pending: the disposable Anki pass stopped before launch because the environment could not complete the required pre-existing-process identity check. No Anki window or normal profile was controlled; fresh launch, real-review advancement, Nurture completion, accessibility, and restart persistence remain to be confirmed on this exact package.
+
+## 2026-07-30 first-use repair verification
+
+- Automated gates: 204 tests passed; the asset audit reported 78 backgrounds, 69 plant variants, 10 weather overlays, 5 decorations, and 3 UI assets; compilation, gallery generation, and `git diff --check` passed.
+- Package gates: ZIP integrity and byte-for-byte parity passed for all 198 packaged files. SHA-256: `9759b9a98713b2c3a940c88f5bb56e6e90a37a75c2d6de0dfed2c29af35153c7`.
+- Resolved in this pass: first-use guidance now completes and persists after Nurture; stale confirmation timers are generation-guarded; failed onboarding writes remain visible; legacy preferences are removed on the next successful write; active Deck Browser/Overview renderers refresh explicitly after dashboard mutations and close; local test launchers no longer reference the old checkout; and the generated status report no longer embeds a stale test count.
+- Exact-package interaction pass: one real Good review changed the home card to 1 review and 4 growth, advanced quests and milestones, and exposed the post-review Nurture guidance. Selecting Rose and choosing Nurture produced the completion confirmation, a first-focus Story memory, and the 80% focus state. Rename, native Story controls, progress semantics, disabled motion controls, and settings-save status were present in the accessibility tree.
+- Cross-surface and restart pass: the review totals, focus plant, onboarding completion, renamed plant, Story memories, and disabled animation setting survived controlled restart. Live QA found that `mw.reset()` alone left the already-open home card stale; the final candidate explicitly refreshes the active Deck Browser/Overview renderer, and renaming the focus plant to `Briar Verified` updated the open Deck Browser card immediately without restart.
+- Isolation: Anki 26.5 used `/private/tmp/anki-release-qa.vux811/base`, profile `Codex QA 20260730-anki-release-qa.vux811`, and a unique single-instance key with sync unused. Process, window, filesystem, and sync gates passed before interaction and after restart. The pre-existing normal Anki PID remained open and was never controlled or modified.

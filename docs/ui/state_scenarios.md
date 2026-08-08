@@ -6,6 +6,9 @@
 - The first starter is repaired or selected as the focus plant.
 - Three attainable quests: reviews, learning/review cards, and daily garden growth.
 - Home artwork loads from Anki's exported add-on route; emoji fallback remains readable.
+- The dashboard explains that the first card grows the garden and offers a direct return to studying.
+- After the first review, guidance asks the learner to select a plant and choose Nurture; interaction or Dismiss tips retires the guidance without changing garden progress.
+- Existing users with the completed legacy interaction hint are treated as already onboarded.
 
 ## Active day
 

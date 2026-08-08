@@ -342,7 +342,11 @@ class GardenStudioWidget(QWidget):
             "animation_intensity": self.preview["animation_intensity"],
             "weather_particle_density": self.preview["weather_particle_density"],
             "motion_enabled": self.animations_enabled.isChecked(),
-            "asset_paths": {"background": asset_paths.get("background"), "weather": asset_paths.get("weather")},
+            "asset_paths": {
+                "background": asset_paths.get("background"),
+                "garden_overlay": asset_paths.get("garden_overlay"),
+                "weather": asset_paths.get("weather"),
+            },
             "plants": [
                 {
                     "plant_id": f"preview-{species}", "slot_index": slot_index, "name": species.title(),

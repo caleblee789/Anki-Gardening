@@ -10,6 +10,7 @@ Anki Garden is a calm, local-first Anki add-on that turns everyday reviews into 
 - Tracks a daily goal, streak, garden vitality, quests, milestones, and plant stages.
 - Adds a compact painted garden preview to Deck Browser and Overview with one clear Open Garden action.
 - Provides a responsive garden dashboard with local storybook-gouache raster art, scalable SVG UI, weather overlays, and keyboard-friendly plant interactions.
+- Grounds every plant in one of six permanent theme-matched terrace beds shared by the dashboard, home preview, pointer hit testing, drag, and keyboard movement.
 - Lets you focus, nurture, move, swap, and undo plant arrangements while keeping growth totals consistent.
 - Saves the daily goal, home visibility, garden appearance, and motion preferences through Anki's configuration system.
 - Stores progress only in `user_files/`, where Anki preserves it during add-on upgrades.
@@ -20,7 +21,8 @@ The focused 2.1 experience intentionally does not expose or persist focus timers
 
 ## What's new in 2.1
 
-- Introduces the pre-release version 8 garden state; older development saves are backed up and reset before the first public release.
+- Uses the version 10 garden state; version 8 and 9 gardens migrate in place, while unsupported older development saves are backed up and reset.
+- Adds theme-aware planting terraces, readable Seed-stage shoots, normalized full-catalog placement metadata, and a decoration-free default composition.
 - Adds local plant stories with warm, factual milestone memories and inline renaming. No deck names or card content are stored.
 - Repairs malformed plant IDs, slots, focus selection, and unlocked-space counts during load.
 - Makes settings validation transactional so invalid values or a failed Anki config write cannot partially change the active experience.
@@ -30,6 +32,7 @@ The focused 2.1 experience intentionally does not expose or persist focus timers
 - Clarifies status language: **Garden vitality** describes the whole garden, while **Plant vitality** describes the selected plant.
 - Shows numeric daily-goal, quest, achievement, and plant-choice progress, with plant-move guidance kept beside the garden.
 - Keeps settings edits staged until Save; preview weather and growth-stage controls remain temporary demonstrations.
+- Adds calm first-use guidance that explains review growth, then Nurture, and retires after interaction or dismissal.
 
 The detailed release contract and validation scenarios are in [`docs/feature-evidence-matrix.md`](docs/feature-evidence-matrix.md).
 
@@ -52,6 +55,7 @@ The artifact is written to `dist/anki_garden.ankiaddon`.
 PYTHONPYCACHEPREFIX=/tmp/anki-garden-pycache python3 -m compileall -q ankigarden scripts tests
 ./.venv/bin/python scripts/audit_assets.py
 ./.venv/bin/python scripts/build_asset_gallery.py
+./.venv/bin/python scripts/build_garden_comparison_renders.py
 ./.venv/bin/python scripts/package_addon.py
 python3 -m zipfile -t dist/anki_garden.ankiaddon
 ```

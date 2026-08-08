@@ -140,9 +140,9 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     html = app._build_home_garden_html()
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-reviews">Reviews today: 27' in html
-    assert 'data-testid="home-vitality">Garden vitality: 86%' in html
-    assert 'data-testid="home-growth">Daily growth: 36 / 240' in html
+    assert 'data-testid="home-reviews">27</div>' in html
+    assert 'data-testid="home-vitality">86%</div>' in html
+    assert 'data-testid="home-growth">36 of 240</div>' in html
     assert 'data-testid="home-weather"' not in html
     assert 'data-testid="home-growth-bar"' in html
     assert 'aria-valuemax="240" aria-valuenow="36"' in html
@@ -153,8 +153,8 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240)
 
     before = app._build_home_garden_html()
-    assert 'Reviews today: 18' in before
-    assert 'Daily growth: 36 / 240' in before
+    assert 'data-testid="home-reviews">18</div>' in before
+    assert 'data-testid="home-growth">36 of 240</div>' in before
 
     app.storage.state.daily_stats.growth_earned = 60
     app.storage.state.streak_days = 9
@@ -164,11 +164,11 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     refreshed = app._build_home_garden_html()
 
     assert 'data-testid="home-streak"' not in updated
-    assert 'data-testid="home-growth">Daily growth: 60 / 240' in updated
+    assert 'data-testid="home-growth">60 of 240</div>' in updated
     assert 'data-testid="home-weather"' not in updated
 
     assert 'data-testid="home-streak"' not in refreshed
-    assert 'data-testid="home-growth">Daily growth: 60 / 240' in refreshed
+    assert 'data-testid="home-growth">60 of 240</div>' in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -188,6 +188,6 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     assert overview_content.body.count('<div id="ag-home-root"') == 1
 
     for rendered in (deck_content.body, overview_content.body):
-        assert 'Reviews today: 42' in rendered
-        assert 'Garden vitality: 86%' in rendered
-        assert 'Daily growth: 36 / 210' in rendered
+        assert 'data-testid="home-reviews">42</div>' in rendered
+        assert 'data-testid="home-vitality">86%</div>' in rendered
+        assert 'data-testid="home-growth">36 of 210</div>' in rendered

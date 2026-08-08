@@ -41,6 +41,8 @@ class AnkiGardenApp:
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
+        self._dashboard_open_pending = False
+        self._dashboard_open_attempts = 0
 
     def setup(self) -> None:
         try:
@@ -84,13 +86,83 @@ class AnkiGardenApp:
         self._menu_action = action
 
     def open_dashboard(self) -> None:
-        self._apply_retrospective_growth()
-        self.engine.rollover_if_needed()
+        if getattr(self, "_dashboard_open_pending", False):
+            return
+        self._dashboard_open_pending = True
+        self._dashboard_open_attempts = 0
+        self._schedule_dashboard_open(0)
+
+    def _schedule_dashboard_open(self, delay_ms: int) -> None:
+        try:
+            from aqt.qt import QTimer
+
+            QTimer.singleShot(max(0, int(delay_ms)), self._open_dashboard_when_ready)
+        except Exception:
+            self._dashboard_open_pending = False
+            logger.exception("Anki Garden: unable to schedule dashboard opening")
+
+    def _dashboard_is_alive(self) -> bool:
         if self.dashboard is None:
-            self.dashboard = GardenDashboard(mw, self.engine, self.storage, self.config)
-        self.dashboard.refresh_all()
-        self.dashboard.show()
-        self.dashboard.raise_()
+            return False
+        try:
+            self.dashboard.isVisible()
+            return True
+        except RuntimeError:
+            self.dashboard = None
+            return False
+
+    def _clear_dashboard_reference(self, *_args: object) -> None:
+        self.dashboard = None
+
+    def _open_dashboard_when_ready(self) -> None:
+        collection = getattr(mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            self._dashboard_open_attempts += 1
+            if self._dashboard_open_attempts <= 10:
+                self._schedule_dashboard_open(100)
+                return
+            self._dashboard_open_pending = False
+            logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
+            self._notify_dashboard_open_failure(
+                "Anki Garden is still waiting for the collection to finish opening. Please try again."
+            )
+            return
+        candidate = None
+        try:
+            self._apply_retrospective_growth()
+            self.engine.rollover_if_needed()
+            if not self._dashboard_is_alive():
+                candidate = GardenDashboard(mw, self.engine, self.storage, self.config)
+                candidate.destroyed.connect(self._clear_dashboard_reference)
+                self.dashboard = candidate
+            self.dashboard.refresh_all()
+            show_normal = getattr(self.dashboard, "showNormal", None)
+            if callable(show_normal):
+                show_normal()
+            else:
+                self.dashboard.show()
+            self.dashboard.raise_()
+            activate = getattr(self.dashboard, "activateWindow", None)
+            if callable(activate):
+                activate()
+        except Exception:
+            if candidate is not None and self.dashboard is candidate:
+                self.dashboard = None
+            logger.exception("Anki Garden: dashboard failed to open; the next attempt may retry")
+            self._notify_dashboard_open_failure(
+                "Anki Garden could not open its window. No garden progress was changed; please try again."
+            )
+        finally:
+            self._dashboard_open_pending = False
+
+    @staticmethod
+    def _notify_dashboard_open_failure(message: str) -> None:
+        try:
+            from aqt.utils import showWarning
+
+            showWarning(message)
+        except Exception:
+            logger.debug("Anki Garden: unable to show dashboard-open warning", exc_info=True)
 
     def _setup_sync_hooks(self) -> None:
         if self._sync_hooked:
@@ -219,6 +291,7 @@ class AnkiGardenApp:
                 scene_items=self._home_scene_items(),
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
+                garden_overlay_url=self._home_garden_overlay_url(),
                 focus_plant=focus_plant,
                 focus_display=(
                     growth_display(focus_plant.growth_points, focus_plant.rare_variant)
@@ -239,14 +312,11 @@ class AnkiGardenApp:
     def _plant_badges_html(self) -> str:
         plants = self.storage.state.plants[:4]
         if not plants:
-            return '<div class="ag-home__plant"><div class="ag-home__plant-emoji">🌱</div><div class="ag-home__plant-name">Seedling</div></div>'
+            return '<div class="ag-home__plant"><div class="ag-home__plant-name">Seedling</div></div>'
         badges = []
         for plant in plants:
-            emoji = self._plant_emoji_for_stage(plant.growth_stage, plant.rare_variant)
             plant_name = escape(str(plant.name))
             image_html = self._plant_badge_image_html(plant)
-            if not image_html:
-                image_html = f'<div class="ag-home__plant-emoji">{emoji}</div>'
             badges.append(
                 f'<div class="ag-home__plant">{image_html}'
                 f'<div class="ag-home__plant-name">{plant_name}</div></div>'
@@ -260,6 +330,17 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: unable to resolve home scene background placement", exc_info=True)
             background = None
         background_placement = background.placement.to_dict() if background is not None else {}
+        surface_profile = background_placement.get("surface_profile")
+        variants = surface_profile.get("variants", {}) if isinstance(surface_profile, dict) else {}
+        if isinstance(variants, dict):
+            addon_root = Path(__file__).parent.resolve()
+            for variant in variants.values():
+                if not isinstance(variant, dict):
+                    continue
+                for source_key, url_key in (("file", "url"), ("occlusion_file", "occlusion_url")):
+                    rel = str(variant.get(source_key, ""))
+                    variant[url_key] = self._asset_web_url(addon_root / rel) if rel else ""
+        background_theme = str((background.metadata.get("slot") or {}).get("theme", "verdant_dusk")) if background is not None else "verdant_dusk"
         items: list[dict[str, object]] = []
         for plant in sorted(self.storage.state.plants, key=lambda row: row.slot_index)[:6]:
             try:
@@ -267,7 +348,7 @@ class AnkiGardenApp:
             except Exception:
                 logger.debug("Anki Garden: unable to resolve home scene plant artwork", exc_info=True)
                 asset = None
-            items.append({
+            item = {
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
                 "name": plant.name,
@@ -276,8 +357,14 @@ class AnkiGardenApp:
                 "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
                 "url": self._asset_web_url(asset.path) if asset is not None else "",
                 "placement": asset.placement.to_dict() if asset is not None else {},
+                "canvas_aspect": (
+                    float(asset.metadata.get("width", 1)) / max(1.0, float(asset.metadata.get("height", 1)))
+                    if asset is not None else 1.0
+                ),
                 "background_placement": background_placement,
-            })
+                "background_theme": background_theme,
+            }
+            items.append(item)
         return items
 
     def _plant_badge_image_html(self, plant: object) -> str:
@@ -304,6 +391,16 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else self.engine.resolve_background_image()
         except Exception:
             logger.debug("Anki Garden: unable to resolve home widget background", exc_info=True)
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_garden_overlay_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_garden_overlay_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug("Anki Garden: unable to resolve home garden-bed overlay", exc_info=True)
             return ""
         return self._asset_web_url(path)
 
@@ -356,18 +453,6 @@ class AnkiGardenApp:
             DISPLAY_TELEMETRY.track_parsing_exception(route="home_widget", field="reviews_today", exc=exc)
             DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
             return fallback
-
-    def _plant_emoji_for_stage(self, stage: str, rare: bool) -> str:
-        if rare:
-            return "🌟"
-        return {
-            "seed": "🟤",
-            "sprout": "🌱",
-            "young": "🌿",
-            "mature": "🌳",
-            "flowering": "🌸",
-            "rare": "✨",
-        }.get(stage, "🌱")
 
     def _apply_retrospective_growth(self) -> None:
         collection = getattr(mw, "col", None)

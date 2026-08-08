@@ -63,6 +63,17 @@ class PlacementChange:
         return {"before": dict(self.before), "after": dict(self.after)}
 
 
+@dataclass
+class PlacementDraft:
+    selected_plant_id: str
+    original: dict[str, int]
+    current: dict[str, int]
+    history: list[dict[str, int]]
+
+    def scene_slots(self) -> dict[str, int]:
+        return dict(self.current)
+
+
 class GardenGameEngine:
     MILESTONE_REVIEWS = (250, 700, 1500, 2600)
     STREAK_MEMORY_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
@@ -321,8 +332,8 @@ class GardenGameEngine:
 
     def _ensure_achievements(self) -> None:
         defs = {
-            "streak_7": ("7-Day Rhythm", "Study seven days in a row."),
-            "streak_30": ("Evergreen Month", "Study 30 days in a row."),
+            "streak_7": ("7-Day Rhythm", "Study for 7 consecutive days."),
+            "streak_30": ("Evergreen Month", "Study for 30 consecutive days."),
             "reviews_100_day": ("Century Day", "Complete 100 reviews in one day."),
             "reviews_1000_total": ("Deep Roots", "Complete 1000 total reviews."),
             "retention_90": ("Clear Recall", "Reach at least 90% accuracy in a day."),
@@ -346,8 +357,8 @@ class GardenGameEngine:
         quest_pool = [
             Quest("reviews", f"Complete {base} reviews", base, "reviewed", reward_growth=20),
             Quest("accuracy", "Maintain at least 85% accuracy", 85, "accuracy", reward_growth=15),
-            Quest("learning", f"Finish {int(base * 0.6)} learning/review cards", int(base * 0.6), "lr_total", reward_growth=18),
-            Quest("growth", f"Earn {int(self.config.value('daily_goal', 140))} garden growth", int(self.config.value("daily_goal", 140)), "growth", reward_growth=20),
+            Quest("learning", f"Complete {int(base * 0.6)} learning or review cards", int(base * 0.6), "lr_total", reward_growth=18),
+            Quest("growth", f"Earn {int(self.config.value('daily_goal', 140))} growth", int(self.config.value("daily_goal", 140)), "growth", reward_growth=20),
         ]
         if s.accuracy < 0.8 and s.reviewed >= 30:
             picks = [quest_pool[1], quest_pool[0], quest_pool[2]]
@@ -536,6 +547,70 @@ class GardenGameEngine:
             return False, "The new arrangement could not be saved. Your plants stayed where they were.", None
         return True, "Plants moved.", PlacementChange(before=before, after=after)
 
+    def begin_placement_draft(self, plant_id: str) -> tuple[bool, str, Optional[PlacementDraft]]:
+        plants_by_id = {plant.plant_id: plant for plant in self.state.plants}
+        if len(plants_by_id) != len(self.state.plants):
+            return False, "The garden has duplicate plant IDs and cannot be rearranged safely.", None
+        if str(plant_id) not in plants_by_id:
+            return False, "That plant is no longer in your garden.", None
+        slots = {plant.plant_id: int(plant.slot_index) for plant in self.state.plants}
+        return True, "Arrangement ready.", PlacementDraft(str(plant_id), slots, dict(slots), [])
+
+    def stage_placement(
+        self, draft: PlacementDraft, destination_slot: int
+    ) -> tuple[bool, str, Optional[PlacementChange]]:
+        if not isinstance(draft, PlacementDraft) or draft.selected_plant_id not in draft.current:
+            return False, "That move session is no longer available.", None
+        try:
+            destination = int(destination_slot)
+        except (TypeError, ValueError):
+            return False, "Choose an unlocked garden space.", None
+        unlocked = max(0, min(6, int(self.state.unlocked_slots)))
+        if destination < 0 or destination >= unlocked:
+            return False, "That garden space is still locked.", None
+        origin = draft.current[draft.selected_plant_id]
+        if destination == origin:
+            return False, "That plant is already in this space.", None
+        occupants = [plant_id for plant_id, slot in draft.current.items() if slot == destination]
+        if len(occupants) > 1:
+            return False, "That garden space has conflicting plants and cannot be rearranged safely.", None
+        before = dict(draft.current)
+        draft.history.append(before)
+        draft.current[draft.selected_plant_id] = destination
+        if occupants:
+            draft.current[occupants[0]] = origin
+        return True, "Arrangement updated.", PlacementChange(before=before, after=dict(draft.current))
+
+    def undo_staged_placement(self, draft: PlacementDraft) -> tuple[bool, str]:
+        if not isinstance(draft, PlacementDraft) or not draft.history:
+            return False, "There is no staged move to undo."
+        draft.current = draft.history.pop()
+        return True, "Move undone."
+
+    def commit_placement_draft(self, draft: PlacementDraft) -> tuple[bool, str, Optional[PlacementChange]]:
+        if not isinstance(draft, PlacementDraft) or not draft.original:
+            return False, "That move session is no longer available.", None
+        plants_by_id = {plant.plant_id: plant for plant in self.state.plants}
+        live = {plant_id: int(plant.slot_index) for plant_id, plant in plants_by_id.items()}
+        if len(plants_by_id) != len(self.state.plants) or live != draft.original:
+            return False, "The garden changed while you were moving plants. No arrangement was saved.", None
+        if set(draft.current) != set(draft.original) or len(set(draft.current.values())) != len(draft.current):
+            return False, "The staged arrangement is not valid. No arrangement was saved.", None
+        unlocked = max(0, min(6, int(self.state.unlocked_slots)))
+        if any(slot < 0 or slot >= unlocked for slot in draft.current.values()):
+            return False, "The staged arrangement includes a locked garden space.", None
+        if draft.current == draft.original:
+            return True, "The arrangement is unchanged.", PlacementChange(dict(draft.original), dict(draft.current))
+        for plant_id, slot in draft.current.items():
+            plants_by_id[plant_id].slot_index = slot
+        try:
+            self.storage.save()
+        except Exception:
+            for plant_id, slot in live.items():
+                plants_by_id[plant_id].slot_index = slot
+            return False, "The new arrangement could not be saved. Your plants stayed where they were.", None
+        return True, "Plant arrangement saved.", PlacementChange(dict(draft.original), dict(draft.current))
+
     def restore_placement(self, change: PlacementChange) -> tuple[bool, str, Optional[PlacementChange]]:
         """Persist the inverse of the latest session-local placement change."""
         plants_by_id = {plant.plant_id: plant for plant in self.state.plants}
@@ -688,6 +763,54 @@ class GardenGameEngine:
         self._persist_or_restore(snapshot)
         return total_growth
 
+    def apply_historical_reviews(
+        self, reviews: list[Dict[str, Any]], *, imported_days: list[str]
+    ) -> int:
+        """Award completed past-day reviews without rewriting today's activity."""
+        new_days = sorted(set(imported_days) - set(self.state.imported_history_days))
+        if not new_days:
+            return 0
+        snapshot = self._state_snapshot()
+        transition_snapshot = list(self._pending_stage_transitions)
+        total_growth = 0
+        try:
+            for review in reviews:
+                retrospective_kind = queue_and_lapse_from_revlog_type(
+                    review.get("review_type"), review.get("ease")
+                )
+                if retrospective_kind is None:
+                    continue
+                queue, lapse_count = retrospective_kind
+                ease = max(1, min(4, int(review.get("ease", 1))))
+                is_correct = ease > 1
+                difficulty = difficulty_from_factor(review.get("factor"))
+                if ease == 1:
+                    difficulty = min(1.0, difficulty + 0.15)
+                raw_deck_id = review.get("deck_id")
+                try:
+                    deck_id = int(raw_deck_id) if raw_deck_id is not None else None
+                except (TypeError, ValueError):
+                    deck_id = None
+                self.state.total_reviews += 1
+                if is_correct:
+                    self.state.total_correct += 1
+                else:
+                    self.state.total_wrong += 1
+                card_type = "learning" if queue in (0, 1, 3) else "review"
+                growth = self._calculate_growth(card_type, is_correct, difficulty, lapse_count, deck_id)
+                if growth > 0:
+                    self._apply_growth(growth, deck_id)
+                    total_growth += growth
+            self.state.imported_history_days = sorted(
+                set(self.state.imported_history_days).union(new_days)
+            )
+            self._ensure_pending_milestone()
+            self._persist_or_restore(snapshot)
+        except Exception:
+            self._pending_stage_transitions = transition_snapshot
+            raise
+        return total_growth
+
     def _update_achievements(self) -> None:
         stats = self.state.daily_stats
         checks = {
@@ -767,6 +890,10 @@ class GardenGameEngine:
             theme=normalized_theme,
             quality_preference=quality_preference,
         )
+        garden_overlay = self.resolve_garden_overlay_asset(
+            theme=normalized_theme,
+            quality_preference=quality_preference,
+        )
         plants = {}
         for species in ("bonsai", "rose", "sunbloom"):
             asset = self.assets.resolve(
@@ -776,6 +903,7 @@ class GardenGameEngine:
             plants[species] = asset.to_payload() if asset else None
         return {
             "background": background.to_payload() if background else None,
+            "garden_overlay": garden_overlay.to_payload() if garden_overlay else None,
             "weather": weather_overlay.to_payload() if weather_overlay else None,
             "plant": plants["rose"],
             "plants": plants,
@@ -807,11 +935,32 @@ class GardenGameEngine:
             theme=self.config.value("visual_theme", "verdant_dusk"),
         )
 
+    def resolve_garden_overlay_image(self) -> Optional[str]:
+        asset = self.resolve_garden_overlay_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_garden_overlay_asset(
+        self,
+        *,
+        theme: Optional[str] = None,
+        quality_preference: Optional[str] = None,
+    ) -> Optional[ResolvedAsset]:
+        selected_theme = theme or str(self.config.value("visual_theme", "verdant_dusk"))
+        return self.assets.resolve(
+            "overlays",
+            "overlay_garden_beds",
+            "slot:overlays:garden_beds",
+            theme=selected_theme,
+            quality_preference=quality_preference,
+        )
+
     def resolve_decoration_image(self, decoration: str) -> Optional[str]:
         asset = self.resolve_decoration_asset(decoration)
         return str(asset.path) if asset else None
 
     def resolve_decoration_asset(self, decoration: str) -> Optional[ResolvedAsset]:
+        if not decoration or decoration == "none":
+            return None
         return self.assets.resolve(
             "decorations",
             f"decor_{decoration}",

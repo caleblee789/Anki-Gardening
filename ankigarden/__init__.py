@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import traceback
 from typing import Callable, Optional
 
@@ -43,4 +44,5 @@ def _initialize_addon(setup_func: Optional[Callable[[], None]] = None) -> bool:
         return False
 
 
-_initialize_addon()
+if os.environ.get("ANKI_GARDEN_SKIP_STARTUP") != "1":
+    _initialize_addon()

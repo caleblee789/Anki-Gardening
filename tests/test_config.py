@@ -38,6 +38,24 @@ def test_reload_ignores_unknown_and_invalid_persisted_values() -> None:
     assert config.value("future_features") is None
 
 
+def test_reload_migrates_legacy_completed_interaction_hint() -> None:
+    config, addon_manager = manager({"plant_interaction_hint_seen": True})
+
+    assert config.value("onboarding_version") == 1
+    assert config.value("plant_interaction_hint_seen") is None
+
+    config.update({"daily_goal": 160})
+
+    assert addon_manager.writes[-1]["onboarding_version"] == 1
+    assert "plant_interaction_hint_seen" not in addon_manager.writes[-1]
+
+
+def test_reload_sanitizes_malformed_onboarding_version() -> None:
+    config, _addon_manager = manager({"onboarding_version": "complete"})
+
+    assert config.value("onboarding_version") == 0
+
+
 def test_update_validates_whitelist_types_and_ranges() -> None:
     config, _addon_manager = manager()
 

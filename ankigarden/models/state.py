@@ -98,7 +98,7 @@ class MilestoneReward:
 
 @dataclass
 class GardenState:
-    version: int = 8
+    version: int = 10
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
@@ -121,13 +121,14 @@ class GardenState:
     equipped: Dict[str, str] = field(default_factory=lambda: {
         "pot": "ceramic_minimal",
         "background": "default",
-        "decoration": "lantern",
+        "decoration": "none",
         "weather": "sunny",
     })
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     focus_plant_id: Optional[str] = None
     pending_milestone_reward: Optional[MilestoneReward] = None
     retrospective_last_revlog_id: int = 0
+    imported_history_days: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return deepcopy({
@@ -158,6 +159,7 @@ class GardenState:
                 self.pending_milestone_reward.__dict__ if self.pending_milestone_reward else None
             ),
             "retrospective_last_revlog_id": self.retrospective_last_revlog_id,
+            "imported_history_days": list(self.imported_history_days),
         })
 
     @staticmethod
@@ -200,6 +202,10 @@ class GardenState:
         state.retrospective_last_revlog_id = _nonnegative_int(
             data.get("retrospective_last_revlog_id"), 0, "retrospective_last_revlog_id", issues
         )
+        state.imported_history_days = sorted({
+            value for value in _string_list(data.get("imported_history_days"), "imported_history_days", issues)
+            if _valid_iso_date(value)
+        })
         plant_ids = {plant.plant_id for plant in state.plants}
         focus = data.get("focus_plant_id")
         state.focus_plant_id = focus if isinstance(focus, str) and focus in plant_ids else None
@@ -247,6 +253,16 @@ def _iso_date(value: Any, default: str, label: str, issues: list[str]) -> str:
     if value is not None:
         issues.append(f"{label}: expected ISO date string YYYY-MM-DD")
     return default
+
+
+def _valid_iso_date(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        date.fromisoformat(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _daily_stats(value: Any, issues: list[str]) -> DailyStats:

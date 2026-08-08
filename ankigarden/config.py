@@ -20,7 +20,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "session_quality_weight": 0.25,
     "quest_difficulty": "normal",
     "show_home_widget": True,
-    "plant_interaction_hint_seen": False,
+    "onboarding_version": 0,
     "seasonal_visuals": True,
     "time_of_day_bonus": True,
     "max_daily_quests": 3,
@@ -48,6 +48,7 @@ _NESTED_ENUMS = {
     ("assets", "quality_preference"): {"performance", "balanced", "ultra"},
 }
 _INT_RANGES = {
+    "onboarding_version": (0, 1),
     "daily_goal": (10, 2000),
     "max_daily_quests": (1, 3),
     "initial_slots": (1, 6),
@@ -169,6 +170,11 @@ class ConfigManager:
             return
         addon_key = self.mw.addonManager.addonFromModule(__name__)
         user_conf = self.mw.addonManager.getConfig(addon_key) or {}
+        if isinstance(user_conf, dict):
+            user_conf = deepcopy(user_conf)
+            legacy_hint_seen = user_conf.pop("plant_interaction_hint_seen", False)
+            if legacy_hint_seen is True and "onboarding_version" not in user_conf:
+                user_conf["onboarding_version"] = 1
         candidate = self._merge(deepcopy(DEFAULT_CONFIG), _sanitize_config(user_conf, strict=False))
         if candidate["initial_slots"] > candidate["max_slots"]:
             candidate["initial_slots"] = DEFAULT_CONFIG["initial_slots"]
