@@ -1,9 +1,12 @@
 import importlib
+import json
 import logging
 import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ankigarden.ui.home_widget import HomeWidgetStateController
@@ -54,6 +57,7 @@ class _Hooks:
         self.deck_browser_will_render_content = []
         self.overview_will_render_content = []
         self.webview_will_set_content = []
+        self.webview_did_inject_style_into_page = []
         self.webview_did_receive_js_message = []
         self.sync_did_finish = []
         self.reviewer_did_answer_card = []
@@ -79,7 +83,7 @@ def _install_fake_aqt(monkeypatch):
         def __init__(self):
             self.return_value = 0
 
-        def scalar(self, _query, _cutoff):
+        def scalar(self, _query, *_bounds):
             return self.return_value
 
     aqt_mod = types.ModuleType("aqt")
@@ -117,7 +121,7 @@ def _install_fake_aqt(monkeypatch):
         def raise_(self):
             return None
 
-        def show_retrospective_feedback(self, *_args, **_kwargs):
+        def show_same_day_catchup_feedback(self, *_args, **_kwargs):
             return None
 
     dashboard_mod.GardenDashboard = _Dashboard
@@ -142,21 +146,24 @@ def _new_app(addon_module):
     app._sync_hooked = False
     app._sync_callback = app._on_sync_finished
     app._home_widget_controller = HomeWidgetStateController()
-    app._apply_retrospective_growth = lambda: None
-    app.engine = SimpleNamespace(
-        rollover_if_needed=lambda: None,
-        garden_health_index=lambda: 0.73,
-    )
+    app._dashboard_open_pending = False
+    app._dashboard_open_attempts = 0
+    app._dashboard_open_failures = 0
+    app._settings_open_pending = False
+    app._apply_same_day_catchup = lambda: None
+    app.engine = SimpleNamespace(rollover_if_needed=lambda: None)
     app.storage = SimpleNamespace(
         state=SimpleNamespace(
             daily_stats=SimpleNamespace(reviewed=14, growth_earned=28),
             selected_weather="sunny",
             plants=[],
             streak_days=5,
-            retrospective_last_revlog_id=0,
-        )
+            last_processed_revlog_id=0,
+        ),
+        current_day_start_ms=lambda: 1,
+        current_scheduler_day_bounds_ms=lambda: (1, 2),
     )
-    app.config = SimpleNamespace(value=lambda key, default=None: 220 if key == "daily_goal" else default)
+    app.config = SimpleNamespace(value=lambda _key, default=None: default)
     app.open_dashboard = lambda: setattr(app, "_opened", True)
     return app
 
@@ -195,6 +202,361 @@ def test_setup_menu_registers_single_action_and_callback(monkeypatch):
     assert app._opened is True
 
 
+def test_startup_and_sync_use_the_same_recoverable_maintenance_boundary(monkeypatch):
+    _aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    for method in (
+        "_setup_menu",
+        "_setup_settings_menu",
+        "_setup_home_screen_widget",
+        "_setup_reviewer_hook",
+        "_setup_sync_hooks",
+    ):
+        setattr(app, method, lambda: None)
+    sources = []
+    app._run_garden_maintenance = lambda source: sources.append(source) or False
+
+    app.setup()
+    app._on_sync_finished()
+
+    assert sources == ["startup", "sync completion"]
+
+
+def test_successful_maintenance_clears_a_stale_user_notice(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    calls = []
+    app.storage.ensure_revlog_ledger_ready = lambda: calls.append("ledger")
+    app.engine.rollover_if_needed = lambda: calls.append("rollover")
+    app._apply_same_day_catchup = lambda: calls.append("catch-up")
+    addon.USER_NOTICES.clear()
+    addon.USER_NOTICES.publish("Review-history catch-up is temporarily unavailable.", throttle_seconds=0)
+
+    assert app._run_garden_maintenance("test") is True
+
+    assert calls == ["ledger", "rollover", "catch-up"]
+    assert addon.USER_NOTICES.current.message == ""
+
+
+@pytest.mark.parametrize(
+    ("notice_key", "should_clear"),
+    (
+        ("review_history", True),
+        (None, True),
+        ("display_refresh", False),
+        ("other_warning", False),
+    ),
+)
+def test_successful_maintenance_clears_only_review_history_or_legacy_notice(
+    monkeypatch, notice_key, should_clear
+):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    app.storage.ensure_revlog_ledger_ready = lambda: None
+    app.engine.rollover_if_needed = lambda: None
+    app._apply_same_day_catchup = lambda: (0, 0)
+    addon.USER_NOTICES.clear()
+    if notice_key is None:
+        addon.USER_NOTICES.publish("Legacy review-history warning.", throttle_seconds=0)
+    else:
+        addon.USER_NOTICES.publish(
+            f"{notice_key} warning.", key=notice_key, throttle_seconds=0
+        )
+
+    assert app._run_garden_maintenance("test") is True
+
+    if should_clear:
+        assert addon.USER_NOTICES.current.message == ""
+    else:
+        assert addon.USER_NOTICES.current.message == f"{notice_key} warning."
+        assert addon.USER_NOTICES.current.key == notice_key
+
+
+def test_authoritative_reviewer_success_clears_only_current_review_history_notice(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    notices = reviewer_module.USER_NOTICES
+    notices.clear()
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(last_processed_revlog_id=100)
+            self.fail_read = True
+            self.row_id = 200
+            self.mw = aqt_mod.mw
+
+        def ensure_revlog_ledger_ready(self):
+            return None
+
+        def max_revlog_id(self):
+            if self.fail_read:
+                raise RuntimeError("review history unavailable")
+            return self.row_id
+
+        def load_new_revlog_entries(self, _last_processed):
+            return [(self.row_id, 7, 3, 10, 5, 2500, 100, 1)]
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.config = SimpleNamespace(value=lambda _key, default=None: default)
+            self.applied: list[int] = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            self.applied.extend(payload["revlog_id"] for payload in payloads)
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return len(payloads) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+        def peek_feedback(self):
+            return []
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+
+    handler.on_answer(None, SimpleNamespace(), 3)
+    assert notices.current.key == "review_history"
+
+    storage.fail_read = False
+    handler.on_answer(None, SimpleNamespace(), 3)
+    assert engine.applied == [200]
+    assert notices.current.message == ""
+
+    storage.fail_read = True
+    storage.row_id = 300
+    handler.on_answer(None, SimpleNamespace(), 3)
+    assert notices.current.key == "review_history"
+    notices.publish(
+        "The Garden display could not refresh.",
+        key="display_refresh",
+        throttle_seconds=0,
+    )
+
+    storage.fail_read = False
+    handler.on_answer(None, SimpleNamespace(), 3)
+
+    assert engine.applied == [200, 300]
+    assert notices.current.message == "The Garden display could not refresh."
+    assert notices.current.key == "display_refresh"
+
+
+def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    notices = reviewer_module.USER_NOTICES
+    notices.clear()
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(last_processed_revlog_id=100)
+            self.mw = aqt_mod.mw
+
+        def ensure_revlog_ledger_ready(self):
+            return None
+
+        def max_revlog_id(self):
+            return 200
+
+        def load_new_revlog_entries(self, _last_processed):
+            return [(200, 7, 3, 10, 5, 2500, 100, 1)]
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.fail_save = True
+            self.config = SimpleNamespace(value=lambda _key, default=None: default)
+
+        def apply_same_day_reviews(self, _payloads, *, latest_revlog_id):
+            if self.fail_save:
+                raise OSError("Garden save unavailable")
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+        def peek_feedback(self):
+            return []
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+
+    handler.on_answer(None, SimpleNamespace(), 3)
+    assert notices.current.key == "review_history"
+
+    engine.fail_save = False
+    handler.on_answer(None, SimpleNamespace(), 3)
+    assert storage.state.last_processed_revlog_id == 200
+    assert notices.current.message == ""
+
+
+def test_successful_maintenance_clears_notice_before_live_dashboard_refresh_without_reentry(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    events: list[object] = []
+    resets: list[str] = []
+    aqt_mod.mw.reset = lambda: resets.append("reset")
+    app.storage.ensure_revlog_ledger_ready = lambda: events.append("ledger")
+    app.engine.rollover_if_needed = lambda: events.append("rollover")
+    app._apply_same_day_catchup = lambda: events.append("catch-up")
+
+    class Dashboard:
+        def isVisible(self):
+            return True
+
+        def refresh_all(self, **_kwargs):
+            events.append(("refresh", addon.USER_NOTICES.current.message))
+
+        def refresh_external_surfaces(self):
+            events.append("external")
+
+    app.dashboard = Dashboard()
+    addon.USER_NOTICES.clear()
+    addon.USER_NOTICES.publish("Stale catch-up warning.", throttle_seconds=0)
+
+    assert app._run_garden_maintenance("test") is True
+
+    assert events == ["ledger", "rollover", "catch-up", ("refresh", "")]
+    assert resets == []
+
+
+def test_dashboard_refresh_failure_does_not_flip_maintenance_success_or_repeat_progress(
+    monkeypatch,
+):
+    _aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    calls = {"ledger": 0, "rollover": 0, "catch-up": 0, "refresh": 0}
+    app.storage.ensure_revlog_ledger_ready = lambda: calls.__setitem__(
+        "ledger", calls["ledger"] + 1
+    )
+    app.engine.rollover_if_needed = lambda: calls.__setitem__(
+        "rollover", calls["rollover"] + 1
+    )
+    app._apply_same_day_catchup = lambda: calls.__setitem__(
+        "catch-up", calls["catch-up"] + 1
+    )
+
+    class Dashboard:
+        def isVisible(self):
+            return True
+
+        def refresh_all(self, **_kwargs):
+            calls["refresh"] += 1
+            raise RuntimeError("deleted dashboard wrapper")
+
+    app.dashboard = Dashboard()
+    addon.USER_NOTICES.clear()
+    addon.USER_NOTICES.publish("Stale catch-up warning.", throttle_seconds=0)
+
+    assert app._run_garden_maintenance("test") is True
+
+    assert calls == {"ledger": 1, "rollover": 1, "catch-up": 1, "refresh": 1}
+    assert addon.USER_NOTICES.current.key == "display_refresh"
+    assert "display" in addon.USER_NOTICES.current.message.lower()
+
+
+def test_same_day_maintenance_never_reenters_external_surface_refresh() -> None:
+    source = (Path(__file__).resolve().parents[1] / "ankigarden/addon.py").read_text(
+        "utf-8"
+    )
+    catchup = source.split("def _apply_same_day_catchup", 1)[1].split(
+        "\n_app:", 1
+    )[0]
+
+    assert "_refresh_after_commit" not in catchup
+    assert "refresh_external_surfaces" not in catchup
+    assert "mw.reset" not in catchup
+
+
+def test_no_row_catchup_clears_any_visible_same_day_message(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app._apply_same_day_catchup
+    visible_feedback: list[tuple[int, int]] = []
+    app.storage.state.last_processed_revlog_id = 100
+    app.storage.load_new_revlog_entries = lambda _after_id: []
+    app.dashboard = SimpleNamespace(
+        show_same_day_catchup_feedback=lambda count, growth: visible_feedback.append(
+            (count, growth)
+        )
+    )
+
+    app._apply_same_day_catchup()
+
+    assert visible_feedback == [(0, 0)]
+
+
+def test_settings_action_joins_shared_caleb_addons_menu(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+
+    class _Submenu(_Menu):
+        def __init__(self, title):
+            super().__init__()
+            self._title = title
+            self._object_name = ""
+
+        def title(self):
+            return self._title
+
+        def setObjectName(self, value):
+            self._object_name = value
+
+    class _MenuAction:
+        def __init__(self, submenu):
+            self._submenu = submenu
+
+        def text(self):
+            return self._submenu.title()
+
+        def menu(self):
+            return self._submenu
+
+    class _MenuBar(_Menu):
+        def addMenu(self, title):
+            submenu = _Submenu(title)
+            self._actions.append(_MenuAction(submenu))
+            return submenu
+
+    menubar = _MenuBar()
+    aqt_mod.mw.form.menubar = menubar
+    app = _new_app(addon)
+
+    app._setup_settings_menu()
+    app._setup_settings_menu()
+
+    menus = [action.menu() for action in menubar.actions()]
+    assert len(menus) == 1
+    assert menus[0].title() == "Caleb M. Add-ons Settings"
+    assert [action.text() for action in menus[0].actions()] == ["Anki Garden settings"]
+
+
 def test_home_html_contains_root_id(monkeypatch):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -214,7 +576,7 @@ def test_home_badges_use_resolved_svg_thumbnail_when_available(monkeypatch, tmp_
     plant_svg.parent.mkdir()
     plant_svg.write_text('<svg viewBox="0 0 10 10"></svg>', encoding="utf-8")
     app.storage.state.plants = [
-        SimpleNamespace(name="Rose", species="rose", growth_stage="young", rare_variant=False),
+        SimpleNamespace(name="Rose", species="rose", growth_stage="young"),
     ]
     app.engine.resolve_plant_image = lambda *_args: str(plant_svg)
 
@@ -225,33 +587,33 @@ def test_home_badges_use_resolved_svg_thumbnail_when_available(monkeypatch, tmp_
     assert "ag-home__plant-emoji" not in html
 
 
-def test_home_badges_fall_back_to_emoji_when_svg_unavailable(monkeypatch):
+def test_home_badges_never_fall_back_to_system_emoji_when_artwork_is_unavailable(monkeypatch):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
     app.storage.state.plants = [
-        SimpleNamespace(name="Rose", species="rose", growth_stage="young", rare_variant=False),
+        SimpleNamespace(name="Rose", species="rose", growth_stage="young"),
     ]
     app.engine.resolve_plant_image = lambda *_args: None
 
     html = app._plant_badges_html()
 
-    assert "ag-home__plant-emoji" in html
+    assert "ag-home__plant-emoji" not in html
     assert "ag-home__plant-thumb" not in html
+    assert "Rose" in html
 
 
 def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
-    app.storage.state.focus_plant_id = "plant-1"
+    app.storage.state.active_plant_id = "plant-1"
     app.storage.state.plants = [
         SimpleNamespace(
             plant_id="plant-1",
             name="Rose",
             species="rose",
             growth_stage="flowering",
-            rare_variant=False,
             slot_index=0,
         ),
     ]
@@ -266,10 +628,12 @@ def test_home_scene_keeps_named_plant_when_asset_resolution_fails(monkeypatch):
         "name": "Rose",
         "species": "rose",
         "stage": "flowering",
-        "is_focus": True,
+        "is_active": True,
         "url": "",
         "placement": {},
+        "canvas_aspect": 1.0,
         "background_placement": {},
+        "background_theme": "verdant_twilight",
     }]
 
 
@@ -315,19 +679,158 @@ def test_injection_idempotent_for_render_and_webview(monkeypatch):
     assert first_body == web_content.body
 
 
-def test_home_visibility_setting_gates_both_injection_paths(monkeypatch):
+def test_same_day_catchup_read_failure_never_bootstraps_cursor_or_saves(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    storage_module = importlib.import_module("ankigarden.storage")
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app._apply_same_day_catchup = addon.AnkiGardenApp._apply_same_day_catchup.__get__(app)
+    calls = {"max": 0, "save": 0, "apply": 0}
+
+    def fail_rows(_after_id):
+        raise storage_module.RevlogReadError("revlog unavailable")
+
+    def max_revlog_id():
+        calls["max"] += 1
+        return 999
+
+    app.storage = SimpleNamespace(
+        state=SimpleNamespace(last_processed_revlog_id=0),
+        load_new_revlog_entries=fail_rows,
+        max_revlog_id=max_revlog_id,
+        save=lambda: calls.__setitem__("save", calls["save"] + 1),
+    )
+    app.engine = SimpleNamespace(
+        apply_same_day_reviews=lambda *_args, **_kwargs: calls.__setitem__(
+            "apply", calls["apply"] + 1
+        )
+    )
+
+    with pytest.raises(storage_module.RevlogReadError, match="revlog unavailable"):
+        app._apply_same_day_catchup()
+
+    assert app.storage.state.last_processed_revlog_id == 0
+    assert calls == {"max": 0, "save": 0, "apply": 0}
+
+
+def test_empty_bootstrap_uses_day_boundary_without_racing_a_new_max_row(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app._apply_same_day_catchup = addon.AnkiGardenApp._apply_same_day_catchup.__get__(app)
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(last_processed_revlog_id=0)
+            self.rows = []
+            self.save_calls = 0
+
+        def load_new_revlog_entries(self, after_id):
+            return [row for row in self.rows if row[0] > max(after_id, 99)]
+
+        def current_day_start_ms(self):
+            return 100
+
+        def max_revlog_id(self):
+            raise AssertionError("bootstrap must not race against a separate max query")
+
+        def save(self):
+            self.save_calls += 1
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.credited = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            self.credited.extend(payload["revlog_id"] for payload in payloads)
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return len(payloads) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    storage = Storage()
+    engine = Engine(storage)
+    app.storage = storage
+    app.engine = engine
+
+    app._apply_same_day_catchup()
+    assert storage.state.last_processed_revlog_id == 99
+    assert storage.save_calls == 1
+
+    storage.rows.append((100, 7, 3, 10, 5, 2500, 100, 1))
+    app._apply_same_day_catchup()
+
+    assert engine.credited == [100]
+    assert storage.state.last_processed_revlog_id == 100
+
+
+def test_structured_home_injection_keeps_native_content_and_shows_retry_on_rollover_failure(
+    monkeypatch,
+):
     _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
+    app.engine.rollover_if_needed = lambda: (_ for _ in ()).throw(
+        RuntimeError("rollover unavailable")
+    )
+    content = SimpleNamespace(stats="<div>Native deck stats</div>")
+
+    app._inject_home_garden(object(), content)
+
+    assert content.stats.startswith("<div>Native deck stats</div>")
+    assert 'data-state="error"' in content.stats
+    assert 'data-testid="home-retry"' in content.stats
+
+
+def test_webview_home_injection_keeps_native_content_and_shows_retry_on_catchup_failure(
+    monkeypatch,
+):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    app._apply_same_day_catchup = lambda: (_ for _ in ()).throw(
+        RuntimeError("catch-up unavailable")
+    )
+    web_content = SimpleNamespace(body="<main>Native overview</main>")
+
+    app._inject_home_garden_webview(web_content, type("Overview", (), {})())
+
+    assert web_content.body.startswith("<main>Native overview</main>")
+    assert 'data-state="error"' in web_content.body
+    assert 'data-testid="home-retry"' in web_content.body
+
+
+def test_home_visibility_setting_gates_all_injection_paths(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
     app.config = SimpleNamespace(value=lambda key, default=None: False if key == "show_home_widget" else default)
+
+    finished_overview = SimpleNamespace(
+        url=lambda: SimpleNamespace(path=lambda: "/_anki/pages/congrats.html"),
+        scripts=[],
+    )
+    finished_overview.eval = finished_overview.scripts.append
+    aqt_mod.mw.web = finished_overview
+    aqt_mod.mw.state = "overview"
 
     content = SimpleNamespace(stats="<div>stats</div>")
     web_content = SimpleNamespace(body="<main></main>")
     app._inject_home_garden(object(), content)
     app._inject_home_garden_webview(web_content, type("DeckBrowser", (), {})())
+    app._inject_home_garden_finished_overview(finished_overview)
 
     assert "ag-home-root" not in content.stats
     assert "ag-home-root" not in web_content.body
+    assert finished_overview.scripts == []
 
 
 def test_setup_home_widget_registers_available_hooks(monkeypatch):
@@ -340,7 +843,115 @@ def test_setup_home_widget_registers_available_hooks(monkeypatch):
     assert app._inject_home_garden_webview in hooks.webview_will_set_content
     assert app._inject_home_garden in hooks.deck_browser_will_render_content
     assert app._inject_home_garden in hooks.overview_will_render_content
+    assert (
+        app._inject_home_garden_finished_overview
+        in hooks.webview_did_inject_style_into_page
+    )
     assert app._handle_home_bridge_message in hooks.webview_did_receive_js_message
+
+
+def test_finished_empty_deck_overview_injects_into_congratulations_page(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+
+    class Url:
+        def path(self):
+            return "/_anki/pages/congrats.html"
+
+    class WebView:
+        def __init__(self):
+            self.scripts = []
+
+        def url(self):
+            return Url()
+
+        def eval(self, script):
+            self.scripts.append(script)
+
+    webview = WebView()
+    aqt_mod.mw.web = webview
+    aqt_mod.mw.state = "overview"
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    rendered = (
+        '<style>#ag-home-root { color: green; }</style>'
+        '<div id="ag-home-root"><script>window.gardenReady = true;</script></div>'
+    )
+    app._home_garden_html_for_injection = lambda: rendered
+
+    app._inject_home_garden_finished_overview(webview)
+
+    assert len(webview.scripts) == 1
+    script = webview.scripts[0]
+    assert 'document.getElementById("ag-home-root")' in script
+    assert json.dumps(rendered) in script
+    assert 'template.content.querySelectorAll("script")' in script
+    assert "sourceScript.remove()" in script
+    assert 'document.createElement("script")' not in script
+    assert 'button.removeAttribute("onclick")' in script
+    assert 'button.addEventListener("click"' in script
+    assert 'window.bridgeCommand === "function"' in script
+    assert '"anki-garden:open"' in script
+    assert '"anki-garden:refresh"' in script
+    assert "ankiGardenBridgeBound" in script
+    assert "ankiGardenTooltipBound" in script
+
+
+def test_finished_overview_bridge_command_reaches_open_dashboard(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    opened = []
+    app.open_dashboard = lambda: opened.append(True)
+
+    handled = app._handle_home_bridge_message(
+        (False, None),
+        "anki-garden:open",
+        type("Overview", (), {})(),
+    )
+
+    assert handled == (True, None)
+    assert opened == [True]
+
+
+@pytest.mark.parametrize(
+    ("state", "path", "is_main_webview"),
+    [
+        ("deckBrowser", "/_anki/pages/congrats.html", True),
+        ("overview", "/decks", True),
+        ("overview", "/_anki/pages/congrats.html", False),
+    ],
+)
+def test_finished_overview_injection_is_scoped_to_main_congratulations_page(
+    monkeypatch, state, path, is_main_webview
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+
+    class Url:
+        def path(self):
+            return path
+
+    class WebView:
+        def __init__(self):
+            self.scripts = []
+
+        def url(self):
+            return Url()
+
+        def eval(self, script):
+            self.scripts.append(script)
+
+    target = WebView()
+    aqt_mod.mw.web = target if is_main_webview else WebView()
+    aqt_mod.mw.state = state
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app._home_garden_html_for_injection = lambda: '<div id="ag-home-root"></div>'
+
+    app._inject_home_garden_finished_overview(target)
+
+    assert target.scripts == []
 
 
 def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch):
@@ -360,6 +971,27 @@ def test_home_bridge_opens_and_refreshes_only_main_garden_context(monkeypatch):
     assert resets == [True]
 
 
+def test_home_bridge_failed_retry_still_resets_to_a_recoverable_home_state(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    resets = []
+    aqt_mod.mw.reset = lambda: resets.append(True)
+    app._apply_same_day_catchup = lambda: (_ for _ in ()).throw(
+        RuntimeError("retry unavailable")
+    )
+
+    handled = app._handle_home_bridge_message(
+        (False, None),
+        "anki-garden:refresh",
+        type("Overview", (), {})(),
+    )
+
+    assert handled == (True, None)
+    assert resets == [True]
+
+
 def test_setup_home_widget_is_idempotent(monkeypatch):
     _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -370,6 +1002,315 @@ def test_setup_home_widget_is_idempotent(monkeypatch):
     app._setup_home_screen_widget()
 
     assert hooks.webview_will_set_content.count(app._inject_home_garden_webview) == 1
+    assert (
+        hooks.webview_did_inject_style_into_page.count(
+            app._inject_home_garden_finished_overview
+        )
+        == 1
+    )
+
+
+def test_dashboard_open_coordinator_coalesces_repeated_requests(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    scheduled = []
+    app._dashboard_open_pending = False
+    app._schedule_dashboard_open = lambda delay: scheduled.append(delay)
+
+    app.open_dashboard()
+    app.open_dashboard()
+
+    assert scheduled == [0]
+
+
+def test_dashboard_construction_failure_does_not_poison_retry(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    app._dashboard_open_pending = True
+    app._dashboard_open_attempts = 0
+    app.dashboard = None
+    attempts = []
+
+    class Dashboard:
+        def __init__(self, *_args):
+            attempts.append("construct")
+            if len(attempts) == 1:
+                raise RuntimeError("first-open race")
+            self.destroyed = _Signal()
+            self.shown = False
+
+        def refresh_all(self):
+            attempts.append("refresh")
+
+        def showNormal(self):
+            self.shown = True
+
+        def raise_(self):
+            attempts.append("raise")
+
+        def activateWindow(self):
+            attempts.append("activate")
+
+        def isVisible(self):
+            return self.shown
+
+    monkeypatch.setattr(addon, "GardenDashboard", Dashboard)
+
+    app._open_dashboard_when_ready()
+    assert app.dashboard is None
+    assert app._dashboard_open_pending is False
+
+    app._dashboard_open_pending = True
+    app._open_dashboard_when_ready()
+
+    assert app.dashboard is not None
+    assert app.dashboard.shown is True
+    assert attempts.count("construct") == 2
+
+
+def test_late_destroyed_signal_from_failed_dashboard_cannot_clear_replacement(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    instances = []
+
+    class Dashboard:
+        def __init__(self, *_args):
+            self.index = len(instances)
+            self.destroyed = _Signal()
+            self.shown = False
+            instances.append(self)
+
+        def isVisible(self):
+            return self.shown
+
+        def prepare_to_show(self):
+            return None
+
+        def showNormal(self):
+            if self.index == 0:
+                raise RuntimeError("first dashboard failed")
+            self.shown = True
+
+        def raise_(self):
+            return None
+
+        def activateWindow(self):
+            return None
+
+        def acknowledge_rendered_feedback(self):
+            return None
+
+        def prompt_starter_if_needed(self):
+            return None
+
+        def close(self):
+            return None
+
+        def deleteLater(self):
+            return None
+
+    monkeypatch.setattr(addon, "GardenDashboard", Dashboard)
+    app = _new_app(addon)
+    del app.open_dashboard
+    app._run_garden_maintenance = lambda _source: True
+    app._schedule_dashboard_open = lambda _delay: None
+
+    app._dashboard_open_pending = True
+    app._open_dashboard_when_ready()
+    assert app.dashboard is None
+
+    app._dashboard_open_pending = True
+    app._open_dashboard_when_ready()
+    replacement = app.dashboard
+    assert replacement is instances[1]
+
+    instances[0].destroyed.emit()
+
+    assert app.dashboard is replacement
+
+
+def test_dashboard_still_opens_when_maintenance_is_safely_deferred(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    app._dashboard_open_pending = True
+    sources = []
+    app._run_garden_maintenance = lambda source: sources.append(source) or False
+
+    app._open_dashboard_when_ready()
+
+    assert sources == ["dashboard open"]
+    assert app.dashboard is not None
+    assert app._dashboard_open_pending is False
+
+
+def test_dashboard_feedback_is_acknowledged_only_after_a_successful_show(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+
+    class Dashboard:
+        def __init__(self, *, fail_show: bool) -> None:
+            self.fail_show = fail_show
+            self.events: list[str] = []
+
+        def isVisible(self):
+            return True
+
+        def prepare_to_show(self):
+            self.events.append("prepare")
+
+        def showNormal(self):
+            self.events.append("show")
+            if self.fail_show:
+                raise RuntimeError("show failed")
+
+        def raise_(self):
+            self.events.append("raise")
+
+        def activateWindow(self):
+            self.events.append("activate")
+
+        def acknowledge_rendered_feedback(self):
+            self.events.append("acknowledge")
+
+        def prompt_starter_if_needed(self):
+            self.events.append("starter")
+
+    successful = Dashboard(fail_show=False)
+    app = _new_app(addon)
+    app.dashboard = successful
+    app._dashboard_open_pending = True
+    app._run_garden_maintenance = lambda _source: True
+
+    app._open_dashboard_when_ready()
+
+    assert successful.events.count("acknowledge") == 1
+    assert successful.events.index("show") < successful.events.index("acknowledge")
+
+    failed = Dashboard(fail_show=True)
+    failing_app = _new_app(addon)
+    failing_app.dashboard = failed
+    failing_app._dashboard_open_pending = True
+    failing_app._run_garden_maintenance = lambda _source: True
+    failing_app._schedule_dashboard_open = lambda _delay: None
+
+    failing_app._open_dashboard_when_ready()
+
+    assert "acknowledge" not in failed.events
+
+
+def test_settings_entry_opens_settings_without_prompting_for_a_starter(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    calls = []
+
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        refresh_all=lambda: calls.append("refresh"),
+        showNormal=lambda: calls.append("show"),
+        raise_=lambda: calls.append("raise"),
+        activateWindow=lambda: calls.append("activate"),
+        _open_settings=lambda: calls.append("settings"),
+        prompt_starter_if_needed=lambda: calls.append("starter"),
+    )
+    app._dashboard_open_pending = True
+    app._settings_open_pending = True
+
+    app._open_dashboard_when_ready()
+
+    assert "settings" in calls
+    assert "starter" not in calls
+    assert app._settings_open_pending is False
+    assert app._dashboard_open_pending is False
+
+
+def test_schedule_failure_clears_pending_settings_destination(monkeypatch):
+    aqt_mod, _hooks, warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app._dashboard_open_pending = True
+    app._settings_open_pending = True
+
+    # The fake Qt module intentionally has no QTimer, exercising the terminal
+    # scheduling error without starting an event loop.
+    app._schedule_dashboard_open(0)
+
+    assert app._dashboard_open_pending is False
+    assert app._settings_open_pending is False
+    assert warnings
+
+
+def test_collection_timeout_clears_pending_settings_destination(monkeypatch):
+    aqt_mod, _hooks, warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app._dashboard_open_pending = True
+    app._settings_open_pending = True
+    app._dashboard_open_attempts = 10
+    aqt_mod.mw.col = None
+
+    app._open_dashboard_when_ready()
+
+    assert app._dashboard_open_pending is False
+    assert app._settings_open_pending is False
+    assert warnings
+
+
+def test_terminal_dashboard_failure_clears_pending_settings_destination(monkeypatch):
+    aqt_mod, _hooks, warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        refresh_all=lambda: (_ for _ in ()).throw(RuntimeError("refresh failed")),
+    )
+    app._dashboard_open_pending = True
+    app._settings_open_pending = True
+    app._dashboard_open_failures = 2
+
+    app._open_dashboard_when_ready()
+
+    assert app.dashboard is None
+    assert app._dashboard_open_pending is False
+    assert app._settings_open_pending is False
+    assert warnings
+
+
+def test_transient_dashboard_failure_preserves_settings_destination_for_retry(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        refresh_all=lambda: (_ for _ in ()).throw(RuntimeError("refresh failed")),
+    )
+    app._dashboard_open_pending = True
+    app._settings_open_pending = True
+    scheduled = []
+    app._schedule_dashboard_open = lambda delay: scheduled.append(delay)
+
+    app._open_dashboard_when_ready()
+
+    assert app.dashboard is None
+    assert app._dashboard_open_pending is True
+    assert app._settings_open_pending is True
+    assert scheduled == [120]
 
 
 def test_setup_sync_hook_is_idempotent(monkeypatch):
@@ -412,8 +1353,285 @@ def test_reviews_today_counts_supported_revlog_answers(monkeypatch):
 
     html = app._build_home_garden_html()
 
-    assert 'data-testid="home-reviews">Reviews today: 42' in html
-    assert 'data-testid="home-reviews">Reviews today: 999' not in html
+    assert app._reviews_today() == 42
+    assert 'data-testid="home-reviews"' not in html
+    assert '<div class="ag-home__metric-label">Card answers</div>' not in html
+
+
+def test_reviews_today_never_queries_all_history_without_an_authoritative_day_start(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app.storage.state.daily_stats.reviewed = 17
+    app.storage.current_scheduler_day_bounds_ms = lambda: (_ for _ in ()).throw(
+        RuntimeError("cutoff unavailable")
+    )
+    aqt_mod.mw.col.db.scalar = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("history query must not run")
+    )
+
+    assert app._reviews_today() == 17
+
+
+def test_failed_live_revlog_read_is_credited_by_catchup_exactly_once(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    storage_module = importlib.import_module("ankigarden.storage")
+    notices = importlib.import_module("ankigarden.notices").USER_NOTICES
+    notices.clear()
+    addon.mw = aqt_mod.mw
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(last_processed_revlog_id=100)
+            self.max_calls = 0
+            self.save_calls = 0
+
+        def max_revlog_id(self):
+            self.max_calls += 1
+            raise storage_module.RevlogReadError("max id unavailable")
+
+        def review_type_for_revlog_id(self, _revlog_id):
+            return 1
+
+        def load_new_revlog_entries(self, after_id):
+            if after_id < 200:
+                return [(200, 7, 3, 10, 5, 2500, 100, 1)]
+            return []
+
+        def current_day_start_ms(self):
+            return 150
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+        def save(self):
+            self.save_calls += 1
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.live_payloads = []
+            self.catchup_payloads = []
+
+        def register_review(self, payload):
+            self.live_payloads.append(payload)
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            for payload in payloads:
+                if payload["revlog_id"] > self.storage.state.last_processed_revlog_id:
+                    self.catchup_payloads.append(payload)
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return len(payloads) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    handler.on_answer(
+        None,
+        SimpleNamespace(factor=2500, queue=2, lapses=0, did=1),
+        3,
+    )
+
+    app = _new_app(addon)
+    app.storage = storage
+    app.engine = engine
+    app._apply_same_day_catchup = addon.AnkiGardenApp._apply_same_day_catchup.__get__(app)
+    app._apply_same_day_catchup()
+    app._apply_same_day_catchup()
+
+    assert engine.live_payloads == []
+    assert [payload["revlog_id"] for payload in engine.catchup_payloads] == [200]
+    assert storage.state.last_processed_revlog_id == 200
+    assert storage.save_calls == 0
+    assert "retry automatically" in notices.current.message
+
+
+def test_reviewer_reconciles_earlier_failed_answer_with_next_callback_exactly_once(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    addon.mw = aqt_mod.mw
+
+    answer_a = (150, 7, 3, 10, 5, 2500, 100, 1)
+    answer_b = (200, 8, 4, 20, 10, 2300, 100, 1)
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(last_processed_revlog_id=100)
+            self.rows = [answer_a]
+
+        def max_revlog_id(self):
+            return max(row[0] for row in self.rows)
+
+        def load_new_revlog_entries(self, after_id):
+            return [row for row in self.rows if row[0] > after_id]
+
+        def current_day_start_ms(self):
+            return 125
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.attempts = []
+            self.credited = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            ids = [payload["revlog_id"] for payload in payloads]
+            self.attempts.append(ids)
+            if len(self.attempts) == 1:
+                raise OSError("review A state save failed")
+            self.credited.extend(
+                revlog_id
+                for revlog_id in ids
+                if revlog_id > self.storage.state.last_processed_revlog_id
+            )
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return len(ids) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    card = SimpleNamespace(factor=2500, queue=2, lapses=0, did=1)
+
+    handler.on_answer(None, card, 3)
+    assert storage.state.last_processed_revlog_id == 100
+    storage.rows.append(answer_b)
+    handler.on_answer(None, card, 4)
+
+    app = _new_app(addon)
+    app.storage = storage
+    app.engine = engine
+    app._apply_same_day_catchup = addon.AnkiGardenApp._apply_same_day_catchup.__get__(app)
+    app._apply_same_day_catchup()
+
+    assert engine.attempts == [[150], [150, 200]]
+    assert engine.credited == [150, 200]
+    assert storage.state.last_processed_revlog_id == 200
+
+
+def test_reviewer_counts_late_lower_same_day_id_despite_unchanged_scalar_max(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(
+                last_processed_revlog_id=200,
+                processed_revlog_floor=100,
+                processed_revlog_ids=[200],
+            )
+
+        def max_revlog_id(self):
+            return 200
+
+        def load_new_revlog_entries(self, _after_id):
+            return [
+                (150, 7, 3, 10, 5, 2500, 100, 1),
+                (200, 8, 4, 20, 10, 2300, 100, 1),
+            ]
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.credited = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            ids = [payload["revlog_id"] for payload in payloads]
+            self.credited.extend(ids)
+            self.storage.state.processed_revlog_ids.extend(ids)
+            self.storage.state.processed_revlog_ids.sort()
+            self.storage.state.last_processed_revlog_id = max(
+                self.storage.state.last_processed_revlog_id,
+                latest_revlog_id,
+            )
+            return len(ids) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    card = SimpleNamespace(factor=2500, queue=2, lapses=0, did=1)
+
+    handler.on_answer(None, card, 3)
+    handler.on_answer(None, card, 3)
+
+    assert engine.credited == [150]
+    assert storage.state.processed_revlog_ids == [150, 200]
+    assert storage.state.last_processed_revlog_id == 200
+
+
+def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    storage_module = importlib.import_module("ankigarden.storage")
+    addon.mw = aqt_mod.mw
+
+    rows = [
+        (150, 7, 3, 10, 5, 2500, 100, 1),
+        (250, 8, 4, 20, 10, 2300, 100, 1),
+    ]
+
+    class FilteringDb:
+        def all(self, _query, lower, upper, limit):
+            return [row for row in rows if lower < row[0] < upper][:limit]
+
+    db = FilteringDb()
+    aqt_mod.mw.col.db = db
+    storage = object.__new__(storage_module.GardenStorage)
+    storage.mw = aqt_mod.mw
+    storage.state = importlib.import_module("ankigarden.models.state").GardenState(
+        last_processed_revlog_id=99,
+        processed_revlog_floor=99,
+    )
+    storage.current_scheduler_day_bounds_ms = lambda: (100, 200)
+    storage.current_day_start_ms = lambda: 100
+    storage.due_obligations = lambda: SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self):
+            self.ids = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            self.ids.extend(payload["revlog_id"] for payload in payloads)
+            storage.state.processed_revlog_ids.extend(self.ids)
+            storage.state.last_processed_revlog_id = latest_revlog_id
+            return len(payloads) * 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    app = _new_app(addon)
+    app.storage = storage
+    app.engine = Engine()
+    app._apply_same_day_catchup = addon.AnkiGardenApp._apply_same_day_catchup.__get__(app)
+
+    app._apply_same_day_catchup()
+
+    assert app.engine.ids == [150]
+    assert storage.state.last_processed_revlog_id == 150
+    assert 250 not in storage.state.processed_revlog_ids
 
 
 def test_webview_injection_skips_bottom_bar_context(monkeypatch):
@@ -443,7 +1661,7 @@ def test_main_screen_context_detection_excludes_lower_bars(monkeypatch):
     assert app._is_main_screen_context(bottom_ctx) is False
 
 
-def test_retrospective_revlog_mapping_matches_live_queue_semantics(monkeypatch):
+def test_same_day_catchup_revlog_mapping_matches_live_queue_semantics(monkeypatch):
     _install_fake_aqt(monkeypatch)
     game = importlib.reload(importlib.import_module("ankigarden.game"))
 

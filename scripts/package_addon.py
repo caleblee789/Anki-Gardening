@@ -14,13 +14,38 @@ EXCLUDED_PARTS = {"__pycache__", "cache", "metadata"}
 EXCLUDED_NAMES = {"meta.json", "garden_state.json", "asset_metadata.json", ".DS_Store"}
 
 
+def runtime_asset_paths() -> set[str]:
+    """Return the complete, manifest-owned runtime asset set."""
+    payload = json.loads((ADDON / "assets" / "manifest.json").read_text("utf-8"))
+    referenced: set[str] = {"assets/manifest.json"}
+
+    def collect(value: object) -> None:
+        if isinstance(value, dict):
+            for nested in value.values():
+                collect(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                collect(nested)
+        elif isinstance(value, str) and value.startswith("assets/"):
+            referenced.add(value)
+
+    collect(payload)
+    missing = sorted(path for path in referenced if not (ADDON / path).is_file())
+    if missing:
+        raise FileNotFoundError(f"runtime asset paths are missing: {', '.join(missing)}")
+    return referenced
+
+
 def package_files() -> list[Path]:
     files: list[Path] = []
+    runtime_assets = runtime_asset_paths()
     for path in ADDON.rglob("*"):
         if not path.is_file():
             continue
         rel = path.relative_to(ADDON)
         if path.name in EXCLUDED_NAMES or any(part in EXCLUDED_PARTS for part in rel.parts):
+            continue
+        if rel.parts and rel.parts[0] == "assets" and rel.as_posix() not in runtime_assets:
             continue
         if "user_files" in rel.parts and path.name != "README.txt":
             continue

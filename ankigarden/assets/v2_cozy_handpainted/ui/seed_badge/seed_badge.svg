@@ -1,6 +1,0 @@
-<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" focusable="false" aria-hidden="true">
-<title>Seed Badge</title><ns0:defs><ns0:linearGradient id="ui_seed_badge__badge" x1="0" y1="0" x2="1" y2="1"><ns0:stop offset="0%" stop-color="#e8d5af" /><ns0:stop offset="100%" stop-color="#b48f62" /></ns0:linearGradient></ns0:defs>
-<ns0:circle cx="64" cy="64" r="52" fill="url(#ui_seed_badge__badge)" stroke="#8a6c4b" stroke-width="4" />
-<ns0:ellipse cx="64" cy="70" rx="18" ry="12" fill="#7c8f50" stroke="#495c31" stroke-width="3" />
-<ns0:path d="M52 73 C57 64, 71 63, 76 73" stroke="#d7c89d" stroke-width="2" fill="none" opacity="0.65" />
-</ns0:svg>

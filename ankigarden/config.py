@@ -11,27 +11,17 @@ class ConfigError(ValueError):
 DEFAULT_CONFIG: Dict[str, Any] = {
     "enable_animations": True,
     "reduced_motion": False,
-    "daily_goal": 140,
-    "points_per_card": {"new": 4, "learning": 3, "review": 2},
-    "correct_answer_bonus": 1.08,
-    "incorrect_answer_penalty": 0.6,
-    "difficulty_weight": 0.12,
-    "recovery_weight": 0.2,
-    "session_quality_weight": 0.25,
-    "quest_difficulty": "normal",
     "show_home_widget": True,
-    "plant_interaction_hint_seen": False,
+    "show_progress_notifications": False,
+    "onboarding_version": 0,
     "seasonal_visuals": True,
-    "time_of_day_bonus": True,
-    "max_daily_quests": 3,
     "assets": {
         "mode": "local_only",
         "quality_preference": "balanced",
-        "allow_fallback_placeholder": True,
     },
     "initial_slots": 2,
     "max_slots": 6,
-    "visual_theme": "verdant_dusk",
+    "visual_theme": "verdant_twilight",
     "theme_overrides": {
         "animation_intensity": 0.7,
         "weather_particle_density": 1.0,
@@ -40,26 +30,18 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 
 
 _ENUMS = {
-    "quest_difficulty": {"easy", "normal", "hard"},
-    "visual_theme": {"verdant_dusk", "verdant_dawn", "moonlit_study"},
+    "visual_theme": {"verdant_twilight"},
 }
 _NESTED_ENUMS = {
     ("assets", "mode"): {"local_only"},
     ("assets", "quality_preference"): {"performance", "balanced", "ultra"},
 }
 _INT_RANGES = {
-    "daily_goal": (10, 2000),
-    "max_daily_quests": (1, 3),
+    "onboarding_version": (0, 2),
     "initial_slots": (1, 6),
     "max_slots": (1, 6),
 }
-_FLOAT_RANGES = {
-    "correct_answer_bonus": (0.0, 3.0),
-    "incorrect_answer_penalty": (0.0, 3.0),
-    "difficulty_weight": (0.0, 2.0),
-    "recovery_weight": (0.0, 2.0),
-    "session_quality_weight": (0.0, 2.0),
-}
+_FLOAT_RANGES: dict[str, tuple[float, float]] = {}
 _NESTED_FLOAT_RANGES = {
     ("theme_overrides", "animation_intensity"): (0.0, 1.0),
     ("theme_overrides", "weather_particle_density"): (0.1, 2.0),
@@ -105,16 +87,6 @@ def _validate_value(path: tuple[str, ...], value: Any) -> Any:
         if not isinstance(value, bool):
             raise ConfigError(f"{label} must be on or off.")
         return value
-    if path == ("points_per_card",):
-        if not isinstance(value, dict):
-            raise ConfigError("points_per_card must be an object.")
-        result = {}
-        for card_type in ("new", "learning", "review"):
-            item = value.get(card_type, default[card_type])
-            if isinstance(item, bool) or not isinstance(item, (int, float)) or not 0 <= float(item) <= 100:
-                raise ConfigError(f"points_per_card.{card_type} must be between 0 and 100.")
-            result[card_type] = float(item)
-        return result
     if not isinstance(value, type(default)):
         raise ConfigError(f"Invalid type for {label}.")
     return value
@@ -132,7 +104,7 @@ def _sanitize_config(payload: Any, *, strict: bool) -> Dict[str, Any]:
                 raise ConfigError(f"Unknown setting: {key}.")
             continue
         default = DEFAULT_CONFIG[key]
-        if isinstance(default, dict) and key != "points_per_card":
+        if isinstance(default, dict):
             if not isinstance(value, dict):
                 if strict:
                     raise ConfigError(f"{key} must be an object.")
@@ -169,6 +141,11 @@ class ConfigManager:
             return
         addon_key = self.mw.addonManager.addonFromModule(__name__)
         user_conf = self.mw.addonManager.getConfig(addon_key) or {}
+        if isinstance(user_conf, dict):
+            user_conf = deepcopy(user_conf)
+            legacy_hint_seen = user_conf.pop("plant_interaction_hint_seen", False)
+            if legacy_hint_seen is True and "onboarding_version" not in user_conf:
+                user_conf["onboarding_version"] = 1
         candidate = self._merge(deepcopy(DEFAULT_CONFIG), _sanitize_config(user_conf, strict=False))
         if candidate["initial_slots"] > candidate["max_slots"]:
             candidate["initial_slots"] = DEFAULT_CONFIG["initial_slots"]

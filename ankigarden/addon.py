@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 from html import escape
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote
 
 from aqt import mw
@@ -12,7 +13,7 @@ from aqt.qt import QAction
 
 from .config import ConfigManager
 from .display_telemetry import DISPLAY_TELEMETRY
-from .game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
+from .game import GardenGameEngine
 from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
 from .storage import GardenStorage
@@ -22,9 +23,74 @@ from .ui.home_widget import (
     build_home_widget_success_data,
     render_home_widget,
 )
-from .ui.plant_display import growth_display
 
 logger = logging.getLogger(__name__)
+
+CALEB_ADDONS_MENU_TITLE = "Caleb M. Add-ons Settings"
+CALEB_ADDONS_MENU_OBJECT_NAME = "caleb_m_addons_menu"
+GARDEN_SETTINGS_ACTION_TEXT = "Anki Garden settings"
+
+
+def _qt_action_text(action: Any) -> str:
+    """Return an action label without relying on a particular Qt binding."""
+    text = getattr(action, "text", None)
+    try:
+        value = text() if callable(text) else text
+    except Exception:
+        value = ""
+    return str(value or getattr(action, "label", "")).replace("&", "").strip()
+
+
+def _qt_menu_title(menu: Any) -> str:
+    title = getattr(menu, "title", None)
+    try:
+        value = title() if callable(title) else title
+    except Exception:
+        value = ""
+    return str(value or "").replace("&", "").strip()
+
+
+def _qt_object_name(widget: Any) -> str:
+    name = getattr(widget, "objectName", None)
+    try:
+        value = name() if callable(name) else name
+    except Exception:
+        value = ""
+    return str(value or "").strip()
+
+
+def _menu_actions(menu: Any) -> list[Any]:
+    actions = getattr(menu, "actions", None)
+    try:
+        value = actions() if callable(actions) else actions
+    except Exception:
+        value = []
+    return list(value or [])
+
+
+def _iter_submenus(menu: Any, seen: set[int] | None = None):
+    """Yield nested QMenus, including the tuple-shaped test doubles."""
+    seen = seen or set()
+    if id(menu) in seen:
+        return
+    seen.add(id(menu))
+    for submenu in getattr(menu, "submenus", []) or []:
+        if submenu is not None:
+            yield submenu
+            yield from _iter_submenus(submenu, seen)
+    for action in _menu_actions(menu):
+        if isinstance(action, tuple) and len(action) >= 2:
+            action = action[1]
+        getter = getattr(action, "menu", None)
+        if not callable(getter):
+            continue
+        try:
+            submenu = getter()
+        except Exception:
+            submenu = None
+        if submenu is not None:
+            yield submenu
+            yield from _iter_submenus(submenu, seen)
 
 
 class AnkiGardenApp:
@@ -35,12 +101,17 @@ class AnkiGardenApp:
         self.reviewer_hooks = ReviewerHookHandler(self.engine, self.storage)
         self.dashboard: Optional[GardenDashboard] = None
         self._menu_action: Optional[QAction] = None
+        self._settings_action: Optional[QAction] = None
         self._home_widget_hooked = False
         self._home_bridge_hooked = False
         self._reviewer_hooked = False
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
+        self._dashboard_open_pending = False
+        self._dashboard_open_attempts = 0
+        self._dashboard_open_failures = 0
+        self._settings_open_pending = False
 
     def setup(self) -> None:
         try:
@@ -48,11 +119,63 @@ class AnkiGardenApp:
         except Exception:
             logger.exception("Anki Garden: unable to register bundled web assets")
         self._setup_menu()
+        self._setup_settings_menu()
         self._setup_home_screen_widget()
         self._setup_reviewer_hook()
         self._setup_sync_hooks()
-        self._apply_retrospective_growth()
-        self.engine.rollover_if_needed()
+        self._run_garden_maintenance("startup")
+
+    def _run_garden_maintenance(self, source: str) -> bool:
+        """Run rollover and revlog catch-up behind one fail-closed boundary."""
+        try:
+            prepare_ledger = getattr(self.storage, "ensure_revlog_ledger_ready", None)
+            if callable(prepare_ledger):
+                prepare_ledger()
+            self.engine.rollover_if_needed()
+            catchup_result = self._apply_same_day_catchup()
+        except Exception:
+            logger.exception("Anki Garden: maintenance deferred during %s", source)
+            USER_NOTICES.publish(
+                "Garden progress is temporarily paused while review history is unavailable. "
+                "Your Anki reviews are safe, and Garden will retry automatically.",
+                key="review_history",
+            )
+            return False
+        USER_NOTICES.clear(key="review_history")
+        if isinstance(catchup_result, tuple) and len(catchup_result) == 2:
+            review_count, growth_gain = catchup_result
+        else:
+            review_count, growth_gain = 0, 0
+        self._refresh_dashboard_after_maintenance(
+            max(0, int(review_count)), max(0, int(growth_gain))
+        )
+        return True
+
+    def _refresh_dashboard_after_maintenance(
+        self, review_count: int, growth_gain: int
+    ) -> None:
+        """Update a live Garden after commit without re-entering home rendering."""
+        dashboard = self.dashboard
+        if dashboard is None:
+            return
+        USER_NOTICES.clear(key="display_refresh")
+        try:
+            refresh = getattr(dashboard, "refresh_all", None)
+            if callable(refresh):
+                refresh()
+        except Exception:
+            logger.debug("Anki Garden: live Garden could not refresh after maintenance", exc_info=True)
+            USER_NOTICES.publish(
+                "Your Garden progress is safe, but the display could not refresh yet. "
+                "Reopen the Garden to retry.",
+                key="display_refresh",
+            )
+        try:
+            feedback = getattr(dashboard, "show_same_day_catchup_feedback", None)
+            if callable(feedback):
+                feedback(review_count, growth_gain)
+        except Exception:
+            logger.debug("Anki Garden: synced-review notice could not refresh", exc_info=True)
 
     def _setup_reviewer_hook(self) -> None:
         if self._reviewer_hooked:
@@ -73,24 +196,261 @@ class AnkiGardenApp:
                 existing_actions = []
 
         for action in existing_actions:
-            if getattr(action, "text", lambda: "")() == "Anki Garden":
+            if _qt_action_text(action) == "Anki Garden":
                 self._menu_action = action
                 logger.debug("Anki Garden menu action already registered.")
                 return
 
+        if menu_tools is None or not callable(getattr(menu_tools, "addAction", None)):
+            # Custom Anki shells can expose the menu bar a little later than
+            # add-on startup. The dashboard and home hooks remain usable even
+            # when the optional Tools entry is unavailable.
+            logger.warning("Anki Garden: Tools menu is unavailable during startup")
+            return
         action = QAction("Anki Garden", mw)
         action.triggered.connect(self.open_dashboard)
         mw.form.menuTools.addAction(action)
         self._menu_action = action
 
+    def _settings_menu_bar(self) -> Any:
+        """Resolve Anki's shared top-level add-on menu across Qt versions."""
+        form = getattr(mw, "form", None)
+        menu_bar = getattr(form, "menubar", None)
+        if menu_bar is None:
+            getter = getattr(mw, "menuBar", None)
+            menu_bar = getter() if callable(getter) else None
+        return menu_bar
+
+    def _shared_addons_settings_menu(self) -> Any:
+        menu_bar = self._settings_menu_bar()
+        if menu_bar is None:
+            return None
+
+        existing = getattr(mw, "_caleb_m_addons_menu", None)
+        if existing is not None:
+            try:
+                if _qt_menu_title(existing) == CALEB_ADDONS_MENU_TITLE or _qt_object_name(existing) == CALEB_ADDONS_MENU_OBJECT_NAME:
+                    return existing
+            except RuntimeError:
+                pass
+
+        candidates = [menu_bar, *_iter_submenus(menu_bar)]
+        for submenu in candidates:
+            if (
+                _qt_object_name(submenu) == CALEB_ADDONS_MENU_OBJECT_NAME
+                or _qt_menu_title(submenu) == CALEB_ADDONS_MENU_TITLE
+            ):
+                setter = getattr(submenu, "setObjectName", None)
+                if callable(setter):
+                    try:
+                        setter(CALEB_ADDONS_MENU_OBJECT_NAME)
+                    except Exception:
+                        logger.debug("Anki Garden: unable to name shared settings menu", exc_info=True)
+                try:
+                    mw._caleb_m_addons_menu = submenu
+                except Exception:
+                    pass
+                return submenu
+
+        add_menu = getattr(menu_bar, "addMenu", None)
+        if not callable(add_menu):
+            return None
+        try:
+            submenu = add_menu(CALEB_ADDONS_MENU_TITLE)
+        except Exception:
+            logger.exception("Anki Garden: unable to create the shared add-on settings menu")
+            return None
+        setter = getattr(submenu, "setObjectName", None)
+        if callable(setter):
+            try:
+                setter(CALEB_ADDONS_MENU_OBJECT_NAME)
+            except Exception:
+                logger.debug("Anki Garden: unable to name shared settings menu", exc_info=True)
+        try:
+            mw._caleb_m_addons_menu = submenu
+        except Exception:
+            pass
+        return submenu
+
+    def _setup_settings_menu(self) -> None:
+        """Register Garden settings beside the user's other add-on settings."""
+        if getattr(self, "_settings_action", None) is not None:
+            return
+        submenu = self._shared_addons_settings_menu()
+        if submenu is None:
+            # The dashboard still exposes Settings. This is only a menu
+            # integration enhancement and must never prevent the add-on from
+            # starting on older/custom Anki shells.
+            logger.debug("Anki Garden: shared add-on settings menu is unavailable")
+            return
+        for action in _menu_actions(submenu):
+            if _qt_action_text(action) == GARDEN_SETTINGS_ACTION_TEXT:
+                self._settings_action = action
+                return
+        action = QAction(GARDEN_SETTINGS_ACTION_TEXT, mw)
+        action.triggered.connect(self.open_settings)
+        try:
+            submenu.addAction(action)
+        except Exception:
+            logger.exception("Anki Garden: unable to register the Garden settings menu action")
+            return
+        self._settings_action = action
+
+    def open_settings(self) -> None:
+        """Open the dashboard and then its settings dialog."""
+        self._settings_open_pending = True
+        self.open_dashboard()
+
     def open_dashboard(self) -> None:
-        self._apply_retrospective_growth()
-        self.engine.rollover_if_needed()
+        if getattr(self, "_dashboard_open_pending", False):
+            return
+        self._dashboard_open_pending = True
+        self._dashboard_open_attempts = 0
+        self._dashboard_open_failures = 0
+        self._schedule_dashboard_open(0)
+
+    def _schedule_dashboard_open(self, delay_ms: int) -> None:
+        try:
+            from aqt.qt import QTimer
+
+            QTimer.singleShot(max(0, int(delay_ms)), self._open_dashboard_when_ready)
+        except Exception:
+            self._dashboard_open_pending = False
+            self._settings_open_pending = False
+            logger.exception("Anki Garden: unable to schedule dashboard opening")
+            self._notify_dashboard_open_failure(
+                "Anki Garden could not schedule its window. Please restart Anki and try again."
+            )
+
+    def _dashboard_is_alive(self) -> bool:
         if self.dashboard is None:
-            self.dashboard = GardenDashboard(mw, self.engine, self.storage, self.config)
-        self.dashboard.refresh_all()
-        self.dashboard.show()
-        self.dashboard.raise_()
+            return False
+        try:
+            # Calling a Qt method is enough to detect a deleted C++ object;
+            # visibility itself is intentionally not used as a gate because a
+            # hidden dashboard can be shown again after a home-screen click.
+            self.dashboard.isVisible()
+            return True
+        except RuntimeError:
+            self.dashboard = None
+            return False
+
+    def _clear_dashboard_reference(
+        self, expected: object | None = None, *_args: object
+    ) -> None:
+        if expected is None or self.dashboard is expected:
+            self.dashboard = None
+
+    def _open_dashboard_when_ready(self) -> None:
+        collection = getattr(mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            self._dashboard_open_attempts += 1
+            if self._dashboard_open_attempts <= 10:
+                self._schedule_dashboard_open(100)
+                return
+            self._dashboard_open_pending = False
+            self._settings_open_pending = False
+            logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
+            self._notify_dashboard_open_failure(
+                "Anki Garden is still waiting for the collection to finish opening. Please try again."
+            )
+            return
+        candidate = None
+        retry_scheduled = False
+        try:
+            self._run_garden_maintenance("dashboard open")
+            if not self._dashboard_is_alive():
+                candidate = GardenDashboard(mw, self.engine, self.storage, self.config)
+                destroyed = getattr(candidate, "destroyed", None)
+                if destroyed is not None and callable(getattr(destroyed, "connect", None)):
+                    destroyed.connect(
+                        lambda *_args, expected=candidate:
+                        self._clear_dashboard_reference(expected)
+                    )
+                self.dashboard = candidate
+            prepare = getattr(self.dashboard, "prepare_to_show", None)
+            if callable(prepare):
+                prepare()
+            else:
+                self.dashboard.refresh_all()
+            show_normal = getattr(self.dashboard, "showNormal", None)
+            if callable(show_normal):
+                show_normal()
+            else:
+                self.dashboard.show()
+            self.dashboard.raise_()
+            activate = getattr(self.dashboard, "activateWindow", None)
+            if callable(activate):
+                activate()
+            acknowledge = getattr(self.dashboard, "acknowledge_rendered_feedback", None)
+            if callable(acknowledge):
+                acknowledge()
+            opening_settings = bool(getattr(self, "_settings_open_pending", False))
+            if opening_settings:
+                self._settings_open_pending = False
+                try:
+                    open_settings = getattr(self.dashboard, "_open_settings", None)
+                    if callable(open_settings):
+                        open_settings()
+                except Exception:
+                    # A settings dialog failure must not make the already-open
+                    # garden look like an opener failure.
+                    logger.exception("Anki Garden: settings dialog failed to open")
+            else:
+                prompt_starter = getattr(self.dashboard, "prompt_starter_if_needed", None)
+                if callable(prompt_starter):
+                    prompt_starter()
+        except Exception:
+            failed_dashboard = self.dashboard
+            if failed_dashboard is not None:
+                try:
+                    close = getattr(failed_dashboard, "close", None)
+                    if callable(close):
+                        close()
+                    delete_later = getattr(failed_dashboard, "deleteLater", None)
+                    if callable(delete_later):
+                        delete_later()
+                except Exception:
+                    logger.debug("Anki Garden: failed dashboard could not be disposed", exc_info=True)
+            if candidate is not None and self.dashboard is candidate:
+                self.dashboard = None
+            elif candidate is None and self.dashboard is not None:
+                # A refresh/show failure can leave a Python wrapper around a
+                # deleted or half-constructed QDialog. Do not keep reusing it
+                # on the next click; the next attempt must build a clean
+                # window.
+                self.dashboard = None
+            logger.exception("Anki Garden: dashboard failed to open; the next attempt may retry")
+            failures = int(getattr(self, "_dashboard_open_failures", 0)) + 1
+            self._dashboard_open_failures = failures
+            if failures <= 2:
+                # Home-screen webviews can still be tearing down their bridge
+                # when pycmd arrives. Retry on the Qt event loop before showing
+                # a terminal warning, so a transient race is invisible.
+                retry_scheduled = True
+                logger.warning("Anki Garden: transient dashboard-open failure; retry %s/2", failures)
+            else:
+                # This request is over. Discard its destination as well as its
+                # retry state so a later ordinary Open Garden action cannot
+                # inherit a stale request to open Settings.
+                self._settings_open_pending = False
+                self._notify_dashboard_open_failure(
+                    "Anki Garden could not open its window. No garden progress was changed; please try again."
+                )
+        finally:
+            if retry_scheduled:
+                self._schedule_dashboard_open(120)
+            else:
+                self._dashboard_open_pending = False
+
+    @staticmethod
+    def _notify_dashboard_open_failure(message: str) -> None:
+        try:
+            from aqt.utils import showWarning
+
+            showWarning(message)
+        except Exception:
+            logger.debug("Anki Garden: unable to show dashboard-open warning", exc_info=True)
 
     def _setup_sync_hooks(self) -> None:
         if self._sync_hooked:
@@ -105,7 +465,7 @@ class AnkiGardenApp:
             logger.exception("Anki Garden: failed to attach sync hooks")
 
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
-        self._apply_retrospective_growth()
+        self._run_garden_maintenance("sync completion")
 
     def _setup_home_screen_widget(self) -> None:
         if self._home_widget_hooked:
@@ -128,6 +488,11 @@ class AnkiGardenApp:
         if hasattr(gui_hooks, "overview_will_render_content"):
             gui_hooks.overview_will_render_content.append(self._inject_home_garden)
             attached_hooks.append("overview_will_render_content")
+        if hasattr(gui_hooks, "webview_did_inject_style_into_page"):
+            gui_hooks.webview_did_inject_style_into_page.append(
+                self._inject_home_garden_finished_overview
+            )
+            attached_hooks.append("webview_did_inject_style_into_page")
 
         if attached_hooks:
             self._home_widget_hooked = True
@@ -146,8 +511,7 @@ class AnkiGardenApp:
             self.open_dashboard()
             return True, None
         if command == "refresh":
-            self.engine.rollover_if_needed()
-            self._apply_retrospective_growth()
+            self._run_garden_maintenance("home retry")
             reset = getattr(mw, "reset", None)
             if callable(reset):
                 reset()
@@ -157,10 +521,7 @@ class AnkiGardenApp:
     def _inject_home_garden(self, _page: object, content: object) -> None:
         if not self.config.value("show_home_widget", True):
             return
-        self.engine.rollover_if_needed()
-        self._apply_retrospective_growth()
-
-        html = self._build_home_garden_html()
+        html = self._home_garden_html_for_injection()
         if hasattr(content, "stats") and isinstance(content.stats, str):
             if "ag-home-root" not in content.stats:
                 content.stats += html
@@ -191,43 +552,166 @@ class AnkiGardenApp:
             return
 
         logger.debug("Anki Garden: injecting home garden into context %s", context_name)
-        self.engine.rollover_if_needed()
-        self._apply_retrospective_growth()
-        html = self._build_home_garden_html()
+        html = self._home_garden_html_for_injection()
 
         body = getattr(web_content, "body", None)
         if isinstance(body, str) and "ag-home-root" not in body:
             web_content.body = body + html
 
+    def _inject_home_garden_finished_overview(self, webview: object) -> None:
+        """Inject into Anki's external Congratulations page after it loads."""
+        if not self.config.value("show_home_widget", True):
+            return
+        if webview is not getattr(mw, "web", None):
+            return
+        if getattr(mw, "state", None) != "overview":
+            return
+
+        try:
+            url = webview.url()
+            path = str(url.path()).rstrip("/")
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to identify external overview page",
+                exc_info=True,
+            )
+            return
+        if path not in {"/_anki/pages/congrats.html", "/congrats"}:
+            return
+
+        evaluate = getattr(webview, "eval", None)
+        if not callable(evaluate):
+            return
+
+        html = self._home_garden_html_for_injection()
+        evaluate(
+            f"""
+(() => {{
+  let root = document.getElementById("ag-home-root");
+  if (!root) {{
+    const template = document.createElement("template");
+    template.innerHTML = {json.dumps(html)};
+    for (const sourceScript of template.content.querySelectorAll("script")) {{
+      sourceScript.remove();
+    }}
+    document.body.appendChild(template.content);
+    root = document.getElementById("ag-home-root");
+  }}
+  if (!root) return;
+
+  for (const sourceScript of root.querySelectorAll("script")) {{
+    sourceScript.remove();
+  }}
+
+  const bindBridgeButton = (selector, command, pendingText = "") => {{
+    const button = root.querySelector(selector);
+    if (!button) return;
+    button.removeAttribute("onclick");
+    if (button.dataset.ankiGardenBridgeBound === "true") return;
+    button.dataset.ankiGardenBridgeBound = "true";
+    const originalText = button.textContent;
+    button.addEventListener("click", () => {{
+      if (button.disabled) return;
+      const bridge = typeof window.bridgeCommand === "function"
+        ? window.bridgeCommand
+        : window.pycmd;
+      if (typeof bridge !== "function") return;
+      if (pendingText) {{
+        button.disabled = true;
+        button.textContent = pendingText;
+        window.setTimeout(() => {{
+          button.disabled = false;
+          button.textContent = originalText;
+        }}, 1500);
+      }}
+      bridge(command);
+    }});
+  }};
+  bindBridgeButton('[data-testid="home-open"]', "anki-garden:open", "Opening…");
+  bindBridgeButton('[data-testid="home-retry"]', "anki-garden:refresh");
+
+  if (root.dataset.ankiGardenTooltipBound !== "true") {{
+    root.dataset.ankiGardenTooltipBound = "true";
+    const tip = root.querySelector(".ag-home__tooltip");
+    if (tip) {{
+      let active = null;
+      const position = (element) => {{
+        if (!element || tip.hidden) return;
+        const rect = element.getBoundingClientRect();
+        const margin = 8;
+        const gap = 6;
+        const maxLeft = Math.max(margin, window.innerWidth - tip.offsetWidth - margin);
+        tip.style.left = Math.min(maxLeft, Math.max(margin, rect.left)) + "px";
+        const maxTop = Math.max(margin, window.innerHeight - tip.offsetHeight - margin);
+        const below = rect.bottom + gap;
+        const above = rect.top - tip.offsetHeight - gap;
+        tip.style.top = (below <= maxTop ? below : (above >= margin ? above : maxTop)) + "px";
+      }};
+      const clear = () => {{
+        if (active && active.getAttribute("aria-describedby") === tip.id) {{
+          active.removeAttribute("aria-describedby");
+        }}
+        active = null;
+        tip.hidden = true;
+      }};
+      const show = (event) => {{
+        const element = event.target.closest("[data-tooltip]");
+        if (!element) return;
+        if (active !== element) clear();
+        active = element;
+        active.setAttribute("aria-describedby", tip.id);
+        tip.textContent = element.dataset.tooltip;
+        tip.hidden = false;
+        window.requestAnimationFrame(() => position(active));
+      }};
+      const hide = (event) => {{
+        const related = event.relatedTarget;
+        const next = related && typeof related.closest === "function"
+          ? related.closest("[data-tooltip]")
+          : null;
+        if (next === active) return;
+        clear();
+      }};
+      root.addEventListener("mouseover", show);
+      root.addEventListener("focusin", show);
+      root.addEventListener("mouseout", hide);
+      root.addEventListener("focusout", hide);
+      window.addEventListener("resize", () => position(active), {{ passive: true }});
+      window.addEventListener("scroll", () => position(active), {{ passive: true, capture: true }});
+    }}
+  }}
+}})();
+"""
+        )
+
+    def _home_garden_html_for_injection(self) -> str:
+        """Refresh Garden state without allowing it to abort Anki home rendering."""
+        if not self._run_garden_maintenance("home rendering"):
+            request_id = self._home_widget_controller.begin_request()
+            self._home_widget_controller.resolve_error(
+                request_id,
+                "Garden progress could not refresh. Your Anki screen is still available; retry the Garden.",
+            )
+            return render_home_widget(self._home_widget_controller.snapshot)
+        return self._build_home_garden_html()
+
     def _build_home_garden_html(self) -> str:
         request_id = self._home_widget_controller.begin_request()
         try:
             state = self.storage.state
-            focus_resolver = getattr(self.engine, "focus_plant", None)
-            focus_plant = focus_resolver() if callable(focus_resolver) else None
-            next_milestone_resolver = getattr(self.engine, "next_milestone", None)
-            pending_milestone_resolver = getattr(self.engine, "pending_milestone", None)
             peek_transitions = getattr(self.engine, "peek_stage_transitions", None)
             transitions = peek_transitions() if callable(peek_transitions) else []
             transition_message_builder = getattr(self.engine, "stage_transition_message", None)
             transition_message = transition_message_builder(transitions) if callable(transition_message_builder) else ""
+            scene_items = self._home_scene_items()
             data = build_home_widget_success_data(
                 state=state,
                 reviews_today=self._reviews_today(),
-                health_ratio=self.engine.garden_health_index(),
-                growth_cap=max(1, int(self.config.value("daily_goal", 140))),
-                scene_items=self._home_scene_items(),
+                scene_items=scene_items,
+                background_placement=getattr(self, "_home_background_placement", {}),
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
-                focus_plant=focus_plant,
-                focus_display=(
-                    growth_display(focus_plant.growth_points, focus_plant.rare_variant)
-                    if focus_plant is not None else None
-                ),
-                next_milestone=(next_milestone_resolver() if callable(next_milestone_resolver) else None),
-                milestone_ready=(
-                    pending_milestone_resolver() is not None if callable(pending_milestone_resolver) else False
-                ),
+                garden_overlay_url=self._home_garden_overlay_url(),
                 status_notice=USER_NOTICES.current.message,
             )
             self._home_widget_controller.resolve_success(request_id, data)
@@ -239,14 +723,11 @@ class AnkiGardenApp:
     def _plant_badges_html(self) -> str:
         plants = self.storage.state.plants[:4]
         if not plants:
-            return '<div class="ag-home__plant"><div class="ag-home__plant-emoji">🌱</div><div class="ag-home__plant-name">Seedling</div></div>'
+            return '<div class="ag-home__plant"><div class="ag-home__plant-name">Seedling</div></div>'
         badges = []
         for plant in plants:
-            emoji = self._plant_emoji_for_stage(plant.growth_stage, plant.rare_variant)
             plant_name = escape(str(plant.name))
             image_html = self._plant_badge_image_html(plant)
-            if not image_html:
-                image_html = f'<div class="ag-home__plant-emoji">{emoji}</div>'
             badges.append(
                 f'<div class="ag-home__plant">{image_html}'
                 f'<div class="ag-home__plant-name">{plant_name}</div></div>'
@@ -260,24 +741,52 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: unable to resolve home scene background placement", exc_info=True)
             background = None
         background_placement = background.placement.to_dict() if background is not None else {}
+        surface_profile = background_placement.get("surface_profile")
+        variants = surface_profile.get("variants", {}) if isinstance(surface_profile, dict) else {}
+        if isinstance(variants, dict):
+            addon_root = Path(__file__).parent.resolve()
+            for variant in variants.values():
+                if not isinstance(variant, dict):
+                    continue
+                for source_key, url_key in (("file", "url"), ("occlusion_file", "occlusion_url")):
+                    rel = str(variant.get(source_key, ""))
+                    variant[url_key] = self._asset_web_url(addon_root / rel) if rel else ""
+                raw_layers = variant.get("occlusion_layers", {})
+                if isinstance(raw_layers, dict):
+                    variant["occlusion_layer_urls"] = {
+                        layer: self._asset_web_url(addon_root / str(rel))
+                        for layer, rel in raw_layers.items()
+                        if layer in {"rear", "front"} and rel
+                    }
+        background_theme = str((background.metadata.get("slot") or {}).get("theme", "verdant_twilight")) if background is not None else "verdant_twilight"
+        # The Home renderer needs surface variants and empty-bed anchors even
+        # before a starter is chosen or when every plant is shelved.
+        self._home_background_placement = background_placement
         items: list[dict[str, object]] = []
-        for plant in sorted(self.storage.state.plants, key=lambda row: row.slot_index)[:6]:
+        planted = [plant for plant in self.storage.state.plants if plant.slot_index is not None]
+        for plant in sorted(planted, key=lambda row: int(row.slot_index))[:6]:
             try:
-                asset = self.engine.resolve_plant_asset(plant.species, plant.growth_stage, plant.rare_variant)
+                asset = self.engine.resolve_plant_asset(plant.species, plant.growth_stage)
             except Exception:
                 logger.debug("Anki Garden: unable to resolve home scene plant artwork", exc_info=True)
                 asset = None
-            items.append({
+            item = {
                 "plant_id": plant.plant_id,
                 "slot_index": plant.slot_index,
                 "name": plant.name,
                 "species": plant.species,
                 "stage": plant.growth_stage,
-                "is_focus": plant.plant_id == self.storage.state.focus_plant_id,
+                "is_active": plant.plant_id == self.storage.state.active_plant_id,
                 "url": self._asset_web_url(asset.path) if asset is not None else "",
                 "placement": asset.placement.to_dict() if asset is not None else {},
+                "canvas_aspect": (
+                    float(asset.metadata.get("width", 1)) / max(1.0, float(asset.metadata.get("height", 1)))
+                    if asset is not None else 1.0
+                ),
                 "background_placement": background_placement,
-            })
+                "background_theme": background_theme,
+            }
+            items.append(item)
         return items
 
     def _plant_badge_image_html(self, plant: object) -> str:
@@ -285,7 +794,7 @@ class AnkiGardenApp:
         if resolver is None:
             return ""
         try:
-            path = resolver(plant.species, plant.growth_stage, plant.rare_variant)
+            path = resolver(plant.species, plant.growth_stage)
         except Exception:
             logger.debug("Anki Garden: unable to resolve home widget plant image", exc_info=True)
             return ""
@@ -304,6 +813,16 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else self.engine.resolve_background_image()
         except Exception:
             logger.debug("Anki Garden: unable to resolve home widget background", exc_info=True)
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_garden_overlay_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_garden_overlay_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug("Anki Garden: unable to resolve home garden-bed overlay", exc_info=True)
             return ""
         return self._asset_web_url(path)
 
@@ -334,22 +853,23 @@ class AnkiGardenApp:
                 )
                 DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
                 return fallback
-            sched = getattr(collection, "sched", None)
-            day_cutoff = getattr(sched, "day_cutoff", None)
-            if day_cutoff is None:
-                day_cutoff = getattr(sched, "dayCutoff", None)
-            if day_cutoff is None:
+            day_start_ms, day_end_ms = self.storage.current_scheduler_day_bounds_ms()
+            day_start_ms = int(day_start_ms)
+            day_end_ms = int(day_end_ms)
+            if day_start_ms <= 0 or day_end_ms <= day_start_ms:
                 DISPLAY_TELEMETRY.record_missing_or_invalid_field(
                     route="home_widget",
                     field="scheduler.day_cutoff",
-                    reason="missing_day_cutoff",
+                    reason="invalid_day_cutoff",
                     required=True,
                 )
                 DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
                 return fallback
-            cutoff_ms = max(0, (int(day_cutoff) - 86_400) * 1000)
             count = collection.db.scalar(
-                "select count(*) from revlog where id > ? and type in (0, 1, 2, 3)", cutoff_ms
+                "select count(*) from revlog where id >= ? and id < ? "
+                "and type in (0, 1, 2, 3)",
+                day_start_ms,
+                day_end_ms,
             )
             return max(0, int(count or 0))
         except Exception as exc:
@@ -357,68 +877,58 @@ class AnkiGardenApp:
             DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="reviews_today")
             return fallback
 
-    def _plant_emoji_for_stage(self, stage: str, rare: bool) -> str:
-        if rare:
-            return "🌟"
-        return {
-            "seed": "🟤",
-            "sprout": "🌱",
-            "young": "🌿",
-            "mature": "🌳",
-            "flowering": "🌸",
-            "rare": "✨",
-        }.get(stage, "🌱")
-
-    def _apply_retrospective_growth(self) -> None:
+    def _apply_same_day_catchup(self) -> tuple[int, int]:
         collection = getattr(mw, "col", None)
         if collection is None or getattr(collection, "db", None) is None:
-            return
-        last_id = int(self.storage.state.retrospective_last_revlog_id or 0)
-        rows = self.storage.load_new_revlog_entries(last_id)
+            raise RuntimeError("Anki review history is not available yet")
+        last_id = int(self.storage.state.last_processed_revlog_id or 0)
+        day_rows = self.storage.load_new_revlog_entries(last_id)
+        rows = ReviewerHookHandler.unseen_revlog_rows(day_rows, self.storage.state)
         if not rows:
             if last_id == 0:
-                self.storage.state.retrospective_last_revlog_id = self.storage.max_revlog_id()
-                self.storage.save()
-            return
+                # Use the scheduler-day boundary as a historical sentinel.
+                # Reading max(id) after an empty row query has a race: a review
+                # committed between those reads could be skipped forever.
+                bootstrap_id = max(0, int(self.storage.current_day_start_ms()) - 1)
+                previous_floor = int(
+                    getattr(self.storage.state, "processed_revlog_floor", 0) or 0
+                )
+                previous_ids = list(
+                    getattr(self.storage.state, "processed_revlog_ids", []) or []
+                )
+                self.storage.state.last_processed_revlog_id = bootstrap_id
+                self.storage.state.processed_revlog_floor = bootstrap_id
+                self.storage.state.processed_revlog_ids = []
+                try:
+                    self.storage.save()
+                except Exception:
+                    self.storage.state.last_processed_revlog_id = last_id
+                    self.storage.state.processed_revlog_floor = previous_floor
+                    self.storage.state.processed_revlog_ids = previous_ids
+                    raise
+            if self.dashboard:
+                try:
+                    self.dashboard.show_same_day_catchup_feedback(0, 0)
+                except Exception:
+                    logger.debug("Anki Garden: unable to clear synced-review notice", exc_info=True)
+            return 0, 0
 
         payloads = []
         latest_id = last_id
-        current_day_start_ms = self.storage.current_day_cutoff_ms()
-        for rid, cid, ease, ivl, last_ivl, factor, _ms, qtype in rows:
+        for row in rows:
+            rid = int(row[0])
             latest_id = max(latest_id, int(rid))
-            # Synced historical reviews must advance the cursor without being
-            # misreported as reviews completed today.
-            if current_day_start_ms and int(rid) < current_day_start_ms:
-                continue
-            retrospective_kind = queue_and_lapse_from_revlog_type(qtype, ease)
+            payload = ReviewerHookHandler.review_payload_from_row(row, collection)
             # Manual and rescheduled revlog rows are not answered cards and must
-            # advance the cursor without producing garden progress.
-            if retrospective_kind is None:
-                continue
-            queue, lapse_count = retrospective_kind
-            deck_id = None
-            try:
-                card = mw.col.get_card(int(cid))
-                deck_id = int(card.did)
-            except Exception:
-                pass
-            delta_ivl = max(0, int(ivl) - max(0, int(last_ivl)))
-            difficulty = difficulty_from_factor(factor)
-            if int(ease) == 1:
-                difficulty = min(1.0, difficulty + 0.15)
-            payloads.append(
-                {
-                    "ease": int(ease),
-                    "deck_id": deck_id,
-                    "difficulty": difficulty,
-                    "lapse_count": lapse_count,
-                    "queue": queue,
-                    "interval_delta": delta_ivl,
-                }
-            )
-        gained = self.engine.apply_retrospective_reviews(payloads, latest_revlog_id=latest_id)
-        if self.dashboard:
-            self.dashboard.show_retrospective_feedback(len(payloads), gained)
+            # advance the cursor without producing Garden progress.
+            if payload is not None:
+                payloads.append(payload)
+        gained = self.engine.apply_same_day_reviews(payloads, latest_revlog_id=latest_id)
+        try:
+            self.engine.evaluate_all_due(self.storage.due_obligations())
+        except Exception:
+            logger.debug("Anki Garden: unable to evaluate all-due completion after catch-up", exc_info=True)
+        return len(payloads), gained
 
 _app: Optional[AnkiGardenApp] = None
 
