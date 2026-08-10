@@ -1,22 +1,34 @@
-import sys
-from datetime import date
-from types import SimpleNamespace
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from __future__ import annotations
 
+import math
+from datetime import datetime
 from pathlib import Path
 
+import pytest
+
+from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
-from ankigarden.models.state import GardenState, Plant, PlantMemory, Quest
-from ankigarden.storage import GardenStorage
-import ankigarden.game as game_module
+from ankigarden.models.state import (
+    ActivePlantPeriod,
+    CURRENT_CATALOG_SPECIES_ORDER,
+    DailyStats,
+    Fertilizer,
+    FeedbackEvent,
+    GardenState,
+    GROWTH_STAGES,
+    GROWTH_THRESHOLDS,
+    HISTORICAL_PLANT_SPECIES_ORDER,
+    MAX_FERTILIZER_HISTORY,
+    PLANT_SPECIES,
+    PLANT_SPECIES_ORDER,
+    Plant,
+)
+from ankigarden.storage import DueObligationStatus, GardenStorage, SchedulerBoundaryError
 
 
 class FakeConfig:
-    def __init__(self) -> None:
-        from ankigarden.config import DEFAULT_CONFIG
-
-        self.data = DEFAULT_CONFIG
+    def __init__(self, **overrides):
+        self.data = {**DEFAULT_CONFIG, **overrides}
 
     def value(self, key, default=None):
         return self.data.get(key, default)
@@ -24,681 +36,1048 @@ class FakeConfig:
     def nested(self, *keys, default=None):
         node = self.data
         for key in keys:
-            if not isinstance(node, dict):
+            if not isinstance(node, dict) or key not in node:
                 return default
-            node = node.get(key)
-            if node is None:
-                return default
+            node = node[key]
         return node
 
 
 class FakeStorage:
-    def __init__(self) -> None:
-        self.state = GardenState()
-        self.state.plants = [Plant(plant_id="p1", species="bonsai", name="Bonsai", slot_index=0)]
-        self.addon_dir = Path(".")
-        self.assets_root = Path("./ankigarden/assets")
+    def __init__(self, *, goal: int = 50):
+        self.day = "2026-08-08"
+        self.day_start_ms = 1_786_100_000_000
+        self.now_ms = 1_786_150_000_000
+        p1 = Plant("p1", "bonsai", "Moss", 0)
+        p2 = Plant("p2", "rose", "Briar", 1)
+        self.state = GardenState(
+            plants=[p1, p2],
+            active_plant_id="p1",
+            daily_stats=DailyStats(day=self.day),
+            last_active_day="2026-08-06",
+            active_plant_periods=[ActivePlantPeriod(self.day, "p1", self.now_ms - 10_000)],
+        )
+        self.addon_dir = Path("ankigarden")
+        self.assets_root = self.addon_dir / "assets"
+        self.save_count = 0
+        self.fail_save = False
+        self.due_status = DueObligationStatus()
 
     def save(self):
-        return None
+        self.save_count += 1
+        if self.fail_save:
+            raise OSError("disk full")
+
+    def current_scheduler_day(self):
+        return self.day
+
+    def current_day_start_ms(self):
+        return self.day_start_ms
+
+    def current_time_ms(self):
+        return self.now_ms
+
+    def due_obligations(self):
+        return self.due_status
 
     def load_asset_metadata(self):
         return {}
 
-    def save_asset_metadata(self, data):
+    def save_asset_metadata(self, _data):
         return None
 
-    def load_social_hub(self):
-        return {"gardens": {}}
 
-    def save_social_hub(self, data):
-        return None
-
-    def save_cloud_snapshot(self, state_dict, reason="manual"):
-        return None
-
-    def load_cloud_snapshot(self):
-        return {"state": self.state.to_dict()}
+def make_engine(*, goal: int = 50):
+    storage = FakeStorage(goal=goal)
+    engine = GardenGameEngine(FakeConfig(), storage)
+    # Economy tests exercise purchase mechanics independently from the bundled
+    # manifest's intentionally incremental V6 catalog rollout.
+    engine.assets.release_ready_plant_species = lambda **_kwargs: tuple(engine.SPECIES_PRICES)
+    return engine, storage
 
 
-def test_growth_increases_after_review():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    before = st.state.plants[0].growth_points
-    engine.register_review({"queue": 2, "ease": 3, "deck_id": 1, "difficulty": 0.8, "lapse_count": 1})
-    assert st.state.plants[0].growth_points >= before
+def answer(engine: GardenGameEngine, storage: FakeStorage, *, ease: int = 3, revlog_id: int = 0):
+    storage.now_ms += 1_000
+    return engine.register_review({
+        "queue": 2,
+        "ease": ease,
+        "lapse_count": int(ease == 1),
+        "revlog_id": revlog_id,
+        "answered_at_ms": revlog_id or storage.now_ms,
+    })
 
 
-def test_zero_factor_uses_neutral_difficulty_for_live_and_catchup_reviews():
+def test_review_semantics_helpers_remain_stable():
     assert difficulty_from_factor(0) == difficulty_from_factor(None) == 0.25
-    assert difficulty_from_factor(2500) == 0.25
     assert difficulty_from_factor(1000) == 1.0
-
-
-def test_learning_revlog_type_is_stable_when_card_queue_changes_after_answer():
     assert queue_and_lapse_from_revlog_type(0, 3) == (1, 0)
+    assert queue_and_lapse_from_revlog_type(2, 1) == (1, 1)
+    assert queue_and_lapse_from_revlog_type(4, 3) is None
 
 
-def test_daily_goal_does_not_stop_growth():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    st.state.daily_stats.growth_earned = cfg.value("daily_goal") + 50
-    before = st.state.daily_stats.growth_earned
+def test_engine_startup_preserves_saved_day_until_scheduler_boundary_is_available():
+    storage = FakeStorage()
+    storage.state.daily_stats.day = "2026-03-07"
+    storage.current_scheduler_day = lambda: (_ for _ in ()).throw(
+        SchedulerBoundaryError("collection scheduler is not ready")
+    )
 
-    engine.register_review({"queue": 2, "ease": 3, "difficulty": 0.4})
+    engine = GardenGameEngine(FakeConfig(), storage)
 
-    assert st.state.daily_stats.growth_earned > before
-
-
-def test_daily_goal_reconciliation_preserves_progress_and_awards_once():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    st.state.daily_stats.growth_earned = 120
-    st.state.daily_quests = [Quest("growth", "Earn 140 garden growth", 140, "growth", progress=80, reward_growth=20)]
-
-    engine.reconcile_daily_goal(100)
-
-    quest = st.state.daily_quests[0]
-    assert quest.description == "Earn 100 garden growth"
-    assert quest.progress == 120
-    assert quest.completed is True
-    assert st.state.daily_stats.growth_earned == 140
-    history = list(st.state.quest_history)
-
-    engine.reconcile_daily_goal(90)
-
-    assert st.state.daily_stats.growth_earned == 140
-    assert st.state.quest_history == history
+    assert engine.state.daily_stats.day == "2026-03-07"
 
 
-def test_daily_goal_reconciliation_rolls_back_on_persistence_failure():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    st.state.daily_stats.growth_earned = 50
-    st.state.daily_quests = [Quest("growth", "Earn 140 garden growth", 140, "growth", progress=50, reward_growth=20)]
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+def test_new_scheduler_day_floor_ignores_future_scalar_cursor_and_counts_answer():
+    engine, storage = make_engine()
+    future_cursor = 9_999_999_999_999
+    storage.state.last_processed_revlog_id = future_cursor
+    storage.state.processed_revlog_floor = storage.day_start_ms - 1
+    storage.state.processed_revlog_ids = [storage.day_start_ms + 10]
+    storage.day = "2026-08-09"
+    storage.day_start_ms += 86_400_000
+    answer_id = storage.day_start_ms + 1
 
-    try:
-        engine.reconcile_daily_goal(100)
-    except OSError:
-        pass
-    else:
-        raise AssertionError("expected persistence failure")
+    engine.rollover_if_needed()
+    gained = engine.apply_same_day_reviews(
+        [{"queue": 2, "ease": 3, "revlog_id": answer_id, "answered_at_ms": answer_id}],
+        latest_revlog_id=answer_id,
+    )
 
-    quest = st.state.daily_quests[0]
-    assert quest.target == 140
-    assert quest.progress == 50
-    assert quest.completed is False
+    assert storage.state.processed_revlog_floor == storage.day_start_ms - 1
+    assert storage.state.processed_revlog_ids == [answer_id]
+    assert storage.state.last_processed_revlog_id == future_cursor
+    assert gained == 10
 
 
-def test_growth_emits_transition_only_when_stage_changes():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    plant = st.state.plants[0]
-    plant.growth_points = 79
+def test_catalog_price_name_and_personality_tables_match_exact_species_contract():
+    expected_prices = {
+        "bonsai": 100,
+        "rose": 100,
+        "sunflower": 150,
+        "lavender": 200,
+        "hydrangea": 250,
+        "peony": 300,
+        "foxglove": 350,
+        "japanese_maple": 400,
+        "wisteria": 500,
+        "dahlia": 600,
+    }
 
-    engine._award_growth(1)
+    assert tuple(expected_prices) == CURRENT_CATALOG_SPECIES_ORDER
+    assert GardenGameEngine.SPECIES_PRICES == expected_prices
+    assert set(GardenGameEngine.SPECIES_NAMES) == set(CURRENT_CATALOG_SPECIES_ORDER)
+    assert set(GardenGameEngine.SPECIES_PERSONALITY) == set(CURRENT_CATALOG_SPECIES_ORDER)
+    assert PLANT_SPECIES == frozenset(PLANT_SPECIES_ORDER)
+    assert set(CURRENT_CATALOG_SPECIES_ORDER).issubset(PLANT_SPECIES)
+    assert set(HISTORICAL_PLANT_SPECIES_ORDER).issubset(PLANT_SPECIES)
 
-    transitions = engine.consume_stage_transitions()
-    assert [item.to_dict() for item in transitions] == [
-        {
-            "plant_id": "p1",
-            "species": "bonsai",
-            "previous_stage": "seed",
-            "new_stage": "sprout",
-        }
+
+def test_multiword_species_uses_learner_facing_label_in_messages():
+    engine, _storage = make_engine()
+
+    ok, message, _plant = engine.purchase_species("japanese_maple")
+
+    assert not ok
+    assert message == "Japanese Maple costs 400 Garden Coins."
+
+
+@pytest.mark.parametrize("queue", [0, 1, 3, 2], ids=["new", "learning", "relearning", "review"])
+@pytest.mark.parametrize("ease", [1, 2, 3, 4], ids=["again", "hard", "good", "easy"])
+def test_all_answer_ratings_and_scheduler_queues_count_once(queue, ease):
+    engine, storage = make_engine(goal=5_000)
+    storage.now_ms += 1_000
+
+    award = engine.register_review({
+        "queue": queue,
+        "ease": ease,
+        "lapse_count": int(queue == 3 or ease == 1),
+        "revlog_id": storage.now_ms,
+        "answered_at_ms": storage.now_ms,
+    })
+
+    stats = storage.state.daily_stats
+    assert stats.reviewed == storage.state.total_reviews == 1
+    assert award.base_growth == 10
+    assert (stats.wrong, stats.correct) == ((1, 0) if ease == 1 else (0, 1))
+    assert stats.new_count == int(queue == 0)
+    assert stats.learning_count == int(queue in (1, 3))
+    assert stats.review_count == int(queue == 2)
+    assert stats.recovered_lapses == int(queue == 3 and ease > 1)
+
+
+def test_duplicate_live_revlog_row_is_ignored_completely():
+    engine, storage = make_engine(goal=5_000)
+    revlog_id = storage.now_ms + 1_000
+
+    first = engine.register_review({"queue": 2, "ease": 3, "revlog_id": revlog_id})
+    snapshot = storage.state.to_dict()
+    duplicate = engine.register_review({"queue": 2, "ease": 1, "revlog_id": revlog_id})
+
+    assert first.total_growth >= 10
+    assert duplicate.total_growth == 0
+    assert "already counted" in duplicate.paused_reason
+    assert storage.state.to_dict() == snapshot
+
+
+def test_day_one_answers_award_base_growth_without_a_streak_bonus():
+    engine, storage = make_engine()
+
+    first = answer(engine, storage)
+    second = answer(engine, storage)
+
+    assert first.base_growth == second.base_growth == 10
+    assert first.bonus_percent == second.bonus_percent == 0
+    assert first.bonus_growth == 0
+    assert second.bonus_growth == 0
+    assert storage.state.plants[0].growth_points == 20
+    assert storage.state.daily_stats.base_growth == 20
+    assert storage.state.daily_stats.bonus_growth == 0
+
+
+@pytest.mark.parametrize(
+    ("streak_days", "expected_bonus"),
+    [
+        (0, 0), (1, 0), (6, 0), (7, 5), (13, 5),
+        (14, 10), (29, 10), (30, 15), (99, 15),
+        (100, 20), (364, 20), (365, 25),
+    ],
+)
+def test_streak_bonus_tiers_are_exact(streak_days, expected_bonus):
+    assert GardenGameEngine.streak_bonus_percent(streak_days) == expected_bonus
+
+
+def test_missed_day_resets_streak_before_awarding_growth():
+    engine, storage = make_engine()
+    storage.state.streak_days = 10
+    award = answer(engine, storage)
+
+    assert storage.state.streak_days == 1
+    assert engine.current_streak_bonus_percent() == 0
+    assert award.base_growth == 10
+    assert award.bonus_growth == 0
+
+
+def test_streak_growth_bonus_is_fractional_and_never_reduces_base():
+    engine, storage = make_engine()
+    storage.state.streak_days = 7
+    storage.state.last_active_day = "2026-08-07"
+
+    first = answer(engine, storage)
+    second = answer(engine, storage)
+
+    assert first.bonus_percent == second.bonus_percent == 5
+    assert first.base_growth == second.base_growth == 10
+    assert first.streak_bonus_growth == 0
+    assert second.streak_bonus_growth == 1
+    assert storage.state.plants[0].growth_points == 21
+
+
+def test_growth_goes_only_to_active_plant_and_switches_for_future_answers():
+    engine, storage = make_engine()
+    answer(engine, storage)
+    before = storage.state.plants[0].growth_points
+
+    ok, _message = engine.set_active_plant("p2")
+    assert ok
+    answer(engine, storage)
+
+    assert storage.state.plants[0].growth_points == before
+    assert storage.state.plants[1].growth_points > 0
+    assert storage.state.daily_stats.plant_growth.keys() == {"p1", "p2"}
+
+
+def test_same_day_events_route_by_active_period_timestamp():
+    engine, storage = make_engine()
+    switch_at = storage.now_ms + 5_000
+    storage.now_ms = switch_at
+    assert engine.set_active_plant("p2")[0]
+    rows = [
+        {"queue": 2, "ease": 3, "revlog_id": switch_at - 1, "answered_at_ms": switch_at - 1},
+        {"queue": 2, "ease": 3, "revlog_id": switch_at + 1, "answered_at_ms": switch_at + 1},
     ]
-    engine._award_growth(1)
-    assert engine.consume_stage_transitions() == []
+
+    gained = engine.apply_same_day_reviews(rows, latest_revlog_id=switch_at + 1)
+
+    assert gained >= 20
+    assert storage.state.daily_stats.plant_growth.keys() == {"p1", "p2"}
+    assert engine.apply_same_day_reviews(rows, latest_revlog_id=switch_at + 1) == 0
 
 
-def test_growth_combines_multiple_plant_transitions():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1, growth_points=79))
-    st.state.plants[0].growth_points = 79
-    engine = GardenGameEngine(cfg, st)
-
-    engine._award_growth(6)
-
-    transitions = engine.consume_stage_transitions()
-    assert len(transitions) == 2
-    assert engine.stage_transition_message(transitions).startswith("Garden milestone!")
+def test_stage_thresholds_and_stage_local_progress_are_exact():
+    assert GROWTH_STAGES == ["seed", "sprout", "young", "mature", "flowering", "rare"]
+    assert GROWTH_THRESHOLDS == [0, 500, 2_500, 8_000, 20_000, 50_000]
+    plant = Plant("p", "lavender", "Violet", 0, growth_points=7_999)
+    assert plant.growth_stage == "young"
+    plant.growth_points = 8_000
+    assert plant.growth_stage == "mature"
 
 
-def test_large_growth_records_each_crossed_stage_once():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
+def test_growth_milestones_stage_reward_and_transition_are_durable():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    plant.growth_points = 490
 
-    engine._award_growth(500)
-    engine._award_growth(10)
+    answer(engine, storage)
 
-    assert [memory.memory_id for memory in st.state.plants[0].memories] == [
-        "stage:sprout", "stage:young", "stage:mature",
+    assert plant.growth_stage == "sprout"
+    assert engine.peek_stage_transitions()[0].new_stage == "sprout"
+    assert storage.state.currency_balance == 5
+    assert any(tx.reason == "Moss reached Sprout" for tx in storage.state.currency_transactions)
+    assert any(memory.memory_id == "stage:sprout" for memory in plant.memories)
+    assert any(
+        event.message == "Moss reached Sprout and earned 5 Garden Coins."
+        for event in engine.peek_feedback()
+    )
+
+
+def test_streak_reward_feedback_reads_as_a_sentence() -> None:
+    engine, storage = make_engine()
+    storage.state.streak_days = 6
+    storage.state.last_active_day = "2026-08-07"
+
+    engine._start_study_day()
+
+    assert storage.state.streak_days == 7
+    assert any(
+        event.message == "Your 7-day Anki streak earned 25 Garden Coins."
+        for event in engine.peek_feedback()
+    )
+
+
+def test_twenty_five_fifty_and_seventy_five_percent_feedback_uses_stage_interval():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    plant.growth_points = 119
+    answer(engine, storage)
+    assert any("25%" in event.message for event in engine.peek_feedback())
+    plant.growth_points = 249
+    answer(engine, storage)
+    assert any("50%" in event.message for event in engine.peek_feedback())
+    plant.growth_points = 369
+    answer(engine, storage)
+    assert any("75%" in event.message for event in engine.peek_feedback())
+
+
+def test_rare_stage_caps_growth_pauses_and_does_not_overflow():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    plant.growth_points = 49_995
+
+    award = answer(engine, storage)
+    paused = answer(engine, storage)
+
+    assert plant.growth_points == 50_000
+    assert award.total_growth == 5
+    assert storage.state.active_plant_id is None
+    assert paused.total_growth == 0
+    assert paused.paused_reason == "Choose an unfinished plant to nurture to resume Growth."
+
+
+def test_rare_restart_and_geometry_migration_preserve_the_intentional_growth_pause(
+    tmp_path,
+):
+    storage = FakeStorage()
+    storage.state.plants[0].growth_points = 50_000
+    storage.state.active_plant_id = None
+    paused_at_ms = storage.now_ms - 1_000
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(storage.day, None, paused_at_ms)
+    ]
+    storage.state.scene_geometry_version = 5
+    # Exercise the saved schema-14 contract, not merely an in-memory null.
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    storage.user_files_dir = tmp_path / "user_files"
+    storage.cache_dir = storage.user_files_dir / "cache"
+
+    GardenStorage._ensure_defaults(storage)
+    engine = GardenGameEngine(FakeConfig(), storage)
+    unfinished = storage.state.plants[1]
+    before = unfinished.growth_points
+    award = answer(engine, storage)
+
+    assert storage.state.scene_geometry_version == 6
+    assert storage.state.active_plant_id is None
+    assert [(period.plant_id, period.started_at_ms) for period in storage.state.active_plant_periods] == [
+        (None, paused_at_ms)
+    ]
+    assert award.total_growth == 0
+    assert unfinished.growth_points == before
+    assert award.paused_reason == "Choose an unfinished plant to nurture to resume Growth."
+
+
+def test_dangling_non_null_saved_active_reference_repairs_deterministically_with_period(
+    tmp_path,
+):
+    storage = FakeStorage()
+    payload = storage.state.to_dict()
+    payload["active_plant_id"] = "missing-plant"
+    payload["active_plant_periods"] = [{
+        "day": storage.day,
+        "plant_id": "missing-plant",
+        "started_at_ms": storage.now_ms - 1_000,
+    }]
+    payload["scene_geometry_version"] = 5
+    storage.state = GardenState.from_dict(payload)
+    storage.user_files_dir = tmp_path / "user_files"
+    storage.cache_dir = storage.user_files_dir / "cache"
+
+    GardenStorage._ensure_defaults(storage)
+    engine = GardenGameEngine(FakeConfig(), storage)
+
+    assert storage.state.active_plant_id == "p1"
+    assert [period.plant_id for period in storage.state.active_plant_periods] == [None, "p1"]
+    assert storage.state.active_plant_periods[-1] == ActivePlantPeriod(
+        storage.day, "p1", storage.now_ms
+    )
+    assert answer(engine, storage).plant_id == "p1"
+
+
+@pytest.mark.parametrize(
+    ("slot_index", "growth_points"),
+    [(None, 0), (1, GROWTH_THRESHOLDS[-1])],
+)
+def test_saved_non_null_unusable_active_target_repairs_to_a_routable_plant(
+    tmp_path,
+    slot_index,
+    growth_points,
+):
+    storage = FakeStorage()
+    payload = storage.state.to_dict()
+    payload["plants"][1]["slot_index"] = slot_index
+    payload["plants"][1]["growth_points"] = growth_points
+    payload["active_plant_id"] = "p2"
+    payload["active_plant_periods"] = [{
+        "day": storage.day,
+        "plant_id": "p2",
+        "started_at_ms": storage.now_ms - 1_000,
+    }]
+    storage.state = GardenState.from_dict(payload)
+    storage.user_files_dir = tmp_path / "user_files"
+    storage.cache_dir = storage.user_files_dir / "cache"
+
+    GardenStorage._ensure_defaults(storage)
+
+    assert storage.state.active_plant_id == "p1"
+    assert [period.plant_id for period in storage.state.active_plant_periods] == ["p2", "p1"]
+    assert storage.state.active_plant_periods[-1].started_at_ms == storage.now_ms
+
+
+def test_all_due_requires_an_answer_live_zero_obligations_and_is_once_per_day():
+    engine, storage = make_engine()
+    assert engine.evaluate_all_due(DueObligationStatus()) == (
+        False,
+        "Answer at least one card before you can earn the reward for finishing all due cards.",
+    )
+    answer(engine, storage)
+    assert not engine.evaluate_all_due(DueObligationStatus(review_count=1))[0]
+
+    ok, message = engine.evaluate_all_due(DueObligationStatus())
+    assert ok and message == "You finished all due cards and earned 10 Garden Coins."
+    assert storage.state.daily_stats.completed_due_cards
+    balance = storage.state.currency_balance
+    assert not engine.evaluate_all_due(DueObligationStatus(review_count=9, learning_count=4))[0]
+    assert storage.state.daily_stats.completed_due_cards
+    assert storage.state.currency_balance == balance
+
+
+def test_all_due_check_persists_scheduler_rollover_even_when_not_earned():
+    engine, storage = make_engine()
+    storage.state.daily_stats.reviewed = 1
+    storage.day = "2026-08-09"
+    storage.now_ms += 86_400_000
+    saves_before = storage.save_count
+
+    ok, message = engine.evaluate_all_due(DueObligationStatus(review_count=2))
+
+    assert not ok and "at least one card" in message
+    assert storage.state.daily_stats.day == "2026-08-09"
+    assert storage.save_count == saves_before + 1
+
+
+def test_progress_estimates_return_card_answers_only():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    plant.growth_points = 500
+    assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 10)
+
+
+def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypatch):
+    engine, storage = make_engine()
+    answer(engine, storage)
+    storage.state.currency_balance = 200
+    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
+
+    ok, _message = engine.purchase_fertilizer("p1", "quality")
+    assert ok
+    plant = storage.state.plants[0]
+    assert plant.fertilizer.tier == "quality"
+    assert plant.fertilizer.started_at == 1_000
+    assert plant.fertilizer.expires_at == 1_000 + 7_200
+    assert storage.state.currency_balance == 135
+    assert engine.fertilizer_growth(plant, now=999.999) == 0
+    assert engine.fertilizer_growth(plant, now=1_000) == 2
+    assert engine.fertilizer_growth(plant, now=1_001) == 2
+    assert engine.fertilizer_growth(storage.state.plants[1], now=1_001) == 0
+    assert engine.fertilizer_growth(plant, now=9_000) == 0
+    assert any(
+        event.message
+        == "Quality Fertilizer is active on Moss. Each card answer adds 2 extra Growth for 2 hours."
+        for event in engine.peek_feedback()
+    )
+
+
+def test_same_fertilizer_extends_and_different_tier_requires_confirmation(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    now = [1_000.0]
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    first_start = storage.state.plants[0].fertilizer.started_at
+    first_expiration = storage.state.plants[0].fertilizer.expires_at
+    now[0] = 1_100.0
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    assert storage.state.plants[0].fertilizer.started_at == first_start
+    assert storage.state.plants[0].fertilizer.expires_at == first_expiration + 3_600
+    assert not engine.purchase_fertilizer("p1", "premium")[0]
+    assert storage.state.plants[0].fertilizer_history == []
+    now[0] = 1_200.0
+    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
+    assert storage.state.plants[0].fertilizer.started_at == 1_200
+    assert storage.state.plants[0].fertilizer_history == [
+        Fertilizer("basic", 1, 1_200.0, 1_000.0)
     ]
 
 
-def test_focus_growth_preserves_total_and_favors_selected_plant():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.plants.extend([
-        Plant(plant_id="p2", species="rose", name="Rose", slot_index=1),
-        Plant(plant_id="p3", species="fern", name="Fern", slot_index=2),
-    ])
-    engine = GardenGameEngine(cfg, st)
-    assert engine.set_focus_plant("p2")[0] is True
+def test_replaced_fertilizer_keeps_the_prior_tier_for_late_synced_answers(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    now = [1_000.0]
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    now[0] = 1_200.0
+    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
 
-    engine._award_growth(11)
+    plant = storage.state.plants[0]
+    assert plant.fertilizer_history == [Fertilizer("basic", 1, 1_200.0, 1_000.0)]
+    assert engine.fertilizer_growth(plant, now=999.999) == 0
+    assert engine.fertilizer_growth(plant, now=1_100.0) == 1
+    assert engine.fertilizer_growth(plant, now=1_200.0) == 3
+    assert engine.fertilizer_growth(plant, now=15_600.0) == 0
 
-    growth = {plant.plant_id: plant.growth_points for plant in st.state.plants}
-    assert sum(growth.values()) == 11
-    assert growth == {"p1": 1, "p2": 9, "p3": 1}
+    gained = engine.apply_same_day_reviews(
+        [
+            {"queue": 2, "ease": 3, "revlog_id": 999_000, "answered_at_ms": 999_000},
+            {"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000},
+            {"queue": 2, "ease": 3, "revlog_id": 1_200_000, "answered_at_ms": 1_200_000},
+            {"queue": 2, "ease": 3, "revlog_id": 15_600_000, "answered_at_ms": 15_600_000},
+        ],
+        latest_revlog_id=15_600_000,
+    )
 
-
-def test_invalid_focus_is_repaired_to_first_slot():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
-    st.state.focus_plant_id = "missing"
-
-    engine = GardenGameEngine(cfg, st)
-
-    assert engine.focus_plant().plant_id == "p1"
-    assert engine.set_focus_plant("missing")[0] is False
-
-
-def test_first_focus_memory_is_deduplicated_and_rename_is_transactional():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    assert engine.set_focus_plant("p1")[0] is True
-    assert engine.set_focus_plant("p1")[0] is True
-    assert [memory.memory_id for memory in st.state.plants[0].memories] == ["focus:first"]
-    assert engine.rename_plant("p1", "  Little   Moss  ") == (True, "This plant is now named Little Moss.")
-    assert st.state.plants[0].name == "Little Moss"
-    assert engine.rename_plant("p1", " ")[0] is False
-
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
-    assert engine.rename_plant("p1", "Juniper")[0] is False
-    assert st.state.plants[0].name == "Little Moss"
+    assert gained == 44
+    assert storage.state.daily_stats.base_growth == 40
+    assert storage.state.daily_stats.fertilizer_growth == 4
 
 
-def test_generated_names_avoid_duplicates_with_stable_suffixes():
-    st = FakeStorage()
-    st.state.plants = [
-        Plant("p1", "fern", "Fiddle", 0),
-        Plant("p2", "fern", "Frond", 1),
-        Plant("p3", "fern", "Clover", 2),
-        Plant("p4", "fern", "Fiddle 2", 3),
+def test_expired_fertilizer_is_retained_when_the_tier_is_purchased_again(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    now = [1_000.0]
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    now[0] = 5_000.0
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+
+    plant = storage.state.plants[0]
+    assert plant.fertilizer_history == [Fertilizer("basic", 1, 4_600.0, 1_000.0)]
+    assert plant.fertilizer == Fertilizer("basic", 1, 8_600.0, 5_000.0)
+    assert engine.fertilizer_growth(plant, now=4_500.0) == 1
+    assert engine.fertilizer_growth(plant, now=4_700.0) == 0
+    assert engine.fertilizer_growth(plant, now=5_000.0) == 1
+    assert engine.fertilizer_growth(plant, now=8_600.0) == 0
+
+    gained = engine.apply_same_day_reviews(
+        [
+            {"queue": 2, "ease": 3, "revlog_id": 4_500_000, "answered_at_ms": 4_500_000},
+            {"queue": 2, "ease": 3, "revlog_id": 4_700_000, "answered_at_ms": 4_700_000},
+            {"queue": 2, "ease": 3, "revlog_id": 5_000_000, "answered_at_ms": 5_000_000},
+            {"queue": 2, "ease": 3, "revlog_id": 8_600_000, "answered_at_ms": 8_600_000},
+        ],
+        latest_revlog_id=8_600_000,
+    )
+
+    assert gained == 42
+    assert storage.state.daily_stats.fertilizer_growth == 2
+
+
+def test_fertilizer_history_survives_restart_and_routes_late_answer_once(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    now = [1_000.0]
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    now[0] = 1_200.0
+    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
+
+    storage.state = GardenState.from_dict(storage.state.to_dict())
+    restarted = GardenGameEngine(FakeConfig(), storage)
+    restarted.assets.release_ready_plant_species = lambda **_kwargs: tuple(restarted.SPECIES_PRICES)
+    plant = storage.state.plants[0]
+
+    assert plant.fertilizer_history == [Fertilizer("basic", 1, 1_200.0, 1_000.0)]
+    first = restarted.apply_same_day_reviews(
+        [{"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000}],
+        latest_revlog_id=1_100_000,
+    )
+    second = restarted.apply_same_day_reviews(
+        [{"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000}],
+        latest_revlog_id=1_100_000,
+    )
+
+    assert first == 11
+    assert second == 0
+    assert storage.state.daily_stats.fertilizer_growth == 1
+
+
+def test_fertilizer_history_cap_fails_closed_before_spending(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    plant = storage.state.plants[0]
+    plant.fertilizer_history = [
+        Fertilizer("basic", 1, float(index * 2 + 2), float(index * 2 + 1))
+        for index in range(MAX_FERTILIZER_HISTORY)
     ]
-    engine = GardenGameEngine(FakeConfig(), st)
+    plant.fertilizer = Fertilizer("quality", 2, 1_000.0, 500.0)
+    monkeypatch.setattr(engine, "_now_seconds", lambda: 2_000.0)
+    before = storage.state.to_dict()
 
-    assert engine._generated_name("fern") == "Fiddle 3"
+    ok, message = engine.purchase_fertilizer("p1", "basic")
 
-
-def test_focus_plant_owns_streak_and_review_memories_at_thresholds(monkeypatch):
-    st = FakeStorage()
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Briar", slot_index=1))
-    st.state.focus_plant_id = "p2"
-    st.state.streak_days = 6
-    st.state.total_reviews = 249
-    st.state.daily_stats.reviewed = 0
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    engine.register_review({"queue": 2, "ease": 3})
-
-    focus_memories = {memory.memory_id for memory in st.state.plants[1].memories}
-    assert {"streak:7", "reviews:250"} <= focus_memories
-    assert st.state.plants[0].memories == []
+    assert not ok
+    assert "history is full" in message
+    assert storage.state.to_dict() == before
 
 
-def test_place_plant_moves_to_empty_slot_and_persists_once():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    saves = []
-    st.save = lambda: saves.append(st.state.to_dict())
-    engine = GardenGameEngine(FakeConfig(), st)
-    saves.clear()
+def test_scheduler_day_rollover_prunes_only_unreachable_fertilizer_intervals():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    plant.fertilizer_history = [
+        Fertilizer("basic", 1, 90.0, 10.0),
+        Fertilizer("quality", 2, 110.0, 80.0),
+    ]
+    plant.fertilizer = Fertilizer("premium", 3, 120.0, 95.0)
+    storage.state.daily_stats.day = "2026-08-08"
+    storage.day = "2026-08-09"
+    storage.day_start_ms = 100_000
 
-    ok, message, change = engine.place_plant("p1", 2)
+    engine.rollover_if_needed()
 
-    assert ok is True and message == "Plants moved."
-    assert st.state.plants[0].slot_index == 2
-    assert change.to_dict() == {"before": {"p1": 0}, "after": {"p1": 2}}
-    assert len(saves) == 1
-
-
-def test_place_plant_swaps_occupied_slots_atomically():
-    st = FakeStorage()
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    ok, _message, change = engine.place_plant("p1", 1)
-
-    assert ok is True
-    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 1, "p2": 0}
-    assert change.before == {"p1": 0, "p2": 1}
+    assert plant.fertilizer_history == [Fertilizer("quality", 2, 110.0, 80.0)]
+    assert plant.fertilizer == Fertilizer("premium", 3, 120.0, 95.0)
 
 
-def test_place_plant_rejects_invalid_locked_and_duplicate_ids_without_saving():
-    st = FakeStorage()
-    saves = []
-    st.save = lambda: saves.append(True)
-    engine = GardenGameEngine(FakeConfig(), st)
-    saves.clear()
-    assert engine.place_plant("missing", 1)[0] is False
-    assert engine.place_plant("p1", 2)[0] is False
-    st.state.plants.append(Plant(plant_id="p1", species="rose", name="Rose", slot_index=1))
-    assert engine.place_plant("p1", 1)[0] is False
-    assert saves == []
+@pytest.mark.parametrize(
+    ("tier", "growth_per_answer", "duration", "price"),
+    [("basic", 1, 3_600, 25), ("quality", 2, 7_200, 65), ("premium", 3, 14_400, 150)],
+)
+def test_fertilizer_tiers_and_expiry_boundary_are_exact(monkeypatch, tier, growth_per_answer, duration, price):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
+
+    ok, _message = engine.purchase_fertilizer("p1", tier)
+    plant = storage.state.plants[0]
+
+    assert ok
+    assert plant.fertilizer.growth_per_answer == growth_per_answer
+    assert plant.fertilizer.started_at == 1_000
+    assert plant.fertilizer.expires_at == 1_000 + duration
+    assert storage.state.currency_balance == 500 - price
+    assert engine.fertilizer_growth(plant, now=plant.fertilizer.expires_at - 0.001) == growth_per_answer
+    assert engine.fertilizer_growth(plant, now=plant.fertilizer.expires_at) == 0
 
 
-def test_place_plant_rolls_back_when_persistence_fails():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    engine = GardenGameEngine(FakeConfig(), st)
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+def test_synced_answers_only_receive_fertilizer_during_the_activation_interval(monkeypatch):
+    engine, storage = make_engine()
+    storage.state.currency_balance = 500
+    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
+    assert engine.purchase_fertilizer("p1", "quality")[0]
 
-    ok, _message, change = engine.place_plant("p1", 2)
+    gained = engine.apply_same_day_reviews(
+        [
+            {"queue": 2, "ease": 3, "revlog_id": 999_000, "answered_at_ms": 999_000},
+            {"queue": 2, "ease": 3, "revlog_id": 1_000_000, "answered_at_ms": 1_000_000},
+            {"queue": 2, "ease": 3, "revlog_id": 8_200_000, "answered_at_ms": 8_200_000},
+        ],
+        latest_revlog_id=8_200_000,
+    )
 
-    assert ok is False and change is None
-    assert st.state.plants[0].slot_index == 0
-
-
-def test_restore_placement_supports_exactly_the_latest_move():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    engine = GardenGameEngine(FakeConfig(), st)
-    change = engine.place_plant("p1", 2)[2]
-
-    ok, _message, _inverse = engine.restore_placement(change)
-
-    assert ok is True
-    assert st.state.plants[0].slot_index == 0
-    assert engine.restore_placement(change)[0] is False
+    assert gained == 32
+    assert storage.state.daily_stats.base_growth == 30
+    assert storage.state.daily_stats.fertilizer_growth == 2
 
 
-def test_placement_draft_stages_multiple_changes_without_saving_until_done():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
-    saves = []
-    st.save = lambda: saves.append(st.state.to_dict())
-    engine = GardenGameEngine(FakeConfig(), st)
-    saves.clear()
+def test_out_of_order_same_day_revlog_id_uses_ledger_not_scalar_cursor():
+    engine, storage = make_engine()
+    storage.state.processed_revlog_floor = 100
+    storage.state.processed_revlog_ids = [200]
+    storage.state.last_processed_revlog_id = 200
 
+    rows = [
+        {"queue": 2, "ease": 3, "revlog_id": 150, "answered_at_ms": storage.now_ms},
+        {"queue": 2, "ease": 3, "revlog_id": 200, "answered_at_ms": storage.now_ms},
+    ]
+    first = engine.apply_same_day_reviews(rows, latest_revlog_id=200)
+    second = engine.apply_same_day_reviews(rows, latest_revlog_id=200)
+
+    assert first == 10
+    assert second == 0
+    assert storage.state.daily_stats.reviewed == 1
+    assert storage.state.processed_revlog_ids == [150, 200]
+    assert storage.state.last_processed_revlog_id == 200
+
+
+def test_species_bed_and_collection_economy_preserves_plant_progress():
+    engine, storage = make_engine()
+    storage.state.currency_balance = 1_000
+
+    ok, _message, sunflower = engine.purchase_species("sunflower")
+    assert ok and sunflower is not None and not sunflower.planted
+    assert engine.purchase_next_bed()[0]
+    assert engine.plant_from_collection(sunflower.plant_id)[0]
+    sunflower.growth_points = 777
+    assert engine.move_to_collection("p2")[0]
+    assert storage.state.plants[1].growth_points == 0
+    assert engine.move_to_collection("p1")[0] is False
+    assert sunflower.growth_points == 777
+
+
+@pytest.mark.parametrize("invalid_destination", ["not-a-bed", object()])
+def test_collection_planting_rejects_invalid_external_destination_without_mutation(
+    invalid_destination,
+):
+    engine, storage = make_engine()
+    storage.state.unlocked_slots = 3
+    shelved = Plant("p3", "sunflower", "Sunny", None)
+    storage.state.plants.append(shelved)
+    before = storage.state.to_dict()
+    saves_before = storage.save_count
+
+    ok, message = engine.plant_from_collection("p3", invalid_destination)
+
+    assert not ok
+    assert message == "Choose an empty unlocked garden bed."
+    assert storage.state.to_dict() == before
+    assert storage.save_count == saves_before
+
+
+def test_invalid_and_insufficient_economy_actions_do_not_mutate_state():
+    engine, storage = make_engine()
+    before = storage.state.to_dict()
+
+    assert not engine.purchase_fertilizer("missing", "quality")[0]
+    assert not engine.purchase_fertilizer("p1", "invalid")[0]
+    assert not engine.purchase_fertilizer("p1", "quality")[0]
+    assert not engine.purchase_species("bonsai")[0]
+    assert not engine.purchase_species("invalid")[0]
+    assert not engine.purchase_species("sunflower")[0]
+    assert not engine.purchase_next_bed()[0]
+    assert storage.state.to_dict() == before
+
+
+def test_species_beds_capacity_and_duplicate_purchases_are_enforced():
+    engine, storage = make_engine()
+    storage.state.currency_balance = 10_000
+
+    purchased = []
+    for species in (
+        "sunflower", "lavender", "hydrangea", "peony",
+        "foxglove", "japanese_maple", "wisteria", "dahlia",
+    ):
+        ok, _message, plant = engine.purchase_species(species)
+        assert ok and plant is not None
+        purchased.append(plant)
+        assert not engine.purchase_species(species)[0]
+    assert len(storage.state.plants) == 10
+    assert not engine.purchase_species("sunflower")[0]
+
+    while storage.state.unlocked_slots < 6:
+        assert engine.purchase_next_bed()[0]
+    assert engine.next_bed_price() is None
+    assert not engine.purchase_next_bed()[0]
+
+
+def test_feedback_queue_is_ordered_deduplicated_bounded_and_persisted():
+    engine, storage = make_engine()
+    for index in range(110):
+        assert engine._queue_feedback(f"event:{index}", "test", f"Message {index}")
+    assert not engine._queue_feedback("event:109", "test", "Duplicate")
+    assert len(engine.peek_feedback()) == 100
+    assert engine.peek_feedback()[0].event_id == "event:10"
+
+    consumed = engine.consume_feedback(limit=3)
+
+    assert [event.event_id for event in consumed] == ["event:10", "event:11", "event:12"]
+    assert engine.peek_feedback()[0].event_id == "event:13"
+    assert storage.save_count > 0
+
+
+def test_feedback_acknowledgement_by_rendered_ids_survives_queue_cap_churn():
+    engine, _storage = make_engine()
+    assert engine._queue_feedback("rendered:A", "test", "Rendered A")
+    assert engine._queue_feedback("rendered:B", "test", "Rendered B")
+    rendered_ids = ("rendered:A", "rendered:B")
+
+    # The 100-item cap drops A while B remains and all later events are new.
+    for index in range(99):
+        assert engine._queue_feedback(f"new:{index}", "test", f"New {index}")
+    before = [event.event_id for event in engine.peek_feedback()]
+    assert "rendered:A" not in before
+    assert "rendered:B" in before
+
+    consumed = engine.consume_feedback(event_ids=rendered_ids)
+    remaining = [event.event_id for event in engine.peek_feedback()]
+
+    assert [event.event_id for event in consumed] == ["rendered:B"]
+    assert remaining == [event_id for event_id in before if event_id != "rendered:B"]
+    assert remaining == [f"new:{index}" for index in range(99)]
+
+
+def test_placement_draft_swap_undo_and_commit_are_deterministic():
+    engine, storage = make_engine()
     ok, _message, draft = engine.begin_placement_draft("p1")
     assert ok and draft is not None
     assert engine.stage_placement(draft, 1)[0]
-    assert engine.stage_placement(draft, 2)[0]
-    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 0, "p2": 1}
-    assert saves == []
-
-    ok, _message, change = engine.commit_placement_draft(draft)
-    assert ok and change is not None
-    assert {plant.plant_id: plant.slot_index for plant in st.state.plants} == {"p1": 2, "p2": 0}
-    assert len(saves) == 1
-
-
-def test_placement_draft_undo_cancel_and_stale_commit_fail_closed():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    engine = GardenGameEngine(FakeConfig(), st)
-    ok, _message, draft = engine.begin_placement_draft("p1")
-    assert ok and draft is not None
-    assert engine.stage_placement(draft, 2)[0]
-    assert draft.current["p1"] == 2
-    assert engine.undo_staged_placement(draft) == (True, "Move undone.")
-    assert draft.current == draft.original
-
-    assert engine.stage_placement(draft, 2)[0]
-    st.state.plants[0].slot_index = 1
-    ok, message, change = engine.commit_placement_draft(draft)
-    assert not ok and change is None
-    assert "changed while" in message
-    assert st.state.plants[0].slot_index == 1
-
-
-def test_placement_draft_rolls_back_if_done_cannot_save():
-    st = FakeStorage()
-    st.state.unlocked_slots = 3
-    engine = GardenGameEngine(FakeConfig(), st)
-    draft = engine.begin_placement_draft("p1")[2]
-    assert draft is not None and engine.stage_placement(draft, 2)[0]
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
-
-    ok, _message, change = engine.commit_placement_draft(draft)
-
-    assert not ok and change is None
-    assert st.state.plants[0].slot_index == 0
-
-
-def test_milestone_offer_is_stable_and_claim_unlocks_one_slot():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.total_reviews = 250
-    engine = GardenGameEngine(cfg, st)
-
-    pending = engine.pending_milestone()
-    assert pending is not None
-    assert pending.review_count == 250
-    assert pending.offered_species == ["fern", "cactus", "ivy"]
-    assert engine.pending_milestone().offered_species == pending.offered_species
-
-    ok, _message = engine.claim_milestone_reward("fern")
-
-    assert ok is True
-    assert st.state.unlocked_slots == 3
-    assert st.state.plants[-1].species == "fern"
-    assert st.state.plants[-1].name == "Fiddle"
-    assert [memory.memory_id for memory in st.state.plants[-1].memories] == ["planted"]
-    assert engine.pending_milestone() is None
-    assert engine.next_milestone() == 700
-
-
-def test_multiple_earned_milestones_are_claimed_one_at_a_time():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.total_reviews = 2000
-    engine = GardenGameEngine(cfg, st)
-
-    assert engine.pending_milestone().review_count == 250
-    assert engine.claim_milestone_reward("fern")[0] is True
-    assert engine.pending_milestone().review_count == 700
-    assert engine.claim_milestone_reward("cactus")[0] is True
-    assert engine.pending_milestone().review_count == 1500
-
-
-def test_milestone_rejects_stale_or_unoffered_choice():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.total_reviews = 250
-    engine = GardenGameEngine(cfg, st)
-
-    assert engine.claim_milestone_reward("moonflower")[0] is False
-    assert st.state.unlocked_slots == 2
-
-
-def test_rare_threshold_emits_rare_transition():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    st.state.plants[0].growth_points = 1399
-
-    engine._award_growth(1)
-
-    transition = engine.consume_stage_transitions()[0]
-    assert transition.previous_stage == "flowering"
-    assert transition.new_stage == "rare"
-
-
-def test_quest_bonus_uses_daily_growth_accounting():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    st.state.daily_quests = [Quest("one", "Review once", 1, "reviewed", reward_growth=20)]
-
-    engine.register_review({"queue": 2, "ease": 3, "difficulty": 0.4})
-
-    assert st.state.daily_quests[0].completed is True
-    assert st.state.daily_stats.growth_earned >= 20
-
-
-def test_engine_startup_preserves_same_day_quest_progress():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    st.state.daily_quests = [Quest("reviews", "Complete reviews", 50, "reviewed", progress=7)]
-
-    GardenGameEngine(cfg, st)
-
-    assert len(st.state.daily_quests) == 1
-    assert st.state.daily_quests[0].progress == 7
-
-
-def test_hidden_legacy_systems_are_not_engine_interfaces():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    assert not hasattr(engine, "start_focus_session")
-    assert not hasattr(engine, "configure_exam_mode")
-    assert not hasattr(engine, "purchase_item")
-    assert not hasattr(engine, "assign_deck_to_plant")
-
-
-def test_malformed_review_payload_is_bounded_and_saved():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    engine.register_review({"queue": object(), "ease": "bad", "difficulty": 99, "lapse_count": -8})
-
-    assert st.state.daily_stats.reviewed == 1
-    assert st.state.daily_stats.wrong == 1
-    assert st.state.daily_stats.growth_earned >= 0
-
-
-def test_review_save_failure_restores_entire_state():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    before = st.state.to_dict()
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
-
-    try:
-        engine.register_review({"queue": 2, "ease": 3, "revlog_id": 99})
-    except OSError:
-        pass
-
-    assert st.state.to_dict() == before
-
-
-def test_focus_save_failure_restores_previous_selection():
-    st = FakeStorage()
-    st.state.plants.append(Plant(plant_id="p2", species="rose", name="Rose", slot_index=1))
-    engine = GardenGameEngine(FakeConfig(), st)
-    assert engine.focus_plant().plant_id == "p1"
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
-
-    ok, message = engine.set_focus_plant("p2")
-
-    assert ok is False and "previous plant" in message
-    assert st.state.focus_plant_id == "p1"
-
-
-def test_live_review_persists_revlog_cursor_with_progress():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    engine.register_review({"queue": 2, "ease": 3, "revlog_id": 321})
-
-    assert st.state.retrospective_last_revlog_id == 321
-
-
-def test_consecutive_day_rollover_preserves_streak_until_first_review(monkeypatch):
-    class Today(date):
-        @classmethod
-        def today(cls):
-            return cls(2026, 7, 11)
-
-    monkeypatch.setattr(game_module, "date", Today)
-    st = FakeStorage()
-    st.state.daily_stats.day = "2026-07-10"
-    st.state.last_active_day = "2026-07-10"
-    st.state.streak_days = 5
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    engine.rollover_if_needed()
-    assert st.state.streak_days == 5
-    engine.register_review({"ease": 3})
-    assert st.state.streak_days == 6
-
-
-def test_missed_day_resets_streak_and_applies_bounded_vitality_decay(monkeypatch):
-    class Today(date):
-        @classmethod
-        def today(cls):
-            return cls(2026, 7, 12)
-
-    monkeypatch.setattr(game_module, "date", Today)
-    st = FakeStorage()
-    st.state.daily_stats.day = "2026-07-10"
-    st.state.last_active_day = "2026-07-10"
-    st.state.streak_days = 8
-    st.state.plants[0].vitality = 0.45
-    engine = GardenGameEngine(FakeConfig(), st)
-
-    engine.rollover_if_needed()
-
-    assert st.state.streak_days == 0
-    assert st.state.plants[0].vitality == 0.42
-
-
-def test_retrospective_batch_saves_cursor_with_progress_once():
-    st = FakeStorage()
-    saves = []
-    st.save = lambda: saves.append(st.state.to_dict())
-    engine = GardenGameEngine(FakeConfig(), st)
-    saves.clear()
-
-    gained = engine.apply_retrospective_reviews([{"ease": 3, "queue": 2}], latest_revlog_id=88)
-
-    assert gained > 0
-    assert st.state.daily_stats.reviewed == 1
-    assert st.state.retrospective_last_revlog_id == 88
-    assert len(saves) == 1
-
-
-def test_retrospective_first_review_matches_live_growth_and_streak():
-    live_storage = FakeStorage()
-    catchup_storage = FakeStorage()
-    live_engine = GardenGameEngine(FakeConfig(), live_storage)
-    catchup_engine = GardenGameEngine(FakeConfig(), catchup_storage)
-    payload = {"ease": 3, "queue": 1, "difficulty": 0.25, "lapse_count": 0}
-
-    live_engine.register_review(payload)
-    catchup_growth = catchup_engine.apply_retrospective_reviews([payload], latest_revlog_id=88)
-
-    assert catchup_growth == live_storage.state.daily_stats.growth_earned
-    assert catchup_storage.state.streak_days == live_storage.state.streak_days == 1
-    assert catchup_storage.state.last_active_day == live_storage.state.last_active_day
-
-
-def test_historical_reviews_award_growth_without_rewriting_daily_systems():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    before_daily = st.state.daily_stats.__dict__.copy()
-    before_streak = st.state.streak_days
-    before_weather = st.state.selected_weather
-    before_quests = [quest.__dict__.copy() for quest in st.state.daily_quests]
-    before_achievements = {
-        key: value.__dict__.copy() for key, value in st.state.achievements.items()
-    }
-
-    gained = engine.apply_historical_reviews(
-        [{"ease": 3, "review_type": 1, "factor": 2500, "deck_id": 1}],
-        imported_days=["2026-07-01"],
+    assert draft.scene_slots() == {"p1": 1, "p2": 0}
+    assert engine.undo_staged_placement(draft)[0]
+    assert draft.scene_slots() == {"p1": 0, "p2": 1}
+    assert engine.stage_placement(draft, 1)[0]
+    assert engine.commit_placement_draft(draft)[0]
+    assert {plant.plant_id: plant.slot_index for plant in storage.state.plants} == {"p1": 1, "p2": 0}
+
+
+def test_all_plants_can_use_any_unlocked_v6_direct_soil_bed():
+    engine, storage = make_engine()
+    storage.state.unlocked_slots = 6
+    storage.state.plants[0].slot_index = 2
+    storage.state.plants[1].slot_index = 3
+    sunflower = Plant("sun", "sunflower", "Sunny", None)
+    storage.state.plants.append(sunflower)
+
+    ok, _message = engine.plant_from_collection("sun", 4)
+    assert ok
+    assert sunflower.slot_index == 4
+
+
+def test_v6_surface_validation_allows_direct_moves_and_swaps_across_all_beds():
+    engine, storage = make_engine()
+    storage.state.unlocked_slots = 6
+    storage.state.plants[0].slot_index = 2
+    storage.state.plants[1].slot_index = 3
+    sunflower = Plant("sun", "sunflower", "Sunny", 0)
+    storage.state.plants.append(sunflower)
+
+    draft = engine.begin_placement_draft("sun")[2]
+    assert draft is not None
+    assert set(engine.valid_destination_slots(draft)) == set(range(6))
+    assert engine.stage_placement(draft, 4)[0]
+    assert draft.scene_slots()["sun"] == 4
+
+    bonsai = engine.begin_placement_draft("p1")[2]
+    assert bonsai is not None
+    assert set(engine.valid_destination_slots(bonsai)) == set(range(6))
+    assert engine.stage_placement(bonsai, 0)[0]
+
+
+def test_existing_v6_direct_soil_placement_is_preserved_without_unlocking_beds():
+    storage = FakeStorage()
+    storage.state.plants.append(Plant("sun", "sunflower", "Sunny", 4))
+    storage.state.active_plant_id = "sun"
+
+    engine = GardenGameEngine(FakeConfig(), storage)
+
+    assert engine.plant_story("sun").slot_index == 4
+    assert storage.state.unlocked_slots == 2
+    assert storage.state.active_plant_id == "sun"
+    assert not any(event.event_id == "surface-repair:sun" for event in storage.state.pending_feedback)
+
+
+def test_v6_geometry_refresh_preserves_progress_and_seats_only_active_plant():
+    storage = FakeStorage()
+    storage.state.scene_geometry_version = 4
+    storage.state.plants[0].slot_index = 1
+    storage.state.plants[0].growth_points = 2_345
+    storage.state.plants[0].bonus_remainder = 17
+    storage.state.plants[1].slot_index = 5
+
+    GardenGameEngine(FakeConfig(), storage)
+
+    moss, briar = storage.state.plants
+    assert storage.state.scene_geometry_version == 6
+    assert moss.slot_index == 3
+    assert briar.slot_index is None
+    assert (moss.plant_id, moss.name, moss.growth_points, moss.bonus_remainder) == (
+        "p1", "Moss", 2_345, 17,
     )
-
-    assert gained > 0
-    assert st.state.total_reviews == 1
-    assert st.state.imported_history_days == ["2026-07-01"]
-    assert st.state.daily_stats.__dict__ == before_daily
-    assert st.state.streak_days == before_streak
-    assert st.state.selected_weather == before_weather
-    assert [quest.__dict__ for quest in st.state.daily_quests] == before_quests
-    assert {key: value.__dict__ for key, value in st.state.achievements.items()} == before_achievements
+    notices = [event for event in storage.state.pending_feedback if event.event_id == "scene-geometry:6"]
+    assert len(notices) == 1
+    assert "Placements were refreshed" in notices[0].message
 
 
-def test_historical_reviews_skip_days_already_imported():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    st.state.imported_history_days = ["2026-07-01"]
+def test_v6_geometry_refresh_uses_nearest_direct_soil_bed_for_active_plant():
+    storage = FakeStorage()
+    storage.state.scene_geometry_version = 4
+    storage.state.unlocked_slots = 4
+    storage.state.plants.append(Plant("sun", "sunflower", "Sunny", 3, growth_points=800))
+    storage.state.active_plant_id = "sun"
 
-    gained = engine.apply_historical_reviews(
-        [{"ease": 3, "review_type": 1, "factor": 2500}],
-        imported_days=["2026-07-01"],
-    )
+    GardenGameEngine(FakeConfig(), storage)
 
-    assert gained == 0
-    assert st.state.total_reviews == 0
+    sun = next(plant for plant in storage.state.plants if plant.plant_id == "sun")
+    assert sun.slot_index == 2
+    assert storage.state.unlocked_slots == 4
+    assert all(plant.slot_index is None for plant in storage.state.plants if plant.plant_id != "sun")
 
 
-def test_historical_reviews_restore_state_and_transitions_on_save_failure():
-    st = FakeStorage()
-    engine = GardenGameEngine(FakeConfig(), st)
-    before = st.state.to_dict()
-    st.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+def test_failed_save_rolls_back_review_and_currency_state():
+    engine, storage = make_engine()
+    before = storage.state.to_dict()
+    storage.fail_save = True
 
-    try:
-        engine.apply_historical_reviews(
-            [{"ease": 3, "review_type": 1, "factor": 2500}],
-            imported_days=["2026-07-01"],
+    with pytest.raises(OSError):
+        answer(engine, storage)
+
+    assert storage.state.to_dict() == before
+
+
+def test_failed_same_day_batch_rolls_back_growth_cursor_and_transitions():
+    engine, storage = make_engine()
+    storage.state.plants[0].growth_points = 490
+    before = storage.state.to_dict()
+    storage.fail_save = True
+
+    with pytest.raises(OSError):
+        engine.apply_same_day_reviews(
+            [{"queue": 2, "ease": 3, "revlog_id": storage.now_ms + 1}],
+            latest_revlog_id=storage.now_ms + 1,
         )
-    except OSError:
-        pass
 
-    assert st.state.to_dict() == before
+    assert storage.state.to_dict() == before
     assert engine.peek_stage_transitions() == []
 
 
-def test_reroll_asset_slot_uses_local_catalog_cycle():
-    cfg = FakeConfig()
-    st = FakeStorage()
-    engine = GardenGameEngine(cfg, st)
-    first = engine.reroll_asset_slot("plant")
-    second = engine.reroll_asset_slot("plant")
-    assert first is not None
-    assert second is not None
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "all_due", "feedback", "fertilizer", "species", "bed", "plant",
+        "collection", "active", "rename", "place", "commit", "restore",
+    ],
+)
+def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
+    engine, storage = make_engine(goal=150)
+    storage.state.currency_balance = 2_000
+    if mutation == "feedback":
+        storage.state.pending_feedback = [FeedbackEvent("one", "test", "One", "2026-08-08T12:00:00+00:00")]
+    if mutation == "plant":
+        storage.state.plants.append(Plant("p3", "hydrangea", "Misty", None))
+    if mutation == "all_due":
+        storage.state.daily_stats.reviewed = 1
+    draft = None
+    change = None
+    if mutation == "commit":
+        draft = engine.begin_placement_draft("p1")[2]
+        assert draft is not None and engine.stage_placement(draft, 1)[0]
+    if mutation == "restore":
+        ok, _message, change = engine.place_plant("p1", 1)
+        assert ok and change is not None
+    before = storage.state.to_dict()
+    storage.fail_save = True
+
+    if mutation == "all_due":
+        result = engine.evaluate_all_due(DueObligationStatus())
+    elif mutation == "feedback":
+        with pytest.raises(OSError):
+            engine.consume_feedback(limit=1)
+        result = None
+    elif mutation == "fertilizer":
+        result = engine.purchase_fertilizer("p1", "basic")
+    elif mutation == "species":
+        result = engine.purchase_species("sunflower")
+    elif mutation == "bed":
+        result = engine.purchase_next_bed()
+    elif mutation == "plant":
+        result = engine.plant_from_collection("p3")
+    elif mutation == "collection":
+        result = engine.move_to_collection("p2")
+    elif mutation == "active":
+        result = engine.set_active_plant("p2")
+    elif mutation == "rename":
+        result = engine.rename_plant("p1", "Juniper")
+    elif mutation == "place":
+        result = engine.place_plant("p1", 1)
+    elif mutation == "commit":
+        result = engine.commit_placement_draft(draft)
+    else:
+        result = engine.restore_placement(change)
+
+    if result is not None:
+        assert result[0] is False
+    assert storage.state.to_dict() == before
 
 
-def test_storage_revlog_queries_wait_for_live_collection():
-    storage = object.__new__(GardenStorage)
-    storage.mw = SimpleNamespace(col=None)
-
-    assert storage.load_new_revlog_entries(0) == []
-    assert storage.max_revlog_id() == 0
-    assert storage.current_day_cutoff_ms() == 0
-
-
-def test_storage_prefers_modern_day_cutoff_without_touching_deprecated_property():
-    class Scheduler:
-        day_cutoff = 200_000
-
-        @property
-        def dayCutoff(self):
-            raise AssertionError("deprecated scheduler property should not be accessed")
-
-    storage = object.__new__(GardenStorage)
-    storage.mw = SimpleNamespace(col=SimpleNamespace(sched=Scheduler(), db=SimpleNamespace()))
-
-    assert storage.current_day_cutoff_ms() == (200_000 - 86_400) * 1000
+@pytest.mark.parametrize(
+    ("reviews_per_day", "stage_days"),
+    [
+        (50, [1, 5, 16, 40, 100]),
+        (150, [1, 2, 6, 14, 34]),
+        (300, [1, 1, 3, 7, 17]),
+        (500, [1, 1, 2, 4, 10]),
+    ],
+)
+def test_progression_balance_profiles(reviews_per_day, stage_days):
+    base_growth_per_day = reviews_per_day * 10
+    calculated = [math.ceil(threshold / base_growth_per_day) for threshold in GROWTH_THRESHOLDS[1:]]
+    assert calculated == stage_days
 
 
-def test_history_preview_skips_imported_days_and_rejects_today(monkeypatch):
-    class DB:
-        def all(self, _query, lower, _upper):
-            return [(lower + 1, 10, 3, 20, 10, 2500, 1200, 1)]
+@pytest.mark.parametrize(
+    ("hour", "expected"),
+    [(4, "night"), (5, "dawn"), (7, "dawn"), (8, "day"), (16, "day"),
+     (17, "dusk"), (19, "dusk"), (20, "night"), (23, "night")],
+)
+def test_background_time_band_uses_local_clock_boundaries(hour, expected):
+    moment = datetime(2026, 8, 8, hour, 0).astimezone()
+    assert GardenGameEngine.local_time_band(moment) == expected
 
-    storage = object.__new__(GardenStorage)
-    storage.state = GardenState(imported_history_days=["2026-07-01"])
-    storage.mw = SimpleNamespace(
-        col=SimpleNamespace(
-            db=DB(),
-            get_card=lambda _cid: SimpleNamespace(did=42),
-        )
-    )
-    monkeypatch.setattr(
-        storage, "_anki_day_bounds_ms",
-        lambda day: ((1 if day == "2026-07-01" else 100), (99 if day == "2026-07-01" else 199)),
-    )
 
-    preview = storage.preview_historical_reviews("2026-07-01", "2026-07-02")
+@pytest.mark.parametrize("tier", ["basic", "quality", "premium"])
+def test_daily_currency_cannot_keep_fertilizer_active_constantly(tier):
+    spec = GardenGameEngine.FERTILIZERS[tier]
+    sustainable_hours_per_day = (15 / spec.price) * (spec.duration_seconds / 3600)
+    assert sustainable_hours_per_day < 1
 
-    assert preview.skipped_days == ("2026-07-01",)
-    assert preview.importable_days == ("2026-07-02",)
-    assert preview.eligible_reviews == 1
-    assert preview.reviews[0]["deck_id"] == 42
-    assert storage.preview_historical_reviews(
-        date.today().isoformat(), date.today().isoformat()
-    ).error
+
+def test_currency_is_never_awarded_per_review():
+    engine, storage = make_engine(goal=5_000)
+    for _ in range(100):
+        answer(engine, storage)
+    assert all(not tx.event_key.startswith("review:") for tx in storage.state.currency_transactions)
+    assert {tx.event_key for tx in storage.state.currency_transactions} == {"stage:p1:sprout"}
+
+
+def test_streak_currency_milestones_are_once_ever_even_after_ledger_pruning():
+    engine, storage = make_engine()
+    storage.state.streak_days = 6
+    storage.state.last_active_day = "2026-08-07"
+
+    engine._start_study_day()
+
+    assert storage.state.currency_balance == 25
+    assert storage.state.claimed_streak_rewards == [7]
+    storage.state.currency_transactions.clear()
+    storage.state.streak_days = 6
+    storage.state.last_active_day = "2026-08-07"
+
+    engine._start_study_day()
+
+    assert storage.state.currency_balance == 25
+    assert storage.state.currency_transactions == []

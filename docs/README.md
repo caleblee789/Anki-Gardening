@@ -1,20 +1,32 @@
 # Documentation index
 
-The visible UI uses a compact shared presentation system across the dashboard,
-Plant Story, settings, and both Anki home surfaces. Aggregate status is labeled
-**Garden vitality**; **Plant vitality** is reserved for an individual plant.
+The current schema 14 product has one progression path: card answers create
+Growth for the unfinished plant the learner chooses to **Nurture**; Anki streak
+tiers and Fertilizer can add Growth; study goals and milestones award **Garden
+Coins**.
 
-The dashboard keeps the garden and selected-plant actions together, presents
-numeric daily, quest, achievement, and plant-choice progress, and shows move
-instructions inline. Settings changes are staged until Save, while preview
-weather and growth-stage controls are demonstrations that are never persisted.
+The full Garden is scene-first. It keeps only Plant Growth, Anki streak, and
+Garden Coins in the compact status strip, with Today, Achievements, and
+Collection inside the collapsed **Progress** drawer. Plant details and actions
+appear only after selecting a plant. The Nursery opens from its clickable
+full-Garden landmark; the home preview remains noninteractive.
 
-- `codebase-audit.md`: resolved issue ledger, product focus, and validation evidence.
-- `display-validation-matrix.md`: current user-visible values and their sources.
-- `e2e_display_assertions.md`: automated and isolated-Anki journey coverage.
-- `feature-evidence-matrix.md`: supported feature contracts and required automated/live evidence.
-- `future-features.md`: intentionally deferred ideas that require separate design or artwork work.
+- `feature-evidence-matrix.md`: current feature contracts and automated/live
+  release gates.
+- `comprehensive-qa-report.md`: the current candidate's release status and
+  exact-package acceptance requirements.
+- `display-validation-matrix.md`: prominent visible values and their
+  authoritative sources.
+- `e2e_display_assertions.md`: isolated-Anki journeys for the rebuilt archive.
+- `ui/data_contracts.md`: schema 14 persistence, migration, catalog readiness,
+  streak tiers, and all-due definition.
+- `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
+  Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
-- `ui/state_scenarios.md`: required empty, active, error, and persistence states.
-- `ui/data_contracts.md`: v8 persisted state boundary, plant-memory records, and pre-release reset rules.
-- Asset migration reports document the bundled hand-painted SVG catalog and remain historical evidence.
+- `codebase-audit.md`: current-overhaul summary followed by explicitly
+  historical stabilization evidence.
+- `future-features.md`: ideas intentionally outside this release.
+
+`storybook-gouache-assets.md` describes the current-only V6 runtime art bundle,
+its direct-soil contract, and its release gates. Superseded migration and visual
+diff reports are intentionally no longer kept in the active documentation set.

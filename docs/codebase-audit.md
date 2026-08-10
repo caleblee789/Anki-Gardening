@@ -1,8 +1,31 @@
 # Anki Garden 2.1 codebase audit
 
-This ledger records the comprehensive stabilization and focused-product rework.
+This ledger records the comprehensive stabilization and product rework. The
+schema 14 / Verdant Twilight V6 section is current; later dated sections are
+historical evidence for older packages and do not describe the present UI or
+progression contract.
 
-## Resolved high-impact findings
+## 2026-08 progression overhaul
+
+| Area | Current resolution | Verification |
+|---|---|---|
+| Progression | One answer produces 10 base Growth for one answer-time nurtured unfinished plant; Nurture changes only future routing, with no split, movement, regression, or Rare overflow. | Engine routing, threshold, terminology, bonus-rounding, and balance-profile tests. |
+| Streak Growth | A missed Anki day resets the next streak to day 1; the current streak adds 0/5/10/15/20/25% at days 1/7/14/30/100/365. | Exact tier-boundary, reset, fractional-rounding, and UI contract tests. |
+| All due | Live collection-wide Anki due tree plus introduced learning/relearning through cutoff; unseen new and unavailable suspended/buried excluded; filtered decks included; one answer required; once/day and no revoke. | Due-tree/SQL semantics and reward tests; exact-package runtime scenario required. |
+| Fertilizer | Plant-specific elapsed-time Fertilizer directly adds +1/+2/+3 Growth per answer only from its persisted activation time through its exclusive expiry; same tier extends one interval, while replacement or expired repurchase archives the prior interval for late synced answers. | Price/tier/timer/pre-during-post sync/expiry/extension/replacement/history/restart tests. |
+| Economy | The internal `currency_balance` ledger records every reason and balance; learner-facing UI consistently says Garden Coins. All-due/streak/stage rewards fund Fertilizer, release-ready species, and spaces. | Terminology, idempotence, debit/rollback, and 50/150/300/500-answer simulations. |
+| Information architecture | Home shows only noninteractive art, nurtured-plant Growth, streak, Coins, and Open Garden. The Garden keeps a three-metric strip and collapsed Progress; the compact selected-plant card owns plant details. | Home/Garden source contracts, content-ownership, and render tests. |
+| Nursery | The manifest landmark is the only normal Nursery entry, fresh Garden auto-opens it, and stock is derived from complete release-preferred V6 lines without a hard-coded denominator. | Landmark, starter, catalog-readiness, legacy-owned, transaction, and accessibility tests. |
+| Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
+| Story and Settings | Story is oldest-to-newest with inline rename and Up next. Settings has a read-only current-style card, live preview, collapsed Fine tune, explicit Save/Cancel, and preserved Troubleshooting. | Story ordering/empty/accessibility tests and config dirty/default/cancel/save/responsive tests. |
+| State boundary | Schema 10 is backed up and converted; schemas 11–13 migrate into schema 14 as established gardens; a migration-pending marker atomically seeds the bounded current-day revlog ID ledger before catch-up. Corrupt/unsupported saves are backed up, and removed quest/focus/score/goal systems remain absent. | Migration matrix, two-restart ledger seed, late lower-ID sync, starter migration, backup/recovery, malformed-state, repeated-round-trip, and package tests. |
+| V6 environment | Verdant Twilight V6 provides six direct-soil spaces, responsive masters, occlusion, and generic landmark dispatch. Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia are the current complete acquisition lines. | Asset audit, geometry/layout matrices, catalog readiness, responsive renders, and package checks. |
+
+## Historical stabilization findings
+
+The following rows describe problems and fixes in superseded pre-schema-13
+packages. They remain useful engineering history; their themes, controls,
+terminology, test counts, and progression models are not current requirements.
 
 | Area | Finding | Resolution | Verification |
 |---|---|---|---|
@@ -17,7 +40,7 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Daily quests | Startup regenerated same-day quests and discarded visible progress. | Initialization preserves existing quests; only day rollover regenerates them. | Restart regression test and isolated restart QA. |
 | Layout | A fixed four-column dashboard could not fit the declared minimum window. | The page is scrollable and the secondary row is reduced to three focused cards. | Small-window visual QA. |
 | Animation | The scene timer ran continuously, including while hidden or when animation was disabled. | Motion follows settings and stops when the widget is hidden. | Scene tests and runtime observation. |
-| Assets | Placeholder generation could mutate packaged artwork. | The bundled fallback is read-only; emergency generation uses the user cache. | Asset and package tests. |
+| Assets | Placeholder generation could mutate packaged artwork. | No placeholder bitmap is shipped; unresolved art remains a named, stage-aware plant rendered by code-native fallback UI. | Asset and package tests. |
 | Packaging | There was no reproducible `.ankiaddon` build and `meta.json` was tracked as source. | Added a distribution manifest, deterministic builder, exclusions, archive tests, and full CI checks. | Package test plus archive integrity check. |
 | Plant interaction | Plants read as floating cutouts and their data was duplicated in a distant roster. | Added alpha-aware ground anchors, attached contact shadows, stationary selected-state emphasis, contextual actions, click-to-pin behavior, and keyboard navigation; removed the duplicate roster. | Plant-display interaction tests plus isolated dashboard QA. |
 | Startup timing | Retrospective review discovery could query `mw.col.db` before a collection existed and log an avoidable startup exception. | Collection-dependent retrospective and storage queries now no-op until Anki has a live collection/database. | Storage regression test and clean disposable-profile startup. |
@@ -36,22 +59,35 @@ This ledger records the comprehensive stabilization and focused-product rework.
 | Scheduler compatibility | Eager evaluation touched deprecated `dayCutoff` even when modern `day_cutoff` existed. | Resolve the modern property first and use the legacy property only when required. | Deprecation-access regression plus clean Anki 26.05 startup log. |
 | Plant actions | Painted rectangles looked like controls but lacked native button semantics and reliable keyboard focus. | Moved Nurture, Move, Story, and Cancel move into a native compact `PlantActionPanel`; the scene now owns only selection and placement targets. | Behavioral placement tests, primary-button filtering, preview mode, and packaged Qt QA. |
 | Review count | The prominent home count used distinct cards, disagreeing with growth when a card was answered more than once. | Renamed the contract to `reviews_today` and count every supported revlog answer event in the current Anki day. | Home builder/query tests. |
-| Goal changes | Saving a lower daily goal left the active growth quest stale or risked duplicate rewards. | Added transactional same-day reconciliation with preserved progress, at-most-once reward, and rollback on persistence failure. | Engine completion/idempotence/rollback tests. |
+| Goal changes | An earlier development build exposed a configurable daily goal. | Retired during the schema-12 simplification; current Currency rewards use all-due completion, streak milestones, and plant stages. | Current engine and serializer tests assert the removed fields are absent. |
 | Recoverable failures | Garden-save failures during review were log-only even though the Anki answer succeeded. | Added a throttled session notice shared by reviewer feedback, dashboard status, and home card. | Reviewer and render contract tests. |
 | Progress details | Milestones and Collection mixed achievements with an incomplete inventory surface. | Renamed the progress surface to Achievements, added criteria/progress/unlock dates, and removed Collection. | Dashboard behavior/package inspection. |
 
-## Product focus
+## Current product focus
 
-The supported experience is review-driven growth, streak/vitality feedback, daily quests, milestones, local plant stories, a hand-painted scene, plant care/arrangement, appearance customization, and explicit past-review growth import. Focus timers, exam mode, deck mapping, shop/currency, weekly events, mastery, rare events, and passive rewards are absent from the v9 state and engine contract.
+The supported experience is review-driven single-plant Growth, Nurture routing,
+streak-tier bonuses, all-due/streak/stage Garden Coins, time-based Fertilizer,
+data-driven Nursery stock, six direct-soil spaces, local Plant Stories, direct
+Move and Undo, same-scheduler-day catch-up, a calm three-metric Garden, and
+staged display/motion settings. The configured roster contains ten species, but
+the UI shows only computed collected and available-now counts. Focus timers,
+exam mode, deck mapping, extra currencies, plant death/regression, passive
+rewards, separate rare variants, weekly events, mastery, and social/cloud
+systems are absent.
 
 ## Visual coverage
 
-The manifest contains the complete background, plant-stage, weather, decoration, and UI catalogs, including the curated storybook-gouache slice. `scripts/audit_assets.py` is the count and validity source of truth; it enforces parsing, dimensions, uniqueness, coverage, alpha-family, and fallback requirements. `scripts/build_asset_gallery.py` produces the inspection gallery used alongside real-Anki theme, scaling, interaction, and fallback checks.
+The manifest contains one Verdant Twilight V6 environment, 60 current plant
+sprites, 10 weather overlays, and one lantern. `scripts/audit_assets.py` is the
+count and validity source of truth and rejects unreferenced runtime files.
+Nursery readiness applies a strict complete-six-stage V6 rule, while a
+configured or previously owned species remains state-safe even when no old
+bitmap is bundled.
 
 ## Current validation gates
 
 - Run the complete pytest suite, asset audit, Python compilation, package build, ZIP integrity, source/archive parity, and `git diff --check`; do not rely on a hard-coded historical test or asset count.
-- Install the exact rebuilt archive into a disposable, sync-disabled Anki 26.5 base/profile and verify every live scenario in `feature-evidence-matrix.md`.
+- Install the exact rebuilt archive into a disposable, sync-disabled Anki 26.08 base/profile and verify every live scenario in `feature-evidence-matrix.md`.
 - Record the final package hash, automated results, and live acceptance result here after the release pass.
 
 ## 2026-07-12 release acceptance

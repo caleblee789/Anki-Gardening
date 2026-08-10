@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "ankigarden/assets/manifest.json"
 
 
-def test_manifest_svg_refs_exist_and_are_versioned():
+def test_manifest_asset_refs_exist_and_use_current_runtime_roots():
     data = json.loads(MANIFEST.read_text())
     missing = []
     unversioned = []
@@ -14,7 +14,7 @@ def test_manifest_svg_refs_exist_and_are_versioned():
         p = ROOT / "ankigarden" / rel
         if not p.exists():
             missing.append(rel)
-        if not rel.startswith(("assets/v2_cozy_handpainted/", "assets/v3_storybook_gouache/")):
+        if not rel.startswith(("assets/v6_storybook_gouache/", "assets/support/")):
             unversioned.append(rel)
     assert not missing, f"Missing SVG files: {missing}"
     assert not unversioned, f"Unversioned file refs: {unversioned[:10]}"
@@ -29,7 +29,7 @@ def test_no_duplicate_manifest_file_refs():
 
 def test_svgs_include_viewbox_and_trimmed_whitespace():
     offenders = []
-    for svg in (ROOT / "ankigarden/assets/v2_cozy_handpainted").rglob("*.svg"):
+    for svg in (ROOT / "ankigarden/assets/support").rglob("*.svg"):
         text = svg.read_text(encoding="utf-8")
         if "viewBox=" not in text.split("\n", 1)[0] and "viewBox=" not in text[:400]:
             offenders.append((svg.as_posix(), "missing viewBox"))
@@ -52,24 +52,11 @@ def test_manifest_mixed_formats_match_extensions_and_signatures():
             assert header[:4] == b"RIFF" and header[8:12] == b"WEBP"
 
 
-def test_sunbloom_storybook_family_covers_every_growth_stage():
+def test_manifest_has_no_legacy_or_fallback_catalog_entries():
     data = json.loads(MANIFEST.read_text())
-    rows = [
-        asset
-        for asset in data["assets"]
-        if asset.get("slot", {}).get("species") == "sunbloom"
-        and asset.get("style_family") == "storybook_gouache"
-    ]
-
-    assert {asset["slot"]["stage"] for asset in rows} == {
-        "seed",
-        "sprout",
-        "young",
-        "mature",
-        "flowering",
-        "rare",
-    }
-    assert all(asset.get("alpha") is True for asset in rows)
-    assert all(asset.get("growth_base") == "dirt_mound" for asset in rows)
-    assert all("dirt_mound" in asset.get("variants", []) for asset in rows)
-    assert all(asset.get("fallback_asset_id") for asset in rows)
+    serialized = json.dumps(data).lower()
+    assert "fallback_asset_id" not in serialized
+    assert "v2_cozy_handpainted" not in serialized
+    assert "v3_storybook_gouache" not in serialized
+    assert "v4_storybook_gouache" not in serialized
+    assert "v5_storybook_gouache" not in serialized

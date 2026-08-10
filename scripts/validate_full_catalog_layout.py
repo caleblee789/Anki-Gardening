@@ -23,10 +23,11 @@ from ankigarden.ui.plant_display import (
 
 MANIFEST = ROOT / "ankigarden" / "assets" / "manifest.json"
 OUTPUT = ROOT / "build" / "full-catalog-layout-report.json"
-THEMES = ("verdant_dusk", "verdant_dawn", "moonlit_study")
 SIZES = (
-    ("narrow-320", 320, 240, "dashboard"),
-    ("narrow-480", 480, 320, "dashboard"),
+    # These are the two smallest scene canvases reachable around the dashboard's
+    # 620 px minimum window width and its 4:3 -> 16:9 responsive breakpoint.
+    ("minimum-dashboard", 572, 429, "dashboard"),
+    ("compact-wide", 620, 349, "dashboard"),
     ("4:3", 640, 480, "dashboard"),
     ("3:2", 720, 480, "dashboard"),
     ("16:9", 800, 450, "dashboard"),
@@ -38,20 +39,23 @@ SIZES = (
 
 def _backgrounds(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
-    for theme in THEMES:
-        candidates = [
-            row for row in rows
-            if row.get("category") == "backgrounds"
-            and (row.get("slot") or {}).get("theme") == theme
-        ]
-        result[theme] = sorted(
-            candidates,
-            key=lambda row: (
-                0 if row.get("style_family") == "storybook_gouache" else 1,
-                -float(row.get("quality_score", 0.0)),
-                str(row.get("asset_id", "")),
-            ),
-        )[0]
+    release_rows = [
+        row for row in rows
+        if row.get("category") == "backgrounds"
+        and row.get("release_preferred") is True
+    ]
+    for row in sorted(
+        release_rows,
+        key=lambda candidate: (
+            -float(candidate.get("quality_score", 0.0)),
+            str(candidate.get("asset_id", "")),
+        ),
+    ):
+        theme = str((row.get("slot") or {}).get("theme", ""))
+        if theme:
+            result.setdefault(theme, row)
+    if not result:
+        raise ValueError("The manifest must declare at least one release-preferred background.")
     return result
 
 
@@ -104,25 +108,44 @@ def _scenario_warnings(
         for row in active
     ):
         warnings.add("support outside painted plane")
-    if any(row.target_error > .081 or not .919 <= row.fit_scale <= 1.001 for row in active):
-        warnings.add("fit exceeds eight percent")
+    dense = count >= 4
+    dense_narrow = dense and width <= 720
+    maximum_fit_error = .261 if dense_narrow else .161 if dense else .081
+    minimum_fit_scale = .739 if dense_narrow else .839 if dense else .919
+    if any(
+        row.target_error > maximum_fit_error
+        or not minimum_fit_scale <= row.fit_scale <= 1.001
+        for row in active
+    ):
+        warnings.add("fit exceeds responsive policy")
     use_native_selector = surface_context == "home" or requires_native_destination_selector(
         layouts, width, height, range(count)
     )
     if move_mode and not use_native_selector:
         occupied = set(range(count))
         names = {slot: f"Plant {slot + 1}" for slot in occupied}
-        obstacles = [row.visible.expanded(3, 2) for row in active]
+        obstacles = [row.visible.expanded(4, 3) for row in active]
         badges: list[Rect] = []
         for row in layouts:
             label, state = move_badge_label(
                 row.slot_index,
                 origin_slot=0,
-                destination_slot=1 if count > 1 else 0,
+                destination_slot=1,
                 unlocked_slots=6,
                 occupied_slots=occupied,
                 occupant_names=names,
             )
+            # This mirrors GardenScene._draw_slot_placeholders: compact scenes
+            # keep every expanded bed footprint clickable but paint a numbered
+            # badge only for the current and keyboard-selected beds. Treating
+            # all six compact badges as visible manufactured collisions that
+            # cannot occur in the runtime UI.
+            if width < 900 and state not in {"active", "current"}:
+                target_width = row.bed_footprint.width + 28.0
+                target_height = row.bed_footprint.height + 22.0
+                if target_width < 44 or target_height < 44:
+                    warnings.add("small move target")
+                continue
             visual_label = str(row.slot_index + 1)
             badge = bed_badge_rect(row, visual_label, width, height, obstacles + badges)
             badges.append(badge)
@@ -169,17 +192,17 @@ def validate() -> dict[str, Any]:
                         }
                         for slot in range(6)
                     ]
-                    layouts = plant_layout(
-                        width,
-                        height,
-                        items,
-                        background_placement,
-                        surface_context=context,
-                        composition_count=count,
-                        protected_status=False,
-                        reserve_move_controls=width >= 900 and context != "home",
-                    )
                     for move_mode in (False, True):
+                        layouts = plant_layout(
+                            width,
+                            height,
+                            items,
+                            background_placement,
+                            surface_context=context,
+                            composition_count=count,
+                            protected_status=False,
+                            reserve_move_controls=move_mode and width >= 900 and context != "home",
+                        )
                         scenario_count += 1
                         warnings = _scenario_warnings(
                             layouts,

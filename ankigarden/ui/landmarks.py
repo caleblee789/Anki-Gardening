@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+from .plant_display import cover_project_point, scene_surface_variant
+
+
+@dataclass(frozen=True)
+class LandmarkAction:
+    """Learner-facing behavior registered for a manifest landmark action."""
+
+    accessible_name: str
+    tooltip: str
+
+
+@dataclass(frozen=True)
+class SceneLandmark:
+    """Validated, variant-specific landmark ready for scene interaction."""
+
+    landmark_id: str
+    action_id: str
+    accessible_name: str
+    tooltip: str
+    bounds: tuple[float, float, float, float]
+
+
+DEFAULT_LANDMARK_ACTIONS: Mapping[str, LandmarkAction] = {
+    "garden.nursery.open": LandmarkAction(
+        accessible_name="Nursery",
+        tooltip="Open Nursery",
+    ),
+}
+
+
+def normalized_landmark_action(accessible_name: Any, tooltip: Any) -> LandmarkAction | None:
+    """Return a usable one-line action contract, or fail closed."""
+
+    name = " ".join(str(accessible_name or "").split()).strip()
+    help_text = " ".join(str(tooltip or "").split()).strip()
+    if not name or not help_text:
+        return None
+    return LandmarkAction(accessible_name=name, tooltip=help_text)
+
+
+def resolve_scene_landmarks(
+    placement: dict[str, Any] | None,
+    *,
+    width: float,
+    height: float,
+    interactive: bool,
+    actions: Mapping[str, LandmarkAction] = DEFAULT_LANDMARK_ACTIONS,
+) -> tuple[SceneLandmark, ...]:
+    """Resolve manifest geometry only for explicitly registered actions.
+
+    `interactive` describes the host surface, not the selected responsive crop.
+    This lets an ultrawide full Garden use its `home` artwork variant while the
+    actual home-screen preview remains inert.
+    """
+
+    if not interactive or not isinstance(placement, dict):
+        return ()
+    surface_profile = placement.get("surface_profile")
+    if not isinstance(surface_profile, dict):
+        return ()
+    raw_landmarks = surface_profile.get("landmarks", [])
+    if not isinstance(raw_landmarks, list):
+        return ()
+
+    variant_name, _variant = scene_surface_variant(placement, width, height, "dashboard")
+    resolved: list[SceneLandmark] = []
+    seen_ids: set[str] = set()
+    for raw in raw_landmarks:
+        if not isinstance(raw, dict):
+            continue
+        landmark_id = str(raw.get("landmark_id", "")).strip()
+        action_id = str(raw.get("action_id", "")).strip()
+        action = actions.get(action_id)
+        if not landmark_id or landmark_id in seen_ids or action is None:
+            continue
+        role = str(raw.get("role", "button")).strip().lower()
+        if role != "button":
+            continue
+        supported = raw.get("supported_variants", [])
+        variants = raw.get("variants", {})
+        geometry = variants.get(variant_name) if isinstance(variants, dict) else None
+        if not isinstance(supported, list) or variant_name not in supported or not isinstance(geometry, dict):
+            continue
+        bounds = _normalized_bounds(geometry.get("bounds"))
+        if bounds is None:
+            continue
+        resolved.append(SceneLandmark(
+            landmark_id=landmark_id,
+            action_id=action_id,
+            accessible_name=action.accessible_name,
+            tooltip=action.tooltip,
+            bounds=bounds,
+        ))
+        seen_ids.add(landmark_id)
+    return tuple(resolved)
+
+
+def project_landmark_bounds(
+    landmark: SceneLandmark,
+    *,
+    width: float,
+    height: float,
+    source_aspect: float,
+    focal: tuple[float, float],
+    minimum_size: int = 44,
+) -> tuple[int, int, int, int] | None:
+    """Project normalized manifest bounds through the scene's cover crop."""
+
+    scene_width = max(0, int(round(width)))
+    scene_height = max(0, int(round(height)))
+    if scene_width <= 0 or scene_height <= 0:
+        return None
+    left, top, span_width, span_height = landmark.bounds
+    first = cover_project_point(
+        left,
+        top,
+        width=scene_width,
+        height=scene_height,
+        source_aspect=source_aspect,
+        focal=focal,
+    )
+    second = cover_project_point(
+        left + span_width,
+        top + span_height,
+        width=scene_width,
+        height=scene_height,
+        source_aspect=source_aspect,
+        focal=focal,
+    )
+    x1 = max(0, min(scene_width, int(round(min(first[0], second[0]) * scene_width))))
+    y1 = max(0, min(scene_height, int(round(min(first[1], second[1]) * scene_height))))
+    x2 = max(0, min(scene_width, int(round(max(first[0], second[0]) * scene_width))))
+    y2 = max(0, min(scene_height, int(round(max(first[1], second[1]) * scene_height))))
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    target_width = min(scene_width, max(max(1, int(minimum_size)), x2 - x1))
+    target_height = min(scene_height, max(max(1, int(minimum_size)), y2 - y1))
+    center_x = (x1 + x2) / 2
+    center_y = (y1 + y2) / 2
+    x = max(0, min(scene_width - target_width, int(round(center_x - target_width / 2))))
+    y = max(0, min(scene_height - target_height, int(round(center_y - target_height / 2))))
+    return x, y, target_width, target_height
+
+
+def _normalized_bounds(value: Any) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        left, top, width, height = (float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
+    if not all(0.0 <= item <= 1.0 for item in (left, top, width, height)):
+        return None
+    if width <= 0.0 or height <= 0.0 or left + width > 1.0 or top + height > 1.0:
+        return None
+    return left, top, width, height

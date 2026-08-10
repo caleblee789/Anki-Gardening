@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 192"><defs>
-      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#dff2ff"/><stop offset="100%" stop-color="#f7f0de"/></linearGradient>
-      <linearGradient id="night" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#24324e"/><stop offset="100%" stop-color="#4c6680"/></linearGradient>
-    </defs><rect width="256" height="192" rx="20" fill="#ffffff" opacity="0"/><path d="M36 66 C76 50, 110 78, 154 66 C184 58, 208 74, 228 66" stroke="#8bb1bc" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M36 96 C76 80, 110 108, 154 96 C184 88, 208 104, 228 96" stroke="#8bb1bc" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M36 126 C76 110, 110 138, 154 126 C184 118, 208 134, 228 126" stroke="#8bb1bc" stroke-width="6" fill="none" stroke-linecap="round"/></svg>

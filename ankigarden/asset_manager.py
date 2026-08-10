@@ -1,10 +1,89 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+
+def _surface_contract_is_valid(
+    variants: dict[str, dict[str, Any]], geometry_version: int
+) -> bool:
+    """Fail closed when a registered surface no longer matches its artwork."""
+
+    expected_bands = ("far", "far", "middle", "middle", "near", "near")
+    expected_scales = (
+        (0.84, 0.84, 0.92, 0.92, 1.0, 1.0)
+        if geometry_version >= 6
+        else (0.86, 0.86, 0.93, 0.93, 1.0, 1.0)
+    )
+    for variant in variants.values():
+        surfaces = variant.get("surfaces", [])
+        if not isinstance(surfaces, list) or len(surfaces) != 6:
+            return False
+        try:
+            ordered = sorted(surfaces, key=lambda surface: int(surface["slot"]))
+            if [int(surface["slot"]) for surface in ordered] != list(range(6)):
+                return False
+            anchors = [tuple(float(value) for value in surface["anchor"]) for surface in ordered]
+            if any(len(anchor) != 2 for anchor in anchors):
+                return False
+            if any(not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0) for x, y in anchors):
+                return False
+            xs = sorted(x for x, _y in anchors)
+            minimum_gap = 0.050 if geometry_version >= 6 else 0.099
+            if min(right - left for left, right in zip(xs, xs[1:])) < minimum_gap:
+                return False
+            bands = tuple(str(surface["depth_band"]) for surface in ordered)
+            if bands != expected_bands:
+                return False
+            scales = tuple(float(surface["depth_scale"]) for surface in ordered)
+            if any(abs(actual - expected) > 0.015 for actual, expected in zip(scales, expected_scales)):
+                return False
+            if any(right + 1e-6 < left for left, right in zip(scales, scales[1:])):
+                return False
+            ys = [anchor[1] for anchor in anchors]
+            if any(right + 1e-6 < left for left, right in zip(ys, ys[1:])):
+                return False
+            if not (ys[1] < ys[2] and ys[3] < ys[4]):
+                return False
+            surface_ids = [str(surface["surface_id"]) for surface in ordered]
+            if any(not surface_id for surface_id in surface_ids) or len(set(surface_ids)) != 6:
+                return False
+            for index, (surface, (anchor_x, anchor_y)) in enumerate(zip(ordered, anchors)):
+                allowed = set(str(value) for value in surface["allowed_base_types"])
+                expected_allowed = (
+                    {"direct_soil"}
+                    if geometry_version >= 6
+                    else {"pot", "dirt_mound"} if index < 2 else {"pot"}
+                )
+                expected_kind = "soil" if geometry_version >= 6 or index < 2 else "stone"
+                if allowed != expected_allowed or surface.get("surface_kind") != expected_kind:
+                    return False
+                plane = tuple(float(value) for value in surface["contact_plane"])
+                if len(plane) != 4:
+                    return False
+                plane_x, plane_y, plane_width, plane_height = plane
+                if plane_width <= 0 or plane_height <= 0:
+                    return False
+                if not (
+                    plane_x <= anchor_x <= plane_x + plane_width
+                    and plane_y <= anchor_y <= plane_y + plane_height
+                ):
+                    return False
+                support = [tuple(float(value) for value in point) for point in surface["support_line"]]
+                if len(support) < 2 or any(len(point) != 2 for point in support):
+                    return False
+                support_x = (support[0][0] + support[-1][0]) / 2
+                support_y = (support[0][1] + support[-1][1]) / 2
+                tolerance = max(0.001, plane_width * 0.01)
+                if abs(anchor_x - support_x) > tolerance or abs(anchor_y - support_y) > tolerance:
+                    return False
+        except (KeyError, TypeError, ValueError):
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -20,9 +99,17 @@ class BedAnchor:
     physical_width_ratio: float = 0.125
     surface_id: str = ""
     contact_plane: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    shadow_plane: tuple[tuple[float, float], ...] = ()
+    support_line: tuple[tuple[float, float], ...] = ()
     shadow_depth: str = "front"
     shadow_opacity: float = 0.34
     occlusion_id: str = ""
+    surface_kind: str = "soil"
+    allowed_base_types: tuple[str, ...] = ("direct_soil",)
+    seating_depth: float = 0.0
+    depth_band: str = "near"
+    shadow_color: str = ""
+    light_direction: tuple[float, float] = (-0.22, 0.18)
 
     @classmethod
     def from_manifest(cls, value: Any, default: "BedAnchor") -> "BedAnchor":
@@ -60,9 +147,50 @@ class BedAnchor:
                     result.append(default_item)
             return result[0], result[1], result[2], result[3]
 
+        def polygon(key: str, *, minimum: int = 3) -> tuple[tuple[float, float], ...]:
+            raw = row.get(key)
+            fallback = default.support_line if key == "support_line" else default.shadow_plane
+            if not isinstance(raw, (list, tuple)) or len(raw) < minimum:
+                return fallback
+            points: list[tuple[float, float]] = []
+            for raw_point in raw:
+                if not isinstance(raw_point, (list, tuple)) or len(raw_point) != 2:
+                    return fallback
+                try:
+                    points.append((
+                        max(0.0, min(1.0, float(raw_point[0]))),
+                        max(0.0, min(1.0, float(raw_point[1]))),
+                    ))
+                except (TypeError, ValueError):
+                    return fallback
+            return tuple(points)
+
         shadow_depth = str(row.get("shadow_depth", default.shadow_depth))
         if shadow_depth not in {"rear", "front"}:
             shadow_depth = default.shadow_depth
+        depth_band = str(row.get("depth_band", default.depth_band))
+        if depth_band not in {"far", "middle", "near"}:
+            depth_band = default.depth_band
+        surface_kind = str(row.get("surface_kind", default.surface_kind))
+        if surface_kind not in {"stone", "soil"}:
+            surface_kind = default.surface_kind
+        raw_allowed = row.get("allowed_base_types", default.allowed_base_types)
+        allowed = tuple(
+            value for value in raw_allowed
+            if value in {"pot", "dirt_mound", "direct_soil"}
+        ) if isinstance(raw_allowed, (list, tuple)) else default.allowed_base_types
+        if not allowed:
+            allowed = default.allowed_base_types
+        raw_direction = row.get("light_direction", default.light_direction)
+        light_direction = default.light_direction
+        if isinstance(raw_direction, (list, tuple)) and len(raw_direction) == 2:
+            try:
+                light_direction = (
+                    max(-1.0, min(1.0, float(raw_direction[0]))),
+                    max(-1.0, min(1.0, float(raw_direction[1]))),
+                )
+            except (TypeError, ValueError):
+                light_direction = default.light_direction
 
         return cls(
             x=number("x", default.x),
@@ -76,9 +204,17 @@ class BedAnchor:
             ),
             surface_id=str(row.get("surface_id", default.surface_id)),
             contact_plane=quad("contact_plane", default.contact_plane),
+            shadow_plane=polygon("shadow_plane"),
+            support_line=polygon("support_line", minimum=2),
             shadow_depth=shadow_depth,
             shadow_opacity=number("shadow_opacity", default.shadow_opacity, 0.0, 1.0),
             occlusion_id=str(row.get("occlusion_id", default.occlusion_id)),
+            surface_kind=surface_kind,
+            allowed_base_types=allowed,
+            seating_depth=number("seating_depth", default.seating_depth, 0.0, 0.02),
+            depth_band=depth_band,
+            shadow_color=str(row.get("shadow_color", default.shadow_color)),
+            light_direction=light_direction,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -92,9 +228,17 @@ class BedAnchor:
             "physical_width_ratio": self.physical_width_ratio,
             "surface_id": self.surface_id,
             "contact_plane": list(self.contact_plane),
+            "shadow_plane": [list(point) for point in self.shadow_plane],
+            "support_line": [list(point) for point in self.support_line],
             "shadow_depth": self.shadow_depth,
             "shadow_opacity": self.shadow_opacity,
             "occlusion_id": self.occlusion_id,
+            "surface_kind": self.surface_kind,
+            "allowed_base_types": list(self.allowed_base_types),
+            "seating_depth": self.seating_depth,
+            "depth_band": self.depth_band,
+            "shadow_color": self.shadow_color,
+            "light_direction": list(self.light_direction),
         }
 
 
@@ -106,8 +250,13 @@ class SceneSurfaceProfile:
     geometry_version: int
     theme: str
     light_direction: tuple[float, float]
+    key_light_origins: dict[str, tuple[float, float]]
+    appearance: dict[str, Any]
+    variant_contract: dict[str, Any]
     variant_breakpoints: dict[str, float]
     variants: dict[str, dict[str, Any]]
+    layer_contract: dict[str, Any]
+    landmarks: tuple[dict[str, Any], ...]
 
     @classmethod
     def from_manifest(cls, value: Any) -> Optional["SceneSurfaceProfile"]:
@@ -146,6 +295,37 @@ class SceneSurfaceProfile:
                 continue
             asset_file = str(raw.get("file", ""))
             occlusion_file = str(raw.get("occlusion_file", ""))
+            raw_layers = raw.get("occlusion_layers", {})
+            occlusion_layers: dict[str, str] = {}
+            if isinstance(raw_layers, dict):
+                for layer_name in ("rear", "front"):
+                    layer_file = str(raw_layers.get(layer_name, ""))
+                    if layer_file and (
+                        not layer_file.startswith("assets/") or ".." in Path(layer_file).parts
+                    ):
+                        layer_file = ""
+                    if layer_file:
+                        occlusion_layers[layer_name] = layer_file
+            raw_masks = raw.get("surface_masks", {})
+            surface_masks: dict[str, str] = {}
+            if isinstance(raw_masks, dict):
+                for surface_id, mask_file_value in raw_masks.items():
+                    mask_file = str(mask_file_value)
+                    if (
+                        mask_file.startswith("assets/")
+                        and ".." not in Path(mask_file).parts
+                    ):
+                        surface_masks[str(surface_id)] = mask_file
+            raw_layer_masks = raw.get("layer_masks", {})
+            layer_masks: dict[str, str] = {}
+            if isinstance(raw_layer_masks, dict):
+                for layer_name, mask_file_value in raw_layer_masks.items():
+                    mask_file = str(mask_file_value)
+                    if (
+                        mask_file.startswith("assets/")
+                        and ".." not in Path(mask_file).parts
+                    ):
+                        layer_masks[str(layer_name)] = mask_file
             if not asset_file.startswith("assets/") or ".." in Path(asset_file).parts:
                 continue
             if occlusion_file and (
@@ -158,6 +338,9 @@ class SceneSurfaceProfile:
             variants[name] = {
                 "file": asset_file,
                 "occlusion_file": occlusion_file,
+                "occlusion_layers": occlusion_layers,
+                "surface_masks": surface_masks,
+                "layer_masks": layer_masks,
                 "width": max(1, int(number(raw.get("width"), 1, 1, 10000))),
                 "height": max(1, int(number(raw.get("height"), 1, 1, 10000))),
                 "focal_point": list(raw.get("focal_point", [0.5, 0.5])),
@@ -166,13 +349,52 @@ class SceneSurfaceProfile:
             }
         if set(variants) != {"4:3", "16:9", "home"}:
             return None
+        geometry_version = max(1, int(number(row.get("geometry_version"), 1, 1, 99)))
+        if geometry_version >= 5 and not _surface_contract_is_valid(variants, geometry_version):
+            return None
+        raw_origins = row.get("key_light_origins", {})
+        key_light_origins: dict[str, tuple[float, float]] = {}
+        for name, fallback in {"4:3": (0.86, 0.20), "16:9": (0.91, 0.18), "home": (0.91, 0.18)}.items():
+            raw_origin = raw_origins.get(name) if isinstance(raw_origins, dict) else None
+            if isinstance(raw_origin, (list, tuple)) and len(raw_origin) == 2:
+                key_light_origins[name] = (
+                    number(raw_origin[0], fallback[0], 0.0, 1.0),
+                    number(raw_origin[1], fallback[1], 0.0, 1.0),
+                )
+            else:
+                key_light_origins[name] = fallback
+        raw_landmarks = row.get("landmarks", [])
+        landmarks = tuple(
+            dict(landmark)
+            for landmark in raw_landmarks
+            if isinstance(landmark, dict)
+            and isinstance(landmark.get("action_id"), str)
+            and landmark.get("action_id")
+        ) if isinstance(raw_landmarks, list) else ()
         return cls(
             profile_id=profile_id,
-            geometry_version=max(1, int(number(row.get("geometry_version"), 1, 1, 99))),
-            theme=str(row.get("theme", "verdant_dusk")),
+            geometry_version=geometry_version,
+            theme=str(row.get("theme", "verdant_twilight")),
             light_direction=light_direction,
+            key_light_origins=key_light_origins,
+            appearance=(
+                dict(row.get("appearance", {}))
+                if isinstance(row.get("appearance"), dict)
+                else {}
+            ),
+            variant_contract=(
+                dict(row.get("variant_contract", {}))
+                if isinstance(row.get("variant_contract"), dict)
+                else {}
+            ),
             variant_breakpoints=normalized_breakpoints,
             variants=variants,
+            layer_contract=(
+                dict(row.get("layer_contract", {}))
+                if isinstance(row.get("layer_contract"), dict)
+                else {}
+            ),
+            landmarks=landmarks,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -181,8 +403,13 @@ class SceneSurfaceProfile:
             "geometry_version": self.geometry_version,
             "theme": self.theme,
             "light_direction": list(self.light_direction),
+            "key_light_origins": {name: list(point) for name, point in self.key_light_origins.items()},
+            "appearance": dict(self.appearance),
+            "variant_contract": dict(self.variant_contract),
             "variant_breakpoints": dict(self.variant_breakpoints),
             "variants": {name: dict(value) for name, value in self.variants.items()},
+            "layer_contract": dict(self.layer_contract),
+            "landmarks": [dict(landmark) for landmark in self.landmarks],
         }
 
 
@@ -271,7 +498,7 @@ class AssetPlacement:
                 return default
 
         base_type = str(row.get("base_type", defaults.base_type))
-        if base_type not in {"pot", "dirt_mound", "legacy"}:
+        if base_type not in {"pot", "dirt_mound", "direct_soil", "legacy"}:
             base_type = defaults.base_type
         vessel_class = str(row.get("vessel_class", defaults.vessel_class))
         if vessel_class not in {
@@ -282,6 +509,7 @@ class AssetPlacement:
         contact_default = {
             "pot": (0.52, 0.045),
             "dirt_mound": (0.68, 0.04),
+            "direct_soil": (0.42, 0.04),
             "legacy": defaults.contact_shadow,
         }[base_type]
         raw_beds = row.get("bed_anchors")
@@ -448,7 +676,8 @@ class AssetManager:
     }
 
     QUALITY_ORDER = {"performance": 0, "balanced": 1, "ultra": 2}
-    THEME_ALIASES = {"morning_bloom": "verdant_dawn"}
+    THEME_ALIASES: dict[str, str] = {}
+    RELEASE_PLANT_STAGES = ("seed", "sprout", "young", "mature", "flowering", "rare")
 
     def __init__(self, config: Any, storage: Any) -> None:
         self.config = config
@@ -464,6 +693,7 @@ class AssetManager:
         query: str,
         provider_hint: Optional[str] = None,
         theme: Optional[str] = None,
+        time_of_day: Optional[str] = None,
         reroll: bool = False,
         quality_preference: Optional[str] = None,
     ) -> Optional[Path]:
@@ -473,6 +703,7 @@ class AssetManager:
             query,
             provider_hint=provider_hint,
             theme=theme,
+            time_of_day=time_of_day,
             reroll=reroll,
             quality_preference=quality_preference,
         )
@@ -485,12 +716,13 @@ class AssetManager:
         query: str,
         provider_hint: Optional[str] = None,
         theme: Optional[str] = None,
+        time_of_day: Optional[str] = None,
         reroll: bool = False,
         quality_preference: Optional[str] = None,
     ) -> Optional[ResolvedAsset]:
         del query, provider_hint
         cache_key = f"{category}:{key}"
-        slot = self._slot_for(category, key, theme)
+        slot = self._slot_for(category, key, theme, time_of_day=time_of_day)
         quality_pref = str(
             quality_preference
             or self.config.nested("assets", "quality_preference", default="balanced")
@@ -499,27 +731,14 @@ class AssetManager:
 
         candidates = self._select_candidates(category, slot, quality_pref)
         if not candidates:
-            if self.config.nested("assets", "allow_fallback_placeholder", default=True):
-                candidates = self._placeholder_candidates()
-            else:
-                return None
+            return None
 
         valid_candidates = [
             entry for entry in candidates
             if self._valid_local_asset(self.storage.addon_dir / entry["file"], category)
         ]
         if not valid_candidates:
-            if not self.config.nested("assets", "allow_fallback_placeholder", default=True):
-                return None
-            placeholder = self._ensure_placeholder_asset()
-            valid_candidates = [{
-                "asset_id": "fallback_placeholder",
-                "category": category,
-                "file": str(placeholder.relative_to(self.storage.addon_dir)),
-                "width": 1200,
-                "height": 675,
-                "quality_score": 0.5,
-            }]
+            return None
 
         idx = self._pick_index(cache_key, key, [self.storage.addon_dir / row["file"] for row in valid_candidates], reroll)
         picked_entry = valid_candidates[idx]
@@ -591,21 +810,37 @@ class AssetManager:
         if changed:
             self.storage.save_asset_metadata(self.metadata)
 
-    def _slot_for(self, category: str, key: str, theme: Optional[str]) -> dict[str, str]:
+    def _slot_for(
+        self,
+        category: str,
+        key: str,
+        theme: Optional[str],
+        *,
+        time_of_day: Optional[str] = None,
+    ) -> dict[str, str]:
         if category == "plants":
-            species, stage = (key.split("_", 1) + ["mature"])[:2]
-            return {"species": species, "stage": stage}
+            normalized = str(key)
+            for stage in self.RELEASE_PLANT_STAGES:
+                suffix = f"_{stage}"
+                if normalized.endswith(suffix):
+                    return {"species": normalized[:-len(suffix)], "stage": stage}
+            return {"species": normalized, "stage": "mature"}
         if category == "backgrounds":
             _, season, weather = (key.split("_", 2) + ["default", "breeze"])[0:3]
-            configured_theme = theme or str(self.config.value("visual_theme", "verdant_dusk"))
-            return {"season": season, "weather": weather, "theme": self.normalize_theme(configured_theme)}
+            configured_theme = theme or str(self.config.value("visual_theme", "verdant_twilight"))
+            return {
+                "season": season,
+                "weather": weather,
+                "time_of_day": str(time_of_day or "any"),
+                "theme": self.normalize_theme(configured_theme),
+            }
         if category == "weather":
             weather = key.replace("weather_", "", 1)
             return {"weather": weather}
         if category == "decorations":
             return {"decoration_id": key.replace("decor_", "", 1)}
         if category == "overlays":
-            configured_theme = theme or str(self.config.value("visual_theme", "verdant_dusk"))
+            configured_theme = theme or str(self.config.value("visual_theme", "verdant_twilight"))
             return {
                 "overlay_id": key.replace("overlay_", "", 1),
                 "theme": self.normalize_theme(configured_theme),
@@ -617,23 +852,129 @@ class AssetManager:
     def normalize_theme(self, theme: str) -> str:
         return self.THEME_ALIASES.get(str(theme), str(theme))
 
+    def release_ready_plant_species(
+        self,
+        *,
+        theme: str = "verdant_twilight",
+        geometry_version: int = 6,
+    ) -> tuple[str, ...]:
+        """Return complete plant lines approved for acquisition in this scene.
+
+        Eligibility is intentionally stricter than normal asset resolution. It
+        inspects exact manifest rows and never uses a legacy candidate or the
+        placeholder fallback. A species is ready only when every growth stage
+        has a valid, local, release-preferred V6 direct-soil asset.
+        """
+        normalized_theme = self.normalize_theme(theme)
+        expected_version = max(1, int(geometry_version))
+        if normalized_theme != "verdant_twilight" or expected_version != 6:
+            return ()
+
+        required_stages = set(self.RELEASE_PLANT_STAGES)
+        ready_stages: dict[str, set[str]] = {}
+        for entry in self._catalog.get("plants", []):
+            if not isinstance(entry, dict) or entry.get("release_preferred") is not True:
+                continue
+            slot = entry.get("slot")
+            if not isinstance(slot, dict):
+                continue
+            species = str(slot.get("species", ""))
+            stage = str(slot.get("stage", ""))
+            if not species or stage not in required_stages:
+                continue
+            variants = entry.get("variants", [])
+            if not isinstance(variants, list) or f"continuity_v{expected_version}" not in variants:
+                continue
+            asset_id = str(entry.get("asset_id", ""))
+            if f"_twilight_v{expected_version}" not in asset_id:
+                continue
+            if not self._valid_release_plant_placement(entry.get("placement")):
+                continue
+            relative_path = entry.get("file")
+            if not isinstance(relative_path, str) or not relative_path.startswith(
+                "assets/v6_storybook_gouache/plants/"
+            ):
+                continue
+            if not self._valid_local_asset(self.storage.addon_dir / relative_path, "plants"):
+                continue
+            ready_stages.setdefault(species, set()).add(stage)
+
+        return tuple(sorted(
+            species for species, stages in ready_stages.items()
+            if stages == required_stages
+        ))
+
+    @staticmethod
+    def _valid_release_plant_placement(value: Any) -> bool:
+        if not isinstance(value, dict):
+            return False
+        if value.get("base_type") != "direct_soil":
+            return False
+        if value.get("release_layout_candidate") is not True:
+            return False
+        if value.get("layer") != "plants":
+            return False
+
+        def normalized_numbers(key: str, size: int) -> tuple[float, ...] | None:
+            raw = value.get(key)
+            if not isinstance(raw, (list, tuple)) or len(raw) != size:
+                return None
+            try:
+                parsed = tuple(float(item) for item in raw)
+            except (TypeError, ValueError):
+                return None
+            if any(not math.isfinite(item) for item in parsed):
+                return None
+            return parsed
+
+        ground_anchor = normalized_numbers("ground_anchor", 2)
+        support_bounds = normalized_numbers("support_bounds", 4)
+        if ground_anchor is None or support_bounds is None:
+            return False
+        if any(value < 0.0 or value > 1.0 for value in ground_anchor):
+            return False
+        left, top, width, height = support_bounds
+        if left < 0.0 or top < 0.0 or width <= 0.0 or height <= 0.0:
+            return False
+        if left + width > 1.0 or top + height > 1.0:
+            return False
+        try:
+            scene_scale = float(value.get("scene_scale_correction"))
+            visual_scale = float(value.get("visual_scale_correction"))
+        except (TypeError, ValueError):
+            return False
+        return (
+            math.isfinite(scene_scale)
+            and math.isfinite(visual_scale)
+            and scene_scale > 0.0
+            and visual_scale > 0.0
+        )
+
     def _select_candidates(self, category: str, slot: dict[str, str], quality_pref: str) -> list[dict[str, Any]]:
         entries = self._catalog.get(category, [])
         preferred: list[dict[str, Any]] = []
-        for entry in entries:
-            entry_slot = entry.get("slot", {})
-            if all(str(entry_slot.get(k)) == str(v) for k, v in slot.items() if v):
-                preferred.append(entry)
-
         if category == "backgrounds":
-            preferred.extend(
-                e
-                for e in entries
-                if e not in preferred
-                and (e.get("slot", {}) or {}).get("season") == slot.get("season")
-                and (e.get("slot", {}) or {}).get("weather") == "any"
-                and (e.get("slot", {}) or {}).get("theme") == slot.get("theme")
-            )
+            for entry in entries:
+                entry_slot = entry.get("slot", {})
+                if not isinstance(entry_slot, dict):
+                    continue
+                theme = str(entry_slot.get("theme", ""))
+                if theme not in {str(slot.get("theme", "")), "any"}:
+                    continue
+                compatible = True
+                for dimension in ("season", "weather", "time_of_day"):
+                    offered = str(entry_slot.get(dimension, "any"))
+                    requested = str(slot.get(dimension, "any"))
+                    if offered not in {requested, "any"}:
+                        compatible = False
+                        break
+                if compatible:
+                    preferred.append(entry)
+        else:
+            for entry in entries:
+                entry_slot = entry.get("slot", {})
+                if all(str(entry_slot.get(k)) == str(v) for k, v in slot.items() if v):
+                    preferred.append(entry)
 
         if not preferred and category == "backgrounds":
             preferred = [
@@ -657,9 +998,25 @@ class AssetManager:
                 return (0, target_rank - rank)
             return (1, rank - target_rank)
 
+        def background_distance(entry: dict[str, Any]) -> tuple[int, int]:
+            if category != "backgrounds":
+                return (0, 0)
+            entry_slot = entry.get("slot", {}) or {}
+            wildcard_count = sum(
+                1
+                for dimension in ("season", "weather", "time_of_day")
+                if str(entry_slot.get(dimension, "any")) == "any"
+            )
+            return (
+                0 if bool(entry.get("release_preferred", False)) else 1,
+                wildcard_count,
+            )
+
         preferred.sort(
             key=lambda e: (
+                background_distance(e),
                 0 if e.get("style_family") == "storybook_gouache" else 1,
+                0 if category == "plants" and bool(e.get("release_preferred", False)) else 1,
                 (
                     0 if category == "plants" and "continuity_v4" in e.get("variants", [])
                     else 1 if category == "plants" and "continuity_v3" in e.get("variants", [])
@@ -725,23 +1082,6 @@ class AssetManager:
                 if row.get("file") == rel_path:
                     return str(row.get("format", "")).lower()
         return ""
-
-    def _placeholder_candidates(self) -> list[dict[str, Any]]:
-        rel = str(self._ensure_placeholder_asset().relative_to(self.storage.addon_dir))
-        return [{"file": rel, "width": 1200, "height": 675, "quality_tier": "performance", "quality_score": 0.5, "slot": {"fallback": "placeholder"}}]
-
-    def _ensure_placeholder_asset(self) -> Path:
-        bundled = self.storage.assets_root / "ui" / "fallback_placeholder.svg"
-        if bundled.exists():
-            return bundled
-        placeholder = self.storage.cache_dir / "fallback_placeholder.svg"
-        placeholder.parent.mkdir(parents=True, exist_ok=True)
-        if not placeholder.exists():
-            placeholder.write_text(
-                "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 675'><rect width='1200' height='675' fill='#1a2733'/><text x='50%' y='50%' text-anchor='middle' fill='#e6f0ea' font-size='46'>Anki Garden</text></svg>",
-                encoding="utf-8",
-            )
-        return placeholder
 
     def export_metadata_json(self) -> str:
         return json.dumps(self.metadata, indent=2)

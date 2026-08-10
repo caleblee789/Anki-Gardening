@@ -1,34 +1,77 @@
-# Storybook Gouache Asset Direction
+# Storybook gouache asset direction
 
 ## Visual language
 
-Anki Garden's premium illustration style is warm storybook gouache: restrained paper-and-pigment texture, organic edges, readable silhouettes, and amber cottage lighting balanced with muted botanical greens and teal shadows. Assets should feel tactile and calm rather than glossy, photorealistic, neon, or geometrically vector-flat.
+Anki Garden uses warm storybook gouache: restrained paper-and-pigment texture,
+organic edges, readable silhouettes, amber cottage light, muted botanical
+greens, and teal shadows. Assets should feel tactile and calm rather than
+glossy, photorealistic, neon, or geometrically flat.
 
-## Runtime formats
+## Verdant Twilight V6 environment
 
-- Opaque scene backgrounds use high-quality WebP at a 4:3 aspect ratio with a generous crop-safe zone.
-- Plants and decorations use alpha PNG with clean edges and no baked ground shadow.
-- UI frames, badges, and reusable weather overlays remain SVG.
-- Every v3 manifest entry names its format, dimensions, alpha behavior, style family, and v2 fallback asset.
+`verdant_twilight_surface_v6` is the release-preferred environment and the only
+current selectable style. Opaque 4:3, 16:9, and home masters use high-quality
+WebP and locked composition so cover-cropping never shifts a planting space.
 
-## Composition rules
+The same V6 profile is authoritative for background resolution, the full
+Garden, noninteractive home and Settings previews, hit testing, shadows,
+occlusion, movement, and validation. It defines six named direct-soil spaces in
+far, middle, and near depth bands. Every space supplies a normalized support
+line, contact plane, shadow plane, scale, footprint, depth, and occlusion masks.
+Runtime plants may be scaled to fit but their semantic soil contact stays on the
+painted support-line center.
 
-- Backgrounds reserve a quiet lower-center area for runtime plants and keep important details away from cover-crop edges.
-- Background and terrace metadata define the same six permanent normalized beds: position, depth, plant scale, footprint, and a label anchor used only by move mode. Older backgrounds fall back to that shared contract.
-- Theme-aware transparent terrace overlays sit between the painted scene and runtime plants. Normal mode shows physical soil beds without instructional labels.
-- Potted families share the same pot, camera angle, baseline, light direction, and framing.
-- Dirt-mound families share a compact oval mound and fixed ground baseline while their plant silhouettes expand dramatically within a stable full-size canvas. The mound must not scale between stages.
-- Growth must remain obvious at small UI sizes; each adjacent stage needs a distinct height, branching, leaf, bud, or bloom change rather than a color-only change.
-- Seed remains the first progression stage but always renders a visible living shoot. All quality tiers share the same stage-scale sequence so artwork detail never changes composition.
-- Runtime grounding belongs to the scene renderer rather than the transparent plant bitmap: contact shadow, soil contact, and foreground grass use the same baseline for PNG and SVG families.
-- Interactive separation is restrained at rest and strengthened only for hover, keyboard focus, pinned selection, or a stage transition.
-- Decorations use isolated silhouettes outside the planting terrace. `none` is the default; the lantern remains optional at a restrained scale.
-- Weather remains a reusable overlay; do not bake separate weather variants into every painted background.
+Future seasonal or local-clock plates must preserve the camera, cottage,
+Nursery, all six spaces, anchors, masks, landmark geometry, and occlusion
+topology. Weather remains a separate overlay.
 
-## Curated v3 slice
+## Nursery landmark
 
-The approved slice contains summer masters for all three themes, theme-matched terrace overlays, all six stages for Rose, Sunbloom, and Bonsai, and the optional lantern under `assets/v3_storybook_gouache/`. Other species intentionally continue to use the v2 SVG set until matching v3 families are produced and validated; their placement metadata still conforms to the same stage, alpha-bound, baseline, shadow, and scale contract.
+The Nursery entrance is declared in the manifest with action
+`garden.nursery.open` and responsive 4:3 and 16:9 geometry. The registered
+action supplies the accessible **Nursery** label and **Open Nursery** tooltip.
+It is available only in the interactive full Garden and is disabled while a
+plant is moving. The home and Settings variants must never expose a hotspot.
 
-## Generation prompt foundation
+Additional landmarks may reuse the manifest-backed action registry later, but
+unknown actions must fail closed and no second landmark ships in this release.
 
-Use `stylized-concept` for the flowering identity master and `precise-object-edit` for the remaining growth stages. Specify storybook gouache, warm upper-right amber light, cool left fill, muted botanical colors, tactile matte texture, clear small-size silhouettes, and no text or watermark. For mound-based plants, lock the mound width, baseline, camera angle, and light direction while changing the plant's occupied height and fullness. Transparent cutouts are generated on a uniform chroma-key field, converted to alpha PNG, and inspected for fringes before inclusion.
+## Plant release-readiness
+
+Plants use transparent alpha PNG with clean edges, no baked ground shadow, and
+geometry-v2 visible bounds, interaction bounds, and soil-contact metadata.
+Runtime grounding—contact shadow, contact line, foreground vegetation, and
+occlusion—belongs to the scene renderer rather than the bitmap.
+
+A species enters **Available now** only when all six stages are present locally
+as release-preferred Verdant Twilight V6 `direct_soil` assets and every entry
+passes geometry validation. Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony,
+Foxglove, Japanese Maple, Wisteria, and Dahlia currently satisfy the
+complete-line contract. Retired or incomplete lines are not bundled and remain
+hidden from starter selection and purchase. A previously owned plant is never
+removed or damaged; if its old bitmap is unavailable, the renderer keeps its
+name and stage and uses the code-native plant fallback.
+
+The shipped asset tree is deliberately small: current V6 backgrounds and plant
+sprites live under `assets/v6_storybook_gouache/`, while the reusable weather
+and lantern files live under `assets/support/`. Development candidates,
+previous scene generations, migration catalogs, and placeholder bitmaps do not
+belong in the add-on archive.
+
+Growth must read clearly at small sizes. Every adjacent stage needs a distinct
+height, branch, leaf, bud, or bloom change rather than a color-only change. Seed
+remains visibly alive, and artwork-detail settings must not change composition.
+
+## Generation and validation
+
+Use a flowering identity master to establish each species, then derive the
+remaining stages while locking camera angle, light direction, soil contact,
+silhouette family, and intended footprint. Specify warm upper-right amber light,
+cool left fill, muted botanical colors, tactile matte texture, clear small-size
+silhouettes, and no text or watermark.
+
+Generate cutouts on a uniform removable background, convert to clean alpha, and
+inspect for fringe, cropped foliage, false shadows, and base drift. Acceptance
+requires the asset audit, complete-line readiness check, all-stage/all-space
+geometry matrix, responsive renders, package parity, and the exact-package
+isolated-Anki visual pass.

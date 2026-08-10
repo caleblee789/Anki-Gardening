@@ -101,14 +101,22 @@ def _install_fake_aqt(monkeypatch, *, review_count: int):
     return aqt_mod
 
 
-def _seed_state() -> GardenState:
+def _seed_state(_unused: int = 50) -> GardenState:
     return GardenState(
         streak_days=8,
         selected_weather="gentle_rain",
-        daily_stats=DailyStats(reviewed=12, growth_earned=36),
+        daily_stats=DailyStats(
+            reviewed=12,
+            base_growth=30,
+            streak_bonus_growth=6,
+            bonus_growth=6,
+            growth_earned=36,
+        ),
+        active_plant_id="p-1",
+        currency_balance=35,
         plants=[
             Plant(plant_id="p-1", species="bonsai", name="Aster", slot_index=0, growth_points=250),
-            Plant(plant_id="p-2", species="ivy", name="Clover", slot_index=1, growth_points=90, rare_variant=True),
+            Plant(plant_id="p-2", species="wisteria", name="Wisp", slot_index=1, growth_points=50_000),
         ],
     )
 
@@ -124,13 +132,10 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220):
     app._home_widget_hooked = False
     app._home_bridge_hooked = False
     app._home_widget_controller = addon.HomeWidgetStateController()
-    app._apply_retrospective_growth = lambda: None
-    app.engine = SimpleNamespace(
-        rollover_if_needed=lambda: None,
-        garden_health_index=lambda: 0.86,
-    )
-    app.storage = SimpleNamespace(state=_seed_state())
-    app.config = SimpleNamespace(value=lambda key, default=None: growth_cap if key == "daily_goal" else default)
+    app._apply_same_day_catchup = lambda: None
+    app.engine = SimpleNamespace(rollover_if_needed=lambda: None)
+    app.storage = SimpleNamespace(state=_seed_state(growth_cap))
+    app.config = SimpleNamespace(value=lambda _key, default=None: default)
     return app
 
 
@@ -140,35 +145,41 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     html = app._build_home_garden_html()
 
     assert 'data-state="success"' in html
-    assert 'data-testid="home-reviews">27</div>' in html
-    assert 'data-testid="home-vitality">86%</div>' in html
-    assert 'data-testid="home-growth">36 of 240</div>' in html
+    assert 'data-testid="home-reviews"' not in html
+    assert 'data-testid="home-active-name">Aster</div>' in html
+    assert 'data-testid="home-growth">250</span>' in html
+    assert 'data-testid="home-streak">8 days</div>' in html
+    assert 'data-testid="home-currency">35</div>' in html
     assert 'data-testid="home-weather"' not in html
-    assert 'data-testid="home-growth-bar"' in html
-    assert 'aria-valuemax="240" aria-valuenow="36"' in html
-    assert 'style="width:15%"' in html
+    assert 'data-testid="home-streak-bar"' in html
+    assert 'aria-valuemax="14" aria-valuenow="8"' in html
+    assert 'style="width:57%"' in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     app = _build_seeded_app(monkeypatch, review_count=18, growth_cap=240)
 
     before = app._build_home_garden_html()
-    assert 'data-testid="home-reviews">18</div>' in before
-    assert 'data-testid="home-growth">36 of 240</div>' in before
+    assert 'data-testid="home-reviews"' not in before
+    assert 'data-testid="home-growth">250</span>' in before
 
+    app.storage.state.daily_stats.base_growth = 54
+    app.storage.state.daily_stats.streak_bonus_growth = 6
+    app.storage.state.daily_stats.bonus_growth = 6
     app.storage.state.daily_stats.growth_earned = 60
+    app.storage.state.plants[0].growth_points = 310
     app.storage.state.streak_days = 9
     app.storage.state.selected_weather = "cloudy"
 
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-streak"' not in updated
-    assert 'data-testid="home-growth">60 of 240</div>' in updated
+    assert 'data-testid="home-streak">9 days</div>' in updated
+    assert 'data-testid="home-growth">310</span>' in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-streak"' not in refreshed
-    assert 'data-testid="home-growth">60 of 240</div>' in refreshed
+    assert 'data-testid="home-streak">9 days</div>' in refreshed
+    assert 'data-testid="home-growth">310</span>' in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -188,6 +199,7 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     assert overview_content.body.count('<div id="ag-home-root"') == 1
 
     for rendered in (deck_content.body, overview_content.body):
-        assert 'data-testid="home-reviews">42</div>' in rendered
-        assert 'data-testid="home-vitality">86%</div>' in rendered
-        assert 'data-testid="home-growth">36 of 210</div>' in rendered
+        assert 'data-testid="home-reviews"' not in rendered
+        assert 'data-testid="home-active-name">Aster</div>' in rendered
+        assert 'data-testid="home-growth">250</span>' in rendered
+        assert 'data-testid="home-streak">8 days</div>' in rendered

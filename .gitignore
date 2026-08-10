@@ -7,3 +7,7 @@ dist/
 build/
 ankigarden/user_files/*.json
 ankigarden/user_files/cache/
+artwork_source/**/revision_*/
+artwork_source/**/cyan/
+artwork_source/**/*_chroma_v*.png
+artwork_source/**/*_draft.png

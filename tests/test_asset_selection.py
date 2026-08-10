@@ -90,7 +90,54 @@ def test_local_selection_is_deterministic(tmp_path):
     assert storage._meta["backgrounds:bg_spring_breeze"]["source_kind"] == "local_catalog"
 
 
-def test_missing_file_uses_placeholder_when_enabled(tmp_path):
+def test_release_background_wildcards_cover_season_weather_and_local_time(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "legacy_exact",
+            "category": "backgrounds",
+            "slot": {"season": "autumn", "weather": "fireflies", "theme": "verdant_dusk"},
+            "file": "assets/backgrounds/legacy_exact.svg",
+            "width": 1200,
+            "height": 900,
+            "quality_tier": "ultra",
+            "quality_score": 0.99,
+        },
+        {
+            "asset_id": "dusk_v4",
+            "category": "backgrounds",
+            "slot": {
+                "season": "any",
+                "weather": "any",
+                "time_of_day": "any",
+                "theme": "verdant_dusk",
+            },
+            "file": "assets/backgrounds/dusk_v4.svg",
+            "width": 1200,
+            "height": 900,
+            "quality_tier": "ultra",
+            "quality_score": 0.98,
+            "release_preferred": True,
+        },
+    ]
+    _build_manifest(storage, assets)
+    for row in assets:
+        _touch_asset(storage, row["file"])
+
+    resolved = AssetManager(DummyConfig(), storage).resolve(
+        "backgrounds",
+        "bg_autumn_fireflies",
+        "ignored",
+        theme="verdant_dusk",
+        time_of_day="night",
+    )
+
+    assert resolved is not None
+    assert resolved.asset_id == "dusk_v4"
+    assert resolved.metadata["slot"]["time_of_day"] == "any"
+
+
+def test_missing_file_fails_closed_without_a_packaged_placeholder(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
         {
@@ -109,8 +156,7 @@ def test_missing_file_uses_placeholder_when_enabled(tmp_path):
     manager = AssetManager(DummyConfig(), storage)
     picked = manager.get_or_fetch("decorations", "decor_bench_corner", "ignored")
 
-    assert picked is not None
-    assert picked.name == "fallback_placeholder.svg"
+    assert picked is None
 
 
 def test_quality_preference_prefers_higher_tier(tmp_path):
@@ -294,101 +340,83 @@ def test_legacy_planting_zone_receives_stable_six_bed_fallback():
     assert all(
         set(anchor) == {
             "x", "y", "depth", "plant_scale", "footprint", "label_anchor",
-            "physical_width_ratio", "surface_id", "contact_plane", "shadow_depth",
-            "shadow_opacity", "occlusion_id",
+            "physical_width_ratio", "surface_id", "contact_plane", "shadow_plane", "shadow_depth",
+            "shadow_opacity", "occlusion_id", "support_line", "surface_kind",
+            "allowed_base_types", "seating_depth", "depth_band", "shadow_color",
+            "light_direction",
         }
         for anchor in payload["bed_anchors"]
     )
 
 
-def test_storybook_production_plants_use_alpha_aware_grounding_metadata():
+def test_current_production_plants_use_alpha_aware_grounding_metadata():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     assets = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
-    plants = {
-        (row["slot"]["species"], row["slot"]["stage"]): row
-        for row in assets
-        if row.get("style_family") == "storybook_gouache"
-        and row.get("slot", {}).get("species") in {"rose", "bonsai", "sunbloom"}
-    }
+    plants = [row for row in assets if row.get("category") == "plants"]
 
-    assert len(plants) == 18
-    for row in plants.values():
+    assert len(plants) == 60
+    for row in plants:
         placement = row["placement"]
         visible = placement["visible_bounds"]
         ground = placement["ground_anchor"]
         assert len(visible) == 4 and visible[2] > 0 and visible[3] > 0
         assert len(ground) == 2
-        assert abs((visible[1] + visible[3]) - ground[1]) < 0.001
+        assert int(placement.get("geometry_version", 0)) == 2
+        assert placement["soil_contact"] == ground
+        for semantic_base in ("base_bounds", "support_bounds"):
+            bounds = placement[semantic_base]
+            assert bounds[0] <= ground[0] <= bounds[0] + bounds[2]
+            assert abs((bounds[1] + bounds[3]) - ground[1]) < 0.001
         assert placement["display_scale"] > 0
-        assert placement["base_type"] in {"pot", "dirt_mound"}
+        assert placement["base_type"] == "direct_soil"
         assert 0.2 <= placement["contact_shadow"][0] <= 1.0
         assert 0.015 <= placement["contact_shadow"][1] <= 0.12
 
 
-def test_complete_catalog_supports_semantic_pot_normalization_without_system_seedling_cues():
+def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
     plants = [row for row in rows if row.get("category") == "plants"]
-    expected_scales = {
-        "seed": 0.52,
-        "sprout": 0.62,
-        "young": 0.76,
-        "mature": 0.90,
-        "flowering": 1.00,
-        "rare": 1.08,
+    expected_species = {
+        "bonsai", "rose", "sunflower", "lavender", "hydrangea", "peony",
+        "foxglove", "japanese_maple", "wisteria", "dahlia",
     }
+    expected_stages = {"seed", "sprout", "young", "mature", "flowering", "rare"}
 
-    assert len(plants) == 150
+    assert len(plants) == len(expected_species) * len(expected_stages)
+    assert {row["slot"]["species"] for row in plants} == expected_species
     assert {
-        row["slot"]["species"] for row in plants
-    } == {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
+        (row["slot"]["species"], row["slot"]["stage"])
+        for row in plants
+    } == {
+        (species, stage)
+        for species in expected_species
+        for stage in expected_stages
+    }
     for row in plants:
         placement = row["placement"]
         assert {
             "visible_bounds", "ground_anchor", "contact_shadow", "base_type", "crop", "layer"
         }.issubset(placement)
-        if not {"continuity_v3", "continuity_v4"}.intersection(row.get("variants", [])):
-            assert placement["display_scale"] == expected_scales[row["slot"]["stage"]]
+        assert row.get("release_preferred") is True
+        assert "continuity_v6" in row.get("variants", [])
+        assert row["file"].startswith("assets/v6_storybook_gouache/plants/")
+        assert row.get("fallback_asset_id") in {None, ""}
+        assert placement["base_type"] == "direct_soil"
         assert "seedling_cue" not in row
         assert "seedling_anchor" not in row
 
-    continuity = [row for row in plants if "continuity_v3" in row.get("variants", [])]
-    assert len(continuity) == 30
-    final_revisions = [row for row in plants if "continuity_v4" in row.get("variants", [])]
-    assert len(final_revisions) == 15
-    semantic = {"art_bounds", "base_bounds", "foliage_bounds", "soil_contact", "interaction_bounds"}
-    for row in continuity:
-        assert semantic.issubset(row["placement"])
-    selected = {}
-    for row in continuity + final_revisions:
-        key = (row["slot"]["species"], row["slot"]["stage"])
-        if key not in selected or row["quality_score"] > selected[key]["quality_score"]:
-            selected[key] = row
-    for species in {row["slot"]["species"] for row in continuity}:
-        renderer_base_factors = [
-            row["placement"]["base_bounds"][2] * (row["width"] / row["height"])
-            for (candidate_species, _stage), row in selected.items() if candidate_species == species
-        ]
-        assert min(renderer_base_factors) > 0
 
-    storybook = [row for row in plants if row.get("style_family") == "storybook_gouache"]
-    assert {
-        (row["slot"]["species"], row["slot"]["stage"]) for row in storybook
-    } == {
-        (species, stage)
-        for species in {"bonsai", "rose", "cactus", "orchid", "moonflower", "sunbloom", "fern", "ivy"}
-        for stage in expected_scales
-    }
-
-
-def test_storybook_backgrounds_expose_all_phase1_layout_profiles():
+def test_manifest_exposes_one_current_v6_background():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
     backgrounds = [
         row for row in rows
         if row.get("category") == "backgrounds" and row.get("style_family") == "storybook_gouache"
     ]
-    assert len(backgrounds) == 3
+    assert [row["asset_id"] for row in backgrounds] == [
+        "bg_verdant_twilight_any_soil_master_v6"
+    ]
     for row in backgrounds:
         profiles = row["placement"]["layout_profiles"]
         assert set(profiles) == {"4:3", "3:2", "16:9", "home"}
