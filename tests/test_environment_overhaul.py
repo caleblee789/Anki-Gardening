@@ -534,10 +534,11 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text("utf-8")
     studio = (root / "ankigarden/ui/garden_studio.py").read_text("utf-8")
 
-    assert dashboard.index('addTab(self.upgrades_scroll, "Upgrades")') < dashboard.index(
-        'addTab(self.environment_scroll, "Environment")'
+    assert dashboard.index('addTab(self.upgrades_scroll, "Garden Spaces")') < dashboard.index(
+        'addTab(self.environment_scroll, "Weather && Scenery")'
     )
-    assert 'self.environment_collection_scroll,\n            "Weather & Scenery",' in dashboard
+    assert 'addTab(self.supplements_scroll, "Fertilizer & Boosters")' in dashboard
+    assert 'self.environment_collection_scroll,\n            "Weather && Scenery",' in dashboard
     assert "Show Weather" in dashboard
     assert "Show Scenery" in dashboard
     assert "controls_layout.addWidget(motion)" not in studio

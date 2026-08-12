@@ -87,19 +87,15 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
         assert 'class="ag-home__state"' in html
 
 
-def test_home_tooltip_lifecycle_clears_aria_describedby_without_stale_links() -> None:
+def test_home_preview_has_only_one_interactive_control() -> None:
     html = render_home_widget(HomeWidgetSnapshot(1, "success", _home_data()))
-    markup, script = html.split("<script>", 1)
 
-    assert "aria-describedby" not in markup
-    assert "active.setAttribute('aria-describedby',tip.id)" in script
-    assert (
-        "if(active&&active.getAttribute('aria-describedby')===tip.id)"
-        "active.removeAttribute('aria-describedby')"
-    ) in script
-    assert "function hide(e)" in script
-    assert "root.addEventListener('mouseout',hide)" in script
-    assert "root.addEventListener('focusout',hide)" in script
+    assert 'data-tooltip=' not in html
+    assert 'tabindex="0"' not in html
+    assert 'role="tooltip"' not in html
+    assert html.count("onclick=") == 1
+    assert html.count('data-testid="home-open"') == 1
+    assert 'data-testid="home-scene" aria-hidden="true"' in html
 
 
 def test_six_plant_home_scene_keeps_each_row_below_its_occlusion_layer() -> None:
@@ -883,8 +879,8 @@ def test_metric_cells_are_focusable_and_compact_to_a_two_row_hierarchy() -> None
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "font-size:11px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:30px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
-    assert "font-size:32px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
+    assert "font-size:26px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
+    assert "font-size:28px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
 def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -> None:
@@ -899,6 +895,9 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
             ),
             "ACTIVE_PLANT_EXPLANATION": "Nurture explanation.",
             "FERTILIZER_EXPLANATION": "Fertilizer explanation.",
+            "BUTTON_VARIANT_PRIMARY": "primary",
+            "BUTTON_VARIANT_SECONDARY": "secondary",
+            "_set_button_variant": lambda button, variant: setattr(button, "variant", variant),
         },
     )
 
@@ -916,7 +915,15 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
         def setVisible(self, value: bool) -> None:
             self.visible = value
 
+        def setChecked(self, value: bool) -> None:
+            self.checked = value
+
+        def setProperty(self, key: str, value: Any) -> None:
+            setattr(self, key, value)
+
     class Progress:
+        value_label = SimpleNamespace(hide=lambda: None)
+
         def set_progress(self, *args: Any, **kwargs: Any) -> None:
             self.args = args
             self.kwargs = kwargs
@@ -928,7 +935,9 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
         stage_progress=Progress(),
         growth_summary=Text(),
         fertilizer_summary=Text(),
+        booster_summary=Text(),
         status_value=Text(),
+        status_row=SimpleNamespace(setVisible=lambda value: setattr(card, "status_visible", value)),
         action_hint=Text(),
         nurture=Button(),
         fertilize=Button(),
@@ -949,41 +958,46 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
         "is_active": True,
         "fertilizer_growth": 1,
         "fertilizer_text": "+1 Growth per answer",
+        "booster_growth": 0,
+        "booster_text": "None active",
     }
 
     set_selected(card, payload)
 
-    assert card.nurture.enabled is False
-    assert card.nurture.visible is False
+    assert card.nurture.enabled is True
+    assert card.nurture.visible is True
+    assert card.nurture.checked is True
     assert card.fertilize.enabled is True
-    assert card.fertilize.text == "Replace Fertilizer"
-    assert card.action_hint.text == "This plant is already being nurtured."
-    assert card.action_hint.description == card.action_hint.text
+    assert card.fertilize.text == "Fertilize"
+    assert card.action_hint.text == ""
     assert "already being nurtured" in card.nurture.description
     assert "already being nurtured" not in card.fertilize.description
     assert "replace or extend" in card.fertilize.description
-    assert card.identity.text == "Seed Stage"
-    assert card.growth_summary.text == "490 Growth remaining"
-    assert card.status_value.text == "Being nurtured"
+    assert card.identity.text == "Seed"
+    assert card.growth_summary.text == (
+        "490 remaining — about 49 card answers at base rate"
+    )
+    assert card.fertilizer_summary.text.startswith("Fertilizer — +1 Growth")
+    assert card.booster_summary.text == "Booster — None active"
+    assert card.status_value.text == "Current nurtured plant"
 
     payload.update(is_active=False, fertilizer_growth=0)
     set_selected(card, payload)
     assert card.nurture.enabled is True
     assert card.nurture.visible is True
-    assert card.fertilize.enabled is False
-    assert card.action_hint.text == "Nurture this plant before using Fertilizer."
-    assert card.action_hint.text in card.fertilize.description
+    assert card.fertilize.enabled is True
+    assert card.fertilize.text == "Fertilize"
+    assert card.action_hint.text == ""
+    assert "Nurture this plant" in card.fertilize.description
     assert "available for this unfinished plant" in card.nurture.description
-    assert card.status_value.text == "Not nurtured"
+    assert card.status_value.text == ""
 
     payload.update(fully_grown=True, growth_points=2_000, is_active=False)
     set_selected(card, payload)
     assert card.nurture.enabled is False
     assert card.fertilize.enabled is False
     assert card.status_value.text == "Fully grown"
-    assert card.action_hint.text == (
-        "This plant is fully grown, so Nurture and Fertilizer are no longer needed."
-    )
+    assert card.action_hint.text == ""
     assert "Nurture is unavailable" in card.nurture.description
     assert "Fertilizer is unavailable" in card.fertilize.description
 
@@ -1116,14 +1130,10 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     assert "Each counted card answer" in row.accessible_description
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDashboard", "refresh_all")
-    growth_block = refresh.split("growth_row = ProgressRow()", 1)[1].split(
-        "self.today_list.add_row(growth_row)", 1
-    )[0]
-    assert '"Growth earned"' in growth_block
-    assert '"How today’s card answers became Growth."' in growth_block
-    assert "explanation=GROWTH_EXPLANATION" in growth_block
-    assert "growth_row.set_information(" in growth_block
-    assert "growth_row.set_item(" not in growth_block
+    assert "growth_card = SectionCard()" in refresh
+    assert '"Show Growth breakdown"' in refresh
+    assert '"Growth from card answers"' in refresh
+    assert "growth_row.set_item(" not in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1180,6 +1190,8 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
         undo_move_btn=Visible(),
         _move_feedback_generation=0,
         _ensure_move_controls_visible=lambda: None,
+        _refresh_selected_plant_card=lambda: None,
+        toast_region=SimpleNamespace(show_message=lambda *_args, **_kwargs: None),
         refresh_all=lambda: setattr(dashboard, "refreshed", True),
     )
 
@@ -1203,7 +1215,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert "self.scene.finish_move(" in place
 
 
-def test_wide_selected_card_uses_external_dock_when_scene_has_no_safe_geometry() -> None:
+def test_selected_card_stays_scene_owned_and_hides_if_geometry_is_unavailable() -> None:
     position = _compiled_method(
         DASHBOARD_PATH, "GardenDashboard", "_position_plant_card"
     )
@@ -1236,28 +1248,17 @@ def test_wide_selected_card_uses_external_dock_when_scene_has_no_safe_geometry()
         def hide(self) -> None:
             self.hidden = True
 
-    class Dock:
-        def hide(self) -> None:
-            self.hidden = True
-
-    docked: list[str] = []
     dashboard = SimpleNamespace(
         plant_card=Card(),
-        plant_card_dock=Dock(),
-        plant_card_dock_layout=SimpleNamespace(removeWidget=lambda _widget: None),
         scene=scene,
         _compact_layout=False,
-        _dock_plant_card=lambda: docked.append("docked"),
     )
 
     position(dashboard)
 
-    assert docked == ["docked"]
-    assert not getattr(dashboard.plant_card, "hidden", False)
-
-    source = _method_source(DASHBOARD_PATH, "GardenDashboard", "_dock_plant_card")
-    assert "self.plant_card_dock.show()" in source
-    assert "self.plant_card.show()" in source
+    assert dashboard.plant_card.hidden is True
+    dashboard_source = DASHBOARD_PATH.read_text("utf-8")
+    assert "plant_card_dock" not in dashboard_source
 
 
 def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_views() -> None:
@@ -1300,7 +1301,77 @@ def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_
         assert overview.refreshes == expected_overview
 
 
-def test_successful_post_commit_refresh_clears_only_prior_display_notice() -> None:
+def test_external_surface_refresh_skips_clean_dashboard() -> None:
+    refresh_external = _compiled_method(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "refresh_external_surfaces",
+        {"logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None)},
+    )
+    resets: list[str] = []
+    dashboard = SimpleNamespace(
+        _home_surface_dirty=False,
+        mw_window=SimpleNamespace(
+            state="deckBrowser",
+            deckBrowser=SimpleNamespace(refresh=lambda: resets.append("refresh")),
+            reset=lambda: resets.append("reset"),
+        ),
+    )
+
+    refresh_external(dashboard)
+
+    assert resets == []
+
+
+def test_move_state_event_updates_only_the_move_scene() -> None:
+    state_changed = _compiled_method(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_on_state_changed",
+        {"logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None)},
+    )
+    calls: list[str] = []
+    dashboard = SimpleNamespace(
+        _home_surface_dirty=False,
+        isVisible=lambda: True,
+        _refresh_move_scene=lambda: calls.append("move"),
+        refresh_all=lambda: calls.append("full"),
+    )
+
+    state_changed(dashboard, "plant move")
+
+    assert calls == ["move"]
+    assert dashboard._home_surface_dirty is True
+
+
+def test_scene_slot_update_reuses_existing_asset_payloads() -> None:
+    update_slots = _compiled_method(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "update_plant_slots",
+        {"QTimer": SimpleNamespace(singleShot=lambda _delay, callback: callback())},
+    )
+    updates: list[str] = []
+    scene = SimpleNamespace(
+        scene={
+            "plants": [
+                {"plant_id": "a", "slot_index": 0, "asset": {"path": "a.png"}},
+                {"plant_id": "b", "slot_index": 1, "asset": {"path": "b.png"}},
+            ]
+        },
+        _slot_placements={0: object()},
+        update=lambda: updates.append("update"),
+        _sync_landmark_hotspot=lambda: updates.append("landmarks"),
+        cardGeometryChanged=SimpleNamespace(emit=lambda: updates.append("geometry")),
+    )
+
+    assert update_slots(scene, {"a": 2, "b": 1}) is True
+    assert scene.scene["plants"][0]["slot_index"] == 2
+    assert scene.scene["plants"][0]["asset"] == {"path": "a.png"}
+    assert updates == ["update", "landmarks", "geometry"]
+
+
+def test_successful_post_commit_event_clears_only_prior_display_notice() -> None:
     from ankigarden.notices import USER_NOTICES
 
     refresh_after_commit = _compiled_method(
@@ -1314,8 +1385,9 @@ def test_successful_post_commit_refresh_clears_only_prior_display_notice() -> No
     )
     calls: list[str] = []
     dashboard = SimpleNamespace(
-        refresh_all=lambda: calls.append("dashboard"),
-        refresh_external_surfaces=lambda: calls.append("external"),
+        state_events=SimpleNamespace(
+            notify=lambda context: calls.append(f"event:{context}")
+        )
     )
 
     try:
@@ -1328,7 +1400,7 @@ def test_successful_post_commit_refresh_clears_only_prior_display_notice() -> No
 
         refresh_after_commit(dashboard, "test change")
 
-        assert calls == ["dashboard", "external"]
+        assert calls == ["event:test change"]
         assert USER_NOTICES.current.message == ""
 
         USER_NOTICES.publish(
@@ -1338,6 +1410,7 @@ def test_successful_post_commit_refresh_clears_only_prior_display_notice() -> No
         )
         refresh_after_commit(dashboard, "another change")
 
+        assert calls[-1] == "event:another change"
         assert USER_NOTICES.current.key == "review_history"
         assert USER_NOTICES.current.message == "Review history is temporarily unavailable."
     finally:
@@ -1672,6 +1745,8 @@ def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins(
         placement_note=note,
         undo_move_btn=undo_button,
         _ensure_move_controls_visible=lambda: None,
+        _refresh_selected_plant_card=lambda: None,
+        toast_region=SimpleNamespace(show_message=lambda *_args, **_kwargs: None),
         refresh_all=lambda: None,
     )
     dashboard._clear_move_feedback = lambda generation=None: clear_feedback(

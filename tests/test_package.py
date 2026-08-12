@@ -42,7 +42,7 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
     packaged_v6_plants = {
         name
         for name in names
-        if name.startswith("assets/v6_storybook_gouache/plants/") and name.endswith(".png")
+        if name.startswith("assets/v6_storybook_gouache/plants/") and name.endswith(".webp")
     }
     assert len(canonical_v6_plants) == 60
     assert packaged_v6_plants == canonical_v6_plants
@@ -56,4 +56,4 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
         for name in packaged_assets
     )
     assert "assets/migration_manifest_v2.json" not in packaged_assets
-    assert OUTPUT.stat().st_size < 75 * 1024 * 1024
+    assert OUTPUT.stat().st_size < 52 * 1024 * 1024

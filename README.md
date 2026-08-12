@@ -145,7 +145,7 @@ upgraded; failed reads or writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser and Overview use a compact, height-bounded, noninteractive scene preview with the Garden name, nurtured-plant Growth, Anki streak, Garden Coins, and one **Open Garden** action.
+- The Deck Browser and Overview share one compact, height-bounded scenic postcard: a fixed safe-content frame keeps the Nursery, cottage, and all six garden spaces visible above a two-row information rail with the Garden name, nurtured-plant Growth, Anki streak, Garden Coins, and one **Open Garden** action. The artwork is noninteractive.
 - The Nursery and cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Garden Progress. Both work with mouse and keyboard.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
@@ -158,14 +158,14 @@ The distributable contains one current art line instead of retaining every
 development generation:
 
 - one canonical Verdant Twilight V6 responsive environment plus eight compatible Scenery reskins with unchanged masks, anchors, path, Nursery, and cottage;
-- one approved transparent PNG for each of 10 species across 6 Growth stages;
+- one approved transparent, pixel-lossless WebP for each of 10 species across 6 Growth stages;
 - seven balanced transparent Weather overlays, three Growth Charge illustrations, and the lantern used at runtime.
 
 V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
-current-only file set and a 75 MiB archive ceiling.
+current-only file set and a 52 MiB archive ceiling.
 
 ## Install from source
 

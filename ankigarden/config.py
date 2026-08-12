@@ -37,7 +37,7 @@ _NESTED_ENUMS = {
     ("assets", "quality_preference"): {"performance", "balanced", "ultra"},
 }
 _INT_RANGES = {
-    "onboarding_version": (0, 2),
+    "onboarding_version": (0, 3),
     "initial_slots": (1, 6),
     "max_slots": (1, 6),
 }

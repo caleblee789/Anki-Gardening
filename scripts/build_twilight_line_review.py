@@ -80,7 +80,7 @@ def _alpha_strip(species: str, output: Path) -> Path:
     tile_size = (300, 300)
     sheet = Image.new("RGB", (tile_size[0] * len(STAGES), tile_size[1] + 38), "#081310")
     for column, stage in enumerate(STAGES):
-        source = runtime_plants / stage / f"{species}_{stage}_twilight_v6.png"
+        source = runtime_plants / stage / f"{species}_{stage}_twilight_v6.webp"
         if not source.is_file():
             raise FileNotFoundError(f"Missing runtime asset: {source}")
         with Image.open(source) as image:

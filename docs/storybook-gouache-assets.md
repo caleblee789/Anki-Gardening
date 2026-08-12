@@ -45,7 +45,7 @@ unknown actions must fail closed.
 
 ## Plant release-readiness
 
-Plants use transparent alpha PNG with clean edges, no baked ground shadow, and
+Plants use transparent, pixel-lossless WebP with clean edges, no baked ground shadow, and
 geometry-v2 visible bounds, interaction bounds, and soil-contact metadata.
 Runtime grounding—contact shadow, contact line, foreground vegetation, and
 occlusion—belongs to the scene renderer rather than the bitmap.

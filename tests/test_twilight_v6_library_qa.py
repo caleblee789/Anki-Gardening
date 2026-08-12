@@ -57,7 +57,7 @@ def _rows() -> list[dict]:
 
 
 def _expected_file(species: str, stage: str) -> Path:
-    return RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.png"
+    return RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.webp"
 
 
 def _expected_source(species: str, stage: str) -> Path:
@@ -437,7 +437,7 @@ def test_completed_v6_line_has_six_unique_direct_soil_stages(species: str) -> No
         assert asset["alpha"] is True
         assert asset["file"] == (
             f"assets/v6_storybook_gouache/plants/{species}/{stage}/"
-            f"{species}_{stage}_twilight_v6.png"
+            f"{species}_{stage}_twilight_v6.webp"
         )
         assert placement["base_type"] == "direct_soil"
         assert placement["release_layout_candidate"] is True

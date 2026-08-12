@@ -316,7 +316,7 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
         "file": relative,
         "width": width,
         "height": height,
-        "format": "png",
+        "format": "webp",
         "alpha": True,
         "style_family": "storybook_gouache",
         "release_preferred": True,
@@ -369,7 +369,7 @@ def main() -> None:
     replacement_keys: set[tuple[str, str]] = set()
     for species in SPECIES:
         for stage in STAGES:
-            path = RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.png"
+            path = RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.webp"
             if not path.is_file():
                 continue
             replacements.append(_metadata(species, stage, path))

@@ -160,9 +160,9 @@ def _profile() -> dict[str, Any]:
         ]
         variants[name] = {
             "file": str(base.with_suffix(".webp")),
-            "occlusion_file": str(base.parent / f"verdant_twilight_{slug}_occlusion.png"),
+            "occlusion_file": str(base.parent / f"verdant_twilight_{slug}_occlusion.webp"),
             "occlusion_layers": {
-                row: str(base.parent / f"verdant_twilight_{slug}_{row}_occlusion.png")
+                row: str(base.parent / f"verdant_twilight_{slug}_{row}_occlusion.webp")
                 for row in ("rear", "front")
             },
             "surface_masks": {
@@ -293,7 +293,14 @@ def _build_occlusion(
     pixels = background.convert("RGBA")
     pixels.putalpha(mask.filter(ImageFilter.GaussianBlur(max(0.55, height * 0.00045))))
     path.parent.mkdir(parents=True, exist_ok=True)
-    pixels.save(path, "PNG", optimize=True)
+    pixels.save(
+        path,
+        "WEBP",
+        lossless=True,
+        quality=100,
+        method=6,
+        exact=False,
+    )
 
 
 def _build_guide(background: Image.Image, path: Path, variant: dict[str, Any]) -> None:

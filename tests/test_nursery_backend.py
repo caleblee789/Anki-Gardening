@@ -152,6 +152,45 @@ def test_underscore_species_key_keeps_the_full_species_during_resolution(tmp_pat
     }
 
 
+def test_repeated_asset_resolution_is_read_only_after_first_selection(tmp_path):
+    row = release_row("rose", "mature")
+    assets_root = tmp_path / "assets"
+    assets_root.mkdir()
+    asset_path = tmp_path / row["file"]
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b"manifest-test")
+    (assets_root / "manifest.json").write_text(
+        json.dumps({"assets": [row]}), encoding="utf-8"
+    )
+
+    class Storage:
+        def __init__(self):
+            self.addon_dir = tmp_path
+            self.assets_root = assets_root
+            self.saved: list[dict] = []
+
+        def load_asset_metadata(self):
+            return {}
+
+        def save_asset_metadata(self, data):
+            self.saved.append(json.loads(json.dumps(data)))
+
+    storage = Storage()
+    manager = AssetManager(FakeConfig(), storage)
+
+    first = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+    second = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+
+    assert first is not None
+    assert second is first
+    assert len(storage.saved) == 1
+
+    manager.clear_runtime_cache()
+    third = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+    assert third is not None
+    assert len(storage.saved) == 1
+
+
 def test_bundled_catalog_exposes_only_complete_v6_lines():
     storage = FakeStorage()
     manager = AssetManager(FakeConfig(), storage)

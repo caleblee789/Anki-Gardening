@@ -14,6 +14,7 @@ from aqt.qt import (
     QPixmap,
     QSizePolicy,
     QSlider,
+    QTimer,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -32,8 +33,8 @@ STUDIO_TEXT = {
     "asset_quality_label": "Artwork detail",
     "animation_label": "Weather motion",
     "particle_label": "Weather detail",
-    "home_widget_label": "Show garden on home screens",
-    "progress_notifications_label": "Show progress notifications",
+    "home_widget_label": "Show garden preview on home screens",
+    "progress_notifications_label": "Show reviewer reward notices",
 }
 
 
@@ -46,6 +47,7 @@ class GardenStudioWidget(QWidget):
     """Responsive persistent settings and an explicitly non-saved preview."""
 
     persistentChanged = pyqtSignal()
+    manageEnvironmentRequested = pyqtSignal()
 
     def __init__(
         self,
@@ -76,8 +78,15 @@ class GardenStudioWidget(QWidget):
             "weather_particle_density": False,
         }
         self.preview = self._default_preview()
+        self._preview_garden_name = str(
+            self._garden_snapshot().get("garden_name") or "My Garden"
+        )
         self.scene = GardenSceneWidget(interactive=False)
         self.scene.setMinimumHeight(230)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(120)
+        self._preview_timer.timeout.connect(self._apply_preview)
         self._compact_layout: bool | None = None
         self._loading_controls = True
         self._build_ui()
@@ -124,7 +133,8 @@ class GardenStudioWidget(QWidget):
             "QLabel[settingsNote='true'] { color:#aebfc3; font-size:12px; }"
             "QLabel[settingValue='true'] { color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }"
             "QFrame[settingsSection='true'] { border-top:1px solid rgba(130,160,168,.22); }"
-            "QFrame[themeCard='true'] { background:#17342e; border:1px solid #4e7867; border-radius:10px; }"
+            "QFrame[settingsControls='true'] { background:#102722; border:0; border-radius:12px; }"
+            "QFrame[themeCard='true'] { background:transparent; border:0; }"
             "QFrame[previewPanel='true'] { background:#0d211e; border:1px solid #345348; border-radius:12px; }"
             "QToolButton { color:#edf5ea; background:#152d28; border:1px solid #42675a; border-radius:9px; padding:7px 9px; font-weight:650; text-align:left; }"
             "QToolButton:hover { background:#1e3b34; border-color:#5b836f; }"
@@ -151,8 +161,9 @@ class GardenStudioWidget(QWidget):
         self.root_layout.setContentsMargins(0, 0, 0, 0)
         self.root_layout.setSpacing(18)
         self.controls = QFrame()
-        self.controls.setMinimumWidth(270)
-        self.controls.setMaximumWidth(360)
+        self.controls.setProperty("settingsControls", True)
+        self.controls.setMinimumWidth(290)
+        self.controls.setMaximumWidth(310)
         controls_layout = QVBoxLayout(self.controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_layout.setSpacing(4)
@@ -170,7 +181,7 @@ class GardenStudioWidget(QWidget):
 
         self.theme_card = QFrame()
         self.theme_card.setProperty("themeCard", True)
-        self.theme_card.setAccessibleName("Current garden style: Verdant Twilight")
+        self.theme_card.setAccessibleName("Current Scenery: Verdant Twilight")
         theme_layout = QHBoxLayout(self.theme_card)
         theme_layout.setContentsMargins(12, 10, 12, 10)
         self.theme_thumbnail = QLabel()
@@ -178,16 +189,26 @@ class GardenStudioWidget(QWidget):
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
+        self.theme_thumbnail.hide()
         theme_copy = QVBoxLayout()
-        theme_title = QLabel("Verdant Twilight")
+        theme_title = QLabel("Previewing: Verdant Twilight")
         theme_title.setProperty("settingsHeading", True)
-        theme_note = QLabel("Current garden style")
+        theme_title.setWordWrap(True)
+        theme_note = QLabel("Weather and Scenery are managed in Garden Progress.")
+        theme_note.setWordWrap(True)
         theme_note.setProperty("settingsNote", True)
         theme_copy.addWidget(theme_title)
         theme_copy.addWidget(theme_note)
         theme_layout.addWidget(self.theme_thumbnail)
         theme_layout.addLayout(theme_copy, 1)
         controls_layout.addWidget(self.theme_card)
+        self.manage_environment = QToolButton()
+        self.manage_environment.setText("Manage Weather && Scenery")
+        self.manage_environment.setAccessibleDescription(
+            "Open Garden Progress on the Weather and Scenery tab."
+        )
+        self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
+        controls_layout.addWidget(self.manage_environment)
 
         self.animations_enabled = QCheckBox()
         self.animations_enabled.setAccessibleName(STUDIO_TEXT["animations_label"])
@@ -236,25 +257,55 @@ class GardenStudioWidget(QWidget):
         motion.setParent(self.controls)
         motion.hide()
 
-        self.show_home_widget = QCheckBox()
+        self.show_home_widget = QCheckBox("○  Off")
         self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
         _describe_control(
             self.show_home_widget,
             "Show or hide the Garden summary on Anki home screens.",
         )
-        self.show_progress_notifications = QCheckBox()
+        self.show_progress_notifications = QCheckBox("○  Off")
         self.show_progress_notifications.setAccessibleName(STUDIO_TEXT["progress_notifications_label"])
         _describe_control(
             self.show_progress_notifications,
             "Show brief Garden progress notifications after studying.",
         )
-        integration, integration_form = self._section("Garden display")
-        integration_form.addRow(STUDIO_TEXT["home_widget_label"], self.show_home_widget)
-        integration_form.addRow(STUDIO_TEXT["progress_notifications_label"], self.show_progress_notifications)
+        integration = QFrame()
+        integration.setProperty("settingsSection", True)
+        integration_layout = QVBoxLayout(integration)
+        integration_layout.setContentsMargins(0, 8, 0, 8)
+        integration_layout.setSpacing(8)
+        integration_heading = QLabel("Garden display")
+        integration_heading.setProperty("settingsHeading", True)
+        integration_layout.addWidget(integration_heading)
+        for title, description, toggle in (
+            (
+                STUDIO_TEXT["home_widget_label"],
+                "Show the compact Garden card in the Deck Browser and Overview.",
+                self.show_home_widget,
+            ),
+            (
+                STUDIO_TEXT["progress_notifications_label"],
+                "Show quiet, non-focus-stealing Growth and reward notifications.",
+                self.show_progress_notifications,
+            ),
+        ):
+            row = QHBoxLayout()
+            copy = QVBoxLayout()
+            label = QLabel(title)
+            label.setWordWrap(True)
+            label.setStyleSheet("font-weight:650;")
+            note = QLabel(description)
+            note.setWordWrap(True)
+            note.setProperty("settingsNote", True)
+            copy.addWidget(label)
+            copy.addWidget(note)
+            row.addLayout(copy, 1)
+            row.addWidget(toggle, 0, Qt.AlignmentFlag.AlignTop)
+            integration_layout.addLayout(row)
         controls_layout.addWidget(integration)
         environment_note = QLabel(
             "Choose, equip, show, or hide collectible Weather and Scenery in "
-            "House → Weather & Scenery."
+            "Garden Progress → Weather & Scenery."
         )
         environment_note.setWordWrap(True)
         environment_note.setProperty("settingsNote", True)
@@ -290,11 +341,25 @@ class GardenStudioWidget(QWidget):
         preview_layout.setSpacing(5)
         preview_title = QLabel("Preview")
         preview_title.setProperty("settingsHeading", True)
-        preview_note = QLabel("See how your plants and spaces will look before you save.")
+        self.preview_name = QLabel(self._preview_garden_name)
+        self.preview_name.setStyleSheet("font-size:18px; font-weight:700; color:#f2f6ee;")
+        self.preview_metrics = QLabel("")
+        self.preview_metrics.setProperty("settingsNote", True)
+        self.preview_metrics.setWordWrap(True)
+        preview_note = QLabel(
+            "The same compact, noninteractive Garden state shown on Anki home screens."
+        )
         preview_note.setWordWrap(True)
         preview_note.setProperty("settingsNote", True)
+        self.preview_disabled_note = QLabel("Home-screen preview is turned off.")
+        self.preview_disabled_note.setWordWrap(True)
+        self.preview_disabled_note.setStyleSheet("color:#e6c47a; font-weight:700;")
+        self.preview_disabled_note.hide()
         preview_layout.addWidget(preview_title)
+        preview_layout.addWidget(self.preview_name)
+        preview_layout.addWidget(self.preview_metrics)
         preview_layout.addWidget(preview_note)
+        preview_layout.addWidget(self.preview_disabled_note)
         preview_layout.addWidget(self.scene, 1)
 
         self.root_layout.addWidget(self.controls, 0)
@@ -304,7 +369,10 @@ class GardenStudioWidget(QWidget):
         self.animations_enabled.toggled.connect(self._on_animation_toggled)
         self.animations_enabled.toggled.connect(self._update_motion_controls)
         self.show_home_widget.toggled.connect(self._on_persistent_change)
+        self.show_home_widget.toggled.connect(self._sync_switch_copy)
+        self.show_home_widget.toggled.connect(self._sync_preview_enabled)
         self.show_progress_notifications.toggled.connect(self._on_persistent_change)
+        self.show_progress_notifications.toggled.connect(self._sync_switch_copy)
         self.fine_tune_toggle.toggled.connect(self._set_fine_tune_expanded)
         self.anim_slider.valueChanged.connect(
             lambda _value: self._on_slider_changed("animation_intensity")
@@ -318,6 +386,20 @@ class GardenStudioWidget(QWidget):
         self._update_slider_labels()
         self._update_motion_controls()
         self._apply_responsive_layout(self.width())
+
+    def _sync_switch_copy(self, checked: bool) -> None:
+        sender = self.sender()
+        if isinstance(sender, QCheckBox):
+            sender.setText("✓  On" if checked else "○  Off")
+            sender.setAccessibleDescription("On" if checked else "Off")
+
+    def _sync_preview_enabled(self, checked: bool) -> None:
+        self.preview_disabled_note.setVisible(not checked)
+        self.scene.setEnabled(checked)
+
+    def set_preview_garden_name(self, name: str) -> None:
+        self._preview_garden_name = str(name or "My Garden")
+        self.preview_name.setText(self._preview_garden_name)
 
     def _set_fine_tune_expanded(self, expanded: bool) -> None:
         self.fine_tune_section.setVisible(bool(expanded))
@@ -349,6 +431,7 @@ class GardenStudioWidget(QWidget):
         }
 
     def apply_persistent_payload(self, payload: dict[str, Any]) -> None:
+        self._preview_timer.stop()
         self._loading_controls = True
         try:
             theme = self._normalize_theme(str(payload.get("visual_theme", "verdant_twilight")))
@@ -396,6 +479,7 @@ class GardenStudioWidget(QWidget):
         self.persistentChanged.emit()
 
     def reset_preview_defaults(self) -> None:
+        self._preview_timer.stop()
         self._loading_controls = True
         try:
             self.preview["weather"] = str(self._garden_snapshot().get("weather") or "breeze")
@@ -410,7 +494,7 @@ class GardenStudioWidget(QWidget):
             return
         self._compact_layout = compact
         self.root_layout.setDirection(QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight)
-        self.controls.setMaximumWidth(16777215 if compact else 360)
+        self.controls.setMaximumWidth(16777215 if compact else 310)
 
     def resizeEvent(self, event: Any) -> None:
         self._apply_responsive_layout(event.size().width())
@@ -439,7 +523,7 @@ class GardenStudioWidget(QWidget):
 
     def _on_persistent_preview_change(self, *_args: Any) -> None:
         self._on_persistent_change()
-        self._apply_preview()
+        self._schedule_preview()
 
     def _on_animation_toggled(self, *_args: Any) -> None:
         if not self._loading_controls:
@@ -453,7 +537,11 @@ class GardenStudioWidget(QWidget):
         self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
         self._update_slider_labels()
         self._on_persistent_change()
-        self._apply_preview()
+        self._schedule_preview()
+
+    def _schedule_preview(self) -> None:
+        if not self._loading_controls:
+            self._preview_timer.start()
 
     def _apply_preview(self) -> None:
         snapshot = self._garden_snapshot()
@@ -543,6 +631,19 @@ class GardenStudioWidget(QWidget):
                 }
                 for slot_index, species in enumerate(("bonsai", "rose", "sunflower"))
             ]
+        active = next(
+            (item for item in scene_plants if isinstance(item, dict) and item.get("is_active")),
+            scene_plants[0] if scene_plants else {},
+        )
+        plant_name = str(active.get("name") or "No nurtured plant")
+        plant_growth = max(0, int(active.get("growth_points", 0) or 0))
+        streak_days = max(0, int(snapshot.get("streak_days", 0) or 0))
+        coin_balance = max(0, int(snapshot.get("currency_balance", 0) or 0))
+        self.preview_metrics.setText(
+            f"{plant_name} — {plant_growth:,} Growth    "
+            f"{streak_days:,} {'day' if streak_days == 1 else 'days'}    "
+            f"{coin_balance:,} Garden Coins"
+        )
         self.scene.set_scene({
             "weather": preview_weather,
             "growth": growth,

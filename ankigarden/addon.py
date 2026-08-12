@@ -19,6 +19,7 @@ from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
 from .storage import GardenStorage, SchedulerBoundaryError
 from .ui.dashboard import GardenDashboard
+from .ui.state import GardenUiCoordinator
 from .ui.home_widget import (
     HomeWidgetStateController,
     build_home_widget_success_data,
@@ -99,7 +100,13 @@ class AnkiGardenApp:
         self.config = ConfigManager(mw)
         self.storage = GardenStorage(mw, self.config)
         self.engine = GardenGameEngine(self.config, self.storage)
-        self.reviewer_hooks = ReviewerHookHandler(self.engine, self.storage)
+        self.state_events = GardenUiCoordinator(mw)
+        self.state_events.stateChanged.connect(self._invalidate_home_cache)
+        self.reviewer_hooks = ReviewerHookHandler(
+            self.engine,
+            self.storage,
+            state_changed=self.state_events.notify,
+        )
         self.dashboard: Optional[GardenDashboard] = None
         self._settings_action: Optional[QAction] = None
         self._home_widget_hooked = False
@@ -108,10 +115,16 @@ class AnkiGardenApp:
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
+        self._home_html_cache: str | None = None
+        self._home_html_revision = -1
         self._dashboard_open_pending = False
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
         self._settings_open_pending = False
+
+    def _invalidate_home_cache(self, _reason: str = "") -> None:
+        self._home_html_cache = None
+        self._home_html_revision = -1
 
     def setup(self) -> None:
         try:
@@ -365,7 +378,17 @@ class AnkiGardenApp:
         try:
             self._run_garden_maintenance("dashboard open")
             if not self._dashboard_is_alive():
-                candidate = GardenDashboard(mw, self.engine, self.storage, self.config)
+                coordinator = getattr(self, "state_events", None)
+                if coordinator is None:
+                    coordinator = GardenUiCoordinator(mw)
+                    self.state_events = coordinator
+                candidate = GardenDashboard(
+                    mw,
+                    self.engine,
+                    self.storage,
+                    self.config,
+                    coordinator,
+                )
                 destroyed = getattr(candidate, "destroyed", None)
                 if destroyed is not None and callable(getattr(destroyed, "connect", None)):
                     destroyed.connect(
@@ -516,6 +539,7 @@ class AnkiGardenApp:
             self.open_dashboard()
             return True, None
         if command == "refresh":
+            self._invalidate_home_cache("home retry")
             self._run_garden_maintenance("home retry")
             reset = getattr(mw, "reset", None)
             if callable(reset):
@@ -526,15 +550,17 @@ class AnkiGardenApp:
     def _inject_home_garden(self, _page: object, content: object) -> None:
         if not self.config.value("show_home_widget", True):
             return
+        for attribute in ("stats", "table"):
+            existing = getattr(content, attribute, None)
+            if isinstance(existing, str) and "ag-home-root" in existing:
+                return
         html = self._home_garden_html_for_injection()
         if hasattr(content, "stats") and isinstance(content.stats, str):
-            if "ag-home-root" not in content.stats:
-                content.stats += html
+            content.stats += html
             return
 
         if hasattr(content, "table") and isinstance(content.table, str):
-            if "ag-home-root" not in content.table:
-                content.table += html
+            content.table += html
 
     def _context_name(self, context: object) -> str:
         cls = type(context)
@@ -556,10 +582,12 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: skipping home injection for non-primary context %s", context_name)
             return
 
+        body = getattr(web_content, "body", None)
+        if isinstance(body, str) and "ag-home-root" in body:
+            return
         logger.debug("Anki Garden: injecting home garden into context %s", context_name)
         html = self._home_garden_html_for_injection()
 
-        body = getattr(web_content, "body", None)
         if isinstance(body, str) and "ag-home-root" not in body:
             web_content.body = body + html
 
@@ -691,14 +719,24 @@ class AnkiGardenApp:
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
+        state_events = getattr(self, "state_events", None)
+        revision = int(getattr(state_events, "revision", 0))
+        cached_html = getattr(self, "_home_html_cache", None)
+        cached_revision = int(getattr(self, "_home_html_revision", -1))
+        if cached_html is not None and cached_revision == revision:
+            return cached_html
         if not self._run_garden_maintenance("home rendering"):
             request_id = self._home_widget_controller.begin_request()
             self._home_widget_controller.resolve_error(
                 request_id,
                 "Garden progress could not refresh. Your Anki screen is still available; retry the Garden.",
             )
-            return render_home_widget(self._home_widget_controller.snapshot)
-        return self._build_home_garden_html()
+            html = render_home_widget(self._home_widget_controller.snapshot)
+        else:
+            html = self._build_home_garden_html()
+        self._home_html_cache = html
+        self._home_html_revision = int(getattr(state_events, "revision", revision))
+        return html
 
     def _build_home_garden_html(self) -> str:
         request_id = self._home_widget_controller.begin_request()

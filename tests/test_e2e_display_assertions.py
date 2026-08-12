@@ -145,14 +145,12 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
 
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
-    assert 'data-testid="home-active-name">Aster</div>' in html
-    assert 'data-testid="home-growth">250</span>' in html
-    assert 'data-testid="home-streak"><span class="ag-home__streak-number">8</span><span class="ag-home__streak-unit">days</span></div>' in html
-    assert 'data-testid="home-currency">35</div>' in html
+    assert 'data-testid="home-active-name" aria-label="Aster, Seed stage">Aster · Seed</strong>' in html
+    assert 'data-testid="home-growth">250 / 500 Growth</span>' in html
+    assert 'data-testid="home-streak">8-day streak</strong>' in html
+    assert 'data-testid="home-currency">35 coins</strong>' in html
     assert 'data-testid="home-weather"' not in html
-    assert 'data-testid="home-streak-bar"' in html
     assert 'aria-valuemax="100" aria-valuenow="36"' in html
-    assert 'style="width:36%"' in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
@@ -160,7 +158,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     before = app._build_home_garden_html()
     assert 'data-testid="home-reviews"' not in before
-    assert 'data-testid="home-growth">250</span>' in before
+    assert 'data-testid="home-growth">250 / 500 Growth</span>' in before
 
     app.storage.state.daily_stats.base_growth = 54
     app.storage.state.daily_stats.streak_bonus_growth = 6
@@ -173,12 +171,12 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-streak"><span class="ag-home__streak-number">9</span><span class="ag-home__streak-unit">days</span></div>' in updated
-    assert 'data-testid="home-growth">310</span>' in updated
+    assert 'data-testid="home-streak">9-day streak</strong>' in updated
+    assert 'data-testid="home-growth">310 / 500 Growth</span>' in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-streak"><span class="ag-home__streak-number">9</span><span class="ag-home__streak-unit">days</span></div>' in refreshed
-    assert 'data-testid="home-growth">310</span>' in refreshed
+    assert 'data-testid="home-streak">9-day streak</strong>' in refreshed
+    assert 'data-testid="home-growth">310 / 500 Growth</span>' in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -199,6 +197,6 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'data-testid="home-reviews"' not in rendered
-        assert 'data-testid="home-active-name">Aster</div>' in rendered
-        assert 'data-testid="home-growth">250</span>' in rendered
-        assert 'data-testid="home-streak"><span class="ag-home__streak-number">8</span><span class="ag-home__streak-unit">days</span></div>' in rendered
+        assert 'data-testid="home-active-name" aria-label="Aster, Seed stage">Aster · Seed</strong>' in rendered
+        assert 'data-testid="home-growth">250 / 500 Growth</span>' in rendered
+        assert 'data-testid="home-streak">8-day streak</strong>' in rendered

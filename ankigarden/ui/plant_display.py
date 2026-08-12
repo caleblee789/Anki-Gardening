@@ -7,7 +7,7 @@ from ..asset_manager import DEFAULT_BED_ANCHORS, BedAnchor
 from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
 
 
-SETTINGS_STACK_BREAKPOINT = 720
+SETTINGS_STACK_BREAKPOINT = 760
 DASHBOARD_COMPACT_BREAKPOINT = 900
 
 THEME_INTEGRATION_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
@@ -591,7 +591,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
 
     available_w = right - left
     context_scale = (
-        1.16 if profile_name == "home"
+        1.14 if profile_name == "home"
         else 1.18 if width < 420
         else 1.10 if width < 720
         else 1.0
@@ -1365,12 +1365,8 @@ def requires_native_destination_selector(
 
 def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: float,
                     card_width: float = 252.0, card_height: float = 184.0,
-                    obstacles: Iterable[Rect] = (), planting_top: float | None = None) -> tuple[float, float, float, float] | None:
-    """Return a collision-free in-scene plant card rectangle, if one exists.
-
-    ``None`` is intentional: callers can dock the card outside the artwork
-    instead of hiding a plant behind a forced overlapping fallback.
-    """
+                    obstacles: Iterable[Rect] = (), planting_top: float | None = None) -> tuple[float, float, float, float]:
+    """Return the clearest clamped in-scene rectangle for the plant card."""
     margin = 12.0
     gap = 12.0
     safe_width, safe_height = max(1.0, width), max(1.0, height)
@@ -1380,6 +1376,7 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
         Rect(anchor_x + 24, anchor_y - card_height, card_width, card_height),
         Rect(anchor_x - card_width - 24, anchor_y - card_height, card_width, card_height),
         Rect(anchor_x - card_width / 2, anchor_y + 18, card_width, card_height),
+        Rect(anchor_x - card_width / 2, anchor_y - card_height - 18, card_width, card_height),
     ]
     def clamp(r: Rect) -> Rect:
         max_x = max(margin, safe_width - card_width - margin)
@@ -1410,7 +1407,7 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
 
     # Plant silhouettes vary widely, so anchor-relative candidates alone can
     # miss a clean side lane. Search obstacle edges deterministically before
-    # asking the caller to use its external card dock.
+    # choosing the least-obstructive clamped fallback.
     x_positions = {
         margin,
         safe_width - card_width - margin,
@@ -1442,7 +1439,23 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
             )
             ranked.append((distance, candidate.x, candidate.y, candidate.width))
     if not ranked:
-        return None
+        # Very dense six-plant compositions may have no completely clear lane.
+        # Keep the popover inside the scene and choose the least-obstructive
+        # clamped candidate instead of docking it below the artwork.
+        fallbacks = [clamp(candidate) for candidate in candidates]
+        candidate = min(
+            fallbacks,
+            key=lambda row: (
+                sum(
+                    max(0.0, min(row.right, obstacle.right) - max(row.x, obstacle.x))
+                    * max(0.0, min(row.bottom, obstacle.bottom) - max(row.y, obstacle.y))
+                    for obstacle in blocked
+                ),
+                (row.x + row.width / 2 - anchor_x) ** 2
+                + (row.y + row.height / 2 - anchor_y) ** 2,
+            ),
+        )
+        return candidate.x, candidate.y, candidate.width, candidate.height
     _distance, candidate_x, candidate_y, candidate_width = min(ranked)
     return candidate_x, candidate_y, candidate_width, card_height
 
@@ -1519,7 +1532,7 @@ class PlantInteractionState:
         return plant_ids[self.focused_index] if 0 <= self.focused_index < len(plant_ids) else None
 
 
-CURRENT_ONBOARDING_VERSION = 2
+CURRENT_ONBOARDING_VERSION = 3
 
 
 def chronological_memories(memories: list[Any]) -> list[Any]:

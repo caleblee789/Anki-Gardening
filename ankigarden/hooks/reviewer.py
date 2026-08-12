@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from aqt import mw
 
@@ -15,9 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class ReviewerHookHandler:
-    def __init__(self, engine: Any, storage: Any) -> None:
+    def __init__(
+        self,
+        engine: Any,
+        storage: Any,
+        state_changed: Callable[[str], None] | None = None,
+    ) -> None:
         self.engine = engine
         self.storage = storage
+        self.state_changed = state_changed
         self._last_notified_event = ""
         self._reward_toast: Any | None = None
 
@@ -132,6 +138,11 @@ class ReviewerHookHandler:
             self.engine.evaluate_all_due(self.storage.due_obligations())
         except Exception:
             logger.debug("Anki Garden: unable to evaluate all-due completion after review", exc_info=True)
+        if self.state_changed is not None:
+            try:
+                self.state_changed("Card answer counted")
+            except Exception:
+                logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
         self._show_optional_progress_feedback()
 
     @staticmethod
@@ -329,13 +340,13 @@ class ReviewerHookHandler:
         asset_key = str(getattr(event, "asset_key", "") or "")
         asset_category = str(getattr(event, "asset_category", "") or "")
         ui_assets = {
-            "booster_potion": "booster_potion.png",
-            "fertilizer_basic": "fertilizer_basic.png",
-            "fertilizer_quality": "fertilizer_quality.png",
-            "fertilizer_premium": "fertilizer_premium.png",
-            "growth_charge_small": "growth_charge_small.png",
-            "growth_charge_standard": "growth_charge_standard.png",
-            "growth_charge_grand": "growth_charge_grand.png",
+            "booster_potion": "booster_potion.webp",
+            "fertilizer_basic": "fertilizer_basic.webp",
+            "fertilizer_quality": "fertilizer_quality.webp",
+            "fertilizer_premium": "fertilizer_premium.webp",
+            "growth_charge_small": "growth_charge_small.webp",
+            "growth_charge_standard": "growth_charge_standard.webp",
+            "growth_charge_grand": "growth_charge_grand.webp",
         }
         filename = ui_assets.get(asset_key)
         if filename:

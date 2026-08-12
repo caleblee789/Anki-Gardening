@@ -139,7 +139,6 @@ class GardenSceneWidget(QWidget):
         self._hover_close_timer.timeout.connect(self._clear_hover)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(42)
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -149,9 +148,9 @@ class GardenSceneWidget(QWidget):
         return max(250, min(800, int(width / aspect)))
 
     def set_motion_enabled(self, enabled: bool) -> None:
-        if enabled and not self.timer.isActive():
+        if enabled and self.isVisible() and not self.timer.isActive():
             self.timer.start(42)
-        elif not enabled and self.timer.isActive():
+        elif (not enabled or not self.isVisible()) and self.timer.isActive():
             self.timer.stop()
         if not enabled:
             hovered = self._interaction.hovered_id
@@ -174,6 +173,9 @@ class GardenSceneWidget(QWidget):
             if isinstance(item, dict)
         }
         self.scene = self._sanitize_scene_payload(payload)
+        set_motion = getattr(self, "set_motion_enabled", None)
+        if callable(set_motion):
+            set_motion(bool(self.scene.get("motion_enabled", True)))
         self._interaction.reconcile(self._plant_ids())
         valid_ids = set(self._plant_ids())
         self._hover_opacity = {
@@ -222,6 +224,26 @@ class GardenSceneWidget(QWidget):
         self._stats_help_button.setVisible(self.interactive)
         self._sync_landmark_hotspot()
         self.update()
+
+    def update_plant_slots(self, slots: dict[str, int]) -> bool:
+        """Update persisted plant positions without rebuilding artwork payloads."""
+        normalized = {str(plant_id): int(slot) for plant_id, slot in slots.items()}
+        changed = False
+        for plant in self.scene.get("plants", []):
+            plant_id = str(plant.get("plant_id", ""))
+            if plant_id not in normalized:
+                continue
+            slot = normalized[plant_id]
+            if plant.get("slot_index") != slot:
+                plant["slot_index"] = slot
+                changed = True
+        if not changed:
+            return False
+        self._slot_placements.clear()
+        self.update()
+        self._sync_landmark_hotspot()
+        QTimer.singleShot(0, self.cardGeometryChanged.emit)
+        return True
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
         if watched is self._stats_help_button:
@@ -550,9 +572,15 @@ class GardenSceneWidget(QWidget):
         anchor = self._plant_anchors.get(plant_id)
         if anchor is None:
             return None
-        # The selected plant is an obstacle too. A details card that explains a
-        # plant must never hide that plant's artwork; if all clean candidates
-        # are blocked, ``None`` asks the dashboard to use its external dock.
+        selected_rect = self._plant_hit_rects.get(plant_id)
+        if selected_rect is not None:
+            anchor = (
+                selected_rect.x() + selected_rect.width() + 4.0,
+                selected_rect.y() + selected_rect.height() / 2.0,
+            )
+        # The selected plant is an obstacle too. Prefer a clean side lane; the
+        # geometry helper uses the least-obstructive in-scene fallback only for
+        # very dense compositions.
         obstacles = [
             Rect(hit.x(), hit.y(), hit.width(), hit.height()).expanded(8.0, 8.0)
             for hit in self._plant_hit_rects.values()
@@ -711,8 +739,6 @@ class GardenSceneWidget(QWidget):
                     )
                     transition = self._transition_for_plant(plant)
                     painter.save()
-                    if self._interaction.placing and plant_id != self._interaction.dragged_id:
-                        painter.setOpacity(0.72)
                     if plant_id == self._interaction.dragged_id and self._drag_started:
                         painter.setOpacity(0.78)
                     painter.translate(target_x - x, target_y - base_y)
@@ -769,6 +795,10 @@ class GardenSceneWidget(QWidget):
                 self._draw_weather_motion(painter, r, str(weather), density)
 
             self._draw_landmark_affordances(painter)
+            if self._interaction.placing:
+                # Move choices sit above a uniform 15% scene dimmer. This keeps
+                # the artwork legible while making destination states dominant.
+                painter.fillRect(r, QColor(0, 0, 0, 38))
             self._draw_slot_placeholders(painter)
             self._draw_status_overlay(painter, r, growth, glow)
             if self._stats_help_visible:
@@ -1170,7 +1200,7 @@ class GardenSceneWidget(QWidget):
             else:
                 pen_color = QColor(229, 242, 166, 235 if active else 145)
                 fill_color = QColor(111, 88, 49, 150 if active else 32)
-            painter.setPen(QPen(pen_color, 2.4 if active and not blocked else 1.4))
+            painter.setPen(QPen(pen_color, 3.0 if active and not blocked else 2.0))
             painter.setBrush(fill_color)
             # The two rear beds are small enough for the original fixed halo.
             # The middle and foreground beds are materially larger, so expand
@@ -1474,7 +1504,10 @@ class GardenSceneWidget(QWidget):
                     )
                 self.update()
                 return
-            self.cancel_move()
+            # Clicking outside a destination is intentionally inert. Escape or
+            # the current space remains the explicit cancellation path.
+            self._inline_message = "Choose a highlighted garden space, or press Escape to cancel."
+            self.update()
             return
         plant_id = self._plant_at(position)
         if plant_id:

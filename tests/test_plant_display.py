@@ -64,7 +64,7 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
 
 @pytest.mark.parametrize(
     ("width", "compact"),
-    [(0, True), (640, True), (719, True), (720, False), (920, False)],
+    [(0, True), (640, True), (759, True), (760, False), (920, False)],
 )
 def test_settings_layout_breakpoint_is_deterministic(width, compact):
     assert settings_layout_is_compact(width) is compact
@@ -567,8 +567,8 @@ def test_smart_card_uses_a_clear_side_lane_without_covering_selected_plant():
 
 
 @pytest.mark.parametrize("scene_size", [(568, 426), (1093, 615)])
-def test_dense_six_plant_scene_requests_external_card_dock(scene_size):
-    """Cover the 620x520 minimum window's scene and a normal wide scene."""
+def test_dense_six_plant_scene_keeps_a_clamped_scene_card(scene_size):
+    """Dense scenes retain the card using the least-overlap in-scene fallback."""
     width, height = scene_size
     rows = plant_layout(
         width,
@@ -591,7 +591,10 @@ def test_dense_six_plant_scene_requests_external_card_dock(scene_size):
             card_height=220,
             obstacles=obstacles,
         )
-        assert result is None
+        assert result is not None
+        x, y, card_width, card_height = result
+        assert 12 <= x <= width - card_width - 12
+        assert 12 <= y <= height - card_height - 12
 
 
 def test_move_target_state_distinguishes_valid_locked_and_unavailable_spaces():
@@ -677,7 +680,7 @@ def test_dashboard_is_garden_first_with_compact_secondary_tabs():
     assert '("growth", "Plant Growth"' in dashboard
     assert '("currency", "Garden Coins"' in dashboard
     assert "self.streak_ticks = QLabel" not in dashboard
-    assert "self.details_tabs = QTabWidget()" in dashboard
+    assert 'self.details_tabs = GardenTabs("Garden progress details")' in dashboard
     assert 'self.details_tabs.addTab(self.today_list' in dashboard
     assert 'self.details_tabs.addTab(self.collection_list, "Collection")' in dashboard
     assert 'self.today_list = ProgressList("Today progress")' in dashboard
@@ -811,7 +814,8 @@ def test_plants_have_no_idle_or_drag_lift_transforms():
 
 def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    assert "class PlantStoryDialog(QDialog):" in dashboard
+    assert "class PlantStoryDialog(GardenDialog):" in dashboard
+    assert "self.story_dialog = PlantStoryDialog" in dashboard
     assert 'setAccessibleName("Plant memory timeline")' in dashboard
     assert 'setAccessibleName("Rename plant")' in dashboard
     assert 'QLabel("Memories")' in dashboard
@@ -852,15 +856,17 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
     assert "behavior_scroll.setWidgetResizable(True)" in dashboard
     assert 'QPushButton("Save changes")' in dashboard
-    assert 'QPushButton("Restore defaults")' in dashboard
-    assert 'tabs.addTab(behavior, "Display")' in dashboard
+    assert 'QPushButton("Restore display defaults")' in dashboard
+    assert 'self.tabs.addTab(behavior, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
     assert 'QPushButton("Unlock development tools")' in settings_block
+    assert 'os.environ.get("ANKI_GARDEN_DEV_TOOLS") == "1"' in settings_block
+    assert 'os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") == "1"' in settings_block
     assert "create_development_backup" in settings_block
     assert "restore_development_backup" in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
-    assert 'self.save_status.setText("Unsaved changes")' in dashboard
+    assert '"Unsaved changes" if valid else "Enter a valid garden name"' in dashboard
     assert "self.behavior.reset_preview_defaults()" in dashboard
     assert "self.config.update(old_payload)" in dashboard
     assert "self.particle_slider.setRange(10, 200)" in studio
@@ -876,7 +882,8 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert 'self.fertilize = QPushButton("Fertilize")' in dashboard
     assert 'self.move = QPushButton("Move")' in dashboard
     assert 'self.story = QPushButton("Story")' in dashboard
-    assert 'self.nurture.setText("Nurturing" if active else "Nurture")' in dashboard
+    assert 'self.nurture.setText("Nurture")' in dashboard
+    assert 'self.fertilize.setText("Fertilize")' in dashboard
     assert "class RearrangeBar(QFrame):" in dashboard
     assert 'title = QLabel("Move plant")' in dashboard
     assert 'self.cancel = QPushButton("Cancel")' in dashboard
@@ -887,8 +894,11 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.onboarding_layout.setDirection(direction)" in dashboard
     assert "self.milestone_layout.setDirection(direction)" in dashboard
     assert "self.rearrange_bar.set_compact(compact)" in dashboard
+    assert "self.garden_stats_bar.setFixedHeight(246 if compact else 128)" in dashboard
+    assert "self.overlay_manager.move_mode_changed(active)" in dashboard
+    assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "self.page_scroll.ensureWidgetVisible(self.plant_card, 12, 12)" in dashboard
-    assert "self.today_summary.setWordWrap(True)" in dashboard
+    assert "self.today_summary = StatSummary" in dashboard
     assert "QMessageBox.information(\n            self,\n            \"How to use the garden\"" not in dashboard
     assert "def card_geometry" in scene
     assert "self.selectionChanged.emit(\"\")" in scene
@@ -911,7 +921,7 @@ def test_every_weather_has_procedural_motion_and_respects_motion_toggle():
 
 def test_settings_sections_and_preview_only_controls_match_persistence_contract():
     studio = (Path(__file__).resolve().parents[1] / "ankigarden/ui/garden_studio.py").read_text()
-    for title in ("Verdant Twilight", "Current garden style", "Motion", "Garden display", "Fine tune"):
+    for title in ("Previewing: Verdant Twilight", "Motion", "Garden display", "Fine tune"):
         assert f'"{title}"' in studio
     assert "one-option" not in studio
     assert "self.theme_combo" not in studio
@@ -944,8 +954,9 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
 
 def test_dashboard_close_and_reopen_manage_timer_filter_and_transient_interaction_state():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    show_block = dashboard.split("def showEvent", 1)[1].split("def _recommended_window_size", 1)[0]
-    done_block = dashboard.split("def done", 1)[1].split("def _update_scene_height", 1)[0]
+    dashboard_class = dashboard.split("class GardenDashboard", 1)[1]
+    show_block = dashboard_class.split("def showEvent", 1)[1].split("def _recommended_window_size", 1)[0]
+    done_block = dashboard_class.split("def done", 1)[1].split("def _update_scene_height", 1)[0]
 
     assert "self._install_application_filter()" in show_block
     assert "self._fertilizer_timer.start()" in show_block

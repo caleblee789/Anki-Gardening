@@ -40,6 +40,8 @@ class _UiFaceCaptureRunner:
         self.session_dir = self.capture_root / datetime.now().strftime("%Y%m%d-%H%M%S")
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self._screenshots: list[str] = []
+        self._capture_records: list[dict[str, Any]] = []
+        self._failures: list[dict[str, str]] = []
         self._step_index = 0
         self._capture_index = 1
         self._starter_seed_attempts = 0
@@ -88,13 +90,30 @@ class _UiFaceCaptureRunner:
             if handle is not None:
                 handle.setScreen(screen)
             geometry = screen.availableGeometry()
+            current = widget.size()
+            maximum_width = max(320, geometry.width() - 48)
+            maximum_height = max(240, geometry.height() - 48)
+            if current.width() > maximum_width or current.height() > maximum_height:
+                widget.resize(
+                    min(current.width(), maximum_width),
+                    min(current.height(), maximum_height),
+                )
             widget.move(geometry.x() + 24, geometry.y() + 24)
             self._capture_display = "secondary"
         except Exception:
             logger.debug("Anki Garden capture: could not move to second display", exc_info=True)
 
     def _prepare_capture_state(self) -> None:
-        if self._ensure_capture_state() or self._starter_seed_attempts >= 80:
+        if self._ensure_capture_state():
+            reset = getattr(mw, "reset", None)
+            if callable(reset):
+                try:
+                    reset()
+                except Exception:
+                    logger.debug("Anki Garden capture: seeded Home refresh failed", exc_info=True)
+            QTimer.singleShot(800, self._next_step)
+            return
+        if self._starter_seed_attempts >= 80:
             self._next_step()
             return
         self._starter_seed_attempts += 1
@@ -194,7 +213,71 @@ class _UiFaceCaptureRunner:
             return
         QTimer.singleShot(120, lambda: self._wait_for(predicate, on_ready, tries=tries - 1))
 
+    def _wait_for_home_surface(
+        self,
+        state: str,
+        on_ready: Callable[[], None],
+        *,
+        tries: int = 100,
+    ) -> None:
+        if str(getattr(mw, "state", "")) != state:
+            if tries <= 0:
+                self._failures.append({"label": state, "reason": "Anki surface did not become active"})
+                self._next_after(120)
+                return
+            QTimer.singleShot(
+                120,
+                lambda: self._wait_for_home_surface(state, on_ready, tries=tries - 1),
+            )
+            return
+        web = getattr(mw, "web", None)
+        evaluate = getattr(web, "evalWithCallback", None)
+        if not callable(evaluate):
+            on_ready()
+            return
+        script = """
+            (() => {
+              const root = document.querySelector('#ag-home-root');
+              if (!root || !['success', 'partial'].includes(root.dataset.state)) return false;
+              const rect = root.getBoundingClientRect();
+              if (rect.width < 100 || rect.height < 100) return false;
+              return [...root.querySelectorAll('img')].every(img => img.complete);
+            })()
+        """
+
+        def resolved(ready: Any) -> None:
+            if bool(ready):
+                QTimer.singleShot(32, on_ready)
+            elif tries <= 0:
+                self._failures.append({"label": state, "reason": "Home widget never reached painted success or partial state"})
+                self._next_after(120)
+            else:
+                QTimer.singleShot(
+                    120,
+                    lambda: self._wait_for_home_surface(state, on_ready, tries=tries - 1),
+                )
+
+        try:
+            evaluate(script, resolved)
+        except Exception:
+            if tries <= 0:
+                self._failures.append({"label": state, "reason": "Home widget readiness evaluation failed"})
+                self._next_after(120)
+            else:
+                QTimer.singleShot(
+                    120,
+                    lambda: self._wait_for_home_surface(state, on_ready, tries=tries - 1),
+                )
+
     def _with_dashboard(self, on_ready: Callable[[], None]) -> None:
+        dashboard = getattr(self.app, "dashboard", None)
+        try:
+            if dashboard is not None and bool(dashboard.isVisible()):
+                self._move_to_capture_display(dashboard)
+                on_ready()
+                return
+        except Exception:
+            pass
         self.app.open_dashboard()
         def dashboard_ready() -> None:
             self._move_to_capture_display(getattr(self.app, "dashboard", None))
@@ -202,35 +285,52 @@ class _UiFaceCaptureRunner:
         self._wait_for_dashboard(dashboard_ready)
 
     def _capture_now(self, label: str, widget: Any | None = None) -> None:
+        path = self.session_dir / f"{self._capture_index:02d}-{label}.png"
+        self._capture_index += 1
         app = QApplication.instance()
         if app is None:
+            self._failures.append({"label": label, "reason": "Qt application unavailable"})
             return
         app.processEvents()
         if widget is None:
-            widget = app.activeWindow() or mw
-        if widget is None:
+            self._failures.append({"label": label, "reason": "Expected capture widget was not provided"})
             return
         try:
+            if not bool(widget.isVisible()) or widget.width() <= 0 or widget.height() <= 0:
+                self._failures.append({"label": label, "reason": "Expected capture widget was not visible with nonzero geometry"})
+                return
             self._move_to_capture_display(widget)
             app.processEvents()
-            path = self.session_dir / f"{self._capture_index:02d}-{label}.png"
-            self._capture_index += 1
             pixmap = widget.grab()
             if pixmap is None:
+                self._failures.append({"label": label, "reason": "Qt returned no pixmap"})
                 return
             if pixmap.isNull():
                 screen = QGuiApplication.primaryScreen()
                 if screen is None:
+                    self._failures.append({"label": label, "reason": "No screen available for fallback capture"})
                     return
                 try:
                     pixmap = screen.grabWindow(int(widget.winId()))
                 except Exception:
+                    self._failures.append({"label": label, "reason": "Window fallback capture failed"})
                     return
                 if pixmap.isNull():
+                    self._failures.append({"label": label, "reason": "Captured pixmap was null"})
                     return
             if pixmap.save(str(path), "png"):
                 self._screenshots.append(str(path))
+                self._capture_records.append({
+                    "label": label,
+                    "path": str(path),
+                    "widget": type(widget).__name__,
+                    "width": int(widget.width()),
+                    "height": int(widget.height()),
+                })
+            else:
+                self._failures.append({"label": label, "reason": "PNG save failed"})
         except Exception:
+            self._failures.append({"label": label, "reason": "Unexpected capture exception"})
             logger.debug("Anki Garden capture: screenshot failed for %s", label, exc_info=True)
 
     def _capture_and_advance(
@@ -302,12 +402,18 @@ class _UiFaceCaptureRunner:
     def _switch_surface(self, state: str) -> None:
         if getattr(mw, "state", None) == state:
             return
+        move_to_state = getattr(mw, "moveToState", None)
+        if callable(move_to_state):
+            try:
+                move_to_state(state)
+                return
+            except Exception:
+                logger.debug("Anki Garden capture: moveToState failed for %s", state, exc_info=True)
         for method_name in (
             f"on{state[0].upper() + state[1:]}",
             f"show{state[0].upper() + state[1:]}",
             f"show_{state}",
             state,
-            "deckBrowser" if state == "overview" else "overview",
         ):
             method = getattr(mw, method_name, None)
             if callable(method):
@@ -318,13 +424,6 @@ class _UiFaceCaptureRunner:
                 except Exception:
                     logger.debug("Anki Garden capture: surface switch failed for %s", method_name, exc_info=True)
                 return
-        move_to_state = getattr(mw, "moveToState", None)
-        if callable(move_to_state):
-            try:
-                move_to_state(state)
-                return
-            except Exception:
-                pass
         set_state = getattr(mw, "setState", None)
         if callable(set_state):
             try:
@@ -397,21 +496,42 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_deck_browser(self) -> None:
-        self._switch_surface("deckBrowser")
-        self._capture_and_advance(
-            "deck-browser-home",
-            mw,
-            capture_delay_ms=650,
-            next_ms=1200,
-        )
+        # A disposable profile starts on Deck Browser before deterministic
+        # Garden seeding. Force a real state transition so Anki replaces that
+        # pre-seed DOM instead of letting its old successful root satisfy the
+        # readiness predicate during the page fade.
+        self._switch_surface("overview")
+
+        def enter_fresh_deck_browser() -> None:
+            self._switch_surface("deckBrowser")
+            QTimer.singleShot(
+                500,
+                lambda: self._wait_for_home_surface(
+                    "deckBrowser",
+                    lambda: self._capture_and_advance(
+                        "deck-browser-home",
+                        mw,
+                        capture_delay_ms=650,
+                        next_ms=1200,
+                    ),
+                ),
+            )
+
+        QTimer.singleShot(500, enter_fresh_deck_browser)
 
     def _capture_overview(self) -> None:
         self._switch_surface("overview")
-        self._capture_and_advance(
-            "overview-home",
-            mw,
-            capture_delay_ms=650,
-            next_ms=1200,
+        QTimer.singleShot(
+            350,
+            lambda: self._wait_for_home_surface(
+                "overview",
+                lambda: self._capture_and_advance(
+                    "overview-home",
+                    mw,
+                    capture_delay_ms=650,
+                    next_ms=1200,
+                ),
+            ),
         )
 
     def _capture_addon_settings_menu(self) -> None:
@@ -425,14 +545,17 @@ class _UiFaceCaptureRunner:
             dialog = self._find_settings_dialog()
             self._capture_and_advance(
                 "settings-menu-display",
-                dialog or mw,
+                dialog,
                 capture_delay_ms=400,
-                close_callback=self._close_top_level_dialogs,
+                close_callback=lambda: self._close_widget(dialog),
                 close_ms=700,
                 next_ms=1200,
             )
         self._wait_for(
-            lambda: self._find_settings_dialog() is not None,
+            lambda: bool(
+                self._find_settings_dialog() is not None
+                and self._find_settings_dialog().isVisible()
+            ),
             _ready,
             tries=80,
         )
@@ -442,9 +565,7 @@ class _UiFaceCaptureRunner:
             "full-garden",
             self.app.dashboard,
             capture_delay_ms=500,
-            close_callback=self._close_dashboard,
-            close_ms=700,
-            next_ms=1200,
+            next_ms=900,
         ))
 
     def _capture_selected_card(self) -> None:
@@ -458,15 +579,16 @@ class _UiFaceCaptureRunner:
             self._next_after(250)
             return
         selector = getattr(dashboard, "_on_scene_selection", None)
+        keep_open = getattr(getattr(dashboard, "scene", None), "keep_card_open", None)
+        if callable(keep_open):
+            keep_open(plant_id)
         if callable(selector):
             selector(plant_id)
         self._capture_and_advance(
             "selected-plant-card",
             dashboard,
             capture_delay_ms=400,
-            close_callback=self._close_dashboard,
-            close_ms=700,
-            next_ms=1100,
+            next_ms=900,
         )
 
     def _capture_nurture(self) -> None:
@@ -486,9 +608,7 @@ class _UiFaceCaptureRunner:
             "selected-plant-nurture",
             dashboard,
             capture_delay_ms=260,
-            close_callback=self._close_dashboard,
-            close_ms=700,
-            next_ms=1000,
+            next_ms=850,
         )
 
     def _capture_fertilize(self) -> None:
@@ -506,13 +626,27 @@ class _UiFaceCaptureRunner:
             self._close_dashboard()
             self._next_after(250)
             return
-        self._capture_and_advance(
-            "selected-plant-fertilize",
-            None,
-            capture_delay_ms=550,
-            close_callback=self._close_top_level_dialogs,
-            close_ms=900,
-            next_ms=1300,
+        def ready() -> None:
+            dialog = getattr(dashboard, "fertilizer_dialog", None)
+            self._capture_and_advance(
+                "selected-plant-fertilize",
+                dialog,
+                capture_delay_ms=220,
+                close_callback=lambda: self._close_widget(dialog),
+                close_ms=620,
+                next_ms=1000,
+            )
+
+        QTimer.singleShot(
+            0,
+            lambda: self._wait_for(
+                lambda: bool(
+                    getattr(dashboard, "fertilizer_dialog", None)
+                    and dashboard.fertilizer_dialog.isVisible()
+                ),
+                ready,
+                tries=80,
+            ),
         )
         fertilize(plant_id)
 
@@ -554,13 +688,27 @@ class _UiFaceCaptureRunner:
             self._close_dashboard()
             self._next_after(250)
             return
-        self._capture_and_advance(
-            "selected-plant-story",
-            None,
-            capture_delay_ms=550,
-            close_callback=self._close_top_level_dialogs,
-            close_ms=950,
-            next_ms=1300,
+        def ready() -> None:
+            dialog = getattr(dashboard, "story_dialog", None)
+            self._capture_and_advance(
+                "selected-plant-story",
+                dialog,
+                capture_delay_ms=220,
+                close_callback=lambda: self._close_widget(dialog),
+                close_ms=650,
+                next_ms=1000,
+            )
+
+        QTimer.singleShot(
+            0,
+            lambda: self._wait_for(
+                lambda: bool(
+                    getattr(dashboard, "story_dialog", None)
+                    and dashboard.story_dialog.isVisible()
+                ),
+                ready,
+                tries=80,
+            ),
         )
         story(plant_id)
 
@@ -584,14 +732,23 @@ class _UiFaceCaptureRunner:
         open_progress = getattr(dashboard, "_open_progress", None)
         if callable(open_progress):
             open_progress()
-        dialog = getattr(dashboard, "progress_dialog", None)
-        self._capture_and_advance(
-            "garden-progress",
-            dialog or dashboard,
-            capture_delay_ms=450,
-            close_callback=self._close_top_level_dialogs,
-            close_ms=800,
-            next_ms=1200,
+        def ready() -> None:
+            dialog = getattr(dashboard, "progress_dialog", None)
+            self._capture_and_advance(
+                "garden-progress",
+                dialog,
+                capture_delay_ms=220,
+                close_callback=lambda: self._close_widget(dialog),
+                close_ms=620,
+                next_ms=1000,
+            )
+        self._wait_for(
+            lambda: bool(
+                getattr(dashboard, "progress_dialog", None)
+                and dashboard.progress_dialog.isVisible()
+            ),
+            ready,
+            tries=80,
         )
 
     def _capture_settings_display(self) -> None:
@@ -606,7 +763,10 @@ class _UiFaceCaptureRunner:
         if callable(open_settings):
             open_settings()
         self._wait_for(
-            lambda: self._find_settings_dialog() is not None,
+            lambda: bool(
+                self._find_settings_dialog() is not None
+                and self._find_settings_dialog().isVisible()
+            ),
             self._capture_settings_display_ready,
             tries=80,
         )
@@ -622,7 +782,7 @@ class _UiFaceCaptureRunner:
             "settings-display",
             settings_dialog,
             capture_delay_ms=450,
-            close_callback=self._close_top_level_dialogs,
+            close_callback=lambda: self._close_widget(settings_dialog),
             close_ms=900,
             next_ms=1400,
         )
@@ -639,7 +799,10 @@ class _UiFaceCaptureRunner:
         if callable(open_settings):
             open_settings()
         self._wait_for(
-            lambda: self._find_settings_dialog() is not None,
+            lambda: bool(
+                self._find_settings_dialog() is not None
+                and self._find_settings_dialog().isVisible()
+            ),
             self._capture_settings_troubleshooting_ready,
             tries=80,
         )
@@ -655,7 +818,7 @@ class _UiFaceCaptureRunner:
             "settings-troubleshooting",
             settings_dialog,
             capture_delay_ms=500,
-            close_callback=self._close_top_level_dialogs,
+            close_callback=lambda: self._close_widget(settings_dialog),
             close_ms=900,
             next_ms=1400,
         )
@@ -665,6 +828,10 @@ class _UiFaceCaptureRunner:
             "captured_at": datetime.now().isoformat(timespec="seconds"),
             "capture_display": self._capture_display,
             "screenshots": self._screenshots,
+            "captures": self._capture_records,
+            "failures": self._failures,
+            "expected_count": len(self._steps),
+            "complete": len(self._screenshots) == len(self._steps) and not self._failures,
         }
         try:
             self._close_top_level_dialogs()
