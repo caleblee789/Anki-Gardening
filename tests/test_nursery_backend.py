@@ -8,7 +8,14 @@ import pytest
 from ankigarden.asset_manager import AssetManager
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import DailyStats, GardenState, Plant, STATE_VERSION
+from ankigarden.models.state import (
+    GROWTH_STAGES,
+    GROWTH_THRESHOLDS,
+    DailyStats,
+    GardenState,
+    Plant,
+    STATE_VERSION,
+)
 from ankigarden.storage import DueObligationStatus, GardenStorage, migrate_previous_state
 
 
@@ -152,6 +159,45 @@ def test_underscore_species_key_keeps_the_full_species_during_resolution(tmp_pat
     }
 
 
+def test_repeated_asset_resolution_is_read_only_after_first_selection(tmp_path):
+    row = release_row("rose", "mature")
+    assets_root = tmp_path / "assets"
+    assets_root.mkdir()
+    asset_path = tmp_path / row["file"]
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path.write_bytes(b"manifest-test")
+    (assets_root / "manifest.json").write_text(
+        json.dumps({"assets": [row]}), encoding="utf-8"
+    )
+
+    class Storage:
+        def __init__(self):
+            self.addon_dir = tmp_path
+            self.assets_root = assets_root
+            self.saved: list[dict] = []
+
+        def load_asset_metadata(self):
+            return {}
+
+        def save_asset_metadata(self, data):
+            self.saved.append(json.loads(json.dumps(data)))
+
+    storage = Storage()
+    manager = AssetManager(FakeConfig(), storage)
+
+    first = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+    second = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+
+    assert first is not None
+    assert second is first
+    assert len(storage.saved) == 1
+
+    manager.clear_runtime_cache()
+    third = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
+    assert third is not None
+    assert len(storage.saved) == 1
+
+
 def test_bundled_catalog_exposes_only_complete_v6_lines():
     storage = FakeStorage()
     manager = AssetManager(FakeConfig(), storage)
@@ -182,7 +228,7 @@ def test_bundled_catalog_exposes_only_complete_v6_lines():
     assert {"bonsai", "rose"}.issubset(ready)
 
 
-def test_free_starter_is_atomic_active_and_does_not_backfill_earlier_reviews():
+def test_free_starter_is_atomic_requires_nurture_and_does_not_backfill_earlier_reviews():
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
 
@@ -194,7 +240,7 @@ def test_free_starter_is_atomic_active_and_does_not_backfill_earlier_reviews():
 
     assert ok and plant is not None
     assert plant.slot_index == 0
-    assert storage.state.active_plant_id == plant.plant_id
+    assert storage.state.active_plant_id is None
     assert storage.state.unlocked_slots == 2
     assert storage.state.unlocked_species == ["rose"]
     assert storage.state.starter_selection_complete
@@ -221,8 +267,38 @@ def test_free_starter_is_atomic_active_and_does_not_backfill_earlier_reviews():
         "revlog_id": storage.now_ms,
         "answered_at_ms": storage.now_ms,
     })
-    assert after_choice.total_growth == 10
+    assert after_choice.total_growth == 0
+    assert plant.growth_points == 0
+
+    storage.now_ms += 1_000
+    nurtured, _message = engine.set_active_plant(plant.plant_id)
+    assert nurtured
+    assert storage.state.active_plant_id == plant.plant_id
+    after_nurture = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": storage.now_ms,
+        "answered_at_ms": storage.now_ms,
+    })
+    assert after_nurture.total_growth == 10
     assert plant.growth_points == 10
+
+
+def test_starter_species_share_the_same_growth_stages_rate_and_reward_model():
+    storage = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), storage)
+
+    assert len(GROWTH_STAGES) == 6
+    assert len(GROWTH_THRESHOLDS) == 6
+    estimates = {
+        species: engine.progress_estimates(
+            Plant(f"test-{species}", species, species.title(), 0)
+        )
+        for species in engine.SPECIES_PRICES
+    }
+    assert len(set(estimates.values())) == 1
+    assert engine.BASE_GROWTH_PER_REVIEW == 10
+    assert list(engine.environment_drop_odds())
 
 
 def test_starter_save_failure_restores_the_empty_garden():
@@ -239,6 +315,39 @@ def test_starter_save_failure_restores_the_empty_garden():
     assert not storage.state.starter_selection_complete
 
 
+def test_customize_environment_draft_commits_atomically_and_rolls_back_on_save_failure():
+    storage = FakeStorage()
+    engine = GardenGameEngine(FakeConfig(), storage)
+    storage.state.inventory.setdefault("weather", []).append("breeze")
+    storage.state.inventory.setdefault("scenery", []).append("spring")
+    storage.state.inventory.setdefault("backgrounds", []).append("spring")
+
+    ok, message = engine.apply_environment_loadout(
+        "breeze", "spring", {"weather": False, "scenery": True}
+    )
+
+    assert ok and message == "Garden appearance saved."
+    assert storage.state.selected_weather == "breeze"
+    assert storage.state.selected_background == "spring"
+    assert storage.state.environment_visibility == {
+        "weather": False,
+        "scenery": True,
+    }
+
+    storage.fail_save = True
+    ok, message = engine.apply_environment_loadout(
+        "sunny", "default", {"weather": True, "scenery": False}
+    )
+
+    assert not ok and message == "Those appearance changes could not be saved."
+    assert storage.state.selected_weather == "breeze"
+    assert storage.state.selected_background == "spring"
+    assert storage.state.environment_visibility == {
+        "weather": False,
+        "scenery": True,
+    }
+
+
 def test_garden_space_cannot_be_purchased_before_free_starter_selection():
     storage = FakeStorage()
     storage.state.currency_balance = 10_000
@@ -249,7 +358,7 @@ def test_garden_space_cannot_be_purchased_before_free_starter_selection():
     ok, message = engine.purchase_next_bed()
 
     assert not ok
-    assert message == "Choose your free starter before unlocking another garden space."
+    assert message == "Choose a starter before unlocking another garden space."
     assert storage.state.to_dict() == before
     assert storage.state.currency_transactions == []
     assert storage.save_count == save_count

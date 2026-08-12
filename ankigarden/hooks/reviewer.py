@@ -1,25 +1,100 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from aqt import mw
 
 from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
 from ..notices import USER_NOTICES
 from ..storage import unprocessed_revlog_entries
+from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 
 
 logger = logging.getLogger(__name__)
 
 
 class ReviewerHookHandler:
-    def __init__(self, engine: Any, storage: Any) -> None:
+    def __init__(
+        self,
+        engine: Any,
+        storage: Any,
+        state_changed: Callable[[str], None] | None = None,
+    ) -> None:
         self.engine = engine
         self.storage = storage
+        self.state_changed = state_changed
         self._last_notified_event = ""
         self._reward_toast: Any | None = None
+        self._reviewer_notice: Any | None = None
+        self._reviewer_notice_shown = False
+        self._reviewer_session_window: Any | None = None
+
+    def on_question(self, *_args: Any, **_kwargs: Any) -> None:
+        """Show one non-modal eligibility reminder before a reviewer answer."""
+
+        if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
+            self._hide_no_starter_notice()
+            return
+        reviewer_window = getattr(mw, "reviewer", None)
+        if reviewer_window is not None and reviewer_window is not self._reviewer_session_window:
+            self._reviewer_session_window = reviewer_window
+            self._reviewer_notice_shown = False
+            self._hide_no_starter_notice()
+        if self._reviewer_notice_shown:
+            return
+        self._reviewer_notice_shown = True
+        self._show_no_starter_notice()
+
+    def on_starter_selected(self) -> None:
+        """Remove the session reminder as soon as starter persistence succeeds."""
+
+        self._reviewer_notice_shown = False
+        self._hide_no_starter_notice()
+
+    def _show_no_starter_notice(self) -> None:
+        try:
+            from aqt.qt import QFrame, QLabel, QTimer, Qt
+
+            previous = self._reviewer_notice
+            if previous is not None:
+                previous.hide()
+                previous.deleteLater()
+            notice = QFrame(mw)
+            notice.setObjectName("ankiGardenReviewerStarterNotice")
+            notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            notice.setStyleSheet(
+                "QFrame#ankiGardenReviewerStarterNotice { background:#17342e; "
+                "border:1px solid #557665; border-radius:8px; padding:7px 10px; }"
+                "QLabel { color:#e8f1eb; font-size:12px; }"
+            )
+            label = QLabel(REVIEWER_NO_STARTER_NOTICE, notice)
+            label.setWordWrap(True)
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            label.setAccessibleName(REVIEWER_NO_STARTER_NOTICE)
+            notice.adjustSize()
+            width_attr = getattr(mw, "width", None)
+            parent_width = int(width_attr()) if callable(width_attr) else int(width_attr or 720)
+            parent_width = max(parent_width, notice.width())
+            notice.move(max(12, parent_width - notice.width() - 18), 18)
+            notice.show()
+            notice.raise_()
+            self._reviewer_notice = notice
+            QTimer.singleShot(6000, self._hide_no_starter_notice)
+        except Exception:
+            logger.debug("Anki Garden: reviewer starter notice could not be shown", exc_info=True)
+
+    def _hide_no_starter_notice(self) -> None:
+        notice = self._reviewer_notice
+        self._reviewer_notice = None
+        if notice is None:
+            return
+        try:
+            notice.hide()
+            notice.deleteLater()
+        except Exception:
+            logger.debug("Anki Garden: reviewer starter notice could not be hidden", exc_info=True)
 
     @staticmethod
     def review_payload_from_row(row: tuple[Any, ...], collection: Any) -> dict[str, Any] | None:
@@ -128,10 +203,18 @@ class ReviewerHookHandler:
 
         USER_NOTICES.clear(key="review_history")
 
+        if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
+            self._hide_no_starter_notice()
+
         try:
             self.engine.evaluate_all_due(self.storage.due_obligations())
         except Exception:
             logger.debug("Anki Garden: unable to evaluate all-due completion after review", exc_info=True)
+        if self.state_changed is not None:
+            try:
+                self.state_changed("Card answer counted")
+            except Exception:
+                logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
         self._show_optional_progress_feedback()
 
     @staticmethod
@@ -328,26 +411,15 @@ class ReviewerHookHandler:
     def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:
         asset_key = str(getattr(event, "asset_key", "") or "")
         asset_category = str(getattr(event, "asset_category", "") or "")
-        ui_assets = {
-            "booster_potion": "booster_potion.png",
-            "fertilizer_basic": "fertilizer_basic.png",
-            "fertilizer_quality": "fertilizer_quality.png",
-            "fertilizer_premium": "fertilizer_premium.png",
-            "growth_charge_small": "growth_charge_small.png",
-            "growth_charge_standard": "growth_charge_standard.png",
-            "growth_charge_grand": "growth_charge_grand.png",
-        }
-        filename = ui_assets.get(asset_key)
-        if filename:
-            path = (
-                Path(__file__).resolve().parents[1]
-                / "assets"
-                / "v6_storybook_gouache"
-                / "ui"
-                / filename
-            )
-            if path.is_file():
-                return pixmap_type(str(path)), None
+        if asset_category == "ui" and asset_key:
+            resolver = getattr(self.engine, "resolve_item_asset", None)
+            try:
+                asset = resolver(asset_key) if callable(resolver) else None
+                path = getattr(asset, "path", None)
+                if path:
+                    return pixmap_type(str(path)), None
+            except Exception:
+                logger.debug("Anki Garden: unable to resolve reward item art", exc_info=True)
         if asset_category in {"weather", "backgrounds"} and asset_key:
             resolver = getattr(
                 self.engine,

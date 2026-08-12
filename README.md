@@ -6,6 +6,14 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 >
 > Due-card completion, Anki streak milestones, plant stages, and rare study gifts → Garden Coins → Nursery plants, spaces, supplements, Weather, and Scenery
 
+## Current release highlights
+
+- A clearer first-run path explains that Growth starts after the learner chooses and nurtures a starter; earlier reviews are never backfilled.
+- Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
+- The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
+- Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
+- The release checks cover every declared UI capture surface, runtime asset references, archive contents, and exact source-to-package parity.
+
 ## Gameplay terms
 
 | Term | What it means | Gameplay effect |
@@ -54,22 +62,23 @@ retries later.
 ## Garden interaction
 
 - Hover gives visible artwork a restrained highlight and pointer cursor without opening details or moving the art.
-- Click selects one plant and opens a compact native card near it with stage-local Growth, answers remaining, Fertilizer and Booster status, and four stable actions: Nurture, Fertilize, Move, and Story.
+- Click selects one plant and opens a compact native card near it with stage-local Growth, answers remaining, Fertilizer and Booster Potion status, and four stable actions: Nurture, Fertilize, Move, and Story.
 - Click outside or press Escape to dismiss. The card repositions at scene edges and is replaced immediately when another plant is selected.
 - Move highlights valid garden spaces. Click or keyboard-select one to save immediately, then use the inline Undo action if needed; Escape cancels before placement.
 - Overlap hit testing follows depth order, and geometry-v2 `interaction_bounds` keep transparent artwork margins from stealing clicks.
 
-The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Progress** in the header—and the cottage inside the scene—opens the broader Today, Achievements, Collection, and progression guide window. Plant-specific information lives in the clicked-plant card or Plant Story.
+The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Garden Progress** in the header—and the Garden Progress cottage inside the scene—opens the broader Today, Achievements, Collection, and progression guide window. Plant-specific information lives in the clicked-plant card or Plant Story.
 
 Verdant Twilight V6 uses six direct-soil beds across three staggered perspective
 bands. The nursery entrance is a keyboard-accessible landmark that opens the
 Nursery from the full Garden, is disabled while moving a plant, and is not exposed
-in the home preview. A fresh garden opens the Nursery on its first visit, offers
-one release-ready starter for free, and begins with a second empty unlocked
-space. The learner names the profile-wide Garden on first use and can rename it
-later; new plants begin with an unambiguous generated name such as **Bonsai
-Plant**. The Nursery is a warm catalog with **Plants**, **Supplements &
-Boosters**, **Permanent Upgrades**, and **Weather & Scenery** tabs, stage
+in the home preview. A fresh garden presents starter setup in the Garden and
+opens the Nursery when the learner chooses that action. It offers one
+release-ready starter for free and begins with a second empty unlocked space.
+Garden naming is optional personalization in Settings; unnamed Gardens display
+**My Garden**. New plants begin with an unambiguous generated name such as
+**Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Supplements &
+Booster Potions**, **Permanent Upgrades**, and **Weather and Scenery** tabs, stage
 artwork previews, and item art.
 
 ## Fertilizer and collection
@@ -90,7 +99,7 @@ after expiry receive no Fertilizer Growth.
 Booster Potions are not sold. A rare drop adds one to the collection; using it
 on the nurtured unfinished plant grants `+5` Growth per eligible answer for two
 hours. It stacks with Fertilizer, and using another Potion extends the active
-Booster rather than discarding its remaining time.
+Booster Potion rather than discarding its remaining time.
 
 Small and Standard Growth Charges can be bought repeatedly for 30 and 125
 Garden Coins. They add 100 and 500 Growth immediately. The 2,000-Growth Grand
@@ -102,14 +111,14 @@ and is tracked separately from answer-time Growth.
 
 Exactly one Weather and one Scenery may be equipped, and their passives stack.
 The Nursery sells one-time Common and Uncommon choices but never auto-equips a
-purchase. The cottage's **Weather & Scenery** collection tab shows the active
+purchase. The Garden Progress cottage's **Weather and Scenery** collection tab shows the active
 loadout, every effect, how each item is earned, exact drop odds, and Ultra pity.
 Drop-only art remains a silhouette until unlocked while its rules stay visible.
 Separate visibility switches hide either visual layer without disabling its
 equipped passive.
 
 Weather passives remain deliberately small: limited daily Growth, a small
-all-due bonus, or a modest Booster-duration extension. Scenery can be stronger,
+all-due bonus, or a modest Booster Potion duration extension. Scenery can be stronger,
 with the most powerful effects reserved for Very Rare and Ultra Rare review
 drops. Daily scenery gifts require a card answer that Anki day, consume that
 answer's one reward slot, and never backfill missed days. Ultra odds improve in
@@ -139,17 +148,17 @@ Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
 add-on upgrades. The current pre-release state is schema 16. It stores Weather
 and Scenery entitlements, loadout and visibility, Growth Charges, daily passive
 claims, Ultra pity, separate Growth-source totals, the deterministic reward
-seed/drop history, and the existing Garden, Booster, Fertilizer, and bounded
+seed/drop history, and the existing Garden, Booster Potion, Fertilizer, and bounded
 scheduler-day review state. Schema 15 development state is accepted and
 upgraded; failed reads or writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser and Overview use a compact, height-bounded, noninteractive scene preview with the Garden name, nurtured-plant Growth, Anki streak, Garden Coins, and one **Open Garden** action.
-- The Nursery and cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Garden Progress. Both work with mouse and keyboard.
+- The Deck Browser and Overview share one compact, height-bounded scenic postcard: a fixed safe-content frame keeps the Nursery, cottage, and all six garden spaces visible above a two-row information rail with the Garden name, nurtured-plant Growth, Anki streak, Garden Coins, and one **Open Garden** action. The artwork is noninteractive.
+- The Nursery and Garden Progress cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Garden Progress. Both work with mouse and keyboard.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
-- Weather and Scenery are equipped, changed, shown, and hidden from the cottage's collection window. They are no longer settings controls.
+- Weather and Scenery are equipped, changed, shown, and hidden from the Garden Progress cottage's collection window. They are no longer settings controls.
 - Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. The temporary Troubleshooting development controls can back up, populate, and restore a complete test garden.
 
 ## Runtime bundle
@@ -158,14 +167,25 @@ The distributable contains one current art line instead of retaining every
 development generation:
 
 - one canonical Verdant Twilight V6 responsive environment plus eight compatible Scenery reskins with unchanged masks, anchors, path, Nursery, and cottage;
-- one approved transparent PNG for each of 10 species across 6 Growth stages;
+- one approved transparent, pixel-lossless WebP for each of 10 species across 6 Growth stages;
 - seven balanced transparent Weather overlays, three Growth Charge illustrations, and the lantern used at runtime.
 
 V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
-current-only file set and a 75 MiB archive ceiling.
+current-only file set and a 52 MiB archive ceiling.
+
+## Troubleshooting
+
+- **A plant is not receiving Growth:** open the Garden and make sure an unfinished plant is marked **Nurtured**. Reviews completed before choosing and nurturing a starter are intentionally not backfilled.
+- **Artwork cannot be loaded:** saved plants and progression remain intact. The affected surface keeps the plant name and stage and uses a code-native fallback until the packaged resource is available again.
+- **The add-on does not appear after a source install:** confirm that `ankigarden/` is inside Anki's `addons21` directory, then restart Anki. The installed folder must include `manifest.json`, the Python package, and the manifest-owned assets.
+- **A development package fails validation:** run the commands in [Development checks](#development-checks) from the repository root. Asset-audit or source/archive-parity failures should be fixed before installing or distributing the archive.
+
+For a release smoke test, use a fresh disposable Anki base and profile with sync
+disabled. Do not test an unpublished build against a normal collection merely
+to confirm startup.
 
 ## Install from source
 

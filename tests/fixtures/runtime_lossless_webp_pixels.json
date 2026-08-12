@@ -1,0 +1,747 @@
+{
+  "assets/support/decorations/lantern.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "93bfa9d3982bc2554d9d8856916859e2ede987e98dbeb1e0be5828f00af9d9f0",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "ed1acbe7bdc420a85bb1197657b2e7997241b7386b5a29d3ef3e574267c1118f",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "ffd8c1890b517318a429dec2e2db98cdeaccf51cd1e1408aaac932814ce1d8c6",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "4a04d4d3d9eab10eea9ed9bbbf782ed30f8c87a786e5a32c17dae9c9eb84ebd5",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "e173f192a5c7316a076d0e3771fbe4bc8a36ca78c2fccaba3e44def0eac97151",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "eb1c01b6c744a42c2a09a244c5349ade02147a937d8dd60c01d2873315ce648d",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "8402f94856b87b5f3c37b099327a971e6af858652707b27f690e7096ff955ba6",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "ea42ae07b503461218e029bdd284f2a8435c99961d05e9ed73a471fa3c9c9038",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "43fd211dd2509ba8761d79d1f39e71483a4cd03998eae063fc2db7d8c1866a7f",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "2c751b7a5818526a2568dba213514711ae45e21f846ef83690303d12c7a28bff",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "779b4e26a14b47d3916ec0f766dbe1d6cfbde865b21ea69e0898876d0080d125",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "64bb518f3bbbeb5709e37f03fbbde826730097c1dd810bd484d547732387b001",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "fbcb438346bf1d89a6cce967104f50ae67f8fe6adad65279f3c122652fe8a70f",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "d348c4c40f2b619d5082b3671f17882fa0a577cc0739abb268260d2bf3bb3682",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "4a164790d91db9bfa79af6e1d89064efd5fd99ae5f080d83f6ff1958d7d8c465",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "3e173b616b74a70ae5b677463ef9ba9e052e0765eee78cbfffe2a039ee3d97eb",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "b3f8d16eb0550185d5aaf0919c7cbda28c1829dde1f23a1c9e98a1c5f2c35cbf",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "57d04aeebaef56b992db7ed9ab0534482fed800616a9e01e171aa05a38fd74ef",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "4fb7b818f7cb7811676b733ef7005b38325943bb2a4cf9224f960c5ff0da6fc1",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "c7244e4f8fc919bd62d7e11af80901a759ada03331a4273daaed3daaf8ad0e85",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "f46a973a19b56a9e1fe0f03aed6f040a48eac7e51a6d0d29ec137f84550c1bac",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "b8d5db1d63c346cbb34684909c5c9aa5c35dde56716618b041988799fa5de283",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "ab9aeee78cf9080822c50e335d60e2f3818946a3aeecaf749b11e7bc4e6b7e18",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "e430f8990490816b41669f686b7fc6e8308cc1c81de7951295eca320d94d4539",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "16adf1a783d7c6e5a9e7e5b1ec59f68b9f5f04255d814fe021da22da8ffd7964",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "353031d6488d992e3778a9e5b43d6e01a6188f867b5a887a9aa5ac3c1fd305a9",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "7d87e8b1b12fb5ceddb9a452eb1d07c56861ff79bf6325daefc90e79f3791c0d",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "e1f449e999285436bb4ac2a8f6ac16a2b84bd17a1055d75f786c0e9787a2fada",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "cfb041eac1a56d4bbe411e87c5be693bb018d683364ef98b387a80dde4e065d3",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "87829f0d6681f8463bcdfd313d763be18be95c7a06590bad910c8fc28ac97b73",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "bcb971724cc96c17411b9c471f730ff47fda098fce0f31b281b3f92087a09d8f",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "0004c63ca6716ef39d8c5855b419cbb817b62227799f722e23ea7caa85c06649",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "753e7b62439601de05b525210189c2ec17b1d217c63a131931edd62160f08279",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "38fc3436fb7359d4b8f1e08a55d02bcd644d9207de784ca703e64201b95c1c19",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "6704d1adc8f0253ed293759f649375858ec09fd986ad57c892ceeb01ad3ab158",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "5df8725c3983ffc5a6de30503c2e088d196e794a62741411269628ce4c8a0131",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "a0aab8aa9be085efd17cab6ebdb8e12975ed0c63221062aeb1e56180514b80a9",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "534076b0fc620db699f7c5ed606f761d9c99f24a9240e1598a77867a0255ad37",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "86cd76ff19cf3680ab336a8eba15a84f58a400018046f546e223f5698670b7fe",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "f7c46adb6b2167e824f47d2d22ea0427c90c438e0567bec3e7ff271f2555e737",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "205fc325b673a10e380e75c8624db306f22eb63c356717631a48d7dad6031f12",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "6f6bb9338f935623f2a718818314cc37be78ee8920c2eb4cb4001bcb9dfa658b",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "8d5a1062c50d7521d6ee3b5e57edeb6496374d557480a73d40958a32c2a0b407",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "0abb5e00f2f14da9c27e0a9c2baa27795690083f47d123dce9025dcf2ecb3667",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "505fc411cd357b60eb75000e277ba522c349039703d05f9550390eb1f181aa4b",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "6d89755a178d7f45e3b76b744ef6cfb1070c8913f57f42a1ea04c6d3d4eb5c60",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "24353de015cb98aa8613fb1b7ad36deb1fdffb27e16e47ab488fc0418cf779e4",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "c0fdf094b8034a929eddcd6292a0c52745081081f827a6431cc69e1c0307fbcf",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "15ee69f576d815671d9ac4c3f922012abe7f1eb70ae0ffaba4677bb0f961d254",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "f037c265a3021b1e89affdf8d439b60fd42365c398179dc26cf95d6ff9e191d5",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "87cb911259e99f6657dd1a3042549acbac5ac4e0d4e3d84196ed12a17a90580b",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "5106da79694100fc6d67781f4260dd0622a5670bf7e3a1c11e6f131e7605a4e8",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "231d2e42b20c0aeb29ff18a4234ff55ad150f0057623e5be3027326d8a250f41",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "3e025fac4d396cf9d3b5ad428d3e0e11f4a055d79a4ce44d88d08a549ef62ca3",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "eaa27d3e96368811ed5384532edd45af52b1c513a1fa8432d40026c6559cacc1",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "71866890feee8528b9ce2348dd4b7e9702e5d6f1750521d8df846f9b35114dba",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "dddf5ee2b06d92e5feb67f7ce52b24bbbd35be09ce1042af7916eddf93f528c7",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "dc75deb5ff65aaef52ff038a9444f378e218cce4d785b88094eb5e8802c95cad",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "8fee8c9f0230a2f07d38bb108cee613f11eaed797cfbdc28e09b11a6b4780fce",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "0910762bb55da119c5771cb7431dae2f9135cc97e3dab19b2f6a86b9943ce287",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "b6459c39700bc5f9f147bd0c2dc9e6d1c7e95a02fd15ba8c2b22a1cf8d6e9efb",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "1343ff90b2cf7bb38fb24c218047cae3f16c87dd8667f3a275a62c1f43b6dbc1",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "b19be28a5c6906fbffaf1075103cb2e337d3b103bccce911583bace821ff06d1",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "18cd457c13faec80d375e4d469caf49a6ad925348d19597dfdbeca2caee7ae0b",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "aefd5f897f3fa69ca895ba7a69f10dfb1b654240a9815ad5444675c3fdc7678c",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "f29a32acc0c1f7257bee909fc729f919c4636dab5a356eefc4e1ca9ee52c77bb",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "279f12e5b458443a144da42b3d58e53a273e09f77b1ab4aeda02de3fc499a771",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "5f361c3d0489a14b5ef8ba906a5d0e898450352767932d62cab92565c3a31acd",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "595f4118af97e9d334a142e7632b3c7817b285e64640fdc3ee08c0ce8441e728",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "a1f2f5aa99d6004d660cbc8ea040eb374aac42056fb170fb2efafe6826aeae49",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "ba09ad7666adb3b2f85186c050f56f04e53b72512c76af9855734c704fed524a",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "b840856dbfb9c56addab2dfc858bce348979f4dc4759582fbd9a78d9856e8c1b",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "307196aff4d6004d9cb0990222d100e55d67893ee763fba6e80d7a675e1568e0",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_16x9_front_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "6199bb7f29ce57d8779d255974c6c15f3415622c071c954598c69458d1ca0881",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_16x9_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "50fcacd50a8e57a5b738f529a9ac02a97e758a6432f761e92457c35943716d4e",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_16x9_rear_occlusion.webp": {
+    "height": 941,
+    "visible_rgba_sha256": "6607bc3c5f2de48cc802fd695324947931d1a53ce6443594fabdac8fd729e67c",
+    "width": 1672
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3_front_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "97823b6bb861958d466e0bbce14d9c66f0117997c060c5186489960f5d18bef2",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "4d24890322e952c4551b0905d2a137fca4021710d05c27be82f527b648455d47",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3_rear_occlusion.webp": {
+    "height": 960,
+    "visible_rgba_sha256": "7fc919887f53141ead30dc44ddf8f257d77ffd4c15b2687c5bbb7ca25c334664",
+    "width": 1280
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_home_front_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "b9e0a69a0936648cf65fcd04b99ff7e33046a571c43e7040cc881ac4a36e08e1",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_home_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "8e53ef9e7519aec6f1b0fac8b1fd16ba6d5b3b9413adc570f36c161bb38a636a",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_home_rear_occlusion.webp": {
+    "height": 809,
+    "visible_rgba_sha256": "905acc3de8b41d73b96cd214dd36e17a66e7f0fee890438932a64f69bc54c723",
+    "width": 1942
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/flowering/bonsai_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "3e4e77ac7606572249eaaf190de1fe8019c23ca333c36618f980b4dc29407c60",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/mature/bonsai_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "87043f24a0f84985fc6c3bf289c298d4e8323a94cdfb183f55f14b6ebed665b6",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/rare/bonsai_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "6314e6b18920643270089f68aad5c7fda69292bfabbdf91c9ef9f87de1d598d7",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/seed/bonsai_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d0d2bc7900e951d83c69089d34febcadb425d91d425268e090e30eac1d549dd9",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/sprout/bonsai_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "52d0ba5da29ec1813f3750996ce69c98308f83b80f8b63019a3cf92dbebd7b3a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/bonsai/young/bonsai_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "26a398a73ec35ea43d0dee9d9f69e74ee272cc777696dd3f8f86b514875fb7e2",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/flowering/dahlia_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "de295695462473a220dd8e6ea3fe07f6e42f429e34ee1ead42ace52f1cf4f0d8",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/mature/dahlia_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "1076d372701f7e08497833889da7f8be9cff05269f93803d02916d67e237800c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/rare/dahlia_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "c0664a90033c846e111fafbb35e38fcd8120c66569f4a71c885d069bbdeef6be",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/seed/dahlia_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "9439e7e94072636e67270f4afafe4a9b9e9567164e9002231073c28b7c49c21a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/sprout/dahlia_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "4430af8b78d8429ac957209cbbd587b37d6ec4ec8b69a34124e4eaf6381b5fdc",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/dahlia/young/dahlia_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "5b1865248753c11d5d6aa919e1fa503b297b43e9c15189ccdf688c338a128669",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/flowering/foxglove_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "f5c922eb6f9685de5eb4034b160d01804782bcd4caba41da0d2042e3a35ce864",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/mature/foxglove_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "c82ea9ae14637fae427c95ca98e1f272efdeb187231a3a28f26bf0139a354a9f",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/rare/foxglove_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "7a7d121a85a4aae39685c9e157c294a590743065d8bb230e60eac62403d264ab",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/seed/foxglove_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "92afea26d3a731a5a1d9cdb7ad453df55ad1682fb10db846aa44a6ad9441d3f7",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/sprout/foxglove_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "bb1d1326afb75da9cdbc572246bab07be08b3377153ad704cd0cfe287523a555",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/foxglove/young/foxglove_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "80a42387aba31d5acf6004839b5db7227a49a99ca418186bbab9f82b8e719e20",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/flowering/hydrangea_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "aef1326353b619d641eaf9417b7b673f8b10e5ce9b16402ba3f62a7af8ed4c65",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/mature/hydrangea_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "2274671517b3756bb69767319fd5719ce915077f40eef18a722c3fa924e67c7a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/rare/hydrangea_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "26c85c350bc8d1f1bc695ffdf3b1e0db1d4eff60e9688d936f82a60adaa1ab7f",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/seed/hydrangea_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "abcb7351db5810f159e9413f36c6bcaee34213d7e6a463f9b84c37bf280a8d58",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/sprout/hydrangea_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "46ed93497e697f2378209f076964e49d696e64e2695f5e63403205ab43b30f5c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/hydrangea/young/hydrangea_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "3c70e6cf470932e2d6f969b48c80cbc19b41389b2bf97a6829c888afa9b0b1ae",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/flowering/japanese_maple_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d337a7873051fb8f8f528010452fe4a8dff80570f1ad05473ba642726e1ffa6c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/mature/japanese_maple_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "e50ccd8d4855f5891cd988bae408fbad55a78b53126429448078cfc12759dc8c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/rare/japanese_maple_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "af078747c031b6edbd129a0817886d95ac7c62d9588cf7a8ea20cf71b5474cd1",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/seed/japanese_maple_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "1d1c2475d9d439bad374ea032c73a9c7bc4639045df9398e19871e76e00bb84f",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/sprout/japanese_maple_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "2c2d46ac2c95a50072e6d2bf05ceedce4d2f5aba407a071983856c0be5ce7bda",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/japanese_maple/young/japanese_maple_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "e2d2c958c2feee1939b9bbe66a84868d9673fbfba721cfc7d0c41bf78238562e",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/flowering/lavender_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "39f8c760f8071e2aa19e3c5f4a08838c9694b2f250d64690aabb03b137373b64",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/mature/lavender_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "1c52a2ba37b5e01e08a606ad5e50a7b703a39cb4a4627cc524c7939f9a7d8ab5",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/rare/lavender_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d04ec72f9efab1e60bd5f63653e732663cbe117dd135cd4b00e645a2bbe0243c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/seed/lavender_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "1c33b8bf35d18c73283ecca2ab8c39d40408674ea8823cebdaf9a4e454553cae",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/sprout/lavender_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "877117465018a770a02e37147a69eac3a544aa6261aadec7dac6fcb2a61f421e",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/lavender/young/lavender_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "2b0eb836e730148b60cd3178ffd1c291b76599d39ad3c48ed7ec8423d8342101",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/flowering/peony_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "bf7457f2098b0959c6c3cad5649cead56e71d204e6b81ffd70a03e30b17a950c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/mature/peony_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "307373612f664551b46aa60a63aafe99cad0d2d36124006f551679df9fbd6a88",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/rare/peony_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "b5c04679e2260c68116e30420eb75b0c21a416982d6f6dbed86026cd605a1ddb",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/seed/peony_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d81873b809457b07eda9b9c9598c1796eea015ac1ebd536db20813829cca91b6",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/sprout/peony_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "2419e47ac1e8b2f338367b72cf7b6b2c55cd28e82252cdaf1e0b2a70609c7da5",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/peony/young/peony_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "41103c353c6655508e43f94747813b430b196bfa568e44324094144be5d5383a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/flowering/rose_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "c0bb40d12f8dfbc44d76eb0fe16a2ce139f53e5cd8ae53b78bf333f0323f00d7",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/mature/rose_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "840cb1bcd63a8e29a837aa10272ee35e3b4b108cadb62725882a2f1a634fdbbd",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/rare/rose_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "74dfd1c6a6a61ceb9640e2a469e1c6ea3cd33c410dd019387fe0289b3b107baf",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/seed/rose_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "427fa5b41d5b9eca123d8bfeff6c0f40e29b5df89f9bfb7472780718ded89eb7",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/sprout/rose_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "a4737fde5b68900debeecb2d2fca85cfb65493ec84849551bde4566486b8e66f",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/rose/young/rose_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d934455338496a3f0413854081d11537cdf322f7c7992770b8271bfbaefa05e0",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/flowering/sunflower_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "2213ceb880962846cf0ddfe6df8d0a60cbd2bc8055a1a86b963150a340f82ccd",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/mature/sunflower_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "38e5bb133f6ff5036ae3ba87c9f657519ec635b8200745c793de94a1ba25b93a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/rare/sunflower_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "899e469c7ca2e8a305fee44b0e124fb64c3c04725eb7f52812565251fe6ddc11",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/seed/sunflower_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "55b70893403165454ac9af52159da1f2dcccfa67edb889a31f04d9ae82e4d40c",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/sprout/sunflower_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "0b6be41a22408ba95aed008b3ce7018c906b8faf61c530545346f4ca959afed1",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/sunflower/young/sunflower_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "c01a75adfa68f7d9cca225b02b22d5b61a524df1a487470b141e3889dcb264ad",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/flowering/wisteria_flowering_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "d947df38a940471d3db63a89356d57637c64467136612dce8c83f49445bd8a12",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/mature/wisteria_mature_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "808b3625c1d3f6dc6295a21fb84e3be3848c1c8201bee4569f62eff44702e4df",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/rare/wisteria_rare_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "8a4e7f5b3afde9c7cf22f6a65f69afcc25249bee5d0ed3345b0714fef324a40a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/seed/wisteria_seed_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "a5e669baa98f01af4cc357833dc035cb0d33ed330cd85e1957291d539baaaa13",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/sprout/wisteria_sprout_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "57c9fc8325ad7db228e44e0f379dc5a3236cd4272aa11b83a8d507b16c39d5e4",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/plants/wisteria/young/wisteria_young_twilight_v6.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "f6558fc5c227a33ce16a3fbe69af1781895159377bc729538a0a8a85eb3f812a",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/ui/booster_potion.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "f4a92871e876aba667255f1412860bc249a89c6137f270e2f4191e250cbd175a",
+    "width": 512
+  },
+  "assets/v6_storybook_gouache/ui/fertilizer_basic.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "0463f9170af99dad9e7025fe971e82c005ac787153c5a57123859d59f3b8a1a4",
+    "width": 512
+  },
+  "assets/v6_storybook_gouache/ui/fertilizer_premium.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "fc976f61654301d9444e4ae65d5cda7909cbcb91356632e1540c4b6ee41d80ff",
+    "width": 512
+  },
+  "assets/v6_storybook_gouache/ui/fertilizer_quality.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "018ca1f6c7a39d7d38744b89c55fbd2b39bbbd472d5ae551bd235d3f82d81378",
+    "width": 512
+  },
+  "assets/v6_storybook_gouache/ui/growth_charge_grand.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "86a5a0edb44647657bf383081c887ef24c7e2f0c316760371461d3cfc206c744",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/ui/growth_charge_small.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "8662eac4c0622098d82bfd0ebce9af9350eefa5b0ca0b8bf765bc481baad29b8",
+    "width": 1254
+  },
+  "assets/v6_storybook_gouache/ui/growth_charge_standard.webp": {
+    "height": 1254,
+    "visible_rgba_sha256": "63d80d019f233fd4499654fcc24cc76c19d9ff998f758852298d1d65ae1a47c4",
+    "width": 1254
+  }
+}

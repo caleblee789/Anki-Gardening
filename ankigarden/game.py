@@ -163,6 +163,9 @@ class GardenGameEngine:
     BOOSTER_DROP_CHANCE = 5_000
     BOOSTER_GROWTH_PER_ANSWER = 5
     BOOSTER_DURATION_SECONDS = 2 * 60 * 60
+    ALL_DUE_BASE_COINS = 10
+    CLOUDY_ALL_DUE_BONUS_COINS = 2
+    RAINBOW_ALL_DUE_GROWTH = 5
     BED_PRICES = {2: 150, 3: 300, 4: 500, 5: 800}
     DIRECT_SOIL_SLOTS = frozenset(range(MAX_GARDEN_SLOTS))
     V6_SLOT_CENTERS = (
@@ -1068,7 +1071,7 @@ class GardenGameEngine:
             f"drop:environment:{item.item_id}:{revlog_id}",
             "environment_drop",
             (
-                f"You found {item.name}. It is now in House → Weather & Scenery, "
+                f"You found {item.name}. It is now in Garden Progress → Weather and Scenery, "
                 f"ready to equip. {item.effect}"
             ),
             plant.plant_id if plant is not None else None,
@@ -1348,6 +1351,19 @@ class GardenGameEngine:
         self._record_growth_crossings(plant, before, plant.growth_points)
         return awarded
 
+    def all_due_rewards(self) -> tuple[int, int]:
+        """Return today's shared mechanics values for the all-due reward."""
+
+        coins = self.ALL_DUE_BASE_COINS + (
+            self.CLOUDY_ALL_DUE_BONUS_COINS
+            if self.state.selected_weather == "cloudy" else 0
+        )
+        growth = (
+            self.RAINBOW_ALL_DUE_GROWTH
+            if self.state.selected_weather == "rainbow_sunshower" else 0
+        )
+        return coins, growth
+
     def evaluate_all_due(self, status: DueObligationStatus | None = None) -> tuple[bool, str]:
         # Rollover is itself durable state. Persist it before taking the reward
         # snapshot so every early-return branch leaves memory and disk aligned.
@@ -1367,11 +1383,11 @@ class GardenGameEngine:
             unit = "due review or learning step remains" if status.remaining == 1 else "due reviews or learning steps remain"
             return False, f"{status.remaining:,} {unit}."
         stats.completed_due_cards = True
-        coin_reward = 12 if self.state.selected_weather == "cloudy" else 10
+        coin_reward, configured_growth = self.all_due_rewards()
         weather_growth = 0
-        if self.state.selected_weather == "rainbow_sunshower":
+        if configured_growth:
             weather_growth = self._apply_direct_growth(
-                self.active_plant(), 5, stats_field="weather_growth"
+                self.active_plant(), configured_growth, stats_field="weather_growth"
             )
         feedback = (
             f"You finished all due cards and earned {coin_reward} Garden Coins"
@@ -1620,7 +1636,7 @@ class GardenGameEngine:
             event_key,
             "environment_purchase",
             (
-                f"{item.name} joined your collection. Visit House → Weather & Scenery "
+                f"{item.name} joined your collection. Visit Customize Garden "
                 "when you want to equip it."
             ),
             title=f"{item.name} unlocked",
@@ -1634,7 +1650,7 @@ class GardenGameEngine:
             return False, "The purchase could not be saved; no Garden Coins were spent."
         return True, (
             f"{item.name} unlocked. It was not equipped automatically; "
-            "choose it in House → Weather & Scenery."
+            "choose it in Customize Garden."
         )
 
     def equip_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
@@ -1677,6 +1693,44 @@ class GardenGameEngine:
         name = "Weather effects" if normalized_kind == "weather" else "Scenery artwork"
         state = "shown" if enabled else "hidden"
         return True, f"{name} are {state}. The equipped passive remains active."
+
+    def apply_environment_loadout(
+        self,
+        weather_id: str,
+        scenery_id: str,
+        visibility: dict[str, bool] | None = None,
+    ) -> tuple[bool, str]:
+        """Atomically persist the visual configurator draft.
+
+        Customize Garden previews freely, then commits one validated loadout so
+        Cancel can never leave a partially applied Weather/Scenery combination.
+        """
+
+        weather = environment_item("weather", str(weather_id))
+        scenery = environment_item("scenery", str(scenery_id))
+        if weather is None or scenery is None:
+            return False, "That Weather or Scenery choice is unavailable."
+        if not self.owns_environment("weather", weather.item_id):
+            return False, f"Unlock {weather.name} before equipping it."
+        if not self.owns_environment("scenery", scenery.item_id):
+            return False, f"Unlock {scenery.name} before equipping it."
+        visual_layers = visibility if isinstance(visibility, dict) else {}
+        snapshot = self._state_snapshot()
+        self.state.selected_weather = weather.item_id
+        self.state.selected_background = scenery.item_id
+        self.state.equipped["weather"] = weather.item_id
+        self.state.equipped["background"] = scenery.item_id
+        self.state.environment_visibility["weather"] = bool(
+            visual_layers.get("weather", True)
+        )
+        self.state.environment_visibility["scenery"] = bool(
+            visual_layers.get("scenery", True)
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Those appearance changes could not be saved."
+        return True, "Garden appearance saved."
 
     def purchase_growth_charge(self, charge_id: str) -> tuple[bool, str]:
         spec = GROWTH_CHARGES.get(str(charge_id))
@@ -1747,7 +1801,12 @@ class GardenGameEngine:
         return True, f"{spec.name} gave {plant.name} {awarded:,} Growth."
 
     def choose_starter(self, species: str) -> tuple[bool, str, Plant | None]:
-        """Create the first plant for free without backfilling earlier reviews."""
+        """Plant the free starter; Nurture remains a separate explicit step.
+
+        The day-start null sentinel keeps every review answered before Nurture
+        ineligible for retroactive Growth, including reviews answered after the
+        species was chosen but before the learner completed setup.
+        """
         species = str(species).lower()
         if self.state.starter_selection_complete or self.state.plants:
             return False, "Your starter plant has already been chosen.", None
@@ -1772,7 +1831,7 @@ class GardenGameEngine:
         ]))
         self.state.plants.append(plant)
         self.state.starter_selection_complete = True
-        self.state.active_plant_id = plant.plant_id
+        self.state.active_plant_id = None
         if not any(
             period.day == today
             and period.plant_id is None
@@ -1782,20 +1841,20 @@ class GardenGameEngine:
             # A day-start sentinel ensures a later same-day revlog sync routes
             # reviews answered before this choice to no plant.
             self.state.active_plant_periods.append(ActivePlantPeriod(today, None, 0))
-        self.state.active_plant_periods.append(ActivePlantPeriod(
-            today, plant.plant_id, self._now_ms()
-        ))
         self._queue_feedback(
             f"starter:{species}",
             "unlock",
-            f"{plant.name} joined your garden as your free starter.",
+            f"{plant.name} is planted. Nurture it before studying so eligible answers can add Growth.",
             plant.plant_id,
         )
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The starter choice could not be saved; you can choose again.", None
-        return True, f"{plant.name} joined your garden as your free starter.", plant
+            return False, "Your starter could not be saved. No changes were made. Try again.", None
+        return True, (
+            f"{plant.name} is planted and ready to nurture. "
+            "Nurture it before studying so eligible answers can add Growth."
+        ), plant
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
         spec = self.FERTILIZERS.get(str(tier).lower())
@@ -1957,7 +2016,7 @@ class GardenGameEngine:
     def purchase_species(self, species: str) -> tuple[bool, str, Plant | None]:
         species = str(species).lower()
         if not self.state.starter_selection_complete:
-            return False, "Choose your free starter before purchasing another plant.", None
+            return False, "Choose a starter before purchasing another plant.", None
         if species not in self.release_ready_species():
             return False, "That species is not currently stocked in the Nursery.", None
         price = self.SPECIES_PRICES.get(species)
@@ -1993,7 +2052,7 @@ class GardenGameEngine:
 
     def purchase_next_bed(self) -> tuple[bool, str]:
         if not self.state.starter_selection_complete:
-            return False, "Choose your free starter before unlocking another garden space."
+            return False, "Choose a starter before unlocking another garden space."
         index = int(self.state.unlocked_slots)
         price = self.BED_PRICES.get(index)
         if price is None or index >= MAX_GARDEN_SLOTS:
@@ -2549,6 +2608,11 @@ class GardenGameEngine:
             f"slot:plants:{species}:{effective}",
             theme=self.config.value("visual_theme", "verdant_twilight"),
         )
+
+    def resolve_item_asset(self, item_key: str) -> Optional[ResolvedAsset]:
+        """Resolve Nursery item artwork from the bundled asset manifest."""
+
+        return self.assets.resolve_ui_asset(item_key, quality_preference="balanced")
 
     def resolve_preview_assets(
         self,

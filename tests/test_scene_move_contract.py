@@ -51,12 +51,16 @@ def test_cancel_move_wraps_finish_then_notifies_dashboard_once() -> None:
     assert block.index("self.finish_move(") < block.index("self.cancelPlacementRequested.emit()")
 
 
-def test_mouse_origin_and_empty_scene_cancel_the_dashboard_draft() -> None:
+def test_mouse_origin_cancels_but_empty_scene_keeps_the_dashboard_draft() -> None:
     block = _method_source("mousePressEvent")
 
     origin_branch = block.split("if slot == self._interaction.drag_origin_slot:", 1)[1]
     assert origin_branch.lstrip().startswith("self.cancel_move()")
-    assert "self.cancel_move()\n            return" in block
+    outside_branch = block.split("# Clicking outside a destination", 1)[1].split(
+        "plant_id = self._plant_at(position)", 1
+    )[0]
+    assert "self.cancel_move()" not in outside_branch
+    assert "Choose a highlighted garden space, or press Escape to cancel." in outside_branch
 
 
 def test_keyboard_confirmation_on_origin_follows_cancel_path() -> None:

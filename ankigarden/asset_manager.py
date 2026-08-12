@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 def _surface_contract_is_valid(
@@ -345,6 +349,11 @@ class SceneSurfaceProfile:
                 "width": max(1, int(number(raw.get("width"), 1, 1, 10000))),
                 "height": max(1, int(number(raw.get("height"), 1, 1, 10000))),
                 "focal_point": list(raw.get("focal_point", [0.5, 0.5])),
+                "preview_crop": (
+                    dict(raw.get("preview_crop", {}))
+                    if isinstance(raw.get("preview_crop"), dict)
+                    else {}
+                ),
                 "planting_zone": dict(raw.get("planting_zone", {})),
                 "surfaces": [dict(surface) for surface in surfaces if isinstance(surface, dict)],
             }
@@ -685,7 +694,24 @@ class AssetManager:
         self.storage = storage
         self.metadata = self.storage.load_asset_metadata()
         self._catalog = self._load_catalog()
+        self._catalog_by_file: dict[str, dict[str, Any]] = {}
+        self._catalog_by_asset_id: dict[tuple[str, str], dict[str, Any]] = {}
+        self._missing_ui_warnings: set[tuple[str, str]] = set()
+        self._index_catalog()
+        self._resolved_cache: dict[tuple[Any, ...], ResolvedAsset] = {}
         self._migrate_legacy_metadata()
+
+    def clear_runtime_cache(self, category: str | None = None) -> None:
+        """Drop read-only resolution results without changing saved metadata."""
+        if category is None:
+            self._resolved_cache.clear()
+            return
+        normalized = str(category)
+        self._resolved_cache = {
+            cache_key: asset
+            for cache_key, asset in self._resolved_cache.items()
+            if cache_key[0] != normalized
+        }
 
     def get_or_fetch(
         self,
@@ -710,6 +736,48 @@ class AssetManager:
         )
         return resolved.path if resolved else None
 
+    def resolve_ui_asset(
+        self,
+        item_key: str,
+        *,
+        quality_preference: Optional[str] = None,
+    ) -> Optional[ResolvedAsset]:
+        """Resolve a catalog item's artwork through the manifest.
+
+        UI item keys intentionally match the manifest ``slot.ui_id`` values.
+        The manifest remains the source of the runtime filename and format.
+        """
+
+        normalized = str(item_key or "").strip()
+        if normalized.startswith("ui_"):
+            normalized = normalized[3:]
+        if not normalized:
+            return None
+        logical_asset_id = f"ui_{normalized}"
+        resolved = self.resolve(
+            "ui",
+            normalized,
+            f"slot:ui:{normalized}",
+            quality_preference=quality_preference,
+        )
+        if resolved is None:
+            expected = any(
+                str((row.get("slot") or {}).get("ui_id", "")) == normalized
+                or str(row.get("asset_id", "")) == logical_asset_id
+                for row in self._catalog.get("ui", [])
+                if isinstance(row, dict)
+            )
+            warning_key = (normalized, logical_asset_id)
+            if expected and warning_key not in self._missing_ui_warnings:
+                self._missing_ui_warnings.add(warning_key)
+                logger.warning(
+                    "Anki Garden: expected item artwork could not be resolved "
+                    "(item key=%s, logical asset ID=%s)",
+                    normalized,
+                    logical_asset_id,
+                )
+        return resolved
+
     def resolve(
         self,
         category: str,
@@ -729,6 +797,16 @@ class AssetManager:
             or self.config.nested("assets", "quality_preference", default="balanced")
             or "balanced"
         )
+        resolution_key = (
+            str(category),
+            str(key),
+            tuple(sorted((str(name), str(value)) for name, value in slot.items())),
+            quality_pref,
+        )
+        if not reroll:
+            cached = self._resolved_cache.get(resolution_key)
+            if cached is not None:
+                return cached
 
         candidates = self._select_candidates(category, slot, quality_pref)
         if not candidates:
@@ -755,12 +833,20 @@ class AssetManager:
                 raw_placement["base_type"] = "pot"
             elif growth_base == "dirt_mound" or "dirt_mound" in picked_entry.get("variants", []):
                 raw_placement["base_type"] = "dirt_mound"
-        self.metadata[cache_key] = {
+        previous = self.metadata.get(cache_key, {})
+        previous_local_path = str(previous.get("local_path", "")) if isinstance(previous, dict) else ""
+        downloaded_at = int(time.time())
+        if isinstance(previous, dict) and previous_local_path == rel:
+            try:
+                downloaded_at = int(previous.get("downloaded_at", downloaded_at))
+            except (TypeError, ValueError):
+                pass
+        metadata_record = {
             "provider": "local_catalog",
             "source_kind": "local_catalog",
             "source_url": "local://manifest",
             "query": "",
-            "downloaded_at": int(time.time()),
+            "downloaded_at": downloaded_at,
             "local_path": rel,
             "quality_score": self._quality_score_for(rel),
             "dimensions": self._manifest_dimensions_for(rel),
@@ -769,17 +855,25 @@ class AssetManager:
             "catalog_cycle_index": idx,
             "asset_id": str(picked_entry.get("asset_id", "")),
             "placement": AssetPlacement.from_manifest(raw_placement, category=category).to_dict(),
-            "legacy_remote_preserved": bool(self.metadata.get(cache_key, {}).get("legacy_remote_preserved", False)),
+            "legacy_remote_preserved": bool(
+                previous.get("legacy_remote_preserved", False)
+                if isinstance(previous, dict)
+                else False
+            ),
         }
-        self.storage.save_asset_metadata(self.metadata)
+        if previous != metadata_record:
+            self.metadata[cache_key] = metadata_record
+            self.storage.save_asset_metadata(self.metadata)
         placement = AssetPlacement.from_manifest(raw_placement, category=category)
-        return ResolvedAsset(
+        resolved = ResolvedAsset(
             path=picked,
             asset_id=str(picked_entry.get("asset_id", "")),
             category=category,
             placement=placement,
             metadata=dict(picked_entry),
         )
+        self._resolved_cache[resolution_key] = resolved
+        return resolved
 
     def _placement_for_entry(
         self,
@@ -789,14 +883,7 @@ class AssetManager:
         raw: dict[str, Any] = {}
         placement_ref = entry.get("placement_ref")
         if isinstance(placement_ref, str) and placement_ref:
-            source = next(
-                (
-                    candidate
-                    for candidate in self._catalog.get(category, [])
-                    if candidate.get("asset_id") == placement_ref
-                ),
-                None,
-            )
+            source = self._catalog_by_asset_id.get((category, placement_ref))
             if isinstance(source, dict) and isinstance(source.get("placement"), dict):
                 raw = deepcopy(source["placement"])
         placement = entry.get("placement")
@@ -842,6 +929,17 @@ class AssetManager:
                 continue
             by_category.setdefault(category, []).append(row)
         return by_category
+
+    def _index_catalog(self) -> None:
+        """Build constant-time manifest lookups used by the render path."""
+        for category, rows in self._catalog.items():
+            for row in rows:
+                rel_path = str(row.get("file", ""))
+                if rel_path:
+                    self._catalog_by_file.setdefault(rel_path, row)
+                asset_id = str(row.get("asset_id", ""))
+                if asset_id:
+                    self._catalog_by_asset_id.setdefault((category, asset_id), row)
 
     def _migrate_legacy_metadata(self) -> None:
         changed = False
@@ -1093,17 +1191,15 @@ class AssetManager:
         return 0
 
     def _manifest_dimensions_for(self, rel_path: str) -> dict[str, int]:
-        for rows in self._catalog.values():
-            for row in rows:
-                if row.get("file") == rel_path:
-                    return {"width": int(row.get("width", 0)), "height": int(row.get("height", 0))}
+        row = self._catalog_by_file.get(rel_path)
+        if row is not None:
+            return {"width": int(row.get("width", 0)), "height": int(row.get("height", 0))}
         return {"width": 0, "height": 0}
 
     def _quality_score_for(self, rel_path: str) -> float:
-        for rows in self._catalog.values():
-            for row in rows:
-                if row.get("file") == rel_path:
-                    return round(float(row.get("quality_score", 0.75)), 4)
+        row = self._catalog_by_file.get(rel_path)
+        if row is not None:
+            return round(float(row.get("quality_score", 0.75)), 4)
         return 0.75
 
     def _valid_local_asset(self, path: Path, category: str) -> bool:
@@ -1130,10 +1226,9 @@ class AssetManager:
         return int(dims.get("width", 0)) >= min_w and int(dims.get("height", 0)) >= min_h
 
     def _manifest_format_for(self, rel_path: str) -> str:
-        for rows in self._catalog.values():
-            for row in rows:
-                if row.get("file") == rel_path:
-                    return str(row.get("format", "")).lower()
+        row = self._catalog_by_file.get(rel_path)
+        if row is not None:
+            return str(row.get("format", "")).lower()
         return ""
 
     def export_metadata_json(self) -> str:

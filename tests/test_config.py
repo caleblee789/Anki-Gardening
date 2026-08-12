@@ -67,7 +67,10 @@ def test_onboarding_version_rejects_values_beyond_current_contract() -> None:
     config, _addon_manager = manager()
 
     with pytest.raises(ConfigError):
-        config.update({"onboarding_version": 3})
+        config.update({"onboarding_version": 4})
+
+    config.update({"onboarding_version": 3})
+    assert config.value("onboarding_version") == 3
 
 
 def test_reload_sanitizes_malformed_onboarding_version() -> None:

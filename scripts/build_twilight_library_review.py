@@ -62,7 +62,7 @@ class StageInventory:
 
 
 def _expected_file(species: str, stage: str) -> Path:
-    return RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.png"
+    return RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.webp"
 
 
 def inventory(rows: list[dict[str, Any]]) -> dict[str, dict[str, StageInventory]]:

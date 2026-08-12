@@ -10,6 +10,10 @@ from urllib.parse import quote
 
 from aqt import mw
 from aqt.gui_hooks import reviewer_did_answer_card
+try:
+    from aqt.gui_hooks import reviewer_did_show_question
+except (ImportError, AttributeError):
+    reviewer_did_show_question = None
 from aqt.qt import QAction
 
 from .config import ConfigManager
@@ -19,6 +23,7 @@ from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
 from .storage import GardenStorage, SchedulerBoundaryError
 from .ui.dashboard import GardenDashboard
+from .ui.state import GardenUiCoordinator
 from .ui.home_widget import (
     HomeWidgetStateController,
     build_home_widget_success_data,
@@ -99,7 +104,13 @@ class AnkiGardenApp:
         self.config = ConfigManager(mw)
         self.storage = GardenStorage(mw, self.config)
         self.engine = GardenGameEngine(self.config, self.storage)
-        self.reviewer_hooks = ReviewerHookHandler(self.engine, self.storage)
+        self.state_events = GardenUiCoordinator(mw)
+        self.state_events.stateChanged.connect(self._invalidate_home_cache)
+        self.reviewer_hooks = ReviewerHookHandler(
+            self.engine,
+            self.storage,
+            state_changed=self.state_events.notify,
+        )
         self.dashboard: Optional[GardenDashboard] = None
         self._settings_action: Optional[QAction] = None
         self._home_widget_hooked = False
@@ -108,10 +119,17 @@ class AnkiGardenApp:
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
+        self._home_html_cache: str | None = None
+        self._home_html_revision = -1
         self._dashboard_open_pending = False
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
         self._settings_open_pending = False
+        self._starter_open_pending = False
+
+    def _invalidate_home_cache(self, _reason: str = "") -> None:
+        self._home_html_cache = None
+        self._home_html_revision = -1
 
     def setup(self) -> None:
         try:
@@ -215,6 +233,9 @@ class AnkiGardenApp:
         if self._reviewer_hooked:
             return
         reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
+        question_handler = getattr(self.reviewer_hooks, "on_question", None)
+        if reviewer_did_show_question is not None and callable(question_handler):
+            reviewer_did_show_question.append(question_handler)
         self._reviewer_hooked = True
 
     def _settings_menu_bar(self) -> Any:
@@ -306,6 +327,11 @@ class AnkiGardenApp:
         self._settings_open_pending = True
         self.open_dashboard()
 
+    def open_starter_selection(self) -> None:
+        """Open a visible Garden first, then its starter-mode Nursery."""
+        self._starter_open_pending = True
+        self.open_dashboard()
+
     def open_dashboard(self) -> None:
         if getattr(self, "_dashboard_open_pending", False):
             return
@@ -322,6 +348,7 @@ class AnkiGardenApp:
         except Exception:
             self._dashboard_open_pending = False
             self._settings_open_pending = False
+            self._starter_open_pending = False
             logger.exception("Anki Garden: unable to schedule dashboard opening")
             self._notify_dashboard_open_failure(
                 "Anki Garden could not schedule its window. Please restart Anki and try again."
@@ -355,6 +382,7 @@ class AnkiGardenApp:
                 return
             self._dashboard_open_pending = False
             self._settings_open_pending = False
+            self._starter_open_pending = False
             logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
             self._notify_dashboard_open_failure(
                 "Anki Garden is still waiting for the collection to finish opening. Please try again."
@@ -365,7 +393,22 @@ class AnkiGardenApp:
         try:
             self._run_garden_maintenance("dashboard open")
             if not self._dashboard_is_alive():
-                candidate = GardenDashboard(mw, self.engine, self.storage, self.config)
+                coordinator = getattr(self, "state_events", None)
+                if coordinator is None:
+                    coordinator = GardenUiCoordinator(mw)
+                    self.state_events = coordinator
+                reviewer_hooks = getattr(self, "reviewer_hooks", None)
+                starter_selected_callback = getattr(
+                    reviewer_hooks, "on_starter_selected", None
+                )
+                candidate = GardenDashboard(
+                    mw,
+                    self.engine,
+                    self.storage,
+                    self.config,
+                    coordinator,
+                    starter_selected_callback,
+                )
                 destroyed = getattr(candidate, "destroyed", None)
                 if destroyed is not None and callable(getattr(destroyed, "connect", None)):
                     destroyed.connect(
@@ -391,6 +434,7 @@ class AnkiGardenApp:
             if callable(acknowledge):
                 acknowledge()
             opening_settings = bool(getattr(self, "_settings_open_pending", False))
+            opening_starter = bool(getattr(self, "_starter_open_pending", False))
             if opening_settings:
                 self._settings_open_pending = False
                 try:
@@ -401,8 +445,18 @@ class AnkiGardenApp:
                     # A settings dialog failure must not make the already-open
                     # garden look like an opener failure.
                     logger.exception("Anki Garden: settings dialog failed to open")
+            elif opening_starter:
+                self._starter_open_pending = False
+                open_starter = getattr(self.dashboard, "_open_starter_nursery", None)
+                if callable(open_starter):
+                    # Let the successful show/raise/activate turn complete
+                    # before entering the modal Nursery. This prevents a
+                    # Home bridge click from racing the parent Garden window.
+                    from aqt.qt import QTimer
+
+                    QTimer.singleShot(0, open_starter)
             else:
-                prompt_starter = getattr(self.dashboard, "prompt_starter_if_needed", None)
+                prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
                     prompt_starter()
         except Exception:
@@ -439,6 +493,7 @@ class AnkiGardenApp:
                 # retry state so a later ordinary Open Garden action cannot
                 # inherit a stale request to open Settings.
                 self._settings_open_pending = False
+                self._starter_open_pending = False
                 self._notify_dashboard_open_failure(
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
                 )
@@ -515,7 +570,11 @@ class AnkiGardenApp:
         if command == "open":
             self.open_dashboard()
             return True, None
+        if command == "choose-starter":
+            self.open_starter_selection()
+            return True, None
         if command == "refresh":
+            self._invalidate_home_cache("home retry")
             self._run_garden_maintenance("home retry")
             reset = getattr(mw, "reset", None)
             if callable(reset):
@@ -526,15 +585,17 @@ class AnkiGardenApp:
     def _inject_home_garden(self, _page: object, content: object) -> None:
         if not self.config.value("show_home_widget", True):
             return
+        for attribute in ("stats", "table"):
+            existing = getattr(content, attribute, None)
+            if isinstance(existing, str) and "ag-home-root" in existing:
+                return
         html = self._home_garden_html_for_injection()
         if hasattr(content, "stats") and isinstance(content.stats, str):
-            if "ag-home-root" not in content.stats:
-                content.stats += html
+            content.stats += html
             return
 
         if hasattr(content, "table") and isinstance(content.table, str):
-            if "ag-home-root" not in content.table:
-                content.table += html
+            content.table += html
 
     def _context_name(self, context: object) -> str:
         cls = type(context)
@@ -556,10 +617,12 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: skipping home injection for non-primary context %s", context_name)
             return
 
+        body = getattr(web_content, "body", None)
+        if isinstance(body, str) and "ag-home-root" in body:
+            return
         logger.debug("Anki Garden: injecting home garden into context %s", context_name)
         html = self._home_garden_html_for_injection()
 
-        body = getattr(web_content, "body", None)
         if isinstance(body, str) and "ag-home-root" not in body:
             web_content.body = body + html
 
@@ -632,7 +695,9 @@ class AnkiGardenApp:
       bridge(command);
     }});
   }};
-  bindBridgeButton('[data-testid="home-open"]', "anki-garden:open", "Opening…");
+  const homeOpen = root.querySelector('[data-testid="home-open"]');
+  const homeOpenCommand = homeOpen?.dataset.ankiGardenCommand || "anki-garden:open";
+  bindBridgeButton('[data-testid="home-open"]', homeOpenCommand, "Opening…");
   bindBridgeButton('[data-testid="home-retry"]', "anki-garden:refresh");
 
   if (root.dataset.ankiGardenTooltipBound !== "true") {{
@@ -691,14 +756,24 @@ class AnkiGardenApp:
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
+        state_events = getattr(self, "state_events", None)
+        revision = int(getattr(state_events, "revision", 0))
+        cached_html = getattr(self, "_home_html_cache", None)
+        cached_revision = int(getattr(self, "_home_html_revision", -1))
+        if cached_html is not None and cached_revision == revision:
+            return cached_html
         if not self._run_garden_maintenance("home rendering"):
             request_id = self._home_widget_controller.begin_request()
             self._home_widget_controller.resolve_error(
                 request_id,
                 "Garden progress could not refresh. Your Anki screen is still available; retry the Garden.",
             )
-            return render_home_widget(self._home_widget_controller.snapshot)
-        return self._build_home_garden_html()
+            html = render_home_widget(self._home_widget_controller.snapshot)
+        else:
+            html = self._build_home_garden_html()
+        self._home_html_cache = html
+        self._home_html_revision = int(getattr(state_events, "revision", revision))
+        return html
 
     def _build_home_garden_html(self) -> str:
         request_id = self._home_widget_controller.begin_request()

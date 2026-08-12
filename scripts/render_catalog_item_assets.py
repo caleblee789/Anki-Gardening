@@ -121,7 +121,14 @@ def render(source: Path, destination: Path, *, label_key: str | None = None) -> 
     if label_key is not None:
         image = _label_bag(image, label_key)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    _frame(image).save(destination, optimize=True)
+    _frame(image).save(
+        destination,
+        format="WEBP",
+        lossless=True,
+        quality=100,
+        method=6,
+        exact=True,
+    )
 
 
 def main() -> None:
@@ -132,10 +139,10 @@ def main() -> None:
     parser.add_argument("--booster", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
-    render(args.basic, args.output_dir / "fertilizer_basic.png", label_key="basic")
-    render(args.quality, args.output_dir / "fertilizer_quality.png", label_key="quality")
-    render(args.magical, args.output_dir / "fertilizer_premium.png", label_key="premium")
-    render(args.booster, args.output_dir / "booster_potion.png")
+    render(args.basic, args.output_dir / "fertilizer_basic.webp", label_key="basic")
+    render(args.quality, args.output_dir / "fertilizer_quality.webp", label_key="quality")
+    render(args.magical, args.output_dir / "fertilizer_premium.webp", label_key="premium")
+    render(args.booster, args.output_dir / "booster_potion.webp")
 
 
 if __name__ == "__main__":

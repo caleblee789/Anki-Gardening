@@ -81,6 +81,38 @@ def test_runtime_twilight_profile_matches_independent_review_fixture() -> None:
     assert parsed.surface_profile.variant_contract["weather_mode"] == "separate_overlay"
     assert parsed.surface_profile.layer_contract["plant_contact_shadows_baked"] is False
     assert parsed.surface_profile.landmarks[0]["action_id"] == "garden.nursery.open"
+    assert parsed.surface_profile.variants["home"]["preview_crop"] == {
+        "x": 0.0,
+        "y": 0.08,
+        "width": 1.0,
+        "height": 0.84,
+    }
+
+
+def test_home_preview_crop_contains_all_landmarks_and_six_space_rims() -> None:
+    profile = _fixture()
+    home = profile["variants"]["home"]
+    crop = home["preview_crop"]
+    crop_left = crop["x"]
+    crop_top = crop["y"]
+    crop_right = crop_left + crop["width"]
+    crop_bottom = crop_top + crop["height"]
+
+    landmark_bounds = [
+        landmark["variants"]["home"]["bounds"]
+        for landmark in profile["landmarks"]
+    ]
+    surface_bounds = [surface["outer_bounds"] for surface in home["surfaces"]]
+
+    assert len(home["surfaces"]) == 6
+    for left, top, width, height in landmark_bounds:
+        assert crop_left <= left
+        assert crop_top <= top
+        assert left + width <= crop_right
+        assert top + height <= crop_bottom
+    for left, top, right, bottom in surface_bounds:
+        assert crop_left <= left < right <= crop_right
+        assert crop_top <= top < bottom <= crop_bottom
 
 
 @pytest.mark.parametrize(

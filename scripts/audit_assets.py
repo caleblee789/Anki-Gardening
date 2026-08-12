@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
+
+from ankigarden.asset_manager import AssetManager
+
+
 ADDON = ROOT / "ankigarden"
 ASSETS = ADDON / "assets"
 MANIFEST = ASSETS / "manifest.json"
@@ -58,6 +65,26 @@ RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",
     "assets/support/",
 )
+
+
+class _AuditConfig:
+    def value(self, _key: str, default: Any = None) -> Any:
+        return default
+
+    def nested(self, *_keys: str, default: Any = None) -> Any:
+        return default
+
+
+class _AuditStorage:
+    def __init__(self) -> None:
+        self.addon_dir = ADDON
+        self.assets_root = ASSETS
+
+    def load_asset_metadata(self) -> dict[str, Any]:
+        return {}
+
+    def save_asset_metadata(self, _metadata: dict[str, Any]) -> None:
+        return None
 
 
 def _sha256(path: Path) -> str:
@@ -158,16 +185,16 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
             with Image.open(ADDON / expected_file) as image:
                 if image.size != expected_size:
                     raise ValueError(f"scenery dimensions drifted: {item_id}/{variant}")
-            expected_occlusion = f"{target_root}/{item_id}_{filename_variant}_occlusion.png"
+            expected_occlusion = f"{target_root}/{item_id}_{filename_variant}_occlusion.webp"
             if files.get("occlusion_file") != expected_occlusion:
                 raise ValueError(f"scenery occlusion path is noncanonical: {item_id}/{variant}")
             layers = files.get("occlusion_layers") or {}
             for layer in ("rear", "front"):
-                target = f"{target_root}/{item_id}_{filename_variant}_{layer}_occlusion.png"
-                source = f"{source_root}/verdant_twilight_{filename_variant}_{layer}_occlusion.png"
+                target = f"{target_root}/{item_id}_{filename_variant}_{layer}_occlusion.webp"
+                source = f"{source_root}/verdant_twilight_{filename_variant}_{layer}_occlusion.webp"
                 if layers.get(layer) != target or _alpha_sha256(ADDON / target) != _alpha_sha256(ADDON / source):
                     raise ValueError(f"scenery {layer} occlusion drifted: {item_id}/{variant}")
-            source_combined = f"{source_root}/verdant_twilight_{filename_variant}_occlusion.png"
+            source_combined = f"{source_root}/verdant_twilight_{filename_variant}_occlusion.webp"
             if _alpha_sha256(ADDON / expected_occlusion) != _alpha_sha256(ADDON / source_combined):
                 raise ValueError(f"scenery combined occlusion drifted: {item_id}/{variant}")
 
@@ -188,7 +215,7 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
         expected_id = f"plant_{species}_{stage}_twilight_v6"
         expected_file = (
             f"assets/v6_storybook_gouache/plants/{species}/{stage}/"
-            f"{species}_{stage}_twilight_v6.png"
+            f"{species}_{stage}_twilight_v6.webp"
         )
         if row.get("asset_id") != expected_id or row.get("file") != expected_file:
             raise ValueError(f"noncanonical V6 plant entry: {species}/{stage}")
@@ -228,7 +255,7 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
     decorations = [row for row in rows if row.get("category") == "decorations"]
     if len(decorations) != 1 or decorations[0].get("asset_id") != "decor_lantern":
         raise ValueError("the current bundle must contain only the Lantern decoration")
-    if decorations[0].get("file") != "assets/support/decorations/lantern.png":
+    if decorations[0].get("file") != "assets/support/decorations/lantern.webp":
         raise ValueError("the Lantern decoration is outside its current support path")
 
     weather_rows = [row for row in rows if row.get("category") == "weather"]
@@ -245,19 +272,29 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
 
     ui_rows = [row for row in rows if row.get("category") == "ui"]
     expected_ui = {
-        "ui_fertilizer_basic": "assets/v6_storybook_gouache/ui/fertilizer_basic.png",
-        "ui_fertilizer_quality": "assets/v6_storybook_gouache/ui/fertilizer_quality.png",
-        "ui_fertilizer_magical": "assets/v6_storybook_gouache/ui/fertilizer_premium.png",
-        "ui_booster_potion": "assets/v6_storybook_gouache/ui/booster_potion.png",
-        "ui_growth_charge_small": "assets/v6_storybook_gouache/ui/growth_charge_small.png",
-        "ui_growth_charge_standard": "assets/v6_storybook_gouache/ui/growth_charge_standard.png",
-        "ui_growth_charge_grand": "assets/v6_storybook_gouache/ui/growth_charge_grand.png",
+        "ui_fertilizer_basic": "assets/v6_storybook_gouache/ui/fertilizer_basic.webp",
+        "ui_fertilizer_quality": "assets/v6_storybook_gouache/ui/fertilizer_quality.webp",
+        "ui_fertilizer_magical": "assets/v6_storybook_gouache/ui/fertilizer_premium.webp",
+        "ui_booster_potion": "assets/v6_storybook_gouache/ui/booster_potion.webp",
+        "ui_growth_charge_small": "assets/v6_storybook_gouache/ui/growth_charge_small.webp",
+        "ui_growth_charge_standard": "assets/v6_storybook_gouache/ui/growth_charge_standard.webp",
+        "ui_growth_charge_grand": "assets/v6_storybook_gouache/ui/growth_charge_grand.webp",
     }
     observed_ui = {
         str(row.get("asset_id", "")): str(row.get("file", "")) for row in ui_rows
     }
     if observed_ui != expected_ui:
         raise ValueError("the V6 catalog item artwork set is incomplete or noncanonical")
+
+    manager = AssetManager(_AuditConfig(), _AuditStorage())
+    for row in ui_rows:
+        slot = row.get("slot") or {}
+        item_key = str(slot.get("ui_id", ""))
+        resolved = manager.resolve_ui_asset(item_key)
+        if resolved is None or not resolved.path.is_file():
+            raise FileNotFoundError(
+                f"catalog item artwork did not resolve: {item_key} ({row.get('asset_id', '')})"
+            )
     if any(row.get("alpha") is not True for row in ui_rows):
         raise ValueError("catalog item artwork must retain transparency")
     for row in ui_rows:
