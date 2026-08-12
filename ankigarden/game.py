@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
+import random
 import time
 import uuid
 from bisect import bisect_left, insort
@@ -11,6 +13,20 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from .asset_manager import AssetManager, ResolvedAsset
+from .environment import (
+    DEFAULT_SCENERY_ID,
+    DEFAULT_WEATHER_ID,
+    DROP_BANDS,
+    DROP_TIER_ITEMS,
+    ENVIRONMENT_CATALOG,
+    GROWTH_CHARGES,
+    SCENERY_CATALOG,
+    WEATHER_CATALOG,
+    CatalogItem,
+    catalog_items,
+    environment_item,
+    ultra_denominator,
+)
 from .models.state import (
     Achievement,
     ActivePlantPeriod,
@@ -18,21 +34,26 @@ from .models.state import (
     DailyStats,
     FeedbackEvent,
     Fertilizer,
+    Booster,
     GardenState,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
+    CURRENT_CATALOG_SPECIES_ORDER,
     MAX_FERTILIZER_HISTORY,
+    MAX_BOOSTER_HISTORY,
     MAX_GARDEN_SLOTS,
+    MAX_GARDEN_NAME_LENGTH,
     MAX_PLANT_NAME_LENGTH,
     MAX_PROCESSED_REVLOG_IDS,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
     PlantMemory,
+    RewardDrop,
     STREAK_BONUS_TIERS,
     utc_now_iso,
 )
-from .storage import DueObligationStatus, SchedulerBoundaryError
+from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryError
 
 
 def difficulty_from_factor(value: Any) -> float:
@@ -84,10 +105,19 @@ class ReviewAward:
     fertilizer_growth: int
     bonus_percent: int
     paused_reason: str = ""
+    booster_growth: int = 0
+    weather_growth: int = 0
+    scenery_growth: int = 0
 
     @property
     def bonus_growth(self) -> int:
-        return self.streak_bonus_growth + self.fertilizer_growth
+        return (
+            self.streak_bonus_growth
+            + self.fertilizer_growth
+            + self.booster_growth
+            + self.weather_growth
+            + self.scenery_growth
+        )
 
     @property
     def total_growth(self) -> int:
@@ -128,6 +158,11 @@ class GardenGameEngine:
     STREAK_MEMORY_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
     STREAK_CURRENCY = {7: 25, 14: 50, 30: 100, 100: 300}
     STAGE_CURRENCY = {"sprout": 5, "young": 10, "mature": 20, "flowering": 35, "rare": 50}
+    COIN_DROP_CHANCE = 800
+    COIN_DROP_AMOUNT = 50
+    BOOSTER_DROP_CHANCE = 5_000
+    BOOSTER_GROWTH_PER_ANSWER = 5
+    BOOSTER_DURATION_SECONDS = 2 * 60 * 60
     BED_PRICES = {2: 150, 3: 300, 4: 500, 5: 800}
     DIRECT_SOIL_SLOTS = frozenset(range(MAX_GARDEN_SLOTS))
     V6_SLOT_CENTERS = (
@@ -138,8 +173,8 @@ class GardenGameEngine:
         (0.190, 0.526), (0.498, 0.526), (0.769, 0.526),
         (0.185, 0.765), (0.502, 0.835), (0.835, 0.765),
     )
-    SOIL_PLANT_MESSAGE = "Choose an empty unlocked garden bed."
-    SOIL_CAPACITY_MESSAGE = "Unlock or empty a garden bed before planting this plant."
+    SOIL_PLANT_MESSAGE = "Choose an empty unlocked garden space."
+    SOIL_CAPACITY_MESSAGE = "Unlock or empty a garden space before planting this plant."
     SPECIES_PRICES = {
         "bonsai": 100,
         "rose": 100,
@@ -155,7 +190,9 @@ class GardenGameEngine:
     FERTILIZERS = {
         "basic": FertilizerSpec("basic", "Basic Fertilizer", 1, 60 * 60, 25),
         "quality": FertilizerSpec("quality", "Quality Fertilizer", 2, 2 * 60 * 60, 65),
-        "premium": FertilizerSpec("premium", "Premium Fertilizer", 3, 4 * 60 * 60, 150),
+        # Keep the persisted ``premium`` key for compatibility; only its
+        # learner-facing name changes.
+        "premium": FertilizerSpec("premium", "Magical Fertilizer", 3, 4 * 60 * 60, 150),
     }
     SPECIES_PERSONALITY = {
         "bonsai": "streak",
@@ -187,11 +224,12 @@ class GardenGameEngine:
         self.storage = storage
         self.state: GardenState = storage.state
         self._pending_stage_transitions: list[StageTransition] = []
+        snapshot = self._state_snapshot()
         self.assets = AssetManager(config, storage)
+        self._repair_environment_state()
         geometry_version, allowed_types = self._scene_surface_contract()
         self._scene_geometry_version = geometry_version
         self._surface_allowed_base_types = allowed_types
-        snapshot = self._state_snapshot()
         self.state.processed_revlog_ids = sorted({
             value
             for value in self.state.processed_revlog_ids
@@ -229,6 +267,77 @@ class GardenGameEngine:
         except Exception:
             self._restore_state(snapshot)
             raise
+
+    def _repair_environment_state(self) -> None:
+        """Normalize compatibility fields without revoking valid entitlements."""
+
+        inventory = self.state.inventory if isinstance(self.state.inventory, dict) else {}
+        weather_owned = list(dict.fromkeys([
+            DEFAULT_WEATHER_ID,
+            *(
+                inventory.get("weather", [])
+                if isinstance(inventory.get("weather"), list)
+                else []
+            ),
+        ]))
+        scenery_owned = list(dict.fromkeys([
+            DEFAULT_SCENERY_ID,
+            *(
+                inventory.get("backgrounds", [])
+                if isinstance(inventory.get("backgrounds"), list)
+                else []
+            ),
+            *(
+                inventory.get("scenery", [])
+                if isinstance(inventory.get("scenery"), list)
+                else []
+            ),
+        ]))
+        inventory["weather"] = [
+            item_id for item_id in weather_owned if item_id in WEATHER_CATALOG
+        ]
+        valid_scenery = [
+            item_id for item_id in scenery_owned if item_id in SCENERY_CATALOG
+        ]
+        inventory["backgrounds"] = list(valid_scenery)
+        inventory["scenery"] = list(valid_scenery)
+        self.state.inventory = inventory
+        if (
+            self.state.selected_weather not in WEATHER_CATALOG
+            or self.state.selected_weather not in inventory["weather"]
+        ):
+            self.state.selected_weather = DEFAULT_WEATHER_ID
+        if (
+            self.state.selected_background not in SCENERY_CATALOG
+            or self.state.selected_background not in inventory["scenery"]
+        ):
+            self.state.selected_background = DEFAULT_SCENERY_ID
+        equipped = self.state.equipped if isinstance(self.state.equipped, dict) else {}
+        equipped["weather"] = self.state.selected_weather
+        equipped["background"] = self.state.selected_background
+        self.state.equipped = equipped
+        visibility = (
+            self.state.environment_visibility
+            if isinstance(self.state.environment_visibility, dict)
+            else {}
+        )
+        self.state.environment_visibility = {
+            "weather": visibility.get("weather", True)
+            if isinstance(visibility.get("weather", True), bool)
+            else True,
+            "scenery": visibility.get("scenery", True)
+            if isinstance(visibility.get("scenery", True), bool)
+            else True,
+        }
+        if not isinstance(self.state.daily_environment_claims, dict):
+            self.state.daily_environment_claims = {}
+        for item_id in ("booster_potion", *GROWTH_CHARGES):
+            value = self.state.consumables.get(item_id, 0)
+            self.state.consumables[item_id] = (
+                max(0, int(value))
+                if isinstance(value, int) and not isinstance(value, bool)
+                else 0
+            )
 
     def _scene_surface_contract(self) -> tuple[int, tuple[tuple[str, ...], ...]]:
         """Resolve compatibility from the selected painted background profile."""
@@ -378,10 +487,10 @@ class GardenGameEngine:
             plant.slot_index = replacement
             if replacement is not None:
                 occupied.add(replacement)
-                message = f"{plant.name} was moved to an open garden bed."
+                message = f"{plant.name} was moved to an open garden space."
             else:
                 message = (
-                    f"{plant.name} was returned to the collection because no garden bed was open."
+                    f"{plant.name} was returned to the collection because no garden space was open."
                 )
             self._queue_feedback(
                 f"surface-repair:{plant.plant_id}", "collection", message, plant.plant_id
@@ -440,11 +549,19 @@ class GardenGameEngine:
                 and float(plant.fertilizer.expires_at) <= scheduler_day_start
             ):
                 plant.fertilizer = None
+            plant.booster_history = [
+                period for period in plant.booster_history
+                if float(period.expires_at) > scheduler_day_start
+            ][-MAX_BOOSTER_HISTORY:]
+            if (
+                plant.booster is not None
+                and float(plant.booster.expires_at) <= scheduler_day_start
+            ):
+                plant.booster = None
         self.state.active_plant_periods = [
             period for period in self.state.active_plant_periods if period.day >= (current_day - timedelta(days=7)).isoformat()
         ]
         self.state.active_plant_periods.append(ActivePlantPeriod(today, self.state.active_plant_id, self._now_ms()))
-        self._update_weather()
         if persist:
             self._persist_or_restore(snapshot)
 
@@ -460,6 +577,26 @@ class GardenGameEngine:
             for index, period in enumerate([
                 *plant.fertilizer_history,
                 *([plant.fertilizer] if plant.fertilizer is not None else []),
+            ])
+            if period.active(current)
+        ]
+        if not matches:
+            return 0
+        _index, active_period = max(matches, key=lambda item: (
+            float(item[1].started_at if item[1].started_at is not None else item[1].expires_at),
+            item[0],
+        ))
+        return int(active_period.growth_per_answer)
+
+    def booster_growth(self, plant: Plant | None, *, now: float | None = None) -> int:
+        if plant is None:
+            return 0
+        current = self._now_seconds() if now is None else float(now)
+        matches = [
+            (index, period)
+            for index, period in enumerate([
+                *plant.booster_history,
+                *([plant.booster] if plant.booster is not None else []),
             ])
             if period.active(current)
         ]
@@ -499,6 +636,28 @@ class GardenGameEngine:
         )
 
     @staticmethod
+    def _historical_booster_period(
+        booster: Booster | None,
+        *,
+        ended_at: float,
+    ) -> Booster | None:
+        if booster is None or booster.started_at is None:
+            return None
+        end = min(float(booster.expires_at), float(ended_at))
+        start = float(booster.started_at)
+        if start >= end:
+            return None
+        return Booster(int(booster.growth_per_answer), end, start)
+
+    @staticmethod
+    def _booster_period_identity(period: Booster) -> tuple[int, float, float]:
+        return (
+            int(period.growth_per_answer),
+            float(period.started_at if period.started_at is not None else period.expires_at),
+            float(period.expires_at),
+        )
+
+    @staticmethod
     def streak_bonus_percent(streak_days: int) -> int:
         days = max(0, int(streak_days))
         bonus = 0
@@ -512,6 +671,71 @@ class GardenGameEngine:
     def current_streak_bonus_percent(self) -> int:
         return self.streak_bonus_percent(self.state.streak_days)
 
+    def reconcile_retrospective_streak(self, *, persist: bool = True) -> tuple[bool, str]:
+        """Reconcile streak display/rewards without replaying historic Growth.
+
+        A collection or scheduler read failure is deliberately non-destructive:
+        the saved streak remains active and the next maintenance boundary can
+        retry. Existing milestone transaction keys make backfilled Coins
+        idempotent across restarts and sync reconciliation.
+        """
+
+        resolver = getattr(self.storage, "retrospective_streak", None)
+        if not callable(resolver):
+            return False, "Anki review history is not available yet."
+        try:
+            streak = resolver()
+        except (RevlogReadError, SchedulerBoundaryError):
+            return False, "Anki review history is not available yet."
+        snapshot = self._state_snapshot()
+        previous_days = int(self.state.streak_days)
+        self.state.streak_days = max(0, int(getattr(streak, "days", 0)))
+        latest_day = str(getattr(streak, "latest_day", "") or "")
+        if latest_day:
+            self.state.last_active_day = latest_day
+        credited_total = 0
+        newly_claimed: list[int] = []
+        for threshold, reward in sorted(self.STREAK_CURRENCY.items()):
+            if (
+                self.state.streak_days >= threshold
+                and threshold not in self.state.claimed_streak_rewards
+            ):
+                if self._credit_currency(
+                    f"streak:{threshold}",
+                    f"{threshold}-day Anki streak",
+                    reward,
+                ):
+                    credited_total += reward
+                # A legacy transaction may already hold this event key; the
+                # claim still needs to be repaired to prevent repeated checks.
+                self.state.claimed_streak_rewards.append(threshold)
+                newly_claimed.append(threshold)
+        self.state.claimed_streak_rewards = sorted(set(self.state.claimed_streak_rewards))
+        if credited_total:
+            milestone_copy = ", ".join(f"{value}-day" for value in newly_claimed)
+            self._queue_feedback(
+                f"streak-backfill:{':'.join(str(value) for value in newly_claimed)}",
+                "streak",
+                (
+                    f"Your review history restored a {self.state.streak_days}-day Anki streak "
+                    f"and {credited_total} Garden Coins from the {milestone_copy} milestones."
+                ),
+                title="Streak rewards restored",
+                asset_category="ui",
+                asset_key="streak_reward",
+                amount=credited_total,
+            )
+        self._update_achievements()
+        if self.state.to_dict() == snapshot:
+            return True, "Your Anki streak is up to date."
+        if persist:
+            try:
+                self._persist_or_restore(snapshot)
+            except Exception:
+                return False, "The updated Anki streak could not be saved."
+        direction = "restored" if self.state.streak_days >= previous_days else "updated"
+        return True, f"Your {self.state.streak_days}-day Anki streak was {direction}."
+
     def register_review(self, review_payload: Dict[str, Any]) -> ReviewAward:
         snapshot = self._state_snapshot()
         transition_snapshot = list(self._pending_stage_transitions)
@@ -519,7 +743,6 @@ class GardenGameEngine:
         try:
             award = self._register_review_in_memory(review_payload)
             self._update_achievements()
-            self._update_weather()
             self._persist_or_restore(snapshot)
             return award
         except Exception:
@@ -580,6 +803,8 @@ class GardenGameEngine:
         # received it. Reaching Rare clears the nurtured-plant pointer, so
         # looking it up again here would otherwise lose same-answer memories.
         self._record_shared_memories(previous_reviews, previous_streak, plant=plant)
+        if revlog_id and self.state.starter_selection_complete:
+            self._maybe_award_random_drop(revlog_id, plant)
         if revlog_id:
             insort(self.state.processed_revlog_ids, revlog_id)
             self.state.last_processed_revlog_id = max(self.state.last_processed_revlog_id, revlog_id)
@@ -591,7 +816,14 @@ class GardenGameEngine:
             last = date.fromisoformat(self.state.last_active_day)
         except (TypeError, ValueError):
             last = today - timedelta(days=2)
-        self.state.streak_days = self.state.streak_days + 1 if (today - last).days == 1 else 1
+        day_gap = (today - last).days
+        if day_gap == 0:
+            # A retrospective startup reconciliation may already include the
+            # answer Anki just committed to revlog. Do not collapse that streak
+            # when Garden processes the same answer into today's detail stats.
+            self.state.streak_days = max(1, self.state.streak_days)
+        else:
+            self.state.streak_days = self.state.streak_days + 1 if day_gap == 1 else 1
         self.state.last_active_day = today.isoformat()
         for threshold, reward in self.STREAK_CURRENCY.items():
             if self.state.streak_days >= threshold and threshold not in self.state.claimed_streak_rewards:
@@ -640,6 +872,47 @@ class GardenGameEngine:
         plant = next((item for item in self.state.plants if item.plant_id == plant_id), None)
         return plant if plant is not None and not plant.fully_grown else None
 
+    def equipped_environment(self, kind: str) -> CatalogItem:
+        if str(kind) == "weather":
+            return WEATHER_CATALOG.get(
+                self.state.selected_weather, WEATHER_CATALOG[DEFAULT_WEATHER_ID]
+            )
+        return SCENERY_CATALOG.get(
+            self.state.selected_background, SCENERY_CATALOG[DEFAULT_SCENERY_ID]
+        )
+
+    def owns_environment(self, kind: str, item_id: str) -> bool:
+        if str(kind) == "weather":
+            return str(item_id) in self.state.inventory.get("weather", [])
+        return str(item_id) in {
+            *self.state.inventory.get("backgrounds", []),
+            *self.state.inventory.get("scenery", []),
+        }
+
+    def _weather_review_growth(self, answer_number: int) -> int:
+        weather = self.state.selected_weather
+        if weather == "breeze" and answer_number <= 10:
+            return 1
+        if weather == "gentle_rain" and answer_number <= 20:
+            return 1
+        if weather == "fireflies" and answer_number <= 5:
+            return 5
+        return 0
+
+    def _scenery_review_growth(self, answer_number: int) -> int:
+        scenery = self.state.selected_background
+        if scenery == "spring" and answer_number <= 25:
+            return 1
+        if scenery == "summer" and answer_number % 2 == 0:
+            return 1
+        if scenery == "rainbow_horizon":
+            return 1
+        if scenery == "eclipse":
+            # This is a flat secondary award, not a multiplier over streak,
+            # Fertilizer, Booster, or weather bonuses.
+            return self.BASE_GROWTH_PER_REVIEW
+        return 0
+
     def _award_review_growth(self, plant: Plant | None, event_ms: int) -> ReviewAward:
         if plant is None:
             return ReviewAward(None, 0, 0, 0, 0, "Choose an unfinished plant to nurture to resume Growth.")
@@ -647,25 +920,342 @@ class GardenGameEngine:
         bonus_numerator = plant.bonus_remainder + (self.BASE_GROWTH_PER_REVIEW * bonus_percent)
         proposed_streak_bonus, next_remainder = divmod(bonus_numerator, 100)
         proposed_fertilizer_bonus = self.fertilizer_growth(plant, now=event_ms / 1000)
+        proposed_booster_bonus = self.booster_growth(plant, now=event_ms / 1000)
+        answer_number = max(1, int(self.state.daily_stats.reviewed))
+        proposed_weather_bonus = self._weather_review_growth(answer_number)
+        proposed_scenery_bonus = self._scenery_review_growth(answer_number)
         remaining = max(0, GROWTH_THRESHOLDS[-1] - plant.growth_points)
         base = min(self.BASE_GROWTH_PER_REVIEW, remaining)
         bonus_remaining = max(0, remaining - base)
         streak_bonus = min(proposed_streak_bonus, bonus_remaining)
         fertilizer_bonus = min(proposed_fertilizer_bonus, max(0, bonus_remaining - streak_bonus))
-        if base + streak_bonus + fertilizer_bonus <= 0:
+        booster_bonus = min(
+            proposed_booster_bonus,
+            max(0, bonus_remaining - streak_bonus - fertilizer_bonus),
+        )
+        weather_bonus = min(
+            proposed_weather_bonus,
+            max(0, bonus_remaining - streak_bonus - fertilizer_bonus - booster_bonus),
+        )
+        scenery_bonus = min(
+            proposed_scenery_bonus,
+            max(
+                0,
+                bonus_remaining
+                - streak_bonus
+                - fertilizer_bonus
+                - booster_bonus
+                - weather_bonus,
+            ),
+        )
+        total = (
+            base
+            + streak_bonus
+            + fertilizer_bonus
+            + booster_bonus
+            + weather_bonus
+            + scenery_bonus
+        )
+        if total <= 0:
             return ReviewAward(plant.plant_id, 0, 0, 0, bonus_percent, "This plant is fully grown.")
         before = plant.growth_points
-        plant.growth_points += base + streak_bonus + fertilizer_bonus
+        plant.growth_points += total
         plant.bonus_remainder = next_remainder if plant.growth_points < GROWTH_THRESHOLDS[-1] else 0
         stats = self.state.daily_stats
         stats.base_growth += base
         stats.streak_bonus_growth += streak_bonus
         stats.fertilizer_growth += fertilizer_bonus
-        stats.bonus_growth = stats.streak_bonus_growth + stats.fertilizer_growth
+        stats.booster_growth += booster_bonus
+        stats.weather_growth += weather_bonus
+        stats.scenery_growth += scenery_bonus
+        stats.bonus_growth = (
+            stats.streak_bonus_growth
+            + stats.fertilizer_growth
+            + stats.booster_growth
+            + stats.weather_growth
+            + stats.scenery_growth
+            + stats.charge_growth
+        )
         stats.growth_earned = stats.base_growth + stats.bonus_growth
-        stats.plant_growth[plant.plant_id] = stats.plant_growth.get(plant.plant_id, 0) + base + streak_bonus + fertilizer_bonus
+        stats.plant_growth[plant.plant_id] = (
+            stats.plant_growth.get(plant.plant_id, 0)
+            + total
+        )
         self._record_growth_crossings(plant, before, plant.growth_points)
-        return ReviewAward(plant.plant_id, base, streak_bonus, fertilizer_bonus, bonus_percent)
+        return ReviewAward(
+            plant.plant_id,
+            base,
+            streak_bonus,
+            fertilizer_bonus,
+            bonus_percent,
+            booster_growth=booster_bonus,
+            weather_growth=weather_bonus,
+            scenery_growth=scenery_bonus,
+        )
+
+    def _reward_digest(self, revlog_id: int, *, namespace: bytes) -> bytes:
+        return hashlib.blake2b(
+            f"{self.state.reward_seed}:{int(revlog_id)}".encode("utf-8"),
+            digest_size=32,
+            person=namespace[:16],
+        ).digest()
+
+    def _record_reward_drop(self, revlog_id: int, kind: str, amount: int) -> None:
+        self.state.reward_drop_history.append(RewardDrop(
+            int(revlog_id), self.state.daily_stats.day, str(kind), int(amount), utc_now_iso()
+        ))
+        self.state.reward_drop_history = self.state.reward_drop_history[-500:]
+
+    def _drop_hit(self, revlog_id: int, tier: str, denominator: int) -> bool:
+        digest = self._reward_digest(
+            revlog_id,
+            namespace=f"drop-v2:{tier}".encode("utf-8"),
+        )
+        return int.from_bytes(digest[:8], "big") % max(1, int(denominator)) == 0
+
+    def _drop_choice_index(self, revlog_id: int, tier: str, size: int) -> int:
+        if size <= 1:
+            return 0
+        digest = self._reward_digest(
+            revlog_id,
+            namespace=f"choice:{tier}".encode("utf-8"),
+        )
+        return int.from_bytes(digest[8:16], "big") % int(size)
+
+    def _grant_consumable_drop(
+        self,
+        revlog_id: int,
+        consumable_id: str,
+        *,
+        plant: Plant | None,
+        title: str,
+        message: str,
+        event_prefix: str = "drop",
+    ) -> None:
+        self.state.consumables[consumable_id] = (
+            self.state.consumables.get(consumable_id, 0) + 1
+        )
+        self._queue_feedback(
+            f"{event_prefix}:{consumable_id}:{revlog_id}",
+            "charge_drop" if consumable_id in GROWTH_CHARGES else "booster_drop",
+            message,
+            plant.plant_id if plant is not None else None,
+            title=title,
+            asset_category="ui",
+            asset_key=consumable_id,
+            amount=1,
+        )
+        self._record_reward_drop(revlog_id, consumable_id, 1)
+
+    def _grant_environment_drop(
+        self,
+        revlog_id: int,
+        item: CatalogItem,
+        *,
+        plant: Plant | None,
+    ) -> None:
+        if item.kind == "weather":
+            owned = self.state.inventory.setdefault("weather", [])
+        else:
+            owned = self.state.inventory.setdefault("scenery", [])
+        if item.item_id not in owned:
+            owned.append(item.item_id)
+        if item.kind == "scenery":
+            backgrounds = self.state.inventory.setdefault("backgrounds", [])
+            if item.item_id not in backgrounds:
+                backgrounds.append(item.item_id)
+        self._queue_feedback(
+            f"drop:environment:{item.item_id}:{revlog_id}",
+            "environment_drop",
+            (
+                f"You found {item.name}. It is now in House → Weather & Scenery, "
+                f"ready to equip. {item.effect}"
+            ),
+            plant.plant_id if plant is not None else None,
+            title=f"{item.rarity} garden discovery",
+            asset_category="weather" if item.kind == "weather" else "backgrounds",
+            asset_key=item.item_id,
+            amount=1,
+        )
+        self._record_reward_drop(revlog_id, item.item_id, 1)
+
+    def _grant_environment_tier(
+        self,
+        revlog_id: int,
+        tier: str,
+        *,
+        plant: Plant | None,
+    ) -> None:
+        candidates = [
+            item for item in DROP_TIER_ITEMS.get(tier, ())
+            if not self.owns_environment(item.kind, item.item_id)
+        ]
+        if candidates:
+            item = candidates[self._drop_choice_index(revlog_id, tier, len(candidates))]
+            self._grant_environment_drop(revlog_id, item, plant=plant)
+            return
+        fallback = (
+            "growth_charge_standard"
+            if tier == "rare_environment"
+            else "growth_charge_grand"
+        )
+        spec = GROWTH_CHARGES[fallback]
+        self._grant_consumable_drop(
+            revlog_id,
+            fallback,
+            plant=plant,
+            title=f"{spec.name} found",
+            message=(
+                f"You already own every environment in this tier, so the garden "
+                f"left you a {spec.name} instead."
+            ),
+        )
+
+    def _claim_daily_environment_gift(
+        self,
+        revlog_id: int,
+        *,
+        plant: Plant | None,
+    ) -> bool:
+        scenery = self.state.selected_background
+        if scenery not in {"snowy", "halloween", "full_moon"}:
+            return False
+        day = self.state.daily_stats.day
+        if self.state.daily_environment_claims.get(scenery) == day:
+            return False
+        self.state.daily_environment_claims[scenery] = day
+        if scenery == "snowy":
+            consumable_id = "growth_charge_small"
+        elif scenery == "full_moon":
+            consumable_id = "booster_potion"
+        else:
+            digest = self._reward_digest(revlog_id, namespace=b"halloween-gift")
+            roll = int.from_bytes(digest[:8], "big") % 100
+            consumable_id = (
+                "growth_charge_small"
+                if roll < 70
+                else "growth_charge_standard"
+                if roll < 95
+                else "booster_potion"
+            )
+        name = (
+            "Booster Potion"
+            if consumable_id == "booster_potion"
+            else GROWTH_CHARGES[consumable_id].name
+        )
+        scenery_name = SCENERY_CATALOG[scenery].name
+        self._grant_consumable_drop(
+            revlog_id,
+            consumable_id,
+            plant=plant,
+            title=f"{scenery_name} daily gift",
+            message=(
+                f"Your first card answer today awakened {scenery_name}. "
+                f"It left one {name} in your Supplements collection."
+            ),
+            event_prefix="daily",
+        )
+        return True
+
+    def _maybe_award_random_drop(self, revlog_id: int, plant: Plant | None) -> None:
+        """Resolve one deterministic reward slot after an eligible card answer."""
+
+        if revlog_id <= 0 or any(
+            event.revlog_id == revlog_id for event in self.state.reward_drop_history
+        ):
+            return
+        self.state.eligible_reward_count += 1
+        if self._claim_daily_environment_gift(revlog_id, plant=plant):
+            self.state.ultra_pity_misses += 1
+            return
+        ultra_hit = False
+        for band in DROP_BANDS:
+            denominator = (
+                ultra_denominator(self.state.ultra_pity_misses)
+                if band.tier == "ultra_environment"
+                else self.BOOSTER_DROP_CHANCE
+                if band.tier == "booster_potion"
+                else self.COIN_DROP_CHANCE
+                if band.tier == "coin_cache"
+                else band.denominator
+            )
+            if not self._drop_hit(revlog_id, band.tier, denominator):
+                continue
+            if band.tier in {
+                "ultra_environment",
+                "very_rare_environment",
+                "rare_environment",
+            }:
+                self._grant_environment_tier(
+                    revlog_id, band.tier, plant=plant
+                )
+                ultra_hit = band.tier == "ultra_environment"
+            elif band.tier == "grand_charge":
+                self._grant_consumable_drop(
+                    revlog_id,
+                    "growth_charge_grand",
+                    plant=plant,
+                    title="A Grand Growth Charge!",
+                    message=(
+                        "Your garden uncovered a Grand Growth Charge. "
+                        "Its 2,000 Growth is waiting in Supplements & Boosters."
+                    ),
+                )
+            elif band.tier == "standard_charge":
+                self._grant_consumable_drop(
+                    revlog_id,
+                    "growth_charge_standard",
+                    plant=plant,
+                    title="A Standard Growth Charge!",
+                    message="A Standard Growth Charge joined your Supplements collection.",
+                )
+            elif band.tier == "booster_potion":
+                self._grant_consumable_drop(
+                    revlog_id,
+                    "booster_potion",
+                    plant=plant,
+                    title="A rare garden gift",
+                    message=(
+                        "Your nurtured plant found a Booster Potion. "
+                        "Your steady work is helping the whole garden grow."
+                    ),
+                )
+            elif band.tier == "small_charge":
+                self._grant_consumable_drop(
+                    revlog_id,
+                    "growth_charge_small",
+                    plant=plant,
+                    title="A Small Growth Charge!",
+                    message="A Small Growth Charge joined your Supplements collection.",
+                )
+            else:
+                event_key = f"drop:coins:{revlog_id}"
+                if self._credit_currency(
+                    event_key, "Rare study gift", self.COIN_DROP_AMOUNT
+                ):
+                    plant_name = plant.name if plant is not None else "Your garden"
+                    self._queue_feedback(
+                        event_key,
+                        "coin_drop",
+                        (
+                            f"{plant_name} seems to say: “I can see how much care you’re "
+                            f"putting in. Please take these {self.COIN_DROP_AMOUNT} "
+                            "Garden Coins.”"
+                        ),
+                        plant.plant_id if plant is not None else None,
+                        title="A little garden gift",
+                        asset_category="ui",
+                        asset_key="garden_coins",
+                        amount=self.COIN_DROP_AMOUNT,
+                    )
+                    self._record_reward_drop(
+                        revlog_id, "garden_coins", self.COIN_DROP_AMOUNT
+                    )
+            break
+        if ultra_hit:
+            self.state.ultra_pity_misses = 0
+        else:
+            self.state.ultra_pity_misses += 1
 
     def _record_growth_crossings(self, plant: Plant, before: int, after: int) -> None:
         for index in range(len(GROWTH_STAGES) - 1):
@@ -694,7 +1284,12 @@ class GardenGameEngine:
             )
             transition = StageTransition(plant.plant_id, plant.species, previous_stage, new_stage)
             self._pending_stage_transitions.append(transition)
-            reward = self.STAGE_CURRENCY[new_stage]
+            base_reward = self.STAGE_CURRENCY[new_stage]
+            reward = (
+                (base_reward * 5 + 2) // 4
+                if self.state.selected_background == "autumn"
+                else base_reward
+            )
             self._credit_currency(
                 f"stage:{plant.plant_id}:{new_stage}",
                 f"{plant.name} reached {new_stage.title()}",
@@ -717,6 +1312,42 @@ class GardenGameEngine:
                 plant.plant_id,
             )
 
+    def _apply_direct_growth(
+        self,
+        plant: Plant | None,
+        requested: int,
+        *,
+        stats_field: str,
+    ) -> int:
+        if plant is None or plant.fully_grown or requested <= 0:
+            return 0
+        before = int(plant.growth_points)
+        awarded = min(
+            max(0, int(requested)),
+            max(0, GROWTH_THRESHOLDS[-1] - before),
+        )
+        if awarded <= 0:
+            return 0
+        plant.growth_points += awarded
+        if plant.fully_grown:
+            plant.bonus_remainder = 0
+        stats = self.state.daily_stats
+        setattr(stats, stats_field, int(getattr(stats, stats_field, 0)) + awarded)
+        stats.bonus_growth = (
+            stats.streak_bonus_growth
+            + stats.fertilizer_growth
+            + stats.booster_growth
+            + stats.weather_growth
+            + stats.scenery_growth
+            + stats.charge_growth
+        )
+        stats.growth_earned = stats.base_growth + stats.bonus_growth
+        stats.plant_growth[plant.plant_id] = (
+            stats.plant_growth.get(plant.plant_id, 0) + awarded
+        )
+        self._record_growth_crossings(plant, before, plant.growth_points)
+        return awarded
+
     def evaluate_all_due(self, status: DueObligationStatus | None = None) -> tuple[bool, str]:
         # Rollover is itself durable state. Persist it before taking the reward
         # snapshot so every early-return branch leaves memory and disk aligned.
@@ -736,18 +1367,28 @@ class GardenGameEngine:
             unit = "due review or learning step remains" if status.remaining == 1 else "due reviews or learning steps remain"
             return False, f"{status.remaining:,} {unit}."
         stats.completed_due_cards = True
+        coin_reward = 12 if self.state.selected_weather == "cloudy" else 10
+        weather_growth = 0
+        if self.state.selected_weather == "rainbow_sunshower":
+            weather_growth = self._apply_direct_growth(
+                self.active_plant(), 5, stats_field="weather_growth"
+            )
+        feedback = (
+            f"You finished all due cards and earned {coin_reward} Garden Coins"
+            + (f" and {weather_growth} Growth." if weather_growth else ".")
+        )
         self._credit_currency(
             f"all-due:{stats.day}",
             "All due cards finished",
-            10,
-            feedback="You finished all due cards and earned 10 Garden Coins.",
+            coin_reward,
+            feedback=feedback,
         )
         try:
             self._update_achievements()
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "The reward for finishing all due cards could not be saved."
-        return True, "You finished all due cards and earned 10 Garden Coins."
+        return True, feedback
 
     def apply_same_day_reviews(self, reviews: list[Dict[str, Any]], *, latest_revlog_id: int = 0) -> int:
         if not reviews:
@@ -769,7 +1410,6 @@ class GardenGameEngine:
                 self.state.last_processed_revlog_id, max(0, int(latest_revlog_id))
             )
             self._update_achievements()
-            self._update_weather()
             self._persist_or_restore(snapshot)
         except Exception:
             self._pending_stage_transitions = transition_snapshot
@@ -820,10 +1460,31 @@ class GardenGameEngine:
         self.state.currency_transactions = self.state.currency_transactions[-500:]
         return True
 
-    def _queue_feedback(self, event_id: str, kind: str, message: str, plant_id: str | None = None) -> bool:
+    def _queue_feedback(
+        self,
+        event_id: str,
+        kind: str,
+        message: str,
+        plant_id: str | None = None,
+        *,
+        title: str = "",
+        asset_category: str = "",
+        asset_key: str = "",
+        amount: int = 0,
+    ) -> bool:
         if any(event.event_id == event_id for event in self.state.pending_feedback):
             return False
-        self.state.pending_feedback.append(FeedbackEvent(event_id, kind, message, utc_now_iso(), plant_id))
+        self.state.pending_feedback.append(FeedbackEvent(
+            event_id,
+            kind,
+            message,
+            utc_now_iso(),
+            plant_id,
+            title,
+            asset_category,
+            asset_key,
+            max(0, int(amount)),
+        ))
         self.state.pending_feedback = self.state.pending_feedback[-100:]
         return True
 
@@ -890,6 +1551,200 @@ class GardenGameEngine:
             "owned_count": len(owned),
             "available_count": len(available),
         }
+
+    def environment_catalog_summary(self) -> dict[str, Any]:
+        return {
+            kind: [
+                {
+                    "item": item,
+                    "owned": self.owns_environment(kind, item.item_id),
+                    "equipped": (
+                        self.state.selected_weather == item.item_id
+                        if kind == "weather"
+                        else self.state.selected_background == item.item_id
+                    ),
+                    "visible": bool(
+                        self.state.environment_visibility.get(kind, True)
+                    ),
+                }
+                for item in catalog.values()
+            ]
+            for kind, catalog in ENVIRONMENT_CATALOG.items()
+        }
+
+    def environment_drop_odds(self) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        for band in DROP_BANDS:
+            denominator = (
+                ultra_denominator(self.state.ultra_pity_misses)
+                if band.tier == "ultra_environment"
+                else int(band.denominator)
+            )
+            rows.append({
+                "tier": band.tier,
+                "name": band.display_name,
+                "numerator": int(band.numerator),
+                "denominator": denominator,
+                "base_denominator": int(band.denominator),
+            })
+        return {
+            "eligible_answers": int(self.state.eligible_reward_count),
+            "ultra_pity_misses": int(self.state.ultra_pity_misses),
+            "ultra_denominator": ultra_denominator(self.state.ultra_pity_misses),
+            "bands": rows,
+        }
+
+    def purchase_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
+        normalized_kind = str(kind)
+        item = environment_item(normalized_kind, str(item_id))
+        if item is None:
+            return False, "That Weather or Scenery item is not in the current collection."
+        if self.owns_environment(normalized_kind, item.item_id):
+            return False, f"You already own {item.name}."
+        if not item.purchasable or item.price is None:
+            return False, f"{item.name} can only be earned while reviewing cards."
+        snapshot = self._state_snapshot()
+        event_key = f"purchase:environment:{normalized_kind}:{item.item_id}"
+        if not self._debit_currency(
+            event_key,
+            f"Purchased {item.name}",
+            item.price,
+        ):
+            return False, f"{item.name} costs {item.price:,} Garden Coins."
+        if normalized_kind == "weather":
+            self.state.inventory.setdefault("weather", []).append(item.item_id)
+        else:
+            self.state.inventory.setdefault("scenery", []).append(item.item_id)
+            self.state.inventory.setdefault("backgrounds", []).append(item.item_id)
+        self._queue_feedback(
+            event_key,
+            "environment_purchase",
+            (
+                f"{item.name} joined your collection. Visit House → Weather & Scenery "
+                "when you want to equip it."
+            ),
+            title=f"{item.name} unlocked",
+            asset_category="weather" if item.kind == "weather" else "backgrounds",
+            asset_key=item.item_id,
+            amount=1,
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The purchase could not be saved; no Garden Coins were spent."
+        return True, (
+            f"{item.name} unlocked. It was not equipped automatically; "
+            "choose it in House → Weather & Scenery."
+        )
+
+    def equip_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
+        normalized_kind = str(kind)
+        item = environment_item(normalized_kind, str(item_id))
+        if item is None:
+            return False, "That Weather or Scenery item is unavailable."
+        if not self.owns_environment(normalized_kind, item.item_id):
+            return False, f"Unlock {item.name} before equipping it."
+        current = (
+            self.state.selected_weather
+            if normalized_kind == "weather"
+            else self.state.selected_background
+        )
+        if current == item.item_id:
+            return True, f"{item.name} is already equipped."
+        snapshot = self._state_snapshot()
+        if normalized_kind == "weather":
+            self.state.selected_weather = item.item_id
+            self.state.equipped["weather"] = item.item_id
+        else:
+            self.state.selected_background = item.item_id
+            self.state.equipped["background"] = item.item_id
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "That environment choice could not be saved."
+        return True, f"{item.name} equipped. {item.effect}"
+
+    def set_environment_visibility(self, kind: str, enabled: bool) -> tuple[bool, str]:
+        normalized_kind = str(kind)
+        if normalized_kind not in {"weather", "scenery"}:
+            return False, "Choose Weather or Scenery."
+        snapshot = self._state_snapshot()
+        self.state.environment_visibility[normalized_kind] = bool(enabled)
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "That visual preference could not be saved."
+        name = "Weather effects" if normalized_kind == "weather" else "Scenery artwork"
+        state = "shown" if enabled else "hidden"
+        return True, f"{name} are {state}. The equipped passive remains active."
+
+    def purchase_growth_charge(self, charge_id: str) -> tuple[bool, str]:
+        spec = GROWTH_CHARGES.get(str(charge_id))
+        if spec is None:
+            return False, "Choose a valid Growth Charge."
+        if not spec.purchasable or spec.price is None:
+            return False, f"{spec.name} can only be earned while reviewing cards."
+        snapshot = self._state_snapshot()
+        event_key = f"purchase:charge:{spec.charge_id}:{uuid.uuid4().hex}"
+        if not self._debit_currency(
+            event_key, f"Purchased {spec.name}", spec.price
+        ):
+            return False, f"{spec.name} costs {spec.price:,} Garden Coins."
+        self.state.consumables[spec.charge_id] = (
+            self.state.consumables.get(spec.charge_id, 0) + 1
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The Growth Charge purchase could not be saved; no Garden Coins were spent."
+        return True, f"{spec.name} added to Supplements & Boosters."
+
+    def use_growth_charge(
+        self,
+        charge_id: str,
+        plant_id: str | None = None,
+    ) -> tuple[bool, str]:
+        spec = GROWTH_CHARGES.get(str(charge_id))
+        if spec is None:
+            return False, "Choose a valid Growth Charge."
+        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
+        if (
+            plant is None
+            or self.state.active_plant_id != plant.plant_id
+            or not plant.planted
+            or plant.fully_grown
+        ):
+            return False, "Nurture an unfinished planted plant before using a Growth Charge."
+        if self.state.consumables.get(spec.charge_id, 0) <= 0:
+            return False, f"You do not have a {spec.name}."
+        snapshot = self._state_snapshot()
+        transition_snapshot = list(self._pending_stage_transitions)
+        self.state.consumables[spec.charge_id] -= 1
+        awarded = self._apply_direct_growth(
+            plant, spec.growth, stats_field="charge_growth"
+        )
+        if awarded <= 0:
+            self._pending_stage_transitions = transition_snapshot
+            self._restore_state(snapshot)
+            return False, "That plant cannot receive more Growth. The charge was not used."
+        event_key = f"charge:{spec.charge_id}:{plant.plant_id}:{uuid.uuid4().hex}"
+        self._queue_feedback(
+            event_key,
+            "growth_charge",
+            f"{spec.name} gave {plant.name} {awarded:,} Growth.",
+            plant.plant_id,
+            title=f"{spec.name} used",
+            asset_category="ui",
+            asset_key=spec.charge_id,
+            amount=awarded,
+        )
+        try:
+            self._update_achievements()
+            self._persist_or_restore(snapshot)
+        except Exception:
+            self._pending_stage_transitions = transition_snapshot
+            return False, "The Growth Charge could not be saved, so it was not used."
+        return True, f"{spec.name} gave {plant.name} {awarded:,} Growth."
 
     def choose_starter(self, species: str) -> tuple[bool, str, Plant | None]:
         """Create the first plant for free without backfilling earlier reviews."""
@@ -1016,6 +1871,89 @@ class GardenGameEngine:
             f"+{spec.growth_per_answer} Growth per answer while active."
         )
 
+    def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
+        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
+        if plant is None:
+            return False, "Choose an unfinished plant to nurture before using a Booster Potion."
+        if self.state.active_plant_id != plant.plant_id or not plant.planted or plant.fully_grown:
+            return False, "Nurture this unfinished planted plant before using a Booster Potion."
+        if self.state.consumables.get("booster_potion", 0) <= 0:
+            return False, "You do not have a Booster Potion yet. Rare study gifts can contain one."
+        now = self._now_seconds()
+        current = plant.booster if plant.booster and plant.booster.active(now) else None
+        archived = None if current is not None else self._historical_booster_period(
+            plant.booster,
+            ended_at=now,
+        )
+        history_identities = {
+            self._booster_period_identity(period) for period in plant.booster_history
+        }
+        needs_archive = (
+            archived is not None
+            and self._booster_period_identity(archived) not in history_identities
+        )
+        if needs_archive and len(plant.booster_history) >= MAX_BOOSTER_HISTORY:
+            return False, (
+                "This plant's current-day Booster history is full. "
+                "Try again after Anki's next-day cutoff."
+            )
+        snapshot = self._state_snapshot()
+        self.state.consumables["booster_potion"] -= 1
+        if needs_archive and archived is not None:
+            plant.booster_history.append(archived)
+            plant.booster_history.sort(key=lambda period: (
+                float(period.started_at if period.started_at is not None else period.expires_at),
+                float(period.expires_at),
+            ))
+        expiration_base = current.expires_at if current is not None else now
+        activation_start = (
+            current.started_at
+            if current is not None and current.started_at is not None
+            else now
+        )
+        duration_bonus_percent = 0
+        if self.state.selected_weather == "snow_flurry":
+            duration_bonus_percent += 10
+        if self.state.selected_background == "full_moon":
+            duration_bonus_percent += 25
+        duration_seconds = (
+            self.BOOSTER_DURATION_SECONDS * (100 + duration_bonus_percent) // 100
+        )
+        plant.booster = Booster(
+            self.BOOSTER_GROWTH_PER_ANSWER,
+            expiration_base + duration_seconds,
+            activation_start,
+        )
+        duration_minutes = duration_seconds // 60
+        hours, minutes = divmod(duration_minutes, 60)
+        duration_text = (
+            f"{hours} {'hour' if hours == 1 else 'hours'}"
+            + (f" {minutes} minutes" if minutes else "")
+        )
+        event_key = f"booster:{plant.plant_id}:{uuid.uuid4().hex}"
+        action = "extended" if current is not None else "active"
+        self._queue_feedback(
+            event_key,
+            "booster",
+            (
+                f"Booster Potion {action} on {plant.name}: "
+                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per answer for {duration_text}."
+            ),
+            plant.plant_id,
+            title="Booster Potion active",
+            asset_category="ui",
+            asset_key="booster_potion",
+            amount=1,
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The Booster Potion could not be applied; it remains in your collection."
+        return True, (
+            f"Booster Potion {action}: +{self.BOOSTER_GROWTH_PER_ANSWER} Growth "
+            f"per answer for {duration_text}."
+        )
+
     def purchase_species(self, species: str) -> tuple[bool, str, Plant | None]:
         species = str(species).lower()
         if not self.state.starter_selection_complete:
@@ -1062,7 +2000,7 @@ class GardenGameEngine:
             return False, "All six garden spaces are already unlocked."
         snapshot = self._state_snapshot()
         event_key = f"purchase:bed:{index + 1}"
-        if not self._debit_currency(event_key, f"Unlocked garden bed {index + 1}", price):
+        if not self._debit_currency(event_key, f"Unlocked garden space {index + 1}", price):
             return False, f"Garden space {index + 1} costs {price} Garden Coins."
         self.state.unlocked_slots += 1
         self._queue_feedback(event_key, "unlock", f"Garden space {index + 1} unlocked.")
@@ -1088,18 +2026,18 @@ class GardenGameEngine:
         try:
             destination = available[0] if slot_index is None else int(slot_index)
         except (TypeError, ValueError):
-            return False, "Choose an empty unlocked garden bed."
+            return False, "Choose an empty unlocked garden space."
         if not self.slot_accepts_plant(plant, destination):
             return False, self.SOIL_PLANT_MESSAGE
         if destination not in available:
-            return False, "Choose an empty unlocked garden bed."
+            return False, "Choose an empty unlocked garden space."
         snapshot = self._state_snapshot()
         plant.slot_index = destination
         try:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "The planting change could not be saved."
-        return True, f"{plant.name} was planted in bed {destination + 1}."
+        return True, f"{plant.name} was planted in space {destination + 1}."
 
     def move_to_collection(self, plant_id: str) -> tuple[bool, str]:
         plant = self.plant_story(plant_id)
@@ -1203,11 +2141,121 @@ class GardenGameEngine:
             return False, f"Plant names can be at most {MAX_PLANT_NAME_LENGTH} characters."
         snapshot = self._state_snapshot()
         plant.name = clean
+        plant.name_customized = True
         try:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "The new name could not be saved."
         return True, f"This plant is now named {clean}."
+
+    def rename_garden(self, name: str, *, complete_setup: bool = True) -> tuple[bool, str]:
+        clean = " ".join(str(name).split())
+        if not clean:
+            return False, "Enter a name for your garden."
+        if len(clean) > MAX_GARDEN_NAME_LENGTH:
+            return False, f"Garden names can be at most {MAX_GARDEN_NAME_LENGTH} characters."
+        snapshot = self._state_snapshot()
+        self.state.garden_name = clean
+        if complete_setup:
+            self.state.garden_setup_version = 1
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The garden name could not be saved."
+        return True, f"Your garden is now named {clean}."
+
+    def development_populate(self) -> tuple[bool, str]:
+        """Populate a broad UI test state without touching the revlog ledger."""
+
+        snapshot = self._state_snapshot()
+        today = self._scheduler_day()
+        seed_value = int.from_bytes(hashlib.blake2b(
+            self.state.reward_seed.encode("utf-8"), digest_size=8
+        ).digest(), "big")
+        rng = random.Random(seed_value ^ int(self._now_ms()))
+        # Seed only the current catalog. Historical species remain valid for
+        # imported state, but do not have complete V6 catalog artwork.
+        species = list(CURRENT_CATALOG_SPECIES_ORDER)
+        rng.shuffle(species)
+        stage_indexes = [0, 1, 2, 3, 4, 5, 1, 2, 3, 4]
+        rng.shuffle(stage_indexes)
+        plants: list[Plant] = []
+        for index, plant_species in enumerate(species):
+            stage_index = stage_indexes[index % len(stage_indexes)]
+            points = GROWTH_THRESHOLDS[stage_index]
+            if stage_index < len(GROWTH_STAGES) - 1:
+                points += rng.randint(
+                    0,
+                    max(0, (GROWTH_THRESHOLDS[stage_index + 1] - points) // 2),
+                )
+            plants.append(Plant(
+                plant_id=f"dev_{plant_species}",
+                species=plant_species,
+                name=self._generated_name(plant_species),
+                slot_index=index if index < MAX_GARDEN_SLOTS else None,
+                growth_points=min(GROWTH_THRESHOLDS[-1], points),
+                personality=self.SPECIES_PERSONALITY.get(plant_species, "balanced"),
+                planted_on=today,
+                memories=[PlantMemory("planted", "planted", today)],
+                name_customized=False,
+            ))
+        # Guarantee one valid unfinished nurtured plant regardless of shuffle.
+        nurtured = plants[0]
+        nurtured.growth_points = min(nurtured.growth_points, GROWTH_THRESHOLDS[-2])
+        self.state.plants = plants
+        self.state.unlocked_species = list(CURRENT_CATALOG_SPECIES_ORDER)
+        self.state.unlocked_slots = MAX_GARDEN_SLOTS
+        self.state.starter_selection_complete = True
+        self.state.garden_setup_version = 1
+        self.state.active_plant_id = nurtured.plant_id
+        self.state.active_plant_periods = [
+            ActivePlantPeriod(today, nurtured.plant_id, self._now_ms())
+        ]
+        coin_delta = max(0, 100_000 - int(self.state.currency_balance))
+        if coin_delta:
+            self._credit_currency(
+                f"development:populate:{uuid.uuid4().hex}",
+                "Development catalog seed",
+                coin_delta,
+            )
+        self.state.consumables["booster_potion"] = max(
+            12, self.state.consumables.get("booster_potion", 0)
+        )
+        for charge_id in GROWTH_CHARGES:
+            self.state.consumables[charge_id] = max(
+                12, self.state.consumables.get(charge_id, 0)
+            )
+        self.state.inventory["weather"] = list(WEATHER_CATALOG)
+        self.state.inventory["scenery"] = list(SCENERY_CATALOG)
+        self.state.inventory["backgrounds"] = list(SCENERY_CATALOG)
+        self.state.environment_visibility = {"weather": True, "scenery": True}
+        now = utc_now_iso()
+        for achievement in self.state.achievements.values():
+            achievement.unlocked = True
+            achievement.unlocked_at = achievement.unlocked_at or now
+            achievement.progress = 1.0
+        self._queue_feedback(
+            f"development:ready:{uuid.uuid4().hex}",
+            "development",
+            "Development garden populated. Use Restore backup to return to the prior state.",
+            title="Development garden ready",
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The development garden could not be saved."
+        return True, "Development garden populated with 100,000 Coins, all plants, spaces, and items."
+
+    def restore_development_backup(self, path: Any) -> tuple[bool, str]:
+        snapshot = self._state_snapshot()
+        try:
+            restored = self.storage.load_development_backup(path)
+            self._restore_state(restored.to_dict())
+            self.storage.save()
+        except Exception:
+            self._restore_state(snapshot)
+            return False, "The development backup could not be restored."
+        return True, "The pre-development garden backup was restored."
 
     def plant_story(self, plant_id: str) -> Plant | None:
         return next((item for item in self.state.plants if item.plant_id == plant_id), None)
@@ -1247,16 +2295,8 @@ class GardenGameEngine:
                 self._add_memory(plant, f"reviews:{threshold}", "reviews", value=threshold)
 
     def _generated_name(self, species: str) -> str:
-        used = {plant.name.casefold() for plant in self.state.plants}
-        choices = self.SPECIES_NAMES.get(species, (species.replace("_", " ").title(),))
-        for choice in choices:
-            if choice.casefold() not in used:
-                return choice
-        base = choices[0]
-        suffix = 2
-        while f"{base} {suffix}".casefold() in used:
-            suffix += 1
-        return f"{base} {suffix}"
+        species_name = species.replace("_", " ").title()
+        return f"{species_name} Plant"[:MAX_PLANT_NAME_LENGTH]
 
     def _planted(self) -> list[Plant]:
         return sorted(
@@ -1273,12 +2313,12 @@ class GardenGameEngine:
         try:
             destination = int(destination_slot)
         except (TypeError, ValueError):
-            return False, "Choose an unlocked garden bed.", None
+            return False, "Choose an unlocked garden space.", None
         if destination < 0 or destination >= self.state.unlocked_slots:
-            return False, "That garden bed is still locked.", None
+            return False, "That garden space is still locked.", None
         origin = int(plant.slot_index or 0)
         if origin == destination:
-            return False, "That plant is already in this bed.", None
+            return False, "That plant is already in this space.", None
         occupant = next((item for item in plants if item.slot_index == destination), None)
         affected = [plant] + ([occupant] if occupant else [])
         before = {item.plant_id: int(item.slot_index or 0) for item in affected}
@@ -1313,12 +2353,12 @@ class GardenGameEngine:
         try:
             destination = int(destination_slot)
         except (TypeError, ValueError):
-            return False, "Choose an unlocked garden bed.", None
+            return False, "Choose an unlocked garden space.", None
         if destination < 0 or destination >= self.state.unlocked_slots:
-            return False, "That garden bed is still locked.", None
+            return False, "That garden space is still locked.", None
         origin = draft.current[draft.selected_plant_id]
         if destination == origin:
-            return False, "That plant is already in this bed.", None
+            return False, "That plant is already in this space.", None
         occupant = next((pid for pid, slot in draft.current.items() if slot == destination), None)
         before = dict(draft.current)
         candidate = dict(draft.current)
@@ -1334,7 +2374,7 @@ class GardenGameEngine:
 
     def undo_staged_placement(self, draft: PlacementDraft) -> tuple[bool, str]:
         if not isinstance(draft, PlacementDraft) or not draft.history:
-            return False, "There is no staged move to undo."
+            return False, "There is no pending move to undo."
         draft.current = draft.history.pop()
         return True, "Move undone."
 
@@ -1346,9 +2386,9 @@ class GardenGameEngine:
         if live != draft.original:
             return False, "The garden changed while you were moving plants. No arrangement was saved.", None
         if set(draft.current) != set(draft.original) or len(set(draft.current.values())) != len(draft.current):
-            return False, "The staged arrangement is not valid.", None
+            return False, "The pending arrangement is not valid.", None
         if any(slot < 0 or slot >= self.state.unlocked_slots for slot in draft.current.values()):
-            return False, "The staged arrangement includes a locked garden bed.", None
+            return False, "The pending arrangement includes a locked garden space.", None
         surface_error = self._arrangement_error(draft.current)
         if surface_error:
             return False, surface_error, None
@@ -1457,19 +2497,6 @@ class GardenGameEngine:
                 achievement.unlocked_at = utc_now_iso()
             achievement.progress = 1.0 if achievement.unlocked else 0.0
 
-    def _update_weather(self) -> None:
-        stats = self.state.daily_stats
-        if stats.reviewed > 350 and stats.accuracy < 0.72:
-            self.state.selected_weather = "cloudy"
-        elif stats.wrong > stats.correct and stats.reviewed > 25:
-            self.state.selected_weather = "cloudy"
-        elif stats.accuracy >= 0.9 and stats.reviewed >= 50:
-            self.state.selected_weather = "fireflies"
-        elif stats.reviewed >= 120:
-            self.state.selected_weather = "sunny"
-        else:
-            self.state.selected_weather = "breeze"
-
     def progress_estimates(self, plant: Plant) -> int:
         stage_index = GROWTH_STAGES.index(plant.growth_stage)
         if stage_index >= len(GROWTH_STAGES) - 1:
@@ -1496,18 +2523,6 @@ class GardenGameEngine:
             ],
         }
         return json.dumps(payload, indent=2)
-
-    def seasonal_theme(self) -> str:
-        if not self.config.value("seasonal_visuals", True):
-            return "default"
-        month = date.today().month
-        if month in (12, 1, 2):
-            return "winter"
-        if month in (3, 4, 5):
-            return "spring"
-        if month in (6, 7, 8):
-            return "summer"
-        return "autumn"
 
     @staticmethod
     def local_time_band(moment: datetime | None = None) -> str:
@@ -1543,25 +2558,37 @@ class GardenGameEngine:
         quality_preference: str,
         plant_requests: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        seasonal = self.seasonal_theme()
-        time_of_day = self.local_time_band()
+        state = getattr(self, "state", None)
+        visibility = getattr(state, "environment_visibility", {})
+        selected_scenery = getattr(state, "selected_background", DEFAULT_SCENERY_ID)
+        scenery = (
+            selected_scenery
+            if not isinstance(visibility, dict) or visibility.get("scenery", True)
+            else DEFAULT_SCENERY_ID
+        )
         normalized_theme = self.assets.normalize_theme(theme)
         background = self.assets.resolve(
             "backgrounds",
-            f"bg_{seasonal}_{weather}",
-            f"slot:backgrounds:{seasonal}:{weather}",
+            f"bg_{scenery}_any",
+            f"slot:backgrounds:{scenery}:any",
             theme=normalized_theme,
-            time_of_day=time_of_day,
-            quality_preference=quality_preference,
+            time_of_day="any",
+            quality_preference="balanced",
         )
-        weather_overlay = self.assets.resolve(
-            "weather",
-            f"weather_{weather}",
-            f"slot:weather:{weather}",
-            theme=normalized_theme,
-            quality_preference=quality_preference,
+        weather_overlay = (
+            self.assets.resolve(
+                "weather",
+                f"weather_{weather}",
+                f"slot:weather:{weather}",
+                theme=normalized_theme,
+                quality_preference="balanced",
+            )
+            if not isinstance(visibility, dict) or visibility.get("weather", True)
+            else None
         )
-        garden_overlay = self.resolve_garden_overlay_asset(theme=normalized_theme, quality_preference=quality_preference)
+        garden_overlay = self.resolve_garden_overlay_asset(
+            theme=normalized_theme, quality_preference="balanced"
+        )
         plants: dict[str, Any] = {}
         requests = [
             (str(item.get("species") or ""), str(item.get("stage") or stage))
@@ -1571,7 +2598,7 @@ class GardenGameEngine:
         for species, requested_stage in requests:
             asset = self.assets.resolve(
                 "plants", f"{species}_{requested_stage}", f"slot:plants:{species}:{requested_stage}",
-                theme=normalized_theme, quality_preference=quality_preference,
+                theme=normalized_theme, quality_preference="balanced",
             )
             plants[species] = asset.to_payload() if asset else None
         return {
@@ -1587,14 +2614,17 @@ class GardenGameEngine:
         return str(asset.path) if asset else None
 
     def resolve_background_asset(self) -> Optional[ResolvedAsset]:
-        seasonal = self.seasonal_theme()
-        weather = self.state.selected_weather
+        scenery = (
+            self.state.selected_background
+            if self.state.environment_visibility.get("scenery", True)
+            else DEFAULT_SCENERY_ID
+        )
         return self.assets.resolve(
             "backgrounds",
-            f"bg_{seasonal}_{weather}",
-            f"slot:backgrounds:{seasonal}:{weather}",
+            f"bg_{scenery}_any",
+            f"slot:backgrounds:{scenery}",
             theme=self.config.value("visual_theme", "verdant_twilight"),
-            time_of_day=self.local_time_band(),
+            time_of_day="any",
         )
 
     def resolve_weather_overlay(self) -> Optional[str]:
@@ -1602,11 +2632,39 @@ class GardenGameEngine:
         return str(asset.path) if asset else None
 
     def resolve_weather_asset(self) -> Optional[ResolvedAsset]:
+        if not self.state.environment_visibility.get("weather", True):
+            return None
         return self.assets.resolve(
             "weather",
             f"weather_{self.state.selected_weather}",
             f"slot:weather:{self.state.selected_weather}",
             theme=self.config.value("visual_theme", "verdant_twilight"),
+            quality_preference="balanced",
+        )
+
+    def resolve_scenery_preview_asset(self, item_id: str) -> Optional[ResolvedAsset]:
+        scenery = str(item_id)
+        if scenery not in SCENERY_CATALOG:
+            return None
+        return self.assets.resolve(
+            "backgrounds",
+            f"bg_{scenery}_any",
+            f"slot:backgrounds:{scenery}:preview",
+            theme=self.config.value("visual_theme", "verdant_twilight"),
+            time_of_day="any",
+            quality_preference="balanced",
+        )
+
+    def resolve_weather_preview_asset(self, item_id: str) -> Optional[ResolvedAsset]:
+        weather = str(item_id)
+        if weather not in WEATHER_CATALOG:
+            return None
+        return self.assets.resolve(
+            "weather",
+            f"weather_{weather}",
+            f"slot:weather:{weather}:preview",
+            theme=self.config.value("visual_theme", "verdant_twilight"),
+            quality_preference="balanced",
         )
 
     def resolve_garden_overlay_image(self) -> Optional[str]:
@@ -1644,10 +2702,9 @@ class GardenGameEngine:
 
     def reroll_asset_slot(self, slot: str) -> Optional[str]:
         if slot == "background":
-            seasonal = self.seasonal_theme()
-            weather = self.state.selected_weather
+            scenery = self.state.selected_background
             path = self.assets.get_or_fetch(
-                "backgrounds", f"bg_{seasonal}_{weather}", f"slot:backgrounds:{seasonal}:{weather}",
+                "backgrounds", f"bg_{scenery}_any", f"slot:backgrounds:{scenery}",
                 theme=self.config.value("visual_theme", "verdant_twilight"), reroll=True,
             )
             return str(path) if path else None

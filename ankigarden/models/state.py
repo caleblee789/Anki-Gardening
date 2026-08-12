@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from ..environment import (
+    DEFAULT_SCENERY_ID,
+    DEFAULT_WEATHER_ID,
+    GROWTH_CHARGES,
+    SCENERY_CATALOG,
+    WEATHER_CATALOG,
+)
 
-STATE_VERSION = 14
+STATE_VERSION = 16
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
-WEATHER_TYPES = {"sunny", "cloudy", "breeze", "gentle_rain", "fireflies"}
+WEATHER_TYPES = set(WEATHER_CATALOG)
 CURRENT_CATALOG_SPECIES_ORDER = (
     "bonsai",
     "rose",
@@ -43,10 +51,13 @@ MAX_GARDEN_SLOTS = 6
 MAX_COLLECTION_PLANTS = len(PLANT_SPECIES)
 PLANT_MEMORY_KINDS = {"planted", "first_nurture", "stage", "streak", "reviews"}
 MAX_PLANT_NAME_LENGTH = 40
+MAX_GARDEN_NAME_LENGTH = 40
 MAX_TRANSACTION_HISTORY = 500
 MAX_FEEDBACK_EVENTS = 100
+MAX_REWARD_DROP_HISTORY = 500
 MAX_ACTIVE_PERIODS = 64
 MAX_FERTILIZER_HISTORY = 64
+MAX_BOOSTER_HISTORY = 64
 MAX_PROCESSED_REVLOG_IDS = 100_000
 STREAK_REWARD_MILESTONES = {7, 14, 30, 100}
 STREAK_BONUS_TIERS = ((1, 0), (7, 5), (14, 10), (30, 15), (100, 20), (365, 25))
@@ -83,6 +94,20 @@ class Fertilizer:
 
 
 @dataclass
+class Booster:
+    growth_per_answer: int
+    expires_at: float
+    started_at: Optional[float] = None
+
+    def active(self, now: float) -> bool:
+        current = float(now)
+        return (
+            self.started_at is not None
+            and float(self.started_at) <= current < self.expires_at
+        )
+
+
+@dataclass
 class Plant:
     plant_id: str
     species: str
@@ -97,6 +122,9 @@ class Plant:
     # Completed/replaced activation windows remain available for late synced
     # reviews. The current window stays in ``fertilizer`` for UI compatibility.
     fertilizer_history: List[Fertilizer] = field(default_factory=list)
+    booster: Optional[Booster] = None
+    booster_history: List[Booster] = field(default_factory=list)
+    name_customized: bool = False
 
     @property
     def growth_stage(self) -> str:
@@ -129,6 +157,10 @@ class DailyStats:
     base_growth: int = 0
     streak_bonus_growth: int = 0
     fertilizer_growth: int = 0
+    booster_growth: int = 0
+    weather_growth: int = 0
+    scenery_growth: int = 0
+    charge_growth: int = 0
     bonus_growth: int = 0
     growth_earned: int = 0
     plant_growth: Dict[str, int] = field(default_factory=dict)
@@ -157,6 +189,19 @@ class FeedbackEvent:
     message: str
     occurred_at: str
     plant_id: Optional[str] = None
+    title: str = ""
+    asset_category: str = ""
+    asset_key: str = ""
+    amount: int = 0
+
+
+@dataclass
+class RewardDrop:
+    revlog_id: int
+    scheduler_day: str
+    kind: str
+    amount: int
+    occurred_at: str
 
 
 @dataclass
@@ -179,6 +224,8 @@ class Achievement:
 @dataclass
 class GardenState:
     version: int = STATE_VERSION
+    garden_name: str = "My Garden"
+    garden_setup_version: int = 0
     streak_days: int = 0
     total_reviews: int = 0
     total_correct: int = 0
@@ -186,8 +233,8 @@ class GardenState:
     unlocked_slots: int = 2
     unlocked_species: List[str] = field(default_factory=list)
     starter_selection_complete: bool = False
-    selected_background: str = "default"
-    selected_weather: str = "sunny"
+    selected_background: str = DEFAULT_SCENERY_ID
+    selected_weather: str = DEFAULT_WEATHER_ID
     plants: List[Plant] = field(default_factory=list)
     achievements: Dict[str, Achievement] = field(default_factory=dict)
     daily_stats: DailyStats = field(default_factory=DailyStats)
@@ -195,17 +242,31 @@ class GardenState:
     currency_transactions: List[CurrencyTransaction] = field(default_factory=list)
     claimed_streak_rewards: List[int] = field(default_factory=list)
     pending_feedback: List[FeedbackEvent] = field(default_factory=list)
+    reward_seed: str = field(default_factory=lambda: uuid.uuid4().hex)
+    reward_drop_history: List[RewardDrop] = field(default_factory=list)
+    eligible_reward_count: int = 0
+    ultra_pity_misses: int = 0
+    daily_environment_claims: Dict[str, str] = field(default_factory=dict)
+    environment_visibility: Dict[str, bool] = field(default_factory=lambda: {
+        "weather": True,
+        "scenery": True,
+    })
+    consumables: Dict[str, int] = field(default_factory=lambda: {
+        "booster_potion": 0,
+        **{charge_id: 0 for charge_id in GROWTH_CHARGES},
+    })
     inventory: Dict[str, List[str]] = field(default_factory=lambda: {
         "pots": ["ceramic_minimal"],
-        "backgrounds": ["default"],
+        "backgrounds": [DEFAULT_SCENERY_ID],
+        "scenery": [DEFAULT_SCENERY_ID],
         "decorations": ["lantern"],
-        "weather": ["sunny"],
+        "weather": [DEFAULT_WEATHER_ID],
     })
     equipped: Dict[str, str] = field(default_factory=lambda: {
         "pot": "ceramic_minimal",
-        "background": "default",
+        "background": DEFAULT_SCENERY_ID,
         "decoration": "none",
-        "weather": "sunny",
+        "weather": DEFAULT_WEATHER_ID,
     })
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     active_plant_id: Optional[str] = None
@@ -226,6 +287,7 @@ class GardenState:
         # A state constructed around an existing collection represents an
         # established garden, even when the caller predates the starter flag.
         if self.plants:
+            self.garden_setup_version = max(1, int(self.garden_setup_version))
             self.starter_selection_complete = True
             self.unlocked_species = list(dict.fromkeys([
                 *self.unlocked_species,
@@ -235,6 +297,8 @@ class GardenState:
     def to_dict(self) -> dict[str, Any]:
         return deepcopy({
             "version": STATE_VERSION,
+            "garden_name": self.garden_name,
+            "garden_setup_version": self.garden_setup_version,
             "streak_days": self.streak_days,
             "total_reviews": self.total_reviews,
             "total_correct": self.total_correct,
@@ -264,6 +328,15 @@ class GardenState:
             "currency_transactions": [tx.__dict__ for tx in self.currency_transactions[-MAX_TRANSACTION_HISTORY:]],
             "claimed_streak_rewards": sorted(set(self.claimed_streak_rewards)),
             "pending_feedback": [event.__dict__ for event in self.pending_feedback[-MAX_FEEDBACK_EVENTS:]],
+            "reward_seed": self.reward_seed,
+            "reward_drop_history": [
+                event.__dict__ for event in self.reward_drop_history[-MAX_REWARD_DROP_HISTORY:]
+            ],
+            "eligible_reward_count": self.eligible_reward_count,
+            "ultra_pity_misses": self.ultra_pity_misses,
+            "daily_environment_claims": dict(self.daily_environment_claims),
+            "environment_visibility": dict(self.environment_visibility),
+            "consumables": dict(self.consumables),
             "inventory": self.inventory,
             "equipped": self.equipped,
             "last_active_day": self.last_active_day,
@@ -288,6 +361,10 @@ class GardenState:
             return GardenState()
         issues: list[str] = []
         state = GardenState()
+        state.garden_name = _garden_name(data.get("garden_name"), issues)
+        state.garden_setup_version = _bounded_int(
+            data.get("garden_setup_version"), 0, 0, 1, "garden_setup_version", issues
+        )
         state.streak_days = _nonnegative_int(data.get("streak_days"), 0, "streak_days", issues)
         state.total_reviews = _nonnegative_int(data.get("total_reviews"), 0, "total_reviews", issues)
         state.total_correct = min(
@@ -298,9 +375,24 @@ class GardenState:
             max(0, state.total_reviews - state.total_correct),
             _nonnegative_int(data.get("total_wrong"), 0, "total_wrong", issues),
         )
-        state.selected_background = _string(data.get("selected_background"), "default", "selected_background", issues)
-        weather = _string(data.get("selected_weather"), "sunny", "selected_weather", issues)
-        state.selected_weather = weather if weather in WEATHER_TYPES else "sunny"
+        scenery = _string(
+            data.get("selected_background"),
+            DEFAULT_SCENERY_ID,
+            "selected_background",
+            issues,
+        )
+        state.selected_background = (
+            scenery if scenery in SCENERY_CATALOG else DEFAULT_SCENERY_ID
+        )
+        if scenery not in SCENERY_CATALOG:
+            issues.append(f"selected_background: unexpected value {scenery!r}")
+        weather = _string(
+            data.get("selected_weather"),
+            DEFAULT_WEATHER_ID,
+            "selected_weather",
+            issues,
+        )
+        state.selected_weather = weather if weather in WEATHER_TYPES else DEFAULT_WEATHER_ID
         if weather not in WEATHER_TYPES:
             issues.append(f"selected_weather: unexpected value {weather!r}")
         state.daily_stats = _daily_stats(data.get("daily_stats"), issues)
@@ -347,8 +439,52 @@ class GardenState:
         else:
             issues.append("claimed_streak_rewards: expected list")
         state.pending_feedback = _feedback_events(data.get("pending_feedback"), issues)
+        state.reward_seed = _reward_seed(data.get("reward_seed"), state.reward_seed, issues)
+        state.reward_drop_history = _reward_drop_history(data.get("reward_drop_history"), issues)
+        state.eligible_reward_count = _nonnegative_int(
+            data.get("eligible_reward_count"),
+            0,
+            "eligible_reward_count",
+            issues,
+        )
+        state.ultra_pity_misses = _nonnegative_int(
+            data.get("ultra_pity_misses"),
+            0,
+            "ultra_pity_misses",
+            issues,
+        )
+        state.daily_environment_claims = _daily_environment_claims(
+            data.get("daily_environment_claims"), issues
+        )
+        state.environment_visibility = _environment_visibility(
+            data.get("environment_visibility"), issues
+        )
+        state.consumables = _consumables(data.get("consumables"), issues)
         state.inventory = _inventory(data.get("inventory"), state.inventory, issues)
         state.equipped = _equipped(data.get("equipped"), state.equipped, issues)
+        scenery_owned = list(dict.fromkeys([
+            DEFAULT_SCENERY_ID,
+            *state.inventory.get("backgrounds", []),
+            *state.inventory.get("scenery", []),
+        ]))
+        scenery_owned = [item_id for item_id in scenery_owned if item_id in SCENERY_CATALOG]
+        state.inventory["backgrounds"] = list(scenery_owned)
+        state.inventory["scenery"] = list(scenery_owned)
+        weather_owned = list(dict.fromkeys([
+            DEFAULT_WEATHER_ID,
+            *state.inventory.get("weather", []),
+        ]))
+        state.inventory["weather"] = [
+            item_id for item_id in weather_owned if item_id in WEATHER_CATALOG
+        ]
+        if state.selected_background not in state.inventory["scenery"]:
+            issues.append("selected_background: repaired to an owned scenery")
+            state.selected_background = DEFAULT_SCENERY_ID
+        if state.selected_weather not in state.inventory["weather"]:
+            issues.append("selected_weather: repaired to an owned weather")
+            state.selected_weather = DEFAULT_WEATHER_ID
+        state.equipped["background"] = state.selected_background
+        state.equipped["weather"] = state.selected_weather
         state.last_active_day = _iso_date(
             data.get("last_active_day"), state.daily_stats.day, "last_active_day", issues
         )
@@ -424,6 +560,18 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
                 ),
             )[-MAX_FERTILIZER_HISTORY:]
         ],
+        "booster": plant.booster.__dict__ if plant.booster else None,
+        "booster_history": [
+            period.__dict__
+            for period in sorted(
+                plant.booster_history,
+                key=lambda item: (
+                    float(item.started_at if item.started_at is not None else item.expires_at),
+                    float(item.expires_at),
+                ),
+            )[-MAX_BOOSTER_HISTORY:]
+        ],
+        "name_customized": bool(plant.name_customized),
     }
 
 
@@ -457,6 +605,29 @@ def _string(value: Any, default: str, label: str, issues: list[str]) -> str:
             issues.append(f"{label}: expected non-empty string")
         return default
     return value
+
+
+def _garden_name(value: Any, issues: list[str]) -> str:
+    if not isinstance(value, str):
+        if value is not None:
+            issues.append("garden_name: expected string")
+        return "My Garden"
+    clean = " ".join(value.split())
+    if not clean:
+        issues.append("garden_name: repaired blank name")
+        return "My Garden"
+    if len(clean) > MAX_GARDEN_NAME_LENGTH:
+        issues.append("garden_name: truncated to the current length limit")
+    return clean[:MAX_GARDEN_NAME_LENGTH]
+
+
+def _reward_seed(value: Any, default: str, issues: list[str]) -> str:
+    clean = str(value or "").strip()
+    if not (8 <= len(clean) <= 128) or any(character.isspace() for character in clean):
+        if value is not None:
+            issues.append("reward_seed: replaced invalid seed")
+        return default
+    return clean
 
 
 def _iso_date(value: Any, default: str, label: str, issues: list[str]) -> str:
@@ -501,12 +672,20 @@ def _daily_stats(value: Any, issues: list[str]) -> DailyStats:
     for key in (
         "reviewed", "correct", "wrong", "new_count", "learning_count", "review_count",
         "difficult_count", "recovered_lapses", "base_growth", "streak_bonus_growth",
-        "fertilizer_growth", "bonus_growth", "growth_earned",
+        "fertilizer_growth", "booster_growth", "weather_growth", "scenery_growth",
+        "charge_growth", "bonus_growth", "growth_earned",
     ):
         setattr(result, key, _nonnegative_int(value.get(key), 0, f"daily_stats.{key}", issues))
     result.correct = min(result.correct, result.reviewed)
     result.wrong = min(result.wrong, max(0, result.reviewed - result.correct))
-    result.bonus_growth = result.streak_bonus_growth + result.fertilizer_growth
+    result.bonus_growth = (
+        result.streak_bonus_growth
+        + result.fertilizer_growth
+        + result.booster_growth
+        + result.weather_growth
+        + result.scenery_growth
+        + result.charge_growth
+    )
     result.growth_earned = result.base_growth + result.bonus_growth
     plant_growth = value.get("plant_growth", {})
     if isinstance(plant_growth, dict):
@@ -541,13 +720,21 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             issues.append(f"plants[{index}]: expected object")
             continue
         species, name = raw.get("species"), raw.get("name")
-        if species not in PLANT_SPECIES or not isinstance(name, str) or not name.strip():
-            issues.append(f"plants[{index}]: missing supported species or name")
+        if species not in PLANT_SPECIES:
+            issues.append(f"plants[{index}]: missing supported species")
             continue
         if species in used_species:
             issues.append(f"plants[{index}].species: duplicate collection species")
             continue
-        clean_name = " ".join(name.split())[:MAX_PLANT_NAME_LENGTH] or str(species).title()
+        species_name = str(species).replace("_", " ").title()
+        clean_name = (
+            " ".join(name.split())[:MAX_PLANT_NAME_LENGTH]
+            if isinstance(name, str)
+            else ""
+        )
+        if not clean_name:
+            clean_name = f"{species_name} Plant"[:MAX_PLANT_NAME_LENGTH]
+            issues.append(f"plants[{index}].name: repaired blank name")
         raw_id = raw.get("plant_id")
         plant_id = raw_id if isinstance(raw_id, str) and raw_id and raw_id not in used_ids else f"plant_{index + 1}"
         while plant_id in used_ids:
@@ -568,6 +755,16 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             f"plants[{index}].fertilizer_history",
             issues,
         )
+        booster = _booster(raw.get("booster"), f"plants[{index}].booster", issues)
+        booster_history = _booster_history(
+            raw.get("booster_history"),
+            f"plants[{index}].booster_history",
+            issues,
+        )
+        name_customized = raw.get("name_customized", False)
+        if not isinstance(name_customized, bool):
+            issues.append(f"plants[{index}].name_customized: expected bool")
+            name_customized = False
         used_ids.add(plant_id)
         used_species.add(species)
         result.append(Plant(
@@ -588,6 +785,9 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             memories=_plant_memories(raw.get("memories"), index, issues),
             fertilizer=fertilizer,
             fertilizer_history=fertilizer_history,
+            booster=booster,
+            booster_history=booster_history,
+            name_customized=name_customized,
         ))
     return sorted(result, key=lambda plant: (plant.slot_index is None, plant.slot_index or 0, plant.plant_id))
 
@@ -664,6 +864,70 @@ def _fertilizer_history(
     if len(parsed) > MAX_FERTILIZER_HISTORY:
         issues.append(f"{label}: exceeded activation history safety bound")
         parsed = parsed[-MAX_FERTILIZER_HISTORY:]
+    return parsed
+
+
+def _booster(value: Any, label: str, issues: list[str]) -> Optional[Booster]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        issues.append(f"{label}: expected object or null")
+        return None
+    growth = _bounded_int(
+        value.get("growth_per_answer"), 5, 1, 100, f"{label}.growth_per_answer", issues
+    )
+    expires_at = _number(
+        value.get("expires_at"), 0.0, 0.0, 99_999_999_999.0, f"{label}.expires_at", issues
+    )
+    started_value = value.get("started_at")
+    if started_value is None:
+        started_at = expires_at
+        issues.append(f"{label}.started_at: missing; disabled conservatively")
+    else:
+        started_at = _number(
+            started_value,
+            expires_at,
+            0.0,
+            99_999_999_999.0,
+            f"{label}.started_at",
+            issues,
+        )
+    return Booster(growth, expires_at, min(started_at, expires_at))
+
+
+def _booster_history(value: Any, label: str, issues: list[str]) -> list[Booster]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append(f"{label}: expected list")
+        return []
+    parsed: list[Booster] = []
+    seen: set[tuple[int, float, float]] = set()
+    for index, raw in enumerate(value):
+        period = _booster(raw, f"{label}[{index}]", issues)
+        if (
+            period is None
+            or period.started_at is None
+            or float(period.started_at) >= float(period.expires_at)
+        ):
+            continue
+        identity = (
+            int(period.growth_per_answer),
+            float(period.started_at),
+            float(period.expires_at),
+        )
+        if identity in seen:
+            issues.append(f"{label}[{index}]: duplicate activation interval")
+            continue
+        seen.add(identity)
+        parsed.append(period)
+    parsed.sort(key=lambda item: (
+        float(item.started_at if item.started_at is not None else item.expires_at),
+        float(item.expires_at),
+    ))
+    if len(parsed) > MAX_BOOSTER_HISTORY:
+        issues.append(f"{label}: exceeded activation history safety bound")
+        parsed = parsed[-MAX_BOOSTER_HISTORY:]
     return parsed
 
 
@@ -776,8 +1040,120 @@ def _feedback_events(value: Any, issues: list[str]) -> list[FeedbackEvent]:
         if not _valid_iso_datetime(occurred):
             continue
         plant_id = raw.get("plant_id") if isinstance(raw.get("plant_id"), str) else None
+        title = raw.get("title") if isinstance(raw.get("title"), str) else ""
+        asset_category = (
+            raw.get("asset_category") if isinstance(raw.get("asset_category"), str) else ""
+        )
+        asset_key = raw.get("asset_key") if isinstance(raw.get("asset_key"), str) else ""
+        amount = _nonnegative_int(raw.get("amount"), 0, "pending_feedback.amount", issues)
         ids.add(event_id)
-        result.append(FeedbackEvent(event_id, kind, message, occurred, plant_id))
+        result.append(FeedbackEvent(
+            event_id, kind, message, occurred, plant_id,
+            title, asset_category, asset_key, amount,
+        ))
+    return result
+
+
+def _reward_drop_history(value: Any, issues: list[str]) -> list[RewardDrop]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("reward_drop_history: expected list")
+        return []
+    result: list[RewardDrop] = []
+    seen: set[int] = set()
+    for index, raw in enumerate(value[-MAX_REWARD_DROP_HISTORY:]):
+        if not isinstance(raw, dict):
+            continue
+        revlog_id = _nonnegative_int(
+            raw.get("revlog_id"), 0, f"reward_drop_history[{index}].revlog_id", issues
+        )
+        scheduler_day = _iso_date(
+            raw.get("scheduler_day"), "", f"reward_drop_history[{index}].scheduler_day", issues
+        )
+        kind = raw.get("kind")
+        amount = _nonnegative_int(
+            raw.get("amount"), 0, f"reward_drop_history[{index}].amount", issues
+        )
+        occurred_at = raw.get("occurred_at")
+        valid_kinds = {
+            "garden_coins",
+            "booster_potion",
+            *GROWTH_CHARGES,
+            *WEATHER_CATALOG,
+            *SCENERY_CATALOG,
+        }
+        if (
+            revlog_id <= 0
+            or revlog_id in seen
+            or not scheduler_day
+            or kind not in valid_kinds
+            or not _valid_iso_datetime(occurred_at)
+        ):
+            continue
+        seen.add(revlog_id)
+        result.append(RewardDrop(
+            revlog_id,
+            scheduler_day,
+            str(kind),
+            amount,
+            str(occurred_at),
+        ))
+    return result
+
+
+def _consumables(value: Any, issues: list[str]) -> dict[str, int]:
+    result = {
+        "booster_potion": 0,
+        **{charge_id: 0 for charge_id in GROWTH_CHARGES},
+    }
+    if value is None:
+        return result
+    if not isinstance(value, dict):
+        issues.append("consumables: expected object")
+        return result
+    for key in result:
+        result[key] = _bounded_int(
+            value.get(key), 0, 0, 1_000_000, f"consumables.{key}", issues
+        )
+    return result
+
+
+def _daily_environment_claims(value: Any, issues: list[str]) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("daily_environment_claims: expected object")
+        return {}
+    result: dict[str, str] = {}
+    valid_items = set(SCENERY_CATALOG) | set(WEATHER_CATALOG)
+    for item_id, day_value in value.items():
+        if not isinstance(item_id, str) or item_id not in valid_items:
+            continue
+        parsed = _iso_date(
+            day_value,
+            "",
+            f"daily_environment_claims.{item_id}",
+            issues,
+        )
+        if parsed:
+            result[item_id] = parsed
+    return result
+
+
+def _environment_visibility(value: Any, issues: list[str]) -> dict[str, bool]:
+    result = {"weather": True, "scenery": True}
+    if value is None:
+        return result
+    if not isinstance(value, dict):
+        issues.append("environment_visibility: expected object")
+        return result
+    for key in result:
+        raw = value.get(key, True)
+        if isinstance(raw, bool):
+            result[key] = raw
+        else:
+            issues.append(f"environment_visibility.{key}: expected bool")
     return result
 
 

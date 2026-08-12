@@ -28,12 +28,31 @@ CURRENT_SPECIES = {
     "dahlia",
 }
 STAGES = {"seed", "sprout", "young", "mature", "flowering", "rare"}
-WEATHER = {"sunny", "cloudy", "fireflies", "gentle_rain", "breeze"}
+WEATHER = {
+    "sunny",
+    "cloudy",
+    "fireflies",
+    "gentle_rain",
+    "breeze",
+    "snow_flurry",
+    "rainbow_sunshower",
+}
+SCENERY = (
+    "spring",
+    "summer",
+    "autumn",
+    "snowy",
+    "rainbow_horizon",
+    "halloween",
+    "full_moon",
+    "eclipse",
+)
 EXPECTED_COUNTS = {
-    "backgrounds": 1,
+    "backgrounds": 9,
     "decorations": 1,
     "plants": 60,
-    "weather": 10,
+    "ui": 7,
+    "weather": 7,
 }
 RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",
@@ -47,6 +66,12 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _alpha_sha256(path: Path) -> str:
+    with Image.open(path) as image:
+        alpha = image.convert("RGBA").getchannel("A")
+        return hashlib.sha256(alpha.tobytes()).hexdigest()
 
 
 def _asset_references(value: Any) -> set[str]:
@@ -95,10 +120,12 @@ def _validate_file(row: dict[str, Any]) -> None:
 
 def _validate_background(rows: list[dict[str, Any]]) -> None:
     backgrounds = [row for row in rows if row.get("category") == "backgrounds"]
-    if [row.get("asset_id") for row in backgrounds] != [
-        "bg_verdant_twilight_any_soil_master_v6"
-    ]:
-        raise ValueError("the runtime must contain exactly one Verdant Twilight V6 background")
+    expected_ids = [
+        "bg_verdant_twilight_any_soil_master_v6",
+        *(f"bg_{item_id}_any_soil_master_v6" for item_id in SCENERY),
+    ]
+    if [row.get("asset_id") for row in backgrounds] != expected_ids:
+        raise ValueError("the runtime scenery set is incomplete or out of canonical order")
     background = backgrounds[0]
     if background.get("release_preferred") is not True:
         raise ValueError("the V6 background must be release preferred")
@@ -106,6 +133,43 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
     actual_profile = (background.get("placement") or {}).get("surface_profile")
     if actual_profile != expected_profile:
         raise ValueError("the runtime V6 surface profile differs from the reviewed fixture")
+    expected_sizes = {"4:3": (1280, 960), "16:9": (1672, 941), "home": (1942, 809)}
+    source_root = "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master"
+    for row, item_id in zip(backgrounds[1:], SCENERY):
+        slot = row.get("slot") or {}
+        if slot.get("season") != item_id or slot.get("weather") != "any":
+            raise ValueError(f"scenery slot differs from its catalog id: {item_id}")
+        if row.get("placement_ref") != "bg_verdant_twilight_any_soil_master_v6":
+            raise ValueError(f"scenery does not inherit the canonical V6 geometry: {item_id}")
+        if row.get("placement"):
+            raise ValueError(f"scenery may not override canonical V6 placement: {item_id}")
+        surface_files = row.get("surface_files")
+        if not isinstance(surface_files, dict) or set(surface_files) != set(expected_sizes):
+            raise ValueError(f"scenery viewport family is incomplete: {item_id}")
+        target_root = f"assets/v6_storybook_gouache/backgrounds/{item_id}/soil_master"
+        for variant, expected_size in expected_sizes.items():
+            filename_variant = variant.replace(":", "x")
+            files = surface_files.get(variant)
+            if not isinstance(files, dict):
+                raise ValueError(f"scenery surface files are invalid: {item_id}/{variant}")
+            expected_file = f"{target_root}/{item_id}_{filename_variant}.webp"
+            if files.get("file") != expected_file:
+                raise ValueError(f"scenery background path is noncanonical: {item_id}/{variant}")
+            with Image.open(ADDON / expected_file) as image:
+                if image.size != expected_size:
+                    raise ValueError(f"scenery dimensions drifted: {item_id}/{variant}")
+            expected_occlusion = f"{target_root}/{item_id}_{filename_variant}_occlusion.png"
+            if files.get("occlusion_file") != expected_occlusion:
+                raise ValueError(f"scenery occlusion path is noncanonical: {item_id}/{variant}")
+            layers = files.get("occlusion_layers") or {}
+            for layer in ("rear", "front"):
+                target = f"{target_root}/{item_id}_{filename_variant}_{layer}_occlusion.png"
+                source = f"{source_root}/verdant_twilight_{filename_variant}_{layer}_occlusion.png"
+                if layers.get(layer) != target or _alpha_sha256(ADDON / target) != _alpha_sha256(ADDON / source):
+                    raise ValueError(f"scenery {layer} occlusion drifted: {item_id}/{variant}")
+            source_combined = f"{source_root}/verdant_twilight_{filename_variant}_occlusion.png"
+            if _alpha_sha256(ADDON / expected_occlusion) != _alpha_sha256(ADDON / source_combined):
+                raise ValueError(f"scenery combined occlusion drifted: {item_id}/{variant}")
 
 
 def _validate_plants(rows: list[dict[str, Any]]) -> None:
@@ -175,9 +239,37 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
         )
         for row in weather_rows
     )
-    expected = Counter((weather, tier) for weather in WEATHER for tier in ("performance", "balanced"))
+    expected = Counter((weather, "balanced") for weather in WEATHER)
     if observed != expected:
-        raise ValueError("weather support assets must contain one performance and balanced file per state")
+        raise ValueError("weather support assets must contain one automatic balanced overlay per state")
+
+    ui_rows = [row for row in rows if row.get("category") == "ui"]
+    expected_ui = {
+        "ui_fertilizer_basic": "assets/v6_storybook_gouache/ui/fertilizer_basic.png",
+        "ui_fertilizer_quality": "assets/v6_storybook_gouache/ui/fertilizer_quality.png",
+        "ui_fertilizer_magical": "assets/v6_storybook_gouache/ui/fertilizer_premium.png",
+        "ui_booster_potion": "assets/v6_storybook_gouache/ui/booster_potion.png",
+        "ui_growth_charge_small": "assets/v6_storybook_gouache/ui/growth_charge_small.png",
+        "ui_growth_charge_standard": "assets/v6_storybook_gouache/ui/growth_charge_standard.png",
+        "ui_growth_charge_grand": "assets/v6_storybook_gouache/ui/growth_charge_grand.png",
+    }
+    observed_ui = {
+        str(row.get("asset_id", "")): str(row.get("file", "")) for row in ui_rows
+    }
+    if observed_ui != expected_ui:
+        raise ValueError("the V6 catalog item artwork set is incomplete or noncanonical")
+    if any(row.get("alpha") is not True for row in ui_rows):
+        raise ValueError("catalog item artwork must retain transparency")
+    for row in ui_rows:
+        path = ADDON / str(row["file"])
+        with Image.open(path) as image:
+            if image.mode != "RGBA":
+                raise ValueError(f"catalog item artwork is not RGBA: {row['asset_id']}")
+            alpha_min, alpha_max = image.getchannel("A").getextrema()
+            if alpha_min != 0 or alpha_max == 0:
+                raise ValueError(
+                    f"catalog item artwork lacks usable transparency: {row['asset_id']}"
+                )
 
 
 def audit() -> dict[str, int]:

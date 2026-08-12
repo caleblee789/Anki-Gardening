@@ -1,7 +1,7 @@
 # Anki Garden 2.1 codebase audit
 
 This ledger records the comprehensive stabilization and product rework. The
-schema 14 / Verdant Twilight V6 section is current; later dated sections are
+schema 16 / Verdant Twilight V6 section is current; later dated sections are
 historical evidence for older packages and do not describe the present UI or
 progression contract.
 
@@ -10,16 +10,16 @@ progression contract.
 | Area | Current resolution | Verification |
 |---|---|---|
 | Progression | One answer produces 10 base Growth for one answer-time nurtured unfinished plant; Nurture changes only future routing, with no split, movement, regression, or Rare overflow. | Engine routing, threshold, terminology, bonus-rounding, and balance-profile tests. |
-| Streak Growth | A missed Anki day resets the next streak to day 1; the current streak adds 0/5/10/15/20/25% at days 1/7/14/30/100/365. | Exact tier-boundary, reset, fractional-rounding, and UI contract tests. |
+| Streak Growth | Review history reconstructs the current consecutive Anki-day run; it adds 0/5/10/15/20/25% at days 1/7/14/30/100/365 and claims reached Coin milestones once. | Retrospective query/reconciliation, tier-boundary, reset, fractional-rounding, and UI tests. |
 | All due | Live collection-wide Anki due tree plus introduced learning/relearning through cutoff; unseen new and unavailable suspended/buried excluded; filtered decks included; one answer required; once/day and no revoke. | Due-tree/SQL semantics and reward tests; exact-package runtime scenario required. |
-| Fertilizer | Plant-specific elapsed-time Fertilizer directly adds +1/+2/+3 Growth per answer only from its persisted activation time through its exclusive expiry; same tier extends one interval, while replacement or expired repurchase archives the prior interval for late synced answers. | Price/tier/timer/pre-during-post sync/expiry/extension/replacement/history/restart tests. |
-| Economy | The internal `currency_balance` ledger records every reason and balance; learner-facing UI consistently says Garden Coins. All-due/streak/stage rewards fund Fertilizer, release-ready species, and spaces. | Terminology, idempotence, debit/rollback, and 50/150/300/500-answer simulations. |
-| Information architecture | Home shows only noninteractive art, nurtured-plant Growth, streak, Coins, and Open Garden. The Garden keeps a three-metric strip and collapsed Progress; the compact selected-plant card owns plant details. | Home/Garden source contracts, content-ownership, and render tests. |
-| Nursery | The manifest landmark is the only normal Nursery entry, fresh Garden auto-opens it, and stock is derived from complete release-preferred V6 lines without a hard-coded denominator. | Landmark, starter, catalog-readiness, legacy-owned, transaction, and accessibility tests. |
+| Supplements | Plant-specific Fertilizer adds +1/+2/+3 under its interval contract. Booster Potions add +5 per answer and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 direct Growth atomically. | Price/tier/stacking/timer/sync/expiry/Charge transition/cap/rollback/restart tests. |
+| Economy and drops | The Garden Coin ledger records every reason/balance. One ordered deterministic reward band grants at most one environment, Charge, Booster, or 50-Coin cache; exact odds, tier fallbacks, duplicate safety, and stepped Ultra pity are persisted. | Exact-band/priority/determinism/deduplication/fallback/pity/debit/rollback tests. |
+| Information architecture | Home is compact/noninteractive. Full Garden integrates its name/actions; metric buttons open focused details; header/cottage Progress opens Today/Achievements/Collection/Weather & Scenery/How it grows. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
+| Nursery | The shaped manifest landmark opens a four-tab catalog including Weather & Scenery. Environment purchases are one-time/no-auto-equip; Charges live with Supplements; plant stock remains derived from complete V6 lines. | Landmark, starter, tab, environment/Charge transaction, catalog-readiness, preview, and accessibility tests. |
 | Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
-| Story and Settings | Story is oldest-to-newest with inline rename and Up next. Settings has a read-only current-style card, live preview, collapsed Fine tune, explicit Save/Cancel, and preserved Troubleshooting. | Story ordering/empty/accessibility tests and config dirty/default/cancel/save/responsive tests. |
-| State boundary | Schema 10 is backed up and converted; schemas 11–13 migrate into schema 14 as established gardens; a migration-pending marker atomically seeds the bounded current-day revlog ID ledger before catch-up. Corrupt/unsupported saves are backed up, and removed quest/focus/score/goal systems remain absent. | Migration matrix, two-restart ledger seed, late lower-ID sync, starter migration, backup/recovery, malformed-state, repeated-round-trip, and package tests. |
-| V6 environment | Verdant Twilight V6 provides six direct-soil spaces, responsive masters, occlusion, and generic landmark dispatch. Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia are the current complete acquisition lines. | Asset audit, geometry/layout matrices, catalog readiness, responsive renders, and package checks. |
+| Story and Settings | Story separates name/species/stage with enlarged art and relative Growth. Settings removes environment, art-quality/detail/performance, animation, and Fine tune choices while retaining explicit temporary development backup/populate/restore. | Story ordering/progress/accessibility tests and config/dev-tool/responsive tests. |
+| State boundary | Schema 16 stores environment entitlements/loadout/visibility, Growth Charges, daily passive claims, Ultra pity, and separate Growth sources alongside schema-15 state. | Schema-15 migration, environment/Charge/drop round-trip, malformed-state, rollback, and package tests. |
+| V6 environment | Verdant Twilight V6 provides the unchanged six-space geometry, responsive masters, occlusion, landmarks, and plant lines. Eight Scenery reskins reuse exact masks/placement/hotspots; seven balanced transparent Weather overlays compose with every one. | Asset alpha/count/mask, placement-ref, scenery resolution, geometry/layout, responsive render, and package checks. |
 
 ## Historical stabilization findings
 
@@ -66,19 +66,22 @@ terminology, test counts, and progression models are not current requirements.
 ## Current product focus
 
 The supported experience is review-driven single-plant Growth, Nurture routing,
-streak-tier bonuses, all-due/streak/stage Garden Coins, time-based Fertilizer,
-data-driven Nursery stock, six direct-soil spaces, local Plant Stories, direct
-Move and Undo, same-scheduler-day catch-up, a calm three-metric Garden, and
-staged display/motion settings. The configured roster contains ten species, but
+retrospective streak bonuses, all-due/streak/stage/drop Garden Coins,
+time-based Fertilizer and Booster Potions, one-use Growth Charges, stacked
+Weather/Scenery passives, a tabbed Nursery, six fixed direct-soil spaces, local
+Plant Stories, direct Move and Undo, same-day catch-up, and a calm named Garden.
+The roster contains ten species, but
 the UI shows only computed collected and available-now counts. Focus timers,
-exam mode, deck mapping, extra currencies, plant death/regression, passive
+exam mode, deck mapping, extra currencies, plant death/regression, daily-login
 rewards, separate rare variants, weekly events, mastery, and social/cloud
 systems are absent.
 
 ## Visual coverage
 
-The manifest contains one Verdant Twilight V6 environment, 60 current plant
-sprites, 10 weather overlays, and one lantern. `scripts/audit_assets.py` is the
+The manifest contains one canonical Verdant Twilight V6 environment, eight
+geometry-compatible Scenery reskins, 60 current plant sprites, seven balanced
+Weather overlays, one lantern, and seven transparent catalog UI assets.
+`scripts/audit_assets.py` is the
 count and validity source of truth and rejects unreferenced runtime files.
 Nursery readiness applies a strict complete-six-stage V6 rule, while a
 configured or previously owned species remains state-safe even when no old

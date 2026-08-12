@@ -228,7 +228,13 @@ class GardenStudioWidget(QWidget):
             "Turn off garden motion when you prefer a quieter study screen.",
         )
         motion_form.addRow(STUDIO_TEXT["animations_label"], self.animations_enabled)
-        controls_layout.addWidget(motion)
+        # Weather motion is automatic and honors the saved reduced-motion
+        # accessibility flag. It is no longer exposed as a visual loadout
+        # control now that Weather is collectible. Give the hidden section an
+        # explicit Qt parent so its preview controls stay alive without
+        # mounting the retired section in the visible layout.
+        motion.setParent(self.controls)
+        motion.hide()
 
         self.show_home_widget = QCheckBox()
         self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
@@ -246,6 +252,13 @@ class GardenStudioWidget(QWidget):
         integration_form.addRow(STUDIO_TEXT["home_widget_label"], self.show_home_widget)
         integration_form.addRow(STUDIO_TEXT["progress_notifications_label"], self.show_progress_notifications)
         controls_layout.addWidget(integration)
+        environment_note = QLabel(
+            "Choose, equip, show, or hide collectible Weather and Scenery in "
+            "House → Weather & Scenery."
+        )
+        environment_note.setWordWrap(True)
+        environment_note.setProperty("settingsNote", True)
+        controls_layout.addWidget(environment_note)
 
         self.fine_tune_toggle = QToolButton()
         self.fine_tune_toggle.setText("Fine tune")
@@ -256,27 +269,28 @@ class GardenStudioWidget(QWidget):
         self.fine_tune_toggle.setAccessibleName("Show fine-tune settings")
         self.fine_tune_toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.fine_tune_toggle.setMinimumHeight(36)
-        controls_layout.addWidget(self.fine_tune_toggle)
         self.fine_tune_section, fine_tune_form = self._section(
-            "Artwork and weather",
-            "Adjust artwork and weather detail only when you need to.",
+            "Weather effects",
+            "Adjust weather motion and density only when you need to.",
         )
-        fine_tune_form.addRow(STUDIO_TEXT["asset_quality_label"], self.asset_quality_combo)
+        # Artwork Detail previously only changed weather-overlay variants while
+        # implying that all plant/background art would change. Preserve the
+        # stored compatibility value, but remove the misleading visible control.
+        self.asset_quality_combo.hide()
         fine_tune_form.addRow(STUDIO_TEXT["animation_label"], anim_row)
         fine_tune_form.addRow(STUDIO_TEXT["particle_label"], particle_row)
         self.fine_tune_section.hide()
-        controls_layout.addWidget(self.fine_tune_section)
         controls_layout.addStretch(1)
 
         self.preview_panel = QFrame()
         self.preview_panel.setProperty("previewPanel", True)
-        self.preview_panel.setAccessibleName("Current garden preview")
+        self.preview_panel.setAccessibleName("Garden preview")
         preview_layout = QVBoxLayout(self.preview_panel)
         preview_layout.setContentsMargins(10, 10, 10, 10)
         preview_layout.setSpacing(5)
-        preview_title = QLabel("Your garden preview")
+        preview_title = QLabel("Preview")
         preview_title.setProperty("settingsHeading", True)
-        preview_note = QLabel("Your current plants and spaces appear here. Adjustments appear before you save.")
+        preview_note = QLabel("See how your plants and spaces will look before you save.")
         preview_note.setWordWrap(True)
         preview_note.setProperty("settingsNote", True)
         preview_layout.addWidget(preview_title)
@@ -456,7 +470,7 @@ class GardenStudioWidget(QWidget):
             growth = 0.85 if self.preview["growth_stage"] in ("flowering", "rare") else 0.45
             if self.preview["growth_stage"] in ("seed", "sprout"):
                 growth = 0.15
-        quality = str(self.asset_quality_combo.currentData() or "balanced")
+        quality = "balanced"
         asset_paths: dict[str, Any] = {}
         if self.asset_resolver:
             try:
@@ -561,7 +575,7 @@ class GardenStudioWidget(QWidget):
         return snapshot if isinstance(snapshot, dict) else {}
 
     def build_theme_payload(self) -> dict[str, Any]:
-        quality = str(self.asset_quality_combo.currentData())
+        quality = "balanced"
         animation_flags = (
             (
                 self.animations_enabled.isChecked(),

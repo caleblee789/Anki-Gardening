@@ -1,15 +1,17 @@
 # Progression state contract
 
-The persisted boundary is `user_files/garden_state.json`, currently schema version `14`. Mutable data and cache files never enter the distributable archive.
+The persisted boundary is `user_files/garden_state.json`, currently schema version `16`. Mutable data and cache files never enter the distributable archive.
 
 ## Authoritative fields
 
 - Totals: `streak_days` (Anki days in a row with at least one card answer), `total_reviews` (card-answer events), `total_correct`, and `total_wrong`.
-- Today: `daily_stats.day`, answer counters, `base_growth`, `streak_bonus_growth`, `fertilizer_growth`, `bonus_growth`, `growth_earned`, per-plant Growth, and the all-due completion flag.
-- Plants: stable ID, one supported species, generated/editable name, optional garden-space slot, non-negative Growth, a fractional bonus remainder, planted date, semantic story memories, an optional current Fertilizer interval, and a bounded history of replaced or expired Fertilizer intervals.
+- Today: `daily_stats.day`, answer counters, `base_growth`, `streak_bonus_growth`, `fertilizer_growth`, `booster_growth`, `weather_growth`, `scenery_growth`, `charge_growth`, `bonus_growth`, `growth_earned`, per-plant Growth, daily environment claims, and the all-due completion flag.
+- Garden identity: `garden_name` is profile-wide plain text, normalized to one-line whitespace and capped at 40 characters. `garden_setup_version` distinguishes first-use naming from later edits.
+- Plants: stable ID, one supported species, generated/editable name, optional garden-space slot, non-negative Growth, a fractional bonus remainder, planted date, semantic story memories, optional current Fertilizer and Booster intervals, and bounded histories of replaced or expired intervals.
 - Nurture routing: `active_plant_id` and timestamped `active_plant_periods` remain the internal compatibility fields. The UI calls this choice **Nurture**. A card answer goes to the nurtured unfinished plant at its answer time, and existing Growth never moves when the learner nurtures another plant.
-- Streak Growth: `streak_days` is the only consistency progression value. The current streak bonus is 0% at day 1, +5% at day 7, +10% at day 14, +15% at day 30, +20% at day 100, and +25% at day 365. Missing an Anki day resets the next streak to day 1; no seven-day history is stored.
-- Economy: `currency_balance`, an idempotent transaction ledger with a user-facing reason and resulting balance, once-ever claimed streak milestones, and bounded pending feedback. Learner-facing copy calls the balance **Garden Coins**; the serialized field name does not change.
+- Streak Growth: `streak_days` is the only consistency progression value. The current streak bonus is 0% at day 1, +5% at day 7, +10% at day 14, +15% at day 30, +20% at day 100, and +25% at day 365. It is reconciled from authoritative Anki review history at startup, sync, rollover, and live answers; no seven-day history is stored.
+- Economy: `currency_balance`, an idempotent transaction ledger with a user-facing reason and resulting balance, once-ever claimed streak milestones, a stable reward seed, `eligible_reward_count`, `ultra_pity_misses`, bounded drop history, Booster/Charge inventory, and bounded pending feedback. Learner-facing copy calls the balance **Garden Coins**; the serialized field name does not change.
+- Environment: owned Weather and Scenery entitlements, one equipped ID for each kind, and independent Weather/Scenery visibility switches. Visibility changes rendering only; equipped passives remain active. Default entitlements are Clear Skies and Verdant Twilight.
 - Collection: `starter_selection_complete`, `unlocked_species`, two to six
   unlocked direct-soil spaces in `unlocked_slots`, and at most six planted
   plants. The configured roster currently contains ten species, but the UI never
@@ -33,10 +35,13 @@ The persisted boundary is `user_files/garden_state.json`, currently schema versi
 
 One eligible card answer gives the unfinished plant identified by
 `active_plant_id`—shown to the learner as the plant they **Nurture**—10 base
-Growth. The current streak tier adds a deterministic percentage bonus, and
-unexpired Fertilizer on that plant adds a direct +1, +2, or +3 Growth per
-answer. Fractional streak Growth is carried deterministically; bonuses never
-reduce the 10 base Growth.
+Growth. The current streak tier adds a deterministic percentage bonus,
+unexpired Fertilizer adds a direct +1, +2, or +3 Growth, and an active Booster
+Potion adds +5 Growth per answer. Equipped Weather and Scenery add their exact
+direct passives after the base/streak calculation. Fertilizer, Booster, Weather,
+and Scenery stack. Fractional streak Growth is carried deterministically;
+bonuses never reduce the 10 base Growth. Eclipse's +10 is a flat Scenery source,
+not a multiplier over any other source.
 
 The existing stage names and artwork remain authoritative:
 
@@ -62,7 +67,7 @@ All due is a live collection-wide check at award time, not a snapshot of cards d
 - Unseen new cards are not obligations until introduced by an answer.
 - Suspended and buried cards are excluded while unavailable. If restored before the award and then due, they block completion.
 - At least one eligible answer in the scheduler day is required.
-- The +10 Garden Coin reward is granted at most once, is recorded with its reason, and is never revoked if the live due set changes later.
+- The base +10 Garden Coin reward is granted at most once, is recorded with its reason, and is never revoked if the live due set changes later. Equipped Cloudy Drift adds +2 Coins; equipped Rainbow Sunshower adds +5 direct Weather Growth to the nurtured unfinished plant.
 - If Anki cannot provide the scheduler cutoff or due tree, the check fails closed and grants nothing.
 
 ## Fertilizer contract
@@ -70,7 +75,7 @@ All due is a live collection-wide check at award time, not a snapshot of cards d
 Fertilizer belongs to one plant. Every activation interval stores its tier,
 tier-derived direct Growth per answer, inclusive Unix activation timestamp, and
 exclusive Unix expiration timestamp. An answer receives Basic +1, Quality +2,
-or Premium +3 only when the answer-time plant routing selects that plant and
+or Magical +3 only when the answer-time plant routing selects that plant and
 `started_at <= answer_time < expires_at`.
 
 The current interval remains in `fertilizer` for UI compatibility. Replacing it,
@@ -85,6 +90,60 @@ purchase time. If the history cap is reached, the purchase fails before spending
 Garden Coins. Intervals wholly before a new authoritative scheduler day are
 pruned because those rows are no longer eligible for catch-up; intervals
 overlapping the new day remain.
+
+## Booster, Growth Charge, environment, and reward contract
+
+A Booster Potion is a non-purchasable consumable. Using one on the current
+nurtured unfinished plant creates a two-hour interval that adds +5 direct
+Growth per eligible answer and stacks with Fertilizer. Using another Potion
+extends the same interval. Current-day interval history is bounded so a late
+same-day sync receives exactly the Booster active at answer time. Equipped Snow
+Flurry adds 10% and Full Moon Garden adds 25% to the duration of each Potion
+used; the extensions are additive.
+
+Small, Standard, and Grand Growth Charges add 100, 500, and 2,000 direct Growth
+to the nurtured unfinished plant, capped at Rare. Small and Standard are repeat
+purchases for 30 and 125 Garden Coins; Grand is earn-only. Charge use crosses
+normal stages and grants normal stage Coins, records its Growth separately, and
+consumes the item only in the same successful state transaction. With no
+unfinished nurtured plant or on save failure, nothing is consumed.
+
+Exactly one Weather and one Scenery are equipped. Purchases are one-time and do
+not auto-equip. Clear Skies and Verdant Twilight are free neutral defaults.
+Purchasable Weather is Soft Breeze (100), Cloudy Drift (175), Gentle Rain (250),
+and Snow Flurry (350). Purchasable Scenery is Spring Bloom (400), Golden Summer
+(600), Autumn Hearth (800), and Snow-Covered Garden (1,200). Drop-only choices
+remain visible in Collection with revealed effect/earning copy and silhouetted
+art until owned.
+
+Rare rewards are determined from a stable per-garden seed and authoritative
+revlog ID only after duplicate detection. Each eligible answer checks these
+independent bands in order and stops after the first hit:
+
+| Order | Reward band | Chance per eligible answer |
+|---:|---|---:|
+| 1 | Ultra Rare environment | 1 in 100,000 before pity |
+| 2 | Grand Growth Charge | 1 in 30,000 |
+| 3 | Very Rare environment | 1 in 20,000 |
+| 4 | Standard Growth Charge | 1 in 8,000 |
+| 5 | Rare environment | 1 in 5,000 |
+| 6 | Booster Potion | 1 in 5,000 |
+| 7 | Small Growth Charge | 1 in 2,000 |
+| 8 | 50 Garden Coins | 1 in 800 |
+
+An environment tier selects uniformly among unowned items. Completing the Rare
+tier substitutes a Standard Charge; completing the Very Rare or Ultra tier
+substitutes a Grand Charge. Ultra misses 0–74,999 use 1 in 100,000; 75,000–
+84,999 use 1 in 90,000; 85,000–94,999 use 1 in 80,000; 95,000–104,999 use 1 in
+70,000; 105,000–114,999 use 1 in 60,000; and 115,000 or more use 1 in 50,000.
+There is no guaranteed drop. Only an Ultra environment resets the miss counter.
+
+Snow-Covered Garden, Halloween Garden, and Full Moon Garden can grant a daily
+gift on the first eligible answer. Halloween chooses Small Charge 70%, Standard
+Charge 25%, or Booster Potion 5%. A daily gift consumes that answer's one reward
+slot, requires an answer that Anki day, and never backfills a missed day. Drop
+IDs and currency transactions are idempotent. Historical streak reconstruction
+never replays Growth or rewards.
 
 ## Scheduler-day review ingestion
 
@@ -120,31 +179,38 @@ Dahlia currently meet the bundled contract.
 Existing ownership remains authoritative
 even if a species is not currently stocked.
 
-Dashboard selection, Progress expansion, an open Plant Story or Nursery dialog,
-and an in-progress Move draft are transient UI state. A committed placement and
-its resulting plant slots are persisted; the temporary Undo snapshot lasts only
-for the open Garden session.
+Dashboard selection, open metric/Progress/Plant Story/Nursery dialogs, Nursery
+catalog page, and an in-progress Move draft are transient UI state. The
+Nursery's fourth tab sells purchasable Weather and Scenery. The cottage's
+**Weather & Scenery** tab owns loadout, visibility, all-item Collection details,
+odds, and pity display. A committed placement and its resulting plant slots are
+persisted; the temporary Undo snapshot lasts only for the open Garden session.
 
 ## Configuration contract
 
-Configuration remains in Anki's add-on configuration and preserves the internal
-keys `visual_theme`, `enable_animations`, `reduced_motion`, `show_home_widget`,
-`show_progress_notifications`, `assets.quality_preference`, and the bounded
-motion/detail overrides. Legacy theme names normalize to
-`verdant_twilight`; the UI exposes Verdant Twilight as a read-only current-style
-card rather than a selector.
+Configuration retains legacy internal visual keys for saved-state compatibility,
+but no longer exposes Weather selection, automatic/seasonal Weather, art
+quality, animation, performance, or Fine tune controls. Runtime art uses the
+balanced tier automatically and respects reduced motion automatically. Settings
+keeps the applicable Garden display and notification choices. Environment
+loadout and visibility belong to the cottage Collection window, not Settings.
 
 Settings edits are staged. The noninteractive live preview may reflect staged
 values, but active configuration changes only after `writeConfig` succeeds.
 Cancel reapplies the persisted payload, and Restore defaults stages values
-without writing. Troubleshooting telemetry is diagnostic only and never enters
-garden state.
+without writing. Troubleshooting diagnostics do not enter garden state. The
+temporary development action explicitly backs up state before atomically
+populating the current catalog, all Weather and Scenery entitlements, all six
+spaces, at least 100,000 Garden Coins, and test consumables; Restore backup
+reverses it without changing Anki revlog.
 
 ## Privacy and migration boundary
 
 Plant stories store only event kind, scheduler-day date, numeric landmark, and optional stage transition. Deck names, note fields, card text, and review content are never stored.
 
-Schema 10 is the oldest supported previous-release migration. Before conversion,
+Schema 10 is the oldest retained development migration. Anki Garden has not yet
+shipped, so preserving development progress is not a release requirement; this
+path remains as a fail-closed convenience for test profiles. Before conversion,
 the exact source is copied to `garden_state.schema-10.legacy.json`. Compatible
 identity, name, slot, species unlock, story, total-review, appearance, and
 revlog-cursor data is retained. Legacy Growth is translated to the same stage
@@ -162,9 +228,18 @@ remains discoverable, and the seeded ledger survives ordinary restarts. Legacy
 Fertilizer receives a conservative migration-time activation floor, so an older
 synced answer cannot gain a bonus whose purchase time is unknown. New schema-14
 replacements and renewals then retain bounded answer-time history as described
-above.
+above. Schema 14 development state upgrades to schema 15 with a default Garden
+name, reward seed/history, and empty Booster inventory. Schema 15 upgrades to
+schema 16 with neutral environment entitlements, visible layers, zero Charges,
+zero Ultra misses, empty daily environment claims, and separate Weather,
+Scenery, and Charge Growth counters. No historical review is replayed as Growth
+or a random gift.
 
 Migration backup or save failure is fail-closed: the original state is not
 overwritten and a fresh state is not returned as though conversion succeeded.
 
-Removed Quest, Vitality, seven-day-history, daily-goal, history-import, milestone-choice, and rare-variant fields are discarded. Schemas 10 through 13 are migrated; any other unsupported schema is copied to a schema-labeled backup and starts a fresh recovery garden. Unreadable JSON is copied to `garden_state.invalid.json` before recovery.
+Removed Quest, Vitality, seven-day-history, daily-goal, history-import,
+milestone-choice, and rare-variant fields are discarded. Schemas 10 through 15
+are migrated; any other unsupported schema is copied to a schema-labeled backup
+and starts a fresh recovery garden. Unreadable JSON is copied to
+`garden_state.invalid.json` before recovery.

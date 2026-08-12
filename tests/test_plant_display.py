@@ -664,7 +664,7 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
     assert "_onboarding_confirmation_generation" in dashboard
     assert "generation != self._onboarding_confirmation_generation" in dashboard
     assert 'self._onboarding_save_error or (' in dashboard
-    assert '"The glowing Nursery building' in dashboard
+    assert '"Your starter is free. Use the glowing Nursery building' in dashboard
     assert "cardOpened.connect" not in dashboard
     assert "QMessageBox" not in dashboard.split("def _refresh_onboarding", 1)[1].split("def _clear_layout", 1)[0]
 
@@ -686,14 +686,17 @@ def test_dashboard_is_garden_first_with_compact_secondary_tabs():
     assert "transaction.balance" in dashboard
     assert "class ProgressList(QWidget):" in dashboard
     assert "class ProgressList(QScrollArea):" not in dashboard
+    assert "self.scroll.setWidgetResizable(True)" in dashboard
+    assert "outer.addWidget(self.scroll)" in dashboard
     assert 'self.details_tabs.setTabToolTip(0, "See today’s card answers, Growth, and Garden Coin rewards.")' in dashboard
     assert 'self.details_tabs.setTabToolTip(1, "View long-term milestones and unlocked achievements.")' in dashboard
-    assert 'QLabel("Today’s progress")' in dashboard
+    assert 'QLabel("Today’s progress")' not in dashboard
     assert "self._position_plant_card" in dashboard
     assert "self.hero_summary" not in dashboard
     assert "self.streak_chip" not in dashboard
-    assert 'self.progress_toggle = QPushButton("Progress")' in dashboard
-    assert "self.details_tabs.hide()" in dashboard
+    assert 'self.progress_btn = QPushButton("Progress")' in dashboard
+    assert "self.progress_dialog = GardenProgressDialog(self, self.details_tabs)" in dashboard
+    assert "self.progress_btn.clicked.connect(self._open_progress)" in dashboard
 
 
 def test_selected_state_traces_artwork_without_a_detached_ground_ring():
@@ -728,7 +731,7 @@ def test_phase2_copy_states_and_single_scroll_contract_are_explicit():
     assert "self.milestone_card.hide()" in dashboard
     assert 'f"{_plant_count(len(state.plants))} collected. "' in dashboard
     assert 'f"{_plant_count(available_count)} available now. "' in dashboard
-    assert "STREAK_BONUS_TIERS" not in dashboard
+    assert "STREAK_BONUS_TIERS" in dashboard
     assert '"streak_bonus_percent": streak_bonus' in dashboard
     assert "Garden daily goal" not in dashboard
     assert '"locked" if display.current' not in dashboard
@@ -791,7 +794,8 @@ def test_scene_landmarks_are_registered_accessible_and_disabled_while_rearrangin
     assert 'tooltip="Open Nursery"' in landmarks
     assert "if not interactive" in landmarks
     assert "self._interaction.dismiss()" in scene.split("def _activate_landmark", 1)[1]
-    assert 'handlers = {"garden.nursery.open": self._open_nursery}' in dashboard
+    assert '"garden.nursery.open": self._open_nursery' in dashboard
+    assert '"garden.progress.open": self._open_progress' in dashboard
     assert "QMessageBox" not in dashboard.split("def _on_landmark_activated", 1)[1].split(
         "def _on_placement_state", 1
     )[0]
@@ -810,7 +814,8 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert "class PlantStoryDialog(QDialog):" in dashboard
     assert 'setAccessibleName("Plant memory timeline")' in dashboard
     assert 'setAccessibleName("Rename plant")' in dashboard
-    assert "This story is just beginning." in dashboard
+    assert 'QLabel("Memories")' in dashboard
+    assert "New memories will appear as this plant grows." in dashboard
     assert 'QLabel("Up next")' in dashboard
     assert "reverse=True" not in dashboard.split("class PlantStoryDialog", 1)[1].split("class NurseryDialog", 1)[0]
     assert "event.key() == Qt.Key.Key_Escape" in dashboard
@@ -846,12 +851,14 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert '"daily_goal"' not in studio
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
     assert "behavior_scroll.setWidgetResizable(True)" in dashboard
-    assert 'QPushButton("Save settings")' in dashboard
+    assert 'QPushButton("Save changes")' in dashboard
     assert 'QPushButton("Restore defaults")' in dashboard
-    assert '"Garden settings"' in dashboard
+    assert 'tabs.addTab(behavior, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
-    assert "QMessageBox.warning" not in settings_block
+    assert 'QPushButton("Unlock development tools")' in settings_block
+    assert "create_development_backup" in settings_block
+    assert "restore_development_backup" in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
     assert 'self.save_status.setText("Unsaved changes")' in dashboard
     assert "self.behavior.reset_preview_defaults()" in dashboard
@@ -887,7 +894,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.selectionChanged.emit(\"\")" in scene
     assert "for index in range(6)" in scene
     assert "move_badge_label(" in scene
-    assert 'f"Bed {slot + 1}: {label}"' in scene
+    assert 'f"Garden space {slot + 1}: {label}"' in scene
     assert "self._interaction.placing and not self._drag_started" in scene
     assert "slot < unlocked" in scene
 
@@ -908,7 +915,8 @@ def test_settings_sections_and_preview_only_controls_match_persistence_contract(
         assert f'"{title}"' in studio
     assert "one-option" not in studio
     assert "self.theme_combo" not in studio
-    assert "Adjust artwork and weather detail only when you need to." in studio
+    assert "self.asset_quality_combo.hide()" in studio
+    assert '"Artwork detail"' in studio  # retained only for config compatibility
     assert '"weather"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
     assert '"growth_stage"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
     assert '"animations_label": "Animate weather"' in studio
@@ -922,13 +930,16 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     assert "self.engine.catalog_summary()" in nursery
     assert "self.engine.choose_starter(species)" in nursery
     assert "self.engine.release_ready_species" not in nursery  # summary owns readiness
-    assert 'self._plant_artwork(species, "seed")' in nursery
-    assert 'QLabel("Available now")' not in nursery  # section helper owns the label
-    assert 'self._section_label("Available now")' in nursery
+    assert "self._plant_stage_carousel(species)" in nursery
+    assert 'self._plant_artwork(species, "seed", 132)' in nursery
+    assert 'QLabel("Available now")' not in nursery
+    assert '"Botanical catalog"' in nursery
+    assert "self._currently_growing_strip(active)" in nursery
     assert "QComboBox" not in dashboard
     assert "QMenu" not in dashboard
     assert "QTimer.singleShot(0, self._open_nursery)" in dashboard
-    assert 'handlers = {"garden.nursery.open": self._open_nursery}' in dashboard
+    assert '"garden.nursery.open": self._open_nursery' in dashboard
+    assert '"garden.progress.open": self._open_progress' in dashboard
 
 
 def test_dashboard_close_and_reopen_manage_timer_filter_and_transient_interaction_state():

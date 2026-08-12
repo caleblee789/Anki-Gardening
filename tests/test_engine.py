@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ from ankigarden.models.state import (
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
     HISTORICAL_PLANT_SPECIES_ORDER,
+    CURRENT_CATALOG_SPECIES_ORDER,
     MAX_FERTILIZER_HISTORY,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
@@ -243,6 +245,53 @@ def test_day_one_answers_award_base_growth_without_a_streak_bonus():
 )
 def test_streak_bonus_tiers_are_exact(streak_days, expected_bonus):
     assert GardenGameEngine.streak_bonus_percent(streak_days) == expected_bonus
+
+
+def test_retrospective_streak_grants_each_historical_coin_milestone_once():
+    engine, storage = make_engine()
+    storage.state.streak_days = 0
+    storage.state.currency_balance = 0
+    storage.state.claimed_streak_rewards = []
+    storage.retrospective_streak = lambda: SimpleNamespace(
+        days=100,
+        latest_day=storage.day,
+        studied_today=True,
+    )
+
+    first = engine.reconcile_retrospective_streak()
+    balance_after_first = storage.state.currency_balance
+    second = engine.reconcile_retrospective_streak()
+
+    assert first[0] and second[0]
+    assert storage.state.streak_days == 100
+    assert balance_after_first == storage.state.currency_balance == 475
+    assert storage.state.claimed_streak_rewards == [7, 14, 30, 100]
+    assert [tx.event_key for tx in storage.state.currency_transactions] == [
+        "streak:7", "streak:14", "streak:30", "streak:100",
+    ]
+    restored = [
+        event for event in storage.state.pending_feedback
+        if event.event_id.startswith("streak-backfill:")
+    ]
+    assert len(restored) == 1
+    assert restored[0].amount == 475
+
+
+def test_retrospective_streak_read_failure_preserves_saved_state():
+    engine, storage = make_engine()
+    storage.state.streak_days = 30
+    storage.state.currency_balance = 125
+    before = storage.state.to_dict()
+
+    def unavailable():
+        raise SchedulerBoundaryError("scheduler not ready")
+
+    storage.retrospective_streak = unavailable
+    ok, message = engine.reconcile_retrospective_streak()
+
+    assert not ok
+    assert "not available" in message
+    assert storage.state.to_dict() == before
 
 
 def test_missed_day_resets_streak_before_awarding_growth():
@@ -696,6 +745,84 @@ def test_fertilizer_tiers_and_expiry_boundary_are_exact(monkeypatch, tier, growt
     assert engine.fertilizer_growth(plant, now=plant.fertilizer.expires_at) == 0
 
 
+def test_booster_potion_stacks_with_base_growth_and_expires_at_exact_boundary(monkeypatch):
+    engine, storage = make_engine()
+    now = storage.now_ms / 1000.0
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now)
+    storage.state.consumables["booster_potion"] = 1
+
+    ok, message = engine.use_booster_potion()
+    plant = storage.state.plants[0]
+
+    assert ok
+    assert "+5 Growth" in message
+    assert storage.state.consumables["booster_potion"] == 0
+    assert plant.booster is not None
+    assert plant.booster.started_at == now
+    assert plant.booster.expires_at == now + 7_200
+
+    active_award = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": int((now + 1) * 1000),
+        "answered_at_ms": int((now + 1) * 1000),
+    })
+    expired_award = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": int((now + 7_200) * 1000),
+        "answered_at_ms": int((now + 7_200) * 1000),
+    })
+
+    assert active_award.base_growth == 10
+    assert active_award.booster_growth == 5
+    assert active_award.total_growth == 15
+    assert expired_award.booster_growth == 0
+    assert expired_award.total_growth == 10
+    assert storage.state.daily_stats.booster_growth == 5
+
+
+def test_using_another_booster_extends_the_same_activation_window(monkeypatch):
+    engine, storage = make_engine()
+    now = [1_000.0]
+    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
+    storage.state.consumables["booster_potion"] = 2
+
+    assert engine.use_booster_potion()[0]
+    plant = storage.state.plants[0]
+    original_start = plant.booster.started_at
+    original_expiry = plant.booster.expires_at
+    now[0] = 1_100.0
+    assert engine.use_booster_potion()[0]
+
+    assert plant.booster.started_at == original_start
+    assert plant.booster.expires_at == original_expiry + 7_200
+    assert storage.state.consumables["booster_potion"] == 0
+
+
+def test_random_drop_bands_are_prioritized_deterministic_and_limited_to_one_per_answer(monkeypatch):
+    engine, storage = make_engine()
+    monkeypatch.setattr(engine, "_drop_hit", lambda *_args: True)
+    first_id = storage.now_ms + 1_000
+    second_id = first_id + 1_000
+    third_id = second_id + 1_000
+
+    answer(engine, storage, revlog_id=first_id)
+    answer(engine, storage, revlog_id=second_id)
+    answer(engine, storage, revlog_id=third_id)
+    duplicate = answer(engine, storage, revlog_id=second_id)
+
+    assert duplicate.total_growth == 0
+    kinds = [drop.kind for drop in storage.state.reward_drop_history]
+    assert set(kinds[:2]) == {"full_moon", "eclipse"}
+    assert kinds[2] == "growth_charge_grand"
+    assert storage.state.consumables["growth_charge_grand"] == 1
+    assert len({drop.revlog_id for drop in storage.state.reward_drop_history}) == 3
+    assert storage.state.ultra_pity_misses == 0
+    feedback = {event.kind for event in storage.state.pending_feedback}
+    assert {"environment_drop", "charge_drop"}.issubset(feedback)
+
+
 def test_synced_answers_only_receive_fertilizer_during_the_activation_interval(monkeypatch):
     engine, storage = make_engine()
     storage.state.currency_balance = 500
@@ -765,7 +892,7 @@ def test_collection_planting_rejects_invalid_external_destination_without_mutati
     ok, message = engine.plant_from_collection("p3", invalid_destination)
 
     assert not ok
-    assert message == "Choose an empty unlocked garden bed."
+    assert message == "Choose an empty unlocked garden space."
     assert storage.state.to_dict() == before
     assert storage.save_count == saves_before
 
@@ -965,11 +1092,48 @@ def test_failed_same_day_batch_rolls_back_growth_cursor_and_transitions():
     assert engine.peek_stage_transitions() == []
 
 
+def test_garden_and_generated_plant_names_are_plain_unambiguous_and_editable():
+    engine, storage = make_engine()
+
+    ok, message = engine.rename_garden("  Moss   & Moon  ")
+
+    assert ok
+    assert "Moss & Moon" in message
+    assert storage.state.garden_name == "Moss & Moon"
+    assert storage.state.garden_setup_version == 1
+    assert engine._generated_name("bonsai") == "Bonsai Plant"
+    assert engine._generated_name("japanese_maple") == "Japanese Maple Plant"
+    assert not engine.rename_garden("   ")[0]
+
+
+def test_development_population_builds_complete_state_without_touching_revlog_ledger():
+    engine, storage = make_engine()
+    storage.state.last_processed_revlog_id = 123_456
+    storage.state.processed_revlog_floor = 100_000
+    storage.state.processed_revlog_ids = [123_000, 123_456]
+
+    ok, message = engine.development_populate()
+
+    assert ok
+    assert "100,000 Coins" in message
+    assert len(storage.state.plants) == len(CURRENT_CATALOG_SPECIES_ORDER) == 10
+    assert {plant.species for plant in storage.state.plants} == set(CURRENT_CATALOG_SPECIES_ORDER)
+    assert {plant.slot_index for plant in storage.state.plants if plant.planted} == set(range(6))
+    assert storage.state.unlocked_slots == 6
+    assert storage.state.currency_balance >= 100_000
+    assert storage.state.consumables["booster_potion"] >= 12
+    active = engine.active_plant()
+    assert active is not None and active.planted and not active.fully_grown
+    assert storage.state.last_processed_revlog_id == 123_456
+    assert storage.state.processed_revlog_floor == 100_000
+    assert storage.state.processed_revlog_ids == [123_000, 123_456]
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
-        "all_due", "feedback", "fertilizer", "species", "bed", "plant",
-        "collection", "active", "rename", "place", "commit", "restore",
+        "all_due", "feedback", "fertilizer", "booster", "species", "bed", "plant",
+        "collection", "active", "rename", "garden_name", "place", "commit", "restore",
     ],
 )
 def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
@@ -979,6 +1143,8 @@ def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
         storage.state.pending_feedback = [FeedbackEvent("one", "test", "One", "2026-08-08T12:00:00+00:00")]
     if mutation == "plant":
         storage.state.plants.append(Plant("p3", "hydrangea", "Misty", None))
+    if mutation == "booster":
+        storage.state.consumables["booster_potion"] = 1
     if mutation == "all_due":
         storage.state.daily_stats.reviewed = 1
     draft = None
@@ -1000,6 +1166,8 @@ def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
         result = None
     elif mutation == "fertilizer":
         result = engine.purchase_fertilizer("p1", "basic")
+    elif mutation == "booster":
+        result = engine.use_booster_potion("p1")
     elif mutation == "species":
         result = engine.purchase_species("sunflower")
     elif mutation == "bed":
@@ -1012,6 +1180,8 @@ def test_every_persistent_mutation_rolls_back_after_save_failure(mutation):
         result = engine.set_active_plant("p2")
     elif mutation == "rename":
         result = engine.rename_plant("p1", "Juniper")
+    elif mutation == "garden_name":
+        result = engine.rename_garden("Moss & Moon")
     elif mutation == "place":
         result = engine.place_plant("p1", 1)
     elif mutation == "commit":

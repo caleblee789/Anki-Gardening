@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -744,7 +745,7 @@ class AssetManager:
         picked_entry = valid_candidates[idx]
         picked = self.storage.addon_dir / picked_entry["file"]
         rel = str(picked.relative_to(self.storage.addon_dir))
-        raw_placement = dict(picked_entry.get("placement", {})) if isinstance(picked_entry.get("placement"), dict) else {}
+        raw_placement = self._placement_for_entry(picked_entry, category)
         if category == "plants" and "base_type" not in raw_placement:
             growth_base = str(picked_entry.get("growth_base", ""))
             species = str((picked_entry.get("slot", {}) or {}).get("species", ""))
@@ -779,6 +780,49 @@ class AssetManager:
             placement=placement,
             metadata=dict(picked_entry),
         )
+
+    def _placement_for_entry(
+        self,
+        entry: dict[str, Any],
+        category: str,
+    ) -> dict[str, Any]:
+        raw: dict[str, Any] = {}
+        placement_ref = entry.get("placement_ref")
+        if isinstance(placement_ref, str) and placement_ref:
+            source = next(
+                (
+                    candidate
+                    for candidate in self._catalog.get(category, [])
+                    if candidate.get("asset_id") == placement_ref
+                ),
+                None,
+            )
+            if isinstance(source, dict) and isinstance(source.get("placement"), dict):
+                raw = deepcopy(source["placement"])
+        placement = entry.get("placement")
+        if isinstance(placement, dict):
+            raw.update(deepcopy(placement))
+        surface_files = entry.get("surface_files")
+        if category == "backgrounds" and isinstance(surface_files, dict):
+            surface_profile = raw.get("surface_profile")
+            variants = (
+                surface_profile.get("variants")
+                if isinstance(surface_profile, dict)
+                else None
+            )
+            if isinstance(variants, dict):
+                for variant_name, files in surface_files.items():
+                    variant = variants.get(str(variant_name))
+                    if not isinstance(variant, dict) or not isinstance(files, dict):
+                        continue
+                    for key in ("file", "occlusion_file"):
+                        value = files.get(key)
+                        if isinstance(value, str) and value:
+                            variant[key] = value
+                    layers = files.get("occlusion_layers")
+                    if isinstance(layers, dict):
+                        variant["occlusion_layers"] = deepcopy(layers)
+        return raw
 
     def _load_catalog(self) -> dict[str, list[dict[str, Any]]]:
         manifest = self.storage.assets_root / "manifest.json"
@@ -826,7 +870,16 @@ class AssetManager:
                     return {"species": normalized[:-len(suffix)], "stage": stage}
             return {"species": normalized, "stage": "mature"}
         if category == "backgrounds":
-            _, season, weather = (key.split("_", 2) + ["default", "breeze"])[0:3]
+            normalized = str(key)
+            if normalized.startswith("bg_"):
+                normalized = normalized[3:]
+            if normalized.endswith("_any"):
+                season = normalized[:-4] or "default"
+                weather = "any"
+            else:
+                season, separator, weather = normalized.partition("_")
+                if not separator:
+                    weather = "any"
             configured_theme = theme or str(self.config.value("visual_theme", "verdant_twilight"))
             return {
                 "season": season,
@@ -1008,8 +1061,8 @@ class AssetManager:
                 if str(entry_slot.get(dimension, "any")) == "any"
             )
             return (
-                0 if bool(entry.get("release_preferred", False)) else 1,
                 wildcard_count,
+                0 if bool(entry.get("release_preferred", False)) else 1,
             )
 
         preferred.sort(

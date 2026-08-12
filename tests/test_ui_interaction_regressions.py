@@ -83,7 +83,7 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
             HomeWidgetSnapshot(1, phase, error_message="Temporary problem")
         )
         state_rule = html.split(".ag-home__state {", 1)[1].split("}", 1)[0]
-        assert "min-height: 260px" in state_rule
+        assert "min-height: 160px" in state_rule
         assert 'class="ag-home__state"' in html
 
 
@@ -640,7 +640,8 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         "key": "japanese_maple_flowering"
     }
     assert resolved["plants"]["rose"] == {"key": "rose_sprout"}
-    assert ("backgrounds", "bg_summer_gentle_rain", "ultra") in assets.calls
+    assert ("backgrounds", "bg_default_any", "balanced") in assets.calls
+    assert ("weather", "weather_gentle_rain", "balanced") in assets.calls
 
     apply_preview = _method_source(STUDIO_PATH, "GardenStudioWidget", "_apply_preview")
     assert "preview_weather" in apply_preview
@@ -874,15 +875,16 @@ def test_metric_cells_are_focusable_and_compact_to_a_two_row_hierarchy() -> None
         ("streak", 1, 0, 1, 1),
         ("currency", 1, 1, 1, 1),
     ]
-    assert strip.grid.stretches == [(0, 1), (1, 1), (2, 0)]
+    assert strip.grid.stretches == [(0, 1), (1, 1), (2, 0), (3, 0)]
     stats_source = DASHBOARD_PATH.read_text("utf-8").split(
         "class GardenStatsStrip", 1
     )[1].split("class RearrangeBar", 1)[0]
     assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in stats_source
-    assert "QFrame[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
+    assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
-    assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:16px" in dashboard_source.split("QLabel[gardenStatValue", 1)[1].split("}", 1)[0]
+    assert "font-size:11px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
+    assert "font-size:30px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
+    assert "font-size:32px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
 def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -> None:
@@ -911,6 +913,9 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
         def setEnabled(self, value: bool) -> None:
             self.enabled = value
 
+        def setVisible(self, value: bool) -> None:
+            self.visible = value
+
     class Progress:
         def set_progress(self, *args: Any, **kwargs: Any) -> None:
             self.args = args
@@ -923,6 +928,7 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
         stage_progress=Progress(),
         growth_summary=Text(),
         fertilizer_summary=Text(),
+        status_value=Text(),
         action_hint=Text(),
         nurture=Button(),
         fertilize=Button(),
@@ -948,6 +954,7 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
     set_selected(card, payload)
 
     assert card.nurture.enabled is False
+    assert card.nurture.visible is False
     assert card.fertilize.enabled is True
     assert card.fertilize.text == "Replace Fertilizer"
     assert card.action_hint.text == "This plant is already being nurtured."
@@ -955,19 +962,25 @@ def test_selected_plant_card_names_replacement_and_explains_disabled_actions() -
     assert "already being nurtured" in card.nurture.description
     assert "already being nurtured" not in card.fertilize.description
     assert "replace or extend" in card.fertilize.description
+    assert card.identity.text == "Seed Stage"
+    assert card.growth_summary.text == "490 Growth remaining"
+    assert card.status_value.text == "Being nurtured"
 
     payload.update(is_active=False, fertilizer_growth=0)
     set_selected(card, payload)
     assert card.nurture.enabled is True
+    assert card.nurture.visible is True
     assert card.fertilize.enabled is False
     assert card.action_hint.text == "Nurture this plant before using Fertilizer."
     assert card.action_hint.text in card.fertilize.description
     assert "available for this unfinished plant" in card.nurture.description
+    assert card.status_value.text == "Not nurtured"
 
     payload.update(fully_grown=True, growth_points=2_000, is_active=False)
     set_selected(card, payload)
     assert card.nurture.enabled is False
     assert card.fertilize.enabled is False
+    assert card.status_value.text == "Fully grown"
     assert card.action_hint.text == (
         "This plant is fully grown, so Nurture and Fertilizer are no longer needed."
     )
@@ -1086,8 +1099,8 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     set_information(
         row,
-        "Today’s Plant Growth",
-        "Growth recorded from today’s card answers.",
+        "Growth earned",
+        "How today’s card answers became Growth.",
         "30 Growth earned",
         explanation="Each counted card answer gives the nurtured plant base Growth.",
     )
@@ -1106,8 +1119,8 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     growth_block = refresh.split("growth_row = ProgressRow()", 1)[1].split(
         "self.today_list.add_row(growth_row)", 1
     )[0]
-    assert '"Today’s Plant Growth"' in growth_block
-    assert '"Growth earned from today’s card answers."' in growth_block
+    assert '"Growth earned"' in growth_block
+    assert '"How today’s card answers became Growth."' in growth_block
     assert "explanation=GROWTH_EXPLANATION" in growth_block
     assert "growth_row.set_information(" in growth_block
     assert "growth_row.set_item(" not in growth_block
@@ -1808,6 +1821,8 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
             _landmark_action_id="garden.nursery.open",
             _landmark_action_by_id={"nursery": "garden.nursery.open"},
             _landmark_rects={"nursery": object()},
+            _landmark_polygons={"nursery": object()},
+            _landmark_labels={"nursery": "Nursery"},
             _interaction=SimpleNamespace(placing=False),
             landmarksChanged=SimpleNamespace(emit=lambda: changes.append("changed")),
             _surface_asset_record=lambda _width, _height: (
@@ -1824,5 +1839,7 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
         assert scene._landmark_action_id == ""
         assert scene._landmark_action_by_id == {}
         assert scene._landmark_rects == {}
+        assert scene._landmark_polygons == {}
+        assert scene._landmark_labels == {}
         assert changes == ["changed"]
         assert pixmap_calls == ([] if background_path is None else [background_path])

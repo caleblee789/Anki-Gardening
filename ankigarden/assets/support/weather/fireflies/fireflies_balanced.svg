@@ -1,4 +1,26 @@
-<ns0:svg xmlns:ns0="http://www.w3.org/2000/svg" viewBox="0 0 256 192" width="256" height="192" focusable="false" aria-hidden="true"><title>Fireflies Balanced</title><ns0:defs>
-      <ns0:linearGradient id="weather_fireflies_balanced__sky" x1="0" y1="0" x2="0" y2="1"><ns0:stop offset="0%" stop-color="#dff2ff" /><ns0:stop offset="100%" stop-color="#f7f0de" /></ns0:linearGradient>
-      <ns0:linearGradient id="weather_fireflies_balanced__night" x1="0" y1="0" x2="0" y2="1"><ns0:stop offset="0%" stop-color="#24324e" /><ns0:stop offset="100%" stop-color="#4c6680" /></ns0:linearGradient>
-    </ns0:defs><ns0:rect width="256" height="192" rx="20" fill="url(#weather_fireflies_balanced__night)" /><ns0:circle cx="72" cy="72" r="8" fill="#ffe68b" opacity="0.35" /><ns0:circle cx="72" cy="72" r="3" fill="#fff3b2" /><ns0:circle cx="120" cy="52" r="7.2" fill="#ffe68b" opacity="0.35" /><ns0:circle cx="120" cy="52" r="2.7" fill="#fff3b2" /><ns0:circle cx="158" cy="108" r="8" fill="#ffe68b" opacity="0.35" /><ns0:circle cx="158" cy="108" r="3" fill="#fff3b2" /><ns0:circle cx="194" cy="78" r="6.4" fill="#ffe68b" opacity="0.35" /><ns0:circle cx="194" cy="78" r="2.4000000000000004" fill="#fff3b2" /><ns0:circle cx="102" cy="130" r="6.4" fill="#ffe68b" opacity="0.35" /><ns0:circle cx="102" cy="130" r="2.4000000000000004" fill="#fff3b2" /><ns0:path d="M48 150 C86 122, 133 114, 206 128" stroke="#6c9366" stroke-width="8" fill="none" stroke-linecap="round" /></ns0:svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 192" width="256" height="192" focusable="false" aria-hidden="true">
+  <title>Firefly Evening</title>
+  <defs>
+    <radialGradient id="fireflyGlow">
+      <stop offset="0" stop-color="#fffbd0" stop-opacity="1"/>
+      <stop offset="0.35" stop-color="#ffe78a" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#ffe78a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g fill="url(#fireflyGlow)">
+    <circle cx="39" cy="127" r="9"/><circle cx="72" cy="79" r="7"/>
+    <circle cx="103" cy="139" r="8"/><circle cx="127" cy="55" r="7"/>
+    <circle cx="160" cy="106" r="9"/><circle cx="194" cy="69" r="7"/>
+    <circle cx="220" cy="129" r="8"/>
+  </g>
+  <g fill="#fff7a6">
+    <circle cx="39" cy="127" r="2.2"/><circle cx="72" cy="79" r="1.8"/>
+    <circle cx="103" cy="139" r="2"/><circle cx="127" cy="55" r="1.8"/>
+    <circle cx="160" cy="106" r="2.2"/><circle cx="194" cy="69" r="1.8"/>
+    <circle cx="220" cy="129" r="2"/>
+  </g>
+  <g fill="none" stroke="#f7e9a0" stroke-width="1.5" stroke-linecap="round" opacity="0.5">
+    <path d="M31 124c-7-6-9-12-5-17"/><path d="M95 137c-6-5-7-11-3-15"/>
+    <path d="M153 103c-7-5-8-11-4-16"/><path d="M212 127c-6-5-7-10-3-14"/>
+  </g>
+</svg>

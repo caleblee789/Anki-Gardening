@@ -1,7 +1,9 @@
 """Shared learner-facing explanations for Anki Garden gameplay terms."""
 
 GROWTH_EXPLANATION = (
-    "Growth is plant progress: each counted card answer adds 10 base Growth to the plant you nurture, before streak and Fertilizer bonuses."
+    "Growth is plant progress: each counted card answer adds 10 base Growth to the plant you "
+    "nurture. Anki streaks, Fertilizer, Booster Potions, equipped Weather and Scenery, and "
+    "Growth Charges can add separate bonuses."
 )
 
 ACTIVE_PLANT_EXPLANATION = (
@@ -18,15 +20,18 @@ ALL_DUE_EXPLANATION = (
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
-    "Garden Coins come from study goals and milestones. Spend them in the Nursery."
+    "Garden Coins come from plant stages, Anki streak milestones, finishing all due cards, "
+    "and rare review gifts. Spend them in the Nursery on plants, supplements, permanent "
+    "upgrades, Weather, and Scenery."
 )
 
 FERTILIZER_EXPLANATION = (
     "Fertilizer temporarily adds direct Growth to the plant you nurture: Basic adds 1, Quality "
-    "adds 2, and Premium adds 3 Growth per answer while active."
+    "adds 2, and Magical adds 3 Growth per answer while active."
 )
 
 PROGRESSION_SUMMARY = (
-    "Card answers add Growth to the plant you nurture. Streaks can add bonus Growth, and "
-    "study goals and milestones earn Garden Coins."
+    "Card answers add Growth to the plant you nurture. Streaks, supplements, Weather, and "
+    "Scenery can add bonus Growth, while stages, streak milestones, all-due completion, and "
+    "rare gifts earn Garden Coins."
 )

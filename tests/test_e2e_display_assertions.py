@@ -127,7 +127,6 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220):
     addon.mw = aqt_mod.mw
 
     app = addon.AnkiGardenApp.__new__(addon.AnkiGardenApp)
-    app._menu_action = None
     app.dashboard = None
     app._home_widget_hooked = False
     app._home_bridge_hooked = False
@@ -148,12 +147,12 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-active-name">Aster</div>' in html
     assert 'data-testid="home-growth">250</span>' in html
-    assert 'data-testid="home-streak">8 days</div>' in html
+    assert 'data-testid="home-streak"><span class="ag-home__streak-number">8</span><span class="ag-home__streak-unit">days</span></div>' in html
     assert 'data-testid="home-currency">35</div>' in html
     assert 'data-testid="home-weather"' not in html
     assert 'data-testid="home-streak-bar"' in html
-    assert 'aria-valuemax="14" aria-valuenow="8"' in html
-    assert 'style="width:57%"' in html
+    assert 'aria-valuemax="100" aria-valuenow="36"' in html
+    assert 'style="width:36%"' in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
@@ -174,11 +173,11 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-streak">9 days</div>' in updated
+    assert 'data-testid="home-streak"><span class="ag-home__streak-number">9</span><span class="ag-home__streak-unit">days</span></div>' in updated
     assert 'data-testid="home-growth">310</span>' in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-streak">9 days</div>' in refreshed
+    assert 'data-testid="home-streak"><span class="ag-home__streak-number">9</span><span class="ag-home__streak-unit">days</span></div>' in refreshed
     assert 'data-testid="home-growth">310</span>' in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
@@ -202,4 +201,4 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
         assert 'data-testid="home-reviews"' not in rendered
         assert 'data-testid="home-active-name">Aster</div>' in rendered
         assert 'data-testid="home-growth">250</span>' in rendered
-        assert 'data-testid="home-streak">8 days</div>' in rendered
+        assert 'data-testid="home-streak"><span class="ag-home__streak-number">8</span><span class="ag-home__streak-unit">days</span></div>' in rendered

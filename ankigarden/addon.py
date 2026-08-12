@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from html import escape
 from pathlib import Path
 from typing import Any, Optional
@@ -16,7 +17,7 @@ from .display_telemetry import DISPLAY_TELEMETRY
 from .game import GardenGameEngine
 from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
-from .storage import GardenStorage
+from .storage import GardenStorage, SchedulerBoundaryError
 from .ui.dashboard import GardenDashboard
 from .ui.home_widget import (
     HomeWidgetStateController,
@@ -100,7 +101,6 @@ class AnkiGardenApp:
         self.engine = GardenGameEngine(self.config, self.storage)
         self.reviewer_hooks = ReviewerHookHandler(self.engine, self.storage)
         self.dashboard: Optional[GardenDashboard] = None
-        self._menu_action: Optional[QAction] = None
         self._settings_action: Optional[QAction] = None
         self._home_widget_hooked = False
         self._home_bridge_hooked = False
@@ -118,12 +118,25 @@ class AnkiGardenApp:
             mw.addonManager.setWebExports(__name__, r"assets/.*\.(svg|png|webp)")
         except Exception:
             logger.exception("Anki Garden: unable to register bundled web assets")
-        self._setup_menu()
         self._setup_settings_menu()
         self._setup_home_screen_widget()
         self._setup_reviewer_hook()
         self._setup_sync_hooks()
         self._run_garden_maintenance("startup")
+        self._maybe_start_ui_face_capture()
+
+    def _maybe_start_ui_face_capture(self) -> None:
+        if os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1":
+            return
+        if getattr(self, "_ui_face_capture_active", False):
+            return
+        self._ui_face_capture_active = True
+        try:
+            from .capture_ui_faces import start_capture
+
+            start_capture(self)
+        except Exception:
+            logger.exception("Anki Garden: unable to start UI-face capture mode")
 
     def _run_garden_maintenance(self, source: str) -> bool:
         """Run rollover and revlog catch-up behind one fail-closed boundary."""
@@ -132,7 +145,28 @@ class AnkiGardenApp:
             if callable(prepare_ledger):
                 prepare_ledger()
             self.engine.rollover_if_needed()
+            reconcile_streak = getattr(self.engine, "reconcile_retrospective_streak", None)
+            if callable(reconcile_streak):
+                # This only updates the scalar streak and unclaimed historical
+                # Coin milestones. It never replays Growth or random drops.
+                reconcile_streak()
             catchup_result = self._apply_same_day_catchup()
+        except SchedulerBoundaryError:
+            # Anki constructs add-ons before the collection scheduler is fully
+            # available. That startup state is expected and will be retried by
+            # the first collection-backed entry point, so do not emit a scary
+            # exception trace or a premature learner warning.
+            logger.info(
+                "Anki Garden: maintenance waiting for scheduler during %s",
+                source,
+            )
+            if source != "startup":
+                USER_NOTICES.publish(
+                    "Garden progress is temporarily paused while review history is unavailable. "
+                    "Your Anki reviews are safe, and Garden will retry automatically.",
+                    key="review_history",
+                )
+            return False
         except Exception:
             logger.exception("Anki Garden: maintenance deferred during %s", source)
             USER_NOTICES.publish(
@@ -166,8 +200,8 @@ class AnkiGardenApp:
         except Exception:
             logger.debug("Anki Garden: live Garden could not refresh after maintenance", exc_info=True)
             USER_NOTICES.publish(
-                "Your Garden progress is safe, but the display could not refresh yet. "
-                "Reopen the Garden to retry.",
+                "Your garden progress is safe, but the display could not refresh. "
+                "Reopen Anki Garden to try again.",
                 key="display_refresh",
             )
         try:
@@ -182,35 +216,6 @@ class AnkiGardenApp:
             return
         reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
         self._reviewer_hooked = True
-
-    def _setup_menu(self) -> None:
-        if self._menu_action is not None:
-            return
-
-        existing_actions = []
-        menu_tools = getattr(getattr(mw, "form", None), "menuTools", None)
-        if menu_tools is not None and hasattr(menu_tools, "actions"):
-            try:
-                existing_actions = list(menu_tools.actions())
-            except Exception:
-                existing_actions = []
-
-        for action in existing_actions:
-            if _qt_action_text(action) == "Anki Garden":
-                self._menu_action = action
-                logger.debug("Anki Garden menu action already registered.")
-                return
-
-        if menu_tools is None or not callable(getattr(menu_tools, "addAction", None)):
-            # Custom Anki shells can expose the menu bar a little later than
-            # add-on startup. The dashboard and home hooks remain usable even
-            # when the optional Tools entry is unavailable.
-            logger.warning("Anki Garden: Tools menu is unavailable during startup")
-            return
-        action = QAction("Anki Garden", mw)
-        action.triggered.connect(self.open_dashboard)
-        mw.form.menuTools.addAction(action)
-        self._menu_action = action
 
     def _settings_menu_bar(self) -> Any:
         """Resolve Anki's shared top-level add-on menu across Qt versions."""

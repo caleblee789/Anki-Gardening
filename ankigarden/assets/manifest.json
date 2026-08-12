@@ -1,23 +1,7 @@
 {
   "schema_version": 3,
-  "generated_by": "Verdant Twilight V6 incremental direct-soil catalog build",
+  "generated_by": "Verdant Twilight V6 weather and scenery collection overhaul",
   "assets": [
-    {
-      "asset_id": "weather_sunny_performance",
-      "category": "weather",
-      "slot": {
-        "weather": "sunny"
-      },
-      "quality_profile": "performance",
-      "file": "assets/support/weather/sunny/sunny_performance.svg",
-      "width": 256,
-      "height": 192,
-      "format": "svg",
-      "quality_tier": "performance",
-      "quality_score": 0.76,
-      "source": "cozy_handpainted_v2 migration",
-      "attribution": "CC0 bundled vector"
-    },
     {
       "asset_id": "weather_sunny_balanced",
       "category": "weather",
@@ -31,22 +15,6 @@
       "format": "svg",
       "quality_tier": "balanced",
       "quality_score": 0.86,
-      "source": "cozy_handpainted_v2 migration",
-      "attribution": "CC0 bundled vector"
-    },
-    {
-      "asset_id": "weather_cloudy_performance",
-      "category": "weather",
-      "slot": {
-        "weather": "cloudy"
-      },
-      "quality_profile": "performance",
-      "file": "assets/support/weather/cloudy/cloudy_performance.svg",
-      "width": 256,
-      "height": 192,
-      "format": "svg",
-      "quality_tier": "performance",
-      "quality_score": 0.76,
       "source": "cozy_handpainted_v2 migration",
       "attribution": "CC0 bundled vector"
     },
@@ -67,22 +35,6 @@
       "attribution": "CC0 bundled vector"
     },
     {
-      "asset_id": "weather_fireflies_performance",
-      "category": "weather",
-      "slot": {
-        "weather": "fireflies"
-      },
-      "quality_profile": "performance",
-      "file": "assets/support/weather/fireflies/fireflies_performance.svg",
-      "width": 256,
-      "height": 192,
-      "format": "svg",
-      "quality_tier": "performance",
-      "quality_score": 0.76,
-      "source": "cozy_handpainted_v2 migration",
-      "attribution": "CC0 bundled vector"
-    },
-    {
       "asset_id": "weather_fireflies_balanced",
       "category": "weather",
       "slot": {
@@ -95,22 +47,6 @@
       "format": "svg",
       "quality_tier": "balanced",
       "quality_score": 0.86,
-      "source": "cozy_handpainted_v2 migration",
-      "attribution": "CC0 bundled vector"
-    },
-    {
-      "asset_id": "weather_gentle_rain_performance",
-      "category": "weather",
-      "slot": {
-        "weather": "gentle_rain"
-      },
-      "quality_profile": "performance",
-      "file": "assets/support/weather/gentle_rain/gentle_rain_performance.svg",
-      "width": 256,
-      "height": 192,
-      "format": "svg",
-      "quality_tier": "performance",
-      "quality_score": 0.76,
       "source": "cozy_handpainted_v2 migration",
       "attribution": "CC0 bundled vector"
     },
@@ -131,22 +67,6 @@
       "attribution": "CC0 bundled vector"
     },
     {
-      "asset_id": "weather_breeze_performance",
-      "category": "weather",
-      "slot": {
-        "weather": "breeze"
-      },
-      "quality_profile": "performance",
-      "file": "assets/support/weather/breeze/breeze_performance.svg",
-      "width": 256,
-      "height": 192,
-      "format": "svg",
-      "quality_tier": "performance",
-      "quality_score": 0.76,
-      "source": "cozy_handpainted_v2 migration",
-      "attribution": "CC0 bundled vector"
-    },
-    {
       "asset_id": "weather_breeze_balanced",
       "category": "weather",
       "slot": {
@@ -161,6 +81,152 @@
       "quality_score": 0.86,
       "source": "cozy_handpainted_v2 migration",
       "attribution": "CC0 bundled vector"
+    },
+    {
+      "asset_id": "weather_snow_flurry_balanced",
+      "category": "weather",
+      "slot": {
+        "weather": "snow_flurry"
+      },
+      "quality_profile": "balanced",
+      "file": "assets/support/weather/snow_flurry/snow_flurry_balanced.svg",
+      "width": 256,
+      "height": 192,
+      "format": "svg",
+      "alpha": true,
+      "quality_tier": "balanced",
+      "quality_score": 0.9,
+      "source": "Purpose-built transparent weather overlay",
+      "attribution": "Created for Anki Garden"
+    },
+    {
+      "asset_id": "weather_rainbow_sunshower_balanced",
+      "category": "weather",
+      "slot": {
+        "weather": "rainbow_sunshower"
+      },
+      "quality_profile": "balanced",
+      "file": "assets/support/weather/rainbow_sunshower/rainbow_sunshower_balanced.svg",
+      "width": 256,
+      "height": 192,
+      "format": "svg",
+      "alpha": true,
+      "quality_tier": "balanced",
+      "quality_score": 0.94,
+      "source": "Purpose-built transparent weather overlay",
+      "attribution": "Created for Anki Garden"
+    },
+    {
+      "asset_id": "ui_fertilizer_basic",
+      "category": "ui",
+      "slot": {"ui_id": "fertilizer_basic"},
+      "variants": ["storybook_gouache", "catalog"],
+      "file": "assets/v6_storybook_gouache/ui/fertilizer_basic.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "source": "OpenAI image generation with deterministic label composition",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_fertilizer_quality",
+      "category": "ui",
+      "slot": {"ui_id": "fertilizer_quality"},
+      "variants": ["storybook_gouache", "catalog"],
+      "file": "assets/v6_storybook_gouache/ui/fertilizer_quality.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.98,
+      "source": "OpenAI image generation with deterministic label composition",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_fertilizer_magical",
+      "category": "ui",
+      "slot": {"ui_id": "fertilizer_premium"},
+      "variants": ["storybook_gouache", "catalog"],
+      "file": "assets/v6_storybook_gouache/ui/fertilizer_premium.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with deterministic label composition",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_booster_potion",
+      "category": "ui",
+      "slot": {"ui_id": "booster_potion"},
+      "variants": ["storybook_gouache", "catalog", "rare_drop"],
+      "file": "assets/v6_storybook_gouache/ui/booster_potion.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_growth_charge_small",
+      "category": "ui",
+      "slot": {"ui_id": "growth_charge_small"},
+      "variants": ["storybook_gouache", "catalog", "one_pip"],
+      "file": "assets/v6_storybook_gouache/ui/growth_charge_small.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_growth_charge_standard",
+      "category": "ui",
+      "slot": {"ui_id": "growth_charge_standard"},
+      "variants": ["storybook_gouache", "catalog", "two_pip"],
+      "file": "assets/v6_storybook_gouache/ui/growth_charge_standard.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_growth_charge_grand",
+      "category": "ui",
+      "slot": {"ui_id": "growth_charge_grand"},
+      "variants": ["storybook_gouache", "catalog", "three_pip", "drop_only"],
+      "file": "assets/v6_storybook_gouache/ui/growth_charge_grand.png",
+      "width": 1254,
+      "height": 1254,
+      "format": "png",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
     },
     {
       "asset_id": "decor_lantern",
@@ -10042,91 +10108,49 @@
               "landmark_id": "nursery_entrance",
               "action_id": "garden.nursery.open",
               "label": "Nursery",
-              "tooltip": "Nursery — coming soon",
+              "tooltip": "Open Nursery",
               "role": "button",
-              "supported_variants": [
-                "4:3",
-                "16:9",
-                "home"
-              ],
+              "supported_variants": ["4:3", "16:9", "home"],
               "variants": {
                 "4:3": {
-                  "bounds": [
-                    0.077,
-                    0.15,
-                    0.145,
-                    0.17
-                  ],
-                  "polygon": [
-                    [
-                      0.077,
-                      0.15
-                    ],
-                    [
-                      0.22199999999999998,
-                      0.15
-                    ],
-                    [
-                      0.22199999999999998,
-                      0.32
-                    ],
-                    [
-                      0.077,
-                      0.32
-                    ]
-                  ]
+                  "bounds": [0.077, 0.15, 0.145, 0.17],
+                  "polygon": [[0.077, 0.205], [0.094, 0.168], [0.14, 0.15], [0.205, 0.167], [0.222, 0.205], [0.215, 0.32], [0.083, 0.32]],
+                  "label_anchor": [0.1495, 0.33]
                 },
                 "16:9": {
-                  "bounds": [
-                    0.196,
-                    0.183,
-                    0.105,
-                    0.17
-                  ],
-                  "polygon": [
-                    [
-                      0.196,
-                      0.183
-                    ],
-                    [
-                      0.301,
-                      0.183
-                    ],
-                    [
-                      0.301,
-                      0.353
-                    ],
-                    [
-                      0.196,
-                      0.353
-                    ]
-                  ]
+                  "bounds": [0.196, 0.183, 0.105, 0.17],
+                  "polygon": [[0.196, 0.235], [0.207, 0.198], [0.247, 0.183], [0.291, 0.198], [0.301, 0.235], [0.296, 0.353], [0.201, 0.353]],
+                  "label_anchor": [0.2485, 0.363]
                 },
                 "home": {
-                  "bounds": [
-                    0.224,
-                    0.169,
-                    0.08,
-                    0.173
-                  ],
-                  "polygon": [
-                    [
-                      0.224,
-                      0.169
-                    ],
-                    [
-                      0.304,
-                      0.169
-                    ],
-                    [
-                      0.304,
-                      0.34199999999999997
-                    ],
-                    [
-                      0.224,
-                      0.34199999999999997
-                    ]
-                  ]
+                  "bounds": [0.224, 0.169, 0.08, 0.173],
+                  "polygon": [[0.224, 0.222], [0.232, 0.184], [0.264, 0.169], [0.296, 0.184], [0.304, 0.222], [0.3, 0.342], [0.228, 0.342]],
+                  "label_anchor": [0.264, 0.352]
+                }
+              }
+            },
+            {
+              "landmark_id": "garden_house",
+              "action_id": "garden.progress.open",
+              "label": "Garden Progress",
+              "tooltip": "Open Garden Progress",
+              "role": "button",
+              "supported_variants": ["4:3", "16:9", "home"],
+              "variants": {
+                "4:3": {
+                  "bounds": [0.793, 0.09, 0.145, 0.24],
+                  "polygon": [[0.793, 0.205], [0.817, 0.143], [0.835, 0.115], [0.917, 0.112], [0.938, 0.162], [0.938, 0.33], [0.802, 0.33]],
+                  "label_anchor": [0.865, 0.34]
+                },
+                "16:9": {
+                  "bounds": [0.708, 0.16, 0.135, 0.22],
+                  "polygon": [[0.708, 0.245], [0.726, 0.195], [0.765, 0.16], [0.825, 0.197], [0.843, 0.245], [0.835, 0.38], [0.716, 0.38]],
+                  "label_anchor": [0.7755, 0.39]
+                },
+                "home": {
+                  "bounds": [0.679, 0.116, 0.09, 0.246],
+                  "polygon": [[0.679, 0.235], [0.695, 0.16], [0.709, 0.116], [0.754, 0.145], [0.769, 0.2], [0.767, 0.362], [0.684, 0.362]],
+                  "label_anchor": [0.724, 0.372]
                 }
               }
             }
@@ -11644,6 +11668,190 @@
             }
           }
         }
+      }
+    },
+    {
+      "asset_id": "bg_spring_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "spring", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_summer_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "summer", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_autumn_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "autumn", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_snowy_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "snowy", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_rainbow_horizon_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "rainbow_horizon", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_halloween_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "halloween", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_full_moon_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "full_moon", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home_front_occlusion.png"}}
+      }
+    },
+    {
+      "asset_id": "bg_eclipse_any_soil_master_v6",
+      "category": "backgrounds",
+      "slot": {"season": "eclipse", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
+      "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready", "scenery_reskin"],
+      "file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp",
+      "width": 1280,
+      "height": 960,
+      "format": "webp",
+      "alpha": false,
+      "style_family": "storybook_gouache",
+      "release_preferred": false,
+      "quality_tier": "ultra",
+      "quality_score": 0.995,
+      "source": "OpenAI image edit from the canonical Verdant Twilight V6 masters",
+      "attribution": "Generated for Anki Garden",
+      "placement_ref": "bg_verdant_twilight_any_soil_master_v6",
+      "surface_files": {
+        "4:3": {"file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3_front_occlusion.png"}},
+        "16:9": {"file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9_front_occlusion.png"}},
+        "home": {"file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home.webp", "occlusion_file": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_occlusion.png", "occlusion_layers": {"rear": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_rear_occlusion.png", "front": "assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home_front_occlusion.png"}}
       }
     },
     {

@@ -3,29 +3,48 @@
 - Date: 2026-08-10
 - Branch: `codex/clean-and-publish-garden`
 - Anki runtime target: 26.08
-- Package line: `2.1.0`, state schema 14, scene geometry 6
+- Package line: `2.1.0`, state schema 16, scene geometry 6
 
 ## Current release status
 
-Verdant Twilight V6 and the schema 14 garden-first interface supersede the
+Verdant Twilight V6, its geometry-compatible environment library, and the
+schema 16 garden-first interface supersede the
 earlier placement candidate. Do not reuse old package hashes, hard-coded test or
 asset counts, screenshots, or runtime acceptance claims. Release acceptance is
 earned only after rebuilding the final source, passing every gate below, and
 testing that exact archive in an identity-verified disposable Anki profile.
 
+## Current candidate verification
+
+- Automated gates: 1,358 tests passed; isolated-cache Python compilation,
+  asset audit, and `git diff --check` passed.
+- Asset audit: 9 backgrounds, 60 plant-stage sprites, 7 Weather overlays,
+  7 catalog UI illustrations, and 1 decoration.
+- Package gates: ZIP integrity and package-content tests passed for 249 files.
+  The archive is 78,369,480 bytes with SHA-256
+  `077cdf68e76ca69ad03096ee1d9ad6ddbc1e6a8b14fa21888a97a44835aeb4bb`.
+- Isolated Anki 26.08 smoke: the exact archive loaded in the uniquely keyed,
+  sync-disabled disposable base, reached the main loop, and created fresh
+  schema-16 state. Startup maintenance deferred at INFO level until Anki exposed
+  its scheduler-day cutoff, with no add-on error traceback. The disposable
+  process then exited cleanly.
+- Visual acceptance remains partial because the test Mac was locked; no claim
+  is made for the final interactive screenshots or pixel-level journeys.
+
 ## Current remediation contract
 
 | Area | Required result |
 |---|---|
-| State | Schema 14 keeps transactional fresh-starter selection, a bounded current-scheduler-day processed-ID ledger, a compatibility-only scalar cursor, answer-time Nurture periods, and bounded per-plant Fertilizer activation history. Schemas 10–13 migrate without reviving removed progression systems or losing entitlement-only species. |
-| Scene | Verdant Twilight V6 provides six direct-soil spaces, responsive composition, depth/occlusion metadata, and the manifest-backed Nursery landmark. |
-| Home | Deck Browser and Overview show only noninteractive art, nurtured-plant Growth, Anki streak, Garden Coins, and Open Garden. |
-| Garden | A compact three-metric strip remains above the scene; Today, Achievements, Collection, detailed Growth, and Coin activity live in collapsed Progress. |
-| Nursery | First Open Garden auto-opens one free starter. Later access is through the full-Garden landmark only. Stock is derived from complete release-preferred V6 stage lines; current ready species are Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia. |
+| State | Schema 16 adds environment entitlements/loadout/visibility, Growth Charges, separate Growth sources, daily passive claims, and Ultra pity while retaining schema-15 Garden/review/supplement state. |
+| Scene | Verdant Twilight V6 provides six fixed direct-soil spaces, responsive composition, depth/occlusion metadata, and shaped Nursery/cottage landmarks. Eight Scenery reskins preserve those exact masks, placements, and hotspots; seven Weather overlays compose over all nine settings. |
+| Home | Deck Browser and Overview show a compact named, noninteractive preview with relative Growth/streak bars, Garden Coins, and Open Garden. |
+| Garden | A centered named header, three clickable metric cards, and scene share one themed frame; header/cottage Progress opens the separate Today/Achievements/Collection/Weather & Scenery/How it grows window. |
+| Nursery | First Open Garden names the Garden and opens one free starter. Later access opens a four-tab catalog adding Weather & Scenery; stock still derives from complete V6 lines and environment purchases never auto-equip. |
 | Plant actions | The compact card uses Nurture, Fertilize, Move, and Story. Move selects scene destinations directly, saves immediately, and offers Undo without a dropdown or Done button. |
-| Fertilizer | Cards disclose exact Coin cost, direct Growth effect, and duration before purchase. Bonus eligibility is `started_at <= answer_time < expires_at`; same-tier extension remains one interval, replacement truncates and archives the old tier, expired repurchase retains the prior interval, and save/cap failure spends nothing. |
-| Story | Timeline is oldest to newest with compact hero, inline rename, early-story state, and Up next. |
-| Settings | Read-only Verdant Twilight card, real live preview, Garden display, Motion, collapsed Fine tune, explicit Save/Cancel, staged defaults, and preserved Troubleshooting. |
+| Supplements | Basic, Quality, and Magical Fertilizer retain exact Coin/effect/interval contracts. Booster Potions add +5 Growth for two hours and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 Growth atomically; Grand remains earn-only. |
+| Rewards | One ordered deterministic roll awards at most one environment, Charge, Booster, or 50-Coin cache. Exact odds, completed-tier Charge fallbacks, daily scenery gifts, and stepped no-guarantee Ultra pity match the catalog. |
+| Story | Timeline is oldest to newest with enlarged stage art, explicit name/species/stage, relative Growth bar, inline rename, early-story state, and Up next. |
+| Settings | Environment, art-quality/detail/performance, animation, and Fine tune choices are absent. Balanced art and reduced-motion behavior are automatic; display/notification Save/Cancel and temporary backup/populate/restore remain. |
 | Language | Learner-facing surfaces use Nurture and Garden Coins. Internal compatibility fields such as `active_plant_id` and `currency_balance` remain unchanged. |
 
 ## Required automated and package gates
@@ -38,14 +57,39 @@ testing that exact archive in an identity-verified disposable Anki profile.
   byte-for-byte source/archive parity for shipped files.
 - `git diff --check` and a stale-copy audit covering schema version, learner
   terminology, home metrics, Nursery access, movement controls, Story ordering,
-  Settings behavior, scheduler-day ledger boundaries, and Fertilizer interval
-  history.
+  Settings behavior, scheduler-day ledger boundaries, retrospective streaks,
+  reward bands/pity/daily gifts, environment passives, Growth Charges, and
+  Fertilizer/Booster interval history.
 - Record the final commands, results, artifact file count, and SHA-256 only after
   the source is frozen; never carry forward historical counts.
 
-## August 10 V6 plant-library revision evidence
+## August 10 Weather and Scenery overhaul evidence
 
-The ten-line Verdant Twilight library now uses one standardized progression:
+- Automated regression: 1,358 tests passed in 23.38 seconds.
+- Asset audit: 9 backgrounds, 60 plants, 7 balanced Weather overlays, 7 UI
+  assets, and 1 decoration; canonical Scenery alpha masks and V6 placements
+  passed.
+- Visual review: all nine 4:3, 16:9, and home plates preserve the six beds,
+  Nursery, cottage, and path while remaining visually distinct.
+- Final archive: 249 files, 78,369,480 bytes, SHA-256
+  `077cdf68e76ca69ad03096ee1d9ad6ddbc1e6a8b14fa21888a97a44835aeb4bb`;
+  ZIP integrity, compilation, package-content parity, and `git diff --check`
+  passed.
+- Exact-package isolated startup used Anki 26.08, profile
+  `Codex QA Weather Final 20260810-234142`, base
+  `/private/tmp/anki-release-qa.lr6q83ma`, and instance-key fingerprint
+  `e6c51dabb84b`. Process, filesystem, and sync-disabled gates passed; the
+  candidate imported, registered its hooks, and deferred pre-collection
+  maintenance without an error traceback. The Mac was locked, so the
+  required PID-owned window gate and all UI interactions/restart assertions were
+  intentionally not attempted. PID 55512 exited and its WAL closed. Runtime UI
+  acceptance therefore remains partial rather than passed.
+
+## Historical August 10 V6 plant-library revision evidence
+
+This checkpoint predates the current schema-16 environment bundle. Its archive
+size, hash, and test count are historical only. The ten-line Verdant Twilight
+library established one standardized progression:
 Seed, Sprout, Young, Mature, Flowering, and Rare. All 60 canonical plant sprites
 have exact source-master/hash metadata, normalized transparent canvases, and
 bottom-center direct-soil placement. Rare stages use a related but structurally
@@ -90,9 +134,11 @@ interacting—and again after restarting only the disposable process—verify:
    sync-disabled.
 
 Then complete every journey in `e2e_display_assertions.md`, including fresh
-starter choice, preselection review behavior, both home surfaces, Nursery
-mouse/keyboard access, dynamic stock, collection transactions, direct Move and
-Undo, Fertilizer cards, real reviews and catch-up, Story, Settings,
+Garden naming, starter choice, preselection review behavior, both home surfaces,
+both scene landmarks, metric details, four-tab Nursery, environment collection
+loadout/visibility, all Scenery/Weather combinations, Growth Charges, collection
+transactions, direct Move and Undo, Fertilizer/Booster cards, seeded reward
+bands/pity/daily gifts, real reviews and catch-up, Story, Settings,
 accessibility, reduced motion, responsive layouts, and restart persistence.
 
 The catch-up journey must include an out-of-order lower ID after a higher ID,
@@ -100,7 +146,8 @@ prior-day and future/device-skew rows, database/cutoff/save failure followed by
 retry, and a restart. Only supported rows in `[scheduler-day start, cutoff)` may
 be marked processed; every eligible row must apply exactly once. The Fertilizer
 journey must sync answers before, during, and after activation, then repeat after
-same-tier extension, tier replacement, expired repurchase, and restart.
+same-tier extension, tier replacement, expired repurchase, Booster stacking, and
+restart.
 
 Record the accepted archive hash and identity evidence here only after all four
 gates and every required journey pass. Until then, the current candidate is not
