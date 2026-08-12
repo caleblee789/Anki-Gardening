@@ -8,7 +8,7 @@ from typing import Any
 
 from aqt.qt import (
     QColor, QEvent, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
-    QRectF, QTimer, QToolButton, QToolTip, QWidget, Qt, pyqtSignal,
+    QPointF, QRectF, QTimer, QToolButton, QToolTip, QWidget, Qt, pyqtSignal,
 )
 
 try:
@@ -28,6 +28,7 @@ from .landmarks import (
     LandmarkAction,
     normalized_landmark_action,
     project_landmark_bounds,
+    project_landmark_polygon,
     resolve_scene_landmarks,
 )
 from .plant_display import (
@@ -115,6 +116,8 @@ class GardenSceneWidget(QWidget):
         self._landmark_actions: dict[str, LandmarkAction] = dict(DEFAULT_LANDMARK_ACTIONS)
         self._landmark_action_by_id: dict[str, str] = {}
         self._landmark_rects: dict[str, QRectF] = {}
+        self._landmark_polygons: dict[str, tuple[tuple[float, float], ...]] = {}
+        self._landmark_labels: dict[str, str] = {}
         self._landmark_hotspots: dict[str, QToolButton] = {}
         self._landmark_action_id = ""  # Compatibility alias for the first active landmark.
         self._nursery_hotspot = self._create_landmark_hotspot("nursery_entrance")
@@ -125,10 +128,10 @@ class GardenSceneWidget(QWidget):
         self.placementStateChanged.connect(lambda _active: self._sync_landmark_hotspot())
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self.interactive else Qt.FocusPolicy.NoFocus)
-        self.setAccessibleName("Interactive study garden" if self.interactive else "Garden preview")
+        self.setAccessibleName("Interactive garden" if self.interactive else "Garden preview")
         self.setAccessibleDescription(
-            "Select a plant to open accessible garden actions."
-            if self.interactive else "Preview only. This garden does not contain interactive controls."
+            "Select a plant to view its actions."
+            if self.interactive else "This preview is not interactive."
         )
         self._hover_close_timer = QTimer(self)
         self._hover_close_timer.setSingleShot(True)
@@ -206,10 +209,10 @@ class GardenSceneWidget(QWidget):
     def set_interactive(self, interactive: bool) -> None:
         self.interactive = bool(interactive)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self.interactive else Qt.FocusPolicy.NoFocus)
-        self.setAccessibleName("Interactive study garden" if self.interactive else "Garden preview")
+        self.setAccessibleName("Interactive garden" if self.interactive else "Garden preview")
         self.setAccessibleDescription(
-            "Select a plant to open accessible garden actions."
-            if self.interactive else "Preview only. This garden does not contain interactive controls."
+            "Select a plant to view its actions."
+            if self.interactive else "This preview is not interactive."
         )
         if not self.interactive:
             self._interaction.cancel_placement()
@@ -239,15 +242,13 @@ class GardenSceneWidget(QWidget):
                 watched.click()
                 event.accept()
                 return True
-            if event.type() in (QEvent.Type.Enter, QEvent.Type.FocusIn) and watched.toolTip():
-                QToolTip.showText(
-                    watched.mapToGlobal(watched.rect().bottomLeft()),
-                    watched.toolTip(),
-                    watched,
-                )
-            elif event.type() in (QEvent.Type.Leave, QEvent.Type.FocusOut):
-                if not watched.hasFocus() and not watched.underMouse():
-                    QToolTip.hideText()
+            if event.type() in (
+                QEvent.Type.Enter,
+                QEvent.Type.Leave,
+                QEvent.Type.FocusIn,
+                QEvent.Type.FocusOut,
+            ):
+                self.update()
         return super().eventFilter(watched, event)
 
     def _focus_stats_help(self) -> None:
@@ -439,9 +440,7 @@ class GardenSceneWidget(QWidget):
         button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setStyleSheet(
-            "QToolButton { background:transparent; border:1px solid transparent; border-radius:12px; } "
-            "QToolButton:hover, QToolButton:focus { background:rgba(244,198,103,.16); "
-            "border:2px solid rgba(255,226,151,.9); }"
+            "QToolButton { background:transparent; border:0; }"
         )
         button.clicked.connect(
             lambda _checked=False, landmark_id=landmark_id: self._activate_landmark_by_id(landmark_id)
@@ -463,6 +462,8 @@ class GardenSceneWidget(QWidget):
         self._landmark_action_id = ""
         self._landmark_action_by_id.clear()
         self._landmark_rects.clear()
+        getattr(self, "_landmark_polygons", {}).clear()
+        getattr(self, "_landmark_labels", {}).clear()
         if self._interaction.placing:
             self.landmarksChanged.emit()
             return
@@ -504,12 +505,20 @@ class GardenSceneWidget(QWidget):
                 button = self._create_landmark_hotspot(landmark.landmark_id)
             button.setAccessibleName(landmark.accessible_name)
             button.setAccessibleDescription(landmark.tooltip)
-            button.setToolTip(landmark.tooltip)
+            button.setToolTip("")
             button.setGeometry(*geometry)
             button.show()
             button.raise_()
             self._landmark_action_by_id[landmark.landmark_id] = landmark.action_id
             self._landmark_rects[landmark.landmark_id] = QRectF(*geometry)
+            self._landmark_polygons[landmark.landmark_id] = project_landmark_polygon(
+                landmark,
+                width=self.width(),
+                height=self.height(),
+                source_aspect=source_aspect,
+                focal=focal,
+            )
+            self._landmark_labels[landmark.landmark_id] = landmark.accessible_name
         self._landmark_action_id = next(iter(self._landmark_action_by_id.values()), "")
         self.landmarksChanged.emit()
 
@@ -759,6 +768,7 @@ class GardenSceneWidget(QWidget):
             if bool(self.scene.get("motion_enabled", True)):
                 self._draw_weather_motion(painter, r, str(weather), density)
 
+            self._draw_landmark_affordances(painter)
             self._draw_slot_placeholders(painter)
             self._draw_status_overlay(painter, r, growth, glow)
             if self._stats_help_visible:
@@ -768,6 +778,50 @@ class GardenSceneWidget(QWidget):
         except Exception:
             self._clear_hit_targets()
             self._draw_fallback_scene(painter, r)
+
+    def _draw_landmark_affordances(self, painter: QPainter) -> None:
+        """Trace building silhouettes while keeping generous rectangular hits."""
+
+        if self._interaction.placing:
+            return
+        for landmark_id, button in self._landmark_hotspots.items():
+            if not button.isVisible() or not (button.underMouse() or button.hasFocus()):
+                continue
+            points = self._landmark_polygons.get(landmark_id, ())
+            if len(points) < 3:
+                continue
+            path = QPainterPath()
+            path.moveTo(QPointF(*points[0]))
+            for point in points[1:]:
+                path.lineTo(QPointF(*point))
+            path.closeSubpath()
+            focused = button.hasFocus()
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(
+                QColor("#e5f2a6") if focused else QColor(244, 213, 138, 235),
+                3.0 if focused else 2.0,
+            ))
+            painter.setBrush(QColor(244, 198, 103, 34))
+            painter.drawPath(path)
+            bounds = path.boundingRect()
+            label_text = self._landmark_labels.get(landmark_id, "Open")
+            metrics = painter.fontMetrics()
+            label_width = min(
+                max(84.0, float(metrics.horizontalAdvance(label_text) + 24)),
+                max(84.0, float(self.width() - 16)),
+            )
+            label_height = 28.0
+            label_x = max(8.0, min(float(self.width()) - label_width - 8.0, bounds.center().x() - label_width / 2))
+            below = bounds.bottom() + 7.0
+            label_y = below if below + label_height <= self.height() - 8 else bounds.top() - label_height - 7.0
+            label_rect = QRectF(label_x, max(8.0, label_y), label_width, label_height)
+            painter.setPen(QPen(QColor(244, 213, 138, 130), 1.0))
+            painter.setBrush(QColor(18, 32, 27, 226))
+            painter.drawRoundedRect(label_rect, 10, 10)
+            painter.setPen(QColor(247, 239, 214))
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, label_text)
+            painter.restore()
 
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
         if not bool(self.scene.get("show_status_overlay", True)) or rect.width() < 520:
@@ -1118,7 +1172,22 @@ class GardenSceneWidget(QWidget):
                 fill_color = QColor(111, 88, 49, 150 if active else 32)
             painter.setPen(QPen(pen_color, 2.4 if active and not blocked else 1.4))
             painter.setBrush(fill_color)
-            painter.drawEllipse(footprint.adjusted(-6, -3, 6, 3))
+            # The two rear beds are small enough for the original fixed halo.
+            # The middle and foreground beds are materially larger, so expand
+            # their target from the rendered soil footprint instead of leaving
+            # a visibly undersized ring inside the bed.
+            if layout.depth_band == "far":
+                move_footprint = footprint.adjusted(-6, -3, 6, 3)
+            else:
+                horizontal_padding = max(6.0, layout.bed_footprint.width * 0.08)
+                vertical_padding = max(3.0, layout.bed_footprint.height * 0.12)
+                move_footprint = footprint.adjusted(
+                    -horizontal_padding,
+                    -vertical_padding,
+                    horizontal_padding,
+                    vertical_padding,
+                )
+            painter.drawEllipse(move_footprint)
             # The rings carry the complete destination map. A short label is
             # reserved for the current, hovered, or keyboard-selected space.
             if not (current or active or slot == hovered_slot):
@@ -1239,14 +1308,14 @@ class GardenSceneWidget(QWidget):
             occupied_slots=occupied,
             occupant_names=occupant_names,
         )
-        self.setAccessibleName(f"Bed {slot + 1}: {label}")
+        self.setAccessibleName(f"Garden space {slot + 1}: {label}")
         self.setAccessibleDescription(
-            f"Bed {slot + 1} selected. Press Enter to {label.lower()} this plant, "
+            f"Garden space {slot + 1} selected. Press Enter to {label.lower()} this plant, "
             "or Escape to cancel."
         )
 
     def _finish_move_accessibility(self, message: str) -> None:
-        self.setAccessibleName("Interactive study garden")
+        self.setAccessibleName("Interactive garden")
         self.setAccessibleDescription(message)
 
     def _begin_move(self, plant_id: str, *, keyboard: bool) -> bool:
@@ -1259,8 +1328,8 @@ class GardenSceneWidget(QWidget):
             self._inline_message = f"Moving {name}. Choose a new location."
             self.setAccessibleName(f"Moving {name}. Choose a new location.")
             self.setAccessibleDescription(
-                "Six fixed garden beds are shown. Unlocked open or occupied beds can be selected; "
-                "locked beds cannot. Use arrow keys and Enter or click a bed."
+                "Six garden spaces are shown. Choose an unlocked space with the arrow keys "
+                "and press Enter, or click one. Locked spaces cannot be selected."
             )
         return started
 
@@ -1889,6 +1958,21 @@ class GardenSceneWidget(QWidget):
                 painter.setBrush(QColor(247, 237, 130, alpha))
                 size = 2.0 + (index % 3)
                 painter.drawEllipse(QRectF(x, y, size, size))
+        elif weather == "snow_flurry":
+            painter.setPen(Qt.PenStyle.NoPen)
+            for index in range(max(7, int(24 * density))):
+                x = (index * 73 + phase * (9 + index % 5)) % width
+                y = (index * 41 + phase * (24 + index % 4)) % height
+                drift = math.sin(phase * 0.8 + index) * 8
+                painter.setBrush(QColor(245, 251, 255, 105 + (index % 4) * 18))
+                size = 1.8 + (index % 3)
+                painter.drawEllipse(QRectF(x + drift, y, size, size))
+        elif weather == "rainbow_sunshower":
+            painter.setPen(QPen(QColor(150, 205, 235, 64), 1.0))
+            for index in range(max(6, int(20 * density))):
+                x = (index * 67 + phase * 40) % width
+                y = (index * 43 + phase * 78) % height
+                painter.drawLine(int(x), int(y), int(x - 3), int(y + 8))
         elif weather == "cloudy":
             painter.setPen(Qt.PenStyle.NoPen)
             for index in range(max(2, int(4 * density))):

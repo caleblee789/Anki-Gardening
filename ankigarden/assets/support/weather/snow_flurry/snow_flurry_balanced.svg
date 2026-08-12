@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 192" width="256" height="192" focusable="false" aria-hidden="true">
+  <title>Snow Flurry</title>
+  <g fill="#f8fcff" stroke="#d9efff" stroke-width="1" opacity="0.92">
+    <circle cx="24" cy="34" r="3"/><circle cx="58" cy="72" r="2.5"/>
+    <circle cx="91" cy="27" r="2"/><circle cx="124" cy="88" r="3.5"/>
+    <circle cx="154" cy="45" r="2.5"/><circle cx="188" cy="24" r="3"/>
+    <circle cx="225" cy="75" r="2"/><circle cx="38" cy="143" r="2.5"/>
+    <circle cx="78" cy="119" r="3.5"/><circle cx="147" cy="151" r="3"/>
+    <circle cx="203" cy="128" r="3.5"/><circle cx="238" cy="162" r="2.5"/>
+  </g>
+  <g fill="none" stroke="#edf8ff" stroke-width="2" stroke-linecap="round" opacity="0.86">
+    <path d="M107 53v12m-5-9 10 6m-10 0 10-6"/>
+    <path d="M177 96v14m-6-11 12 8m-12 0 12-8"/>
+    <path d="M19 94v10m-4-8 8 5m-8 0 8-5"/>
+  </g>
+</svg>

@@ -1,15 +1,16 @@
 # Documentation index
 
-The current schema 14 product has one progression path: card answers create
+The current schema 16 product has one progression path: card answers create
 Growth for the unfinished plant the learner chooses to **Nurture**; Anki streak
-tiers and Fertilizer can add Growth; study goals and milestones award **Garden
-Coins**.
+tiers, Fertilizer, Booster Potions, equipped Weather and Scenery, and one-use
+Growth Charges can add Growth; study goals, milestones, and deterministic rare
+study gifts award **Garden Coins** or collectible items.
 
-The full Garden is scene-first. It keeps only Plant Growth, Anki streak, and
-Garden Coins in the compact status strip, with Today, Achievements, and
-Collection inside the collapsed **Progress** drawer. Plant details and actions
-appear only after selecting a plant. The Nursery opens from its clickable
-full-Garden landmark; the home preview remains noninteractive.
+The full Garden is scene-first. Its integrated named header contains Progress
+and Settings; its three metric buttons open focused details; and the cottage
+also opens the separate Garden Progress window. Plant details and actions
+appear only after selecting a plant. The tabbed Nursery opens from its clickable
+full-Garden landmark; the compact home preview remains noninteractive.
 
 - `feature-evidence-matrix.md`: current feature contracts and automated/live
   release gates.
@@ -18,8 +19,8 @@ full-Garden landmark; the home preview remains noninteractive.
 - `display-validation-matrix.md`: prominent visible values and their
   authoritative sources.
 - `e2e_display_assertions.md`: isolated-Anki journeys for the rebuilt archive.
-- `ui/data_contracts.md`: schema 14 persistence, migration, catalog readiness,
-  streak tiers, and all-due definition.
+- `ui/data_contracts.md`: schema 16 persistence, migration, environment/drop
+  catalog, catalog readiness, streak tiers, and all-due definition.
 - `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.

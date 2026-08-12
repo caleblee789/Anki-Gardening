@@ -23,12 +23,18 @@ class SceneLandmark:
     accessible_name: str
     tooltip: str
     bounds: tuple[float, float, float, float]
+    polygon: tuple[tuple[float, float], ...] = ()
+    label_anchor: tuple[float, float] | None = None
 
 
 DEFAULT_LANDMARK_ACTIONS: Mapping[str, LandmarkAction] = {
     "garden.nursery.open": LandmarkAction(
         accessible_name="Nursery",
         tooltip="Open Nursery",
+    ),
+    "garden.progress.open": LandmarkAction(
+        accessible_name="Garden Progress",
+        tooltip="Open Garden Progress",
     ),
 }
 
@@ -89,12 +95,16 @@ def resolve_scene_landmarks(
         bounds = _normalized_bounds(geometry.get("bounds"))
         if bounds is None:
             continue
+        polygon = _normalized_polygon(geometry.get("polygon"))
+        label_anchor = _normalized_point(geometry.get("label_anchor"))
         resolved.append(SceneLandmark(
             landmark_id=landmark_id,
             action_id=action_id,
             accessible_name=action.accessible_name,
             tooltip=action.tooltip,
             bounds=bounds,
+            polygon=polygon,
+            label_anchor=label_anchor,
         ))
         seen_ids.add(landmark_id)
     return tuple(resolved)
@@ -148,6 +158,37 @@ def project_landmark_bounds(
     return x, y, target_width, target_height
 
 
+def project_landmark_polygon(
+    landmark: SceneLandmark,
+    *,
+    width: float,
+    height: float,
+    source_aspect: float,
+    focal: tuple[float, float],
+) -> tuple[tuple[float, float], ...]:
+    points = landmark.polygon or (
+        (landmark.bounds[0], landmark.bounds[1]),
+        (landmark.bounds[0] + landmark.bounds[2], landmark.bounds[1]),
+        (
+            landmark.bounds[0] + landmark.bounds[2],
+            landmark.bounds[1] + landmark.bounds[3],
+        ),
+        (landmark.bounds[0], landmark.bounds[1] + landmark.bounds[3]),
+    )
+    projected: list[tuple[float, float]] = []
+    for x, y in points:
+        px, py = cover_project_point(
+            x,
+            y,
+            width=width,
+            height=height,
+            source_aspect=source_aspect,
+            focal=focal,
+        )
+        projected.append((px * width, py * height))
+    return tuple(projected)
+
+
 def _normalized_bounds(value: Any) -> tuple[float, float, float, float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
@@ -160,3 +201,22 @@ def _normalized_bounds(value: Any) -> tuple[float, float, float, float] | None:
     if width <= 0.0 or height <= 0.0 or left + width > 1.0 or top + height > 1.0:
         return None
     return left, top, width, height
+
+
+def _normalized_point(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        return None
+    try:
+        x, y = float(value[0]), float(value[1])
+    except (TypeError, ValueError):
+        return None
+    return (x, y) if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 else None
+
+
+def _normalized_polygon(value: Any) -> tuple[tuple[float, float], ...]:
+    if not isinstance(value, list):
+        return ()
+    points = tuple(
+        point for point in (_normalized_point(item) for item in value) if point is not None
+    )
+    return points if len(points) >= 3 else ()

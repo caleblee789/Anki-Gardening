@@ -28,7 +28,7 @@ from .models.state import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 
 
@@ -150,13 +150,14 @@ def _materialize_unlocked_species(state: GardenState) -> GardenState:
         state.plants.append(Plant(
             plant_id=plant_id,
             species=species,
-            name=label,
+            name=f"{label} Plant",
             slot_index=None,
             growth_points=0,
             bonus_remainder=0,
             personality="balanced",
             planted_on=occurred_on,
             memories=[PlantMemory("planted", "planted", occurred_on)],
+            name_customized=False,
         ))
         existing_species.add(species)
         existing_ids.add(plant_id)
@@ -228,6 +229,12 @@ def migrate_previous_state(raw: Any) -> GardenState:
             "planted_on": plant.get("planted_on"),
             "memories": _migrate_legacy_memories(plant.get("memories")),
             "fertilizer": None,
+            # Every nonblank schema-10 name is treated as learner-owned copy.
+            # There is no reliable historical marker that distinguishes an
+            # accepted generated name from a manually edited one.
+            "name_customized": bool(
+                isinstance(plant.get("name"), str) and plant.get("name").strip()
+            ),
         })
     current_inventory = {
         key: value for key, value in legacy_inventory.items()
@@ -235,6 +242,10 @@ def migrate_previous_state(raw: Any) -> GardenState:
     }
     payload = {
         "version": STATE_VERSION,
+        "garden_name": "My Garden",
+        # Migrated gardens must not be interrupted by the new first-run name
+        # prompt. Learners can still rename the garden from its header.
+        "garden_setup_version": 1,
         "streak_days": raw.get("streak_days"),
         "total_reviews": raw.get("total_reviews"),
         "total_correct": raw.get("total_correct"),
@@ -283,7 +294,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
 
 
 def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> GardenState:
-    """Add current preservation boundaries to a schema 11/12/13 state.
+    """Add current preservation boundaries to a schema 11-15 state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -293,13 +304,29 @@ def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> Garde
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11, 12, or 13 can use the modern migration")
+        raise ValueError("only schema 11, 12, 13, 14, or 15 can use the modern migration")
     payload = deepcopy(raw)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
         time.time() if migrated_at is None else migrated_at,
     )
     payload["version"] = STATE_VERSION
+    payload.setdefault("eligible_reward_count", 0)
+    payload.setdefault("ultra_pity_misses", 0)
+    payload.setdefault("daily_environment_claims", {})
+    payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
+    payload.setdefault("garden_name", "My Garden")
+    payload["garden_setup_version"] = 1
+    plants = payload.get("plants")
+    if isinstance(plants, list):
+        for plant in plants:
+            if not isinstance(plant, dict):
+                continue
+            existing_name = plant.get("name")
+            plant.setdefault(
+                "name_customized",
+                bool(isinstance(existing_name, str) and existing_name.strip()),
+            )
     payload["starter_selection_complete"] = True
     payload["processed_revlog_floor"] = payload.get("last_processed_revlog_id", 0)
     payload["processed_revlog_ids"] = []
@@ -321,6 +348,15 @@ class DueObligationStatus:
     @property
     def complete(self) -> bool:
         return self.available and not self.error and self.remaining == 0
+
+
+@dataclass(frozen=True)
+class ReviewStreakSnapshot:
+    """Consecutive Anki scheduler days derived from authoritative revlog rows."""
+
+    days: int = 0
+    latest_day: str = ""
+    studied_today: bool = False
 
 
 class GardenStorage:
@@ -394,6 +430,27 @@ class GardenStorage:
 
     def save(self) -> None:
         self._atomic_write_json(self.data_path, self.state.to_dict())
+
+    def create_development_backup(self) -> Path:
+        """Create a one-off recovery point before a development seed."""
+
+        self.save()
+        backup_dir = self.user_files_dir / "development_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        destination = backup_dir / f"garden-state-{stamp}-{time.time_ns()}.json"
+        _required_backup(self.data_path, destination)
+        return destination
+
+    def load_development_backup(self, path: Path) -> GardenState:
+        candidate = Path(path).resolve()
+        backup_root = (self.user_files_dir / "development_backups").resolve()
+        if candidate.parent != backup_root or not candidate.is_file():
+            raise StatePreservationError("That development backup is not available.")
+        raw = json.loads(candidate.read_text("utf-8"))
+        if not isinstance(raw, dict) or int(raw.get("version", -1)) != STATE_VERSION:
+            raise StatePreservationError("That development backup uses an unsupported schema.")
+        return GardenState.from_dict(raw)
 
     def ensure_revlog_ledger_ready(self) -> None:
         """Atomically seed schema-14 idempotency from the legacy scalar cursor."""
@@ -649,6 +706,61 @@ class GardenStorage:
     def current_scheduler_day(self) -> str:
         start = self.current_day_start_ms()
         return datetime.fromtimestamp(start / 1000).date().isoformat()
+
+    def retrospective_streak(self, *, limit_days: int = 10_000) -> ReviewStreakSnapshot:
+        """Return the current consecutive-day streak from Anki review history.
+
+        Revlog timestamps are shifted by the wall-clock time of Anki's current
+        scheduler cutoff before they are grouped. This keeps reviews before the
+        cutoff attached to the preceding Anki day, including across local DST
+        changes, without replaying any historical Garden rewards or Growth.
+        """
+
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            raise RevlogReadError("Anki review history is not available yet.")
+        try:
+            _, cutoff_ms = self.current_scheduler_day_bounds_ms()
+            cutoff_local = datetime.fromtimestamp(cutoff_ms / 1000)
+            cutoff_minutes = cutoff_local.hour * 60 + cutoff_local.minute
+            shift_modifier = f"-{cutoff_minutes} minutes"
+            bounded_limit = min(20_000, max(2, int(limit_days)))
+            rows = collection.db.all(
+                "select distinct date(id / 1000, 'unixepoch', 'localtime', ?) as garden_day "
+                "from revlog where id < ? and type in (0, 1, 2, 3) "
+                "order by garden_day desc limit ?",
+                shift_modifier,
+                int(cutoff_ms),
+                bounded_limit,
+            )
+        except (RevlogReadError, SchedulerBoundaryError):
+            raise
+        except Exception as error:
+            logger.exception("Anki Garden: unable to derive the Anki streak")
+            raise RevlogReadError(
+                "Anki Garden could not read the review history needed for the streak."
+            ) from error
+
+        review_days: set[date] = set()
+        for row in rows:
+            raw_day = row[0] if isinstance(row, (list, tuple)) and row else row
+            try:
+                review_days.add(date.fromisoformat(str(raw_day)))
+            except (TypeError, ValueError):
+                continue
+        try:
+            today = date.fromisoformat(self.current_scheduler_day())
+        except (TypeError, ValueError) as error:
+            raise SchedulerBoundaryError("Anki's scheduler day is invalid.") from error
+        review_days = {day for day in review_days if day <= today}
+        studied_today = today in review_days
+        cursor = today if studied_today else today - timedelta(days=1)
+        latest_day = max(review_days).isoformat() if review_days else ""
+        days = 0
+        while cursor in review_days and days < bounded_limit:
+            days += 1
+            cursor -= timedelta(days=1)
+        return ReviewStreakSnapshot(days, latest_day, studied_today)
 
     def scheduler_day_index(self) -> int:
         collection = getattr(self.mw, "col", None)

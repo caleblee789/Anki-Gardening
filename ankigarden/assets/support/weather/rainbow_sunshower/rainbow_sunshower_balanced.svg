@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 192" width="256" height="192" focusable="false" aria-hidden="true">
+  <title>Rainbow Sunshower</title>
+  <g fill="none" stroke-linecap="round" opacity="0.78">
+    <path d="M55 153A92 92 0 0 1 230 112" stroke="#e76f72" stroke-width="5"/>
+    <path d="M61 153A86 86 0 0 1 228 115" stroke="#f1a65a" stroke-width="5"/>
+    <path d="M67 153A80 80 0 0 1 226 119" stroke="#f4d35e" stroke-width="5"/>
+    <path d="M73 153A74 74 0 0 1 223 123" stroke="#77b77d" stroke-width="5"/>
+    <path d="M79 153A68 68 0 0 1 220 127" stroke="#6daedb" stroke-width="5"/>
+    <path d="M85 153A62 62 0 0 1 216 132" stroke="#9b7ede" stroke-width="5"/>
+  </g>
+  <g stroke="#8fc9e8" stroke-width="3" stroke-linecap="round" opacity="0.7">
+    <path d="M26 47l-4 14"/><path d="M51 65l-4 14"/><path d="M82 42l-4 14"/>
+    <path d="M112 68l-4 14"/><path d="M145 39l-4 14"/><path d="M181 62l-4 14"/>
+  </g>
+  <g stroke="#fff1a6" stroke-width="3" stroke-linecap="round" opacity="0.75">
+    <path d="M218 22v14"/><path d="M196 31l10 10"/><path d="M240 31l-10 10"/>
+  </g>
+  <circle cx="218" cy="24" r="8" fill="#ffe58a" opacity="0.74"/>
+</svg>

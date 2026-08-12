@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from aqt import mw
@@ -18,6 +19,7 @@ class ReviewerHookHandler:
         self.engine = engine
         self.storage = storage
         self._last_notified_event = ""
+        self._reward_toast: Any | None = None
 
     @staticmethod
     def review_payload_from_row(row: tuple[Any, ...], collection: Any) -> dict[str, Any] | None:
@@ -150,12 +152,247 @@ class ReviewerHookHandler:
         if config is None or not bool(config.value("show_progress_notifications", False)):
             return
         events = self.engine.peek_feedback()
-        if not events or events[-1].event_id == self._last_notified_event:
+        if not events:
             return
-        event = events[-1]
+        priority = {
+            "environment_drop": 100,
+            "charge_drop": 90,
+            "booster_drop": 60,
+            "coin_drop": 50,
+            "stage": 40,
+            "currency": 35,
+            "streak": 30,
+            "growth_milestone": 10,
+        }
+        event = max(
+            events,
+            key=lambda item: (
+                priority.get(str(getattr(item, "kind", "")), 20),
+                str(getattr(item, "occurred_at", "")),
+            ),
+        )
+        if event.event_id == self._last_notified_event:
+            return
+        rendered = self._show_reward_toast(event)
+        if not rendered:
+            return
         self._last_notified_event = event.event_id
         try:
-            from aqt.utils import tooltip
-            tooltip(event.message, period=3500, parent=mw)
+            consume = getattr(self.engine, "consume_feedback", None)
+            if callable(consume):
+                consume(event_ids=(event.event_id,))
         except Exception:
-            logger.debug("Anki Garden: unable to show optional progress feedback", exc_info=True)
+            # The event was rendered. Keep its id locally so a transient save
+            # failure does not show the same reward twice during this session.
+            logger.debug("Anki Garden: unable to acknowledge rendered feedback", exc_info=True)
+
+    def _show_reward_toast(self, event: Any) -> bool:
+        """Render a quiet, image-led reward card without taking reviewer focus."""
+
+        try:
+            from aqt.qt import (
+                QFrame,
+                QHBoxLayout,
+                QLabel,
+                QPixmap,
+                QTimer,
+                QVBoxLayout,
+                Qt,
+            )
+
+            parent = mw
+            previous = self._reward_toast
+            if previous is not None:
+                try:
+                    previous.hide()
+                    previous.deleteLater()
+                except Exception:
+                    pass
+
+            toast = QFrame(parent)
+            toast.setObjectName("ankiGardenRewardToast")
+            toast.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            toast.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            toast.setAccessibleName(
+                f"{getattr(event, 'title', '') or 'Anki Garden update'}. "
+                f"{getattr(event, 'message', '')}"
+            )
+            toast.setStyleSheet(
+                "QFrame#ankiGardenRewardToast {"
+                " background: #13352d; border: 1px solid #5f8c72;"
+                " border-radius: 14px; }"
+                "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
+                " font-size: 14px; font-weight: 700; }"
+                "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
+                " font-size: 12px; }"
+                "QLabel#ankiGardenRewardArt { background: #0b251f;"
+                " border: 1px solid #345a4c; border-radius: 11px;"
+                " color: #f5df9a; font-size: 24px; }"
+            )
+            row = QHBoxLayout(toast)
+            row.setContentsMargins(12, 10, 14, 10)
+            row.setSpacing(11)
+
+            art = QLabel("✦")
+            art.setObjectName("ankiGardenRewardArt")
+            art.setFixedSize(58, 58)
+            art.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            art.setAccessibleName("Reward artwork")
+            pixmap, bounds = self._reward_artwork(event, QPixmap)
+            if pixmap is not None and not pixmap.isNull():
+                if bounds is not None:
+                    try:
+                        x, y, width, height = (float(part) for part in bounds)
+                        padding = 0.08
+                        left = max(0.0, x - width * padding)
+                        top = max(0.0, y - height * padding)
+                        right = min(1.0, x + width * (1.0 + padding))
+                        bottom = min(1.0, y + height * (1.0 + padding))
+                        source_width, source_height = pixmap.width(), pixmap.height()
+                        crop_x = max(0, min(source_width - 1, round(left * source_width)))
+                        crop_y = max(0, min(source_height - 1, round(top * source_height)))
+                        crop_width = max(
+                            1, min(source_width - crop_x, round((right - left) * source_width))
+                        )
+                        crop_height = max(
+                            1, min(source_height - crop_y, round((bottom - top) * source_height))
+                        )
+                        cropped = pixmap.copy(crop_x, crop_y, crop_width, crop_height)
+                        if not cropped.isNull():
+                            pixmap = cropped
+                    except (TypeError, ValueError):
+                        pass
+                art.setText("")
+                art.setPixmap(pixmap.scaled(
+                    48,
+                    48,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ))
+            row.addWidget(art)
+
+            copy = QVBoxLayout()
+            copy.setSpacing(3)
+            title = QLabel(getattr(event, "title", "") or self._reward_title(event))
+            title.setObjectName("ankiGardenRewardTitle")
+            message = QLabel(str(getattr(event, "message", "")))
+            message.setObjectName("ankiGardenRewardMessage")
+            message.setWordWrap(True)
+            copy.addWidget(title)
+            copy.addWidget(message)
+            row.addLayout(copy, 1)
+
+            toast.setFixedWidth(390)
+            toast.adjustSize()
+            parent_width = max(toast.width(), int(parent.width()))
+            parent_height = max(toast.height(), int(parent.height()))
+            toast.move(
+                max(16, parent_width - toast.width() - 20),
+                max(16, parent_height - toast.height() - 54),
+            )
+            toast.show()
+            toast.raise_()
+            self._reward_toast = toast
+
+            def dismiss() -> None:
+                if self._reward_toast is toast:
+                    self._reward_toast = None
+                toast.hide()
+                toast.deleteLater()
+
+            QTimer.singleShot(4200, dismiss)
+            return True
+        except Exception:
+            logger.debug("Anki Garden: unable to show image reward feedback", exc_info=True)
+            try:
+                from aqt.utils import tooltip
+
+                tooltip(str(getattr(event, "message", "")), period=4000, parent=mw)
+                return True
+            except Exception:
+                logger.debug("Anki Garden: unable to show fallback reward feedback", exc_info=True)
+                return False
+
+    @staticmethod
+    def _reward_title(event: Any) -> str:
+        return {
+            "environment_drop": "A rare garden discovery",
+            "charge_drop": "A Growth Charge appeared",
+            "booster_drop": "A rare garden gift",
+            "coin_drop": "A little garden gift",
+            "growth_milestone": "Growing beautifully",
+            "streak": "Anki streak milestone",
+            "currency": "Garden Coins earned",
+        }.get(str(getattr(event, "kind", "")), "Your garden is growing")
+
+    def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:
+        asset_key = str(getattr(event, "asset_key", "") or "")
+        asset_category = str(getattr(event, "asset_category", "") or "")
+        ui_assets = {
+            "booster_potion": "booster_potion.png",
+            "fertilizer_basic": "fertilizer_basic.png",
+            "fertilizer_quality": "fertilizer_quality.png",
+            "fertilizer_premium": "fertilizer_premium.png",
+            "growth_charge_small": "growth_charge_small.png",
+            "growth_charge_standard": "growth_charge_standard.png",
+            "growth_charge_grand": "growth_charge_grand.png",
+        }
+        filename = ui_assets.get(asset_key)
+        if filename:
+            path = (
+                Path(__file__).resolve().parents[1]
+                / "assets"
+                / "v6_storybook_gouache"
+                / "ui"
+                / filename
+            )
+            if path.is_file():
+                return pixmap_type(str(path)), None
+        if asset_category in {"weather", "backgrounds"} and asset_key:
+            resolver = getattr(
+                self.engine,
+                "resolve_weather_preview_asset"
+                if asset_category == "weather"
+                else "resolve_scenery_preview_asset",
+                None,
+            )
+            try:
+                asset = resolver(asset_key) if callable(resolver) else None
+                path = getattr(asset, "path", None)
+                if path:
+                    return pixmap_type(str(path)), None
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to resolve environment reward art",
+                    exc_info=True,
+                )
+        plant_id = str(getattr(event, "plant_id", "") or "")
+        if plant_id:
+            plant = next(
+                (
+                    item for item in getattr(getattr(self.engine, "state", None), "plants", [])
+                    if str(getattr(item, "plant_id", "")) == plant_id
+                ),
+                None,
+            )
+            if plant is not None:
+                try:
+                    asset = self.engine.resolve_plant_asset(
+                        str(getattr(plant, "species", "")),
+                        str(getattr(plant, "growth_stage", "seed")),
+                    )
+                    path = getattr(asset, "path", None)
+                    placement = getattr(asset, "placement", None)
+                    bounds = (
+                        placement.get("visible_bounds", placement.get("art_bounds"))
+                        if isinstance(placement, dict)
+                        else getattr(
+                            placement,
+                            "visible_bounds",
+                            getattr(placement, "art_bounds", None),
+                        )
+                    )
+                    return (pixmap_type(str(path)), bounds) if path else (None, None)
+                except Exception:
+                    logger.debug("Anki Garden: unable to resolve reward plant art", exc_info=True)
+        return None, None

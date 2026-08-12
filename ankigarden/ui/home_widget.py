@@ -47,6 +47,7 @@ class HomeWidgetData:
     active_next_stage: str = ""
     active_points_remaining: int = 0
     active_fully_grown: bool = False
+    garden_name: str = "My Garden"
 
 
 @dataclass(frozen=True)
@@ -94,7 +95,7 @@ class HomeWidgetStateController:
         return True
 
 
-DEFAULT_ERROR_MESSAGE = "Unable to load garden stats right now. Retry to refresh."
+DEFAULT_ERROR_MESSAGE = "Garden progress could not be loaded. Try again in a moment."
 
 
 HOME_WIDGET_STYLE = """
@@ -114,7 +115,7 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__state {
   box-sizing: border-box;
-  min-height: 260px;
+  min-height: 160px;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -155,16 +156,12 @@ HOME_WIDGET_STYLE = """
 .ag-home__fallback-label { max-width:92%; overflow:hidden; padding:4px 6px; border-radius:5px; background:rgba(8,27,23,.84); color:#dce9dd; font-size:11px; line-height:1.2; text-align:center; }
 .ag-home__fallback-label > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ag-home__fallback-stage { margin-top:1px; color:#aac3b1; }
-.ag-home__metrics {
-  display: grid;
-  grid-template-columns: repeat(2,minmax(0,1fr));
-  gap: 10px;
-  min-height: 0;
-  margin-top: 16px;
-  align-content: start;
-}
+.ag-home__metrics { display:flex; flex-direction:column; gap:10px; min-width:0; min-height:0; }
 .ag-home__scene {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 260px;
   aspect-ratio: 12 / 5;
   overflow: hidden;
@@ -172,55 +169,74 @@ HOME_WIDGET_STYLE = """
   background-size: cover;
 }
 .ag-home__scene::after { content:""; position:absolute; inset:0; pointer-events:none; box-shadow:inset -24px 0 38px rgba(5,16,14,.24), inset 0 -18px 32px rgba(5,14,12,.16); }
-.ag-home__details { min-width:0; min-height:0; padding:20px 22px; display:flex; flex-direction:column; overflow:visible; background:radial-gradient(circle at 92% 3%,rgba(50,106,75,.16),transparent 35%),linear-gradient(150deg,#102a25,#0a1d1a 78%); border-left:1px solid rgba(137,165,137,.22); }
-.ag-home__identity-row { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.ag-home__details { min-width:0; min-height:0; padding:12px 16px 14px; display:flex; flex-direction:column; gap:10px; overflow:visible; background:radial-gradient(circle at 92% 3%,rgba(50,106,75,.18),transparent 38%),linear-gradient(150deg,#102a25,#0a1d1a 78%); border-left:1px solid rgba(137,165,137,.22); box-shadow:inset 1px 0 rgba(226,239,223,.025); }
+.ag-home__details,.ag-home__details * { box-sizing:border-box; }
+.ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; min-width:0; min-height:48px; }
 .ag-home__identity { min-width:0; }
-.ag-home__eyebrow { margin-bottom:4px; color:#d8b875; font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
+.ag-home__eyebrow { margin-bottom:2px; color:#d8b875; font-size:11.5px; font-weight:700; letter-spacing:.1em; line-height:1.1; text-transform:uppercase; }
 .ag-home__focus-name {
-  display:-webkit-box;
+  display:block;
   overflow:hidden;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
-  font-size:22px;
+  margin:0;
+  color:#f3f7f2;
+  font-size:24px;
   font-weight:800;
-  line-height:1.15;
+  line-height:1.1;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
-.ag-home__focus-stage { margin-top:3px; color:#b9cec0; font-size:12px; line-height:1.35; }
 .ag-home__metric {
   display:flex;
   flex-direction:column;
   justify-content:flex-start;
-  min-height:72px;
-  padding:12px 14px;
-  border:1px solid rgba(121,158,131,.24);
+  min-width:0;
+  padding:11px 14px 12px;
+  border:1px solid rgba(128,160,135,.16);
   border-radius:12px;
-  background:linear-gradient(145deg,rgba(14,47,40,.72),rgba(6,26,22,.58));
-  box-shadow:inset 0 1px 0 rgba(231,244,228,.035);
+  background:rgba(11,40,34,.48);
+  box-shadow:inset 0 1px 0 rgba(235,246,232,.025);
+  cursor:help;
 }
-.ag-home__metric:hover { border-color:rgba(216,184,117,.52); }
-.ag-home__metric:focus-visible { border-color:rgba(229,242,166,.72); outline:3px solid #e5f2a6; outline-offset:2px; }
-.ag-home__metric-label { color:#9ab7a6; font-size:12px; font-weight:700; letter-spacing:.045em; text-transform:uppercase; }
-.ag-home__metric-value { min-width:0; max-width:100%; margin-top:2px; color:#edf5ea; font-size:18px; font-weight:750; line-height:1.18; overflow-wrap:anywhere; word-break:break-word; }
-.ag-home__metric-value--plant { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-.ag-home__metric--plant { grid-column:1 / -1; min-height:98px; border-color:rgba(117,161,128,.32); background:linear-gradient(145deg,rgba(21,62,51,.82),rgba(7,31,26,.66)); }
-.ag-home__metric--coins { background:linear-gradient(145deg,rgba(56,51,25,.42),rgba(8,30,25,.62)); }
-.ag-home__metric-heading,.ag-home__metric-value-row { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; min-width:0; }
+.ag-home__metric:hover { border-color:rgba(139,178,148,.28); background:rgba(15,48,40,.58); }
+.ag-home__metric:focus-visible { position:relative; z-index:1; outline:3px solid #e5f2a6; outline-offset:-3px; }
+.ag-home__metric-label { min-width:0; color:#9fb9a8; font-size:12px; font-weight:700; letter-spacing:.075em; line-height:1.3; text-transform:uppercase; }
+.ag-home__metric-value { min-width:0; max-width:100%; color:#f1f6f1; font-weight:800; line-height:1.1; }
+.ag-home__metric-value--plant { margin-top:6px; overflow:hidden; color:#b5e1aa; font-size:23px; text-overflow:ellipsis; white-space:nowrap; text-shadow:0 1px 12px rgba(109,184,112,.12); }
+.ag-home__metric--plant { min-height:0; border-color:rgba(125,174,132,.34); background:rgba(20,58,47,.68); box-shadow:inset 0 1px 0 rgba(221,242,218,.04),0 5px 16px rgba(1,15,11,.08); }
+.ag-home__metric--plant:hover { border-color:rgba(153,199,158,.48); background:rgba(24,66,53,.72); }
+.ag-home__metric--streak,.ag-home__metric--coins { min-height:0; }
+.ag-home__metric--coins .ag-home__metric-value { color:#f2dda4; }
+.ag-home__metric-heading,.ag-home__metric-value-row { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
 .ag-home__metric-heading > div,.ag-home__metric-value-row > .ag-home__metric-value { min-width:0; flex:1 1 auto; }
-.ag-home__metric-badge { flex:0 0 auto; max-width:42%; overflow:hidden; padding:4px 8px; border:1px solid rgba(214,186,121,.28); border-radius:999px; background:rgba(216,184,117,.08); color:#d9c58e; font-size:12px; font-weight:700; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__metric-support { margin-top:5px; color:#b9cec0; font-size:12px; line-height:1.35; }
-.ag-home__metric-progress-copy { margin-top:8px; color:#d5e3d7; font-size:12px; font-weight:650; line-height:1.25; }
+.ag-home__metric-badge { flex:0 0 auto; min-height:24px; padding:3px 8px; border:1px solid rgba(214,186,121,.34); border-radius:999px; background:rgba(216,184,117,.08); color:#dfc98d; font-size:12px; font-weight:700; line-height:1.2; white-space:nowrap; }
+.ag-home__growth-block { margin-top:10px; }
+.ag-home__growth-row { display:flex; align-items:end; justify-content:space-between; gap:12px; min-width:0; }
+.ag-home__growth-label { color:#9fb9a8; font-size:13px; font-weight:650; line-height:1.2; }
+.ag-home__growth-value { margin-top:2px; color:#edf5ea; font-size:18px; font-weight:750; font-variant-numeric:tabular-nums; line-height:1.15; white-space:nowrap; }
+.ag-home__growth-slash { padding:0 2px; color:#7f998a; font-weight:500; }
+.ag-home__growth-next { min-width:0; overflow:hidden; color:#b9cec0; font-size:13px; line-height:1.25; text-align:right; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__growth-total { margin-top:5px; color:#91aa9b; font-size:12.5px; line-height:1.25; }
+.ag-home__streak-value { display:flex; align-items:baseline; gap:6px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 14px rgba(224,239,219,.12); }
+.ag-home__streak-number { font-size:36px; }
+.ag-home__streak-unit { font-size:18px; font-weight:650; }
+.ag-home__coins-value { margin-top:6px; font-size:32px; font-variant-numeric:tabular-nums; white-space:nowrap; text-shadow:0 1px 14px rgba(216,184,117,.14); }
+.ag-home__metric-support { margin-top:4px; color:#aebfb4; font-size:13.5px; font-weight:400; line-height:1.3; text-align:left; }
+.ag-home__status-notice { box-sizing:border-box; width:100%; margin:0; padding:8px 10px; border:1px solid rgba(223,180,98,.28); border-radius:9px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
 .ag-home__tooltip { position:fixed; z-index:9999; box-sizing:border-box; max-width:280px; max-height:calc(100vh - 16px); overflow:auto; padding:7px 9px; border-radius:7px; background:#10201d; color:#eef9f0; box-shadow:0 4px 16px rgba(0,0,0,.3); font-size:12px; line-height:1.35; pointer-events:none; }
 .ag-home__bar-track {
-  height: 6px;
+  position:relative;
+  height: 8px;
   margin: 6px 0 0;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.1);
 }
+.ag-home__bar-track--milestones { background-color:rgba(255,255,255,.08); background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(16.666% - .5px),rgba(230,241,225,.22) calc(16.666% - .5px),rgba(230,241,225,.22) calc(16.666% + .5px),transparent calc(16.666% + .5px),transparent 16.666%); }
 .ag-home__bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #4bbf82, #d9d77d);
+  background: linear-gradient(90deg,#4bbf82,#b9d77d 72%,#d9d77d);
+  box-shadow:0 0 10px rgba(75,191,130,.18);
 }
 .ag-home__stage-up {
   box-sizing: border-box;
@@ -240,49 +256,48 @@ HOME_WIDGET_STYLE = """
   align-items:center;
   justify-content:center;
   min-width:120px;
-  min-height:44px;
+  min-height:42px;
   box-sizing:border-box;
   line-height:1.2;
   flex:none;
   margin: 0;
-  padding: 8px 14px;
-  border: 1px solid #618a6e;
-  border-radius: 10px;
-  background: #24583f;
+  padding: 7px 16px;
+  border: 1px solid rgba(132,180,146,.72);
+  border-radius: 12px;
+  background: #286346;
   color: #eef9f0;
-  font-weight: 600;
+  font-size:15px;
+  font-weight: 700;
+  white-space:nowrap;
   cursor: pointer;
+  box-shadow:inset 0 1px 0 rgba(242,250,240,.08),0 6px 14px rgba(1,14,10,.14);
 }
-#ag-home-root button:hover { background: #2f6b4d; }
+#ag-home-root button.ag-home__open::after { content:"→"; margin-left:7px; font-size:15px; line-height:1; }
+#ag-home-root button.ag-home__open:disabled::after { content:""; margin:0; }
+#ag-home-root button:hover { background: #327653; }
 #ag-home-root button:active { background:#183828; transform:translateY(1px); }
 #ag-home-root button:disabled { cursor:wait; opacity:.72; }
 #ag-home-root button:focus-visible {
   outline: 3px solid #e5f2a6;
   outline-offset: 2px;
 }
+.ag-home__open { min-width:112px !important; min-height:40px !important; padding:6px 13px !important; border-radius:10px !important; font-size:14px !important; box-shadow:inset 0 1px 0 rgba(242,250,240,.08),0 4px 12px rgba(1,14,10,.12) !important; }
 .nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
 @media (max-width: 900px) {
   .ag-home__body { grid-template-columns:1fr; }
-  .ag-home__scene { min-height:210px; aspect-ratio:16 / 7; }
+  .ag-home__scene { min-height:0; aspect-ratio:12 / 5; }
   .ag-home__details { border-left:0; border-top:1px solid rgba(137,165,137,.22); }
-  .ag-home__metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .ag-home__metric--plant { grid-column:auto; }
-}
-@media (max-width: 700px) {
-  .ag-home__metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .ag-home__metric--plant { grid-column:1 / -1; }
 }
 @media (max-width: 600px) {
   #ag-home-root { margin:10px 8px; border-radius:12px; }
   .ag-home__details { padding:14px; }
-  .ag-home__identity-row { align-items:stretch; flex-direction:column; }
-  .ag-home__metric { min-height:46px; padding:8px; }
-  .ag-home__metric-value { font-size:15px; }
-  #ag-home-root button { width:100%; }
+  .ag-home__focus-name { font-size:23px; }
 }
 @media (max-width: 480px) {
-  .ag-home__metrics { grid-template-columns:1fr; }
-  .ag-home__metric--plant { grid-column:auto; }
+  .ag-home__identity-row { grid-template-columns:1fr; align-items:stretch; gap:12px; }
+  #ag-home-root button { width:100%; }
+  .ag-home__growth-row { align-items:flex-start; flex-direction:column; gap:4px; }
+  .ag-home__growth-next { text-align:left; }
 }
 </style>
 """
@@ -303,7 +318,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div id="ag-home-root" data-state="loading" role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-loading" role="status" aria-live="polite">'
             '<div class="ag-home__state-title">Anki Garden</div>'
-            '<div class="ag-home__state-message">Loading garden…</div></div>'
+            '<div class="ag-home__state-message">Loading overview…</div></div>'
             "</div>"
         )
     if phase == "empty":
@@ -312,8 +327,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             '<div id="ag-home-root" data-state="empty" role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
-            '<div class="ag-home__state-title">Your garden is ready</div>'
-            '<div class="ag-home__state-message">Answer your first card to start growing your garden.</div></div>'
+            '<div class="ag-home__state-title">Ready to grow</div>'
+            '<div class="ag-home__state-message">Answer your first card to begin nurturing a plant.</div></div>'
             "</div>"
         )
     if phase == "error":
@@ -323,9 +338,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Garden unavailable</div>'
+            '<div class="ag-home__state-title">Overview unavailable</div>'
             f'<div class="ag-home__state-message" data-testid="home-error" role="alert">{message}</div>'
-            '<button data-testid="home-retry" type="button" aria-label="Retry loading Anki Garden" '
+            '<button data-testid="home-retry" type="button" aria-label="Retry loading overview" '
             'onclick="pycmd(\'anki-garden:refresh\')">Retry</button></div>'
             "</div>"
         )
@@ -343,8 +358,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Garden unavailable</div>'
-            '<div class="ag-home__state-message" data-testid="home-error" role="alert">Invalid home widget payload.</div></div>'
+            '<div class="ag-home__state-title">Overview unavailable</div>'
+            '<div class="ag-home__state-message" data-testid="home-error" role="alert">The summary could not be displayed.</div></div>'
             "</div>"
         )
     if not data.weather:
@@ -464,32 +479,26 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'<img class="ag-home__occlusion" src="{escape(legacy_occlusion_url, quote=True)}" alt="" aria-hidden="true">'
         if legacy_occlusion_url and not occlusion_markup else ""
     )
+    garden_name = escape(str(data.garden_name or "My Garden"))
     garden_identity_html = (
-        '<div class="ag-home__identity"><div class="ag-home__eyebrow">Study garden</div>'
-        '<div class="ag-home__focus-name">Your garden</div>'
-        '<div class="ag-home__focus-stage">A quiet view of your current garden</div></div>'
+        '<div class="ag-home__identity"><div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
+        f'<h2 class="ag-home__focus-name">{garden_name}</h2></div>'
     )
     streak_unit = "day" if data.streak_days == 1 else "days"
     growth_help = escape(GROWTH_EXPLANATION, quote=True)
     streak_help = escape(ANKI_STREAK_EXPLANATION, quote=True)
-    currency_help = escape(
-        GARDEN_CURRENCY_EXPLANATION.replace("Garden Currency", "Garden Coins"),
-        quote=True,
-    )
+    currency_help = escape(GARDEN_CURRENCY_EXPLANATION, quote=True)
     if data.streak_days <= 0:
-        streak_next = "Study today to start your streak"
-        streak_max = 1
+        streak_next = "Study today to begin"
     elif data.next_streak_day is None:
-        streak_next = "Maximum streak Growth bonus reached"
-        streak_max = max(1, data.streak_days)
+        streak_next = "Maximum Growth bonus reached"
     else:
         next_day_unit = "day" if data.next_streak_day == 1 else "days"
         streak_next = (
             f"Next bonus: +{data.next_streak_bonus_percent}% at "
             f"{data.next_streak_day} {next_day_unit}"
         )
-        streak_max = max(1, data.next_streak_day)
-    streak_progress = int(min(100, max(0, data.streak_days) / streak_max * 100))
+    streak_progress = _streak_milestone_progress(data.streak_days)
     streak_badge_html = (
         f'<span class="ag-home__metric-badge">+{data.streak_bonus_percent}% Growth</span>'
         if data.streak_bonus_percent > 0
@@ -508,41 +517,47 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     if active_name:
         active_stage = format_status_label(data.active_plant_stage or "seed")
         if data.active_fully_grown:
-            active_progress_text = f"Fully grown with {format_integer(data.active_growth_points)} Growth"
+            active_progress_value = format_integer(data.active_growth_points)
+            active_progress_target = "Fully grown"
             active_progress_max = 1
             active_progress_now = 1
             active_progress_percent = 100
             active_progress_label = f"{active_name} is fully grown"
         else:
             next_stage = format_status_label(data.active_next_stage or "next stage")
-            active_progress_text = (
-                f"{format_integer(data.active_stage_points)} of {format_integer(data.active_stage_goal)} "
-                f"Growth to {next_stage}"
+            active_progress_value = (
+                f"{format_integer(data.active_stage_points)}"
+                f'<span class="ag-home__growth-slash">/</span>'
+                f"{format_integer(data.active_stage_goal)}"
             )
+            active_progress_target = f"{next_stage} next"
             active_progress_max = max(1, int(data.active_stage_goal))
             active_progress_now = min(active_progress_max, max(0, int(data.active_stage_points)))
             active_progress_percent = int(active_progress_now / active_progress_max * 100)
             active_progress_label = f"{active_name} progress to {next_stage}"
         active_growth_html = (
-            f'<div class="ag-home__metric ag-home__metric--plant" tabindex="0" aria-label="{escape(active_progress_label, quote=True)}" '
-            f'data-tooltip="{growth_help}"><div class="ag-home__metric-heading"><div>'
+            f'<section class="ag-home__metric ag-home__metric--plant nurtured-plant-summary" tabindex="0" aria-label="{escape(active_progress_label, quote=True)}" '
+            f'data-tooltip="{growth_help}"><div class="ag-home__metric-heading">'
             f'<div class="ag-home__metric-label">Nurtured plant</div>'
-            f'<div class="ag-home__metric-value ag-home__metric-value--plant" data-testid="home-active-name">{escape(active_name)}</div></div>'
             f'<span class="ag-home__metric-badge">{escape(active_stage)}</span></div>'
-            f'<div class="ag-home__metric-support"><span data-testid="home-growth">'
-            f'{format_integer(data.active_growth_points)}</span> total Growth</div>'
-            f'<div class="ag-home__metric-progress-copy">{escape(active_progress_text)}</div>'
-            f'<div class="ag-home__bar-track" role="progressbar" aria-label="{escape(active_progress_label, quote=True)}" '
+            f'<div class="ag-home__metric-value ag-home__metric-value--plant" data-testid="home-active-name">{escape(active_name)}</div>'
+            f'<div class="ag-home__growth-block"><div class="ag-home__growth-row"><div>'
+            f'<div class="ag-home__growth-label">Growth</div>'
+            f'<div class="ag-home__growth-value">{active_progress_value}</div></div>'
+            f'<div class="ag-home__growth-next">{escape(active_progress_target)}</div></div>'
+            f'<div class="ag-home__bar-track ag-home__bar-track--growth" role="progressbar" aria-label="{escape(active_progress_label, quote=True)}" '
             f'aria-valuemin="0" aria-valuemax="{active_progress_max}" aria-valuenow="{active_progress_now}">'
             f'<div class="ag-home__bar-fill" data-testid="home-growth-bar" aria-hidden="true" '
-            f'style="width:{active_progress_percent}%"></div></div></div>'
+            f'style="width:{active_progress_percent}%"></div></div>'
+            f'<div class="ag-home__growth-total"><span data-testid="home-growth">'
+            f'{format_integer(data.active_growth_points)}</span> total Growth</div></div></section>'
         )
     else:
         active_growth_html = (
-            f'<div class="ag-home__metric ag-home__metric--plant" tabindex="0" aria-label="No nurtured plant selected" '
+            f'<section class="ag-home__metric ag-home__metric--plant nurtured-plant-summary" tabindex="0" aria-label="No nurtured plant selected" '
             f'data-tooltip="{growth_help}"><div class="ag-home__metric-label">Nurtured plant</div>'
-            '<div class="ag-home__metric-value" data-testid="home-active-name">No plant selected</div>'
-            '<div class="ag-home__metric-support">Open Garden to choose a plant.</div></div>'
+            '<div class="ag-home__metric-value ag-home__metric-value--plant" data-testid="home-active-name">None selected</div>'
+            '<div class="ag-home__metric-support">Open Garden to choose one.</div></section>'
         )
 
     return f"""{HOME_WIDGET_STYLE}
@@ -553,19 +568,19 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-label=\"Garden preview. Open Garden to interact.\"{background_style}>
       <div class=\"ag-home__art\" data-testid=\"home-plants\">{legacy_occlusion}{''.join(plant_markup['rear'])}{occlusion_markup.get('rear', '')}{''.join(plant_markup['front'])}{occlusion_markup.get('front', '')}</div>
     </div>
-    <div class=\"ag-home__details\">
-      <div class=\"ag-home__identity-row\">
+    <aside class=\"ag-home__details home-summary-panel\">
+      <header class=\"ag-home__identity-row summary-header\">
         {garden_identity_html}
-        <button data-testid=\"home-open\" type=\"button\" aria-label=\"Open Garden\" data-tooltip=\"Open the full garden.\"
+        <button class=\"ag-home__open\" data-testid=\"home-open\" type=\"button\" aria-label=\"Open Garden\" data-tooltip=\"View and manage your plants.\"
           onclick=\"if(this.disabled)return;this.disabled=true;this.textContent='Opening…';pycmd('anki-garden:open');setTimeout(()=>{{this.disabled=false;this.textContent='Open Garden';}},1500)\">Open Garden</button>
+      </header>
+      {f'<p class="ag-home__status-notice" role="status">{escape(data.status_notice)}</p>' if data.status_notice else ''}
+      {active_growth_html}
+      <div class=\"ag-home__metrics\" role=\"group\" aria-label=\"Garden summary\">
+        <section class=\"ag-home__metric ag-home__metric--streak streak-metric\" tabindex=\"0\" aria-label=\"{escape(streak_accessible_label, quote=True)}\" data-tooltip=\"{streak_help}\"><div class=\"ag-home__metric-heading\"><div class=\"ag-home__metric-label\">Anki streak</div>{streak_badge_html}</div><div class=\"ag-home__metric-value ag-home__streak-value\" data-testid=\"home-streak\"><span class=\"ag-home__streak-number\">{format_integer(data.streak_days)}</span><span class=\"ag-home__streak-unit\">{streak_unit}</span></div><div class=\"ag-home__metric-support\">{streak_next}</div><div class=\"ag-home__bar-track ag-home__bar-track--milestones\" role=\"progressbar\" aria-label=\"Anki streak progress\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"{streak_progress}\" aria-valuetext=\"{escape(streak_accessible_label, quote=True)}. {escape(streak_next, quote=True)}\"><div class=\"ag-home__bar-fill\" data-testid=\"home-streak-bar\" aria-hidden=\"true\" style=\"width:{streak_progress}%\"></div></div></section>
+        <section class=\"ag-home__metric ag-home__metric--coins coins-metric\" tabindex=\"0\" aria-label=\"{format_integer(data.garden_currency)} Garden Coins\" data-tooltip=\"{currency_help}\"><div class=\"ag-home__metric-label\">Garden Coins</div><div class=\"ag-home__metric-value ag-home__coins-value\" data-testid=\"home-currency\">{format_integer(data.garden_currency)}</div><div class=\"ag-home__metric-support\">For Nursery plants, items, and upgrades</div></section>
       </div>
-      {f'<p class="ag-home__partial-message" role="status">{escape(data.status_notice)}</p>' if data.status_notice else ''}
-      <div class=\"ag-home__metrics\">
-        {active_growth_html}
-        <div class=\"ag-home__metric ag-home__metric--streak\" tabindex=\"0\" aria-label=\"{escape(streak_accessible_label, quote=True)}\" data-tooltip=\"{streak_help}\"><div class=\"ag-home__metric-label\">Anki streak</div><div class=\"ag-home__metric-value-row\"><div class=\"ag-home__metric-value\" data-testid=\"home-streak\">{format_integer(data.streak_days)} {streak_unit}</div>{streak_badge_html}</div><div class=\"ag-home__metric-support\">{streak_next}</div><div class=\"ag-home__bar-track\" role=\"progressbar\" aria-label=\"Anki streak progress\" aria-valuemin=\"0\" aria-valuemax=\"{streak_max}\" aria-valuenow=\"{min(max(0, data.streak_days), streak_max)}\"><div class=\"ag-home__bar-fill\" data-testid=\"home-streak-bar\" aria-hidden=\"true\" style=\"width:{streak_progress}%\"></div></div></div>
-        <div class=\"ag-home__metric ag-home__metric--coins\" tabindex=\"0\" aria-label=\"{format_integer(data.garden_currency)} Garden Coins\" data-tooltip=\"{currency_help}\"><div class=\"ag-home__metric-label\">Garden Coins</div><div class=\"ag-home__metric-value\" data-testid=\"home-currency\">{format_integer(data.garden_currency)}</div><div class=\"ag-home__metric-support\">For Fertilizer and new plants</div></div>
-      </div>
-    </div>
+    </aside>
   </div>
   <div class=\"ag-home__tooltip\" role=\"tooltip\" hidden id=\"ag-home-tooltip\"></div>
   <script>(function(root){{const tip=root.querySelector('.ag-home__tooltip');let active=null;function position(el){{if(!el||tip.hidden)return;const r=el.getBoundingClientRect();const margin=8;const gap=6;const maxLeft=Math.max(margin,window.innerWidth-tip.offsetWidth-margin);const left=Math.min(maxLeft,Math.max(margin,r.left));const maxTop=Math.max(margin,window.innerHeight-tip.offsetHeight-margin);const below=r.bottom+gap;const above=r.top-tip.offsetHeight-gap;const top=below<=maxTop?below:(above>=margin?above:maxTop);tip.style.left=left+'px';tip.style.top=top+'px';}}function clear(){{if(active&&active.getAttribute('aria-describedby')===tip.id)active.removeAttribute('aria-describedby');active=null;tip.hidden=true;}}function show(e){{const el=e.target.closest('[data-tooltip]');if(!el)return;if(active!==el)clear();active=el;active.setAttribute('aria-describedby',tip.id);tip.textContent=el.dataset.tooltip;tip.hidden=false;requestAnimationFrame(()=>position(active));}}function hide(e){{const related=e.relatedTarget;const next=related&&typeof related.closest==='function'?related.closest('[data-tooltip]'):null;if(next===active)return;clear();}}root.addEventListener('mouseover',show);root.addEventListener('focusin',show);root.addEventListener('mouseout',hide);root.addEventListener('focusout',hide);window.addEventListener('resize',()=>position(active),{{passive:true}});window.addEventListener('scroll',()=>position(active),{{passive:true,capture:true}});}})(document.currentScript.parentElement);</script>
@@ -620,6 +635,7 @@ def build_home_widget_success_data(*, state: Any, reviews_today: int, scene_item
         active_next_stage=str(active_growth.next_stage or "") if active_plant is not None else "",
         active_points_remaining=active_growth.points_remaining if active_plant is not None else 0,
         active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
+        garden_name=str(getattr(state, "garden_name", "My Garden") or "My Garden"),
     )
 
 
@@ -639,3 +655,19 @@ def _next_streak_day(streak_days: int) -> int | None:
 
 def _next_streak_bonus(streak_days: int) -> int | None:
     return next((percent for threshold, percent in STREAK_BONUS_TIERS if streak_days < threshold), None)
+
+
+def _streak_milestone_progress(streak_days: int) -> int:
+    """Map uneven day thresholds onto equal visual milestone segments."""
+
+    days = max(0, int(streak_days))
+    points = (0, *(threshold for threshold, _percent in STREAK_BONUS_TIERS))
+    if days >= points[-1]:
+        return 100
+    for index in range(len(points) - 1):
+        start, end = points[index], points[index + 1]
+        if start <= days < end:
+            interval = max(1, end - start)
+            progress = (days - start) / interval
+            return int(round((index + progress) / (len(points) - 1) * 100))
+    return 0

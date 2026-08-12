@@ -209,7 +209,7 @@ def test_current_schema_loads_without_backup(tmp_path):
     assert list(tmp_path.glob("*.legacy.json")) == []
 
 
-@pytest.mark.parametrize("previous_version", [11, 12, 13])
+@pytest.mark.parametrize("previous_version", [11, 12, 13, 14, 15])
 def test_modern_pre_starter_schema_preserves_the_garden_and_marks_it_complete(
     tmp_path, previous_version
 ):
@@ -238,7 +238,7 @@ def test_modern_pre_starter_schema_preserves_the_garden_and_marks_it_complete(
     assert state_path.with_suffix(f".schema-{previous_version}.legacy.json").exists()
 
 
-@pytest.mark.parametrize("previous_version", [11, 12, 13])
+@pytest.mark.parametrize("previous_version", [11, 12, 13, 14, 15])
 def test_modern_migration_preserves_every_historical_species_story_and_progress(
     previous_version,
 ):
@@ -341,7 +341,7 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     assert state.revlog_ledger_migration_pending
 
 
-@pytest.mark.parametrize("saved_version", [11, 12, 13, STATE_VERSION])
+@pytest.mark.parametrize("saved_version", [11, 12, 13, 14, 15, STATE_VERSION])
 def test_entitlement_only_species_materializes_as_zero_growth_shelved_plant(
     tmp_path,
     saved_version,
@@ -586,6 +586,44 @@ class FakeDb:
     def all(self, query, *args):
         self.calls.append((query, args))
         return list(self.rows)
+
+
+def test_retrospective_streak_counts_consecutive_scheduler_days_from_revlog():
+    cutoff_ms = int(datetime(2026, 8, 11, 4, 0).timestamp() * 1000)
+    db = FakeDb(rows=[
+        ("2026-08-10",),
+        ("2026-08-09",),
+        ("2026-08-08",),
+        ("2026-08-06",),
+    ])
+    storage = object.__new__(GardenStorage)
+    storage.mw = SimpleNamespace(col=SimpleNamespace(db=db))
+    storage.current_scheduler_day_bounds_ms = lambda: (cutoff_ms - 86_400_000, cutoff_ms)
+    storage.current_scheduler_day = lambda: "2026-08-10"
+
+    snapshot = storage.retrospective_streak()
+
+    assert snapshot.days == 3
+    assert snapshot.latest_day == "2026-08-10"
+    assert snapshot.studied_today
+    query, args = db.calls[-1]
+    assert "type in (0, 1, 2, 3)" in query
+    assert args[1:] == (cutoff_ms, 10_000)
+
+
+def test_retrospective_streak_can_end_yesterday_without_resetting_early():
+    cutoff_ms = int(datetime(2026, 8, 11, 4, 0).timestamp() * 1000)
+    db = FakeDb(rows=[("2026-08-09",), ("2026-08-08",)])
+    storage = object.__new__(GardenStorage)
+    storage.mw = SimpleNamespace(col=SimpleNamespace(db=db))
+    storage.current_scheduler_day_bounds_ms = lambda: (cutoff_ms - 86_400_000, cutoff_ms)
+    storage.current_scheduler_day = lambda: "2026-08-10"
+
+    snapshot = storage.retrospective_streak()
+
+    assert snapshot.days == 2
+    assert snapshot.latest_day == "2026-08-09"
+    assert not snapshot.studied_today
 
 
 class FakeScheduler:

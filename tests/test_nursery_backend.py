@@ -327,7 +327,7 @@ def test_schema10_inventory_only_species_becomes_a_usable_shelved_plant_without_
     assert plant.slot_index == 0
 
 
-@pytest.mark.parametrize("saved_version", [11, 12, 13, STATE_VERSION])
+@pytest.mark.parametrize("saved_version", [11, 12, 13, 14, STATE_VERSION])
 def test_modern_entitlement_only_species_stays_visible_plantable_and_paid_for(
     tmp_path,
     saved_version,

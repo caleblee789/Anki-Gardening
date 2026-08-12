@@ -4,6 +4,7 @@ from copy import deepcopy
 
 from ankigarden.models.state import (
     ActivePlantPeriod,
+    Booster,
     CurrencyTransaction,
     Fertilizer,
     FeedbackEvent,
@@ -11,11 +12,13 @@ from ankigarden.models.state import (
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
     MAX_COLLECTION_PLANTS,
+    MAX_BOOSTER_HISTORY,
     MAX_FERTILIZER_HISTORY,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
     PlantMemory,
+    RewardDrop,
     STATE_VERSION,
 )
 
@@ -288,6 +291,78 @@ def test_plant_memories_names_and_shelved_slot_round_trip():
     assert restored.plants[0].name == "Ember Maple"
     assert restored.plants[0].slot_index is None
     assert restored.plants[0].memories[0].new_stage == "young"
+
+
+def test_blank_generated_names_repair_to_species_plant_and_garden_name_is_normalized():
+    payload = base_payload()
+    payload["garden_name"] = "  Moss   & Moon  "
+    payload["plants"] = [{
+        "plant_id": "p",
+        "species": "japanese_maple",
+        "name": "   ",
+        "slot_index": 0,
+    }]
+
+    state = GardenState.from_dict(payload)
+
+    assert state.garden_name == "Moss & Moon"
+    assert state.plants[0].name == "Japanese Maple Plant"
+    assert state.plants[0].name_customized is False
+
+
+def test_booster_reward_and_rich_feedback_metadata_round_trip_safely():
+    state = GardenState(
+        plants=[Plant(
+            "p", "bonsai", "Bonsai Plant", 0,
+            booster=Booster(5, 8_200.0, 1_000.0),
+            booster_history=[Booster(5, 900.0, 100.0)],
+        )],
+        consumables={"booster_potion": 3},
+        reward_drop_history=[RewardDrop(
+            123, "2026-08-08", "booster_potion", 1,
+            "2026-08-08T12:00:00+00:00",
+        )],
+        pending_feedback=[FeedbackEvent(
+            "drop:123", "booster_drop", "A rare gift.",
+            "2026-08-08T12:00:00+00:00", "p",
+            "A gift from Bonsai Plant", "ui", "booster_potion", 1,
+        )],
+    )
+
+    restored = GardenState.from_dict(state.to_dict())
+
+    assert restored.plants[0].booster == Booster(5, 8_200.0, 1_000.0)
+    assert restored.plants[0].booster_history == [Booster(5, 900.0, 100.0)]
+    assert restored.consumables == {
+        "booster_potion": 3,
+        "growth_charge_small": 0,
+        "growth_charge_standard": 0,
+        "growth_charge_grand": 0,
+    }
+    assert restored.reward_drop_history == state.reward_drop_history
+    assert restored.pending_feedback[0].asset_key == "booster_potion"
+    assert restored.pending_feedback[0].amount == 1
+
+
+def test_booster_history_is_deduplicated_and_bounded():
+    payload = base_payload()
+    history = [
+        {"growth_per_answer": 5, "started_at": index * 2 + 1, "expires_at": index * 2 + 2}
+        for index in range(MAX_BOOSTER_HISTORY + 5)
+    ]
+    history.append(history[-1].copy())
+    payload["plants"] = [{
+        "plant_id": "p", "species": "bonsai", "name": "Bonsai Plant",
+        "slot_index": 0, "booster_history": history,
+    }]
+
+    restored = GardenState.from_dict(payload)
+
+    assert len(restored.plants[0].booster_history) == MAX_BOOSTER_HISTORY
+    assert len({
+        (item.started_at, item.expires_at)
+        for item in restored.plants[0].booster_history
+    }) == MAX_BOOSTER_HISTORY
 
 
 def test_current_and_historical_species_are_retained_while_unknown_rows_are_skipped():

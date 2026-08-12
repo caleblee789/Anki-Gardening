@@ -138,7 +138,6 @@ def _install_fake_aqt(monkeypatch):
 
 def _new_app(addon_module):
     app = addon_module.AnkiGardenApp.__new__(addon_module.AnkiGardenApp)
-    app._menu_action = None
     app.dashboard = None
     app._home_widget_hooked = False
     app._home_bridge_hooked = False
@@ -184,22 +183,24 @@ def test_startup_path_logs_errors(monkeypatch, caplog):
     assert "traceback" in caplog.text.lower()
 
 
-def test_setup_menu_registers_single_action_and_callback(monkeypatch):
+def test_setup_does_not_register_a_direct_tools_action(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     addon.mw = aqt_mod.mw
 
     app = _new_app(addon)
-    app._setup_menu()
-    app._setup_menu()
+    for method in (
+        "_setup_settings_menu",
+        "_setup_home_screen_widget",
+        "_setup_reviewer_hook",
+        "_setup_sync_hooks",
+    ):
+        setattr(app, method, lambda: None)
+    app._run_garden_maintenance = lambda _source: True
+    app.setup()
 
     actions = aqt_mod.mw.form.menuTools.actions()
-    assert len([a for a in actions if a.text() == "Anki Garden"]) == 1
-
-    action = actions[0]
-    app._opened = False
-    action.triggered.emit()
-    assert app._opened is True
+    assert not [a for a in actions if a.text() == "Anki Garden"]
 
 
 def test_startup_and_sync_use_the_same_recoverable_maintenance_boundary(monkeypatch):
@@ -207,7 +208,6 @@ def test_startup_and_sync_use_the_same_recoverable_maintenance_boundary(monkeypa
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
     app = _new_app(addon)
     for method in (
-        "_setup_menu",
         "_setup_settings_menu",
         "_setup_home_screen_widget",
         "_setup_reviewer_hook",
@@ -221,6 +221,32 @@ def test_startup_and_sync_use_the_same_recoverable_maintenance_boundary(monkeypa
     app._on_sync_finished()
 
     assert sources == ["startup", "sync completion"]
+
+
+@pytest.mark.parametrize(
+    ("source", "expects_notice"),
+    (("startup", False), ("home rendering", True)),
+)
+def test_expected_scheduler_unavailability_defers_without_an_error_trace(
+    monkeypatch, caplog, source: str, expects_notice: bool
+):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+
+    def unavailable():
+        raise addon.SchedulerBoundaryError("cutoff unavailable")
+
+    app.storage.ensure_revlog_ledger_ready = unavailable
+    addon.USER_NOTICES.clear()
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="ankigarden.addon"):
+        assert app._run_garden_maintenance(source) is False
+
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+    assert bool(addon.USER_NOTICES.current.message) is expects_notice
+    if expects_notice:
+        assert addon.USER_NOTICES.current.key == "review_history"
 
 
 def test_successful_maintenance_clears_a_stale_user_notice(monkeypatch):
@@ -407,6 +433,64 @@ def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears
     handler.on_answer(None, SimpleNamespace(), 3)
     assert storage.state.last_processed_revlog_id == 200
     assert notices.current.message == ""
+
+
+def test_reviewer_reward_feedback_prioritizes_one_event_and_consumes_exactly_that_id(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    events = [
+        SimpleNamespace(
+            event_id="growth:1", kind="growth_milestone", occurred_at="2026-08-10T10:00:00"
+        ),
+        SimpleNamespace(
+            event_id="coins:1", kind="coin_drop", occurred_at="2026-08-10T10:01:00"
+        ),
+        SimpleNamespace(
+            event_id="booster:1", kind="booster_drop", occurred_at="2026-08-10T09:59:00"
+        ),
+    ]
+    shown: list[str] = []
+    consumed: list[tuple[str, ...]] = []
+    engine = SimpleNamespace(
+        config=SimpleNamespace(
+            value=lambda key, default=None: True if key == "show_progress_notifications" else default
+        ),
+        peek_feedback=lambda: list(events),
+        consume_feedback=lambda *, event_ids: consumed.append(tuple(event_ids)),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, SimpleNamespace())
+    handler._show_reward_toast = lambda event: shown.append(event.event_id) or True
+
+    handler._show_optional_progress_feedback()
+
+    assert shown == ["booster:1"]
+    assert consumed == [("booster:1",)]
+    assert handler._last_notified_event == "booster:1"
+
+
+def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    event = SimpleNamespace(
+        event_id="coins:2", kind="coin_drop", occurred_at="2026-08-10T10:02:00"
+    )
+    consumed: list[tuple[str, ...]] = []
+    engine = SimpleNamespace(
+        config=SimpleNamespace(value=lambda _key, _default=None: True),
+        peek_feedback=lambda: [event],
+        consume_feedback=lambda *, event_ids: consumed.append(tuple(event_ids)),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, SimpleNamespace())
+    handler._show_reward_toast = lambda _event: False
+
+    handler._show_optional_progress_feedback()
+
+    assert consumed == []
+    assert handler._last_notified_event == ""
 
 
 def test_successful_maintenance_clears_notice_before_live_dashboard_refresh_without_reentry(

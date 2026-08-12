@@ -90,7 +90,7 @@ def test_local_selection_is_deterministic(tmp_path):
     assert storage._meta["backgrounds:bg_spring_breeze"]["source_kind"] == "local_catalog"
 
 
-def test_release_background_wildcards_cover_season_weather_and_local_time(tmp_path):
+def test_exact_background_beats_release_wildcard_fallback(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
         {
@@ -133,8 +133,9 @@ def test_release_background_wildcards_cover_season_weather_and_local_time(tmp_pa
     )
 
     assert resolved is not None
-    assert resolved.asset_id == "dusk_v4"
-    assert resolved.metadata["slot"]["time_of_day"] == "any"
+    assert resolved.asset_id == "legacy_exact"
+    assert resolved.metadata["slot"]["season"] == "autumn"
+    assert resolved.metadata["slot"]["weather"] == "fireflies"
 
 
 def test_missing_file_fails_closed_without_a_packaged_placeholder(tmp_path):
@@ -407,7 +408,7 @@ def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():
         assert "seedling_anchor" not in row
 
 
-def test_manifest_exposes_one_current_v6_background():
+def test_manifest_exposes_canonical_v6_geometry_and_eight_scenery_reskins():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     rows = json.loads(manifest_path.read_text(encoding="utf-8"))["assets"]
     backgrounds = [
@@ -415,14 +416,26 @@ def test_manifest_exposes_one_current_v6_background():
         if row.get("category") == "backgrounds" and row.get("style_family") == "storybook_gouache"
     ]
     assert [row["asset_id"] for row in backgrounds] == [
-        "bg_verdant_twilight_any_soil_master_v6"
+        "bg_verdant_twilight_any_soil_master_v6",
+        "bg_spring_any_soil_master_v6",
+        "bg_summer_any_soil_master_v6",
+        "bg_autumn_any_soil_master_v6",
+        "bg_snowy_any_soil_master_v6",
+        "bg_rainbow_horizon_any_soil_master_v6",
+        "bg_halloween_any_soil_master_v6",
+        "bg_full_moon_any_soil_master_v6",
+        "bg_eclipse_any_soil_master_v6",
     ]
-    for row in backgrounds:
-        profiles = row["placement"]["layout_profiles"]
-        assert set(profiles) == {"4:3", "3:2", "16:9", "home"}
-        for profile in profiles.values():
-            assert set(profile["compositions"]) == {str(count) for count in range(1, 7)}
-            assert all(len(anchors) == 6 for anchors in profile["compositions"].values())
+    base = backgrounds[0]
+    profiles = base["placement"]["layout_profiles"]
+    assert set(profiles) == {"4:3", "3:2", "16:9", "home"}
+    for profile in profiles.values():
+        assert set(profile["compositions"]) == {str(count) for count in range(1, 7)}
+        assert all(len(anchors) == 6 for anchors in profile["compositions"].values())
+    for row in backgrounds[1:]:
+        assert row["placement_ref"] == base["asset_id"]
+        assert set(row["surface_files"]) == {"4:3", "16:9", "home"}
+        assert row.get("release_preferred") is False
 
 
 def test_storybook_season_master_serves_every_weather(tmp_path):
