@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from PIL import Image
 
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
+
+from ankigarden.asset_manager import AssetManager
+
+
 ADDON = ROOT / "ankigarden"
 ASSETS = ADDON / "assets"
 MANIFEST = ASSETS / "manifest.json"
@@ -58,6 +65,26 @@ RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",
     "assets/support/",
 )
+
+
+class _AuditConfig:
+    def value(self, _key: str, default: Any = None) -> Any:
+        return default
+
+    def nested(self, *_keys: str, default: Any = None) -> Any:
+        return default
+
+
+class _AuditStorage:
+    def __init__(self) -> None:
+        self.addon_dir = ADDON
+        self.assets_root = ASSETS
+
+    def load_asset_metadata(self) -> dict[str, Any]:
+        return {}
+
+    def save_asset_metadata(self, _metadata: dict[str, Any]) -> None:
+        return None
 
 
 def _sha256(path: Path) -> str:
@@ -258,6 +285,16 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
     }
     if observed_ui != expected_ui:
         raise ValueError("the V6 catalog item artwork set is incomplete or noncanonical")
+
+    manager = AssetManager(_AuditConfig(), _AuditStorage())
+    for row in ui_rows:
+        slot = row.get("slot") or {}
+        item_key = str(slot.get("ui_id", ""))
+        resolved = manager.resolve_ui_asset(item_key)
+        if resolved is None or not resolved.path.is_file():
+            raise FileNotFoundError(
+                f"catalog item artwork did not resolve: {item_key} ({row.get('asset_id', '')})"
+            )
     if any(row.get("alpha") is not True for row in ui_rows):
         raise ValueError("catalog item artwork must retain transparency")
     for row in ui_rows:

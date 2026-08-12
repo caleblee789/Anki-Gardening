@@ -2230,14 +2230,28 @@ class NurseryDialog(QDialog):
         label.setProperty("nurseryArtwork", True)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setAccessibleName(accessible_name)
-        path = (
-            Path(__file__).resolve().parents[1]
-            / "assets"
-            / "v6_storybook_gouache"
-            / "ui"
-            / f"{key}.png"
+        normalized_key = str(key or "").strip()
+        logical_asset_id = (
+            normalized_key if normalized_key.startswith("ui_")
+            else f"ui_{normalized_key}"
         )
-        pixmap = QPixmap(str(path)) if path.exists() else QPixmap()
+        asset = None
+        resolver = getattr(self.engine, "resolve_item_asset", None)
+        try:
+            asset = resolver(normalized_key) if callable(resolver) else None
+        except Exception:
+            logger.exception(
+                "Anki Garden: item artwork resolution failed for %s (%s)",
+                normalized_key,
+                logical_asset_id,
+            )
+        path = getattr(asset, "path", None) if asset is not None else None
+        if path is not None:
+            try:
+                path = Path(path)
+            except TypeError:
+                path = None
+        pixmap = QPixmap(str(path)) if path is not None and path.is_file() else QPixmap()
         if pixmap.isNull():
             label.setWordWrap(True)
             label.setText(accessible_name)

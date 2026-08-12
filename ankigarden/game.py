@@ -2550,6 +2550,11 @@ class GardenGameEngine:
             theme=self.config.value("visual_theme", "verdant_twilight"),
         )
 
+    def resolve_item_asset(self, item_key: str) -> Optional[ResolvedAsset]:
+        """Resolve Nursery item artwork from the bundled asset manifest."""
+
+        return self.assets.resolve_ui_asset(item_key, quality_preference="balanced")
+
     def resolve_preview_assets(
         self,
         theme: str,

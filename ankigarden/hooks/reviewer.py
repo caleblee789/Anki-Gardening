@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any, Callable
 
 from aqt import mw
@@ -339,26 +338,15 @@ class ReviewerHookHandler:
     def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:
         asset_key = str(getattr(event, "asset_key", "") or "")
         asset_category = str(getattr(event, "asset_category", "") or "")
-        ui_assets = {
-            "booster_potion": "booster_potion.webp",
-            "fertilizer_basic": "fertilizer_basic.webp",
-            "fertilizer_quality": "fertilizer_quality.webp",
-            "fertilizer_premium": "fertilizer_premium.webp",
-            "growth_charge_small": "growth_charge_small.webp",
-            "growth_charge_standard": "growth_charge_standard.webp",
-            "growth_charge_grand": "growth_charge_grand.webp",
-        }
-        filename = ui_assets.get(asset_key)
-        if filename:
-            path = (
-                Path(__file__).resolve().parents[1]
-                / "assets"
-                / "v6_storybook_gouache"
-                / "ui"
-                / filename
-            )
-            if path.is_file():
-                return pixmap_type(str(path)), None
+        if asset_category == "ui" and asset_key:
+            resolver = getattr(self.engine, "resolve_item_asset", None)
+            try:
+                asset = resolver(asset_key) if callable(resolver) else None
+                path = getattr(asset, "path", None)
+                if path:
+                    return pixmap_type(str(path)), None
+            except Exception:
+                logger.debug("Anki Garden: unable to resolve reward item art", exc_info=True)
         if asset_category in {"weather", "backgrounds"} and asset_key:
             resolver = getattr(
                 self.engine,

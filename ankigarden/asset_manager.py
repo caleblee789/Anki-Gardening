@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 def _surface_contract_is_valid(
@@ -692,6 +696,7 @@ class AssetManager:
         self._catalog = self._load_catalog()
         self._catalog_by_file: dict[str, dict[str, Any]] = {}
         self._catalog_by_asset_id: dict[tuple[str, str], dict[str, Any]] = {}
+        self._missing_ui_warnings: set[tuple[str, str]] = set()
         self._index_catalog()
         self._resolved_cache: dict[tuple[Any, ...], ResolvedAsset] = {}
         self._migrate_legacy_metadata()
@@ -730,6 +735,48 @@ class AssetManager:
             quality_preference=quality_preference,
         )
         return resolved.path if resolved else None
+
+    def resolve_ui_asset(
+        self,
+        item_key: str,
+        *,
+        quality_preference: Optional[str] = None,
+    ) -> Optional[ResolvedAsset]:
+        """Resolve a catalog item's artwork through the manifest.
+
+        UI item keys intentionally match the manifest ``slot.ui_id`` values.
+        The manifest remains the source of the runtime filename and format.
+        """
+
+        normalized = str(item_key or "").strip()
+        if normalized.startswith("ui_"):
+            normalized = normalized[3:]
+        if not normalized:
+            return None
+        logical_asset_id = f"ui_{normalized}"
+        resolved = self.resolve(
+            "ui",
+            normalized,
+            f"slot:ui:{normalized}",
+            quality_preference=quality_preference,
+        )
+        if resolved is None:
+            expected = any(
+                str((row.get("slot") or {}).get("ui_id", "")) == normalized
+                or str(row.get("asset_id", "")) == logical_asset_id
+                for row in self._catalog.get("ui", [])
+                if isinstance(row, dict)
+            )
+            warning_key = (normalized, logical_asset_id)
+            if expected and warning_key not in self._missing_ui_warnings:
+                self._missing_ui_warnings.add(warning_key)
+                logger.warning(
+                    "Anki Garden: expected item artwork could not be resolved "
+                    "(item key=%s, logical asset ID=%s)",
+                    normalized,
+                    logical_asset_id,
+                )
+        return resolved
 
     def resolve(
         self,
