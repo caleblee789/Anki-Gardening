@@ -378,6 +378,38 @@ def test_authoritative_reviewer_success_clears_only_current_review_history_notic
     assert notices.current.key == "display_refresh"
 
 
+def test_reviewer_starter_notice_is_once_per_reviewer_session_and_clears_on_selection(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+
+    storage = SimpleNamespace(state=SimpleNamespace(starter_selection_complete=False))
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+    shown: list[str] = []
+    hidden: list[str] = []
+    handler._show_no_starter_notice = lambda: shown.append("shown")
+    handler._hide_no_starter_notice = lambda: hidden.append("hidden")
+    aqt_mod.mw.reviewer = object()
+
+    handler.on_question()
+    handler.on_question()
+    assert shown == ["shown"]
+
+    handler.on_starter_selected()
+    assert hidden[-1:] == ["hidden"]
+    storage.state.starter_selection_complete = True
+    handler.on_question()
+    assert shown == ["shown"]
+
+    # A new reviewer window begins a fresh, session-scoped reminder budget.
+    storage.state.starter_selection_complete = False
+    aqt_mod.mw.reviewer = object()
+    handler.on_question()
+    assert shown == ["shown", "shown"]
+
+
 def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(
     monkeypatch,
 ):
@@ -1191,7 +1223,7 @@ def test_late_destroyed_signal_from_failed_dashboard_cannot_clear_replacement(mo
         def acknowledge_rendered_feedback(self):
             return None
 
-        def prompt_starter_if_needed(self):
+        def _present_starter_setup_if_needed(self):
             return None
 
         def close(self):
@@ -1267,7 +1299,7 @@ def test_dashboard_feedback_is_acknowledged_only_after_a_successful_show(monkeyp
         def acknowledge_rendered_feedback(self):
             self.events.append("acknowledge")
 
-        def prompt_starter_if_needed(self):
+        def _present_starter_setup_if_needed(self):
             self.events.append("starter")
 
     successful = Dashboard(fail_show=False)
@@ -1307,7 +1339,7 @@ def test_settings_entry_opens_settings_without_prompting_for_a_starter(monkeypat
         raise_=lambda: calls.append("raise"),
         activateWindow=lambda: calls.append("activate"),
         _open_settings=lambda: calls.append("settings"),
-        prompt_starter_if_needed=lambda: calls.append("starter"),
+        _present_starter_setup_if_needed=lambda: calls.append("starter"),
     )
     app._dashboard_open_pending = True
     app._settings_open_pending = True

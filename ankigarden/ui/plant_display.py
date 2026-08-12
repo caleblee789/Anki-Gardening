@@ -1363,20 +1363,34 @@ def requires_native_destination_selector(
     return False
 
 
-def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: float,
-                    card_width: float = 252.0, card_height: float = 184.0,
-                    obstacles: Iterable[Rect] = (), planting_top: float | None = None) -> tuple[float, float, float, float]:
-    """Return the clearest clamped in-scene rectangle for the plant card."""
+def smart_card_rect(
+    width: float,
+    height: float,
+    anchor_x: float,
+    anchor_y: float,
+    card_width: float = 252.0,
+    card_height: float = 184.0,
+    obstacles: Iterable[Rect] = (),
+    planting_top: float | None = None,
+    protected_obstacle: Rect | None = None,
+) -> tuple[float, float, float, float] | None:
+    """Return an anchored card rectangle that never covers its selected plant.
+
+    Candidate order is the product contract: right, left, above, then below.
+    Other plants are soft obstacles in a full six-bed composition, but the
+    selected plant is always protected. Narrow-layout bottom sheets are handled
+    by the caller because they depend on the surrounding native card geometry.
+    """
     margin = 12.0
     gap = 12.0
     safe_width, safe_height = max(1.0, width), max(1.0, height)
     card_width = max(136.0, min(card_width, safe_width - 2 * margin))
     card_height = max(132.0, min(card_height, safe_height - 2 * margin))
     candidates = [
-        Rect(anchor_x + 24, anchor_y - card_height, card_width, card_height),
-        Rect(anchor_x - card_width - 24, anchor_y - card_height, card_width, card_height),
-        Rect(anchor_x - card_width / 2, anchor_y + 18, card_width, card_height),
-        Rect(anchor_x - card_width / 2, anchor_y - card_height - 18, card_width, card_height),
+        Rect(anchor_x + gap, anchor_y - card_height / 2, card_width, card_height),
+        Rect(anchor_x - card_width - gap, anchor_y - card_height / 2, card_width, card_height),
+        Rect(anchor_x - card_width / 2, anchor_y - card_height - gap, card_width, card_height),
+        Rect(anchor_x - card_width / 2, anchor_y + gap, card_width, card_height),
     ]
     def clamp(r: Rect) -> Rect:
         max_x = max(margin, safe_width - card_width - margin)
@@ -1396,6 +1410,8 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
         if key in checked:
             return None
         checked.add(key)
+        if protected_obstacle is not None and candidate.intersects(protected_obstacle):
+            return None
         if any(candidate.intersects(obstacle) for obstacle in blocked):
             return None
         return candidate.x, candidate.y, candidate.width, candidate.height
@@ -1431,6 +1447,8 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
     for raw_x in x_positions:
         for raw_y in y_positions:
             candidate = clamp(Rect(raw_x, raw_y, card_width, card_height))
+            if protected_obstacle is not None and candidate.intersects(protected_obstacle):
+                continue
             if any(candidate.intersects(obstacle) for obstacle in blocked):
                 continue
             distance = (
@@ -1439,22 +1457,28 @@ def smart_card_rect(width: float, height: float, anchor_x: float, anchor_y: floa
             )
             ranked.append((distance, candidate.x, candidate.y, candidate.width))
     if not ranked:
-        # Very dense six-plant compositions may have no completely clear lane.
-        # Keep the popover inside the scene and choose the least-obstructive
-        # clamped candidate instead of docking it below the artwork.
-        fallbacks = [clamp(candidate) for candidate in candidates]
-        candidate = min(
-            fallbacks,
-            key=lambda row: (
-                sum(
-                    max(0.0, min(row.right, obstacle.right) - max(row.x, obstacle.x))
-                    * max(0.0, min(row.bottom, obstacle.bottom) - max(row.y, obstacle.y))
-                    for obstacle in blocked
-                ),
+        # A dense mature garden may have no completely empty side lane. Keep
+        # the selected plant protected and prefer a candidate touching at most
+        # one unrelated plant/plot before comparing overlap area and distance.
+        fallbacks = [
+            clamp(candidate)
+            for candidate in candidates
+            if protected_obstacle is None
+            or not clamp(candidate).intersects(protected_obstacle)
+        ]
+        if not fallbacks:
+            return None
+
+        def obstruction_rank(row: Rect) -> tuple[int, float, float]:
+            intersections = [obstacle for obstacle in blocked if row.intersects(obstacle)]
+            overlap = sum(row.intersection_area(obstacle) for obstacle in intersections)
+            distance = (
                 (row.x + row.width / 2 - anchor_x) ** 2
-                + (row.y + row.height / 2 - anchor_y) ** 2,
-            ),
-        )
+                + (row.y + row.height / 2 - anchor_y) ** 2
+            )
+            return len(intersections), overlap, distance
+
+        candidate = min(fallbacks, key=obstruction_rank)
         return candidate.x, candidate.y, candidate.width, candidate.height
     _distance, candidate_x, candidate_y, candidate_width = min(ranked)
     return candidate_x, candidate_y, candidate_width, card_height
@@ -1558,8 +1582,8 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if just_completed:
         return OnboardingDisplay(
             True,
-            "Your garden is ready",
-            "The plant you nurture receives Growth from future card answers. Study goals and milestones earn Garden Coins.",
+            "Starter selected",
+            "Your starter is now your nurtured plant. Your next eligible card answer will give it Growth.",
         )
     try:
         version = int(onboarding_version)
@@ -1574,12 +1598,13 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if reviews == 0:
         return OnboardingDisplay(
             True,
-            "Grow your first plant",
-            "Answer your first card in Anki. Each answer gives the plant you nurture 10 base Growth.",
-            "Return to studying",
+            "Choose your starter",
+            "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+            "Choose starter",
         )
     return OnboardingDisplay(
         True,
-        "Choose a plant to nurture",
-        "Select a plant, then choose Nurture. It will receive Growth from future card answers.",
+        "Choose your starter",
+        "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+        "Choose starter",
     )

@@ -9,6 +9,7 @@ from aqt.qt import (
     QComboBox,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPixmap,
@@ -23,12 +24,15 @@ from aqt.qt import (
 )
 
 from ..config import DEFAULT_CONFIG
+from .copy import REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
 from .scene import GardenSceneWidget
 from .plant_display import growth_display, settings_layout_is_compact
+from .theme import BUTTON_MIN_HEIGHT, GARDEN_THEME, tool_button_stylesheet
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
-    "animations_label": "Animate weather",
+    "animations_label": REDUCED_MOTION_LABEL,
+    "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
     "animation_label": "Weather motion",
@@ -41,6 +45,105 @@ STUDIO_TEXT = {
 def _describe_control(widget: QWidget, text: str) -> None:
     widget.setToolTip(text)
     widget.setAccessibleDescription(text)
+
+
+class ToggleSettingRow(QFrame):
+    """A full-row click target with a native, keyboard-operable switch."""
+
+    def __init__(
+        self,
+        title: str,
+        description: str,
+        control: QCheckBox,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.control = control
+        self.setProperty("toggleSettingRow", True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setSpacing(12)
+        copy = QVBoxLayout()
+        copy.setSpacing(2)
+        heading = QLabel(title)
+        heading.setProperty("settingsHeading", True)
+        heading.setWordWrap(True)
+        heading.setMinimumWidth(0)
+        note = QLabel(description)
+        note.setProperty("settingsNote", True)
+        note.setWordWrap(True)
+        copy.addWidget(heading)
+        copy.addWidget(note)
+        layout.addLayout(copy, 1)
+        control.setText("")
+        control.setProperty("toggleSwitch", True)
+        control.setAccessibleName(title)
+        control.setAccessibleDescription(description)
+        layout.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.control.isEnabled():
+            self.control.toggle()
+            self.control.setFocus()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
+class HomeGardenPreview(QFrame):
+    """Native mirror of the compact Home preview's artwork-first hierarchy."""
+
+    def __init__(self, scene: GardenSceneWidget, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("homeGardenPreview", True)
+        self.setAccessibleName("Home preview")
+        self.setMinimumHeight(168)
+        self.setMaximumHeight(180)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(0)
+        scene.setMinimumHeight(168)
+        scene.setMaximumHeight(180)
+        grid.addWidget(scene, 0, 0)
+        self.scrim = QFrame()
+        self.scrim.setProperty("previewScrim", True)
+        scrim_layout = QHBoxLayout(self.scrim)
+        scrim_layout.setContentsMargins(16, 22, 16, 12)
+        scrim_layout.setSpacing(12)
+        identity = QVBoxLayout()
+        identity.setSpacing(2)
+        eyebrow = QLabel("ANKI GARDEN")
+        eyebrow.setProperty("previewEyebrow", True)
+        self.title = QLabel("My Garden")
+        self.title.setProperty("previewTitle", True)
+        self.title.setTextFormat(Qt.TextFormat.PlainText)
+        self.support = QLabel("No nurtured plant · Open the garden to choose one")
+        self.support.setProperty("previewSupport", True)
+        self.support.setTextFormat(Qt.TextFormat.PlainText)
+        identity.addWidget(eyebrow)
+        identity.addWidget(self.title)
+        identity.addWidget(self.support)
+        scrim_layout.addLayout(identity, 1)
+        self.action = QLabel("Open garden")
+        self.action.setProperty("previewAction", True)
+        self.action.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.action.setAccessibleName("Home preview action: Open garden")
+        scrim_layout.addWidget(self.action, 0, Qt.AlignmentFlag.AlignBottom)
+        grid.addWidget(self.scrim, 0, 0, Qt.AlignmentFlag.AlignBottom)
+
+    def set_content(self, title: str, support: str, *, enabled: bool) -> None:
+        safe_title = str(title or "My Garden")
+        safe_support = str(support)
+        self.title.setText(safe_title)
+        self.title.setToolTip(safe_title)
+        self.support.setText(safe_support)
+        self.support.setToolTip(safe_support)
+        self.setEnabled(bool(enabled))
+        self.setAccessibleDescription(
+            f"{safe_title}. {safe_support}. "
+            + ("Shown on Anki home screens." if enabled else "Hidden on Anki home screens.")
+        )
 
 
 class GardenStudioWidget(QWidget):
@@ -82,7 +185,7 @@ class GardenStudioWidget(QWidget):
             self._garden_snapshot().get("garden_name") or "My Garden"
         )
         self.scene = GardenSceneWidget(interactive=False)
-        self.scene.setMinimumHeight(230)
+        self.scene.setMinimumHeight(168)
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(120)
@@ -128,45 +231,52 @@ class GardenStudioWidget(QWidget):
         return frame, form
 
     def _build_ui(self) -> None:
-        self.setStyleSheet(
-            "QLabel[settingsHeading='true'] { font-size:15px; font-weight:700; }"
-            "QLabel[settingsNote='true'] { color:#aebfc3; font-size:12px; }"
-            "QLabel[settingValue='true'] { color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }"
-            "QFrame[settingsSection='true'] { border-top:1px solid rgba(130,160,168,.22); }"
-            "QFrame[settingsControls='true'] { background:#102722; border:0; border-radius:12px; }"
-            "QFrame[themeCard='true'] { background:transparent; border:0; }"
-            "QFrame[previewPanel='true'] { background:#0d211e; border:1px solid #345348; border-radius:12px; }"
-            "QToolButton { color:#edf5ea; background:#152d28; border:1px solid #42675a; border-radius:9px; padding:7px 9px; font-weight:650; text-align:left; }"
-            "QToolButton:hover { background:#1e3b34; border-color:#5b836f; }"
-            "QToolButton:checked { background:#244c3d; border-color:#6d8e70; }"
-            "QToolButton:focus { border:2px solid #e5f2a6; padding:6px 8px; }"
-            "QComboBox { color:#edf5ea; background:#142c27; border:1px solid #42675a; border-radius:8px; padding:6px 28px 6px 8px; min-height:24px; }"
-            "QComboBox:hover { border-color:#5b836f; }"
-            "QComboBox:focus { border:2px solid #e5f2a6; padding:5px 27px 5px 7px; }"
-            "QComboBox::drop-down { border:0; width:24px; }"
-            "QComboBox QAbstractItemView { color:#edf5ea; background:#142c27; selection-background-color:#2d7653; border:1px solid #42675a; }"
-            "QSlider::groove:horizontal { height:6px; background:#203d36; border-radius:3px; }"
-            "QSlider::sub-page:horizontal { background:#58b77b; border-radius:3px; }"
-            "QSlider::handle:horizontal { width:16px; height:16px; margin:-5px 0; background:#e5f2a6; border:2px solid #2d7653; border-radius:9px; }"
-            "QSlider::handle:horizontal:hover { background:#f4f8cf; border-color:#58b77b; }"
-            "QSlider:disabled { color:#74877d; }"
-            "QCheckBox { color:#edf5ea; border:1px solid transparent; border-radius:5px; padding:2px; }"
-            "QCheckBox:focus { border-color:#e5f2a6; }"
-            "QCheckBox::indicator { width:17px; height:17px; background:#102622; border:1px solid #527563; border-radius:4px; }"
-            "QCheckBox::indicator:hover { border-color:#78a189; }"
-            "QCheckBox::indicator:checked { background:#58b77b; border:4px solid #17342e; }"
-            "QCheckBox::indicator:disabled { background:#1c2a28; border-color:#344840; }"
-        )
+        t = GARDEN_THEME
+        self.setStyleSheet(f"""
+            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:15px; font-weight:700; }}
+            QLabel[settingsNote='true'] {{ color:{t['text_muted']}; font-size:13px; }}
+            QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
+            QFrame[settingsSection='true'] {{ border:0; }}
+            QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
+            QFrame[themeCard='true'] {{ background:transparent; border:0; }}
+            QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
+            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:1px solid {t['subtle_border']}; border-radius:12px; }}
+            QFrame[homeGardenPreview='true']:disabled {{ border-color:{t['disabled_border']}; }}
+            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 rgba(5,20,16,0),stop:.42 rgba(5,20,16,215),stop:1 rgba(5,20,16,248)); border:0; }}
+            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:11px; font-weight:700; letter-spacing:1px; }}
+            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:700; }}
+            QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
+            QLabel[previewAction='true'] {{ min-height:40px; padding:0 14px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:14px; font-weight:600; }}
+            QFrame[toggleSettingRow='true'] {{ background:transparent; border:0; }}
+            QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:6px 28px 6px 8px; min-height:26px; }}
+            QComboBox:hover {{ border-color:#5b836f; }}
+            QComboBox:focus {{ border:2px solid {t['focus_ring']}; padding:5px 27px 5px 7px; }}
+            QComboBox::drop-down {{ border:0; width:24px; }}
+            QComboBox QAbstractItemView {{ color:{t['text_primary']}; background:#142c27; selection-background-color:{t['action_accent']}; border:1px solid {t['secondary_border']}; }}
+            QSlider::groove:horizontal {{ height:6px; background:#203d36; border-radius:3px; }}
+            QSlider::sub-page:horizontal {{ background:{t['growth_accent']}; border-radius:3px; }}
+            QSlider::handle:horizontal {{ width:18px; height:18px; margin:-6px 0; background:{t['focus_ring']}; border:2px solid {t['action_accent']}; border-radius:10px; }}
+            QSlider::handle:horizontal:hover {{ background:#f4f8cf; border-color:{t['growth_accent']}; }}
+            QSlider:disabled {{ color:#74877d; }}
+            QCheckBox {{ min-height:40px; color:{t['text_primary']}; border:1px solid transparent; border-radius:6px; padding:2px 4px; }}
+            QCheckBox:focus {{ border-color:{t['focus_ring']}; }}
+            QCheckBox::indicator {{ width:20px; height:20px; background:#102622; border:1px solid #527563; border-radius:5px; }}
+            QCheckBox::indicator:hover {{ border-color:#78a189; }}
+            QCheckBox::indicator:checked {{ background:{t['growth_accent']}; border:4px solid #17342e; }}
+            QCheckBox::indicator:disabled {{ background:{t['disabled_surface']}; border-color:{t['disabled_border']}; }}
+            QCheckBox[toggleSwitch='true']::indicator {{ width:38px; height:22px; border-radius:11px; border:1px solid {t['strong_border']}; background:#20312c; }}
+            QCheckBox[toggleSwitch='true']::indicator:checked {{ border:1px solid {t['growth_accent']}; background:{t['action_accent']}; }}
+        """ + tool_button_stylesheet())
         self.root_layout = QHBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(18)
+        self.root_layout.setSpacing(20)
         self.controls = QFrame()
         self.controls.setProperty("settingsControls", True)
-        self.controls.setMinimumWidth(290)
-        self.controls.setMaximumWidth(310)
+        self.controls.setMinimumWidth(340)
+        self.controls.setMaximumWidth(380)
         controls_layout = QVBoxLayout(self.controls)
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setSpacing(4)
+        controls_layout.setContentsMargins(14, 14, 14, 14)
+        controls_layout.setSpacing(12)
 
         self.asset_quality_combo = QComboBox()
         self.asset_quality_combo.setAccessibleName(STUDIO_TEXT["asset_quality_label"])
@@ -189,33 +299,38 @@ class GardenStudioWidget(QWidget):
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
-        self.theme_thumbnail.hide()
         theme_copy = QVBoxLayout()
-        theme_title = QLabel("Previewing: Verdant Twilight")
+        theme_title = QLabel("Scenery")
         theme_title.setProperty("settingsHeading", True)
         theme_title.setWordWrap(True)
-        theme_note = QLabel("Weather and Scenery are managed in Garden Progress.")
+        theme_value = QLabel("Verdant Twilight")
+        theme_value.setStyleSheet("font-weight:600;")
+        theme_note = QLabel("Changes the garden weather and background appearance.")
         theme_note.setWordWrap(True)
         theme_note.setProperty("settingsNote", True)
         theme_copy.addWidget(theme_title)
+        theme_copy.addWidget(theme_value)
         theme_copy.addWidget(theme_note)
         theme_layout.addWidget(self.theme_thumbnail)
         theme_layout.addLayout(theme_copy, 1)
         controls_layout.addWidget(self.theme_card)
         self.manage_environment = QToolButton()
-        self.manage_environment.setText("Manage Weather && Scenery")
+        self.manage_environment.setText("Customize Garden")
         self.manage_environment.setAccessibleDescription(
-            "Open Garden Progress on the Weather and Scenery tab."
+            "Open the separate Customize Garden surface for Weather and Scenery."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         controls_layout.addWidget(self.manage_environment)
 
-        self.animations_enabled = QCheckBox()
-        self.animations_enabled.setAccessibleName(STUDIO_TEXT["animations_label"])
+        self.reduced_motion = QCheckBox()
+        self.reduced_motion.setAccessibleName(REDUCED_MOTION_LABEL)
         _describe_control(
-            self.animations_enabled,
-            "Turn all Garden weather motion on or off.",
+            self.reduced_motion,
+            REDUCED_MOTION_DESCRIPTION,
         )
+        # Compatibility alias for callers that used the old internal widget
+        # name. Its checked state now directly represents reduced motion.
+        self.animations_enabled = self.reduced_motion
         self.anim_slider = QSlider(Qt.Orientation.Horizontal)
         self.anim_slider.setAccessibleName(STUDIO_TEXT["animation_label"])
         self.anim_slider.setRange(0, 100)
@@ -244,72 +359,31 @@ class GardenStudioWidget(QWidget):
         particle_row.addWidget(self.particle_slider, 1)
         particle_row.addWidget(self.particle_value)
 
-        motion, motion_form = self._section(
-            "Motion",
-            "Turn off garden motion when you prefer a quieter study screen.",
+        self.motion_row = ToggleSettingRow(
+            REDUCED_MOTION_LABEL,
+            REDUCED_MOTION_DESCRIPTION,
+            self.reduced_motion,
         )
-        motion_form.addRow(STUDIO_TEXT["animations_label"], self.animations_enabled)
-        # Weather motion is automatic and honors the saved reduced-motion
-        # accessibility flag. It is no longer exposed as a visual loadout
-        # control now that Weather is collectible. Give the hidden section an
-        # explicit Qt parent so its preview controls stay alive without
-        # mounting the retired section in the visible layout.
-        motion.setParent(self.controls)
-        motion.hide()
+        controls_layout.addWidget(self.motion_row)
 
-        self.show_home_widget = QCheckBox("○  Off")
+        self.show_home_widget = QCheckBox()
         self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
         _describe_control(
             self.show_home_widget,
             "Show or hide the Garden summary on Anki home screens.",
         )
-        self.show_progress_notifications = QCheckBox("○  Off")
+        self.show_progress_notifications = QCheckBox()
         self.show_progress_notifications.setAccessibleName(STUDIO_TEXT["progress_notifications_label"])
         _describe_control(
             self.show_progress_notifications,
             "Show brief Garden progress notifications after studying.",
         )
-        integration = QFrame()
-        integration.setProperty("settingsSection", True)
-        integration_layout = QVBoxLayout(integration)
-        integration_layout.setContentsMargins(0, 8, 0, 8)
-        integration_layout.setSpacing(8)
-        integration_heading = QLabel("Garden display")
-        integration_heading.setProperty("settingsHeading", True)
-        integration_layout.addWidget(integration_heading)
-        for title, description, toggle in (
-            (
-                STUDIO_TEXT["home_widget_label"],
-                "Show the compact Garden card in the Deck Browser and Overview.",
-                self.show_home_widget,
-            ),
-            (
-                STUDIO_TEXT["progress_notifications_label"],
-                "Show quiet, non-focus-stealing Growth and reward notifications.",
-                self.show_progress_notifications,
-            ),
-        ):
-            row = QHBoxLayout()
-            copy = QVBoxLayout()
-            label = QLabel(title)
-            label.setWordWrap(True)
-            label.setStyleSheet("font-weight:650;")
-            note = QLabel(description)
-            note.setWordWrap(True)
-            note.setProperty("settingsNote", True)
-            copy.addWidget(label)
-            copy.addWidget(note)
-            row.addLayout(copy, 1)
-            row.addWidget(toggle, 0, Qt.AlignmentFlag.AlignTop)
-            integration_layout.addLayout(row)
-        controls_layout.addWidget(integration)
-        environment_note = QLabel(
-            "Choose, equip, show, or hide collectible Weather and Scenery in "
-            "Garden Progress → Weather & Scenery."
+        self.home_preview_row = ToggleSettingRow(
+            STUDIO_TEXT["home_widget_label"],
+            "Show this compact Garden preview in the Deck Browser and Deck Overview.",
+            self.show_home_widget,
         )
-        environment_note.setWordWrap(True)
-        environment_note.setProperty("settingsNote", True)
-        controls_layout.addWidget(environment_note)
+        controls_layout.insertWidget(0, self.home_preview_row)
 
         self.fine_tune_toggle = QToolButton()
         self.fine_tune_toggle.setText("Fine tune")
@@ -319,7 +393,7 @@ class GardenStudioWidget(QWidget):
         self.fine_tune_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.fine_tune_toggle.setAccessibleName("Show fine-tune settings")
         self.fine_tune_toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.fine_tune_toggle.setMinimumHeight(36)
+        self.fine_tune_toggle.setMinimumHeight(BUTTON_MIN_HEIGHT)
         self.fine_tune_section, fine_tune_form = self._section(
             "Weather effects",
             "Adjust weather motion and density only when you need to.",
@@ -331,23 +405,38 @@ class GardenStudioWidget(QWidget):
         fine_tune_form.addRow(STUDIO_TEXT["animation_label"], anim_row)
         fine_tune_form.addRow(STUDIO_TEXT["particle_label"], particle_row)
         self.fine_tune_section.hide()
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setText("Advanced")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setAccessibleName("Show advanced display settings")
+        self.advanced_panel = QFrame()
+        self.advanced_panel.setProperty("settingsSection", True)
+        self.advanced_actions_layout = QVBoxLayout(self.advanced_panel)
+        self.advanced_actions_layout.setContentsMargins(0, 8, 0, 0)
+        self.advanced_actions_layout.setSpacing(8)
+        self.notifications_row = ToggleSettingRow(
+            STUDIO_TEXT["progress_notifications_label"],
+            "Show brief Growth and reward notices after studying.",
+            self.show_progress_notifications,
+        )
+        self.advanced_actions_layout.addWidget(self.notifications_row)
+        self.advanced_panel.hide()
+        controls_layout.addWidget(self.advanced_toggle)
+        controls_layout.addWidget(self.advanced_panel)
         controls_layout.addStretch(1)
 
         self.preview_panel = QFrame()
         self.preview_panel.setProperty("previewPanel", True)
         self.preview_panel.setAccessibleName("Garden preview")
         preview_layout = QVBoxLayout(self.preview_panel)
-        preview_layout.setContentsMargins(10, 10, 10, 10)
-        preview_layout.setSpacing(5)
-        preview_title = QLabel("Preview")
+        preview_layout.setContentsMargins(14, 14, 14, 14)
+        preview_layout.setSpacing(10)
+        preview_title = QLabel("Home preview")
         preview_title.setProperty("settingsHeading", True)
-        self.preview_name = QLabel(self._preview_garden_name)
-        self.preview_name.setStyleSheet("font-size:18px; font-weight:700; color:#f2f6ee;")
-        self.preview_metrics = QLabel("")
-        self.preview_metrics.setProperty("settingsNote", True)
-        self.preview_metrics.setWordWrap(True)
         preview_note = QLabel(
-            "The same compact, noninteractive Garden state shown on Anki home screens."
+            "This is how the garden will appear on Anki home screens."
         )
         preview_note.setWordWrap(True)
         preview_note.setProperty("settingsNote", True)
@@ -355,25 +444,27 @@ class GardenStudioWidget(QWidget):
         self.preview_disabled_note.setWordWrap(True)
         self.preview_disabled_note.setStyleSheet("color:#e6c47a; font-weight:700;")
         self.preview_disabled_note.hide()
+        self.home_preview = HomeGardenPreview(self.scene)
+        self.preview_name = self.home_preview.title
+        self.preview_metrics = self.home_preview.support
         preview_layout.addWidget(preview_title)
-        preview_layout.addWidget(self.preview_name)
-        preview_layout.addWidget(self.preview_metrics)
+        preview_layout.addWidget(self.home_preview)
         preview_layout.addWidget(preview_note)
         preview_layout.addWidget(self.preview_disabled_note)
-        preview_layout.addWidget(self.scene, 1)
 
         self.root_layout.addWidget(self.controls, 0)
         self.root_layout.addWidget(self.preview_panel, 1)
 
         self.asset_quality_combo.currentIndexChanged.connect(self._on_persistent_preview_change)
-        self.animations_enabled.toggled.connect(self._on_animation_toggled)
-        self.animations_enabled.toggled.connect(self._update_motion_controls)
+        self.reduced_motion.toggled.connect(self._on_reduced_motion_toggled)
+        self.reduced_motion.toggled.connect(self._update_motion_controls)
         self.show_home_widget.toggled.connect(self._on_persistent_change)
         self.show_home_widget.toggled.connect(self._sync_switch_copy)
         self.show_home_widget.toggled.connect(self._sync_preview_enabled)
         self.show_progress_notifications.toggled.connect(self._on_persistent_change)
         self.show_progress_notifications.toggled.connect(self._sync_switch_copy)
         self.fine_tune_toggle.toggled.connect(self._set_fine_tune_expanded)
+        self.advanced_toggle.toggled.connect(self._set_advanced_expanded)
         self.anim_slider.valueChanged.connect(
             lambda _value: self._on_slider_changed("animation_intensity")
         )
@@ -390,16 +481,16 @@ class GardenStudioWidget(QWidget):
     def _sync_switch_copy(self, checked: bool) -> None:
         sender = self.sender()
         if isinstance(sender, QCheckBox):
-            sender.setText("✓  On" if checked else "○  Off")
             sender.setAccessibleDescription("On" if checked else "Off")
 
     def _sync_preview_enabled(self, checked: bool) -> None:
         self.preview_disabled_note.setVisible(not checked)
-        self.scene.setEnabled(checked)
+        self.home_preview.setEnabled(checked)
 
     def set_preview_garden_name(self, name: str) -> None:
         self._preview_garden_name = str(name or "My Garden")
         self.preview_name.setText(self._preview_garden_name)
+        self.preview_name.setToolTip(self._preview_garden_name)
 
     def _set_fine_tune_expanded(self, expanded: bool) -> None:
         self.fine_tune_section.setVisible(bool(expanded))
@@ -410,9 +501,19 @@ class GardenStudioWidget(QWidget):
             "Hide fine-tune settings" if expanded else "Show fine-tune settings"
         )
 
+    def _set_advanced_expanded(self, expanded: bool) -> None:
+        self.advanced_panel.setVisible(bool(expanded))
+        self.advanced_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+        self.advanced_toggle.setAccessibleName(
+            "Hide advanced display settings" if expanded else "Show advanced display settings"
+        )
+
     def collapse_preview_examples(self) -> None:
         """Compatibility hook used by the settings dialog when it is reopened."""
         self.fine_tune_toggle.setChecked(False)
+        self.advanced_toggle.setChecked(False)
 
     def _config_payload(self) -> dict[str, Any]:
         return {
@@ -442,8 +543,7 @@ class GardenStudioWidget(QWidget):
                 bool(payload.get("reduced_motion", False)),
             )
             self._animation_control_changed = False
-            enabled = self._animation_flags[0] and not self._animation_flags[1]
-            self.animations_enabled.setChecked(enabled)
+            self.reduced_motion.setChecked(bool(payload.get("reduced_motion", False)))
             self.show_home_widget.setChecked(bool(payload.get("show_home_widget", True)))
             self.show_progress_notifications.setChecked(bool(payload.get("show_progress_notifications", False)))
             overrides = payload.get("theme_overrides", {})
@@ -494,7 +594,7 @@ class GardenStudioWidget(QWidget):
             return
         self._compact_layout = compact
         self.root_layout.setDirection(QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight)
-        self.controls.setMaximumWidth(16777215 if compact else 310)
+        self.controls.setMaximumWidth(16777215 if compact else 380)
 
     def resizeEvent(self, event: Any) -> None:
         self._apply_responsive_layout(event.size().width())
@@ -513,7 +613,7 @@ class GardenStudioWidget(QWidget):
         return "High"
 
     def _update_motion_controls(self) -> None:
-        enabled = self.animations_enabled.isChecked()
+        enabled = bool(self._animation_flags[0]) and not self.reduced_motion.isChecked()
         for widget in (self.anim_slider, self.particle_slider, self.anim_value, self.particle_value):
             widget.setEnabled(enabled)
 
@@ -525,10 +625,15 @@ class GardenStudioWidget(QWidget):
         self._on_persistent_change()
         self._schedule_preview()
 
-    def _on_animation_toggled(self, *_args: Any) -> None:
+    def _on_reduced_motion_toggled(self, *_args: Any) -> None:
         if not self._loading_controls:
             self._animation_control_changed = True
         self._on_persistent_preview_change()
+
+    # Keep the old method callable for integrations that used it as an
+    # internal signal handler during the previous settings layout.
+    def _on_animation_toggled(self, *_args: Any) -> None:
+        self._on_reduced_motion_toggled(*_args)
 
     def _on_slider_changed(self, key: str) -> None:
         if not self._loading_controls and key in self._override_control_changed:
@@ -540,8 +645,11 @@ class GardenStudioWidget(QWidget):
         self._schedule_preview()
 
     def _schedule_preview(self) -> None:
-        if not self._loading_controls:
+        if not self._loading_controls and not self.reduced_motion.isChecked():
             self._preview_timer.start()
+        elif self.reduced_motion.isChecked():
+            self._preview_timer.stop()
+            self._apply_preview()
 
     def _apply_preview(self) -> None:
         snapshot = self._garden_snapshot()
@@ -636,13 +744,18 @@ class GardenStudioWidget(QWidget):
             scene_plants[0] if scene_plants else {},
         )
         plant_name = str(active.get("name") or "No nurtured plant")
-        plant_growth = max(0, int(active.get("growth_points", 0) or 0))
-        streak_days = max(0, int(snapshot.get("streak_days", 0) or 0))
-        coin_balance = max(0, int(snapshot.get("currency_balance", 0) or 0))
-        self.preview_metrics.setText(
-            f"{plant_name} — {plant_growth:,} Growth    "
-            f"{streak_days:,} {'day' if streak_days == 1 else 'days'}    "
-            f"{coin_balance:,} Garden Coins"
+        stage = str(active.get("stage") or "seed").replace("_", " ").title()
+        stage_points = max(0, int(active.get("stage_points", 0) or 0))
+        stage_goal = max(0, int(active.get("stage_goal", 0) or 0))
+        support = (
+            f"{plant_name} · {stage} · {stage_points:,} / {stage_goal:,} Growth"
+            if active else
+            "No nurtured plant · Open the garden to choose one"
+        )
+        self.home_preview.set_content(
+            self._preview_garden_name,
+            support,
+            enabled=self.show_home_widget.isChecked(),
         )
         self.scene.set_scene({
             "weather": preview_weather,
@@ -650,7 +763,7 @@ class GardenStudioWidget(QWidget):
             "theme": self.preview["theme"],
             "animation_intensity": self.preview["animation_intensity"],
             "weather_particle_density": self.preview["weather_particle_density"],
-            "motion_enabled": self.animations_enabled.isChecked(),
+            "motion_enabled": bool(self._animation_flags[0]) and not self.reduced_motion.isChecked(),
             "asset_paths": {
                 "background": asset_paths.get("background"),
                 "garden_overlay": asset_paths.get("garden_overlay"),
@@ -679,8 +792,8 @@ class GardenStudioWidget(QWidget):
         quality = "balanced"
         animation_flags = (
             (
-                self.animations_enabled.isChecked(),
-                not self.animations_enabled.isChecked(),
+                self._animation_flags[0],
+                self.reduced_motion.isChecked(),
             )
             if self._animation_control_changed
             else self._animation_flags

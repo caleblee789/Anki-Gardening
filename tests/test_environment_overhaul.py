@@ -535,13 +535,18 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     studio = (root / "ankigarden/ui/garden_studio.py").read_text("utf-8")
 
     assert dashboard.index('addTab(self.upgrades_scroll, "Garden Spaces")') < dashboard.index(
-        'addTab(self.environment_scroll, "Weather && Scenery")'
+        'addTab(self.environment_scroll, "Weather and Scenery")'
     )
-    assert 'addTab(self.supplements_scroll, "Fertilizer & Boosters")' in dashboard
-    assert 'self.environment_collection_scroll,\n            "Weather && Scenery",' in dashboard
+    assert 'addTab(self.supplements_scroll, "Fertilizer and Boosters")' in dashboard
+    assert "self.customize_dialog = CustomizeGardenDialog(" in dashboard
+    assert "self._settings_scene_snapshot," in dashboard
+    assert 'self.catalog_tabs.addTab(self.environment_scroll, "Weather and Scenery")' in dashboard
+    assert 'self.option_tabs.addTab(self.scenery_page, "Scenery")' in dashboard
+    assert 'self.option_tabs.addTab(self.weather_page, "Weather")' in dashboard
+    assert 'self.option_tabs.addTab(self.effects_page, "Effects")' in dashboard
     assert "Show Weather" in dashboard
     assert "Show Scenery" in dashboard
-    assert "controls_layout.addWidget(motion)" not in studio
+    assert "controls_layout.addWidget(self.motion_row)" in studio
     assert "controls_layout.addWidget(self.fine_tune_toggle)" not in studio
     assert "controls_layout.addWidget(self.fine_tune_section)" not in studio
 

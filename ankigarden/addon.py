@@ -10,6 +10,10 @@ from urllib.parse import quote
 
 from aqt import mw
 from aqt.gui_hooks import reviewer_did_answer_card
+try:
+    from aqt.gui_hooks import reviewer_did_show_question
+except (ImportError, AttributeError):
+    reviewer_did_show_question = None
 from aqt.qt import QAction
 
 from .config import ConfigManager
@@ -121,6 +125,7 @@ class AnkiGardenApp:
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
         self._settings_open_pending = False
+        self._starter_open_pending = False
 
     def _invalidate_home_cache(self, _reason: str = "") -> None:
         self._home_html_cache = None
@@ -228,6 +233,9 @@ class AnkiGardenApp:
         if self._reviewer_hooked:
             return
         reviewer_did_answer_card.append(self.reviewer_hooks.on_answer)
+        question_handler = getattr(self.reviewer_hooks, "on_question", None)
+        if reviewer_did_show_question is not None and callable(question_handler):
+            reviewer_did_show_question.append(question_handler)
         self._reviewer_hooked = True
 
     def _settings_menu_bar(self) -> Any:
@@ -319,6 +327,11 @@ class AnkiGardenApp:
         self._settings_open_pending = True
         self.open_dashboard()
 
+    def open_starter_selection(self) -> None:
+        """Open a visible Garden first, then its starter-mode Nursery."""
+        self._starter_open_pending = True
+        self.open_dashboard()
+
     def open_dashboard(self) -> None:
         if getattr(self, "_dashboard_open_pending", False):
             return
@@ -335,6 +348,7 @@ class AnkiGardenApp:
         except Exception:
             self._dashboard_open_pending = False
             self._settings_open_pending = False
+            self._starter_open_pending = False
             logger.exception("Anki Garden: unable to schedule dashboard opening")
             self._notify_dashboard_open_failure(
                 "Anki Garden could not schedule its window. Please restart Anki and try again."
@@ -368,6 +382,7 @@ class AnkiGardenApp:
                 return
             self._dashboard_open_pending = False
             self._settings_open_pending = False
+            self._starter_open_pending = False
             logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
             self._notify_dashboard_open_failure(
                 "Anki Garden is still waiting for the collection to finish opening. Please try again."
@@ -382,12 +397,17 @@ class AnkiGardenApp:
                 if coordinator is None:
                     coordinator = GardenUiCoordinator(mw)
                     self.state_events = coordinator
+                reviewer_hooks = getattr(self, "reviewer_hooks", None)
+                starter_selected_callback = getattr(
+                    reviewer_hooks, "on_starter_selected", None
+                )
                 candidate = GardenDashboard(
                     mw,
                     self.engine,
                     self.storage,
                     self.config,
                     coordinator,
+                    starter_selected_callback,
                 )
                 destroyed = getattr(candidate, "destroyed", None)
                 if destroyed is not None and callable(getattr(destroyed, "connect", None)):
@@ -414,6 +434,7 @@ class AnkiGardenApp:
             if callable(acknowledge):
                 acknowledge()
             opening_settings = bool(getattr(self, "_settings_open_pending", False))
+            opening_starter = bool(getattr(self, "_starter_open_pending", False))
             if opening_settings:
                 self._settings_open_pending = False
                 try:
@@ -424,8 +445,18 @@ class AnkiGardenApp:
                     # A settings dialog failure must not make the already-open
                     # garden look like an opener failure.
                     logger.exception("Anki Garden: settings dialog failed to open")
+            elif opening_starter:
+                self._starter_open_pending = False
+                open_starter = getattr(self.dashboard, "_open_starter_nursery", None)
+                if callable(open_starter):
+                    # Let the successful show/raise/activate turn complete
+                    # before entering the modal Nursery. This prevents a
+                    # Home bridge click from racing the parent Garden window.
+                    from aqt.qt import QTimer
+
+                    QTimer.singleShot(0, open_starter)
             else:
-                prompt_starter = getattr(self.dashboard, "prompt_starter_if_needed", None)
+                prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
                     prompt_starter()
         except Exception:
@@ -462,6 +493,7 @@ class AnkiGardenApp:
                 # retry state so a later ordinary Open Garden action cannot
                 # inherit a stale request to open Settings.
                 self._settings_open_pending = False
+                self._starter_open_pending = False
                 self._notify_dashboard_open_failure(
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
                 )
@@ -537,6 +569,9 @@ class AnkiGardenApp:
         command = message.partition(":")[2]
         if command == "open":
             self.open_dashboard()
+            return True, None
+        if command == "choose-starter":
+            self.open_starter_selection()
             return True, None
         if command == "refresh":
             self._invalidate_home_cache("home retry")
@@ -660,7 +695,9 @@ class AnkiGardenApp:
       bridge(command);
     }});
   }};
-  bindBridgeButton('[data-testid="home-open"]', "anki-garden:open", "Opening…");
+  const homeOpen = root.querySelector('[data-testid="home-open"]');
+  const homeOpenCommand = homeOpen?.dataset.ankiGardenCommand || "anki-garden:open";
+  bindBridgeButton('[data-testid="home-open"]', homeOpenCommand, "Opening…");
   bindBridgeButton('[data-testid="home-retry"]', "anki-garden:refresh");
 
   if (root.dataset.ankiGardenTooltipBound !== "true") {{

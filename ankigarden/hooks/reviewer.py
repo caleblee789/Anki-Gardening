@@ -8,6 +8,7 @@ from aqt import mw
 from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
 from ..notices import USER_NOTICES
 from ..storage import unprocessed_revlog_entries
+from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,75 @@ class ReviewerHookHandler:
         self.state_changed = state_changed
         self._last_notified_event = ""
         self._reward_toast: Any | None = None
+        self._reviewer_notice: Any | None = None
+        self._reviewer_notice_shown = False
+        self._reviewer_session_window: Any | None = None
+
+    def on_question(self, *_args: Any, **_kwargs: Any) -> None:
+        """Show one non-modal eligibility reminder before a reviewer answer."""
+
+        if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
+            self._hide_no_starter_notice()
+            return
+        reviewer_window = getattr(mw, "reviewer", None)
+        if reviewer_window is not None and reviewer_window is not self._reviewer_session_window:
+            self._reviewer_session_window = reviewer_window
+            self._reviewer_notice_shown = False
+            self._hide_no_starter_notice()
+        if self._reviewer_notice_shown:
+            return
+        self._reviewer_notice_shown = True
+        self._show_no_starter_notice()
+
+    def on_starter_selected(self) -> None:
+        """Remove the session reminder as soon as starter persistence succeeds."""
+
+        self._reviewer_notice_shown = False
+        self._hide_no_starter_notice()
+
+    def _show_no_starter_notice(self) -> None:
+        try:
+            from aqt.qt import QFrame, QLabel, QTimer, Qt
+
+            previous = self._reviewer_notice
+            if previous is not None:
+                previous.hide()
+                previous.deleteLater()
+            notice = QFrame(mw)
+            notice.setObjectName("ankiGardenReviewerStarterNotice")
+            notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            notice.setStyleSheet(
+                "QFrame#ankiGardenReviewerStarterNotice { background:#17342e; "
+                "border:1px solid #557665; border-radius:8px; padding:7px 10px; }"
+                "QLabel { color:#e8f1eb; font-size:12px; }"
+            )
+            label = QLabel(REVIEWER_NO_STARTER_NOTICE, notice)
+            label.setWordWrap(True)
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            label.setAccessibleName(REVIEWER_NO_STARTER_NOTICE)
+            notice.adjustSize()
+            width_attr = getattr(mw, "width", None)
+            parent_width = int(width_attr()) if callable(width_attr) else int(width_attr or 720)
+            parent_width = max(parent_width, notice.width())
+            notice.move(max(12, parent_width - notice.width() - 18), 18)
+            notice.show()
+            notice.raise_()
+            self._reviewer_notice = notice
+            QTimer.singleShot(6000, self._hide_no_starter_notice)
+        except Exception:
+            logger.debug("Anki Garden: reviewer starter notice could not be shown", exc_info=True)
+
+    def _hide_no_starter_notice(self) -> None:
+        notice = self._reviewer_notice
+        self._reviewer_notice = None
+        if notice is None:
+            return
+        try:
+            notice.hide()
+            notice.deleteLater()
+        except Exception:
+            logger.debug("Anki Garden: reviewer starter notice could not be hidden", exc_info=True)
 
     @staticmethod
     def review_payload_from_row(row: tuple[Any, ...], collection: Any) -> dict[str, Any] | None:
@@ -132,6 +202,9 @@ class ReviewerHookHandler:
             return
 
         USER_NOTICES.clear(key="review_history")
+
+        if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
+            self._hide_no_starter_notice()
 
         try:
             self.engine.evaluate_all_due(self.storage.due_obligations())
