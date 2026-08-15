@@ -18,7 +18,7 @@ pass.
 
 ## Current candidate verification
 
-- Automated gates: 1,536 tests passed in 82.43 seconds; isolated-cache Python
+- Automated gates: 1,536 tests passed in 84.21 seconds; isolated-cache Python
   compilation, local Markdown-link audit, asset audit, and `git diff --check`
   passed.
 - Asset audit: 9 backgrounds, 60 plant-stage sprites, 9 UI/planter assets,

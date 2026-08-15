@@ -48,7 +48,7 @@ The capture build is deliberately different from the production archive because 
 
 ## Automated validation
 
-- Full repository suite: 1,536 passed in 82.43 seconds.
+- Full repository suite: 1,536 passed in 84.21 seconds.
 - Dedicated lossless pixel/container, planter, scene-profile, landmark, and item-art gate: 50 passed in 22.56 seconds.
 - Asset manifest audit: 9 backgrounds, 1 decoration, 60 plants, 9 UI assets, 7 Weather assets.
 - Python compilation: clean with a disposable bytecode cache.

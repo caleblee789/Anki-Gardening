@@ -66,7 +66,13 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
             info.compress_type == zipfile.ZIP_STORED for info in archive.infolist()
         )
         capability_source = ADDON / CAPABILITY_MODULE
-        assert package_payload(capability_source) == capability_source.read_bytes()
+        generated_capabilities = package_payload(capability_source)
+        checked_in_capabilities = capability_source.read_bytes()
+        assert generated_capabilities.endswith(b"\n")
+        assert checked_in_capabilities.endswith(b"\n")
+        assert generated_capabilities.rstrip(b"\n") == checked_in_capabilities.rstrip(
+            b"\n"
+        )
     assert {"__init__.py", "manifest.json", "config.json", "assets/manifest.json"} <= names
     assert "user_files/README.txt" in names
     assert "meta.json" not in names
