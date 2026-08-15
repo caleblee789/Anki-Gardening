@@ -1,10 +1,13 @@
 from pathlib import Path
 import json
+import math
 
 import pytest
 
 from ankigarden.ui.plant_display import (
     CURRENT_ONBOARDING_VERSION,
+    NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
+    NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
     PlantInteractionState,
     Rect,
     achievement_progress_display,
@@ -15,9 +18,14 @@ from ankigarden.ui.plant_display import (
     hit_test,
     move_badge_label,
     move_target_state,
+    nurtured_badge_rect,
+    nurtured_marker_fallback_rect,
+    nurtured_marker_placement,
+    nurtured_marker_rect,
     onboarding_display,
     plant_layout,
     plant_layout_item,
+    planter_draw_rect,
     requires_native_destination_selector,
     settings_layout_is_compact,
     smart_card_rect,
@@ -68,6 +76,138 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
 )
 def test_settings_layout_breakpoint_is_deterministic(width, compact):
     assert settings_layout_is_compact(width) is compact
+
+
+@pytest.mark.parametrize(
+    "visible",
+    (
+        Rect(18, 120, 90, 120),
+        Rect(455, 80, 90, 160),
+        Rect(890, 110, 90, 130),
+    ),
+)
+def test_nurturing_marker_stays_on_canvas_and_outside_plant_pixels(visible: Rect) -> None:
+    marker = nurtured_marker_rect(1000, 420, visible, 120)
+
+    assert 0 <= marker.x and marker.right <= 1000
+    assert 0 <= marker.y and marker.bottom <= 420
+    assert not marker.intersects(visible)
+
+
+def test_compact_nurtured_badge_keeps_original_size_and_adjacency() -> None:
+    visible = Rect(420, 120, 80, 110)
+    badge = nurtured_badge_rect(1000, 420, visible, 120)
+
+    assert 22 <= badge.width <= 26
+    assert badge.height == badge.width
+    assert 0 <= badge.x and badge.right <= 1000
+    assert 0 <= badge.y and badge.bottom <= 420
+    assert 0 < badge.x - visible.right <= 5
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "surface_context"),
+    (
+        (620, 465, "dashboard"),
+        (1_093, 615, "dashboard"),
+        (1_440, 600, "dashboard"),
+        (1_000, 420, "home"),
+    ),
+)
+def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
+    width: int,
+    height: int,
+    surface_context: str,
+) -> None:
+    manifest = json.loads(
+        (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
+            "utf-8"
+        )
+    )
+    background = _release_background(manifest)
+    assets = [
+        row
+        for row in manifest["assets"]
+        if row.get("category") == "plants"
+        and isinstance(row.get("placement"), dict)
+    ][:6]
+    plants = [
+        {
+            "plant_id": f"marker-{slot}",
+            "slot_index": slot,
+            "species": asset["slot"]["species"],
+            "stage": asset["slot"]["stage"],
+            "placement": asset["placement"],
+            "canvas_aspect": float(asset["width"]) / float(asset["height"]),
+        }
+        for slot, asset in enumerate(assets)
+    ]
+    layouts = plant_layout(
+        width,
+        height,
+        plants,
+        background["placement"],
+        surface_context=surface_context,
+        composition_count=6,
+        protected_status=False,
+        reserve_move_controls=False,
+    )
+    family = background["placement"]["surface_profile"]["planter_family"]
+    planter_boxes = [planter_draw_rect(layout, family) for layout in layouts]
+    obstacles = [layout.visible.expanded(4, 4) for layout in layouts]
+
+    for layout, planter in zip(layouts, planter_boxes):
+        marker = nurtured_marker_placement(
+            width,
+            height,
+            layout,
+            planter_rect=planter,
+            obstacles=obstacles,
+        )
+
+        expected_side = "left" if layout.slot_index % 2 == 0 else "right"
+        expected_orientation = (
+            "spout-right" if expected_side == "left" else "spout-left"
+        )
+        assert marker.used_fallback is False
+        assert marker.side == expected_side
+        assert marker.orientation == expected_orientation
+        assert 44 <= marker.rect.width <= 88
+        assert marker.rect.height == marker.rect.width
+        assert 0 <= marker.pulse_bounds.x
+        assert marker.pulse_bounds.right <= width
+        assert 0 <= marker.pulse_bounds.y
+        assert marker.pulse_bounds.bottom <= height
+        assert not any(marker.pulse_bounds.intersects(rect) for rect in obstacles)
+        aligned_y = layout.ground_anchor[1] - marker.rect.height * 0.916
+        assert abs(marker.rect.y - aligned_y) <= (
+            marker.rect.height * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO
+        )
+        marker_ground_y = marker.rect.y + marker.rect.height * 0.916
+        assert abs(marker_ground_y - layout.ground_anchor[1]) <= (
+            marker.rect.height * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO
+        )
+        marker_center_x = marker.rect.x + marker.rect.width / 2
+        plant_distance = math.hypot(
+            marker_center_x - layout.ground_anchor[0],
+            marker_ground_y - layout.ground_anchor[1],
+        )
+        assert (
+            plant_distance
+            <= planter.width * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
+        )
+        assert marker.rect.intersects(planter)
+        if expected_side == "left":
+            assert marker.pulse_bounds.right <= layout.visible.x - 4
+            assert marker_center_x < layout.ground_anchor[0]
+        else:
+            assert marker.pulse_bounds.x >= layout.visible.right + 4
+            assert marker_center_x > layout.ground_anchor[0]
+        fallback = nurtured_marker_fallback_rect(marker)
+        assert marker.rect.contains(
+            fallback.x + fallback.width / 2,
+            fallback.y + fallback.height / 2,
+        )
 
 
 def test_growth_display_sanitizes_invalid_points():
@@ -709,9 +849,11 @@ def test_dashboard_is_garden_first_with_one_progress_architecture():
 def test_selected_state_traces_artwork_without_a_detached_ground_ring():
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
     assert "CompositionMode_DestinationOut" in scene
-    assert "desired_width = 2.0 if emphasized else 1.15" in scene
+    assert "PLANT_HOVER_OUTLINE_WIDTH = 1.65" in scene
+    assert "PLANT_HOVER_OUTLINE_OPACITY = 0.55" in scene
+    assert "desired_width = 2.0 if emphasized else PLANT_HOVER_OUTLINE_WIDTH" in scene
     assert "edge = QPixmap(source.width() + padding * 2" in scene
-    assert "painter.setOpacity(0.62 if emphasized else 0.34 * hovered)" in scene
+    assert "PLANT_HOVER_OUTLINE_OPACITY * hovered" in scene
     assert "layout.grounding.shadow_plane" in scene
     assert "layout.grounding.cast_shadow" in scene
     assert "_draw_plant_interaction_base" not in scene
@@ -751,8 +893,11 @@ def test_phase2_copy_states_and_single_scroll_contract_are_explicit():
     assert "STATS_HELP_TEXT = PROGRESSION_SUMMARY" in scene
     assert 'streak_label = "Study today to start your Anki streak"' in scene
     assert 'f"{streak_days}-day Anki streak with "' in scene
-    assert '"No streak yet\\nStudy today to start"' in dashboard
-    assert "if streak_days == 0" in dashboard
+    assert "streak_view = streak_presentation(" in dashboard
+    assert 'getattr(state, "last_active_day", "")' in dashboard
+    assert "streak_days = streak_view.current_days" in dashboard
+    assert 'f"0 days\\n{streak_view.status_label}"' in dashboard
+    assert '"No streak yet\\nStudy today to start"' not in dashboard
     assert '"\\n".join(labels)' in scene
     assert "path.cubicTo(" in scene
     assert "self._draw_garden_overlay_asset(painter, r)" not in scene.split("def paintEvent", 1)[1].split("def _draw_status_overlay", 1)[0]
@@ -860,18 +1005,31 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text()
     assert '"daily_goal"' not in studio
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
+    assert "self.controls_scroll.setWidgetResizable(True)" in studio
     assert "behavior_scroll.setWidgetResizable(True)" in dashboard
+    assert "behavior_scroll.setHorizontalScrollBarPolicy(" in dashboard
     assert 'QPushButton("Save changes")' in dashboard
     assert 'QPushButton("Restore display defaults")' in dashboard
-    assert 'self.tabs.addTab(behavior, "Display")' in dashboard
+    assert 'self.tabs.addTab(behavior_scroll, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
     assert 'QPushButton("Unlock development tools")' in settings_block
-    assert 'os.environ.get("ANKI_GARDEN_DEV_TOOLS") == "1"' in settings_block
+    assert "from ..build_capabilities import DEVELOPMENT_MUTATION_ENABLED" in dashboard
+    assert "if DEVELOPMENT_MUTATION_ENABLED:" in settings_block
+    assert "ANKI_GARDEN_DEV_TOOLS" not in settings_block
+    capabilities = (root / "ankigarden/build_capabilities.py").read_text()
+    assert 'BUILD_MODE = "production"' in capabilities
+    assert "CAPTURE_HARNESS_ENABLED = False" in capabilities
+    assert "DEVELOPMENT_MUTATION_ENABLED = False" in capabilities
     assert "create_development_backup" in settings_block
     assert "restore_development_backup" in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
-    assert '"Unsaved changes" if valid else "Enter a valid garden name"' in dashboard
+    assert '"Unsaved changes" if valid else "Fix 1 error before saving."' in dashboard
+    assert 'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in dashboard
+    assert 'self.garden_name_error.setProperty("fieldError", True)' in dashboard
+    assert "self.garden_name_error.setVisible(not valid)" in dashboard
+    assert "self.garden_name_edit.setFocus()" in dashboard
+    assert "self.garden_name_edit.selectAll()" in dashboard
     assert "self.behavior.reset_preview_defaults()" in dashboard
     assert "self.config.update(old_payload)" in dashboard
     assert "self.particle_slider.setRange(10, 200)" in studio
@@ -900,7 +1058,8 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.onboarding_layout.addLayout(onboarding_actions)" in dashboard
     assert "self.milestone_layout.setDirection(direction)" in dashboard
     assert "self.rearrange_bar.set_compact(compact)" in dashboard
-    assert "self.garden_stats_bar.setMinimumHeight(72 if metrics_compact else 80)" in dashboard
+    assert "def _sync_header_minimum_heights" in dashboard
+    assert "64 if guided else (96 if metrics_compact else 104)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "self._position_scene_overlays()" in dashboard
@@ -927,7 +1086,7 @@ def test_every_weather_has_procedural_motion_and_respects_motion_toggle():
 
 def test_settings_sections_and_preview_only_controls_match_persistence_contract():
     studio = (Path(__file__).resolve().parents[1] / "ankigarden/ui/garden_studio.py").read_text()
-    for title in ("Scenery", "Advanced", "Home preview", "Fine tune"):
+    for title in ("Current scenery", "Advanced", "Home preview", "Fine tune"):
         assert f'"{title}"' in studio
     assert "one-option" not in studio
     assert "self.theme_combo" not in studio
@@ -943,7 +1102,7 @@ def test_settings_sections_and_preview_only_controls_match_persistence_contract(
 
 def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    assert "class NurseryDialog(QDialog):" in dashboard
+    assert "class NurseryDialog(DialogShell):" in dashboard
     nursery = dashboard.split("class NurseryDialog", 1)[1].split("class PlantInfoCard", 1)[0]
     assert "self.engine.catalog_summary()" in nursery
     assert "self.engine.choose_starter(species)" in nursery

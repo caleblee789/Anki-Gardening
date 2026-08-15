@@ -53,8 +53,8 @@ def test_runtime_twilight_profile_matches_independent_review_fixture() -> None:
         key: fixture[key]
         for key in (
             "profile_id", "geometry_version", "theme", "light_direction", "key_light_origins",
-            "appearance", "variant_contract", "layer_contract", "landmarks",
-            "variant_breakpoints", "variants",
+                "appearance", "variant_contract", "layer_contract", "landmarks",
+                "planter_family", "variant_breakpoints", "variants",
         )
     }
     assert runtime == expected

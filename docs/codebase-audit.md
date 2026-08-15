@@ -17,7 +17,7 @@ progression contract.
 | Information architecture | Home is compact/noninteractive. Full Garden integrates its name/actions; metric buttons open focused details; header/cottage Progress opens Today/Achievements/Collection/Weather & Scenery/How it grows. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
 | Nursery | The shaped manifest landmark opens a four-tab catalog including Weather & Scenery. Environment purchases are one-time/no-auto-equip; Charges live with Supplements; plant stock remains derived from complete V6 lines. | Landmark, starter, tab, environment/Charge transaction, catalog-readiness, preview, and accessibility tests. |
 | Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
-| Story and Settings | Story separates name/species/stage with enlarged art and relative Growth. Settings removes environment, art-quality/detail/performance, animation, and Fine tune choices while retaining explicit temporary development backup/populate/restore. | Story ordering/progress/accessibility tests and config/dev-tool/responsive tests. |
+| Story and Settings | Story separates name/species/stage with enlarged art and relative Growth. Production Settings removes environment, art-quality/detail/performance, animation, Fine tune, and state-mutation controls; explicit backup/populate/restore tools exist only in isolated capture builds. | Story ordering/progress/accessibility tests and production/capture capability, config, dev-tool, and responsive tests. |
 | State boundary | Schema 16 stores environment entitlements/loadout/visibility, Growth Charges, daily passive claims, Ultra pity, and separate Growth sources alongside schema-15 state. | Schema-15 migration, environment/Charge/drop round-trip, malformed-state, rollback, and package tests. |
 | V6 environment | Verdant Twilight V6 provides the unchanged six-space geometry, responsive masters, occlusion, landmarks, and plant lines. Eight Scenery reskins reuse exact masks/placement/hotspots; seven balanced transparent Weather overlays compose with every one. | Asset alpha/count/mask, placement-ref, scenery resolution, geometry/layout, responsive render, and package checks. |
 
@@ -80,7 +80,8 @@ systems are absent.
 
 The manifest contains one canonical Verdant Twilight V6 environment, eight
 geometry-compatible Scenery reskins, 60 current plant sprites, seven balanced
-Weather overlays, one lantern, and seven transparent catalog UI assets.
+Weather overlays, one lantern, seven transparent catalog UI assets, two
+Nurtured-marker orientations, and six geometry-matched planter layers.
 `scripts/audit_assets.py` is the
 count and validity source of truth and rejects unreferenced runtime files.
 Nursery readiness applies a strict complete-six-stage V6 rule, while a

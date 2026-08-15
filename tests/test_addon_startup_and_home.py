@@ -110,13 +110,16 @@ def _install_fake_aqt(monkeypatch):
 
     class _Dashboard:
         def __init__(self, *_args, **_kwargs):
-            pass
+            self.shown = False
 
         def refresh_all(self):
             return None
 
         def show(self):
-            return None
+            self.shown = True
+
+        def isVisible(self):
+            return self.shown
 
         def raise_(self):
             return None
@@ -1277,10 +1280,11 @@ def test_dashboard_feedback_is_acknowledged_only_after_a_successful_show(monkeyp
     class Dashboard:
         def __init__(self, *, fail_show: bool) -> None:
             self.fail_show = fail_show
+            self.shown = False
             self.events: list[str] = []
 
         def isVisible(self):
-            return True
+            return self.shown
 
         def prepare_to_show(self):
             self.events.append("prepare")
@@ -1289,6 +1293,7 @@ def test_dashboard_feedback_is_acknowledged_only_after_a_successful_show(monkeyp
             self.events.append("show")
             if self.fail_show:
                 raise RuntimeError("show failed")
+            self.shown = True
 
         def raise_(self):
             self.events.append("raise")
@@ -1323,6 +1328,22 @@ def test_dashboard_feedback_is_acknowledged_only_after_a_successful_show(monkeyp
     failing_app._open_dashboard_when_ready()
 
     assert "acknowledge" not in failed.events
+
+    refused = Dashboard(fail_show=False)
+    refused.present_over_parent = lambda: refused.events.append("present") or False
+    refusing_app = _new_app(addon)
+    refusing_app.dashboard = refused
+    refusing_app._dashboard_open_pending = True
+    refusing_app._run_garden_maintenance = lambda _source: True
+    retries = []
+    refusing_app._schedule_dashboard_open = lambda delay: retries.append(delay)
+
+    refusing_app._open_dashboard_when_ready()
+
+    assert refused.events == ["prepare", "present"]
+    assert "acknowledge" not in refused.events
+    assert refusing_app.dashboard is None
+    assert retries == [120]
 
 
 def test_settings_entry_opens_settings_without_prompting_for_a_starter(monkeypatch):

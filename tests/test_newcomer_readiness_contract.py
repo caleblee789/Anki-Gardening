@@ -127,10 +127,10 @@ def test_canonical_copy_inventory_is_centralized() -> None:
     assert GARDEN_SETUP_SECONDARY_ACTION == "Not now"
     assert starter_confirmation("Rose Plant") == (
         "Rose Plant is planted and ready to nurture. "
-        "Nurture it before studying so eligible answers can add Growth."
+        "Nurture it before studying so Anki card answers can add Growth."
     )
     assert starter_ready_next_step("Rose Plant") == (
-        "Rose Plant is ready. Answer an eligible card to give it Growth."
+        "Rose Plant is ready. Answer an Anki card to give it Growth."
     )
     assert ACTIVE_GROWTH_TITLE == "Growth is underway"
     assert "nurtured plant" in ACTIVE_GROWTH_GUIDANCE
@@ -162,17 +162,58 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
     assert "COST_FREE" not in available_card
-    assert "PAID_COST_TEMPLATE" in available_card
+    assert "cost_label(price)" in available_card
     assert "if starter_mode:" in available_card
     assert "self._starter_card(species)" in available_card
     starter_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_starter_card"
     )
-    assert "Starting stage:" in starter_card
-    assert 'QPushButton(f"Choose {species_name}")' in starter_card
+    assert "Starting stage:" not in starter_card
+    assert "seed_title(species_name)" in starter_card
+    assert "COST_FREE" in starter_card
+    assert 'QPushButton("Choose")' in starter_card
+    assert 'f"Choose {item_name} as your first plant"' in starter_card
     assert 'QPushButton("View stages")' in starter_card
     assert "Free starter" not in available_card
     assert "Included with your free starter" not in available_card
+
+
+def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None:
+    copy = _source("ankigarden/ui/copy.py")
+    contracts = _source("ankigarden/ui/state_contracts.py")
+    refresh_onboarding = _method_source(
+        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_onboarding"
+    )
+    stats = _method_source(
+        "ankigarden/ui/dashboard.py", "GardenStatsStrip", "set_growth_details"
+    )
+
+    assert 'HOME_NO_STARTER_BODY = "Reviews completed before setup do not earn Growth."' in copy
+    assert '"Choose a plant before studying. Reviews completed before setup do not earn Growth."' in copy
+    assert '"No plant selected"' in contracts
+    assert '"Ready to nurture"' in contracts
+    assert '"NO PLANT SELECTED"' in stats
+    assert '"READY TO NURTURE"' in stats
+    assert "self.growth_value.hide()" in stats
+    assert 'self.progress["growth"].hide()' in stats
+    assert (
+        "starter_incomplete and self._starter_setup_dismissed"
+        in refresh_onboarding
+    )
+
+
+def test_nursery_tab_intros_do_not_repeat_section_details() -> None:
+    sync_intro = _method_source(
+        "ankigarden/ui/dashboard.py", "NurseryDialog", "_sync_catalog_intro"
+    )
+
+    assert '2: "Make room for a larger plant collection."' in sync_intro
+    assert '3: "Collect a new look for the garden."' in sync_intro
+    assert "Garden spaces unlock permanently and in order." not in sync_intro
+    assert "Preview collectible Weather and Scenery before buying." not in sync_intro
+    nursery = _source("ankigarden/ui/dashboard.py")
+    assert '"Unlocks follow the order shown below."' in nursery
+    assert '"Each unlock adds one permanent planting space."' not in nursery
 
 
 def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:

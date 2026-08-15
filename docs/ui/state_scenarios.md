@@ -167,7 +167,9 @@
   **Cancel** restores persisted values; **Restore defaults** only stages
   defaults; **Save settings** commits once and shows a temporary confirmation.
 - **Troubleshooting** remains a separate tab with refreshable, copyable display
-  diagnostics plus temporary confirm/back up/populate/restore development tools.
+  diagnostics. The production package has no state-mutation controls; temporary
+  confirm/back up/populate/restore tools appear only in an explicitly built,
+  disposable capture package.
 - Wide layout places controls beside preview; compact layout stacks and scrolls.
   Reduced motion is honored without hiding information.
 

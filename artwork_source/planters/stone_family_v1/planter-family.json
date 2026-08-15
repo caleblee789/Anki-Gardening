@@ -1,0 +1,82 @@
+{
+  "family_id": "storybook_stone_planter_v1",
+  "canvas": [
+    1024,
+    512
+  ],
+  "soil_anchor": [
+    0.5,
+    0.4296875
+  ],
+  "variants": [
+    {
+      "variant": "back",
+      "source": "artwork_source/planters/stone_family_v1/stone_planter_back_alpha.png",
+      "source_sha256": "566a89eb7e65a135eef421e30c97b3973ce39578000c1bf5e376644558ec68e3",
+      "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_back.webp",
+      "sha256": "ba261a4b6a4cc784740a21e09cf796c2c29431821bd5da9fc899336608d07e29",
+      "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_back_foreground.webp",
+      "foreground_sha256": "6652cf2715f24e2fb2f6ab2f552b403b9b5513b757b5e306e27f74343e612f32",
+      "canvas": [
+        1024,
+        512
+      ],
+      "soil_anchor": [
+        0.5,
+        0.4296875
+      ],
+      "visible_bounds": [
+        62,
+        147,
+        962,
+        305
+      ]
+    },
+    {
+      "variant": "middle",
+      "source": "artwork_source/planters/stone_family_v1/stone_planter_middle_alpha.png",
+      "source_sha256": "060ad739fffece975cf9fbca90a907d24f0af6cd0e964bf01b55f2818061ca49",
+      "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_middle.webp",
+      "sha256": "e3719afb9080a8db5ff70ad82ae28e82d0d5fa8223327f2b827ac41a79142bda",
+      "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_middle_foreground.webp",
+      "foreground_sha256": "2e85ef389c27c46c4005e16bb2add3d60cb33466141a651dd836e67be99dd52e",
+      "canvas": [
+        1024,
+        512
+      ],
+      "soil_anchor": [
+        0.5,
+        0.4296875
+      ],
+      "visible_bounds": [
+        62,
+        109,
+        962,
+        394
+      ]
+    },
+    {
+      "variant": "front",
+      "source": "artwork_source/planters/stone_family_v1/stone_planter_front_alpha.png",
+      "source_sha256": "09a7b46eb5f8ec004cc7f5c54b4b5defe065fedab34b93d502fa54e2a5b133b7",
+      "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_front.webp",
+      "sha256": "04cc5d307bdd84ce118a578e33af3c9038d90060fc39ac74e11f2529661dcea3",
+      "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_front_foreground.webp",
+      "foreground_sha256": "08c42328afdd87fa8021647c0d42cfef7f4f94aaace6c47b2a42b92b3284461d",
+      "canvas": [
+        1024,
+        512
+      ],
+      "soil_anchor": [
+        0.5,
+        0.4296875
+      ],
+      "visible_bounds": [
+        62,
+        84,
+        962,
+        433
+      ]
+    }
+  ]
+}

@@ -44,7 +44,7 @@ def test_lossless_webp_runtime_assets_retain_exact_rgba_pixels() -> None:
     occlusions = {
         path for path in _asset_paths(manifest) if path.endswith("_occlusion.webp")
     }
-    assert len(expected) == 149
+    assert len(expected) == 151
     assert set(expected) == primary | occlusions
     assert all(path.endswith(".webp") for path in expected)
 

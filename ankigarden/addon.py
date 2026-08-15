@@ -17,6 +17,7 @@ except (ImportError, AttributeError):
 from aqt.qt import QAction
 
 from .config import ConfigManager
+from .build_capabilities import CAPTURE_HARNESS_ENABLED
 from .display_telemetry import DISPLAY_TELEMETRY
 from .game import GardenGameEngine
 from .hooks.reviewer import ReviewerHookHandler
@@ -144,7 +145,10 @@ class AnkiGardenApp:
         self._maybe_start_ui_face_capture()
 
     def _maybe_start_ui_face_capture(self) -> None:
-        if os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1":
+        if (
+            not CAPTURE_HARNESS_ENABLED
+            or os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1"
+        ):
             return
         if getattr(self, "_ui_face_capture_active", False):
             return
@@ -421,15 +425,20 @@ class AnkiGardenApp:
                 prepare()
             else:
                 self.dashboard.refresh_all()
-            show_normal = getattr(self.dashboard, "showNormal", None)
-            if callable(show_normal):
-                show_normal()
+            present_over_parent = getattr(self.dashboard, "present_over_parent", None)
+            presentation_result = None
+            if callable(present_over_parent):
+                presentation_result = present_over_parent()
+                if presentation_result is not None and not bool(presentation_result):
+                    raise RuntimeError("dashboard refused presentation")
             else:
-                self.dashboard.show()
-            self.dashboard.raise_()
-            activate = getattr(self.dashboard, "activateWindow", None)
-            if callable(activate):
-                activate()
+                show_normal = getattr(self.dashboard, "showNormal", None)
+                if callable(show_normal):
+                    show_normal()
+                else:
+                    self.dashboard.show()
+            if not bool(self.dashboard.isVisible()):
+                raise RuntimeError("dashboard presentation did not produce a visible window")
             acknowledge = getattr(self.dashboard, "acknowledge_rendered_feedback", None)
             if callable(acknowledge):
                 acknowledge()
@@ -792,6 +801,10 @@ class AnkiGardenApp:
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 garden_overlay_url=self._home_garden_overlay_url(),
+                nurtured_marker_url=self._home_nurtured_marker_url(),
+                nurtured_marker_spout_right_url=(
+                    self._home_nurtured_marker_spout_right_url()
+                ),
                 status_notice=USER_NOTICES.current.message,
             )
             self._home_widget_controller.resolve_success(request_id, data)
@@ -838,6 +851,27 @@ class AnkiGardenApp:
                         for layer, rel in raw_layers.items()
                         if layer in {"rear", "front"} and rel
                     }
+        planter_family = (
+            surface_profile.get("planter_family", {})
+            if isinstance(surface_profile, dict)
+            else {}
+        )
+        planter_variants = (
+            planter_family.get("variants", {})
+            if isinstance(planter_family, dict)
+            else {}
+        )
+        if isinstance(planter_variants, dict):
+            addon_root = Path(__file__).parent.resolve()
+            for variant in planter_variants.values():
+                if not isinstance(variant, dict):
+                    continue
+                for source_key, url_key in (
+                    ("file", "url"),
+                    ("foreground_file", "foreground_url"),
+                ):
+                    rel = str(variant.get(source_key, ""))
+                    variant[url_key] = self._asset_web_url(addon_root / rel) if rel else ""
         background_theme = str((background.metadata.get("slot") or {}).get("theme", "verdant_twilight")) if background is not None else "verdant_twilight"
         # The Home renderer needs surface variants and empty-bed anchors even
         # before a starter is chosen or when every plant is shelved.
@@ -903,6 +937,49 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else None
         except Exception:
             logger.debug("Anki Garden: unable to resolve home garden-bed overlay", exc_info=True)
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_nurtured_marker_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_nurtured_marker_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = (
+                asset.path
+                if asset is not None and hasattr(asset, "path")
+                else self.engine.resolve_nurtured_marker_image()
+            )
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve home Nurturing marker",
+                exc_info=True,
+            )
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_nurtured_marker_spout_right_url(self) -> str:
+        resolver = getattr(
+            self.engine,
+            "resolve_nurtured_marker_spout_right_asset",
+            None,
+        )
+        try:
+            asset = resolver() if callable(resolver) else None
+            image_resolver = getattr(
+                self.engine,
+                "resolve_nurtured_marker_spout_right_image",
+                None,
+            )
+            path = (
+                asset.path
+                if asset is not None and hasattr(asset, "path")
+                else image_resolver() if callable(image_resolver) else None
+            )
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve right-facing Nurturing marker",
+                exc_info=True,
+            )
             return ""
         return self._asset_web_url(path)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
@@ -99,7 +100,9 @@ def manifest_manager(tmp_path: Path, rows: list[dict]) -> AssetManager:
     for row in rows:
         path = tmp_path / row["file"]
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"manifest-test")
+        path.write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGOU8Db5z8DAwMAEIkAYABd8AZq1W63BAAAAAElFTkSuQmCC"
+        ))
     (assets_root / "manifest.json").write_text(
         json.dumps({"assets": rows}), encoding="utf-8"
     )
@@ -159,13 +162,15 @@ def test_underscore_species_key_keeps_the_full_species_during_resolution(tmp_pat
     }
 
 
-def test_repeated_asset_resolution_is_read_only_after_first_selection(tmp_path):
+def test_repeated_asset_resolution_is_read_only(tmp_path):
     row = release_row("rose", "mature")
     assets_root = tmp_path / "assets"
     assets_root.mkdir()
     asset_path = tmp_path / row["file"]
     asset_path.parent.mkdir(parents=True, exist_ok=True)
-    asset_path.write_bytes(b"manifest-test")
+    asset_path.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGOU8Db5z8DAwMAEIkAYABd8AZq1W63BAAAAAElFTkSuQmCC"
+    ))
     (assets_root / "manifest.json").write_text(
         json.dumps({"assets": [row]}), encoding="utf-8"
     )
@@ -190,12 +195,12 @@ def test_repeated_asset_resolution_is_read_only_after_first_selection(tmp_path):
 
     assert first is not None
     assert second is first
-    assert len(storage.saved) == 1
+    assert storage.saved == []
 
     manager.clear_runtime_cache()
     third = manager.resolve("plants", "rose_mature", "Rose mature", theme="verdant_twilight")
     assert third is not None
-    assert len(storage.saved) == 1
+    assert storage.saved == []
 
 
 def test_bundled_catalog_exposes_only_complete_v6_lines():

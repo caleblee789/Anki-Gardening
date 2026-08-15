@@ -743,5 +743,15 @@
     "height": 1254,
     "visible_rgba_sha256": "63d80d019f233fd4499654fcc24cc76c19d9ff998f758852298d1d65ae1a47c4",
     "width": 1254
+  },
+  "assets/v6_storybook_gouache/ui/nurtured_marker.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "5e1bdf98db0a7eea2219b95f8d7308baacd03c4106b78edf98c6aad679c88a3c",
+    "width": 512
+  },
+  "assets/v6_storybook_gouache/ui/nurtured_marker_spout_right.webp": {
+    "height": 512,
+    "visible_rgba_sha256": "c7a527c572e61b1b1bafe3f755939fc32fff149f1cc6598df41f1d8e58f7f44d",
+    "width": 512
   }
 }

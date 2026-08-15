@@ -12,7 +12,7 @@
 | Full Garden metrics | **Plant Growth**, **Anki streak**, **Garden Coins** | Each opens a focused read-only explanation with relative progress and exact rules. | Dialog failure leaves the Garden intact; focus returns to the originating button. |
 | Full Garden | **Progress** | Opens the same Garden Progress window as the cottage. | Opening/closing is transient and changes no persisted information. |
 | Full Garden | **Settings** | Opens Garden naming, the current-style card, live preview, applicable Garden display/notification choices, and explicit Save/Cancel controls. Environment, quality/detail/performance, animation, and Fine tune choices are absent. | Existing settings remain active if saving fails or the learner cancels. |
-| Settings | **Troubleshooting** tab | Refreshes/copies diagnostics and temporarily offers explicit backup, populate, and restore development actions. | Missing telemetry produces an explanatory report; failed development mutation preserves the prior backup/state. |
+| Settings | **Troubleshooting** tab | Refreshes and copies read-only diagnostics in production. An explicitly built, disposable capture package also exposes backup, populate, and restore development actions. | Missing telemetry produces an explanatory report; production cannot mutate garden state from this tab, and failed capture-build mutation preserves the prior backup/state. |
 
 There is intentionally no reviewer-native button, toolbar action, duplicate
 Nursery button, destination dropdown, Done-to-move action, Settings-based theme/weather selector, focus

@@ -12,7 +12,8 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
-- The release checks cover every declared UI capture surface, runtime asset references, archive contents, and exact source-to-package parity.
+- Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
+- The release checks cover all 146 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
 
 ## Gameplay terms
 
@@ -145,7 +146,7 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current pre-release state is schema 16. It stores Weather
+add-on upgrades. The current state is schema 16. It stores Weather
 and Scenery entitlements, loadout and visibility, Growth Charges, daily passive
 claims, Ultra pity, separate Growth-source totals, the deterministic reward
 seed/drop history, and the existing Garden, Booster Potion, Fertilizer, and bounded
@@ -159,7 +160,7 @@ upgraded; failed reads or writes remain fail-closed.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
 - Weather and Scenery are equipped, changed, shown, and hidden from the Garden Progress cottage's collection window. They are no longer settings controls.
-- Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. The temporary Troubleshooting development controls can back up, populate, and restore a complete test garden.
+- Production Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
 
 ## Runtime bundle
 
@@ -174,7 +175,16 @@ V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
-current-only file set and a 52 MiB archive ceiling.
+current-only file set and a ratcheted 78 MiB archive ceiling for the complete
+schema-16 scenery, plant, and planter library.
+
+The frozen 2.1.0 production build contains 262 files and is 81,702,743 bytes
+(77.92 MiB), SHA-256
+`9d60b0d1b9523ca3f8c2b9e14be186c8b5ca19137f63064d1edfe15c99aa5b79`.
+Deterministic maximum compression reduced the archive by 11,761 bytes from the
+pre-optimization baseline without rewriting or removing any manifest-owned
+image. Repeated builds in the frozen release environment produced the same
+archive hash.
 
 ## Troubleshooting
 
@@ -191,13 +201,23 @@ to confirm startup.
 
 Copy or symlink `ankigarden/` into Anki’s `addons21` directory, then restart Anki. Open the Garden from its Deck Browser or Overview card. Open settings from **Caleb M. Add-ons Settings → Anki Garden settings**.
 
-Build the distributable package with:
+Build the deterministic production package with:
 
 ```bash
-./.venv/bin/python scripts/package_addon.py
+./.venv/bin/python scripts/package_addon.py --production
 ```
 
-The artifact is written to `dist/anki_garden.ankiaddon`.
+The artifact is atomically validated and written to
+`dist/anki_garden.ankiaddon`. It excludes the capture harness and fixes all
+development-mutation capabilities off. A UI-capture package must be requested
+explicitly and written to a different path:
+
+```bash
+./.venv/bin/python scripts/package_addon.py --capture \
+  --output build/ui-face-captures/anki_garden_capture.ankiaddon
+```
+
+Capture builds cannot overwrite the production artifact.
 
 ## Development checks
 
@@ -205,7 +225,7 @@ The artifact is written to `dist/anki_garden.ankiaddon`.
 ./.venv/bin/pytest -q
 PYTHONPYCACHEPREFIX=/private/tmp/anki-garden-pycache ./.venv/bin/python -m compileall -q ankigarden scripts tests
 ./.venv/bin/python scripts/audit_assets.py
-./.venv/bin/python scripts/package_addon.py
+./.venv/bin/python scripts/package_addon.py --production
 python3 -m zipfile -t dist/anki_garden.ankiaddon
 git diff --check
 ```

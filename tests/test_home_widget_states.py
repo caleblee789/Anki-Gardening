@@ -1,3 +1,6 @@
+import json
+import math
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +13,10 @@ from ankigarden.ui.home_widget import (
     HomeWidgetStateController,
     build_home_widget_success_data,
     render_home_widget,
+)
+from ankigarden.ui.plant_display import (
+    NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
+    NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
 )
 
 
@@ -63,7 +70,9 @@ def test_empty_state_renders_empty_message() -> None:
     assert 'data-testid="home-empty"' in html
     assert 'role="region" aria-label="Anki Garden"' in html
     assert "Choose your first plant" in html
-    assert "Reviews completed beforehand cannot earn Growth." in html
+    assert "Reviews completed before setup do not earn Growth." in html
+    assert "Choose a plant before studying." in html  # screen-reader context remains self-contained
+    assert "Reviews completed beforehand cannot earn Growth." not in html
     assert "pycmd('anki-garden:choose-starter')" in html
     assert "Answer your first card" not in html
 
@@ -299,6 +308,78 @@ def test_home_surface_occlusion_is_behind_plants() -> None:
     assert ".ag-home__occlusion { position:absolute; inset:0; z-index:3" in html
 
 
+def test_home_bedless_planter_contract_replaces_every_legacy_bed_layer() -> None:
+    base = _sample_data()
+    manifest = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "ankigarden"
+            / "assets"
+            / "manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    background_placement = next(
+        row["placement"]
+        for row in manifest["assets"]
+        if row.get("asset_id") == "bg_verdant_twilight_any_soil_master_v6"
+    )
+    profile = background_placement["surface_profile"]
+    for variant_name, variant in profile["planter_family"]["variants"].items():
+        variant["url"] = f"/_addons/123/planters/{variant_name}.webp"
+        variant["foreground_url"] = (
+            f"/_addons/123/planters/{variant_name}-foreground.webp"
+        )
+    profile["variants"]["home"]["url"] = "/_addons/123/backgrounds/bedless-home.webp"
+    profile["variants"]["home"]["occlusion_url"] = "/_addons/123/backgrounds/legacy-bed-overlay.webp"
+    profile["variants"]["home"]["occlusion_layer_urls"] = {
+        "rear": "/_addons/123/backgrounds/legacy-rear.webp",
+        "front": "/_addons/123/backgrounds/legacy-front.webp",
+    }
+    scene_items = tuple(
+        {
+            "slot_index": slot,
+            "name": f"Plant {slot + 1}",
+            "stage": "sprout",
+            "url": f"/_addons/123/plants/plant-{slot + 1}.webp",
+            "placement": {"visible_bounds": [0.1, 0.05, 0.8, 0.9], "base_type": "pot"},
+        }
+        for slot in (0, 2, 4)
+    )
+    data = HomeWidgetData(
+        **{
+            **base.__dict__,
+            "scene_items": scene_items,
+            "background_placement": background_placement,
+        }
+    )
+
+    html = render_home_widget(
+        HomeWidgetSnapshot(request_id=6, phase="success", data=data)
+    )
+    art = html[html.index('class="ag-home__art"'):]
+
+    assert art.count('class="ag-home__planter ag-home__planter--base"') == 6
+    assert art.count('class="ag-home__planter ag-home__planter--foreground"') == 6
+    assert art.count('class="ag-home__planter-fallback ag-home__planter-fallback--base"') == 6
+    assert art.count('class="ag-home__planter-fallback ag-home__planter-fallback--foreground"') == 6
+    assert art.count("var f=this.nextElementSibling;if(f){f.style.display='block';}") == 12
+    assert art.count('data-planter-band="far"') == 4
+    assert art.count('data-planter-band="middle"') == 4
+    assert art.count('data-planter-band="near"') == 4
+    assert "legacy-bed-overlay.webp" not in art
+    assert "legacy-rear.webp" not in art
+    assert "legacy-front.webp" not in art
+    assert 'class="ag-home__occlusion"' not in art
+    far_plant = 'src="/_addons/123/plants/plant-1.webp"'
+    middle_plant = 'src="/_addons/123/plants/plant-3.webp"'
+    near_plant = 'src="/_addons/123/plants/plant-5.webp"'
+    assert art.index('data-planter-band="far"') < art.index(far_plant)
+    assert art.index(far_plant) < art.index('data-planter-band="middle"')
+    assert art.index('data-planter-band="middle"') < art.index(middle_plant)
+    assert art.index(middle_plant) < art.index('data-planter-band="near"')
+    assert art.index('data-planter-band="near"') < art.index(near_plant)
+
+
 def test_success_state_is_garden_wide_and_does_not_duplicate_selected_plant_details() -> None:
     base = _sample_data()
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=base))
@@ -470,6 +551,58 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert "Briar, Sprout stage, 100 of 2000 Growth" in html
 
 
+def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured() -> None:
+    state = SimpleNamespace(
+        daily_stats=SimpleNamespace(
+            growth_earned=0,
+            base_growth=0,
+            streak_bonus_growth=0,
+            fertilizer_growth=0,
+            bonus_growth=0,
+            completed_due_cards=False,
+        ),
+        plants=[SimpleNamespace(
+            plant_id="starter-1",
+            name="Briar",
+            growth_stage="seed",
+            growth_points=0,
+            planted=True,
+            slot_index=0,
+        )],
+        starter_selection_complete=True,
+        active_plant_id=None,
+        selected_weather="breeze",
+        streak_days=0,
+        currency_balance=0,
+        total_reviews=0,
+        unlocked_slots=1,
+        garden_name="Willow Garden",
+    )
+
+    data = build_home_widget_success_data(
+        state=state,
+        reviews_today=0,
+        scene_items=[],
+    )
+    html = render_home_widget(
+        HomeWidgetSnapshot(request_id=10, phase="success", data=data)
+    )
+
+    assert data.starter_selected is True
+    assert data.active_plant_name == ""
+    assert data.starter_planted_not_nurtured is True
+    assert data.planted_starter_name == "Briar"
+    assert data.planted_starter_stage == "seed"
+    assert (
+        'data-testid="home-support" '
+        'title="Briar · Seed · Planted starter"'
+    ) in html
+    assert "Briar, Seed stage, planted starter" in html
+    assert "No nurtured plant" not in html
+    assert 'data-anki-garden-command="anki-garden:open"' in html
+    assert 'data-anki-garden-command="anki-garden:choose-starter"' not in html
+
+
 def test_home_handles_no_nurtured_plant_without_inventing_progress() -> None:
     base = _sample_data()
     data = HomeWidgetData(**{
@@ -507,13 +640,20 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
     assert "Clover, Rare stage, fully grown at 50,000 Growth" in html
 
 
-def test_scene_preserves_depth_order_without_animating_or_highlighting_nurtured_plant() -> None:
+def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> None:
     base = _sample_data()
     plants = (
         {"slot_index": 0, "name": "Rose", "stage": "flowering", "url": "rose.svg", "is_active": True},
         {"slot_index": 1, "name": "Lavender", "stage": "young", "url": "lavender.png"},
     )
-    data = HomeWidgetData(**{**base.__dict__, "scene_items": plants})
+    data = HomeWidgetData(**{
+        **base.__dict__,
+        "scene_items": plants,
+        "nurtured_marker_url": "/_addons/123/assets/nurtured_marker.webp",
+        "nurtured_marker_spout_right_url": (
+            "/_addons/123/assets/nurtured_marker_spout_right.webp"
+        ),
+    })
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=8, phase="success", data=data))
 
@@ -523,6 +663,153 @@ def test_scene_preserves_depth_order_without_animating_or_highlighting_nurtured_
     assert "animation:none !important; transition:none !important" in html
     assert "ag-home__focus-marker" not in html
     assert ">★</span>" not in html
+    assert 'data-testid="home-nurturing-marker"' in html
+    assert 'data-testid="home-nurturing-marker-fallback"' in html
+    assert 'class="ag-home__marker-layer"' in html
+    assert html.index('class="ag-home__details home-summary-panel"') < html.index(
+        'class="ag-home__marker-layer"'
+    )
+    assert "/_addons/123/assets/nurtured_marker_spout_right.webp" in html
+    assert 'data-marker-slot="0"' in html
+    assert 'data-marker-side="left"' in html
+    assert 'data-marker-orientation="spout-right"' in html
+    assert "if(f){f.style.display='block';}" in html
+    assert "display:none" in html
+    assert (
+        "Watering can: Rose is nurtured and receives Growth from future Anki card answers"
+        in html
+    )
+
+
+def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
+    base = _sample_data()
+    manifest = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "ankigarden"
+            / "assets"
+            / "manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    background_placement = next(
+        row["placement"]
+        for row in manifest["assets"]
+        if row.get("asset_id") == "bg_verdant_twilight_any_soil_master_v6"
+    )
+    assets = [
+        row for row in manifest["assets"]
+        if row.get("category") == "plants"
+        and isinstance(row.get("placement"), dict)
+    ][:6]
+    assert len(assets) == 6
+
+    for active_slot in range(6):
+        plants = tuple(
+            {
+                "slot_index": slot,
+                "name": f"Plant {slot + 1}",
+                "stage": asset["slot"]["stage"],
+                "url": f"/_addons/123/plants/plant-{slot + 1}.webp",
+                "placement": asset["placement"],
+                "is_active": slot == active_slot,
+            }
+            for slot, asset in enumerate(assets)
+        )
+        data = HomeWidgetData(**{
+            **base.__dict__,
+            "scene_items": plants,
+            "background_placement": background_placement,
+            "nurtured_marker_url": "/_addons/123/assets/nurtured_marker.webp",
+            "nurtured_marker_spout_right_url": (
+                "/_addons/123/assets/nurtured_marker_spout_right.webp"
+            ),
+        })
+        html = render_home_widget(
+            HomeWidgetSnapshot(
+                request_id=90 + active_slot,
+                phase="success",
+                data=data,
+            )
+        )
+        markers = re.findall(
+            r'<img[^>]*data-testid="home-nurturing-marker"[^>]*>',
+            html,
+        )
+        assert len(markers) == 1
+        marker = markers[0]
+        expected_side = "left" if active_slot % 2 == 0 else "right"
+        expected_orientation = (
+            "spout-right" if expected_side == "left" else "spout-left"
+        )
+        assert f'data-marker-slot="{active_slot}"' in marker
+        assert f'data-marker-side="{expected_side}"' in marker
+        assert f'data-marker-orientation="{expected_orientation}"' in marker
+        rect = [
+            float(value)
+            for value in re.search(
+                r'data-marker-rect="([^"]+)"', marker
+            ).group(1).split(",")
+        ]
+        pulse = [
+            float(value)
+            for value in re.search(
+                r'data-marker-pulse="([^"]+)"', marker
+            ).group(1).split(",")
+        ]
+        assert f'data-active-slot="{active_slot}"' in html
+        target_ground = [
+            float(value)
+            for value in re.search(
+                r'data-marker-target-ground="([^"]+)"', marker
+            ).group(1).split(",")
+        ]
+        planter = [
+            float(value)
+            for value in re.search(
+                r'data-marker-planter-rect="([^"]+)"', marker
+            ).group(1).split(",")
+        ]
+        assert 44 <= rect[2] <= 88
+        assert rect[2] == rect[3]
+        assert pulse[0] >= 0 and pulse[1] >= 0
+        assert pulse[0] + pulse[2] <= 1000
+        assert pulse[1] + pulse[3] <= 420
+        marker_center_x = rect[0] + rect[2] / 2
+        marker_ground_y = rect[1] + rect[3] * 0.916
+        if active_slot == 4:
+            assert abs(marker_ground_y - target_ground[1]) <= 1.0
+        plant_distance = math.hypot(
+            marker_center_x - target_ground[0],
+            marker_ground_y - target_ground[1],
+        )
+        assert (
+            plant_distance
+            <= planter[2] * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
+        )
+        assert abs(marker_ground_y - target_ground[1]) <= (
+            rect[2] * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO
+        )
+        if expected_side == "left":
+            assert marker_center_x < target_ground[0]
+        else:
+            assert marker_center_x > target_ground[0]
+
+
+def test_nurturing_marker_has_a_safe_graphical_fallback() -> None:
+    base = _sample_data()
+    plants = (
+        {"slot_index": 0, "name": "Rose", "stage": "seed", "url": "rose.svg", "is_active": True},
+    )
+    data = HomeWidgetData(**{
+        **base.__dict__,
+        "scene_items": plants,
+    })
+
+    html = render_home_widget(HomeWidgetSnapshot(request_id=81, phase="success", data=data))
+
+    assert 'data-testid="home-nurturing-marker-fallback"' in html
+    assert 'data-testid="home-nurturing-marker"' not in html
+    assert "display:block" in html
 
 
 def test_scene_uses_readable_fallback_when_plant_asset_is_missing() -> None:
@@ -537,6 +824,25 @@ def test_scene_uses_readable_fallback_when_plant_asset_is_missing() -> None:
     assert '<span class="ag-home__fallback-label"><span>Rose</span>' in html
     assert '<span class="ag-home__fallback-stage">Flowering</span>' in html
     assert "🌼" not in html
+
+
+def test_scene_recovers_from_browser_asset_load_errors_without_changing_geometry() -> None:
+    base = _sample_data()
+    html = render_home_widget(
+        HomeWidgetSnapshot(request_id=10, phase="success", data=base)
+    )
+
+    assert 'class="ag-home__plant"' in html
+    assert 'class="ag-home__plant-fallback"' in html
+    assert "this.onerror=null;this.style.display='none';" in html
+    assert "f.style.display='flex'" in html
+    assert "t.style.display='none'" in html
+    assert 'aria-hidden="true" style="left:' in html
+    assert ";display:none\"><span class=\"ag-home__fallback-silhouette\"" in html
+    assert (
+        "linear-gradient(180deg,#244954 0%,#31594d 55%,"
+        "#294a35 55%,#17332d 100%)"
+    ) in html
 
 
 def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() -> None:

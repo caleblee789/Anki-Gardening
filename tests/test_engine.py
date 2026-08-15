@@ -555,8 +555,12 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
     storage.state.currency_balance = 200
     monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
 
-    ok, _message = engine.purchase_fertilizer("p1", "quality")
+    ok, message = engine.purchase_fertilizer("p1", "quality")
     assert ok
+    assert message == (
+        "Quality Fertilizer applied for 2 hours: "
+        "+2 Growth per Anki card answer while active."
+    )
     plant = storage.state.plants[0]
     assert plant.fertilizer.tier == "quality"
     assert plant.fertilizer.started_at == 1_000
@@ -569,7 +573,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
     assert engine.fertilizer_growth(plant, now=9_000) == 0
     assert any(
         event.message
-        == "Quality Fertilizer is active on Moss. Each card answer adds 2 extra Growth for 2 hours."
+        == "Quality Fertilizer is active on Moss: +2 Growth per Anki card answer for 2 hours."
         for event in engine.peek_feedback()
     )
 
@@ -971,6 +975,10 @@ def test_feedback_acknowledgement_by_rendered_ids_survives_queue_cap_churn():
 
 def test_placement_draft_swap_undo_and_commit_are_deterministic():
     engine, storage = make_engine()
+    before_growth = {
+        plant.plant_id: plant.growth_points for plant in storage.state.plants
+    }
+    active_id = storage.state.active_plant_id
     ok, _message, draft = engine.begin_placement_draft("p1")
     assert ok and draft is not None
     assert engine.stage_placement(draft, 1)[0]
@@ -978,8 +986,24 @@ def test_placement_draft_swap_undo_and_commit_are_deterministic():
     assert engine.undo_staged_placement(draft)[0]
     assert draft.scene_slots() == {"p1": 0, "p2": 1}
     assert engine.stage_placement(draft, 1)[0]
-    assert engine.commit_placement_draft(draft)[0]
+    ok, _message, committed = engine.commit_placement_draft(draft)
+    assert ok and committed is not None
     assert {plant.plant_id: plant.slot_index for plant in storage.state.plants} == {"p1": 1, "p2": 0}
+    assert storage.state.active_plant_id == active_id
+    assert {
+        plant.plant_id: plant.growth_points for plant in storage.state.plants
+    } == before_growth
+
+    ok, _message, _inverse = engine.restore_placement(committed)
+    assert ok
+    assert {plant.plant_id: plant.slot_index for plant in storage.state.plants} == {
+        "p1": 0,
+        "p2": 1,
+    }
+    assert storage.state.active_plant_id == active_id
+    assert {
+        plant.plant_id: plant.growth_points for plant in storage.state.plants
+    } == before_growth
 
 
 def test_all_plants_can_use_any_unlocked_v6_direct_soil_bed():
@@ -1106,7 +1130,30 @@ def test_garden_and_generated_plant_names_are_plain_unambiguous_and_editable():
     assert not engine.rename_garden("   ")[0]
 
 
-def test_development_population_builds_complete_state_without_touching_revlog_ledger():
+def test_development_population_fails_closed_without_capture_build_capability(
+    monkeypatch,
+):
+    monkeypatch.setenv("ANKI_GARDEN_DEV_TOOLS", "1")
+    monkeypatch.setenv("ANKI_GARDEN_CAPTURE_UI_FACES", "1")
+    engine, storage = make_engine()
+    before = storage.state.to_dict()
+    save_count = storage.save_count
+
+    ok, message = engine.development_populate()
+
+    assert not ok
+    assert "unavailable in this production build" in message
+    assert storage.state.to_dict() == before
+    assert storage.save_count == save_count
+
+
+def test_development_population_builds_complete_state_without_touching_revlog_ledger(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "ankigarden.game.build_capabilities.DEVELOPMENT_MUTATION_ENABLED",
+        True,
+    )
     engine, storage = make_engine()
     storage.state.last_processed_revlog_id = 123_456
     storage.state.processed_revlog_floor = 100_000

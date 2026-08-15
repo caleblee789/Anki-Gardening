@@ -199,10 +199,11 @@ Settings edits are staged. The noninteractive live preview may reflect staged
 values, but active configuration changes only after `writeConfig` succeeds.
 Cancel reapplies the persisted payload, and Restore defaults stages values
 without writing. Troubleshooting diagnostics do not enter garden state. The
-temporary development action explicitly backs up state before atomically
-populating the current catalog, all Weather and Scenery entitlements, all six
-spaces, at least 100,000 Garden Coins, and test consumables; Restore backup
-reverses it without changing Anki revlog.
+production package exposes no state-mutation controls. An explicitly requested,
+isolated capture build adds a temporary development action that backs up state
+before atomically populating the current catalog, all Weather and Scenery
+entitlements, all six spaces, at least 100,000 Garden Coins, and test
+consumables; Restore backup reverses it without changing Anki revlog.
 
 ## Privacy and migration boundary
 

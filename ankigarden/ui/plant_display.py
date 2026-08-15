@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
 from typing import Any, Iterable
 
 from ..asset_manager import DEFAULT_BED_ANCHORS, BedAnchor
 from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
+from .state_contracts import (
+    CURRENT_ONBOARDING_VERSION,
+    AchievementProgressDisplay,
+    achievement_progress_display,
+)
 
 
 SETTINGS_STACK_BREAKPOINT = 760
 DASHBOARD_COMPACT_BREAKPOINT = 900
+NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO = 0.90
+NURTURED_MARKER_MAX_GROUND_DELTA_RATIO = 1.50
 
 THEME_INTEGRATION_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "verdant_twilight": {
@@ -109,6 +117,82 @@ class Rect:
         return width * height
 
 
+def nurtured_marker_rect(
+    canvas_width: float,
+    canvas_height: float,
+    visible: Rect,
+    plant_draw_width: float,
+    *,
+    margin: float = 6.0,
+    gap: float = 6.0,
+) -> Rect:
+    """Place the Nurturing marker beside a plant without changing plant geometry."""
+
+    safe_width = max(1.0, float(canvas_width))
+    safe_height = max(1.0, float(canvas_height))
+    maximum_fit = max(1.0, min(safe_width, safe_height) - margin * 2)
+    # The label is part of the illustration, so give it enough scene area to
+    # remain recognizable in the full Garden and compact preview renderers.
+    size = min(maximum_fit, max(78.0, min(112.0, float(plant_draw_width) * 0.52)))
+    preferred_y = visible.y + min(12.0, max(0.0, visible.height * 0.08))
+    preferred_y = max(margin, min(safe_height - margin - size, preferred_y))
+    centered_x = visible.x + (visible.width - size) / 2
+
+    candidates = (
+        Rect(visible.right + gap, preferred_y, size, size),
+        Rect(visible.x - gap - size, preferred_y, size, size),
+        Rect(centered_x, visible.y - gap - size, size, size),
+        Rect(centered_x, visible.bottom + gap, size, size),
+    )
+    for candidate in candidates:
+        within_canvas = (
+            candidate.x >= margin
+            and candidate.y >= margin
+            and candidate.right <= safe_width - margin
+            and candidate.bottom <= safe_height - margin
+        )
+        if within_canvas and not candidate.intersects(visible):
+            return candidate
+
+    clamped = tuple(
+        Rect(
+            max(margin, min(safe_width - margin - size, candidate.x)),
+            max(margin, min(safe_height - margin - size, candidate.y)),
+            size,
+            size,
+        )
+        for candidate in candidates
+    )
+    return min(clamped, key=lambda candidate: candidate.intersection_area(visible))
+
+
+def nurtured_badge_rect(
+    canvas_width: float,
+    canvas_height: float,
+    visible: Rect,
+    plant_draw_width: float,
+    *,
+    margin: float = 6.0,
+) -> Rect:
+    """Place the original compact nurtured badge beside a plant."""
+
+    safe_width = max(1.0, float(canvas_width))
+    safe_height = max(1.0, float(canvas_height))
+    radius = max(11.0, min(13.0, float(plant_draw_width) * 0.055))
+    right_x = visible.right + radius + 4.0
+    left_x = visible.x - radius - 4.0
+    center_x = right_x if right_x + radius <= safe_width - margin else left_x
+    center_x = max(margin + radius, min(safe_width - margin - radius, center_x))
+    center_y = max(radius + margin, visible.y + radius * 0.35)
+    center_y = min(safe_height - margin - radius, center_y)
+    return Rect(
+        center_x - radius,
+        center_y - radius,
+        radius * 2,
+        radius * 2,
+    )
+
+
 @dataclass(frozen=True)
 class PlantLighting:
     contrast: float = 1.0
@@ -182,6 +266,256 @@ class PlantPlacement:
     depth_band: str = "near"
 
 
+@dataclass(frozen=True)
+class NurturedMarkerPlacement:
+    """Resolved watering-can geometry shared by native and Home renderers."""
+
+    rect: Rect
+    pulse_bounds: Rect
+    planter_rect: Rect
+    side: str
+    asset_key: str
+    orientation: str
+    used_fallback: bool = False
+
+
+def planter_draw_rect(
+    layout: PlantPlacement,
+    family: dict[str, Any] | None = None,
+) -> Rect:
+    """Return the exact planter box used by both native and Home renderers."""
+
+    resolved_family = family if isinstance(family, dict) else {}
+    variant_name = {
+        "far": "back",
+        "middle": "middle",
+        "near": "front",
+    }.get(str(layout.depth_band), "")
+    variants = resolved_family.get("variants", {})
+    variant = variants.get(variant_name, {}) if isinstance(variants, dict) else {}
+    if not isinstance(variant, dict):
+        variant = {}
+    canvas = resolved_family.get("canvas", [1024, 512])
+    soil_anchor = resolved_family.get("soil_anchor", [0.5, 220 / 512])
+    try:
+        canvas_width = max(1.0, float(canvas[0]))
+        canvas_height = max(1.0, float(canvas[1]))
+        anchor_x = max(0.0, min(1.0, float(soil_anchor[0])))
+        anchor_y = max(0.0, min(1.0, float(soil_anchor[1])))
+        width_multiplier = max(
+            1.0,
+            min(
+                1.6,
+                float(
+                    variant.get(
+                        "width_multiplier",
+                        resolved_family.get("width_multiplier", 1.28),
+                    )
+                ),
+            ),
+        )
+    except (IndexError, TypeError, ValueError):
+        canvas_width = 1024.0
+        canvas_height = 512.0
+        anchor_x = 0.5
+        anchor_y = 220 / 512
+        width_multiplier = 1.28
+    draw_width = layout.bed_footprint.width * width_multiplier
+    draw_height = draw_width * canvas_height / canvas_width
+    return Rect(
+        layout.ground_anchor[0] - anchor_x * draw_width,
+        layout.ground_anchor[1] - anchor_y * draw_height,
+        draw_width,
+        draw_height,
+    )
+
+
+def nurtured_marker_placement(
+    canvas_width: float,
+    canvas_height: float,
+    layout: PlantPlacement,
+    *,
+    planter_rect: Rect | None = None,
+    obstacles: Iterable[Rect] = (),
+    protected_regions: Iterable[Rect] = (),
+    margin: float = 6.0,
+) -> NurturedMarkerPlacement:
+    """Place one inward-facing watering can beside its nurtured plant."""
+
+    safe_width = max(1.0, float(canvas_width))
+    safe_height = max(1.0, float(canvas_height))
+    support = planter_rect or planter_draw_rect(layout)
+    side = "left" if int(layout.slot_index) % 2 == 0 else "right"
+    asset_key = (
+        "nurtured_marker_spout_right"
+        if side == "left"
+        else "nurtured_marker"
+    )
+    orientation = "spout-right" if side == "left" else "spout-left"
+    desired_size = max(52.0, min(88.0, support.width * 0.45))
+    blocked = [
+        rect for rect in tuple(obstacles) + tuple(protected_regions)
+        if isinstance(rect, Rect) and rect.area > 0
+    ]
+
+    sizes: list[float] = []
+    size = desired_size
+    while size >= 44.0:
+        sizes.append(size)
+        size -= 4.0
+    if not sizes or sizes[-1] > 44.0:
+        sizes.append(44.0)
+
+    candidates: list[tuple[float, float, float, float, NurturedMarkerPlacement]] = []
+    for candidate_size in sizes:
+        pulse_pad = candidate_size * 0.04
+        # Anchor to the plant silhouette rather than the full planter width.
+        # The planter remains the size reference, but its artwork is allowed to
+        # sit behind the marker so the can can read as belonging to this plant.
+        # Obstacles already carry a four-pixel plant clearance; the additional
+        # two pixels keep the entire pulse envelope visibly separate.
+        gap = pulse_pad + 6.0
+        base_x = (
+            layout.visible.x - gap - candidate_size
+            if side == "left"
+            else layout.visible.right + gap
+        )
+        # The runtime asset's painted base ends at roughly 91.6% of its square
+        # canvas. Align that visible contact point with the shared soil anchor,
+        # not the bottom of the planter artwork. The artwork extends well below
+        # the soil on the middle/front rows; using its lower edge makes the can
+        # look detached from the plant it is meant to identify.
+        base_y = layout.ground_anchor[1] - candidate_size * 0.916
+        minimum_x = margin + pulse_pad
+        maximum_x = safe_width - margin - pulse_pad - candidate_size
+        minimum_y = margin + pulse_pad
+        maximum_y = safe_height - margin - pulse_pad - candidate_size
+        if minimum_x > maximum_x or minimum_y > maximum_y:
+            continue
+
+        # Try the exact plant-side lane first. If another silhouette blocks it,
+        # boundary candidates can move outward on the same side. All sizes are
+        # considered before choosing: a modest shrink near the plant is clearer
+        # than a full-size can stranded at the canvas edge.
+        x_candidates = {
+            max(minimum_x, min(maximum_x, base_x)),
+            minimum_x if side == "left" else maximum_x,
+        }
+        for blocker in blocked:
+            x_candidates.add(
+                blocker.x - candidate_size - pulse_pad
+                if side == "left"
+                else blocker.right + pulse_pad
+            )
+
+        for candidate_x in x_candidates:
+            if not minimum_x <= candidate_x <= maximum_x:
+                continue
+            if side == "left":
+                if candidate_x > base_x + 1e-6:
+                    continue
+            elif candidate_x < base_x - 1e-6:
+                continue
+            pulse_left = candidate_x - pulse_pad
+            pulse_right = candidate_x + candidate_size + pulse_pad
+            y_candidates = {
+                max(minimum_y, min(maximum_y, base_y)),
+                minimum_y,
+                maximum_y,
+            }
+            for blocker in blocked:
+                horizontally_blocked = not (
+                    pulse_right <= blocker.x or blocker.right <= pulse_left
+                )
+                if not horizontally_blocked:
+                    continue
+                y_candidates.add(blocker.y - candidate_size - pulse_pad)
+                y_candidates.add(blocker.bottom + pulse_pad)
+
+            for candidate_y in y_candidates:
+                if not minimum_y <= candidate_y <= maximum_y:
+                    continue
+                candidate = Rect(
+                    candidate_x,
+                    candidate_y,
+                    candidate_size,
+                    candidate_size,
+                )
+                pulse = candidate.expanded(pulse_pad)
+                if any(pulse.intersects(rect) for rect in blocked):
+                    continue
+                center_x = candidate.x + candidate.width / 2
+                ground_y = candidate.y + candidate.height * 0.916
+                horizontal_distance = abs(center_x - layout.ground_anchor[0])
+                ground_delta = abs(ground_y - layout.ground_anchor[1])
+                distance = math.hypot(horizontal_distance, ground_delta * 1.25)
+                shrink_penalty = (desired_size - candidate_size) * 0.75
+                candidates.append((
+                    distance + shrink_penalty,
+                    ground_delta,
+                    horizontal_distance,
+                    -candidate_size,
+                    NurturedMarkerPlacement(
+                        rect=candidate,
+                        pulse_bounds=pulse,
+                        planter_rect=support,
+                        side=side,
+                        asset_key=asset_key,
+                        orientation=orientation,
+                    ),
+                ))
+
+    if candidates:
+        return min(candidates, key=lambda item: item[:4])[4]
+
+    # Unsupported/degraded geometry must stay bounded and preserve the state
+    # cue. Supported V6 layouts are tested never to reach this branch.
+    fallback_size = max(
+        1.0,
+        min(44.0, safe_width - margin * 2, safe_height - margin * 2),
+    )
+    fallback_x = (
+        layout.visible.x - 4.0 - fallback_size
+        if side == "left"
+        else layout.visible.right + 4.0
+    )
+    fallback = Rect(
+        max(margin, min(safe_width - margin - fallback_size, fallback_x)),
+        max(
+            margin,
+            min(
+                safe_height - margin - fallback_size,
+                layout.ground_anchor[1] - fallback_size * 0.916,
+            ),
+        ),
+        fallback_size,
+        fallback_size,
+    )
+    return NurturedMarkerPlacement(
+        rect=fallback,
+        pulse_bounds=fallback,
+        planter_rect=support,
+        side=side,
+        asset_key=asset_key,
+        orientation=orientation,
+        used_fallback=True,
+    )
+
+
+def nurtured_marker_fallback_rect(
+    placement: NurturedMarkerPlacement,
+) -> Rect:
+    """Center the compact degraded marker inside the resolved can lane."""
+
+    size = max(22.0, min(26.0, placement.rect.width * 0.32))
+    return Rect(
+        placement.rect.x + (placement.rect.width - size) / 2,
+        placement.rect.y + (placement.rect.height - size) / 2,
+        size,
+        size,
+    )
+
+
 def partition_scene_rows(
     rows: Iterable[tuple[dict[str, Any], PlantPlacement]],
 ) -> dict[str, list[tuple[dict[str, Any], PlantPlacement]]]:
@@ -221,63 +555,6 @@ class PlantGrowthDisplay:
     fully_grown: bool
     stage_points: int
     stage_goal: int
-
-
-@dataclass(frozen=True)
-class AchievementProgressDisplay:
-    current: int
-    target: int
-    value_text: str
-    criteria_text: str
-
-
-def achievement_progress_display(achievement: Any, state: Any) -> AchievementProgressDisplay:
-    """Map persisted achievement state to useful, numeric presentation data."""
-    stats = getattr(state, "daily_stats", None)
-    reviewed = max(0, int(getattr(stats, "reviewed", 0) or 0))
-    wrong = max(0, int(getattr(stats, "wrong", 0) or 0))
-    accuracy = int(round(float(getattr(stats, "accuracy", 0.0) or 0.0) * 100))
-    achievement_id = str(getattr(achievement, "achievement_id", ""))
-    definitions = {
-        "streak_7": (
-            max(0, int(getattr(state, "streak_days", 0) or 0)), 7, "Anki days",
-            "Answer at least one card on 7 Anki days in a row.",
-        ),
-        "streak_30": (
-            max(0, int(getattr(state, "streak_days", 0) or 0)), 30, "Anki days",
-            "Answer at least one card on 30 Anki days in a row.",
-        ),
-        "reviews_100_day": (reviewed, 100, "card answers", "Record 100 card answers in one Anki day."),
-        "reviews_1000_total": (
-            max(0, int(getattr(state, "total_reviews", 0) or 0)), 1000, "card answers",
-            "Record 1,000 total card answers.",
-        ),
-        "retention_90": (accuracy, 90, "% accuracy", "Reach 90% accuracy after at least 20 card answers today."),
-        "retention_100": (
-            reviewed if wrong == 0 else 0, 30, "card answers", "Complete 30 card answers today without choosing Again."
-        ),
-        "all_due_done": (
-            1 if bool(getattr(stats, "completed_due_cards", False)) else 0, 1, "complete",
-            "Finish all due cards in the collection today.",
-        ),
-        "no_lapse": (
-            reviewed if wrong == 0 else 0, 40, "card answers",
-            "Complete 40 card answers today without choosing Again.",
-        ),
-    }
-    current, target, unit, criteria = definitions.get(
-        achievement_id,
-        (int(round(float(getattr(achievement, "progress", 0.0) or 0.0) * 100)), 100, "%", str(getattr(achievement, "description", ""))),
-    )
-    current = max(0, int(current))
-    target = max(1, int(target))
-    if achievement_id == "retention_90":
-        value_text = f"{current} of {target}% accuracy; {reviewed} of 20 card answers"
-    elif achievement_id == "all_due_done":
-        value_text = "1 of 1 complete" if current else "0 of 1 complete"
-    else:
-        value_text = f"{current:,} of {target:,} {unit}"
-    return AchievementProgressDisplay(current, target, value_text, criteria)
 
 
 def growth_display(growth_points: Any) -> PlantGrowthDisplay:
@@ -1556,9 +1833,6 @@ class PlantInteractionState:
         return plant_ids[self.focused_index] if 0 <= self.focused_index < len(plant_ids) else None
 
 
-CURRENT_ONBOARDING_VERSION = 3
-
-
 def chronological_memories(memories: list[Any]) -> list[Any]:
     """Order memories by day while preserving their insertion order within a day."""
     return sorted(list(memories), key=lambda item: str(getattr(item, "occurred_on", "")))
@@ -1583,7 +1857,7 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
         return OnboardingDisplay(
             True,
             "Starter selected",
-            "Your starter is now your nurtured plant. Your next eligible card answer will give it Growth.",
+            "Your starter is now your nurtured plant. Your next Anki card answer will give it Growth.",
         )
     try:
         version = int(onboarding_version)

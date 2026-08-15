@@ -15,7 +15,16 @@ from .copy import (
     HOME_NO_STARTER_TITLE,
 )
 from .formatters import format_integer, format_status_label
-from .plant_display import compact_plant_layout, growth_display, scene_surface_variant
+from .plant_display import (
+    compact_plant_layout,
+    growth_display,
+    nurtured_marker_fallback_rect,
+    nurtured_marker_placement,
+    plant_layout,
+    planter_draw_rect,
+    Rect,
+    scene_surface_variant,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +47,8 @@ class HomeWidgetData:
     stage_transition_message: str = ""
     background_url: str = ""
     garden_overlay_url: str = ""
+    nurtured_marker_url: str = ""
+    nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
     status_notice: str = ""
     unlocked_slots: int = 0
@@ -50,6 +61,11 @@ class HomeWidgetData:
     active_next_stage: str = ""
     active_points_remaining: int = 0
     active_fully_grown: bool = False
+    # A planted starter is not an active/nurtured plant until the persisted
+    # active_plant_id points to it. Keep that identity in a separate contract.
+    planted_starter_name: str = ""
+    planted_starter_stage: str = ""
+    starter_planted_not_nurtured: bool = False
     garden_name: str = FALLBACK_GARDEN_NAME
     # Direct callers from older surfaces omit this derived field. Treat those
     # snapshots as established Gardens; the state builder sets it explicitly.
@@ -152,7 +168,16 @@ HOME_WIDGET_STYLE = """
   min-width:0;
 }
 .ag-home__art { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.ag-home__marker-layer { position:absolute; z-index:101; left:0; top:50%; width:100%; aspect-ratio:var(--ag-source-aspect,2.4); transform:translateY(-50%); overflow:hidden; pointer-events:none; }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
+.ag-home__nurtured-marker { position:absolute; object-fit:contain; pointer-events:none; }
+.ag-home__nurtured-marker-fallback { position:absolute; display:none; box-sizing:border-box; border:1px solid #4c3e18; border-radius:50%; background:#dfbd57; pointer-events:none; }
+.ag-home__nurtured-marker-fallback::after { content:""; position:absolute; left:29%; top:28%; width:42%; height:34%; border-radius:70% 25% 70% 25%; background:#fff; transform:rotate(-12deg); }
+.ag-home__planter { position:absolute; object-fit:contain; pointer-events:none; }
+.ag-home__planter-fallback { position:absolute; display:none; pointer-events:none; }
+.ag-home__planter-fallback--base::before { content:""; position:absolute; left:10%; top:38%; width:80%; height:42%; border-radius:12% 12% 44% 44%; background:linear-gradient(180deg,rgba(132,124,110,.92),rgba(86,82,75,.96)); }
+.ag-home__planter-fallback--base::after { content:""; position:absolute; left:10%; top:31%; width:80%; height:26%; border-radius:50%; background:radial-gradient(ellipse,rgba(77,52,36,.98),rgba(104,79,57,.94) 58%,rgba(166,151,124,.92) 62%,rgba(94,88,78,.96) 72%); }
+.ag-home__planter-fallback--foreground::after { content:""; position:absolute; left:10%; top:31%; width:80%; height:26%; box-sizing:border-box; border-radius:50%; border-top:2px solid rgba(201,185,153,.86); }
 .ag-home__plant-tint { position:absolute; pointer-events:none; background:linear-gradient(90deg,transparent,rgba(255,230,190,var(--ag-key-alpha,0))),linear-gradient(180deg,transparent 70%,rgba(10,18,16,var(--ag-base-ao,0))),var(--ag-tint,transparent); opacity:var(--ag-tint-alpha,0); -webkit-mask-image:var(--ag-mask); -webkit-mask-position:center; -webkit-mask-repeat:no-repeat; -webkit-mask-size:contain; mask-image:var(--ag-mask); mask-position:center; mask-repeat:no-repeat; mask-size:contain; }
 .ag-home__occlusion { position:absolute; inset:0; z-index:3; width:100%; height:100%; object-fit:fill; pointer-events:none; }
 .ag-home__shadow-plane { position:absolute; inset:0; pointer-events:none; }
@@ -193,6 +218,7 @@ HOME_WIDGET_STYLE = """
   background-position:center;
   background-repeat:no-repeat;
   background-size:100% 100%;
+  background-color:#17332d;
 }
 .ag-home__scene::after { content:""; position:absolute; inset:0; z-index:90; pointer-events:none; box-shadow:inset 0 -12px 24px rgba(5,14,12,.13); }
 .ag-home__details {
@@ -418,6 +444,11 @@ HOME_WIDGET_STYLE = """
   .ag-home__support { max-width:240px; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
+#ag-home-root[data-active-slot="4"] .ag-home__identity-row {
+  grid-template-columns:minmax(0,32%) auto;
+  justify-content:space-between;
+}
+#ag-home-root[data-active-slot="4"] .ag-home__identity { text-align:left; }
 </style>
 """
 
@@ -534,8 +565,18 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'--ag-preview-x:{crop_center_x * 100:.2f}%;--ag-preview-y:{crop_center_y * 100:.2f}%'
     )
     background_url = str(surface_variant.get("url") or data.background_url)
+    fallback_background = (
+        "linear-gradient(180deg,#244954 0%,#31594d 55%,#294a35 55%,#17332d 100%)"
+    )
     if background_url:
-        background_style += f';background-image:linear-gradient(180deg,rgba(5,14,12,.03),rgba(5,14,12,.16)),url(&quot;{escape(background_url, quote=True)}&quot;)'
+        background_style += (
+            ";background-image:"
+            "linear-gradient(180deg,rgba(5,14,12,.03),rgba(5,14,12,.16)),"
+            f"url(&quot;{escape(background_url, quote=True)}&quot;),"
+            f"{fallback_background}"
+        )
+    else:
+        background_style += f";background-image:{fallback_background}"
     background_style += '"'
     layouts = compact_plant_layout(
         1000,
@@ -544,20 +585,68 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         background_placement if isinstance(background_placement, dict) else None,
     )
     by_slot = {int(item.get("slot_index", index)): item for index, item in enumerate(data.scene_items)}
-    # Empty and locked beds already belong to the background artwork. Drawing
-    # another soil ellipse here creates a conspicuous orange oval and can cover
-    # the hand-painted bed rim, so Home only layers real plant content.
-    plant_markup: dict[str, list[str]] = {"rear": [], "front": []}
+    surface_profile = (
+        background_placement.get("surface_profile", {})
+        if isinstance(background_placement, dict)
+        else {}
+    )
+    planter_family = (
+        surface_profile.get("planter_family", {})
+        if isinstance(surface_profile, dict)
+        else {}
+    )
+    planter_variants = (
+        planter_family.get("variants", {})
+        if isinstance(planter_family, dict)
+        else {}
+    )
+    planter_enabled = (
+        isinstance(planter_variants, dict)
+        and set(planter_variants) >= {"back", "middle", "front"}
+        and str(planter_family.get("background_contract", "")) == "bedless_v1"
+    )
+    slot_layouts = plant_layout(
+        1000,
+        420,
+        [
+            {"slot_index": slot, "occupied": False}
+            for slot in range(6)
+        ],
+        background_placement,
+        surface_context="home",
+        composition_count=6,
+        protected_status=False,
+        reserve_move_controls=False,
+    )
+    planter_boxes = {
+        slot_layout.slot_index: planter_draw_rect(slot_layout, planter_family)
+        for slot_layout in slot_layouts
+    }
+    marker_obstacles = [
+        layout.visible.expanded(4.0, 4.0)
+        for layout in layouts
+    ]
+    # The scenic Home card paints its identity and action rail over the bottom
+    # of the scene. Keep the marker clear of both visible text lanes.
+    marker_protected_regions = (
+        Rect(0.0, 300.0, 700.0, 120.0),
+        Rect(760.0, 300.0, 240.0, 120.0),
+    )
+    plant_markup: dict[str, list[str]] = {
+        "far": [],
+        "middle": [],
+        "near": [],
+    }
+    marker_overlays: list[str] = []
     theme = str(data.scene_items[0].get("background_theme", "verdant_twilight")) if data.scene_items else "verdant_twilight"
-    band_counts = {"rear": 0, "front": 0}
+    band_counts = {"far": 0, "middle": 0, "near": 0}
+    plant_z_base = {"far": 10, "middle": 40, "near": 70}
     for layout in layouts:
         item = by_slot.get(layout.slot_index, {})
         src = escape(str(item.get("url", "")), quote=True)
         base_type = str(item.get("placement", {}).get("base_type", "legacy")) if isinstance(item.get("placement"), dict) else "legacy"
-        depth_band = "rear" if layout.depth < 420 * .68 else "front"
-        # Reserve a row-specific z-index range below its foreground mask.
-        # This keeps a full six-plant rear row behind the rear occlusion.
-        depth_index = (10 if depth_band == "rear" else 40) + band_counts[depth_band] * 3
+        depth_band = layout.depth_band if layout.depth_band in plant_markup else "near"
+        depth_index = plant_z_base[depth_band] + band_counts[depth_band] * 3
         band_counts[depth_band] += 1
         lighting = layout.grounding.lighting
         integration = {
@@ -579,8 +668,32 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         alt = escape(str(item.get("name", "Plant")), quote=True)
         common = f'left:{layout.draw.x/10:.3f}%;top:{layout.draw.y/4.2:.3f}%;width:{layout.draw.width/10:.3f}%;height:{layout.draw.height/4.2:.3f}%;z-index:{depth_index + 1};--ag-contrast:{float(integration["contrast"]):.3f};--ag-saturation:{float(integration["saturation"]):.3f};--ag-brightness:{1.0 + float(integration.get("exposure", 0.0)):.3f}'
+        fallback = _plant_fallback(item.get("stage"))
+        stage_label = escape(format_status_label(item.get("stage") or "plant"))
+        fallback_markup = (
+            f'<span class="ag-home__plant-fallback" data-slot-index="{layout.slot_index}" role="img" '
+            f'aria-label="{alt}, {stage_label}" style="{common}">{fallback}'
+            f'<span class="ag-home__fallback-label"><span>{alt}</span>'
+            f'<span class="ag-home__fallback-stage">{stage_label}</span></span></span>'
+        )
         if src:
-            plant = f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" src="{src}" alt="{alt}" style="{common}" data-base-type="{escape(base_type, quote=True)}">'
+            load_failure = (
+                "this.onerror=null;this.style.display='none';"
+                "var f=this.nextElementSibling;if(f){f.style.display='flex';"
+                "f.setAttribute('aria-hidden','false');}"
+                "var t=f?f.nextElementSibling:null;if(t){t.style.display='none';}"
+            )
+            hidden_fallback = fallback_markup.replace(
+                f'style="{common}"',
+                f'aria-hidden="true" style="{common};display:none"',
+                1,
+            )
+            plant = (
+                f'<img class="ag-home__plant" data-slot-index="{layout.slot_index}" '
+                f'src="{src}" alt="{alt}" style="{common}" '
+                f'data-base-type="{escape(base_type, quote=True)}" '
+                f'onerror="{load_failure}">' + hidden_fallback
+            )
             tint = (
                 f'<span class="ag-home__plant-tint" aria-hidden="true" style="left:{layout.draw.x/10:.3f}%;'
                 f'top:{layout.draw.y/4.2:.3f}%;width:{layout.draw.width/10:.3f}%;height:{layout.draw.height/4.2:.3f}%;'
@@ -591,29 +704,218 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 f'--ag-mask:url(&quot;{src}&quot;)"></span>'
             )
         else:
-            fallback = _plant_fallback(item.get("stage"))
-            stage_label = escape(format_status_label(item.get("stage") or "plant"))
-            plant = (
-                f'<span class="ag-home__plant-fallback" data-slot-index="{layout.slot_index}" role="img" '
-                f'aria-label="{alt}, {stage_label}" style="{common}">{fallback}'
-                f'<span class="ag-home__fallback-label"><span>{alt}</span>'
-                f'<span class="ag-home__fallback-stage">{stage_label}</span></span></span>'
-            )
+            plant = fallback_markup
             tint = ""
+        marker_markup = ""
+        if bool(item.get("is_active")):
+            placement_protected_regions = marker_protected_regions
+            if layout.slot_index == 4:
+                # Home reserves a center gap for the front-left marker. Match
+                # the solver's identity obstacle to that narrower text column
+                # so the can can remain on the plant's exact soil line.
+                placement_protected_regions = (
+                    Rect(0.0, 300.0, 340.0, 120.0),
+                    marker_protected_regions[1],
+                )
+            marker_placement = nurtured_marker_placement(
+                1000,
+                420,
+                layout,
+                planter_rect=planter_boxes.get(layout.slot_index),
+                obstacles=marker_obstacles,
+                protected_regions=placement_protected_regions,
+            )
+            marker_box = marker_placement.rect
+            marker_common = (
+                f"left:{marker_box.x / 10:.3f}%;top:{marker_box.y / 4.2:.3f}%;"
+                f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%;"
+                "z-index:89"
+            )
+            marker_rect_data = ",".join(
+                f"{value:.3f}"
+                for value in (
+                    marker_box.x,
+                    marker_box.y,
+                    marker_box.width,
+                    marker_box.height,
+                )
+            )
+            marker_pulse_data = ",".join(
+                f"{value:.3f}"
+                for value in (
+                    marker_placement.pulse_bounds.x,
+                    marker_placement.pulse_bounds.y,
+                    marker_placement.pulse_bounds.width,
+                    marker_placement.pulse_bounds.height,
+                )
+            )
+            marker_target_ground_data = ",".join(
+                f"{value:.3f}" for value in layout.ground_anchor
+            )
+            marker_planter_data = ",".join(
+                f"{value:.3f}"
+                for value in (
+                    marker_placement.planter_rect.x,
+                    marker_placement.planter_rect.y,
+                    marker_placement.planter_rect.width,
+                    marker_placement.planter_rect.height,
+                )
+            )
+            fallback_box = nurtured_marker_fallback_rect(marker_placement)
+            fallback_common = (
+                f"left:{fallback_box.x / 10:.3f}%;top:{fallback_box.y / 4.2:.3f}%;"
+                f"width:{fallback_box.width / 10:.3f}%;height:{fallback_box.height / 4.2:.3f}%;"
+                "z-index:89"
+            )
+            marker_url = (
+                data.nurtured_marker_spout_right_url
+                if marker_placement.orientation == "spout-right"
+                else data.nurtured_marker_url
+            )
+            marker_src = escape(str(marker_url or ""), quote=True)
+            fallback_display = (
+                "none"
+                if marker_src and not marker_placement.used_fallback
+                else "block"
+            )
+            marker_markup = (
+                (
+                    '<img class="ag-home__nurtured-marker" '
+                    'data-testid="home-nurturing-marker" aria-hidden="true" alt="" '
+                    f'data-marker-slot="{layout.slot_index}" '
+                    f'data-marker-side="{marker_placement.side}" '
+                    f'data-marker-orientation="{marker_placement.orientation}" '
+                    f'data-marker-rect="{marker_rect_data}" '
+                    f'data-marker-pulse="{marker_pulse_data}" '
+                    f'data-marker-target-ground="{marker_target_ground_data}" '
+                    f'data-marker-planter-rect="{marker_planter_data}" '
+                    f'src="{marker_src}" style="{marker_common}" '
+                    'onerror="this.style.display=\'none\';var f=this.nextElementSibling;'
+                    'if(f){f.style.display=\'block\';}">'
+                )
+                if marker_src and not marker_placement.used_fallback else
+                ""
+            ) + (
+                '<span class="ag-home__nurtured-marker-fallback" '
+                'data-testid="home-nurturing-marker-fallback" aria-hidden="true" '
+                f'data-marker-slot="{layout.slot_index}" '
+                f'data-marker-side="{marker_placement.side}" '
+                f'data-marker-rect="{marker_rect_data}" '
+                f'data-marker-pulse="{marker_pulse_data}" '
+                f'data-marker-target-ground="{marker_target_ground_data}" '
+                f'data-marker-planter-rect="{marker_planter_data}" '
+                f'style="{fallback_common};display:{fallback_display}"></span>'
+            )
+            marker_overlays.append(marker_markup)
         plant_markup[depth_band].append(shadow + plant + tint)
+
+    planter_markup: dict[str, dict[str, list[str]]] = {
+        band: {"base": [], "foreground": []}
+        for band in ("far", "middle", "near")
+    }
+    if planter_enabled:
+        surface_band_by_slot: dict[int, str] = {}
+        raw_surfaces = surface_variant.get("surfaces", [])
+        if isinstance(raw_surfaces, list):
+            for surface in raw_surfaces:
+                if not isinstance(surface, dict):
+                    continue
+                try:
+                    slot = int(surface.get("slot", -1))
+                except (TypeError, ValueError):
+                    continue
+                band = str(surface.get("depth_band", ""))
+                if 0 <= slot < 6 and band in {"far", "middle", "near"}:
+                    surface_band_by_slot[slot] = band
+        if planter_enabled:
+            variant_for_band = {
+                "far": "back",
+                "middle": "middle",
+                "near": "front",
+            }
+            planter_z = {
+                "far": (4, 28),
+                "middle": (34, 58),
+                "near": (64, 88),
+            }
+            for layout in slot_layouts:
+                # Normal runtime placements already carry the V6 depth band.
+                # The surface metadata remains the authoritative fallback for
+                # lightweight Home snapshots that omit duplicated layout
+                # profiles (for example degraded-art recovery).
+                band = surface_band_by_slot.get(layout.slot_index, layout.depth_band)
+                variant = planter_variants.get(variant_for_band.get(band, ""), {})
+                if not isinstance(variant, dict):
+                    continue
+                box = planter_boxes[layout.slot_index]
+                common = (
+                    f'left:{box.x / 10:.3f}%;top:{box.y / 4.2:.3f}%;'
+                    f'width:{box.width / 10:.3f}%;height:{box.height / 4.2:.3f}%'
+                )
+                for layer, url_key, z_index in (
+                    ("base", "url", planter_z[band][0]),
+                    ("foreground", "foreground_url", planter_z[band][1]),
+                ):
+                    url = str(variant.get(url_key, "") or "")
+                    fallback_display = "none" if url else "block"
+                    fallback_layer = (
+                        f'<span class="ag-home__planter-fallback '
+                        f'ag-home__planter-fallback--{layer}" data-fallback-planter-band="{band}" '
+                        f'data-fallback-slot-index="{layout.slot_index}" aria-hidden="true" '
+                        f'style="{common};z-index:{z_index};display:{fallback_display}"></span>'
+                    )
+                    planter = ""
+                    if url:
+                        planter = (
+                            f'<img class="ag-home__planter ag-home__planter--{layer}" '
+                            f'data-planter-band="{band}" data-slot-index="{layout.slot_index}" '
+                            f'src="{escape(url, quote=True)}" alt="" aria-hidden="true" '
+                            f'style="{common};z-index:{z_index}" '
+                            "onerror=\"this.onerror=null;this.style.display='none';"
+                            "var f=this.nextElementSibling;if(f){f.style.display='block';}\">"
+                        )
+                    planter_markup[band][layer].append(planter + fallback_layer)
     layer_urls = surface_variant.get("occlusion_layer_urls", {})
     occlusion_markup: dict[str, str] = {}
-    if isinstance(layer_urls, dict):
+    if not planter_enabled and isinstance(layer_urls, dict):
         for row, z_index in (("rear", 30), ("front", 70)):
             url = str(layer_urls.get(row, "") or "")
             if url:
-                occlusion_markup[row] = f'<img class="ag-home__occlusion" style="z-index:{z_index}" src="{escape(url, quote=True)}" alt="" aria-hidden="true">'
+                occlusion_markup[row] = f'<img class="ag-home__occlusion" style="z-index:{z_index}" src="{escape(url, quote=True)}" alt="" aria-hidden="true" onerror="this.onerror=null;this.style.display=\'none\';">'
     legacy_occlusion_url = str(surface_variant.get("occlusion_url", "") or "")
     legacy_occlusion = (
-        f'<img class="ag-home__occlusion" src="{escape(legacy_occlusion_url, quote=True)}" alt="" aria-hidden="true">'
-        if legacy_occlusion_url and not occlusion_markup else ""
+        f'<img class="ag-home__occlusion" src="{escape(legacy_occlusion_url, quote=True)}" alt="" aria-hidden="true" onerror="this.onerror=null;this.style.display=\'none\';">'
+        if not planter_enabled and legacy_occlusion_url and not occlusion_markup else ""
+    )
+    if planter_enabled:
+        layered_art = "".join(
+            "".join(planter_markup[band]["base"])
+            + "".join(plant_markup[band])
+            + "".join(planter_markup[band]["foreground"])
+            for band in ("far", "middle", "near")
+        )
+    else:
+        layered_art = (
+            legacy_occlusion
+            + "".join(plant_markup["far"])
+            + "".join(plant_markup["middle"])
+            + occlusion_markup.get("rear", "")
+            + "".join(plant_markup["near"])
+            + occlusion_markup.get("front", "")
+        )
+    marker_layer = (
+        '<div class="ag-home__marker-layer" aria-hidden="true">'
+        + "".join(marker_overlays)
+        + "</div>"
+        if marker_overlays else
+        ""
     )
     starter_selected = bool(data.starter_selected)
+    starter_waiting_for_nurture = bool(data.starter_planted_not_nurtured)
+    planted_starter_name = str(data.planted_starter_name or "").strip()
+    planted_starter_stage = format_status_label(
+        data.planted_starter_stage or "seed"
+    )
     garden_name_value = str(data.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
     if not starter_selected:
@@ -635,6 +937,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                     f"{format_integer(data.active_stage_points)} / "
                     f"{format_integer(data.active_stage_goal)} Growth"
                 )
+        elif starter_waiting_for_nurture:
+            preview_support = (
+                f"{planted_starter_name} · {planted_starter_stage} · Planted starter"
+                if planted_starter_name else
+                "Planted starter · Open the garden to nurture it"
+            )
         else:
             preview_support = "No nurtured plant · Open the garden to choose one"
     garden_identity_html = (
@@ -685,6 +993,19 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 f"{active_name}, {active_stage} stage, {active_progress_now} of "
                 f"{active_progress_max} Growth"
             )
+    elif starter_waiting_for_nurture:
+        starter_display_name = planted_starter_name or "Starter plant"
+        active_growth_html = (
+            '<div class="ag-home__metric ag-home__metric--plant planted-starter-summary">'
+            f'<strong data-testid="home-active-name">{escape(starter_display_name)} · '
+            f'{escape(planted_starter_stage)}</strong>'
+            '<span data-testid="home-growth">Planted starter · Ready to nurture</span>'
+            '</div>'
+        )
+        active_accessible_text = (
+            f"{starter_display_name}, {planted_starter_stage} stage, planted starter. "
+            "Open the Garden to nurture it."
+        )
     else:
         active_growth_html = (
             '<div class="ag-home__metric ag-home__metric--plant nurtured-plant-summary">'
@@ -720,11 +1041,30 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'<span class="ag-home__sr-only" data-testid="home-accessible-summary">'
         f'{metrics_accessible_label}</span>'
     )
+    marker_plant = next(
+        (
+            item
+            for item in data.scene_items
+            if isinstance(item, dict) and bool(item.get("is_active"))
+        ),
+        None,
+    )
+    marker_visible = marker_plant is not None
+    marker_slot = int(marker_plant.get("slot_index", -1)) if marker_plant else -1
+    marker_plant_name = escape(
+        str(marker_plant.get("name") or "This plant"),
+        quote=True,
+    ) if marker_plant is not None else ""
+    marker_accessible = (
+        f". Watering can: {marker_plant_name} is nurtured and receives Growth from future Anki card answers"
+        if marker_visible else
+        ""
+    )
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" role=\"button\" tabindex=\"0\"
-  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}\"
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-active-slot=\"{marker_slot}\" role=\"button\" tabindex=\"0\"
+  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{marker_accessible}\"
   data-anki-garden-command=\"anki-garden:{action_command}\"
   onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"
   onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('anki-garden:{action_command}')}}\">
@@ -733,7 +1073,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     {partial_banner}
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
       <div class=\"ag-home__scene-frame\" data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
-        <div class=\"ag-home__art\" data-testid=\"home-plants\">{legacy_occlusion}{''.join(plant_markup['rear'])}{occlusion_markup.get('rear', '')}{''.join(plant_markup['front'])}{occlusion_markup.get('front', '')}</div>
+        <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
       </div>
     </div>
     <aside class=\"ag-home__details home-summary-panel\">
@@ -747,12 +1087,25 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       {no_starter_body}
       {metrics_html}
     </aside>
+    {marker_layer}
   </div>
 </div>
 """
 
 
-def build_home_widget_success_data(*, state: Any, reviews_today: int, scene_items: list[dict[str, Any]], background_placement: dict[str, Any] | None = None, stage_transition_message: str = "", background_url: str = "", garden_overlay_url: str = "", status_notice: str = "") -> HomeWidgetData:
+def build_home_widget_success_data(
+    *,
+    state: Any,
+    reviews_today: int,
+    scene_items: list[dict[str, Any]],
+    background_placement: dict[str, Any] | None = None,
+    stage_transition_message: str = "",
+    background_url: str = "",
+    garden_overlay_url: str = "",
+    nurtured_marker_url: str = "",
+    nurtured_marker_spout_right_url: str = "",
+    status_notice: str = "",
+) -> HomeWidgetData:
     stats = state.daily_stats
     plants = list(getattr(state, "plants", []) or [])
     starter_complete = getattr(state, "starter_selection_complete", None)
@@ -762,6 +1115,18 @@ def build_home_widget_success_data(*, state: Any, reviews_today: int, scene_item
     active_plant = next(
         (plant for plant in plants if str(getattr(plant, "plant_id", "") or "") == active_id),
         None,
+    )
+    # Starter selection appends the first Plant before paid collection items.
+    # Do not relabel a later planted purchase as the starter if that first
+    # plant has since been moved out of the garden.
+    first_plant = plants[0] if plants else None
+    planted_starter = (
+        first_plant
+        if first_plant is not None and bool(getattr(first_plant, "planted", True))
+        else None
+    )
+    starter_waiting_for_nurture = bool(
+        starter_complete and active_plant is None and planted_starter is not None
     )
     active_growth = growth_display(getattr(active_plant, "growth_points", 0))
     if getattr(state, "selected_weather", None) in (None, ""):
@@ -790,6 +1155,8 @@ def build_home_widget_success_data(*, state: Any, reviews_today: int, scene_item
         stage_transition_message=stage_transition_message,
         background_url=background_url,
         garden_overlay_url=garden_overlay_url,
+        nurtured_marker_url=nurtured_marker_url,
+        nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),
         status_notice=status_notice,
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
@@ -802,6 +1169,15 @@ def build_home_widget_success_data(*, state: Any, reviews_today: int, scene_item
         active_next_stage=str(active_growth.next_stage or "") if active_plant is not None else "",
         active_points_remaining=active_growth.points_remaining if active_plant is not None else 0,
         active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
+        planted_starter_name=(
+            str(getattr(planted_starter, "name", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        planted_starter_stage=(
+            str(getattr(planted_starter, "growth_stage", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        starter_planted_not_nurtured=starter_waiting_for_nurture,
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
         starter_selected=bool(starter_complete),
     )

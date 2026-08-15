@@ -26,7 +26,10 @@ Snow-Covered Garden, Rainbow Horizon, Halloween Garden, Full Moon Garden, and
 Celestial Eclipse—preserve the camera, path, cottage, Nursery, all six spaces,
 anchors, alpha masks, landmark geometry, and occlusion topology. Compact
 manifest rows use `placement_ref` to inherit the canonical V6 contract and
-substitute only responsive background/occlusion files. Weather remains a
+substitute responsive background/occlusion files. An artwork-specific
+`landmark_overrides` entry may refine only a visual contour and its forgiving
+hit bounds when a scenery repaint shifts the visible building edge; planting
+surfaces and saved geometry remain canonical. Weather remains a
 separate transparent overlay so each of seven choices composes with all nine
 settings.
 
@@ -74,8 +77,19 @@ Catalog item art is square transparent storybook gouache. Basic, Quality, and
 Magical Fertilizer bag names are composited deterministically for exact
 spelling; the Booster Potion is visually distinct; and Small, Standard, and
 Grand Growth Charges use one, two, and three luminous pips. Surrounding UI owns
-all learner-facing labels. The asset audit enforces canonical paths, dimensions,
-RGBA transparency, and at least one visible pixel plus transparent background.
+the catalog labels. The shared Nurturing marker is a sage-and-teal watering can.
+Its paired spout-left and spout-right variants come from the same unlettered
+source; the exact word `Nurturing` is recomposed upright in bold, centered type
+after mirroring. Both transparent 512-pixel lossless WebP assets are used by the
+full Garden, Customize, Settings, Deck Browser, and Overview scenes. The shared
+planter draw box sets marker scale, while placement tucks the can beside the
+plant silhouette and over the planter's outer edge so the cue remains visibly
+attached to the nurtured plant. Its painted base aligns to the shared soil
+anchor rather than the bottom of the planter artwork. Odd-numbered plots use the
+left side with the spout pointing right; even-numbered plots use the opposite
+side and orientation. The asset audit enforces canonical paths,
+dimensions, RGBA
+transparency, and at least one visible pixel plus transparent background.
 
 ## Generation and validation
 
