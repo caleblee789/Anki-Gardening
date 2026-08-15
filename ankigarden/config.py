@@ -12,7 +12,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "enable_animations": True,
     "reduced_motion": False,
     "show_home_widget": True,
-    "show_progress_notifications": False,
+    "show_progress_notifications": True,
     "onboarding_version": 0,
     "seasonal_visuals": True,
     "assets": {

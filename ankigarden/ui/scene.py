@@ -28,18 +28,23 @@ from .landmarks import (
     LandmarkAction,
     normalized_landmark_action,
     project_landmark_bounds,
+    project_landmark_outline_paths,
     project_landmark_polygon,
     resolve_scene_landmarks,
 )
 from .plant_display import (
+    NurturedMarkerPlacement,
     PlantInteractionState,
     PlantPlacement,
     Rect,
     bed_badge_rect,
     move_badge_label,
     move_target_state,
+    nurtured_marker_fallback_rect,
+    nurtured_marker_placement,
     plant_layout,
     plant_layout_item,
+    planter_draw_rect,
     partition_scene_rows,
     repair_unique_slot_items,
     requires_native_destination_selector,
@@ -61,6 +66,8 @@ SCENE_TEXT = {
 }
 
 STATS_HELP_TEXT = PROGRESSION_SUMMARY
+PLANT_HOVER_OUTLINE_WIDTH = 1.65
+PLANT_HOVER_OUTLINE_OPACITY = 0.55
 
 
 class GardenSceneWidget(QWidget):
@@ -88,6 +95,7 @@ class GardenSceneWidget(QWidget):
         self._transition_generation = 0
         self._nurture_pulse_id = ""
         self._nurture_pulse_started_at: float | None = None
+        self._nurtured_marker_placement: NurturedMarkerPlacement | None = None
         self._interaction = PlantInteractionState()
         self._plant_hit_rects: dict[str, QRectF] = {}
         self._plant_anchors: dict[str, tuple[float, float]] = {}
@@ -128,6 +136,9 @@ class GardenSceneWidget(QWidget):
         )
         self._stats_help_button.installEventFilter(self)
         self._stats_help_button.clicked.connect(self._focus_stats_help)
+        # This control already belongs to the scene. Keeping that invariant is
+        # important because setVisible(True) on a parentless widget creates a
+        # temporary top-level macOS window and can change full-screen Spaces.
         self._stats_help_button.setVisible(self.interactive)
         self._keyboard_hint = QLabel(KEYBOARD_HINT, self)
         self._keyboard_hint.setObjectName("ankiGardenKeyboardHint")
@@ -144,6 +155,9 @@ class GardenSceneWidget(QWidget):
         self._landmark_action_by_id: dict[str, str] = {}
         self._landmark_rects: dict[str, QRectF] = {}
         self._landmark_polygons: dict[str, tuple[tuple[float, float], ...]] = {}
+        self._landmark_outline_paths: dict[
+            str, tuple[tuple[tuple[float, float], ...], ...]
+        ] = {}
         self._landmark_labels: dict[str, str] = {}
         self._landmark_hotspots: dict[str, QToolButton] = {}
         self._landmark_action_id = ""  # Compatibility alias for the first active landmark.
@@ -250,6 +264,10 @@ class GardenSceneWidget(QWidget):
                 self._announce_focused_plant(selected=True)
             elif self._interaction.focused_index >= 0:
                 self._announce_focused_plant()
+            else:
+                self._update_scene_accessible_description()
+        else:
+            self._update_scene_accessible_description()
         self.update()
         self._sync_landmark_hotspot()
         QTimer.singleShot(0, self.cardGeometryChanged.emit)
@@ -258,15 +276,12 @@ class GardenSceneWidget(QWidget):
         self.interactive = bool(interactive)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self.interactive else Qt.FocusPolicy.NoFocus)
         self.setAccessibleName("Interactive garden" if self.interactive else "Garden preview")
-        self.setAccessibleDescription(
-            f"Select a plant to view its actions. {KEYBOARD_HINT}"
-            if self.interactive else "This preview is not interactive."
-        )
         if not self.interactive:
             self._interaction.cancel_placement()
             self._interaction.dismiss()
             self._clear_hit_targets()
             self._stats_help_visible = False
+        self._update_scene_accessible_description()
         self._stats_help_button.setVisible(self.interactive)
         self._sync_landmark_hotspot()
         self.update()
@@ -290,6 +305,24 @@ class GardenSceneWidget(QWidget):
         self._sync_landmark_hotspot()
         QTimer.singleShot(0, self.cardGeometryChanged.emit)
         return True
+
+    def _update_scene_accessible_description(self) -> None:
+        active = next((
+            plant for plant in self.scene.get("plants", [])
+            if isinstance(plant, dict) and bool(plant.get("is_active"))
+        ), None)
+        marker_description = ""
+        if active is not None:
+            name = str(active.get("name") or active.get("species") or "This plant")
+            marker_description = (
+                f" Watering can: {name} is nurtured and receives Growth from future Anki card answers."
+            )
+        base = (
+            f"Select a plant to view its actions. {KEYBOARD_HINT}"
+            if self.interactive else
+            "This preview is not interactive."
+        )
+        self.setAccessibleDescription(base + marker_description)
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
         if watched is self._stats_help_button:
@@ -533,6 +566,7 @@ class GardenSceneWidget(QWidget):
         self._landmark_action_by_id.clear()
         self._landmark_rects.clear()
         getattr(self, "_landmark_polygons", {}).clear()
+        getattr(self, "_landmark_outline_paths", {}).clear()
         getattr(self, "_landmark_labels", {}).clear()
         if self._interaction.placing:
             self.landmarksChanged.emit()
@@ -588,6 +622,15 @@ class GardenSceneWidget(QWidget):
                 source_aspect=source_aspect,
                 focal=focal,
             )
+            self._landmark_outline_paths[landmark.landmark_id] = (
+                project_landmark_outline_paths(
+                    landmark,
+                    width=self.width(),
+                    height=self.height(),
+                    source_aspect=source_aspect,
+                    focal=focal,
+                )
+            )
             self._landmark_labels[landmark.landmark_id] = landmark.accessible_name
         self._landmark_action_id = next(iter(self._landmark_action_by_id.values()), "")
         self.landmarksChanged.emit()
@@ -616,7 +659,7 @@ class GardenSceneWidget(QWidget):
         plant_id = self._interaction.pinned_id
         if not plant_id or self._interaction.placing:
             return None
-        self._layout_plants(self.width(), self.height())
+        layout_rows = self._layout_plants(self.width(), self.height())
         anchor = self._plant_anchors.get(plant_id)
         if anchor is None:
             return None
@@ -639,6 +682,37 @@ class GardenSceneWidget(QWidget):
                 self._status_rect.x(), self._status_rect.y(),
                 self._status_rect.width(), self._status_rect.height(),
             ))
+        active_row = next(
+            (
+                (plant, layout)
+                for plant, layout in layout_rows
+                if bool(plant.get("is_active"))
+            ),
+            None,
+        )
+        if active_row is not None:
+            _active_plant, active_layout = active_row
+            family = self._planter_family_record()
+            marker_protected = []
+            if self._status_rect is not None:
+                marker_protected.append(Rect(
+                    self._status_rect.x(),
+                    self._status_rect.y(),
+                    self._status_rect.width(),
+                    self._status_rect.height(),
+                ))
+            marker_reservation = nurtured_marker_placement(
+                self.width(),
+                self.height(),
+                active_layout,
+                planter_rect=planter_draw_rect(active_layout, family),
+                obstacles=[
+                    layout.visible.expanded(4.0, 4.0)
+                    for _plant, layout in layout_rows
+                ],
+                protected_regions=marker_protected,
+            )
+            obstacles.append(marker_reservation.pulse_bounds.expanded(4.0, 4.0))
         geometry = smart_card_rect(
             self.width(), self.height(), anchor[0], anchor[1],
             card_width=float(card_width),
@@ -668,6 +742,56 @@ class GardenSceneWidget(QWidget):
         self._layout_plants(self.width(), self.height())
         geometry = self._plant_hit_rects.get(str(plant_id))
         return QRectF(geometry) if geometry is not None else None
+
+    def nurtured_marker_geometry(self) -> dict[str, Any] | None:
+        """Expose the resolved marker lane for capture and runtime diagnostics."""
+
+        placement = self._nurtured_marker_placement
+        if placement is None:
+            return None
+        rect = placement.rect
+        pulse = placement.pulse_bounds
+        active_slot = next(
+            (
+                int(plant.get("slot_index", -1))
+                for plant in self.scene.get("plants", [])
+                if isinstance(plant, dict) and bool(plant.get("is_active"))
+            ),
+            -1,
+        )
+        slot_placements = getattr(self, "_slot_placements", {})
+        target_layout = (
+            slot_placements.get(active_slot)
+            if isinstance(slot_placements, dict) else None
+        )
+        target_ground = (
+            list(target_layout.ground_anchor)
+            if isinstance(target_layout, PlantPlacement) else []
+        )
+        plant_distance = (
+            math.hypot(
+                rect.x + rect.width / 2 - target_layout.ground_anchor[0],
+                rect.y + rect.height * 0.916 - target_layout.ground_anchor[1],
+            )
+            if isinstance(target_layout, PlantPlacement) else None
+        )
+        return {
+            "slot_index": active_slot,
+            "rect": [rect.x, rect.y, rect.width, rect.height],
+            "pulse_bounds": [pulse.x, pulse.y, pulse.width, pulse.height],
+            "planter_rect": [
+                placement.planter_rect.x,
+                placement.planter_rect.y,
+                placement.planter_rect.width,
+                placement.planter_rect.height,
+            ],
+            "target_ground": target_ground,
+            "plant_distance": plant_distance,
+            "side": placement.side,
+            "orientation": placement.orientation,
+            "asset_key": placement.asset_key,
+            "used_fallback": placement.used_fallback,
+        }
 
     def set_card_connector_geometry(self, geometry: QRectF | None, plant_id: str = "") -> None:
         self._card_connector_rect = QRectF(geometry) if geometry is not None else None
@@ -786,10 +910,19 @@ class GardenSceneWidget(QWidget):
             # artwork and interaction. No separate legacy bed overlay ships.
             self._draw_decoration_asset(painter, r)
 
-            split_occlusion = self._has_split_surface_occlusion(r.width(), r.height())
+            planter_family = self._planter_family_record()
+            replaces_surface_occlusion = bool(
+                planter_family
+                and planter_family.get("background_contract") == "bedless_v1"
+                and planter_family.get("replace_surface_occlusion", True)
+            )
+            split_occlusion = (
+                not replaces_surface_occlusion
+                and self._has_split_surface_occlusion(r.width(), r.height())
+            )
             # Legacy theme overlays retain their original background behavior.
             # Dusk v2 instead inserts separate ledge/dust layers between rows.
-            if not split_occlusion:
+            if not replaces_surface_occlusion and not split_occlusion:
                 self._draw_surface_occlusion_asset(painter, r)
 
             plant_rows = self._layout_plants(r.width(), r.height())
@@ -832,8 +965,36 @@ class GardenSceneWidget(QWidget):
                     return self._drag_position.x(), self._drag_position.y()
                 return x, base_y
 
-            for row_name in ("rear", "front"):
-                row_items = physical_rows[row_name]
+            render_groups = (
+                [
+                    (
+                        depth_band,
+                        sorted(
+                            (
+                                item
+                                for item in plant_rows
+                                if item[1].depth_band == depth_band
+                            ),
+                            key=lambda item: item[1].z_depth,
+                        ),
+                    )
+                    for depth_band in ("far", "middle", "near")
+                ]
+                if planter_family
+                else [
+                    (row_name, physical_rows[row_name])
+                    for row_name in ("rear", "front")
+                ]
+            )
+
+            for row_name, row_items in render_groups:
+                if planter_family:
+                    self._draw_planter_family_band(
+                        painter,
+                        row_name,
+                        planter_family,
+                        foreground=False,
+                    )
                 for plant, layout in row_items:
                     x = layout.footprint.x + layout.footprint.width / 2
                     base_y = layout.depth
@@ -877,7 +1038,14 @@ class GardenSceneWidget(QWidget):
                         self._draw_foreground_growth(painter, x, base_y, idx, selected)
                     painter.restore()
 
-                if split_occlusion:
+                if planter_family:
+                    self._draw_planter_family_band(
+                        painter,
+                        row_name,
+                        planter_family,
+                        foreground=True,
+                    )
+                elif split_occlusion:
                     self._draw_surface_occlusion_asset(painter, r, layer=row_name)
 
             # Selected and keyboard-focus contours are a final UI layer so the
@@ -910,11 +1078,7 @@ class GardenSceneWidget(QWidget):
                 )
                 painter.restore()
 
-            if not self._interaction.placing:
-                for plant, layout in plant_rows:
-                    if bool(plant.get("is_active")):
-                        self._draw_nurtured_marker(painter, layout, plant)
-
+            self._nurtured_marker_placement = None
             if bool(self.scene.get("debug_placement", False)):
                 self._draw_placement_debug(painter, plant_rows)
 
@@ -924,6 +1088,18 @@ class GardenSceneWidget(QWidget):
                 self._draw_weather_motion(painter, r, str(weather), density)
 
             self._draw_landmark_affordances(painter)
+            # The can is noninteractive UI: above every scene-artwork layer,
+            # including weather, but below move controls, status, cards, and
+            # toasts. Moving a plant suppresses it until the placement commits.
+            if not self._interaction.placing:
+                for plant, layout in plant_rows:
+                    if bool(plant.get("is_active")):
+                        self._draw_nurtured_marker(
+                            painter,
+                            layout,
+                            plant,
+                            scene_layouts=[row_layout for _row, row_layout in plant_rows],
+                        )
             if self._interaction.placing:
                 # Move choices sit above a uniform 15% scene dimmer. This keeps
                 # the artwork legible while making destination states dominant.
@@ -947,22 +1123,32 @@ class GardenSceneWidget(QWidget):
         for landmark_id, button in self._landmark_hotspots.items():
             if not button.isVisible() or not (button.underMouse() or button.hasFocus()):
                 continue
+            outline_paths = self._landmark_outline_paths.get(landmark_id, ())
             points = self._landmark_polygons.get(landmark_id, ())
-            if len(points) < 3:
+            if not outline_paths and len(points) < 3:
                 continue
             path = QPainterPath()
-            path.moveTo(QPointF(*points[0]))
-            for point in points[1:]:
-                path.lineTo(QPointF(*point))
-            path.closeSubpath()
+            if outline_paths:
+                for outline in outline_paths:
+                    path.moveTo(QPointF(*outline[0]))
+                    for point in outline[1:]:
+                        path.lineTo(QPointF(*point))
+            else:
+                path.moveTo(QPointF(*points[0]))
+                for point in points[1:]:
+                    path.lineTo(QPointF(*point))
+                path.closeSubpath()
             focused = button.hasFocus()
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(QPen(
                 QColor("#e5f2a6") if focused else QColor(244, 213, 138, 235),
                 3.0 if focused else 2.0,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenJoinStyle.RoundJoin,
             ))
-            painter.setBrush(QColor(244, 198, 103, 34))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
             bounds = path.boundingRect()
             label_text = self._landmark_labels.get(landmark_id, "Open")
@@ -1167,7 +1353,7 @@ class GardenSceneWidget(QWidget):
             source_w * scale,
             source_h * scale,
         )
-        desired_width = 2.0 if emphasized else 1.15
+        desired_width = 2.0 if emphasized else PLANT_HOVER_OUTLINE_WIDTH
         source_radius = max(1, min(12, round(desired_width / max(0.01, scale))))
         edge = self._highlight_pixmap_for(path, color, source_radius)
         if edge is None:
@@ -1180,7 +1366,9 @@ class GardenSceneWidget(QWidget):
             target.height() + padding * scale * 2,
         )
         painter.save()
-        painter.setOpacity(0.62 if emphasized else 0.34 * hovered)
+        painter.setOpacity(
+            0.62 if emphasized else PLANT_HOVER_OUTLINE_OPACITY * hovered
+        )
         painter.drawPixmap(edge_target, edge, QRectF(edge.rect()))
         painter.restore()
         return True
@@ -1192,20 +1380,32 @@ class GardenSceneWidget(QWidget):
         *,
         nurtured: bool,
     ) -> None:
+        del nurtured
+        pulse = 0.0
+        if self._nurture_pulse_started_at is not None:
+            elapsed = max(0.0, time.monotonic() - self._nurture_pulse_started_at)
+            pulse = math.sin(min(1.0, elapsed / 0.22) * math.pi)
+        draw_asset_outline = getattr(self, "_draw_planter_asset_outline", None)
+        if callable(draw_asset_outline) and draw_asset_outline(
+            painter,
+            layout,
+            color=GARDEN_THEME["focus_ring"],
+            width=2.5 + pulse * 1.25,
+            opacity=0.92,
+        ):
+            return
+
+        # Legacy and degraded surfaces have no planter-family alpha to trace.
+        # Keep their established geometry fallback instead of losing focus.
         bed = QRectF(
             layout.bed_footprint.x,
             layout.bed_footprint.y,
             layout.bed_footprint.width,
             layout.bed_footprint.height,
         )
-        pulse = 0.0
-        if self._nurture_pulse_started_at is not None:
-            elapsed = max(0.0, time.monotonic() - self._nurture_pulse_started_at)
-            pulse = math.sin(min(1.0, elapsed / 0.22) * math.pi)
         horizontal = max(4.0, bed.width() * (0.05 + pulse * 0.025))
         vertical = max(2.0, bed.height() * (0.08 + pulse * 0.025))
         ring = bed.adjusted(-horizontal, -vertical, horizontal, vertical)
-        del nurtured
         color = QColor(GARDEN_THEME["focus_ring"])
         color.setAlpha(238)
         painter.save()
@@ -1219,30 +1419,81 @@ class GardenSceneWidget(QWidget):
         painter: QPainter,
         layout: PlantPlacement,
         plant: dict[str, Any],
+        *,
+        scene_layouts: list[PlantPlacement] | None = None,
     ) -> None:
-        radius = max(11.0, min(13.0, layout.draw.width * 0.055))
-        right_x = layout.visible.x + layout.visible.width + radius + 4.0
-        left_x = layout.visible.x - radius - 4.0
-        center_x = right_x if right_x + radius <= self.width() - 6 else left_x
-        center_y = max(radius + 6.0, layout.visible.y + radius * 0.35)
+        family_resolver = getattr(self, "_planter_family_record", None)
+        family = family_resolver() if callable(family_resolver) else {}
+        planter = planter_draw_rect(layout, family)
+        occupied_layouts = list(scene_layouts or [layout])
+        obstacles = [
+            item.visible.expanded(4.0, 4.0)
+            for item in occupied_layouts
+        ]
+        protected: list[Rect] = []
+        for qt_rect in (
+            getattr(self, "_card_connector_rect", None),
+            getattr(self, "_status_rect", None),
+        ):
+            if qt_rect is not None:
+                protected.append(Rect(
+                    qt_rect.x(),
+                    qt_rect.y(),
+                    qt_rect.width(),
+                    qt_rect.height(),
+                ).expanded(4.0, 4.0))
+        resolved = nurtured_marker_placement(
+            self.width(),
+            self.height(),
+            layout,
+            planter_rect=planter,
+            obstacles=obstacles,
+            protected_regions=protected,
+        )
+        self._nurtured_marker_placement = resolved
+        marker = QRectF(
+            resolved.rect.x,
+            resolved.rect.y,
+            resolved.rect.width,
+            resolved.rect.height,
+        )
         pulse = 0.0
         if (
-            str(plant.get("plant_id", "")) == self._nurture_pulse_id
-            and self._nurture_pulse_started_at is not None
+            str(plant.get("plant_id", "")) == getattr(self, "_nurture_pulse_id", "")
+            and getattr(self, "_nurture_pulse_started_at", None) is not None
         ):
             elapsed = max(0.0, time.monotonic() - self._nurture_pulse_started_at)
             pulse = math.sin(min(1.0, elapsed / 0.22) * math.pi)
-        radius *= 1.0 + pulse * 0.14
-        marker = QRectF(
-            center_x - radius,
-            center_y - radius,
-            radius * 2,
-            radius * 2,
+        if pulse:
+            expansion = marker.width() * pulse * 0.04
+            marker = marker.adjusted(-expansion, -expansion, expansion, expansion)
+
+        path_resolver = getattr(self, "_asset_path", None)
+        marker_path = (
+            path_resolver(resolved.asset_key)
+            if callable(path_resolver) else None
         )
+        asset_drawer = getattr(self, "_draw_asset_contain", None)
+        if (
+            not resolved.used_fallback
+            and marker_path
+            and callable(asset_drawer)
+            and asset_drawer(painter, marker_path, marker)
+        ):
+            return
+
+        # Missing or unreadable artwork must not remove the state cue. Keep a
+        # compact version of the previous badge inside the same safe marker box.
+        badge = nurtured_marker_fallback_rect(resolved)
+        fallback = QRectF(badge.x, badge.y, badge.width, badge.height)
+        center = fallback.center()
+        center_x = center.x()
+        center_y = center.y()
+        radius = fallback.width() / 2
         painter.save()
         painter.setPen(QPen(QColor("#4C3E18"), 1.5))
         painter.setBrush(QColor(GARDEN_THEME["coin_accent"]))
-        painter.drawEllipse(marker)
+        painter.drawEllipse(fallback)
         leaf = QPainterPath()
         leaf.moveTo(center_x - radius * 0.42, center_y + radius * 0.18)
         leaf.cubicTo(
@@ -1376,6 +1627,9 @@ class GardenSceneWidget(QWidget):
     def _draw_slot_placeholders(self, painter: QPainter) -> None:
         if not self._interaction.placing:
             return
+        family_resolver = getattr(self, "_planter_family_record", None)
+        planter_family = family_resolver() if callable(family_resolver) else {}
+        draw_asset_outline = getattr(self, "_draw_planter_asset_outline", None)
         occupied = {int(plant.get("slot_index", -1)) for plant in self.scene.get("plants", [])}
         occupant_names = {
             int(plant.get("slot_index", -1)): str(plant.get("name") or plant.get("species") or "plant")
@@ -1455,24 +1709,33 @@ class GardenSceneWidget(QWidget):
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
                 pen_color.setAlpha(245 if active else 190)
                 fill_color = QColor(54, 161, 104, 112 if active else 44)
-            painter.setPen(QPen(pen_color, 3.0 if active and not blocked else 2.0))
-            painter.setBrush(fill_color)
-            # The two rear beds are small enough for the original fixed halo.
-            # The middle and foreground beds are materially larger, so expand
-            # their target from the rendered soil footprint instead of leaving
-            # a visibly undersized ring inside the bed.
-            if layout.depth_band == "far":
-                move_footprint = footprint.adjusted(-6, -3, 6, 3)
-            else:
-                horizontal_padding = max(6.0, layout.bed_footprint.width * 0.08)
-                vertical_padding = max(3.0, layout.bed_footprint.height * 0.12)
-                move_footprint = footprint.adjusted(
-                    -horizontal_padding,
-                    -vertical_padding,
-                    horizontal_padding,
-                    vertical_padding,
+            outline_drawn = bool(
+                callable(draw_asset_outline)
+                and draw_asset_outline(
+                    painter,
+                    layout,
+                    color=pen_color.name(),
+                    width=3.0 if active and not blocked else 2.0,
+                    opacity=pen_color.alphaF(),
+                    family=planter_family,
                 )
-            painter.drawEllipse(move_footprint)
+            )
+            if not outline_drawn:
+                painter.setPen(QPen(pen_color, 3.0 if active and not blocked else 2.0))
+                painter.setBrush(fill_color)
+                # Legacy surfaces retain their established ellipse fallback.
+                if layout.depth_band == "far":
+                    move_footprint = footprint.adjusted(-6, -3, 6, 3)
+                else:
+                    horizontal_padding = max(6.0, layout.bed_footprint.width * 0.08)
+                    vertical_padding = max(3.0, layout.bed_footprint.height * 0.12)
+                    move_footprint = footprint.adjusted(
+                        -horizontal_padding,
+                        -vertical_padding,
+                        horizontal_padding,
+                        vertical_padding,
+                    )
+                painter.drawEllipse(move_footprint)
             if target_state == "valid":
                 painter.setPen(QColor(244, 255, 248, 255 if active else 220))
                 plus_font = painter.font()
@@ -1568,7 +1831,7 @@ class GardenSceneWidget(QWidget):
         species = str(plant.get("species") or "plant").replace("_", " ").title()
         stage = str(plant.get("stage") or "seed").replace("_", " ").title()
         nurtured = (
-            " Nurtured plant: eligible card answers add Growth here."
+            f" Watering can: {name} is nurtured and receives Growth from future Anki card answers."
             if bool(plant.get("is_active")) else
             ""
         )
@@ -2055,6 +2318,224 @@ class GardenSceneWidget(QWidget):
         except (OSError, ValueError):
             return None
         return str(candidate) if candidate.is_file() and candidate.suffix.lower() in {".png", ".webp"} else None
+
+    def _planter_family_record(self) -> dict[str, Any]:
+        """Return a validated, globally mapped planter family for this scene."""
+        asset_paths = self.scene.get("asset_paths", {})
+        background = asset_paths.get("background", {}) if isinstance(asset_paths, dict) else {}
+        if not isinstance(background, dict):
+            return {}
+        placement = background.get("placement", {})
+        surface_profile = placement.get("surface_profile", {}) if isinstance(placement, dict) else {}
+        family = surface_profile.get("planter_family", {}) if isinstance(surface_profile, dict) else {}
+        variants = family.get("variants", {}) if isinstance(family, dict) else {}
+        root = Path(str(background.get("asset_root", ""))).expanduser()
+        if (
+            not isinstance(family, dict)
+            or family.get("background_contract") != "bedless_v1"
+            or not bool(family.get("replace_surface_occlusion", True))
+            or not isinstance(variants, dict)
+            or not root.is_dir()
+        ):
+            return {}
+        resolved_variants: dict[str, dict[str, Any]] = {}
+        root_resolved = root.resolve()
+        degraded = False
+        for variant_name in ("back", "middle", "front"):
+            variant = variants.get(variant_name)
+            if not isinstance(variant, dict):
+                variant = {}
+                degraded = True
+            resolved = dict(variant)
+            for key in ("file", "foreground_file"):
+                relative = str(variant.get(key, ""))
+                candidate = (root / relative).resolve()
+                try:
+                    candidate.relative_to(root_resolved)
+                except (OSError, ValueError):
+                    resolved[key] = ""
+                    degraded = True
+                    continue
+                if not candidate.is_file() or candidate.suffix.lower() not in {".png", ".webp"}:
+                    resolved[key] = ""
+                    degraded = True
+                else:
+                    resolved[key] = str(candidate)
+            resolved_variants[variant_name] = resolved
+        result = dict(family)
+        result["variants"] = resolved_variants
+        result["degraded"] = degraded
+        return result
+
+    def _planter_layer_record(
+        self,
+        layout: PlantPlacement,
+        family: dict[str, Any],
+        *,
+        foreground: bool,
+    ) -> tuple[str, QRectF] | None:
+        """Resolve the exact asset and box used to paint one planter layer."""
+
+        variant_name = {
+            "far": "back",
+            "middle": "middle",
+            "near": "front",
+        }.get(str(layout.depth_band), "")
+        variants = family.get("variants", {})
+        variant = variants.get(variant_name, {}) if isinstance(variants, dict) else {}
+        if not isinstance(variant, dict):
+            return None
+        resolved_box = planter_draw_rect(layout, family)
+        box = QRectF(
+            resolved_box.x,
+            resolved_box.y,
+            resolved_box.width,
+            resolved_box.height,
+        )
+        path = str(variant.get("foreground_file" if foreground else "file", ""))
+        return path, box
+
+    def _draw_planter_asset_outline(
+        self,
+        painter: QPainter,
+        layout: PlantPlacement,
+        *,
+        color: str,
+        width: float,
+        opacity: float,
+        family: dict[str, Any] | None = None,
+    ) -> bool:
+        """Trace the rendered planter alpha instead of drawing a loose ellipse."""
+
+        resolved_family = family if isinstance(family, dict) else self._planter_family_record()
+        record = self._planter_layer_record(
+            layout,
+            resolved_family,
+            foreground=False,
+        )
+        if record is None:
+            return False
+        path, box = record
+        source = self._pixmap_for(path) if path else None
+        if source is None or box.width() <= 0 or box.height() <= 0:
+            return False
+        source_width = max(1, source.width())
+        source_height = max(1, source.height())
+        scale = min(box.width() / source_width, box.height() / source_height)
+        if scale <= 0:
+            return False
+        target = QRectF(
+            box.x() + (box.width() - source_width * scale) / 2,
+            box.y() + (box.height() - source_height * scale) / 2,
+            source_width * scale,
+            source_height * scale,
+        )
+        source_radius = max(
+            1,
+            min(12, round(max(1.0, float(width)) / max(0.01, scale))),
+        )
+        edge = self._highlight_pixmap_for(path, str(color), source_radius)
+        if edge is None:
+            return False
+        padding = source_radius + 1
+        edge_target = QRectF(
+            target.x() - padding * scale,
+            target.y() - padding * scale,
+            target.width() + padding * scale * 2,
+            target.height() + padding * scale * 2,
+        )
+        painter.save()
+        painter.setOpacity(self._clamp(float(opacity), 0.0, 1.0))
+        painter.drawPixmap(edge_target, edge, QRectF(edge.rect()))
+        painter.restore()
+        return True
+
+    @staticmethod
+    def _draw_planter_fallback(
+        painter: QPainter,
+        box: QRectF,
+        *,
+        foreground: bool,
+        depth_band: str,
+    ) -> None:
+        """Keep bed support visible when a planter layer cannot be decoded."""
+
+        depth_alpha = {"far": 150, "middle": 174, "near": 198}.get(
+            str(depth_band), 174
+        )
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rim_height = max(2.0, box.height() * 0.22)
+        rim = QRectF(
+            box.left() + box.width() * 0.10,
+            box.top() + box.height() * 0.31,
+            box.width() * 0.80,
+            rim_height,
+        )
+        if foreground:
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            edge = QColor("#B59A72")
+            edge.setAlpha(min(230, depth_alpha + 28))
+            painter.setPen(QPen(edge, max(1.2, box.height() * 0.035)))
+            painter.drawArc(rim, 180 * 16, 180 * 16)
+        else:
+            painter.setPen(Qt.PenStyle.NoPen)
+            stone = QColor("#6E685E")
+            stone.setAlpha(depth_alpha)
+            painter.setBrush(stone)
+            body = QPainterPath()
+            body.moveTo(rim.left(), rim.center().y())
+            body.cubicTo(
+                rim.left() + box.width() * 0.05,
+                box.bottom() - box.height() * 0.08,
+                rim.right() - box.width() * 0.05,
+                box.bottom() - box.height() * 0.08,
+                rim.right(),
+                rim.center().y(),
+            )
+            body.lineTo(rim.left(), rim.center().y())
+            body.closeSubpath()
+            painter.drawPath(body)
+            soil = QColor("#5D402C")
+            soil.setAlpha(min(235, depth_alpha + 25))
+            painter.setBrush(soil)
+            painter.drawEllipse(rim)
+        painter.restore()
+
+    def _draw_planter_family_band(
+        self,
+        painter: QPainter,
+        depth_band: str,
+        family: dict[str, Any],
+        *,
+        foreground: bool,
+    ) -> bool:
+        """Draw only planter art inside fixed slots; plant geometry is untouched."""
+        drawn = False
+        for layout in sorted(self._slot_placements.values(), key=lambda item: item.z_depth):
+            if layout.depth_band != depth_band:
+                continue
+            record = self._planter_layer_record(
+                layout,
+                family,
+                foreground=foreground,
+            )
+            if record is None:
+                continue
+            path, box = record
+            layer_drawn = bool(path) and self._draw_asset_contain(
+                painter, path, box, opacity=1.0
+            )
+            if not layer_drawn:
+                self._draw_planter_fallback(
+                    painter,
+                    box,
+                    foreground=foreground,
+                    depth_band=depth_band,
+                )
+                layer_drawn = True
+            drawn = layer_drawn or drawn
+        return drawn
 
     def _has_split_surface_occlusion(self, width: float, height: float) -> bool:
         return all(self._surface_occlusion_path(width, height, row) for row in ("rear", "front"))

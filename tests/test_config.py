@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from ankigarden.config import ConfigError, ConfigManager
+from ankigarden.config import DEFAULT_CONFIG, ConfigError, ConfigManager
 
 
 class AddonManager:
@@ -29,6 +31,24 @@ class AddonManager:
 def manager(config=None):
     addon_manager = AddonManager(config)
     return ConfigManager(SimpleNamespace(addonManager=addon_manager)), addon_manager
+
+
+def test_reviewer_notifications_default_on_and_preserve_explicit_opt_out() -> None:
+    config, _addon_manager = manager()
+    opted_out, _opted_out_manager = manager({"show_progress_notifications": False})
+
+    assert config.value("show_progress_notifications") is True
+    assert opted_out.value("show_progress_notifications") is False
+
+
+def test_packaged_config_metadata_matches_notification_default() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config_json = json.loads((root / "ankigarden" / "config.json").read_text())
+    meta_json = json.loads((root / "ankigarden" / "meta.json").read_text())
+
+    assert DEFAULT_CONFIG["show_progress_notifications"] is True
+    assert config_json["show_progress_notifications"] is True
+    assert meta_json["config"]["show_progress_notifications"] is True
 
 
 def test_reload_ignores_unknown_and_invalid_persisted_values() -> None:

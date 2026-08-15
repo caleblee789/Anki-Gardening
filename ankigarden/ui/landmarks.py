@@ -24,6 +24,7 @@ class SceneLandmark:
     tooltip: str
     bounds: tuple[float, float, float, float]
     polygon: tuple[tuple[float, float], ...] = ()
+    outline_paths: tuple[tuple[tuple[float, float], ...], ...] = ()
     label_anchor: tuple[float, float] | None = None
 
 
@@ -96,6 +97,7 @@ def resolve_scene_landmarks(
         if bounds is None:
             continue
         polygon = _normalized_polygon(geometry.get("polygon"))
+        outline_paths = _normalized_paths(geometry.get("outline_paths"))
         label_anchor = _normalized_point(geometry.get("label_anchor"))
         resolved.append(SceneLandmark(
             landmark_id=landmark_id,
@@ -104,6 +106,7 @@ def resolve_scene_landmarks(
             tooltip=action.tooltip,
             bounds=bounds,
             polygon=polygon,
+            outline_paths=outline_paths,
             label_anchor=label_anchor,
         ))
         seen_ids.add(landmark_id)
@@ -189,6 +192,33 @@ def project_landmark_polygon(
     return tuple(projected)
 
 
+def project_landmark_outline_paths(
+    landmark: SceneLandmark,
+    *,
+    width: float,
+    height: float,
+    source_aspect: float,
+    focal: tuple[float, float],
+) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """Project visible-edge strokes without joining across painted occluders."""
+
+    projected_paths: list[tuple[tuple[float, float], ...]] = []
+    for path in landmark.outline_paths:
+        projected: list[tuple[float, float]] = []
+        for x, y in path:
+            px, py = cover_project_point(
+                x,
+                y,
+                width=width,
+                height=height,
+                source_aspect=source_aspect,
+                focal=focal,
+            )
+            projected.append((px * width, py * height))
+        projected_paths.append(tuple(projected))
+    return tuple(projected_paths)
+
+
 def _normalized_bounds(value: Any) -> tuple[float, float, float, float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
@@ -220,3 +250,20 @@ def _normalized_polygon(value: Any) -> tuple[tuple[float, float], ...]:
         point for point in (_normalized_point(item) for item in value) if point is not None
     )
     return points if len(points) >= 3 else ()
+
+
+def _normalized_paths(value: Any) -> tuple[tuple[tuple[float, float], ...], ...]:
+    if not isinstance(value, list):
+        return ()
+    paths: list[tuple[tuple[float, float], ...]] = []
+    for raw_path in value:
+        if not isinstance(raw_path, list):
+            continue
+        points = tuple(
+            point
+            for point in (_normalized_point(item) for item in raw_path)
+            if point is not None
+        )
+        if len(points) >= 2:
+            paths.append(points)
+    return tuple(paths)

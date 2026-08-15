@@ -1,7 +1,7 @@
 # Comprehensive QA and remediation report
 
-- Date: 2026-08-10
-- Branch: `codex/clean-and-publish-garden`
+- Date: 2026-08-15
+- Branch: `codex/release-optimize-20260813`
 - Anki runtime target: 26.08
 - Package line: `2.1.0`, state schema 16, scene geometry 6
 
@@ -10,26 +10,57 @@
 Verdant Twilight V6, its geometry-compatible environment library, and the
 schema 16 garden-first interface supersede the
 earlier placement candidate. Do not reuse old package hashes, hard-coded test or
-asset counts, screenshots, or runtime acceptance claims. Release acceptance is
-earned only after rebuilding the final source, passing every gate below, and
-testing that exact archive in an identity-verified disposable Anki profile.
+asset counts, screenshots, or runtime acceptance claims. The repository and
+package gates below are complete. The owner authorized release publication with
+the seven explicitly listed macOS Home-capture omissions and the incomplete
+exact-production live gate recorded here; neither boundary is relabeled as a
+pass.
 
 ## Current candidate verification
 
-- Automated gates: 1,358 tests passed; isolated-cache Python compilation,
-  asset audit, and `git diff --check` passed.
-- Asset audit: 9 backgrounds, 60 plant-stage sprites, 7 Weather overlays,
-  7 catalog UI illustrations, and 1 decoration.
-- Package gates: ZIP integrity and package-content tests passed for 249 files.
-  The archive is 78,369,480 bytes with SHA-256
-  `077cdf68e76ca69ad03096ee1d9ad6ddbc1e6a8b14fa21888a97a44835aeb4bb`.
-- Isolated Anki 26.08 smoke: the exact archive loaded in the uniquely keyed,
-  sync-disabled disposable base, reached the main loop, and created fresh
-  schema-16 state. Startup maintenance deferred at INFO level until Anki exposed
-  its scheduler-day cutoff, with no add-on error traceback. The disposable
-  process then exited cleanly.
-- Visual acceptance remains partial because the test Mac was locked; no claim
-  is made for the final interactive screenshots or pixel-level journeys.
+- Automated gates: 1,536 tests passed in 82.43 seconds; isolated-cache Python
+  compilation, local Markdown-link audit, asset audit, and `git diff --check`
+  passed.
+- Asset audit: 9 backgrounds, 60 plant-stage sprites, 9 UI/planter assets,
+  7 Weather overlays, and 1 decoration. The dedicated lossless pixel/container,
+  planter, scene-profile, landmark, and item-art gate passed 50 tests.
+- Production package gates: deterministic rebuild, ZIP integrity, exact ordered
+  source/archive parity, production-only capabilities, and the ratcheted 78 MiB
+  ceiling passed for 262 files. The archive is 81,702,743 bytes (77.92 MiB),
+  SHA-256 `9d60b0d1b9523ca3f8c2b9e14be186c8b5ca19137f63064d1edfe15c99aa5b79`.
+  This is 11,761 bytes smaller than the frozen pre-optimization package while
+  retaining the exact manifest-owned image bytes.
+- Capture-package gates: the separate explicit 263-file archive passed ZIP
+  integrity and exact parity at 81,737,735 bytes, SHA-256
+  `14114da87e24f4683bbcefdcdcca0ba2340263641d867bd9651bdbe7d28ddfeb`.
+  It alone enables the capture harness; it cannot overwrite production.
+- Runtime asset validation over the 79 primary raster entries reduced cold-pass
+  file reads from 49,103,132 bytes to 1,580 bytes. Median validation time moved
+  from 5.210 ms to 3.201 ms cold and 1.882 ms cached, while ordinary resolution
+  now performs zero metadata writes. Cache identity includes resolved path,
+  size, and modification time; rerolls and legacy local/remote records retain
+  their established behavior.
+- Runtime WebPs are already lossless VP8L without ICC/EXIF/XMP payloads or
+  duplicate file hashes. Representative maximum-effort re-encoding produced no
+  smaller exact-pixel background/occlusion output; transparent alternatives
+  that changed hidden RGB were rejected under the exact-RGBA contract.
+- Historical pre-freeze evidence covers capture contract v8 at 146/146 ordered
+  surfaces and 150% UI scaling with zero failures or layout warnings. The exact
+  final capture archive then produced 139/146 uniform-primary screenshots with
+  zero text-layout warnings. It safely omitted
+  `active-overview-home-after-nurture` and the six watering-can Home faces after
+  macOS refused an exact-window pixmap; no desktop or wrong-window pixels were
+  accepted. A separate bounded diagnostic captured the six watering-can Home
+  faces 6/6 clean. The owner explicitly authorized publication without the
+  seven missing frames; the final manifest remains incomplete by design.
+- Exact-production startup used Anki 26.08.1, disposable profile
+  `Anki Garden 2.1.0 Release 20260815-1711`, instance-key fingerprint
+  `3fdbc25e59f9`, and production SHA-256 `9d60b0d1...5b79`. Process and
+  filesystem identity passed and the add-on registered its hooks, but no unique
+  PID-owned window title was returned and the disposable PID opened a connection
+  to `sync11.ankiweb.net` despite disconnected/auto-sync-off profile metadata.
+  The run was stopped immediately and was not restarted. Window, sync, and
+  restart acceptance therefore remain explicitly waived, not passed.
 
 ## Current remediation contract
 
@@ -44,7 +75,7 @@ testing that exact archive in an identity-verified disposable Anki profile.
 | Supplements | Basic, Quality, and Magical Fertilizer retain exact Coin/effect/interval contracts. Booster Potions add +5 Growth for two hours and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 Growth atomically; Grand remains earn-only. |
 | Rewards | One ordered deterministic roll awards at most one environment, Charge, Booster, or 50-Coin cache. Exact odds, completed-tier Charge fallbacks, daily scenery gifts, and stepped no-guarantee Ultra pity match the catalog. |
 | Story | Timeline is oldest to newest with enlarged stage art, explicit name/species/stage, relative Growth bar, inline rename, early-story state, and Up next. |
-| Settings | Environment, art-quality/detail/performance, animation, and Fine tune choices are absent. Balanced art and reduced-motion behavior are automatic; display/notification Save/Cancel and temporary backup/populate/restore remain. |
+| Settings | Environment, art-quality/detail/performance, animation, and Fine tune choices are absent. Balanced art and reduced-motion behavior are automatic; display/notification Save/Cancel remain. Backup/populate/restore are capture-build-only and must be absent from the production archive. |
 | Language | Learner-facing surfaces use Nurture and Garden Coins. Internal compatibility fields such as `active_plant_id` and `currency_balance` remain unchanged. |
 
 ## Required automated and package gates
@@ -149,6 +180,7 @@ journey must sync answers before, during, and after activation, then repeat afte
 same-tier extension, tier replacement, expired repurchase, Booster stacking, and
 restart.
 
-Record the accepted archive hash and identity evidence here only after all four
-gates and every required journey pass. Until then, the current candidate is not
-release-accepted.
+Record strict live acceptance only after all four gates and every required
+journey pass. For this release, the owner authorized publication with the exact
+capture and production-live exclusions above. Repository/package acceptance is
+complete; strict live acceptance remains incomplete.

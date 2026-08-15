@@ -39,7 +39,7 @@ jobs:
 
       - name: Build and verify package
         run: |
-          python scripts/package_addon.py
+          python scripts/package_addon.py --production
           python -m zipfile -t dist/anki_garden.ankiaddon
 
       - name: Verify source/archive parity
@@ -47,12 +47,24 @@ jobs:
           python - <<'PY'
           import hashlib
           import zipfile
-          from scripts.package_addon import ADDON, OUTPUT, package_files
+          from scripts.package_addon import (
+              ADDON,
+              OUTPUT,
+              PRODUCTION_BUILD,
+              package_files,
+              package_payload,
+          )
 
           with zipfile.ZipFile(OUTPUT) as archive:
               names = set(archive.namelist())
-              expected = {path.relative_to(ADDON).as_posix(): path for path in package_files()}
+              expected = {
+                  path.relative_to(ADDON).as_posix(): package_payload(
+                      path,
+                      PRODUCTION_BUILD,
+                  )
+                  for path in package_files(PRODUCTION_BUILD)
+              }
               assert names == set(expected), (sorted(set(expected) - names), sorted(names - set(expected)))
-              for name, path in expected.items():
-                  assert hashlib.sha256(path.read_bytes()).digest() == hashlib.sha256(archive.read(name)).digest(), name
+              for name, payload in expected.items():
+                  assert hashlib.sha256(payload).digest() == hashlib.sha256(archive.read(name)).digest(), name
           PY

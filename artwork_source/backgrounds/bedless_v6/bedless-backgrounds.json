@@ -1,0 +1,337 @@
+{
+  "contract": "bedless_v1",
+  "scene_count": 9,
+  "variant_count": 3,
+  "asset_count": 27,
+  "review_sheets": [
+    "build/planter-background-cleanup/bedless-backgrounds-4x3-review.png",
+    "build/planter-background-cleanup/bedless-backgrounds-16x9-review.png",
+    "build/planter-background-cleanup/bedless-backgrounds-home-review.png"
+  ],
+  "assets": [
+    {
+      "scene": "verdant_twilight",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/verdant_twilight/verdant_twilight_4x3.png",
+      "source_sha256": "e4a4ff4e9ddd1ff7f012828345bb7c4f6552279e8fb14acf2184bd63b8e989da",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_4x3.webp",
+      "runtime_sha256": "d3cb0be43740a273c2391c19c182368d450208a8d43c18e60c64c16df6e4b669"
+    },
+    {
+      "scene": "verdant_twilight",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/verdant_twilight/verdant_twilight_16x9.png",
+      "source_sha256": "21d3078f01e274914b9d3f4dcfbe098270fbbcf5260f59934aaa88fde2199e9a",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_16x9.webp",
+      "runtime_sha256": "57b6dea23a9fdcda19d02857aeb812ad8d3d3d60a32cbe6ddc2764c04282b699"
+    },
+    {
+      "scene": "verdant_twilight",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/verdant_twilight/verdant_twilight_home.png",
+      "source_sha256": "8d5f45f3dcff6bb451c7adde735fd2b1374167fcbc79541b87335a2db04bc2af",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/verdant_twilight_home.webp",
+      "runtime_sha256": "bb0c0e07a89af35b759a547966cfa4d4c8bfbe30f88b2afa9aa51e7801a99403"
+    },
+    {
+      "scene": "spring",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/spring/spring_4x3.png",
+      "source_sha256": "d3f41db91072b64c0cac0987652570e83cd724e3d6fdc5249b5436d461b3f197",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_4x3.webp",
+      "runtime_sha256": "25e6423327d7c89811f69942c8879bb11d458c2d0f0fbab674b01b33a395f9ac"
+    },
+    {
+      "scene": "spring",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/spring/spring_16x9.png",
+      "source_sha256": "ac43710a985c875be4a5b4ae65843ba4bd08fdace02eb8229b02a61ad431c068",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_16x9.webp",
+      "runtime_sha256": "e3d8c7dc42941f405ee2abb48cc665a9b584e8f52cfe865be4cdebfff08f3061"
+    },
+    {
+      "scene": "spring",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/spring/spring_home.png",
+      "source_sha256": "31bafcabf6da454bb10e521bc2e0c344f8ef5a601ff70074d938f5089d837c46",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/spring/soil_master/spring_home.webp",
+      "runtime_sha256": "22da80235ea3ecdda4f29d91e34a69e87e9b4001507143d660ccf0652940ae60"
+    },
+    {
+      "scene": "summer",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/summer/summer_4x3.png",
+      "source_sha256": "a58b17c490c1b155ed885b46ddfac6d3f9358ecce67ff3c3976b2e7bcef1cfa1",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_4x3.webp",
+      "runtime_sha256": "43d852151342c83a844008b5b16cea4fca4e75037dee08192892d683a5d9865a"
+    },
+    {
+      "scene": "summer",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/summer/summer_16x9.png",
+      "source_sha256": "f26d4c9d1220d734bd52a8b6d89d163ccc79664e43d59102b7b5c4d2394a056c",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_16x9.webp",
+      "runtime_sha256": "a6568c71a50e1aa163c6d2fc50d908b453a359199c632d330a1a2a9027ad5731"
+    },
+    {
+      "scene": "summer",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/summer/summer_home.png",
+      "source_sha256": "716b4ac61e39c71fc2a8cb06c8f5e1e1ebdb8b299d0043d63826b96fed37e19c",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/summer/soil_master/summer_home.webp",
+      "runtime_sha256": "432fe95e13eac4316a5243e17ad776d2c5a59056aac088a5038e86f383ce3430"
+    },
+    {
+      "scene": "autumn",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/autumn/autumn_4x3.png",
+      "source_sha256": "618ce277d6d1984a8f161e041e10a35bf55d4851a9adb5a74de2df2a9024b67e",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_4x3.webp",
+      "runtime_sha256": "b7dde4effa845669598799feebe5e4642c90c3eed5dbd8dc42006eb5f8efbd11"
+    },
+    {
+      "scene": "autumn",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/autumn/autumn_16x9.png",
+      "source_sha256": "7342c161d5148f709803a50c8b032ef10a2cbd3a4d7cb2e67fede5239358c00f",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9.webp",
+      "runtime_sha256": "210cd7387f055c131ae116fca8762932ab1846836920b82675920983f7843412"
+    },
+    {
+      "scene": "autumn",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/autumn/autumn_home.png",
+      "source_sha256": "bdb0c8d725bc945a64ebb3bbcdd9de5e6dcd610c47683915f074c91d1d895c69",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_home.webp",
+      "runtime_sha256": "cb7b7d04ef30118672d11a613998c54f75c1c2f08ea122c9badec246ac0f5f30"
+    },
+    {
+      "scene": "snowy",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/snowy/snowy_4x3.png",
+      "source_sha256": "64fd937abfdfd90a559bab0d56cd22ef65f612103ad70a6728d903b4bc4e68d6",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_4x3.webp",
+      "runtime_sha256": "d42e65f99fee1e5274b7a87b9c963c3131072dcf2e80d7e2f5ce08fee9cfe375"
+    },
+    {
+      "scene": "snowy",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/snowy/snowy_16x9.png",
+      "source_sha256": "d06c0f2399806297c20b2220e2fc1e0ba3599b416bb63f49349d43a537f8dad1",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_16x9.webp",
+      "runtime_sha256": "f74283027dd9272d6fe2c6e9b31deae4abb61a54561116b6ef7e32964bdb3358"
+    },
+    {
+      "scene": "snowy",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/snowy/snowy_home.png",
+      "source_sha256": "3779a87e495d18347b9d20cfb1700ec32e05bd514e6e0ac25f909e6d6983786e",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/snowy/soil_master/snowy_home.webp",
+      "runtime_sha256": "6c67fe670dacc9bb5c0e0a406e67a773e428d6879f1ce194ef7167c5e226779e"
+    },
+    {
+      "scene": "rainbow_horizon",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/rainbow_horizon/rainbow_horizon_4x3.png",
+      "source_sha256": "a8693866539802711fdcff4d7e4ec6375ebaad7797a9720e944e3eaed54011eb",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_4x3.webp",
+      "runtime_sha256": "f75459c7321f8f07309c8bc3a4cdf1b9517e95f513ffee44426aa240de49e10c"
+    },
+    {
+      "scene": "rainbow_horizon",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/rainbow_horizon/rainbow_horizon_16x9.png",
+      "source_sha256": "61a35a1db4efd566e03a0f2db83d1d1835790b483dade75adbe27b06dad7af26",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_16x9.webp",
+      "runtime_sha256": "1dbf40de0c2601d14aef477ddc478b389b1d85024b814b83f908de5c92070412"
+    },
+    {
+      "scene": "rainbow_horizon",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/rainbow_horizon/rainbow_horizon_home.png",
+      "source_sha256": "0e5b84f4ca754dbdf56ae09452fddd201045c9a5bbdd4a47df1239dc21d0313b",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/rainbow_horizon/soil_master/rainbow_horizon_home.webp",
+      "runtime_sha256": "247488e542c1de919612f517ff88baa7db4f33a272c7b3e64cd204d092d9a060"
+    },
+    {
+      "scene": "halloween",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/halloween/halloween_4x3.png",
+      "source_sha256": "60b2b14adae828ec466ead8f384249af52d2f859b71d8eb1e7243bb7c0a9de25",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_4x3.webp",
+      "runtime_sha256": "9545e1abee08e7fe3025b2eb3069d917eb8cb859fb0011a0373b2bbff25e9118"
+    },
+    {
+      "scene": "halloween",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/halloween/halloween_16x9.png",
+      "source_sha256": "dc47368521cd40c9bfcacd1fc5f86c6faf14e4c92f7c1eca9ded1cd65b01edc9",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_16x9.webp",
+      "runtime_sha256": "4d8c90b63b9443d4bf4e2d8b07edc6151b8e74f4537cfeb7c61b855d8c22b880"
+    },
+    {
+      "scene": "halloween",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/halloween/halloween_home.png",
+      "source_sha256": "9b6d53249f6ce96c24872f2c6bbb564dd5c38b58a7e6c68c94438e2e03c02dfc",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/halloween/soil_master/halloween_home.webp",
+      "runtime_sha256": "648980482b1946d1cc56be0406d8249df0fc7ec8d153040e59e92f419c78812b"
+    },
+    {
+      "scene": "full_moon",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/full_moon/full_moon_4x3.png",
+      "source_sha256": "9583e45f2807b6139a903f16cd036a49926b2253d4c804ed41a82d7af6a6ddf0",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_4x3.webp",
+      "runtime_sha256": "81b792a7563449ab868c52964a4378f0f6a2e3af70fe16d883360921e6310557"
+    },
+    {
+      "scene": "full_moon",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/full_moon/full_moon_16x9.png",
+      "source_sha256": "49c5d3e1346aee45b5427e981ace7f022e96406096887d5f20cb0c18f803624b",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_16x9.webp",
+      "runtime_sha256": "fc1a24aa40f68f9fb0a83e01892d9d7086cbf3294adb110d0047d8d5a490baa6"
+    },
+    {
+      "scene": "full_moon",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/full_moon/full_moon_home.png",
+      "source_sha256": "3909a015d861a60d4cb32e9c61cc8c6e962751e244ea09365aef323b8b0093cf",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/full_moon/soil_master/full_moon_home.webp",
+      "runtime_sha256": "db5687eae230c9c37d905f50eb1db8c1cf43fade6992e900cd8d3dd8f9f52e3d"
+    },
+    {
+      "scene": "eclipse",
+      "variant": "4x3",
+      "dimensions": [
+        1280,
+        960
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/eclipse/eclipse_4x3.png",
+      "source_sha256": "7265dbd4fba30d587c55ce6612c8a3ee94fb8ef14f8e6cb6c84916f67503347c",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_4x3.webp",
+      "runtime_sha256": "e7831a68f2563b79acab0214fa3ef2b6c1fac760f3e05fb896c2114f27d5f995"
+    },
+    {
+      "scene": "eclipse",
+      "variant": "16x9",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/eclipse/eclipse_16x9.png",
+      "source_sha256": "eab7221f97aef72fa757a9710ca4d9e15c7bc5edfa673b32a7a368977bb1c67b",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_16x9.webp",
+      "runtime_sha256": "ee204666a4d30f3e4d840385f58f7d1191d46e51970eb6ca3998f0c277fb20b2"
+    },
+    {
+      "scene": "eclipse",
+      "variant": "home",
+      "dimensions": [
+        1942,
+        809
+      ],
+      "source": "artwork_source/backgrounds/bedless_v6/eclipse/eclipse_home.png",
+      "source_sha256": "55892545d1b542fedff0d35fe538de81b5d604026265bc4495439764d8eb4c0e",
+      "runtime": "ankigarden/assets/v6_storybook_gouache/backgrounds/eclipse/soil_master/eclipse_home.webp",
+      "runtime_sha256": "e924c57c63442eeede1c3ea968193cdb8536af5380013e4231b36a2b3dfa51fb"
+    }
+  ]
+}

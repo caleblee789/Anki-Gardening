@@ -58,7 +58,7 @@ EXPECTED_COUNTS = {
     "backgrounds": 9,
     "decorations": 1,
     "plants": 60,
-    "ui": 7,
+    "ui": 9,
     "weather": 7,
 }
 RUNTIME_ROOTS = (
@@ -170,6 +170,18 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"scenery does not inherit the canonical V6 geometry: {item_id}")
         if row.get("placement"):
             raise ValueError(f"scenery may not override canonical V6 placement: {item_id}")
+        landmark_overrides = row.get("landmark_overrides")
+        if item_id == "autumn":
+            house = (
+                landmark_overrides.get("garden_house")
+                if isinstance(landmark_overrides, dict)
+                else None
+            )
+            variants = house.get("variants") if isinstance(house, dict) else None
+            if not isinstance(variants, dict) or set(variants) != set(expected_sizes):
+                raise ValueError("autumn cottage contour override is incomplete")
+        elif landmark_overrides:
+            raise ValueError(f"unexpected scenery landmark override: {item_id}")
         surface_files = row.get("surface_files")
         if not isinstance(surface_files, dict) or set(surface_files) != set(expected_sizes):
             raise ValueError(f"scenery viewport family is incomplete: {item_id}")
@@ -279,6 +291,10 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
         "ui_growth_charge_small": "assets/v6_storybook_gouache/ui/growth_charge_small.webp",
         "ui_growth_charge_standard": "assets/v6_storybook_gouache/ui/growth_charge_standard.webp",
         "ui_growth_charge_grand": "assets/v6_storybook_gouache/ui/growth_charge_grand.webp",
+        "ui_nurtured_marker": "assets/v6_storybook_gouache/ui/nurtured_marker.webp",
+        "ui_nurtured_marker_spout_right": (
+            "assets/v6_storybook_gouache/ui/nurtured_marker_spout_right.webp"
+        ),
     }
     observed_ui = {
         str(row.get("asset_id", "")): str(row.get("file", "")) for row in ui_rows

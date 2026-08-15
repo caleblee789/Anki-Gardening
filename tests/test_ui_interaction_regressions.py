@@ -25,6 +25,7 @@ from ankigarden.ui.plant_display import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ADDON_PATH = ROOT / "ankigarden/addon.py"
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 SCENE_PATH = ROOT / "ankigarden/ui/scene.py"
 STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
@@ -99,7 +100,7 @@ def test_home_preview_has_one_explicit_action_and_a_keyboard_clickable_card() ->
     assert 'data-testid="home-scene" aria-hidden="true"' in html
 
 
-def test_six_plant_home_scene_keeps_each_row_below_its_occlusion_layer() -> None:
+def test_six_plant_home_scene_keeps_each_depth_band_between_planter_layers() -> None:
     manifest = json.loads((ROOT / "ankigarden/assets/manifest.json").read_text("utf-8"))
     background = next(
         row for row in manifest["assets"]
@@ -118,6 +119,9 @@ def test_six_plant_home_scene_keeps_each_row_below_its_occlusion_layer() -> None
             "rear": "/rear-occlusion.png",
             "front": "/front-occlusion.png",
         }
+    for name, variant in background_placement["surface_profile"]["planter_family"]["variants"].items():
+        variant["url"] = f"/{name}-planter.png"
+        variant["foreground_url"] = f"/{name}-planter-foreground.png"
     plants = tuple(
         {
             "plant_id": f"plant-{slot}",
@@ -142,20 +146,22 @@ def test_six_plant_home_scene_keeps_each_row_below_its_occlusion_layer() -> None
     layers = [
         (kind, int(z_index))
         for kind, z_index in re.findall(
-            r'class="ag-home__(plant|occlusion)"[^>]*?z-index:(\d+)', art
+            r'<img class="ag-home__(planter|plant)[^>]*?z-index:(\d+)', art
         )
     ]
 
     assert [kind for kind, _z in layers] == [
-        "plant", "plant", "plant", "plant", "occlusion",
-        "plant", "plant", "occlusion",
+        "planter", "planter", "plant", "plant", "planter", "planter",
+        "planter", "planter", "plant", "plant", "planter", "planter",
+        "planter", "planter", "plant", "plant", "planter", "planter",
     ]
-    rear = [z for kind, z in layers[:4] if kind == "plant"]
-    front = [z for kind, z in layers[5:7] if kind == "plant"]
-    assert all(10 < z < 30 for z in rear)
-    assert layers[4] == ("occlusion", 30)
-    assert all(40 < z < 70 for z in front)
-    assert layers[-1] == ("occlusion", 70)
+    assert [z for kind, z in layers if kind == "plant"] == [11, 14, 41, 44, 71, 74]
+    assert [z for kind, z in layers if kind == "planter"] == [
+        4, 4, 28, 28,
+        34, 34, 58, 58,
+        64, 64, 88, 88,
+    ]
+    assert "occlusion" not in art
 
 
 class _FakePainter:
@@ -300,6 +306,13 @@ def test_compact_move_mode_paints_only_current_and_valid_destination_rings() -> 
 
 
 def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -> None:
+    source = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "card_geometry",
+    )
+    assert "marker_reservation = nurtured_marker_placement(" in source
+    assert "marker_reservation.pulse_bounds.expanded(4.0, 4.0)" in source
     captured: list[tuple[list[Rect], Rect | None]] = []
 
     def no_clear_geometry(
@@ -341,7 +354,7 @@ def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -
 
     scene = SimpleNamespace(
         _interaction=SimpleNamespace(pinned_id="selected", placing=False),
-        _layout_plants=lambda _width, _height: None,
+        _layout_plants=lambda _width, _height: [],
         _plant_anchors={"selected": (200.0, 160.0)},
         _plant_hit_rects={
             "selected": Hit(100, 100, 80, 120),
@@ -654,6 +667,10 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         seasonal_theme=lambda: "summer",
         local_time_band=lambda: "dusk",
         resolve_garden_overlay_asset=lambda **_kwargs: Asset("garden-overlay"),
+        resolve_nurtured_marker_assets=lambda: {
+            "spout_left": Asset("nurtured-marker"),
+            "spout_right": Asset("nurtured-marker-spout-right"),
+        },
     )
     resolved = GardenGameEngine.resolve_preview_assets(
         engine,
@@ -668,6 +685,10 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         "key": "japanese_maple_flowering"
     }
     assert resolved["plants"]["rose"] == {"key": "rose_sprout"}
+    assert resolved["nurtured_marker"] == {"key": "nurtured-marker"}
+    assert resolved["nurtured_marker_spout_right"] == {
+        "key": "nurtured-marker-spout-right"
+    }
     assert ("backgrounds", "bg_default_any", "balanced") in assets.calls
     assert ("weather", "weather_gentle_rain", "balanced") in assets.calls
 
@@ -676,6 +697,75 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
     assert "real_plants" in apply_preview
     assert '"unlocked_slots": int(snapshot.get("unlocked_slots", 6) or 6)' in apply_preview
     assert '"show_status_overlay": False' in apply_preview
+
+
+def test_watering_can_is_shared_by_full_garden_and_native_previews() -> None:
+    customize_preview = _method_source(
+        DASHBOARD_PATH,
+        "CustomizeGardenDialog",
+        "_refresh_preview",
+    )
+    full_garden_refresh = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "refresh_all",
+    )
+    settings_preview = _method_source(
+        STUDIO_PATH,
+        "GardenStudioWidget",
+        "_apply_preview",
+    )
+
+    for source in (customize_preview, settings_preview, full_garden_refresh):
+        assert '"nurtured_marker"' in source
+        assert '"nurtured_marker_spout_right"' in source
+
+
+def test_deck_browser_and_overview_previews_receive_watering_can_url() -> None:
+    home_builder = _method_source(
+        ADDON_PATH,
+        "AnkiGardenApp",
+        "_build_home_garden_html",
+    )
+    home_resolver = _method_source(
+        ADDON_PATH,
+        "AnkiGardenApp",
+        "_home_nurtured_marker_url",
+    )
+    home_right_resolver = _method_source(
+        ADDON_PATH,
+        "AnkiGardenApp",
+        "_home_nurtured_marker_spout_right_url",
+    )
+
+    assert "nurtured_marker_url=self._home_nurtured_marker_url()" in home_builder
+    assert "nurtured_marker_spout_right_url=(" in home_builder
+    assert "self._home_nurtured_marker_spout_right_url()" in home_builder
+    assert '"resolve_nurtured_marker_asset"' in home_resolver
+    assert "resolve_nurtured_marker_image" in home_resolver
+    assert '"resolve_nurtured_marker_spout_right_asset"' in home_right_resolver
+    assert "resolve_nurtured_marker_spout_right_image" in home_right_resolver
+
+
+def test_native_watering_can_description_explains_future_growth_routing() -> None:
+    accessible = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "_update_scene_accessible_description",
+    )
+    set_scene = _method_source(SCENE_PATH, "GardenSceneWidget", "set_scene")
+    set_interactive = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "set_interactive",
+    )
+
+    assert (
+        "Watering can: {name} is nurtured and receives Growth from future Anki card answers."
+        in accessible
+    )
+    assert "_update_scene_accessible_description()" in set_scene
+    assert "_update_scene_accessible_description()" in set_interactive
 
 
 def test_visible_settings_are_raised_without_resetting_staged_controls() -> None:
@@ -697,22 +787,19 @@ def test_visible_settings_are_raised_without_resetting_staged_controls() -> None
         def raise_(self) -> None:
             self.calls.append("raise")
 
-        def activateWindow(self) -> None:
-            self.calls.append("activate")
-
         def prepare_to_show(self) -> None:
             self.calls.append("prepare")
 
-        def show(self) -> None:
-            self.calls.append("show")
+        def present_over_parent(self) -> None:
+            self.calls.append("present")
 
     visible = Settings(True)
     open_settings(SimpleNamespace(settings_dialog=visible, engine=object(), config=object()))
-    assert visible.calls == ["raise", "activate"]
+    assert visible.calls == ["raise"]
 
     hidden = Settings(False)
     open_settings(SimpleNamespace(settings_dialog=hidden, engine=object(), config=object()))
-    assert hidden.calls == ["prepare", "show", "raise"]
+    assert hidden.calls == ["prepare", "present"]
 
 
 def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> None:
@@ -728,6 +815,12 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
     )
     release = _compiled_method(
         DASHBOARD_PATH, "NurseryDialog", "_release_bed_purchase"
+    )
+    begin_catalog_transaction = _compiled_method(
+        DASHBOARD_PATH, "NurseryDialog", "_begin_catalog_transaction"
+    )
+    release_catalog_transaction = _compiled_method(
+        DASHBOARD_PATH, "NurseryDialog", "_release_catalog_transaction"
     )
 
     class Button:
@@ -756,6 +849,7 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
     engine = Engine()
     nursery = SimpleNamespace(
         _bed_purchase_pending=False,
+        _catalog_transaction_pending=False,
         bed_button=Button(),
         engine=engine,
         storage=SimpleNamespace(
@@ -768,6 +862,8 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
         _refresh_parent=lambda: None,
         refresh=lambda: None,
     )
+    nursery._begin_catalog_transaction = lambda: begin_catalog_transaction(nursery)
+    nursery._release_catalog_transaction = lambda: release_catalog_transaction(nursery)
     nursery._release_bed_purchase = lambda: release(nursery)
 
     unlock(nursery)
@@ -775,11 +871,13 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
 
     assert engine.purchases == 1
     assert nursery._bed_purchase_pending is True
+    assert nursery._catalog_transaction_pending is True
     assert nursery.bed_button.enabled is False
     assert len(Timer.callbacks) == 1
 
     Timer.callbacks.pop()()
     assert nursery._bed_purchase_pending is False
+    assert nursery._catalog_transaction_pending is False
     assert nursery.bed_button.enabled is True
 
     nursery.storage.state.starter_selection_complete = False
@@ -839,11 +937,24 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         def setFocus(self) -> None:
             self.focused = True
 
+    class ReceiptActions:
+        def __init__(self) -> None:
+            self.visible = True
+
+        def hide(self) -> None:
+            self.visible = False
+
     status = Status()
-    show_result(SimpleNamespace(status=status), False, "Not enough Garden Coins.")
+    receipt_actions = ReceiptActions()
+    show_result(
+        SimpleNamespace(status=status, receipt_actions=receipt_actions),
+        False,
+        "Not enough Garden Coins.",
+    )
     assert (status.text, status.description, status.visible, status.focused) == (
         "Not enough Garden Coins.", "Not enough Garden Coins.", True, True,
     )
+    assert receipt_actions.visible is False
 
     class Recovery:
         def setVisible(self, value: bool) -> None:
@@ -873,7 +984,14 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
 
 def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> None:
     set_compact = _compiled_method(
-        DASHBOARD_PATH, "GardenStatsStrip", "set_compact"
+        DASHBOARD_PATH,
+        "GardenStatsStrip",
+        "set_compact",
+        {
+            "Qt": SimpleNamespace(
+                AlignmentFlag=SimpleNamespace(AlignBottom="align-bottom")
+            )
+        },
     )
 
     class Grid:
@@ -897,6 +1015,19 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
         def setColumnStretch(self, column: int, stretch: int) -> None:
             self.stretches.append((column, stretch))
 
+    class Layout:
+        def __init__(self) -> None:
+            self.insertions: list[tuple[Any, ...]] = []
+
+        def removeWidget(self, _widget: Any) -> None:
+            return None
+
+        def addWidget(self, *_args: Any) -> None:
+            return None
+
+        def insertWidget(self, *args: Any) -> None:
+            self.insertions.append(args)
+
     metrics = (("growth", "Growth", ""), ("streak", "Streak", ""), ("currency", "Coins", ""))
     strip = SimpleNamespace(
         METRICS=metrics,
@@ -905,8 +1036,15 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
         growth_support=SimpleNamespace(setVisible=lambda value: None),
         streak_support=SimpleNamespace(setVisible=lambda value: None),
         currency_support=SimpleNamespace(setVisible=lambda value: None),
-        streak_label=SimpleNamespace(setText=lambda value: None),
+        streak_label=SimpleNamespace(
+            setText=lambda value: None,
+            setAccessibleName=lambda value: None,
+            setMinimumWidth=lambda value: None,
+            sizeHint=lambda: SimpleNamespace(width=lambda: 56),
+        ),
         streak_bonus=SimpleNamespace(setText=lambda value: None),
+        streak_heading=Layout(),
+        streak_value_row=Layout(),
         _streak_bonus_percent=10,
     )
 
@@ -918,6 +1056,9 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
         ("currency", 0, 3, 1, 1),
     ]
     assert strip.grid.stretches == [(0, 1), (1, 1), (2, 1), (3, 1)]
+    assert strip.streak_value_row.insertions == [
+        (2, strip.streak_bonus, 0, "align-bottom")
+    ]
     stats_source = DASHBOARD_PATH.read_text("utf-8").split(
         "class GardenStatsStrip", 1
     )[1].split("class RearrangeBar", 1)[0]
@@ -937,10 +1078,16 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
     assert 'self.fertilizer_summary.setVisible(fertilizer_growth > 0)' in source
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
-    assert 'f"{remaining:,} Growth remaining"' in source
-    assert "eligible answer" in source
+    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
+    assert "self.growth_summary.setText(" in source
+    assert ".replace('card answer', 'eligible answer')" not in source
+    assert "_card_answer_count(reviews_remaining)" in source
+    assert source.count("self.growth_remaining.hide()") == 2
+    assert "self.growth_remaining.setText(" not in source
+    assert "self.growth_summary.setAccessibleDescription(" in source
+    assert 'f"{remaining:,} Growth remaining. "' in source
     assert 'self.status_row.hide()' in source
-    assert 'self._layout_actions(active=active or fully_grown)' in source
+    assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
 
 def test_troubleshooting_copy_confirmation_is_visible_and_refresh_resets_it() -> None:
@@ -1020,7 +1167,9 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     assert "today = QFrame()" in refresh
     assert '"Growth breakdown"' in refresh
     assert 'StatSummary([' in refresh
-    assert '"Card-answer Growth"' in refresh
+    assert '("Total Growth",' in refresh
+    assert 'if int(stats.growth_earned) == 0:' in refresh
+    assert 'today_layout.addWidget(StatSummary([' in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1038,21 +1187,13 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
         {"QTimer": Timer, "_learner_text": lambda value: value},
     )
 
-    class Note:
+    class Toast:
         def __init__(self) -> None:
             self.focused = False
+            self.messages: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
-        def setText(self, value: str) -> None:
-            self.text = value
-
-        def setAccessibleDescription(self, value: str) -> None:
-            self.description = value
-
-        def setStyleSheet(self, value: str) -> None:
-            self.style = value
-
-        def show(self) -> None:
-            self.visible = True
+        def show_message(self, *args: Any, **kwargs: Any) -> None:
+            self.messages.append((args, kwargs))
 
         def setFocus(self) -> None:
             self.focused = True
@@ -1061,27 +1202,20 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
         def hide(self) -> None:
             self.hidden = True
 
-        def setVisible(self, value: bool) -> None:
-            self.visible = value
-
     scene = SimpleNamespace(
         finish_move=lambda message: setattr(scene, "message", message),
         setFocus=lambda: setattr(scene, "focused", True),
         keep_card_open=lambda *_args: None,
     )
-    note = Note()
+    toast = Toast()
     dashboard = SimpleNamespace(
         _placement_draft=object(),
         _undo_placement=None,
         scene=scene,
         rearrange_bar=Visible(),
-        placement_note=note,
-        undo_move_btn=Visible(),
-        _move_feedback_generation=0,
-        _ensure_move_controls_visible=lambda: None,
         _position_scene_overlays=lambda: None,
         _refresh_selected_plant_card=lambda: None,
-        toast_region=SimpleNamespace(show_message=lambda *_args, **_kwargs: None),
+        toast_region=toast,
         refresh_all=lambda: setattr(dashboard, "refreshed", True),
     )
 
@@ -1091,9 +1225,11 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert scene.message == "Move not saved. The arrangement could not be saved."
     assert dashboard.rearrange_bar.hidden is True
     assert dashboard.refreshed is True
-    assert note.text == note.description == "The arrangement could not be saved."
     assert scene.focused is True
-    assert dashboard.undo_move_btn.visible is False
+    assert toast.messages == [
+        (("The arrangement could not be saved.",), {"error": True, "duration_ms": 0})
+    ]
+    assert toast.focused is True
 
     place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
     assert place.count("self._finish_failed_move(") == 3
@@ -1105,9 +1241,19 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert "self.scene.finish_move(" in place
 
 
-def test_selected_card_uses_scene_or_narrow_dock_and_hides_without_geometry() -> None:
+def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     position = _compiled_method(
         DASHBOARD_PATH, "GardenDashboard", "_position_plant_card"
+    )
+    show_docked = _compiled_method(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_show_docked_plant_card",
+        {
+            "Qt": SimpleNamespace(
+                AlignmentFlag=SimpleNamespace(AlignHCenter="center")
+            )
+        },
     )
 
     scene = SimpleNamespace(
@@ -1120,11 +1266,30 @@ def test_selected_card_uses_scene_or_narrow_dock_and_hides_without_geometry() ->
     class Card:
         plant_id = "plant-a"
 
+        def __init__(self) -> None:
+            self.parent = scene
+            self.choose_another = SimpleNamespace(isVisible=lambda: False)
+
         def parentWidget(self) -> Any:
-            return scene
+            return self.parent
+
+        def setParent(self, parent: Any) -> None:
+            self.parent = parent
+
+        def setMaximumWidth(self, width: int) -> None:
+            self.maximum_width = width
 
         def setFixedWidth(self, width: int) -> None:
             self.fixed_width = width
+
+        def setMinimumHeight(self, height: int) -> None:
+            self.minimum_height = height
+
+        def set_docked_mode(self, docked: bool) -> None:
+            self.docked = docked
+
+        def layout(self) -> None:
+            return None
 
         def adjustSize(self) -> None:
             return None
@@ -1138,15 +1303,42 @@ def test_selected_card_uses_scene_or_narrow_dock_and_hides_without_geometry() ->
         def hide(self) -> None:
             self.hidden = True
 
+        def show(self) -> None:
+            self.shown = True
+
+    class Dock:
+        def width(self) -> int:
+            return 880
+
+        def hide(self) -> None:
+            self.hidden = True
+
+        def show(self) -> None:
+            self.shown = True
+
+    class DockLayout:
+        def addWidget(self, *_args: Any) -> None:
+            self.added = True
+
+    dock = Dock()
     dashboard = SimpleNamespace(
         plant_card=Card(),
+        plant_card_dock=dock,
+        plant_card_dock_layout=DockLayout(),
         scene=scene,
         _compact_layout=False,
+    )
+    dashboard._show_docked_plant_card = lambda *, full_width: show_docked(
+        dashboard,
+        full_width=full_width,
     )
 
     position(dashboard)
 
-    assert dashboard.plant_card.hidden is True
+    assert dashboard.plant_card.parent is dock
+    assert dashboard.plant_card.shown is True
+    assert dashboard.plant_card.fixed_width == 640
+    assert dock.shown is True
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "self.plant_card_dock = QFrame()" in dashboard_source
     assert "narrow_sheet = self.scene.width() < 540" in dashboard_source
@@ -1495,31 +1687,10 @@ def test_successful_persisted_move_undo_uses_post_commit_refresh_boundary() -> N
         },
     )
 
-    class Note:
-        def setText(self, value: str) -> None:
-            self.text = value
-
-        def setAccessibleDescription(self, value: str) -> None:
-            self.description = value
-
-        def setStyleSheet(self, value: str) -> None:
-            self.style = value
-
-        def show(self) -> None:
-            self.visible = True
-
-        def setFocus(self) -> None:
-            self.focused = True
-
-    class UndoButton:
-        def hide(self) -> None:
-            self.hidden = True
-
-        def setVisible(self, value: bool) -> None:
-            self.visible = value
-
     post_commit: list[str] = []
     direct_refreshes: list[str] = []
+    popup_messages: list[str] = []
+    scene = SimpleNamespace(setFocus=lambda: setattr(scene, "focused", True))
     dashboard = SimpleNamespace(
         _placement_draft=None,
         _undo_placement=object(),
@@ -1529,11 +1700,10 @@ def test_successful_persisted_move_undo_uses_post_commit_refresh_boundary() -> N
         _refresh_after_commit=lambda context: post_commit.append(context),
         refresh_all=lambda: direct_refreshes.append("dashboard"),
         refresh_external_surfaces=lambda: direct_refreshes.append("external"),
-        placement_note=Note(),
-        undo_move_btn=UndoButton(),
-        _move_feedback_generation=0,
-        _clear_move_feedback=lambda _generation: None,
-        _ensure_move_controls_visible=lambda: None,
+        toast_region=SimpleNamespace(
+            show_message=lambda message, **_kwargs: popup_messages.append(message)
+        ),
+        scene=scene,
     )
 
     undo(dashboard)
@@ -1541,11 +1711,11 @@ def test_successful_persisted_move_undo_uses_post_commit_refresh_boundary() -> N
     assert dashboard._undo_placement is None
     assert post_commit == ["move undo"]
     assert direct_refreshes == []
-    assert dashboard.placement_note.text == "Move undone."
-    assert dashboard.placement_note.focused is True
+    assert popup_messages == ["Move undone."]
+    assert scene.focused is True
 
 
-def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins() -> None:
+def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> None:
     class Timer:
         calls: list[tuple[int, Any]] = []
 
@@ -1566,34 +1736,6 @@ def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins(
             "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
         },
     )
-    clear_feedback = _compiled_method(
-        DASHBOARD_PATH, "GardenDashboard", "_clear_move_feedback"
-    )
-
-    class Note:
-        def __init__(self) -> None:
-            self.text = "Earlier move saved."
-            self.visible = True
-            self.focused = False
-
-        def setText(self, value: str) -> None:
-            self.text = value
-
-        def setAccessibleDescription(self, value: str) -> None:
-            self.description = value
-
-        def setStyleSheet(self, value: str) -> None:
-            self.style = value
-
-        def show(self) -> None:
-            self.visible = True
-
-        def hide(self) -> None:
-            self.visible = False
-
-        def setFocus(self) -> None:
-            self.focused = True
-
     class Visible:
         plant_id = ""
 
@@ -1610,10 +1752,25 @@ def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins(
         def setVisible(self, value: bool) -> None:
             self.visible = value
 
-    draft = SimpleNamespace(selected_plant_id="plant-a")
-    note = Note()
+    class Toast:
+        def __init__(self) -> None:
+            self.events: list[Any] = []
+
+        def clear(self) -> None:
+            self.events.append("clear")
+
+        def show_message(self, *args: Any, **kwargs: Any) -> None:
+            self.events.append((args, kwargs))
+
+        def setFocus(self) -> None:
+            self.events.append("focus")
+
+    draft = SimpleNamespace(
+        selected_plant_id="plant-a",
+        scene_slots=lambda: {"plant-a": 0},
+    )
     rearrange = Visible()
-    undo_button = Visible()
+    toast = Toast()
     scene = SimpleNamespace(
         keep_card_open=lambda *_args: None,
         begin_move=lambda _plant_id, _slots: True,
@@ -1623,7 +1780,6 @@ def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins(
     dashboard = SimpleNamespace(
         _undo_placement=object(),
         _placement_draft=None,
-        _move_feedback_generation=1,
         engine=SimpleNamespace(
             begin_placement_draft=lambda _plant_id: (True, "", draft),
             valid_destination_slots=lambda _draft: [0, 1],
@@ -1635,26 +1791,20 @@ def test_old_move_feedback_timer_cannot_erase_a_newer_failure_after_move_begins(
         ),
         scene=scene,
         rearrange_bar=rearrange,
-        placement_note=note,
-        undo_move_btn=undo_button,
-        _ensure_move_controls_visible=lambda: None,
         _position_scene_overlays=lambda: None,
         _refresh_selected_plant_card=lambda: None,
-        toast_region=SimpleNamespace(show_message=lambda *_args, **_kwargs: None),
+        toast_region=toast,
         refresh_all=lambda: None,
     )
-    dashboard._clear_move_feedback = lambda generation=None: clear_feedback(
-        dashboard, generation
-    )
 
-    old_timer = lambda: clear_feedback(dashboard, 1)
     begin_move(dashboard, "plant-a")
     finish_failed(dashboard, "The arrangement could not be saved.")
-    old_timer()
 
-    assert dashboard._move_feedback_generation == 3
-    assert note.text == "The arrangement could not be saved."
-    assert note.visible is True
+    assert toast.events == [
+        "clear",
+        (("The arrangement could not be saved.",), {"error": True, "duration_ms": 0}),
+        "focus",
+    ]
     assert scene.focused is True
 
 
@@ -1682,7 +1832,7 @@ def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() ->
         assert required in fertilizer_menu
     assert 'duration = f"{hours} hour" if hours == 1 else f"{hours} hours"' in fertilizer_menu
     assert "Garden Coins" in fertilizer_menu
-    assert "Growth per eligible answer" in fertilizer_menu
+    assert "Growth per Anki card answer" in fertilizer_menu
     assert "Growth per answer" not in fertilizer_menu
 
 
@@ -1790,6 +1940,7 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
             _landmark_action_by_id={"nursery": "garden.nursery.open"},
             _landmark_rects={"nursery": object()},
             _landmark_polygons={"nursery": object()},
+            _landmark_outline_paths={"nursery": object()},
             _landmark_labels={"nursery": "Nursery"},
             _interaction=SimpleNamespace(placing=False),
             landmarksChanged=SimpleNamespace(emit=lambda: changes.append("changed")),
@@ -1808,6 +1959,7 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
         assert scene._landmark_action_by_id == {}
         assert scene._landmark_rects == {}
         assert scene._landmark_polygons == {}
+        assert scene._landmark_outline_paths == {}
         assert scene._landmark_labels == {}
         assert changes == ["changed"]
         assert pixmap_calls == ([] if background_path is None else [background_path])

@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from aqt import mw
 
+from ..config import DEFAULT_CONFIG
 from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
 from ..notices import USER_NOTICES
 from ..storage import unprocessed_revlog_entries
@@ -232,7 +233,10 @@ class ReviewerHookHandler:
 
     def _show_optional_progress_feedback(self) -> None:
         config = getattr(self.engine, "config", None)
-        if config is None or not bool(config.value("show_progress_notifications", False)):
+        if config is None or not bool(config.value(
+            "show_progress_notifications",
+            DEFAULT_CONFIG["show_progress_notifications"],
+        )):
             return
         events = self.engine.peek_feedback()
         if not events:

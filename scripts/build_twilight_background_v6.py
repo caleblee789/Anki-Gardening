@@ -9,7 +9,13 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_DIR = ROOT / "artwork_source" / "backgrounds" / "verdant_twilight_v6"
+SOURCE_DIR = (
+    ROOT
+    / "artwork_source"
+    / "backgrounds"
+    / "bedless_v6"
+    / "verdant_twilight"
+)
 PROFILE_PATH = ROOT / "tests" / "fixtures" / "verdant_twilight_surface_v6.json"
 MANIFEST_PATH = ROOT / "ankigarden" / "assets" / "manifest.json"
 ASSET_DIR = Path(
@@ -26,7 +32,7 @@ LAYER_NAMES = (
 VARIANTS: dict[str, dict[str, Any]] = {
     "4:3": {
         "slug": "4x3",
-        "source": SOURCE_DIR / "verdant_twilight_4x3_source.jpg",
+        "source": SOURCE_DIR / "verdant_twilight_4x3.png",
         "beds": (
             ((0.266, 0.394, 0.437, 0.450), (0.284, 0.403, 0.420, 0.440)),
             ((0.566, 0.394, 0.737, 0.450), (0.584, 0.403, 0.720, 0.440)),
@@ -39,7 +45,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
     },
     "16:9": {
         "slug": "16x9",
-        "source": SOURCE_DIR / "verdant_twilight_16x9_source.png",
+        "source": SOURCE_DIR / "verdant_twilight_16x9.png",
         "beds": (
             ((0.330, 0.424, 0.456, 0.480), (0.344, 0.433, 0.442, 0.469)),
             ((0.548, 0.424, 0.674, 0.480), (0.562, 0.433, 0.660, 0.469)),
@@ -52,7 +58,7 @@ VARIANTS: dict[str, dict[str, Any]] = {
     },
     "home": {
         "slug": "home",
-        "source": SOURCE_DIR / "verdant_twilight_home_source.png",
+        "source": SOURCE_DIR / "verdant_twilight_home.png",
         "beds": (
             ((0.360, 0.434, 0.463, 0.496), (0.373, 0.444, 0.450, 0.484)),
             ((0.535, 0.434, 0.638, 0.496), (0.548, 0.444, 0.625, 0.484)),
@@ -62,6 +68,29 @@ VARIANTS: dict[str, dict[str, Any]] = {
             ((0.572, 0.773, 0.718, 0.884), (0.588, 0.787, 0.702, 0.864)),
         ),
         "nursery": [0.224, 0.169, 0.080, 0.173],
+    },
+}
+
+PLANTER_FAMILY: dict[str, Any] = {
+    "family_id": "storybook_stone_planter_v1",
+    "background_contract": "bedless_v1",
+    "canvas": [1024, 512],
+    "soil_anchor": [0.5, 220 / 512],
+    "width_multiplier": 1.28,
+    "replace_surface_occlusion": True,
+    "variants": {
+        row: {
+            "file": (
+                f"assets/v6_storybook_gouache/planters/stone_family_v1/"
+                f"stone_planter_{row}.webp"
+            ),
+            "foreground_file": (
+                f"assets/v6_storybook_gouache/planters/stone_family_v1/"
+                f"stone_planter_{row}_foreground.webp"
+            ),
+            "width_multiplier": 1.28,
+        }
+        for row in ("back", "middle", "front")
     },
 }
 
@@ -184,7 +213,7 @@ def _profile() -> dict[str, Any]:
             "plant_card_safe_areas": [],
             "surfaces": surfaces,
         }
-    return {
+    profile = {
         "profile_id": "verdant_twilight_surface_v6",
         "geometry_version": 6,
         "theme": "verdant_twilight",
@@ -214,6 +243,7 @@ def _profile() -> dict[str, Any]:
             "variant_layers": ["sky", "foliage", "ground", "architecture", "weather"],
             "plant_contact_shadows_baked": False,
         },
+        "planter_family": PLANTER_FAMILY,
         "landmarks": [{
             "landmark_id": "nursery_entrance", "action_id": "garden.nursery.open",
             "label": "Nursery", "tooltip": "Nursery — coming soon", "role": "button",
@@ -234,6 +264,24 @@ def _profile() -> dict[str, Any]:
         "variant_breakpoints": {"four_three_max": 1.42, "ultrawide_min": 2.05},
         "variants": variants,
     }
+    # Landmark polygons and preview crops are accepted product contracts that
+    # may be refined independently of this raster builder. Preserve them when
+    # rebuilding the same geometry profile instead of reverting those edits.
+    if PROFILE_PATH.is_file():
+        try:
+            existing = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+        existing_landmarks = existing.get("landmarks") if isinstance(existing, dict) else None
+        if isinstance(existing_landmarks, list) and existing_landmarks:
+            profile["landmarks"] = existing_landmarks
+        existing_variants = existing.get("variants", {}) if isinstance(existing, dict) else {}
+        if isinstance(existing_variants, dict):
+            for variant_name, variant in variants.items():
+                existing_variant = existing_variants.get(variant_name)
+                if isinstance(existing_variant, dict) and isinstance(existing_variant.get("preview_crop"), dict):
+                    variant["preview_crop"] = dict(existing_variant["preview_crop"])
+    return profile
 
 
 def _build_surface_mask(path: Path, surface: dict[str, Any], size: tuple[int, int]) -> None:

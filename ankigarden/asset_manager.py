@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import math
-import time
+import stat as stat_module
+import xml.etree.ElementTree as ET
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -261,6 +262,7 @@ class SceneSurfaceProfile:
     variant_breakpoints: dict[str, float]
     variants: dict[str, dict[str, Any]]
     layer_contract: dict[str, Any]
+    planter_family: dict[str, Any]
     landmarks: tuple[dict[str, Any], ...]
 
     @classmethod
@@ -375,12 +377,71 @@ class SceneSurfaceProfile:
                 key_light_origins[name] = fallback
         raw_landmarks = row.get("landmarks", [])
         landmarks = tuple(
-            dict(landmark)
+            deepcopy(landmark)
             for landmark in raw_landmarks
             if isinstance(landmark, dict)
             and isinstance(landmark.get("action_id"), str)
             and landmark.get("action_id")
         ) if isinstance(raw_landmarks, list) else ()
+        planter_family: dict[str, Any] = {}
+        raw_planter_family = row.get("planter_family")
+        if isinstance(raw_planter_family, dict):
+            raw_canvas = raw_planter_family.get("canvas", [1024, 512])
+            canvas = [1024, 512]
+            if isinstance(raw_canvas, (list, tuple)) and len(raw_canvas) == 2:
+                canvas = [
+                    max(1, int(number(raw_canvas[0], 1024, 1, 4096))),
+                    max(1, int(number(raw_canvas[1], 512, 1, 4096))),
+                ]
+            raw_soil_anchor = raw_planter_family.get("soil_anchor", [0.5, 220 / 512])
+            soil_anchor = [0.5, 220 / 512]
+            if isinstance(raw_soil_anchor, (list, tuple)) and len(raw_soil_anchor) == 2:
+                soil_anchor = [
+                    number(raw_soil_anchor[0], 0.5, 0.0, 1.0),
+                    number(raw_soil_anchor[1], 220 / 512, 0.0, 1.0),
+                ]
+            raw_planter_variants = raw_planter_family.get("variants", {})
+            planter_variants: dict[str, dict[str, Any]] = {}
+            if isinstance(raw_planter_variants, dict):
+                for variant_name in ("back", "middle", "front"):
+                    raw_variant = raw_planter_variants.get(variant_name)
+                    if not isinstance(raw_variant, dict):
+                        continue
+                    file = str(raw_variant.get("file", ""))
+                    foreground_file = str(raw_variant.get("foreground_file", ""))
+                    if (
+                        not file.startswith("assets/")
+                        or ".." in Path(file).parts
+                        or not foreground_file.startswith("assets/")
+                        or ".." in Path(foreground_file).parts
+                    ):
+                        continue
+                    planter_variants[variant_name] = {
+                        "file": file,
+                        "foreground_file": foreground_file,
+                        "width_multiplier": number(
+                            raw_variant.get("width_multiplier"),
+                            number(raw_planter_family.get("width_multiplier"), 1.28, 1.0, 1.6),
+                            1.0,
+                            1.6,
+                        ),
+                    }
+            if set(planter_variants) == {"back", "middle", "front"}:
+                planter_family = {
+                    "family_id": str(raw_planter_family.get("family_id", "")),
+                    "background_contract": str(
+                        raw_planter_family.get("background_contract", "")
+                    ),
+                    "canvas": canvas,
+                    "soil_anchor": soil_anchor,
+                    "width_multiplier": number(
+                        raw_planter_family.get("width_multiplier"), 1.28, 1.0, 1.6
+                    ),
+                    "replace_surface_occlusion": bool(
+                        raw_planter_family.get("replace_surface_occlusion", True)
+                    ),
+                    "variants": planter_variants,
+                }
         return cls(
             profile_id=profile_id,
             geometry_version=geometry_version,
@@ -404,6 +465,7 @@ class SceneSurfaceProfile:
                 if isinstance(row.get("layer_contract"), dict)
                 else {}
             ),
+            planter_family=planter_family,
             landmarks=landmarks,
         )
 
@@ -419,7 +481,8 @@ class SceneSurfaceProfile:
             "variant_breakpoints": dict(self.variant_breakpoints),
             "variants": {name: dict(value) for name, value in self.variants.items()},
             "layer_contract": dict(self.layer_contract),
-            "landmarks": [dict(landmark) for landmark in self.landmarks],
+            "planter_family": dict(self.planter_family),
+            "landmarks": [deepcopy(landmark) for landmark in self.landmarks],
         }
 
 
@@ -688,18 +751,22 @@ class AssetManager:
     QUALITY_ORDER = {"performance": 0, "balanced": 1, "ultra": 2}
     THEME_ALIASES: dict[str, str] = {}
     RELEASE_PLANT_STAGES = ("seed", "sprout", "young", "mature", "flowering", "rare")
+    _LOCAL_CATALOG_CYCLES_KEY = "__anki_garden_local_catalog_cycles_v1__"
 
     def __init__(self, config: Any, storage: Any) -> None:
         self.config = config
         self.storage = storage
-        self.metadata = self.storage.load_asset_metadata()
+        loaded_metadata = self.storage.load_asset_metadata()
+        self.metadata = loaded_metadata if isinstance(loaded_metadata, dict) else {}
+        self._addon_root = self.storage.addon_dir.resolve()
         self._catalog = self._load_catalog()
         self._catalog_by_file: dict[str, dict[str, Any]] = {}
         self._catalog_by_asset_id: dict[tuple[str, str], dict[str, Any]] = {}
         self._missing_ui_warnings: set[tuple[str, str]] = set()
+        self._container_validation_cache: dict[tuple[str, int, int], bool] = {}
+        self._session_cycle_indices: dict[str, int] = {}
         self._index_catalog()
         self._resolved_cache: dict[tuple[Any, ...], ResolvedAsset] = {}
-        self._migrate_legacy_metadata()
 
     def clear_runtime_cache(self, category: str | None = None) -> None:
         """Drop read-only resolution results without changing saved metadata."""
@@ -819,7 +886,11 @@ class AssetManager:
         if not valid_candidates:
             return None
 
-        idx = self._pick_index(cache_key, key, [self.storage.addon_dir / row["file"] for row in valid_candidates], reroll)
+        idx = self._pick_index(
+            cache_key,
+            [self.storage.addon_dir / row["file"] for row in valid_candidates],
+            reroll,
+        )
         picked_entry = valid_candidates[idx]
         picked = self.storage.addon_dir / picked_entry["file"]
         rel = str(picked.relative_to(self.storage.addon_dir))
@@ -833,38 +904,10 @@ class AssetManager:
                 raw_placement["base_type"] = "pot"
             elif growth_base == "dirt_mound" or "dirt_mound" in picked_entry.get("variants", []):
                 raw_placement["base_type"] = "dirt_mound"
-        previous = self.metadata.get(cache_key, {})
-        previous_local_path = str(previous.get("local_path", "")) if isinstance(previous, dict) else ""
-        downloaded_at = int(time.time())
-        if isinstance(previous, dict) and previous_local_path == rel:
-            try:
-                downloaded_at = int(previous.get("downloaded_at", downloaded_at))
-            except (TypeError, ValueError):
-                pass
-        metadata_record = {
-            "provider": "local_catalog",
-            "source_kind": "local_catalog",
-            "source_url": "local://manifest",
-            "query": "",
-            "downloaded_at": downloaded_at,
-            "local_path": rel,
-            "quality_score": self._quality_score_for(rel),
-            "dimensions": self._manifest_dimensions_for(rel),
-            "derivatives": {"thumbnail": rel, "preview": rel, "full": rel},
-            "catalog_slot": slot,
-            "catalog_cycle_index": idx,
-            "asset_id": str(picked_entry.get("asset_id", "")),
-            "placement": AssetPlacement.from_manifest(raw_placement, category=category).to_dict(),
-            "legacy_remote_preserved": bool(
-                previous.get("legacy_remote_preserved", False)
-                if isinstance(previous, dict)
-                else False
-            ),
-        }
-        if previous != metadata_record:
-            self.metadata[cache_key] = metadata_record
-            self.storage.save_asset_metadata(self.metadata)
         placement = AssetPlacement.from_manifest(raw_placement, category=category)
+        if reroll:
+            self._save_local_catalog_cycle(cache_key, rel, idx)
+        self._session_cycle_indices[cache_key] = idx
         resolved = ResolvedAsset(
             path=picked,
             asset_id=str(picked_entry.get("asset_id", "")),
@@ -909,6 +952,33 @@ class AssetManager:
                     layers = files.get("occlusion_layers")
                     if isinstance(layers, dict):
                         variant["occlusion_layers"] = deepcopy(layers)
+            landmark_overrides = entry.get("landmark_overrides")
+            landmarks = (
+                surface_profile.get("landmarks")
+                if isinstance(surface_profile, dict)
+                else None
+            )
+            if isinstance(landmark_overrides, dict) and isinstance(landmarks, list):
+                by_id = {
+                    str(landmark.get("landmark_id", "")): landmark
+                    for landmark in landmarks
+                    if isinstance(landmark, dict)
+                }
+                for landmark_id, override in landmark_overrides.items():
+                    landmark = by_id.get(str(landmark_id))
+                    override_variants = (
+                        override.get("variants") if isinstance(override, dict) else None
+                    )
+                    landmark_variants = (
+                        landmark.get("variants") if isinstance(landmark, dict) else None
+                    )
+                    if not isinstance(override_variants, dict) or not isinstance(
+                        landmark_variants, dict
+                    ):
+                        continue
+                    for variant_name, geometry in override_variants.items():
+                        if variant_name in landmark_variants and isinstance(geometry, dict):
+                            landmark_variants[variant_name] = deepcopy(geometry)
         return raw
 
     def _load_catalog(self) -> dict[str, list[dict[str, Any]]]:
@@ -941,16 +1011,42 @@ class AssetManager:
                 if asset_id:
                     self._catalog_by_asset_id.setdefault((category, asset_id), row)
 
-    def _migrate_legacy_metadata(self) -> None:
-        changed = False
-        for _, row in list(self.metadata.items()):
-            if not isinstance(row, dict):
-                continue
-            if row.get("source_kind") in {"remote", "starter_pack"}:
-                row["legacy_remote_preserved"] = True
-                changed = True
-        if changed:
-            self.storage.save_asset_metadata(self.metadata)
+    def _local_catalog_cycle(self, cache_key: str) -> dict[str, Any]:
+        """Read compact cycle state while accepting the legacy record shape."""
+
+        cycles = self.metadata.get(self._LOCAL_CATALOG_CYCLES_KEY)
+        if isinstance(cycles, dict):
+            compact = cycles.get(cache_key)
+            if isinstance(compact, dict):
+                return compact
+
+        legacy = self.metadata.get(cache_key)
+        if isinstance(legacy, dict) and (
+            legacy.get("source_kind") == "local_catalog"
+            or legacy.get("provider") == "local_catalog"
+        ):
+            return legacy
+        return {}
+
+    def _save_local_catalog_cycle(
+        self,
+        cache_key: str,
+        rel_path: str,
+        index: int,
+    ) -> None:
+        """Persist only user-requested reroll state, preserving legacy records."""
+
+        record = {
+            "local_path": str(rel_path),
+            "catalog_cycle_index": int(index),
+        }
+        existing_cycles = self.metadata.get(self._LOCAL_CATALOG_CYCLES_KEY)
+        cycles = dict(existing_cycles) if isinstance(existing_cycles, dict) else {}
+        if cycles.get(cache_key) == record:
+            return
+        cycles[cache_key] = record
+        self.metadata[self._LOCAL_CATALOG_CYCLES_KEY] = cycles
+        self.storage.save_asset_metadata(self.metadata)
 
     def _slot_for(
         self,
@@ -1180,14 +1276,25 @@ class AssetManager:
         )
         return preferred
 
-    def _pick_index(self, cache_key: str, key: str, candidates: list[Path], reroll: bool) -> int:
+    def _pick_index(
+        self,
+        cache_key: str,
+        candidates: list[Path],
+        reroll: bool,
+    ) -> int:
         if len(candidates) == 1:
             return 0
-        existing = self.metadata.get(cache_key, {})
+        existing = self._local_catalog_cycle(cache_key)
         if reroll:
-            previous = int(existing.get("catalog_cycle_index", -1))
+            try:
+                previous = (
+                    self._session_cycle_indices[cache_key]
+                    if cache_key in self._session_cycle_indices
+                    else int(existing.get("catalog_cycle_index", -1))
+                )
+            except (TypeError, ValueError):
+                previous = -1
             return (previous + 1) % len(candidates)
-        del key
         return 0
 
     def _manifest_dimensions_for(self, rel_path: str) -> dict[str, int]:
@@ -1196,34 +1303,130 @@ class AssetManager:
             return {"width": int(row.get("width", 0)), "height": int(row.get("height", 0))}
         return {"width": 0, "height": 0}
 
-    def _quality_score_for(self, rel_path: str) -> float:
-        row = self._catalog_by_file.get(rel_path)
-        if row is not None:
-            return round(float(row.get("quality_score", 0.75)), 4)
-        return 0.75
-
     def _valid_local_asset(self, path: Path, category: str) -> bool:
         try:
             resolved = path.resolve()
-            addon_root = self.storage.addon_dir.resolve()
-            resolved.relative_to(addon_root)
+            resolved.relative_to(self._addon_root)
+            file_info = resolved.stat()
         except (OSError, ValueError):
             return False
-        if not resolved.exists() or not resolved.is_file():
+        if not stat_module.S_ISREG(file_info.st_mode):
             return False
         suffix = resolved.suffix.lower()
         if suffix not in self.SUPPORTED_FORMATS:
             return False
         try:
-            rel_path = str(resolved.relative_to(self.storage.addon_dir.resolve()))
+            rel_path = str(resolved.relative_to(self._addon_root))
         except ValueError:
             return False
         expected_format = self._manifest_format_for(rel_path)
         if expected_format and expected_format != suffix.lstrip("."):
             return False
+        if not self._asset_container_is_recognizable(
+            resolved,
+            suffix,
+            file_size=int(file_info.st_size),
+            modified_ns=int(file_info.st_mtime_ns),
+        ):
+            return False
         dims = self._manifest_dimensions_for(rel_path)
         min_w, min_h = self.MIN_DIMENSIONS.get(category, (1, 1))
         return int(dims.get("width", 0)) >= min_w and int(dims.get("height", 0)) >= min_h
+
+    def _asset_container_is_recognizable(
+        self,
+        path: Path,
+        suffix: str,
+        *,
+        file_size: int,
+        modified_ns: int,
+    ) -> bool:
+        """Reject corrupt or mislabeled local art before it reaches a renderer.
+
+        Runtime drawing still fails closed when a decoder rejects valid-looking
+        bytes. This shared check catches the common damaged/truncated cases and
+        keeps alternate manifest candidates eligible without importing a GUI or
+        optional imaging dependency into the storage layer.
+        """
+
+        cache_key = (str(path), int(file_size), int(modified_ns))
+        cached = self._container_validation_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            if suffix == ".png":
+                if file_size < 45:
+                    recognized = False
+                else:
+                    with path.open("rb") as stream:
+                        header = stream.read(16)
+                        stream.seek(file_size - 12)
+                        trailer = stream.read(12)
+                    recognized = (
+                        header.startswith(b"\x89PNG\r\n\x1a\n")
+                        and header[12:16] == b"IHDR"
+                        and trailer.rfind(b"IEND") >= 0
+                    )
+            elif suffix == ".webp":
+                if file_size < 20:
+                    recognized = False
+                else:
+                    with path.open("rb") as stream:
+                        header = stream.read(20)
+                    if (
+                        len(header) < 20
+                        or header[:4] != b"RIFF"
+                        or header[8:12] != b"WEBP"
+                        or header[12:16] not in {b"VP8 ", b"VP8L", b"VP8X"}
+                    ):
+                        recognized = False
+                    else:
+                        declared_size = int.from_bytes(
+                            header[4:8], "little", signed=False
+                        ) + 8
+                        chunk_size = int.from_bytes(
+                            header[16:20], "little", signed=False
+                        )
+                        padded_chunk_end = 20 + chunk_size + (chunk_size % 2)
+                        recognized = (
+                            declared_size == file_size
+                            and padded_chunk_end <= file_size
+                        )
+            elif suffix == ".svg":
+                parser = ET.XMLPullParser(events=("start", "end"))
+                root_tag = ""
+                with path.open("rb") as stream:
+                    while chunk := stream.read(64 * 1024):
+                        parser.feed(chunk)
+                        for event, element in parser.read_events():
+                            if event == "start" and not root_tag:
+                                root_tag = (
+                                    str(element.tag)
+                                    .split("}")[-1]
+                                    .split(":")[-1]
+                                    .lower()
+                                )
+                            elif event == "end":
+                                element.clear()
+                parser.close()
+                recognized = root_tag == "svg"
+            else:
+                recognized = False
+        except (ET.ParseError, OSError, ValueError):
+            recognized = False
+
+        try:
+            current_info = path.stat()
+        except OSError:
+            return False
+        if (
+            int(current_info.st_size) != int(file_size)
+            or int(current_info.st_mtime_ns) != int(modified_ns)
+        ):
+            return False
+        self._container_validation_cache[cache_key] = recognized
+        return recognized
 
     def _manifest_format_for(self, rel_path: str) -> str:
         row = self._catalog_by_file.get(rel_path)

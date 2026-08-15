@@ -1,0 +1,191 @@
+{
+  "asset_id": "ui_nurtured_marker",
+  "orientation": "spout-left",
+  "label_text": "Nurturing",
+  "master": "artwork_source/ui/nurtured_marker/nurtured_marker_master.png",
+  "master_sha256": "e86cde3d7c1885eb526304b62b23aa92bae19e068e3805ca4de042ea71f5a7e9",
+  "file": "assets/v6_storybook_gouache/ui/nurtured_marker.webp",
+  "sha256": "618170299fd6fe2875ec5ff24a9e0aaa46b427202ce16c92d326e5cac43244a1",
+  "canvas": [
+    512,
+    512
+  ],
+  "alpha_bounds": [
+    47,
+    55,
+    473,
+    469
+  ],
+  "ground_contact": [
+    0.7,
+    0.916015625
+  ],
+  "spout_tip": [
+    0.091796875,
+    0.57
+  ],
+  "font": "Marker Felt Wide",
+  "font_size": 96,
+  "label_bounds": [
+    575,
+    734,
+    965,
+    838
+  ],
+  "label_center": [
+    770.0,
+    786.0
+  ],
+  "panel_bounds": [
+    557,
+    629,
+    983,
+    942
+  ],
+  "panel_center": [
+    770.0,
+    785.5
+  ],
+  "center_error_pixels": [
+    0.0,
+    0.5
+  ],
+  "label_width_ratio": 0.9155,
+  "label_height_ratio": 0.3323,
+  "label_margins": {
+    "left": 18,
+    "top": 105,
+    "right": 18,
+    "bottom": 104
+  },
+  "label_target_center": [
+    0.614035,
+    0.626396
+  ],
+  "source": "artwork_source/ui/nurtured_marker/watering_can_source.png",
+  "source_sha256": "145debe248087cfdd91951deacbb6092834877068bcf6d9ea3837797a444ad99",
+  "variants": {
+    "spout_left": {
+      "asset_id": "ui_nurtured_marker",
+      "orientation": "spout-left",
+      "label_text": "Nurturing",
+      "master": "artwork_source/ui/nurtured_marker/nurtured_marker_master.png",
+      "master_sha256": "e86cde3d7c1885eb526304b62b23aa92bae19e068e3805ca4de042ea71f5a7e9",
+      "file": "assets/v6_storybook_gouache/ui/nurtured_marker.webp",
+      "sha256": "618170299fd6fe2875ec5ff24a9e0aaa46b427202ce16c92d326e5cac43244a1",
+      "canvas": [
+        512,
+        512
+      ],
+      "alpha_bounds": [
+        47,
+        55,
+        473,
+        469
+      ],
+      "ground_contact": [
+        0.7,
+        0.916015625
+      ],
+      "spout_tip": [
+        0.091796875,
+        0.57
+      ],
+      "font": "Marker Felt Wide",
+      "font_size": 96,
+      "label_bounds": [
+        575,
+        734,
+        965,
+        838
+      ],
+      "label_center": [
+        770.0,
+        786.0
+      ],
+      "panel_bounds": [
+        557,
+        629,
+        983,
+        942
+      ],
+      "panel_center": [
+        770.0,
+        785.5
+      ],
+      "center_error_pixels": [
+        0.0,
+        0.5
+      ],
+      "label_width_ratio": 0.9155,
+      "label_height_ratio": 0.3323,
+      "label_margins": {
+        "left": 18,
+        "top": 105,
+        "right": 18,
+        "bottom": 104
+      }
+    },
+    "spout_right": {
+      "asset_id": "ui_nurtured_marker_spout_right",
+      "orientation": "spout-right",
+      "label_text": "Nurturing",
+      "master": "artwork_source/ui/nurtured_marker/nurtured_marker_spout_right_master.png",
+      "master_sha256": "8a23badf280930e741ec25a4d2e3474421f2c1d659bf6e1b6758b88e91e0abd4",
+      "file": "assets/v6_storybook_gouache/ui/nurtured_marker_spout_right.webp",
+      "sha256": "40f49353a919c4e53b25266809c0da77e6c8320454b2c3557877b8319ab23158",
+      "canvas": [
+        512,
+        512
+      ],
+      "alpha_bounds": [
+        39,
+        55,
+        465,
+        469
+      ],
+      "ground_contact": [
+        0.3,
+        0.916015625
+      ],
+      "spout_tip": [
+        0.908203125,
+        0.57
+      ],
+      "font": "Marker Felt Wide",
+      "font_size": 96,
+      "label_bounds": [
+        289,
+        734,
+        679,
+        838
+      ],
+      "label_center": [
+        484.0,
+        786.0
+      ],
+      "panel_bounds": [
+        271,
+        629,
+        697,
+        942
+      ],
+      "panel_center": [
+        484.0,
+        785.5
+      ],
+      "center_error_pixels": [
+        0.0,
+        0.5
+      ],
+      "label_width_ratio": 0.9155,
+      "label_height_ratio": 0.3323,
+      "label_margins": {
+        "left": 18,
+        "top": 105,
+        "right": 18,
+        "bottom": 104
+      }
+    }
+  }
+}

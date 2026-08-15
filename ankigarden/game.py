@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from . import build_capabilities
 from .asset_manager import AssetManager, ResolvedAsset
 from .environment import (
     DEFAULT_SCENERY_ID,
@@ -1161,7 +1162,7 @@ class GardenGameEngine:
         return True
 
     def _maybe_award_random_drop(self, revlog_id: int, plant: Plant | None) -> None:
-        """Resolve one deterministic reward slot after an eligible card answer."""
+        """Resolve one deterministic reward slot after a qualifying card answer."""
 
         if revlog_id <= 0 or any(
             event.revlog_id == revlog_id for event in self.state.reward_drop_history
@@ -1844,7 +1845,7 @@ class GardenGameEngine:
         self._queue_feedback(
             f"starter:{species}",
             "unlock",
-            f"{plant.name} is planted. Nurture it before studying so eligible answers can add Growth.",
+            f"{plant.name} is planted. Nurture it before studying so Anki card answers can add Growth.",
             plant.plant_id,
         )
         try:
@@ -1853,7 +1854,7 @@ class GardenGameEngine:
             return False, "Your starter could not be saved. No changes were made. Try again.", None
         return True, (
             f"{plant.name} is planted and ready to nurture. "
-            "Nurture it before studying so eligible answers can add Growth."
+            "Nurture it before studying so Anki card answers can add Growth."
         ), plant
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
@@ -1915,8 +1916,9 @@ class GardenGameEngine:
             event_key,
             "fertilizer",
             (
-                f"{spec.name} is active on {plant.name}. Each card answer adds "
-                f"{spec.growth_per_answer} extra Growth for {hours} {hour_unit}."
+                f"{spec.name} is active on {plant.name}: "
+                f"+{spec.growth_per_answer} Growth per Anki card answer "
+                f"for {hours} {hour_unit}."
             ),
             plant.plant_id,
         )
@@ -1927,7 +1929,7 @@ class GardenGameEngine:
         action = "extended" if extending else "applied"
         return True, (
             f"{spec.name} {action} for {hours} {hour_unit}: "
-            f"+{spec.growth_per_answer} Growth per answer while active."
+            f"+{spec.growth_per_answer} Growth per Anki card answer while active."
         )
 
     def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
@@ -1996,7 +1998,7 @@ class GardenGameEngine:
             "booster",
             (
                 f"Booster Potion {action} on {plant.name}: "
-                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per answer for {duration_text}."
+                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per Anki card answer for {duration_text}."
             ),
             plant.plant_id,
             title="Booster Potion active",
@@ -2225,6 +2227,9 @@ class GardenGameEngine:
 
     def development_populate(self) -> tuple[bool, str]:
         """Populate a broad UI test state without touching the revlog ledger."""
+
+        if not build_capabilities.DEVELOPMENT_MUTATION_ENABLED:
+            return False, "Development garden population is unavailable in this production build."
 
         snapshot = self._state_snapshot()
         today = self._scheduler_day()
@@ -2614,6 +2619,38 @@ class GardenGameEngine:
 
         return self.assets.resolve_ui_asset(item_key, quality_preference="balanced")
 
+    def resolve_nurtured_marker_asset(self) -> Optional[ResolvedAsset]:
+        """Resolve the watering-can marker shared by Garden scene previews."""
+
+        return self.assets.resolve_ui_asset(
+            "nurtured_marker",
+            quality_preference="balanced",
+        )
+
+    def resolve_nurtured_marker_spout_right_asset(self) -> Optional[ResolvedAsset]:
+        """Resolve the upright-label can whose spout points to the right."""
+
+        return self.assets.resolve_ui_asset(
+            "nurtured_marker_spout_right",
+            quality_preference="balanced",
+        )
+
+    def resolve_nurtured_marker_assets(self) -> dict[str, Optional[ResolvedAsset]]:
+        """Return both inward-facing marker orientations for scene renderers."""
+
+        return {
+            "spout_left": self.resolve_nurtured_marker_asset(),
+            "spout_right": self.resolve_nurtured_marker_spout_right_asset(),
+        }
+
+    def resolve_nurtured_marker_image(self) -> Optional[str]:
+        asset = self.resolve_nurtured_marker_asset()
+        return str(asset.path) if asset else None
+
+    def resolve_nurtured_marker_spout_right_image(self) -> Optional[str]:
+        asset = self.resolve_nurtured_marker_spout_right_asset()
+        return str(asset.path) if asset else None
+
     def resolve_preview_assets(
         self,
         theme: str,
@@ -2653,6 +2690,7 @@ class GardenGameEngine:
         garden_overlay = self.resolve_garden_overlay_asset(
             theme=normalized_theme, quality_preference="balanced"
         )
+        nurtured_markers = self.resolve_nurtured_marker_assets()
         plants: dict[str, Any] = {}
         requests = [
             (str(item.get("species") or ""), str(item.get("stage") or stage))
@@ -2668,6 +2706,14 @@ class GardenGameEngine:
         return {
             "background": background.to_payload() if background else None,
             "garden_overlay": garden_overlay.to_payload() if garden_overlay else None,
+            "nurtured_marker": (
+                nurtured_markers["spout_left"].to_payload()
+                if nurtured_markers["spout_left"] else None
+            ),
+            "nurtured_marker_spout_right": (
+                nurtured_markers["spout_right"].to_payload()
+                if nurtured_markers["spout_right"] else None
+            ),
             "weather": weather_overlay.to_payload() if weather_overlay else None,
             "plant": plants.get("rose"),
             "plants": plants,

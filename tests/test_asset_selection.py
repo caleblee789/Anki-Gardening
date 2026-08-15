@@ -1,4 +1,6 @@
+import base64
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,11 +36,13 @@ class DummyStorage:
         self.assets_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._meta = {}
+        self.save_calls = []
 
     def load_asset_metadata(self):
         return self._meta
 
     def save_asset_metadata(self, data):
+        self.save_calls.append(json.loads(json.dumps(data)))
         self._meta = data
 
 
@@ -50,7 +54,14 @@ def _build_manifest(storage: DummyStorage, assets: list[dict]):
 def _touch_asset(storage: DummyStorage, rel_path: str):
     p = storage.addon_dir / rel_path
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text("<svg></svg>", encoding="utf-8")
+    payloads = {
+        ".png": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVR4nGOU8Db5z8DAwMAEIkAYABd8AZq1W63BAAAAAElFTkSuQmCC",
+        ".webp": "UklGRjAAAABXRUJQVlA4ICQAAABwAQCdASoCAAIAAUAmJZACdAFAAAD++APns39bfjn81zuAAAA=",
+    }
+    if p.suffix.lower() in payloads:
+        p.write_bytes(base64.b64decode(payloads[p.suffix.lower()]))
+    else:
+        p.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>', encoding="utf-8")
 
 
 def test_local_selection_is_deterministic(tmp_path):
@@ -87,7 +98,8 @@ def test_local_selection_is_deterministic(tmp_path):
 
     assert first is not None and second is not None
     assert first == second
-    assert storage._meta["backgrounds:bg_spring_breeze"]["source_kind"] == "local_catalog"
+    assert storage._meta == {}
+    assert storage.save_calls == []
 
 
 def test_exact_background_beats_release_wildcard_fallback(tmp_path):
@@ -158,6 +170,201 @@ def test_missing_file_fails_closed_without_a_packaged_placeholder(tmp_path):
     picked = manager.get_or_fetch("decorations", "decor_bench_corner", "ignored")
 
     assert picked is None
+
+
+def test_corrupt_png_is_skipped_for_a_valid_webp_candidate(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "rose_png_corrupt",
+            "category": "plants",
+            "slot": {"species": "rose", "stage": "young"},
+            "file": "assets/plants/rose_young.png",
+            "format": "png",
+            "style_family": "storybook_gouache",
+            "width": 1024,
+            "height": 1024,
+            "quality_tier": "ultra",
+            "quality_score": 0.99,
+        },
+        {
+            "asset_id": "rose_webp_valid",
+            "category": "plants",
+            "slot": {"species": "rose", "stage": "young"},
+            "file": "assets/plants/rose_young.webp",
+            "format": "webp",
+            "style_family": "storybook_gouache",
+            "width": 1024,
+            "height": 1024,
+            "quality_tier": "ultra",
+            "quality_score": 0.98,
+        },
+    ]
+    _build_manifest(storage, assets)
+    corrupt = storage.addon_dir / assets[0]["file"]
+    corrupt.parent.mkdir(parents=True, exist_ok=True)
+    corrupt.write_bytes(b"not a png")
+    _touch_asset(storage, assets[1]["file"])
+
+    resolved = AssetManager(DummyConfig(), storage).resolve(
+        "plants", "rose_young", "ignored"
+    )
+
+    assert resolved is not None
+    assert resolved.asset_id == "rose_webp_valid"
+    assert resolved.path.suffix == ".webp"
+
+
+def test_truncated_or_mislabeled_containers_fail_closed(tmp_path):
+    storage = DummyStorage(tmp_path)
+    assets = [
+        {
+            "asset_id": "broken_png",
+            "category": "ui",
+            "slot": {"ui_id": "broken_png"},
+            "file": "assets/ui/broken.png",
+            "format": "png",
+            "width": 512,
+            "height": 512,
+            "quality_tier": "balanced",
+            "quality_score": 0.9,
+        },
+        {
+            "asset_id": "broken_webp",
+            "category": "ui",
+            "slot": {"ui_id": "broken_webp"},
+            "file": "assets/ui/broken.webp",
+            "format": "webp",
+            "width": 512,
+            "height": 512,
+            "quality_tier": "balanced",
+            "quality_score": 0.9,
+        },
+        {
+            "asset_id": "broken_svg",
+            "category": "weather",
+            "slot": {"weather": "broken"},
+            "file": "assets/weather/broken.svg",
+            "format": "svg",
+            "width": 256,
+            "height": 192,
+            "quality_tier": "balanced",
+            "quality_score": 0.9,
+        },
+    ]
+    _build_manifest(storage, assets)
+    for row in assets:
+        path = storage.addon_dir / row["file"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"RIFF\x00\x00\x00\x00not-image")
+
+    manager = AssetManager(DummyConfig(), storage)
+
+    assert manager.resolve_ui_asset("broken_png") is None
+    assert manager.resolve_ui_asset("broken_webp") is None
+    assert manager.resolve("weather", "weather_broken", "ignored") is None
+
+
+def test_large_png_validation_uses_bounded_reads_and_file_identity_cache(
+    tmp_path, monkeypatch
+):
+    storage = DummyStorage(tmp_path)
+    asset = {
+        "asset_id": "bounded_png",
+        "category": "ui",
+        "slot": {"ui_id": "bounded"},
+        "file": "assets/ui/bounded.png",
+        "format": "png",
+        "width": 512,
+        "height": 512,
+        "quality_tier": "balanced",
+        "quality_score": 0.9,
+    }
+    _build_manifest(storage, [asset])
+    path = storage.addon_dir / asset["file"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_size = 2 * 1024 * 1024
+    header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    trailer = b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    path.write_bytes(header + (b"\x00" * (file_size - 28)) + trailer)
+    manager = AssetManager(DummyConfig(), storage)
+
+    original_open = Path.open
+    open_count = 0
+    read_sizes = []
+
+    class CountingReader:
+        def __init__(self, raw):
+            self.raw = raw
+
+        def __enter__(self):
+            self.raw.__enter__()
+            return self
+
+        def __exit__(self, *exc_info):
+            return self.raw.__exit__(*exc_info)
+
+        def read(self, size=-1):
+            assert size >= 0, "container validation must not read an entire raster"
+            payload = self.raw.read(size)
+            read_sizes.append(len(payload))
+            return payload
+
+        def seek(self, offset, whence=0):
+            return self.raw.seek(offset, whence)
+
+    def counting_open(candidate, *args, **kwargs):
+        nonlocal open_count
+        raw = original_open(candidate, *args, **kwargs)
+        if candidate == path and args and args[0] == "rb":
+            open_count += 1
+            return CountingReader(raw)
+        return raw
+
+    monkeypatch.setattr(Path, "open", counting_open)
+
+    first = manager.resolve_ui_asset("bounded")
+    manager.clear_runtime_cache("ui")
+    second = manager.resolve_ui_asset("bounded")
+
+    assert first is not None and second is not None
+    assert open_count == 1
+    assert read_sizes == [16, 12]
+    assert sum(read_sizes) == 28
+
+
+def test_container_validation_cache_invalidates_when_file_mtime_changes(tmp_path):
+    storage = DummyStorage(tmp_path)
+    asset = {
+        "asset_id": "changing_png",
+        "category": "ui",
+        "slot": {"ui_id": "changing"},
+        "file": "assets/ui/changing.png",
+        "format": "png",
+        "width": 512,
+        "height": 512,
+        "quality_tier": "balanced",
+        "quality_score": 0.9,
+    }
+    _build_manifest(storage, [asset])
+    _touch_asset(storage, asset["file"])
+    path = storage.addon_dir / asset["file"]
+    manager = AssetManager(DummyConfig(), storage)
+
+    assert manager.resolve_ui_asset("changing") is not None
+    original_info = path.stat()
+    corrupted = bytearray(path.read_bytes())
+    corrupted[:8] = b"not-png!"
+    path.write_bytes(corrupted)
+    os.utime(
+        path,
+        ns=(original_info.st_atime_ns, original_info.st_mtime_ns + 1_000_000),
+    )
+    assert path.stat().st_mtime_ns != original_info.st_mtime_ns
+
+    manager.clear_runtime_cache("ui")
+
+    assert manager.resolve_ui_asset("changing") is None
 
 
 def test_quality_preference_prefers_higher_tier(tmp_path):
@@ -435,6 +642,11 @@ def test_manifest_exposes_canonical_v6_geometry_and_eight_scenery_reskins():
     for row in backgrounds[1:]:
         assert row["placement_ref"] == base["asset_id"]
         assert set(row["surface_files"]) == {"4:3", "16:9", "home"}
+        if row["asset_id"] == "bg_autumn_any_soil_master_v6":
+            override = row["landmark_overrides"]["garden_house"]["variants"]
+            assert set(override) == {"4:3", "16:9", "home"}
+        else:
+            assert "landmark_overrides" not in row
         assert row.get("release_preferred") is False
 
 
@@ -588,14 +800,26 @@ def test_reroll_cycles_through_local_alternatives(tmp_path):
         _touch_asset(storage, row["file"])
 
     manager = AssetManager(DummyConfig(), storage)
+    initial = manager.get_or_fetch("plants", "bonsai_mature", "ignored")
+    assert storage.save_calls == []
     first = manager.get_or_fetch("plants", "bonsai_mature", "ignored", reroll=True)
-    second = manager.get_or_fetch("plants", "bonsai_mature", "ignored", reroll=True)
+    restarted_manager = AssetManager(DummyConfig(), storage)
+    second = restarted_manager.get_or_fetch(
+        "plants", "bonsai_mature", "ignored", reroll=True
+    )
 
-    assert first is not None and second is not None
+    assert initial is not None and first is not None and second is not None
+    assert initial != first
     assert first != second
+    assert len(storage.save_calls) == 2
+    cycles = storage._meta[AssetManager._LOCAL_CATALOG_CYCLES_KEY]
+    assert cycles["plants:bonsai_mature"] == {
+        "local_path": "assets/plants/bonsai/mature/a.svg",
+        "catalog_cycle_index": 0,
+    }
 
 
-def test_legacy_remote_metadata_is_migrated_and_not_selected(tmp_path):
+def test_legacy_remote_metadata_is_preserved_and_not_selected(tmp_path):
     storage = DummyStorage(tmp_path)
     old = storage.addon_dir / "assets/backgrounds/legacy_remote.jpg"
     old.parent.mkdir(parents=True, exist_ok=True)
@@ -607,6 +831,7 @@ def test_legacy_remote_metadata_is_migrated_and_not_selected(tmp_path):
             "provider": "wikimedia",
         }
     }
+    legacy_metadata = json.loads(json.dumps(storage._meta))
     assets = [
         {
             "asset_id": "bg_local",
@@ -627,8 +852,84 @@ def test_legacy_remote_metadata_is_migrated_and_not_selected(tmp_path):
 
     assert picked is not None
     assert picked.name == "spring_breeze.svg"
-    assert storage._meta["backgrounds:bg_spring_breeze"]["legacy_remote_preserved"] is True
-    assert storage._meta["backgrounds:bg_spring_breeze"]["source_kind"] == "local_catalog"
+    assert storage._meta == legacy_metadata
+    assert storage.save_calls == []
+
+
+def test_reroll_accepts_legacy_local_cycle_without_rewriting_legacy_record(tmp_path):
+    storage = DummyStorage(tmp_path)
+    cache_key = "plants:bonsai_mature"
+    storage._meta = {
+        cache_key: {
+            "provider": "local_catalog",
+            "source_kind": "local_catalog",
+            "local_path": "assets/plants/bonsai/mature/a.svg",
+            "catalog_cycle_index": 0,
+            "downloaded_at": 123,
+        }
+    }
+    legacy_record = json.loads(json.dumps(storage._meta[cache_key]))
+    assets = [
+        {
+            "asset_id": "plant1",
+            "category": "plants",
+            "slot": {"species": "bonsai", "stage": "mature"},
+            "file": "assets/plants/bonsai/mature/a.svg",
+            "width": 1024,
+            "height": 1024,
+            "quality_tier": "balanced",
+            "quality_score": 0.85,
+        },
+        {
+            "asset_id": "plant2",
+            "category": "plants",
+            "slot": {"species": "bonsai", "stage": "mature"},
+            "file": "assets/plants/bonsai/mature/b.svg",
+            "width": 1024,
+            "height": 1024,
+            "quality_tier": "balanced",
+            "quality_score": 0.84,
+        },
+    ]
+    _build_manifest(storage, assets)
+    for row in assets:
+        _touch_asset(storage, row["file"])
+
+    picked = AssetManager(DummyConfig(), storage).get_or_fetch(
+        "plants", "bonsai_mature", "ignored", reroll=True
+    )
+
+    assert picked is not None
+    assert picked.name == "b.svg"
+    assert storage._meta[cache_key] == legacy_record
+    assert storage._meta[AssetManager._LOCAL_CATALOG_CYCLES_KEY][cache_key] == {
+        "local_path": "assets/plants/bonsai/mature/b.svg",
+        "catalog_cycle_index": 1,
+    }
+    assert len(storage.save_calls) == 1
+
+
+def test_single_candidate_reroll_does_not_repeat_metadata_write(tmp_path):
+    storage = DummyStorage(tmp_path)
+    asset = {
+        "asset_id": "only_plant",
+        "category": "plants",
+        "slot": {"species": "bonsai", "stage": "mature"},
+        "file": "assets/plants/bonsai/mature/only.svg",
+        "width": 1024,
+        "height": 1024,
+        "quality_tier": "balanced",
+        "quality_score": 0.85,
+    }
+    _build_manifest(storage, [asset])
+    _touch_asset(storage, asset["file"])
+    manager = AssetManager(DummyConfig(), storage)
+
+    first = manager.get_or_fetch("plants", "bonsai_mature", "ignored", reroll=True)
+    second = manager.get_or_fetch("plants", "bonsai_mature", "ignored", reroll=True)
+
+    assert first == second
+    assert len(storage.save_calls) == 1
 
 
 def test_config_merge_keeps_new_visual_defaults():
