@@ -328,6 +328,16 @@ def test_planter_assets_share_canvas_and_foreground_masks_are_non_destructive() 
         )
         bounds = base.getchannel("A").getbbox()
         assert bounds is not None
+        exclusion = variant["accessory_exclusions"]
+        assert len(exclusion) == 1
+        assert exclusion[0]["kind"] == "planter-and-soil"
+        expected_bounds = [
+            bounds[0] / base.width,
+            bounds[1] / base.height,
+            (bounds[2] - bounds[0]) / base.width,
+            (bounds[3] - bounds[1]) / base.height,
+        ]
+        assert exclusion[0]["bounds"] == expected_bounds
         visible_heights.append(bounds[3] - bounds[1])
         # A foreground mask may remove pixels, but it must never invent or
         # recolor artwork that is absent from the common base sprite.

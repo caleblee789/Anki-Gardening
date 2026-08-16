@@ -10,6 +10,7 @@ from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
     PlantInteractionState,
     Rect,
+    SceneGeometryLayout,
     achievement_progress_display,
     bed_badge_rect,
     compact_plant_layout,
@@ -155,22 +156,28 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
     family = background["placement"]["surface_profile"]["planter_family"]
     planter_boxes = [planter_draw_rect(layout, family) for layout in layouts]
     obstacles = [layout.visible.expanded(4, 4) for layout in layouts]
+    geometry = SceneGeometryLayout.from_placements(
+        width,
+        height,
+        layouts,
+        planter_family=family,
+    )
 
     for layout, planter in zip(layouts, planter_boxes):
-        marker = nurtured_marker_placement(
-            width,
-            height,
+        bed = geometry.bed(layout.slot_index)
+        assert bed is not None
+        marker = geometry.resolve_watering_can(
+            layout.slot_index,
             layout,
-            planter_rect=planter,
             obstacles=obstacles,
         )
 
-        expected_side = "left" if layout.slot_index % 2 == 0 else "right"
+        expected_side = marker.side
+        assert expected_side in {"left", "right"}
         expected_orientation = (
             "spout-right" if expected_side == "left" else "spout-left"
         )
         assert marker.used_fallback is False
-        assert marker.side == expected_side
         assert marker.orientation == expected_orientation
         assert 44 <= marker.rect.width <= 88
         assert marker.rect.height == marker.rect.width
@@ -196,7 +203,11 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
             plant_distance
             <= planter.width * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
         )
-        assert marker.rect.intersects(planter)
+        assert bed.planter_exclusions
+        assert not any(
+            marker.pulse_bounds.intersects(exclusion)
+            for exclusion in bed.planter_exclusions
+        )
         if expected_side == "left":
             assert marker.pulse_bounds.right <= layout.visible.x - 4
             assert marker_center_x < layout.ground_anchor[0]
@@ -208,6 +219,109 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
             fallback.x + fallback.width / 2,
             fallback.y + fallback.height / 2,
         )
+
+
+@pytest.mark.parametrize("device_pixel_ratio", (1.0, 1.5, 2.0, 3.0))
+def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
+    device_pixel_ratio: float,
+) -> None:
+    manifest = json.loads(
+        (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
+            "utf-8"
+        )
+    )
+    background = _release_background(manifest)
+    assets = [
+        row
+        for row in manifest["assets"]
+        if row.get("category") == "plants"
+        and isinstance(row.get("placement"), dict)
+    ][:6]
+    plants = [
+        {
+            "plant_id": f"geometry-{slot}",
+            "slot_index": slot,
+            "placement": asset["placement"],
+            "canvas_aspect": float(asset["width"]) / float(asset["height"]),
+        }
+        for slot, asset in enumerate(assets)
+    ]
+    layouts = plant_layout(
+        1_093,
+        615,
+        plants,
+        background["placement"],
+        composition_count=6,
+    )
+    family = background["placement"]["surface_profile"]["planter_family"]
+    geometry = SceneGeometryLayout.from_placements(
+        1_093,
+        615,
+        layouts,
+        device_pixel_ratio=device_pixel_ratio,
+        planter_family=family,
+    )
+    obstacles = [layout.visible.expanded(4, 4) for layout in layouts]
+
+    assert geometry.device_pixel_ratio == device_pixel_ratio
+    assert [bed.bed_id for bed in geometry.beds] == list(range(6))
+    assert not any(
+        left.hotspot.intersects(right.hotspot)
+        for index, left in enumerate(geometry.beds)
+        for right in geometry.beds[index + 1:]
+    )
+    shrunk_popovers: set[int] = set()
+    for layout in layouts:
+        bed = geometry.bed(layout.slot_index)
+        assert bed is not None
+        assert geometry.safe_bounds.contains(
+            bed.hotspot.x + bed.hotspot.width / 2,
+            bed.hotspot.y + bed.hotspot.height / 2,
+        )
+        assert bed.slot_envelope.contains(
+            bed.selection_region.x + bed.selection_region.width / 2,
+            bed.selection_region.y + bed.selection_region.height / 2,
+        )
+        preferred = (380, 480) if layout.slot_index == 5 else (320, 360)
+        popover = geometry.resolve_popover(
+            layout.slot_index,
+            preferred,
+            (280, 220),
+            (),
+        )
+        assert popover.chosen_side in bed.popover_candidates
+        assert geometry.safe_bounds.contains(
+            popover.rectangle.x + popover.rectangle.width / 2,
+            popover.rectangle.y + popover.rectangle.height / 2,
+        )
+        assert popover.maximum_content_height == popover.rectangle.height
+        assert not popover.rectangle.intersects(bed.selection_region.expanded(6)) or popover.docked
+        assert 280 <= popover.rectangle.width <= preferred[0]
+        assert 220 <= popover.rectangle.height <= preferred[1]
+        if popover.rectangle.width < preferred[0] or popover.rectangle.height < preferred[1]:
+            shrunk_popovers.add(layout.slot_index)
+
+        marker = geometry.resolve_watering_can(
+            layout.slot_index,
+            layout,
+            obstacles=obstacles,
+        )
+        assert marker.used_fallback is False
+        assert not marker.pulse_bounds.intersects(layout.visible.expanded(4, 4))
+        all_planter_exclusions = (
+            exclusion
+            for candidate in geometry.beds
+            for exclusion in candidate.planter_exclusions
+        )
+        assert not any(
+            marker.pulse_bounds.intersects(exclusion)
+            for exclusion in all_planter_exclusions
+        )
+        assert geometry.safe_bounds.contains(
+            marker.rect.x + marker.rect.width / 2,
+            marker.rect.y + marker.rect.height / 2,
+        )
+    assert shrunk_popovers
 
 
 def test_growth_display_sanitizes_invalid_points():
@@ -800,14 +914,16 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
     assert "roster_grid" not in dashboard
     assert "_refresh_roster_cards" not in dashboard
     assert "Nurture selected plant" not in dashboard
-    assert 'self.config.value("onboarding_version", 0)' in dashboard
+    assert "self.storage.state.onboarding.step" in dashboard
     assert 'self.dismiss_onboarding = QPushButton(GARDEN_SETUP_SECONDARY_ACTION)' in dashboard
     assert "self._complete_first_nurture_guidance()" in dashboard
-    focused_branch = dashboard.split("def _nurture_plant", 1)[1].split("ok, message =", 1)[0]
+    focused_branch = dashboard.split("def _nurture_plant", 1)[1].split(
+        "previous_id =", 1
+    )[0]
     assert "self._complete_first_nurture_guidance()" in focused_branch
     assert "_onboarding_confirmation_generation" in dashboard
     assert "generation != self._onboarding_confirmation_generation" in dashboard
-    assert 'self._onboarding_save_error or GARDEN_SETUP_BODY' in dashboard
+    assert "message = self._onboarding_save_error or body" in dashboard
     assert 'GARDEN_SETUP_BODY' in dashboard
     assert 'CHOOSE_STARTER_ACTION' in dashboard
     assert "cardOpened.connect" not in dashboard
@@ -930,7 +1046,7 @@ def test_statistics_help_is_explicit_hidden_and_keyboard_focusable():
     assert "self._draw_stats_help(painter, r)" in scene
     assert "self._stats_help_button.clicked.connect(self._focus_stats_help)" in scene
     assert "QEvent.Type.Enter, QEvent.Type.FocusIn" in scene
-    assert "This garden space has not been unlocked yet." in scene
+    assert "That garden space has not been unlocked yet." in scene
 
 
 def test_scene_landmarks_are_registered_accessible_and_disabled_while_rearranging():
@@ -948,8 +1064,9 @@ def test_scene_landmarks_are_registered_accessible_and_disabled_while_rearrangin
     assert 'tooltip="Open Nursery"' in landmarks
     assert "if not interactive" in landmarks
     assert "self._interaction.dismiss()" in scene.split("def _activate_landmark", 1)[1]
-    assert '"garden.nursery.open": self._open_nursery' in dashboard
+    assert '"garden.nursery.open": (' in dashboard
     assert '"garden.progress.open": self._open_progress' in dashboard
+    assert '"garden.collection.open": self._open_collection' in dashboard
     assert "QMessageBox" not in dashboard.split("def _on_landmark_activated", 1)[1].split(
         "def _on_placement_state", 1
     )[0]
@@ -1061,7 +1178,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert '"dashboard.rearrange-actions"' in dashboard
     assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "64 if guided else (96 if metrics_compact else 104)" in dashboard
+    assert "64 if guided else (192 if metrics_compact else 104)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "self._position_scene_overlays()" in dashboard
@@ -1084,6 +1201,9 @@ def test_every_weather_has_procedural_motion_and_respects_motion_toggle():
     render = scene.split("def paintEvent", 1)[1].split("def _draw_status_overlay", 1)[0]
     assert 'if bool(self.scene.get("motion_enabled", True)):' in render
     assert "self._draw_weather_motion" in render
+    assert render.index("self._draw_nurtured_marker(") < render.index(
+        "foreground=True"
+    ) < render.index("self._draw_weather_motion")
 
 
 def test_settings_sections_and_preview_only_controls_match_persistence_contract():
@@ -1107,7 +1227,7 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     assert "class NurseryDialog(DialogShell):" in dashboard
     nursery = dashboard.split("class NurseryDialog", 1)[1].split("class PlantInfoCard", 1)[0]
     assert "self.engine.catalog_summary()" in nursery
-    assert "self.engine.choose_starter(species)" in nursery
+    assert "self.engine.select_starter_species(species)" in nursery
     assert "self.engine.release_ready_species" not in nursery  # summary owns readiness
     assert "self._plant_stage_strip(species)" in nursery
     assert 'self._plant_artwork(species, "seed", 132)' in nursery
@@ -1118,8 +1238,9 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     assert "QMenu" not in dashboard
     assert "self._open_starter_nursery" in dashboard
     assert "CHOOSE_STARTER_ACTION" in dashboard
-    assert '"garden.nursery.open": self._open_nursery' in dashboard
+    assert '"garden.nursery.open": (' in dashboard
     assert '"garden.progress.open": self._open_progress' in dashboard
+    assert '"garden.collection.open": self._open_collection' in dashboard
 
 
 def test_dashboard_close_and_reopen_manage_timer_filter_and_transient_interaction_state():

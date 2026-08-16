@@ -10158,17 +10158,26 @@
               "back": {
                 "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_back.webp",
                 "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_back_foreground.webp",
-                "width_multiplier": 1.28
+                "width_multiplier": 1.28,
+                "accessory_exclusions": [
+                  {"kind": "planter-and-soil", "bounds": [0.060546875, 0.287109375, 0.87890625, 0.30859375]}
+                ]
               },
               "middle": {
                 "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_middle.webp",
                 "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_middle_foreground.webp",
-                "width_multiplier": 1.28
+                "width_multiplier": 1.28,
+                "accessory_exclusions": [
+                  {"kind": "planter-and-soil", "bounds": [0.060546875, 0.212890625, 0.87890625, 0.556640625]}
+                ]
               },
               "front": {
                 "file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_front.webp",
                 "foreground_file": "assets/v6_storybook_gouache/planters/stone_family_v1/stone_planter_front_foreground.webp",
-                "width_multiplier": 1.28
+                "width_multiplier": 1.28,
+                "accessory_exclusions": [
+                  {"kind": "planter-and-soil", "bounds": [0.060546875, 0.1640625, 0.87890625, 0.681640625]}
+                ]
               }
             }
           },
@@ -10200,9 +10209,9 @@
             },
             {
               "landmark_id": "garden_house",
-              "action_id": "garden.progress.open",
-              "label": "Garden Progress",
-              "tooltip": "Open Garden Progress",
+              "action_id": "garden.collection.open",
+              "label": "Collection",
+              "tooltip": "Open Collection",
               "role": "button",
               "supported_variants": ["4:3", "16:9", "home"],
               "variants": {

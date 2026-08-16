@@ -166,6 +166,18 @@ class Rect:
         height = max(0.0, min(self.bottom, other.bottom) - max(self.y, other.y))
         return width * height
 
+    def clipped_to(self, other: "Rect") -> "Rect":
+        left = max(self.x, other.x)
+        top = max(self.y, other.y)
+        right = min(self.right, other.right)
+        bottom = min(self.bottom, other.bottom)
+        return Rect(
+            left,
+            top,
+            max(0.0, right - left),
+            max(0.0, bottom - top),
+        )
+
 
 def status_overlay_rect(
     width: float,
@@ -352,6 +364,343 @@ class NurturedMarkerPlacement:
     used_fallback: bool = False
 
 
+@dataclass(frozen=True)
+class PopoverPlacement:
+    rectangle: Rect
+    chosen_side: str
+    connector_start: tuple[float, float]
+    connector_end: tuple[float, float]
+    maximum_content_height: float
+    avoided_beds: tuple[int, ...] = ()
+    docked: bool = False
+
+
+@dataclass(frozen=True)
+class SceneBedGeometry:
+    bed_id: int
+    sprite_anchor: tuple[float, float]
+    ground_anchor: tuple[float, float]
+    visible_region: Rect
+    selection_region: Rect
+    popover_anchor: tuple[float, float]
+    popover_candidates: tuple[str, ...]
+    watering_can_accessory_lanes: tuple[Rect, ...]
+    move_target: Rect
+    hotspot: Rect
+    safe_bounds: Rect
+    slot_envelope: Rect
+    depth: float
+    foreground_occlusion: str
+    plant_bounds: Rect
+    planter_bounds: Rect
+    planter_exclusions: tuple[Rect, ...]
+
+
+@dataclass(frozen=True)
+class SceneGeometryLayout:
+    """One logical-coordinate authority for every scene interaction layer."""
+
+    scene_bounds: Rect
+    safe_bounds: Rect
+    beds: tuple[SceneBedGeometry, ...]
+    device_pixel_ratio: float = 1.0
+
+    @classmethod
+    def from_placements(
+        cls,
+        width: float,
+        height: float,
+        placements: Iterable[PlantPlacement],
+        *,
+        device_pixel_ratio: float = 1.0,
+        margin: float = 12.0,
+        planter_family: dict[str, Any] | None = None,
+    ) -> "SceneGeometryLayout":
+        safe_width = max(1.0, float(width))
+        safe_height = max(1.0, float(height))
+        scene = Rect(0.0, 0.0, safe_width, safe_height)
+        inset = max(0.0, min(float(margin), safe_width / 4, safe_height / 4))
+        safe = Rect(
+            inset,
+            inset,
+            max(1.0, safe_width - inset * 2),
+            max(1.0, safe_height - inset * 2),
+        )
+        beds: list[SceneBedGeometry] = []
+        for placement in sorted(placements, key=lambda row: row.slot_index):
+            envelope = (
+                placement.slot_envelope
+                if placement.slot_envelope.area > 0
+                else safe
+            ).clipped_to(safe)
+            visible = placement.visible.clipped_to(safe)
+            selection = placement.visible.expanded(5.0, 4.0)
+            minimum_width = max(44.0, selection.width)
+            minimum_height = max(44.0, selection.height)
+            selection = Rect(
+                selection.x - (minimum_width - selection.width) / 2,
+                selection.y - (minimum_height - selection.height) / 2,
+                minimum_width,
+                minimum_height,
+            ).clipped_to(envelope).clipped_to(safe)
+            bed_target = placement.bed_footprint.expanded(8.0, 6.0)
+            target_width = max(44.0, bed_target.width)
+            target_height = max(44.0, bed_target.height)
+            bed_target = Rect(
+                bed_target.x - (target_width - bed_target.width) / 2,
+                bed_target.y - (target_height - bed_target.height) / 2,
+                target_width,
+                target_height,
+            ).clipped_to(envelope).clipped_to(safe)
+            planter = planter_draw_rect(placement, planter_family)
+            planter_exclusions = tuple(
+                region.clipped_to(scene)
+                for region in planter_accessory_exclusions(
+                    placement,
+                    planter_family,
+                )
+                if region.clipped_to(scene).area > 0
+            )
+            marker_size = max(52.0, min(88.0, planter.width * 0.45))
+            lane_width = marker_size + 18.0
+            vertical_sweep = marker_size * 0.85
+            lane_height = marker_size + vertical_sweep * 2.0 + 16.0
+            lane_y = (
+                placement.ground_anchor[1]
+                - marker_size * 0.916
+                - vertical_sweep
+                - 8.0
+            )
+            blocked_left = min(
+                (placement.visible.x, *(region.x for region in planter_exclusions)),
+            )
+            blocked_right = max(
+                (placement.visible.right, *(region.right for region in planter_exclusions)),
+            )
+
+            def lane(side: str) -> Rect:
+                raw_x = (
+                    blocked_left - lane_width - 4.0
+                    if side == "left"
+                    else blocked_right + 4.0
+                )
+                return Rect(
+                    max(safe.x, min(raw_x, safe.right - lane_width)),
+                    max(safe.y, min(lane_y, safe.bottom - lane_height)),
+                    min(lane_width, safe.width),
+                    min(lane_height, safe.height),
+                ).clipped_to(safe)
+
+            preferred = "left" if int(placement.slot_index) % 2 == 0 else "right"
+            alternate = "right" if preferred == "left" else "left"
+            center_x = visible.x + visible.width / 2
+            anchor_y = visible.y + min(visible.height * 0.42, 80.0)
+            beds.append(SceneBedGeometry(
+                bed_id=int(placement.slot_index),
+                sprite_anchor=placement.ground_anchor,
+                ground_anchor=placement.ground_anchor,
+                visible_region=visible,
+                selection_region=selection,
+                popover_anchor=(center_x, anchor_y),
+                popover_candidates=("right", "left", "above", "below", "bottom-docked"),
+                watering_can_accessory_lanes=(lane(preferred), lane(alternate)),
+                move_target=bed_target,
+                hotspot=bed_target,
+                safe_bounds=safe,
+                slot_envelope=envelope,
+                depth=float(placement.z_depth),
+                foreground_occlusion=str(placement.occlusion_id or placement.depth_band),
+                plant_bounds=placement.draw.clipped_to(scene),
+                planter_bounds=planter.clipped_to(scene),
+                planter_exclusions=planter_exclusions,
+            ))
+        return cls(
+            scene_bounds=scene,
+            safe_bounds=safe,
+            beds=tuple(beds),
+            device_pixel_ratio=max(1.0, float(device_pixel_ratio or 1.0)),
+        )
+
+    def bed(self, bed_id: int) -> SceneBedGeometry | None:
+        return next((bed for bed in self.beds if bed.bed_id == int(bed_id)), None)
+
+    def resolve_watering_can(
+        self,
+        bed_id: int,
+        placement: PlantPlacement,
+        *,
+        obstacles: Iterable[Rect] = (),
+        protected_regions: Iterable[Rect] = (),
+    ) -> NurturedMarkerPlacement:
+        """Resolve one can while keeping opaque planter and soil art clear."""
+
+        bed = self.bed(bed_id)
+        if bed is None:
+            raise ValueError(f"unknown garden bed {bed_id}")
+        planter_exclusions = tuple(
+            exclusion
+            for candidate in self.beds
+            for exclusion in candidate.planter_exclusions
+        )
+        return nurtured_marker_placement(
+            self.scene_bounds.width,
+            self.scene_bounds.height,
+            placement,
+            planter_rect=bed.planter_bounds,
+            obstacles=obstacles,
+            protected_regions=(*tuple(protected_regions), *planter_exclusions),
+            accessory_lanes=bed.watering_can_accessory_lanes,
+        )
+
+    def resolve_popover(
+        self,
+        bed_id: int,
+        preferred_size: tuple[float, float],
+        minimum_size: tuple[float, float],
+        extra_obstacles: Iterable[Rect] = (),
+    ) -> PopoverPlacement:
+        """Place a plant panel right, left, above, below, then docked."""
+
+        selected = self.bed(bed_id)
+        if selected is None:
+            raise ValueError(f"unknown garden bed {bed_id}")
+        minimum_width = min(
+            self.safe_bounds.width,
+            max(1.0, float(minimum_size[0])),
+        )
+        minimum_height = min(
+            self.safe_bounds.height,
+            max(1.0, float(minimum_size[1])),
+        )
+        preferred_width = min(
+            self.safe_bounds.width,
+            max(minimum_width, float(preferred_size[0])),
+        )
+        preferred_height = min(
+            self.safe_bounds.height,
+            max(minimum_height, float(preferred_size[1])),
+        )
+        sizes = [(preferred_width, preferred_height)]
+        if (
+            abs(preferred_width - minimum_width) > 1e-6
+            or abs(preferred_height - minimum_height) > 1e-6
+        ):
+            sizes.append((minimum_width, minimum_height))
+        gap = 12.0
+        anchor_x, anchor_y = selected.popover_anchor
+
+        def clamp(rect: Rect) -> Rect:
+            return Rect(
+                max(self.safe_bounds.x, min(rect.x, self.safe_bounds.right - rect.width)),
+                max(self.safe_bounds.y, min(rect.y, self.safe_bounds.bottom - rect.height)),
+                rect.width,
+                rect.height,
+            )
+
+        def candidate(side: str, width: float, height: float) -> Rect:
+            if side == "right":
+                return Rect(
+                    selected.visible_region.right + gap,
+                    anchor_y - height / 2,
+                    width,
+                    height,
+                )
+            if side == "left":
+                return Rect(
+                    selected.visible_region.x - gap - width,
+                    anchor_y - height / 2,
+                    width,
+                    height,
+                )
+            if side == "above":
+                return Rect(
+                    anchor_x - width / 2,
+                    selected.visible_region.y - gap - height,
+                    width,
+                    height,
+                )
+            return Rect(
+                anchor_x - width / 2,
+                selected.visible_region.bottom + gap,
+                width,
+                height,
+            )
+
+        sides = ("right", "left", "above", "below")
+        selected_obstacle = selected.selection_region.expanded(6.0)
+        soft = {
+            bed.bed_id: bed.selection_region.expanded(5.0)
+            for bed in self.beds
+            if bed.bed_id != selected.bed_id
+        }
+        hard = [
+            obstacle
+            for obstacle in extra_obstacles
+            if isinstance(obstacle, Rect) and obstacle.area > 0
+        ]
+
+        chosen_side = ""
+        chosen: Rect | None = None
+        for allow_soft_overlap in (False, True):
+            for side in sides:
+                for width, height in sizes:
+                    rectangle = clamp(candidate(side, width, height))
+                    if rectangle.intersects(selected_obstacle):
+                        continue
+                    if any(rectangle.intersects(obstacle) for obstacle in hard):
+                        continue
+                    if not allow_soft_overlap and any(
+                        rectangle.intersects(obstacle) for obstacle in soft.values()
+                    ):
+                        continue
+                    chosen_side, chosen = side, rectangle
+                    break
+                if chosen is not None:
+                    break
+            if chosen is not None:
+                break
+
+        docked = chosen is None
+        if chosen is None:
+            dock_height = min(
+                preferred_height,
+                max(minimum_height, self.safe_bounds.height * 0.44),
+            )
+            chosen = Rect(
+                self.safe_bounds.x,
+                self.safe_bounds.bottom - dock_height,
+                self.safe_bounds.width,
+                dock_height,
+            )
+            chosen_side = "bottom-docked"
+
+        avoided = tuple(
+            bed_key for bed_key, obstacle in sorted(soft.items())
+            if not chosen.intersects(obstacle)
+        )
+        if chosen_side == "right":
+            start = (selected.visible_region.right, anchor_y)
+            end = (chosen.x, max(chosen.y, min(anchor_y, chosen.bottom)))
+        elif chosen_side == "left":
+            start = (selected.visible_region.x, anchor_y)
+            end = (chosen.right, max(chosen.y, min(anchor_y, chosen.bottom)))
+        elif chosen_side == "above":
+            start = (anchor_x, selected.visible_region.y)
+            end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.bottom)
+        else:
+            start = (anchor_x, selected.visible_region.bottom)
+            end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.y)
+        return PopoverPlacement(
+            rectangle=chosen,
+            chosen_side=chosen_side,
+            connector_start=start,
+            connector_end=end,
+            maximum_content_height=chosen.height,
+            avoided_beds=avoided,
+            docked=docked,
+        )
+
+
 def planter_draw_rect(
     layout: PlantPlacement,
     family: dict[str, Any] | None = None,
@@ -403,7 +752,53 @@ def planter_draw_rect(
     )
 
 
-def nurtured_marker_placement(
+def planter_accessory_exclusions(
+    layout: PlantPlacement,
+    family: dict[str, Any] | None = None,
+) -> tuple[Rect, ...]:
+    """Project normalized opaque planter/soil bounds into scene coordinates."""
+
+    resolved_family = family if isinstance(family, dict) else {}
+    variant_name = {
+        "far": "back",
+        "middle": "middle",
+        "near": "front",
+    }.get(str(layout.depth_band), "")
+    variants = resolved_family.get("variants", {})
+    variant = variants.get(variant_name, {}) if isinstance(variants, dict) else {}
+    if not isinstance(variant, dict):
+        return ()
+    raw_exclusions = variant.get("accessory_exclusions", ())
+    if not isinstance(raw_exclusions, (list, tuple)):
+        return ()
+    planter = planter_draw_rect(layout, resolved_family)
+    projected: list[Rect] = []
+    for record in raw_exclusions:
+        bounds = record.get("bounds", ()) if isinstance(record, dict) else ()
+        if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
+            continue
+        try:
+            x, y, width, height = (float(value) for value in bounds)
+        except (TypeError, ValueError):
+            continue
+        normalized = Rect(
+            max(0.0, min(1.0, x)),
+            max(0.0, min(1.0, y)),
+            max(0.0, min(1.0 - max(0.0, min(1.0, x)), width)),
+            max(0.0, min(1.0 - max(0.0, min(1.0, y)), height)),
+        )
+        if normalized.area <= 0:
+            continue
+        projected.append(Rect(
+            planter.x + normalized.x * planter.width,
+            planter.y + normalized.y * planter.height,
+            normalized.width * planter.width,
+            normalized.height * planter.height,
+        ))
+    return tuple(projected)
+
+
+def _nurtured_marker_side_placement(
     canvas_width: float,
     canvas_height: float,
     layout: PlantPlacement,
@@ -412,13 +807,20 @@ def nurtured_marker_placement(
     obstacles: Iterable[Rect] = (),
     protected_regions: Iterable[Rect] = (),
     margin: float = 6.0,
+    side_override: str | None = None,
+    lane: Rect | None = None,
+    allow_scaling: bool = True,
 ) -> NurturedMarkerPlacement:
     """Place one inward-facing watering can beside its nurtured plant."""
 
     safe_width = max(1.0, float(canvas_width))
     safe_height = max(1.0, float(canvas_height))
     support = planter_rect or planter_draw_rect(layout)
-    side = "left" if int(layout.slot_index) % 2 == 0 else "right"
+    side = (
+        str(side_override)
+        if side_override in {"left", "right"}
+        else "left" if int(layout.slot_index) % 2 == 0 else "right"
+    )
     asset_key = (
         "nurtured_marker_spout_right"
         if side == "left"
@@ -431,20 +833,21 @@ def nurtured_marker_placement(
         if isinstance(rect, Rect) and rect.area > 0
     ]
 
-    sizes: list[float] = []
-    size = desired_size
-    while size >= 44.0:
-        sizes.append(size)
-        size -= 4.0
-    if not sizes or sizes[-1] > 44.0:
-        sizes.append(44.0)
+    sizes: list[float] = [desired_size]
+    if allow_scaling:
+        size = desired_size - 4.0
+        while size >= 44.0:
+            sizes.append(size)
+            size -= 4.0
+        if sizes[-1] > 44.0:
+            sizes.append(44.0)
 
     candidates: list[tuple[float, float, float, float, NurturedMarkerPlacement]] = []
     for candidate_size in sizes:
         pulse_pad = candidate_size * 0.04
-        # Anchor to the plant silhouette rather than the full planter width.
-        # The planter remains the size reference, but its artwork is allowed to
-        # sit behind the marker so the can can read as belonging to this plant.
+        # Anchor to the plant silhouette rather than the full transparent
+        # planter canvas. Opaque planter/soil bounds are supplied separately as
+        # protected regions, so transparent padding never pushes the can away.
         # Obstacles already carry a four-pixel plant clearance; the additional
         # two pixels keep the entire pulse envelope visibly separate.
         gap = pulse_pad + 6.0
@@ -463,6 +866,11 @@ def nurtured_marker_placement(
         maximum_x = safe_width - margin - pulse_pad - candidate_size
         minimum_y = margin + pulse_pad
         maximum_y = safe_height - margin - pulse_pad - candidate_size
+        if isinstance(lane, Rect) and lane.area > 0:
+            minimum_x = max(minimum_x, lane.x + pulse_pad)
+            maximum_x = min(maximum_x, lane.right - pulse_pad - candidate_size)
+            minimum_y = max(minimum_y, lane.y + pulse_pad)
+            maximum_y = min(maximum_y, lane.bottom - pulse_pad - candidate_size)
         if minimum_x > maximum_x or minimum_y > maximum_y:
             continue
 
@@ -572,6 +980,97 @@ def nurtured_marker_placement(
         asset_key=asset_key,
         orientation=orientation,
         used_fallback=True,
+    )
+
+
+def nurtured_marker_placement(
+    canvas_width: float,
+    canvas_height: float,
+    layout: PlantPlacement,
+    *,
+    planter_rect: Rect | None = None,
+    obstacles: Iterable[Rect] = (),
+    protected_regions: Iterable[Rect] = (),
+    accessory_lanes: Iterable[Rect] = (),
+    margin: float = 6.0,
+) -> NurturedMarkerPlacement:
+    """Resolve the watering can from one bed's ordered accessory lanes.
+
+    Both full-size lanes are tried before any scale reduction. This keeps the
+    can adjacent to its plant without accepting a planter, soil, or neighbor
+    collision merely to preserve the preferred left/right parity.
+    """
+
+    lanes = tuple(lane for lane in accessory_lanes if isinstance(lane, Rect) and lane.area > 0)
+    preferred = "left" if int(layout.slot_index) % 2 == 0 else "right"
+    attempts: list[tuple[str, Rect | None]] = []
+    if lanes:
+        for lane in lanes:
+            lane_side = (
+                "left"
+                if lane.x + lane.width / 2 < layout.ground_anchor[0]
+                else "right"
+            )
+            attempts.append((lane_side, lane))
+    else:
+        attempts = [(preferred, None)]
+
+    for allow_scaling in (False, True):
+        resolved: list[NurturedMarkerPlacement] = []
+        for side, lane in attempts:
+            candidate = _nurtured_marker_side_placement(
+                canvas_width,
+                canvas_height,
+                layout,
+                planter_rect=planter_rect,
+                obstacles=obstacles,
+                protected_regions=protected_regions,
+                margin=margin,
+                side_override=side,
+                lane=lane,
+                allow_scaling=allow_scaling,
+            )
+            candidate_ground_y = candidate.rect.y + candidate.rect.height * 0.916
+            candidate_distance = math.hypot(
+                candidate.rect.x + candidate.rect.width / 2 - layout.ground_anchor[0],
+                candidate_ground_y - layout.ground_anchor[1],
+            )
+            if (
+                not candidate.used_fallback
+                and abs(candidate_ground_y - layout.ground_anchor[1])
+                <= candidate.rect.height * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO
+                and candidate_distance
+                <= max(1.0, (planter_rect or planter_draw_rect(layout)).width)
+                * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
+            ):
+                resolved.append(candidate)
+        if resolved:
+            return min(
+                resolved,
+                key=lambda candidate: (
+                    -candidate.rect.width,
+                    0 if candidate.side == preferred else 1,
+                    math.hypot(
+                        candidate.rect.x + candidate.rect.width / 2 - layout.ground_anchor[0],
+                        candidate.rect.y + candidate.rect.height * 0.916 - layout.ground_anchor[1],
+                    ),
+                ),
+            )
+
+    # Preserve an explicit, bounded state cue on unsupported geometry. The
+    # validator treats this fallback as a release failure for supported beds.
+    side, lane = attempts[0]
+    return _nurtured_marker_side_placement(
+        canvas_width,
+        canvas_height,
+        layout,
+        planter_rect=planter_rect,
+        obstacles=obstacles,
+        protected_regions=protected_regions,
+        margin=margin,
+        side_override=side,
+        lane=lane,
+        allow_scaling=True,
     )
 
 
@@ -1900,6 +2399,15 @@ class PlantInteractionState:
         self.destination_slot = origin_slot
         self.move_mode = keyboard
         self.pinned_id = plant_id
+        return True
+    def begin_unplaced(self, plant_id: str, valid_slots: list[int]) -> bool:
+        if not plant_id or not valid_slots:
+            return False
+        self.dragged_id = plant_id
+        self.drag_origin_slot = -1
+        self.destination_slot = valid_slots[0]
+        self.move_mode = True
+        self.pinned_id = None
         return True
     def cycle_destination(self, valid_slots: list[int], direction: int) -> int | None:
         if not valid_slots or not self.placing:
