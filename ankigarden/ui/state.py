@@ -202,22 +202,22 @@ def garden_preview_from_values(
     elif active_name and stage_label:
         if active_fully_grown:
             summary = (
-                f"{active_name} · {stage_label} · "
+                f"{active_name}, {stage_label} — "
                 f"{max(0, int(active_growth_points or 0)):,} Growth"
             )
         elif int(active_stage_goal or 0) > 0:
             summary = (
-                f"{active_name} · {stage_label} · "
+                f"{active_name}, {stage_label} — "
                 f"{max(0, int(active_stage_points or 0)):,} / "
                 f"{max(0, int(active_stage_goal or 0)):,} Growth"
             )
         else:
-            summary = f"{active_name} · {stage_label}"
+            summary = f"{active_name}, {stage_label}"
     elif planted_starter_name:
         planted_stage = str(planted_starter_stage or "seed").replace("_", " ").title()
-        summary = f"{planted_starter_name} · {planted_stage} · Planted starter"
+        summary = f"{planted_starter_name}, {planted_stage}. Planted starter."
     else:
-        summary = "No nurtured plant · Open the garden to choose one"
+        summary = "No nurtured plant. Open the garden to choose one."
     if normalized_phase == "loading":
         summary = "Loading garden preview…"
     elif normalized_phase == "error":

@@ -202,7 +202,7 @@ def test_nursery_open_releases_each_rebuilt_catalog_after_exec() -> None:
 
     assert "dialog = NurseryDialog(self, self.engine, self.storage)" in opener
     assert "self.nursery_dialog = dialog" in opener
-    assert "try:\n            dialog.exec()\n        finally:" in opener
+    assert "try:\n            result = dialog.exec()\n        finally:" in opener
     assert "if self.nursery_dialog is dialog:" in opener
     assert "self.nursery_dialog = None" in opener
     assert opener.index("dialog.hide()") < opener.index("dialog.setParent(None)")

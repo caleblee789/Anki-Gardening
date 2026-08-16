@@ -103,7 +103,7 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
     assert 'data-state="partial"' in html
     assert 'data-testid="home-partial-error"' in html
     assert 'class="ag-home__partial-message"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
+    assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
     assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
     assert 'data-testid="home-reviews"' not in html
     assert "Weather: Cloudy" not in html
@@ -115,7 +115,7 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
+    assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
     assert 'data-testid="home-active-name"' not in html
     assert 'data-testid="home-growth"' not in html
     assert 'data-testid="home-currency"' not in html
@@ -125,7 +125,7 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-accessible-summary"' in html
     assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
     assert 'role="button" tabindex="0"' in html
-    assert 'aria-label="Open My Garden. Moss · Seed · 30 / 500 Growth"' in html
+    assert 'aria-label="Open My Garden. Moss, Seed — 30 / 500 Growth"' in html
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "max-width:720px" in html
@@ -255,8 +255,8 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
-    assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
-    assert f'>{name} · Flowering · 30 / 500 Growth</span>' in html
+    assert f'title="{name}, Flowering — 30 / 500 Growth"' in html
+    assert f'>{name}, Flowering — 30 / 500 Growth</span>' in html
     assert "text-overflow:ellipsis; white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 469px)" in html
@@ -479,7 +479,7 @@ def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() ->
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
 
     assert f'aria-label="{garden_name}"' in html
-    assert f'title="{plant_name} · Rare · 50,000 / 50,000 Growth"' in html
+    assert f'title="{plant_name}, Rare — 50,000 / 50,000 Growth"' in html
     assert "365-day streak" in html
     assert "54,321 Garden Coins" in html
     assert "text-overflow:ellipsis" in html
@@ -551,7 +551,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert data.active_stage_points == 100
     assert data.active_stage_goal == 2_000
     assert data.active_next_stage == "young"
-    assert 'data-testid="home-support" title="Briar · Sprout · 100 / 2,000 Growth"' in html
+    assert 'data-testid="home-support" title="Briar, Sprout — 100 / 2,000 Growth"' in html
     assert "Briar, Sprout stage, 100 of 2000 Growth" in html
 
 
@@ -599,7 +599,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert data.planted_starter_stage == "seed"
     assert (
         'data-testid="home-support" '
-        'title="Briar · Seed · Planted starter"'
+        'title="Briar, Seed. Planted starter."'
     ) in html
     assert "Briar, Seed stage, planted starter" in html
     assert "No nurtured plant" not in html
@@ -621,7 +621,7 @@ def test_home_handles_no_nurtured_plant_without_inventing_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=10, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="No nurtured plant · Open the garden to choose one"' in html
+    assert 'data-testid="home-support" title="No nurtured plant. Open the garden to choose one."' in html
     assert 'data-testid="home-growth-bar"' not in html
 
 
@@ -640,7 +640,7 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=11, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="Clover · Rare · 50,000 Growth"' in html
+    assert 'data-testid="home-support" title="Clover, Rare — 50,000 Growth"' in html
     assert "Clover, Rare stage, fully grown at 50,000 Growth" in html
 
 
@@ -897,15 +897,15 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert stale_applied is False
     assert fresh_applied is True
     assert 'data-testid="home-reviews"' not in html
-    assert 'data-testid="home-support" title="Moss · Seed · 14 / 500 Growth"' in html
-    assert "Moss · Seed · 99 / 500 Growth" not in html
+    assert 'data-testid="home-support" title="Moss, Seed — 14 / 500 Growth"' in html
+    assert "Moss, Seed — 99 / 500 Growth" not in html
 
     refresh_request = controller.begin_request()
     assert refresh_request > request_2
     stale_html = render_home_widget(controller.snapshot)
     assert 'data-state="stale"' in stale_html
     assert 'data-testid="home-preview-status"' in stale_html
-    assert "Moss · Seed · 14 / 500 Growth" in stale_html
+    assert "Moss, Seed — 14 / 500 Growth" in stale_html
     assert "--ag-scene-opacity:0.720" in stale_html
 
 
@@ -970,5 +970,5 @@ def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
 
     assert 'data-state="success"' in success_html
     assert 'data-testid="home-reviews"' not in success_html
-    assert 'data-testid="home-support" title="Moss · Seed · 33 / 500 Growth"' in success_html
+    assert 'data-testid="home-support" title="Moss, Seed — 33 / 500 Growth"' in success_html
     assert "Temporary backend failure" not in success_html
