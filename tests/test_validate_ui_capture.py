@@ -537,11 +537,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 156
+    assert capture_result["capture_count"] == 157
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
         "page_count": 20,
-        "surface_count": 156,
+        "surface_count": 157,
         "status": "valid",
     }
 
@@ -551,7 +551,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     pages = expected_contact_sheet_pages(contract)
 
     assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 9, 7,
+        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 9, 8,
     ]
     assert pages[6:10] == (
         (("Release stress — Garden", 10),),
@@ -565,7 +565,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_156_faces() -> None:
+def test_renderer_families_are_derived_from_source_for_all_157_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
@@ -581,7 +581,7 @@ def test_renderer_families_are_derived_from_source_for_all_156_faces() -> None:
         "StarterConfirmationDialog": 6,
         "PlantStoryDialog": 6,
         "FertilizerReplacementDialog": 6,
-        "SpeciesOverviewDialog": 4,
+        "SpeciesOverviewDialog": 5,
     })
     assert families["popover-plot-6"] == "GardenDashboard"
     assert families["watering-can-garden-plot-6"] == "GardenDashboard"
@@ -593,7 +593,7 @@ def test_renderer_families_are_derived_from_source_for_all_156_faces() -> None:
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_156_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_all_157_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -608,7 +608,7 @@ def test_state_evidence_contracts_are_derived_for_all_156_faces() -> None:
         "home": 15,
         "nursery": 11,
         "settings": 10,
-        "dialog": 8,
+        "dialog": 9,
         "customize": 3,
     })
     assert states["watering-can-overview-plot-6"]["profile"] == {
@@ -1197,8 +1197,8 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 156" in message
-    assert "pages account for 155 surfaces" in message
+    assert "surface_count must be 157" in message
+    assert "pages account for 156 surfaces" in message
     assert "PNG dimensions must be 3000x4262px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message

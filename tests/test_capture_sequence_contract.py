@@ -116,7 +116,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 11
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 12
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -244,9 +244,10 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "home-preview-stale",
         "onboarding-persistence-error",
         "move-persistence-error",
+        "collection-known-not-collected-overview",
     )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 156
+    assert len(labels) == 157
     assert len(labels) == len(set(labels))
 
 
@@ -271,7 +272,7 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
         "StarterConfirmationDialog": 6,
         "PlantStoryDialog": 6,
         "FertilizerReplacementDialog": 6,
-        "SpeciesOverviewDialog": 4,
+        "SpeciesOverviewDialog": 5,
     }
 
 
@@ -286,7 +287,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 156
+    assert len({profile["profile_id"] for profile in profiles}) == 157
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -646,6 +647,9 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     missed_streak = _method_source("_UiFaceCaptureRunner", "_capture_streak_missed_day")
     streak_rewards = _method_source("_UiFaceCaptureRunner", "_capture_streak_reward_states")
     collection = _method_source("_UiFaceCaptureRunner", "_capture_collection_several")
+    known_species = _method_source(
+        "_UiFaceCaptureRunner", "_capture_known_uncollected_species_overview"
+    )
     purchase = _method_source("_UiFaceCaptureRunner", "_capture_nursery_purchase_success")
 
     assert "stats.reviewed = 100" in achievement
@@ -666,6 +670,12 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "][:4]" in collection.replace(" ", "")
     assert "discovered_count == 4" in collection
     assert 'restore_callback=restore' in collection
+
+    assert 'label = "collection-known-not-collected-overview"' in known_species
+    assert 'dialog.property("collectionState")' in known_species
+    assert '"not-collected"' in known_species
+    assert '"Rare stage undiscovered"' in known_species
+    assert 'close_callback=lambda: (self._close_widget(dialog), restore())' in known_species
 
     assert "dialog._purchase_environment(item.kind, item.item_id)" in purchase
     assert purchase.count("dialog._preview_environment_item(item)") == 2

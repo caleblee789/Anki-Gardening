@@ -49,7 +49,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 11
+CAPTURE_CONTRACT_VERSION = 12
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -285,6 +285,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "home-preview-stale",
             "onboarding-persistence-error",
             "move-persistence-error",
+            "collection-known-not-collected-overview",
         ),
     ),
 )
@@ -552,6 +553,7 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
     ),
     "Species overview": (
         "collection-species-overview",
+        "collection-known-not-collected-overview",
         "resize-species-overview-minimum",
         "resize-species-overview-default",
         "resize-species-overview-large",
@@ -628,6 +630,7 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-story-default": "PlantStoryDialog",
     "resize-story-large": "PlantStoryDialog",
     "collection-species-overview": "SpeciesOverviewDialog",
+    "collection-known-not-collected-overview": "SpeciesOverviewDialog",
     "resize-species-overview-minimum": "SpeciesOverviewDialog",
     "resize-species-overview-default": "SpeciesOverviewDialog",
     "resize-species-overview-large": "SpeciesOverviewDialog",
@@ -962,7 +965,10 @@ def expected_capture_window_family(label: str) -> str:
         return "FertilizerReplacementDialog"
     if label == "plant-story":
         return "PlantStoryDialog"
-    if label == "collection-species-overview":
+    if label in {
+        "collection-species-overview",
+        "collection-known-not-collected-overview",
+    }:
         return "SpeciesOverviewDialog"
     if label in {
         "customize-garden",
@@ -1020,6 +1026,12 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         if match:
             profile["active_slot"] = int(match.group(1)) - 1
         return profile
+    if label == "collection-known-not-collected-overview":
+        profile.update({
+            "kind": "dialog",
+            "state": "known-not-collected-rare-mystery",
+        })
+        return profile
     for (
         resize_label,
         resize_family,
@@ -1055,6 +1067,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
                 "progress-collection",
                 "collection-several-discovered",
                 "collection-no-filter-matches",
+                "collection-known-not-collected-overview",
             } else
             "achievements"
         )
@@ -1402,6 +1415,7 @@ class _UiFaceCaptureRunner:
             ),
             self._capture_onboarding_persistence_error,
             self._capture_move_persistence_error,
+            self._capture_known_uncollected_species_overview,
         ]
         self._capture_profile = str(
             os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
@@ -1410,7 +1424,7 @@ class _UiFaceCaptureRunner:
         if self._capture_profile == "watering-can":
             # The targeted regression profile still seeds through the real
             # first-run transaction, but does not spend time screenshotting
-            # unrelated interfaces. The full v11 release contract remains the
+            # unrelated interfaces. The full v12 release contract remains the
             # default.
             self._capture_face_groups = WATERING_CAN_CAPTURE_FACE_GROUPS
             self._starter_steps = []
@@ -3781,16 +3795,16 @@ class _UiFaceCaptureRunner:
                 require("coin_activity", len(transactions) >= 2, len(transactions))
             elif state_name == "collection-several-discovered":
                 require(
-                    "several_discovered_audit",
+                    "several_collected_audit",
                     bool(annotation.get("passed", False))
-                    and int(annotation.get("discovered_count", 0)) == 4,
+                    and int(annotation.get("collected_count", 0)) == 4,
                     annotation,
                 )
             elif state_name == "collection-no-filter-matches":
                 dashboard = getattr(self.app, "dashboard", None)
                 require(
-                    "locked_collection_filter",
-                    str(getattr(dashboard, "_collection_filter", "")) == "locked",
+                    "not_collected_filter",
+                    str(getattr(dashboard, "_collection_filter", "")) == "not_collected",
                     str(getattr(dashboard, "_collection_filter", "")),
                 )
             elif state_name == "achievement-completed":
@@ -4033,6 +4047,15 @@ class _UiFaceCaptureRunner:
                     "species_overview",
                     actual_family == "SpeciesOverviewDialog",
                     actual_family,
+                )
+            elif state_name == "known-not-collected-rare-mystery":
+                require(
+                    "known_not_collected_rare_mystery",
+                    actual_family == "SpeciesOverviewDialog"
+                    and bool(annotation.get("passed", False))
+                    and int(annotation.get("collected_instances", -1)) == 0
+                    and bool(annotation.get("rare_mystery", False)),
+                    annotation,
                 )
             elif state_name == "fertilizer-replacement-confirmation":
                 buttons = [
@@ -6808,6 +6831,90 @@ class _UiFaceCaptureRunner:
 
         self._with_dashboard(dashboard_ready)
 
+    def _capture_known_uncollected_species_overview(self) -> None:
+        """Prove known catalog identity, zero instances, and Rare mystery together."""
+
+        label = "collection-known-not-collected-overview"
+        if not self._ensure_development_stress_state():
+            self._next_after(200)
+            return
+        dashboard = getattr(self.app, "dashboard", None)
+        state = self.app.storage.state
+        release_ready = list(self.app.engine.release_ready_species())
+        if dashboard is None or not release_ready:
+            self._failures.append({
+                "label": label,
+                "reason": "Known uncollected species fixture prerequisites were unavailable",
+            })
+            self._next_after(200)
+            return
+        species = str(release_ready[-1])
+        original_plants = list(state.plants)
+        original_unlocked = list(state.unlocked_species)
+        original_active = state.active_plant_id
+        restored = False
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            state.plants = original_plants
+            state.unlocked_species = original_unlocked
+            state.active_plant_id = original_active
+            self._refresh_capture_dashboard()
+
+        state.plants = [plant for plant in state.plants if str(plant.species) != species]
+        state.unlocked_species = [
+            value for value in state.unlocked_species if str(value) != species
+        ]
+        if str(state.active_plant_id or "") not in {
+            str(plant.plant_id) for plant in state.plants
+        }:
+            state.active_plant_id = ""
+        builder = getattr(dashboard, "_build_species_overview_dialog", None)
+        dialog = builder(species) if callable(builder) else None
+        if dialog is None:
+            restore()
+            self._failures.append({
+                "label": label,
+                "reason": "Known uncollected species overview could not be built",
+            })
+            self._next_after(200)
+            return
+        rare_hidden = any(
+            "Rare stage undiscovered" in str(widget.accessibleName())
+            for widget in dialog.findChildren(QLabel)
+        )
+        passed = bool(
+            str(dialog.property("collectionState") or "") == "not-collected"
+            and not any(str(plant.species) == species for plant in state.plants)
+            and rare_hidden
+        )
+        self._capture_annotations[label] = {
+            "species": species,
+            "known_catalog_identity": True,
+            "collected_instances": 0,
+            "rare_mystery": rare_hidden,
+            "passed": passed,
+        }
+        if not passed:
+            self._failures.append({
+                "label": label,
+                "reason": "Known species, zero-instance, and Rare mystery contract did not agree",
+            })
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.setModal(False)
+        dialog.show()
+        self._capture_and_advance(
+            label,
+            dialog,
+            capture_delay_ms=420,
+            close_callback=lambda: (self._close_widget(dialog), restore()),
+            close_ms=820,
+            next_ms=1160,
+        )
+
     def _capture_customize_garden(self) -> None:
         self._with_dashboard(self._capture_customize_garden_after)
 
@@ -7745,8 +7852,8 @@ class _UiFaceCaptureRunner:
             total_count = len(summary.get("release_ready_species", ()))
             passed = discovered_count == 4 and total_count > discovered_count
             self._capture_annotations[label] = {
-                "discovered_species": list(discovered_species),
-                "discovered_count": discovered_count,
+                "collected_species": list(discovered_species),
+                "collected_count": discovered_count,
                 "catalog_count": total_count,
                 "passed": passed,
             }
@@ -7771,7 +7878,10 @@ class _UiFaceCaptureRunner:
 
     def _capture_collection_no_matches(self) -> None:
         self._ensure_development_stress_state()
-        self._capture_collection_filter("locked", "collection-no-filter-matches")
+        self._capture_collection_filter(
+            "not_collected",
+            "collection-no-filter-matches",
+        )
 
     def _capture_achievement_completed(self) -> None:
         if not self._ensure_development_stress_state():
