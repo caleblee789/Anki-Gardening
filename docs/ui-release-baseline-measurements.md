@@ -1,0 +1,281 @@
+# UI release baseline measurements
+
+This document freezes the measurement baseline that existed before the Release
+2.1.0 UI-overhaul foundation changed the capture harness. It separates fresh
+repository measurements, historical capture-derived proxies, and values that
+have not been measured. A passing static test or screenshot check is not a
+substitute for a native Anki timing or memory measurement.
+
+## Baseline identity and scope
+
+- Audit date: 2026-08-15
+- Source commit: `30bc74894e765a2739535279b9a9e97701abcc7c`
+- Source release: 2.1.0, state schema 16, scene geometry 6
+- Working tree at audit start: clean `main`
+- Foundation branch created during the audit: `codex/release-overhaul-foundation`
+  at the same commit
+- Reference capture package: capture contract v8
+- Reference capture directory:
+  `build/ui-face-captures/capture-sequence-20260815-170054/20260815-170057`
+
+No normal Anki profile was opened, no new full capture was run, and no native UI
+performance session was run while freezing this pre-change baseline. The full
+test suite did invoke
+the existing deterministic production package test. That refreshed the ignored
+`dist/anki_garden.ankiaddon` mtime without changing its bytes or SHA-256.
+
+## Automated test baseline
+
+The test architecture contains 39 test modules and 612 declared test functions.
+Parametrization expands them to 1,536 collected cases. The suite combines:
+
+- state, storage, migration, reward, purchase, and transaction tests;
+- source-level UI, routing, accessibility, terminology, and responsive-layout
+  contracts;
+- asset, scene, planter, plant-library, and all-stage geometry matrices;
+- package reproducibility, source/archive parity, and build-capability checks;
+- capture-manifest and fixture-order contracts; and
+- mocked add-on startup and Home-rendering behavior.
+
+It does not execute native Qt windows in the repository virtual environment.
+
+Fresh baseline command:
+
+```bash
+PYTHONPYCACHEPREFIX=/private/tmp/anki-garden-baseline-pycache \
+  /usr/bin/time -lp ./.venv/bin/python -m pytest -q
+```
+
+Result:
+
+- `1536 passed in 84.68s (0:01:24)`
+- External wall time: 85.13 seconds
+- User CPU time: 83.24 seconds
+- System CPU time: 1.29 seconds
+- Test failures: 0
+
+The macOS `time -l` resource report could not read `kern.clockrate` in the
+sandbox, so it did not provide a trustworthy peak-RSS value.
+
+Additional fresh gates:
+
+| Gate | Command | Result |
+|---|---|---|
+| Asset audit | `./.venv/bin/python scripts/audit_assets.py` | Passed in 0.80 seconds: 9 backgrounds, 1 decoration, 60 plants, 9 UI assets, 7 Weather assets |
+| Python compilation | `PYTHONPYCACHEPREFIX=/private/tmp/anki-garden-baseline-pycache ./.venv/bin/python -m compileall -q ankigarden scripts tests` | Passed in 0.15 seconds |
+| Whitespace/error check | `git diff --check` | Passed |
+| Production ZIP integrity | `unzip -tq dist/anki_garden.ankiaddon` | No errors |
+| Capture ZIP integrity | `unzip -tq build/ui-face-captures/capture-sequence-20260815-170054/anki_garden_capture.ankiaddon` | No errors |
+
+The previous frozen QA report recorded the same 1,536-test count in 84.21
+seconds. The fresh 84.68-second result supersedes that test duration for this
+baseline. The report also records an asset-resolution microbenchmark of 3.201
+ms cold and 1.882 ms cached over the 79 primary raster entries. That
+microbenchmark was not independently rerun because there is no standalone
+benchmark command in the repository; it remains historical performance
+evidence, not a fresh result from this audit.
+
+## Package and build-size baseline
+
+| Artifact | Mode | File count | Archive size | Payload size | SHA-256 |
+|---|---|---:|---:|---:|---|
+| `dist/anki_garden.ankiaddon` | Production | 262 | 81,702,743 bytes (77.91781 MiB) | 83,248,307 uncompressed bytes | `9d60b0d1b9523ca3f8c2b9e14be186c8b5ca19137f63064d1edfe15c99aa5b79` |
+| `build/ui-face-captures/capture-sequence-20260815-170054/anki_garden_capture.ankiaddon` | Capture | 263 | 81,737,735 bytes (77.95118 MiB) | 83,444,049 uncompressed bytes | `14114da87e24f4683bbcefdcdcca0ba2340263641d867bd9651bdbe7d28ddfeb` |
+
+The production archive has 215 deflated and 47 stored entries. The capture
+archive has 216 deflated and 47 stored entries. Both passed ZIP integrity.
+Production excludes the capture harness; the separate capture archive enables
+it explicitly.
+
+## Pre-foundation capture baseline and duration
+
+The reference manifest is incomplete and must remain described as incomplete:
+
+- Expected surfaces: 146
+- Captured surfaces: 139
+- Missing/failed surfaces: 7
+- Manifest `complete`: `false`
+- Text-layout warnings: 0
+- Contact-sheet status: `partial`, quality status `review-required`
+
+The absent IDs and manifest failures agree:
+
+| Capture ID | Fixture | Failure |
+|---:|---|---|
+| 019 | `active-overview-home-after-nurture` | Qt returned no pixmap |
+| 064 | `watering-can-deck-browser-plot-1` | Qt returned no pixmap |
+| 065 | `watering-can-deck-browser-plot-3` | Qt returned no pixmap |
+| 066 | `watering-can-deck-browser-plot-5` | Qt returned no pixmap |
+| 067 | `watering-can-overview-plot-2` | Qt returned no pixmap |
+| 068 | `watering-can-overview-plot-4` | Qt returned no pixmap |
+| 069 | `watering-can-overview-plot-6` | Qt returned no pixmap |
+
+The v8 manifest has only a completion timestamp, not an explicit start time or
+per-face timing. The following durations were therefore derived from the log
+and filesystem metadata:
+
+| Proxy | Start | Finish | Duration | Interpretation |
+|---|---|---|---:|---|
+| Capture Anki process | First log record at `17:00:56.786` | Process-close log at `17:04:05.618` | 188.832 seconds | Best available current capture-run duration; includes startup, waits, failed Home attempts, captures, and shutdown initiation |
+| Screenshot production | First PNG mtime | Last PNG mtime | 184.433 seconds | Span across the 139 successfully written PNGs; excludes failed-file writes as distinct records |
+| Screenshot to manifest | First PNG mtime | Manifest mtime | 184.799 seconds | Successful output span through manifest finalization |
+| Contact-sheet writing | First sheet mtime | Final sheet/set mtime | 18.592 seconds | File-write span only; sheets were generated separately about 42 minutes after capture, so this is not an end-to-end capture duration |
+
+The capture log also contains expected fixture warnings, including one
+intentional display-contract warning state, and repeated failures to foreground
+the exact Anki Home window. Those warnings cannot be converted into visual
+quality acceptance. Zero automated text-layout warnings means only that no
+configured geometry threshold fired for the 139 files written.
+
+## Post-foundation v9 capture evidence
+
+The fresh capture-contract v9 run is:
+
+`build/ui-face-captures/capture-sequence-20260815-220049/20260815-220051`
+
+It regenerated every capture ID from 001 through 146 and recovered exactly the
+seven missing IDs 019 and 064-069. The manifest, ordered capture records, and
+filesystem agree on 146 PNGs; `complete` is `true`, failures and warnings are
+both zero, and the manifest-owned contact-sheet set contains 19 pages. The
+strict independent repository validator reported all 146 surfaces and all 19
+pages valid, with zero fixture-provenance mismatches. The run started at
+`2026-08-15T22:00:51.953`, finished at
+`2026-08-15T22:04:06.564`, and recorded 194,610.856 ms (194.611 seconds) of
+monotonic duration.
+
+The contact-sheet set was rendered twice into separate clean temporary roots
+using the same stamp. SHA-256 matched for all 19 PNG pages and
+`contact-sheet-set.json`. The first-page hash was
+`7b9c94ffbf75a226727e899150eb0fbcee2ac40b9fd0f1a8c8ed84fd79db8143` and the
+index hash was
+`266465079c637ad862aaa2e02a361dc0400415d44951943ca2c1a290975a2b62`.
+All 20 page/index artifact hashes matched. The final contact-sheet set is
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260815-220049`.
+
+| Artifact | File count | Archive size | SHA-256 |
+|---|---:|---:|---|
+| `build/ui-face-captures/capture-sequence-20260815-220049/anki_garden_capture.ankiaddon` | 263 | 81,756,920 bytes | `345e1a38045cc7a49089237a409c3da9e7cb31c67429f34cb1a843ddfdb69e1c` |
+| `build/ui-face-captures/anki-garden-ui-faces-20260815-220049.zip` | — | 152,709,362 bytes | `c889f24eac88e94fbc730702e6e0dcf1369a71503d6030d55c139f5ab2f5bfdd` |
+
+The Garden-open readiness samples were 402.977, 121.563, 125.489, and 122.818
+ms. Across the four samples, the mean was 193.212 ms, the minimum was 121.563
+ms, and the maximum was 402.977 ms. These remain request-to-visible/readiness
+measurements; they are not isolated first-paint timings.
+
+The Nursery memory probe completed 12 of 12 visible opens and 12 of 12 closes.
+The probe's completion gate passed. Peak RSS was 1,902,528 KiB both before and
+after, a zero KiB delta, while current RSS was unavailable.
+`QApplication.allWidgets()` increased from 7,478 to 12,278, a 4,800-widget
+increase, and retained `NurseryDialog` instances increased from 16 to 28, a
+12-instance increase; the other watched dialog-family counts did not increase.
+The retained widget/dialog signal remains concerning. An unchanged process
+high-water mark plus no current-RSS or allocation attribution does not prove
+that there is no leak, nor does this probe prove that a leak exists.
+
+Development-population stress fixtures are pinned to the canonical species
+order `bonsai`, `rose`, `sunflower`, `lavender`, `hydrangea`, `peony`,
+`foxglove`, `japanese_maple`, `wisteria`, `dahlia`. Live postconditions verify
+that order, the corresponding `dev_*` plant identities, and generated names in
+the stress and inherited resize states. The scheduled fixture provenance is
+immutable; reduced motion is restored before the keyboard-focus fixture, and
+focus is cleared before narrow, scaling, and resize fixtures.
+
+The v9 evidence records a mixed-display macOS run under
+`QT_SCALE_FACTOR=1.5`: six first-run captures used the secondary display at DPR
+1.5 and 140 captures used the primary display at DPR 3.0. This is provenance,
+not deliberate mixed-DPI transition acceptance. It does not provide native
+Windows, true standard-scale, or true OS 200-percent evidence; 090 is a logical
+Qt proxy. Screen height capped several resize fixtures, although 100 and 101
+now preserve distinct breakpoint widths at 1383x699 compact and 1385x699 wide.
+Manual contact-sheet review also retains product-layout risks:
+039 shows partial helper context at a Settings scroll boundary, 066 ellipsizes
+the Home detail line, and 111 clips the final “s” in Achievements. Therefore,
+zero warnings and 146-of-146 capture completeness are not claims of full
+platform or product visual acceptance.
+
+## Pre-foundation startup, Garden, dialog, and memory boundaries
+
+| Measurement | Baseline status | Exact boundary |
+|---|---|---|
+| Add-on startup time | Not measured | The capture log gives a 0.862-second proxy from the first Anki process log record (`17:00:56.786`) to Garden Home-hook registration (`17:00:57.648`). It includes part of Anki startup and ends before a dedicated full Garden setup-complete marker. It is not an isolated add-on startup duration. |
+| Exact-production startup time | Not measured | The previous disposable exact-production attempt verified process/filesystem identity and hook registration but recorded no elapsed time. It was stopped after a network connection appeared despite disconnected/auto-sync-off metadata. |
+| Dashboard-open time | Not measured | `AnkiGardenApp.open_dashboard()` schedules collection readiness, maintenance, construction/refresh, and native presentation, but no baseline timestamps surround that route. |
+| Garden-open time | Not separately measured | The current product's Dashboard route presents `GardenDashboard`, which is the full Garden. A separate Garden-open number would duplicate Dashboard-open unless the measurement contract distinguishes trigger-to-visible from refresh/first-paint time. |
+| Garden first-paint/render time | Not measured | `GardenDashboard.refresh_all()` counts a render through display telemetry but records no elapsed time and has no first-paint completion marker. |
+| Dialog-open time | Not measured | Nursery, Garden Progress, Customize, Settings, Plant Story, Fertilizer, replacement, and species-overview windows have no constructor-to-visible or constructor-to-first-paint timing. |
+| Repeated-dialog memory | Not measured | There is no current-RSS, peak-RSS, retained-widget-count, or post-close event-loop measurement. |
+| Windows/high-DPI native performance | Not measured | The baseline capture is a macOS primary-display Qt run. It is not Windows or true multi-OS scaling performance evidence. |
+
+The repository virtual environment does not provide `aqt`, `PyQt6`, or
+`psutil`. Sandbox process inspection is also unavailable through `ps`. Static
+tests and capture file cadence must not be used to invent the missing native
+values.
+
+Memory behavior needs a dedicated measurement because `DialogShell.done()`
+hides the window rather than destroying it. Garden Progress, Customize, and
+Settings generally reuse instances; Nursery, Plant Story, Fertilizer, and
+species overview construct new parent-owned dialogs on their open paths. This
+is a potential retention path to measure, not evidence of a memory leak.
+
+## Capture-only instrumentation
+
+Capture contract v9 adds low-risk instrumentation inside
+`ankigarden/capture_ui_faces.py`. These fields describe the realized output
+schema used by the post-foundation evidence above.
+
+Top-level manifest fields:
+
+| Field | Definition |
+|---|---|
+| `started_at` | Local ISO timestamp with millisecond precision, recorded when the capture runner is initialized |
+| `finished_at` | Local ISO timestamp with millisecond precision, recorded when `_finish()` begins finalization |
+| `duration_ms` | Monotonic elapsed time from capture-runner initialization to `_finish()` |
+| `performance.garden_open_ms.samples` | Individual capture-harness samples from `app.open_dashboard()` invocation until the dashboard readiness predicate succeeds |
+| `performance.garden_open_ms.count` | Number of recorded Garden-open samples |
+| `performance.garden_open_ms.minimum_ms` | Minimum recorded sample, or `null` when no sample exists |
+| `performance.garden_open_ms.maximum_ms` | Maximum recorded sample, or `null` when no sample exists |
+| `performance.garden_open_ms.mean_ms` | Arithmetic mean, or `null` when no sample exists |
+| `performance.surface_ready:<capture>.samples` | Bounded readiness-wait samples for native dialog/surface fixtures that use the shared wait helper; these are route-specific readiness proxies, not a uniform first-paint benchmark |
+| `dialog_memory_probe` | Twelve real Nursery open/visible/close cycles, before/after `QApplication.allWidgets()` counts by watched dialog family, and process peak RSS before/after |
+| `dialog_memory_probe_complete` | True only when all 12 Nursery cycles were visibly opened and closed |
+
+Per-capture record fields:
+
+| Field | Definition |
+|---|---|
+| `capture_id` | Ordered integer capture ID |
+| `fixture_source` | Immutable scheduled capture-step provenance used to prepare the fixture |
+| `fixture_validation` | Source-owned renderer family, exact state-profile ID, live source/widget facts, state-specific postcondition issues, and pass/fail result |
+| `ready_to_capture_ms` | Monotonic time from scheduling `_capture_and_advance()` until `_capture_now()` begins; includes the configured settling delay and event-loop scheduling |
+| `capture_duration_ms` | Monotonic time inside `_capture_now()` through successful PNG saving, layout audits, and record assembly |
+
+The first v9 `garden_open_ms` sample measures request-to-visible/readiness, not
+first paint, and a dashboard that is already visible does not add a new sample.
+The shared `surface_ready:*` samples are useful per-route proxies but are not
+comparable constructor-to-first-paint measurements for every dialog family.
+The memory probe measures Nursery visibility/closure, retained Qt widget counts,
+and the process high-water RSS value. It does not provide current RSS, allocation
+attribution, or 30-cycle evidence for every dialog family. Pre-runner add-on
+startup and exact first paint remain unmeasured.
+
+## Remaining measurement work
+
+The explicit v9 package, fresh disposable-profile run, 146-file completeness
+gate, and independent manifest/contact-sheet validation are complete. The
+remaining performance and platform work is:
+
+1. Measure cold and warm Garden openings separately, including an explicit
+   first-paint boundary.
+2. Measure add-on startup, Dashboard-open, and each dialog family with explicit
+   request-to-visible and first-paint boundaries.
+3. Measure each dialog family independently. For memory, cycle each family at
+   least 30 times and sample process RSS plus `QApplication.allWidgets()` counts
+   before opening, every tenth close, and after queued close/deletion events
+   have drained.
+4. Repeat the complete capture and timing contract on Windows, true standard
+   scaling, true OS 200-percent scaling, and mixed/high-DPI display setups.
+
+The 188.832-second incomplete v8 run remains the frozen pre-change baseline.
+The v9 run supersedes its capture-completeness and capture-duration evidence,
+but it does not replace the explicit unmeasured performance and platform
+boundaries above.
