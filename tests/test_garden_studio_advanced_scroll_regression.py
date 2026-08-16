@@ -561,6 +561,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     shared_controllers = (
         settings.report_actions_responsive,
         dashboard.collection_filter_responsive,
+        dashboard.garden_stats_bar.growth_identity_responsive,
     )
     for controller in shared_controllers:
         threshold = controller.evaluate(100_000).threshold_width
@@ -848,6 +849,96 @@ def test_live_qt_settings_details_rewrap_to_full_height_when_available(
     application.processEvents()
 
 
+def test_live_qt_compact_progress_navigation_wraps_complete_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QLabel
+        from ankigarden.ui.dashboard import GardenSideNavigation
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    navigation = GardenSideNavigation()
+    labels = (
+        "Overview",
+        "Plant Growth",
+        "Anki Streak",
+        "Garden Coins",
+        "Achievements",
+        "Collection",
+    )
+    for index, label in enumerate(labels):
+        navigation.add_page(str(index), label, QLabel(label))
+    navigation.set_compact(True)
+    navigation.resize(680, 400)
+    navigation.show()
+    application.processEvents()
+    application.processEvents()
+
+    assert navigation._rail_columns == 3
+    assert navigation.rail.property("navigationRows") == 2
+    assert navigation.rail.height() >= (
+        2 * 44 + navigation.rail_layout.verticalSpacing()
+    )
+    positions = []
+    for label, button in zip(labels, navigation.buttons.values()):
+        assert button.text() == label
+        assert button.width() >= button.fontMetrics().horizontalAdvance(label) + 36
+        assert navigation.rail.rect().contains(button.geometry())
+        positions.append((button.y(), button.x()))
+    assert positions == sorted(positions)
+
+    navigation.close()
+    application.processEvents()
+
+
+def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication
+        from ankigarden.ui.dashboard import GardenStatsStrip
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    strip = GardenStatsStrip()
+    strip.set_compact(True)
+    strip.set_growth_details(
+        plant_name="Peony Plant",
+        stage="Sprout",
+        next_stage="Young",
+        total_growth=0,
+        current=0,
+        maximum=2_000,
+        remaining=2_000,
+        fully_grown=False,
+        accessible_text="Peony Plant has 0 of 2,000 Growth.",
+    )
+    strip.resize(620, 120)
+    strip.show()
+    application.processEvents()
+    application.processEvents()
+    strip._sync_growth_identity_layout()
+    application.processEvents()
+
+    assert strip.growth_name.text() == "Peony Plant"
+    assert strip.growth_value.text() == "0 / 2,000"
+    assert strip.growth_value.accessibleName() == "0 / 2,000 Growth"
+    assert strip.cells["growth"].property("growthIdentityMode") in {
+        "compact",
+        "wide",
+    }
+
+    strip.close()
+    application.processEvents()
+
+
 def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -907,6 +998,10 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         parent=dashboard,
     )
     assert species is not None
+    assert replacement.maximumHeight() == 440
+    assert replacement.property("contentBoundedMaximumHeight") == 440
+    assert species.maximumHeight() == 500
+    assert species.property("contentBoundedMaximumHeight") == 500
     settings = GardenSettingsDialog(dashboard, engine, config)
     progress = dashboard.progress_dialog
     customize = dashboard.customize_dialog

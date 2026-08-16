@@ -562,6 +562,22 @@ class DialogShell(QWidget):
         self.setProperty("dialogSizeClass", size_class.value)
         return width, height
 
+    def set_content_bounded_maximum_height(self, maximum_height: int) -> int:
+        """Cap short semantic dialogs without weakening their shared minimum.
+
+        Width can still grow for comparisons and readable rows. The explicit
+        vertical cap prevents a short body from inheriting a catalogue-sized
+        empty viewport on a large display.
+        """
+
+        bounded = max(self.minimumHeight(), int(maximum_height))
+        bounded = min(self.maximumHeight(), bounded)
+        self.setMaximumHeight(bounded)
+        if self.height() > bounded:
+            self.resize(self.width(), bounded)
+        self.setProperty("contentBoundedMaximumHeight", bounded)
+        return bounded
+
     def _focusable_descendants(self) -> list[QWidget]:
         def enum_value(value: Any) -> int:
             return int(getattr(value, "value", value))
@@ -1292,6 +1308,7 @@ class FertilizerReplacementDialog(DialogShell):
         self.setWindowTitle("Replace active Fertilizer?")
         self.setModal(True)
         self.apply_size_policy(DialogSizeClass.COMPARISON)
+        self.set_content_bounded_maximum_height(440)
         self.setStyleSheet(_garden_dialog_stylesheet())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 18)
@@ -6654,7 +6671,8 @@ class GardenStatsStrip(QFrame):
         self.growth_stage.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.growth_stage.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         growth_heading.addWidget(self.growth_stage)
-        growth_identity = QHBoxLayout()
+        growth_identity = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.growth_identity = growth_identity
         growth_identity.setSpacing(8)
         self.growth_name = ElidingLabel("Choose a plant")
         self.growth_name.setProperty("gardenPlantName", True)
@@ -6776,11 +6794,73 @@ class GardenStatsStrip(QFrame):
         self._onboarding_mode = False
         self._streak_bonus_percent = 0
         self._growth_value_full_text = "0 / 0 Growth"
+        self.growth_identity_responsive = AdaptiveRow.for_box_layout(
+            "dashboard.growth-identity",
+            (
+                AdaptiveRegion(
+                    "active-plant-name",
+                    self._growth_name_content_width,
+                    self.growth_name,
+                ),
+                AdaptiveRegion(
+                    "stage-growth-value",
+                    self._growth_value_content_width,
+                    self.growth_value,
+                ),
+            ),
+            layout=self.growth_identity,
+            wide_direction=QBoxLayout.Direction.LeftToRight,
+            compact_direction=QBoxLayout.Direction.TopToBottom,
+            spacing=8,
+            telemetry_target=self.cells["growth"],
+        )
         # Every visible child belongs to one semantic, clickable metric card.
         for cell in self.cells.values():
             for child in cell.findChildren(QWidget):
                 child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.set_compact(False)
+
+    def _growth_name_content_width(self) -> int:
+        return max(
+            1,
+            self.growth_name.fontMetrics().horizontalAdvance(
+                str(self.growth_name._full_text)
+            ),
+        )
+
+    def _growth_value_content_width(self) -> int:
+        visible_text = (
+            self._growth_value_full_text.removesuffix(" Growth")
+            if self._compact else
+            self._growth_value_full_text
+        )
+        return max(
+            1,
+            self.growth_value.fontMetrics().horizontalAdvance(visible_text),
+        )
+
+    def _sync_growth_identity_layout(self) -> None:
+        margins = self.cells["growth"].layout().contentsMargins()
+        available = max(
+            0,
+            int(self.cells["growth"].contentsRect().width())
+            - margins.left()
+            - margins.right(),
+        )
+        telemetry = self.growth_identity_responsive.evaluate(available)
+        self.growth_name.setMinimumWidth(
+            self._growth_name_content_width()
+            if telemetry.mode == WIDE_MODE else
+            0
+        )
+        self.cells["growth"].setProperty("growthIdentityMode", telemetry.mode)
+        QTimer.singleShot(0, self.growth_name._refresh_elision)
+
+    def resizeEvent(self, event: Any) -> None:
+        if hasattr(self, "growth_identity_responsive"):
+            self._sync_growth_identity_layout()
+            QTimer.singleShot(0, self._sync_growth_identity_layout)
+        super().resizeEvent(event)
 
     def wide_content_minimum_width(self) -> int:
         """Return the stable width needed by the four-column full-copy mode.
@@ -6862,6 +6942,9 @@ class GardenStatsStrip(QFrame):
         refresh_growth_value = getattr(self, "_refresh_growth_value_copy", None)
         if callable(refresh_growth_value):
             refresh_growth_value()
+        sync_growth_identity = getattr(self, "_sync_growth_identity_layout", None)
+        if callable(sync_growth_identity):
+            sync_growth_identity()
         if hasattr(self.cells["streak"], "setVisible"):
             self.cells["streak"].setVisible(not onboarding_mode)
             self.cells["currency"].setVisible(not onboarding_mode)
@@ -6968,6 +7051,7 @@ class GardenStatsStrip(QFrame):
                 )
         self.growth_support.setVisible(bool(self.growth_support.text()) and not self._compact)
         self._refresh_growth_value_copy()
+        self._sync_growth_identity_layout()
         self.set_progress(
             "growth", safe_current, safe_maximum, accessible_text=accessible_text
         )
@@ -7064,7 +7148,7 @@ class RearrangeBar(QFrame):
 
 
 class GardenSideNavigation(QWidget):
-    """Responsive left rail that becomes a single-line tab row when narrow."""
+    """Responsive left rail that becomes a content-measured grid when narrow."""
 
     currentChanged = pyqtSignal(str)
 
@@ -7076,13 +7160,16 @@ class GardenSideNavigation(QWidget):
         self.root_layout.setSpacing(22)
         self.rail = QFrame()
         self.rail.setProperty("sideNavigation", True)
-        self.rail_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self.rail)
+        self.rail_layout = QGridLayout(self.rail)
         self.rail_layout.setContentsMargins(0, 0, 0, 0)
-        self.rail_layout.setSpacing(4)
+        self.rail_layout.setHorizontalSpacing(4)
+        self.rail_layout.setVerticalSpacing(4)
         self.stack = QStackedWidget()
         self.stack.setAccessibleName("Garden Progress content")
         self.buttons: dict[str, QPushButton] = {}
         self.keys: list[str] = []
+        self._compact = False
+        self._rail_columns = 1
         self.root_layout.addWidget(self.rail, 0)
         self.root_layout.addWidget(self.stack, 1)
         self.set_compact(False)
@@ -7098,8 +7185,8 @@ class GardenSideNavigation(QWidget):
         )
         self.buttons[normalized] = button
         self.keys.append(normalized)
-        self.rail_layout.addWidget(button)
         self.stack.addWidget(widget)
+        self._reflow_rail()
         if len(self.keys) == 1:
             self.set_current(normalized, emit=False)
 
@@ -7123,24 +7210,84 @@ class GardenSideNavigation(QWidget):
             self.currentChanged.emit(normalized)
 
     def set_compact(self, compact: bool) -> None:
+        self._compact = bool(compact)
         self.root_layout.setDirection(
             QBoxLayout.Direction.TopToBottom
             if compact else
             QBoxLayout.Direction.LeftToRight
         )
-        self.rail_layout.setDirection(
-            QBoxLayout.Direction.LeftToRight
-            if compact else
-            QBoxLayout.Direction.TopToBottom
-        )
         self.rail.setMaximumWidth(16777215 if compact else 168)
         self.rail.setMinimumWidth(0 if compact else 156)
-        self.rail.setMaximumHeight(52 if compact else 16777215)
         for button in self.buttons.values():
             button.setSizePolicy(
-                QSizePolicy.Policy.Preferred if compact else QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
             )
+        self._reflow_rail()
+        if compact:
+            QTimer.singleShot(0, self._reflow_rail)
+
+    def _compact_column_count(self) -> int:
+        available = max(1, int(self.rail.width() or self.width()))
+        item_width = 112
+        if self.buttons:
+            item_width = max(
+                112,
+                *(
+                    button.fontMetrics().horizontalAdvance(button.text()) + 36
+                    for button in self.buttons.values()
+                ),
+            )
+        return responsive_column_count(
+            available,
+            minimum_item_width=item_width,
+            maximum_columns=3,
+            spacing=self.rail_layout.horizontalSpacing(),
+        )
+
+    def _reflow_rail(self) -> None:
+        while self.rail_layout.count():
+            self.rail_layout.takeAt(0)
+        columns = self._compact_column_count() if self._compact else 1
+        self._rail_columns = max(1, int(columns))
+        for index, button in enumerate(self.buttons.values()):
+            self.rail_layout.addWidget(
+                button,
+                index // self._rail_columns,
+                index % self._rail_columns,
+            )
+        rows = max(
+            1,
+            (len(self.buttons) + self._rail_columns - 1) // self._rail_columns,
+        )
+        for column in range(3):
+            self.rail_layout.setColumnStretch(
+                column,
+                1 if column < self._rail_columns else 0,
+            )
+        for row in range(len(self.buttons) + 1):
+            self.rail_layout.setRowStretch(row, 0)
+        if self._compact:
+            height = (
+                rows * BUTTON_MIN_HEIGHT
+                + max(0, rows - 1) * self.rail_layout.verticalSpacing()
+            )
+            self.rail.setMinimumHeight(height)
+            self.rail.setMaximumHeight(height)
+        else:
+            self.rail.setMinimumHeight(0)
+            self.rail.setMaximumHeight(16777215)
+            self.rail_layout.setRowStretch(rows, 1)
+        self.rail.setProperty("navigationColumns", self._rail_columns)
+        self.rail.setProperty("navigationRows", rows)
+        self.rail.updateGeometry()
+
+    def resizeEvent(self, event: Any) -> None:
+        if self._compact:
+            columns = self._compact_column_count()
+            if columns != self._rail_columns:
+                self._reflow_rail()
+        super().resizeEvent(event)
 
 
 def _streak_milestone_fraction(streak_days: int) -> float:
@@ -11275,6 +11422,7 @@ class GardenDashboard(DialogShell):
             preferred_width=760,
             preferred_height=620,
         )
+        dialog.set_content_bounded_maximum_height(500)
         dialog.setProperty("windowFamily", "SpeciesOverviewDialog")
         dialog.setProperty("layoutMode", "default")
         scroll = QScrollArea()

@@ -769,6 +769,18 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
                 r'data-marker-planter-rect="([^"]+)"', marker
             ).group(1).split(",")
         ]
+        expected_clearance = (
+            "center-left-marker"
+            if rect[0] < 500 and rect[1] + rect[3] > 300
+            else "none"
+        )
+        assert f'data-summary-clearance="{expected_clearance}"' in html
+        if expected_clearance != "none":
+            assert (
+                '#ag-home-root[data-summary-clearance="center-left-marker"] '
+                ".ag-home__support"
+            ) in html
+            assert "-webkit-line-clamp:2" in html
         assert 44 <= rect[2] <= 88
         assert rect[2] == rect[3]
         assert pulse[0] >= 0 and pulse[1] >= 0

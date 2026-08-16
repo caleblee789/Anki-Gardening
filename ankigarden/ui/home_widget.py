@@ -504,11 +504,19 @@ HOME_WIDGET_STYLE = """
   .ag-home__support { max-width:100%; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
-#ag-home-root[data-active-slot="4"] .ag-home__identity-row {
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity-row {
   grid-template-columns:minmax(0,32%) auto;
   justify-content:space-between;
 }
-#ag-home-root[data-active-slot="4"] .ag-home__identity { text-align:left; }
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity {
+  text-align:left;
+}
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__support {
+  display:-webkit-box;
+  white-space:normal;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
 </style>
 """
 
@@ -700,6 +708,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         "near": [],
     }
     marker_overlays: list[str] = []
+    summary_clearance = "none"
     theme = str(data.scene_items[0].get("background_theme", "verdant_twilight")) if data.scene_items else "verdant_twilight"
     band_counts = {"far": 0, "middle": 0, "near": 0}
     plant_z_base = {"far": 10, "middle": 40, "near": 70}
@@ -771,14 +780,19 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         marker_markup = ""
         if bool(item.get("is_active")):
             placement_protected_regions = marker_protected_regions
-            if layout.slot_index == 4:
-                # Home reserves a center gap for the front-left marker. Match
-                # the solver's identity obstacle to that narrower text column
-                # so the can can remain on the plant's exact soil line.
+            marker_needs_center_left_clearance = (
+                layout.depth_band == "near"
+                and float(layout.ground_anchor[0]) < 500.0
+            )
+            if marker_needs_center_left_clearance:
+                # Derive the summary gap from the front-left soil region, not
+                # a plot-number exception. This keeps the same collision-safe
+                # placement if the scene metadata reorders its plots.
                 placement_protected_regions = (
                     Rect(0.0, 300.0, 340.0, 120.0),
                     marker_protected_regions[1],
                 )
+                summary_clearance = "center-left-marker"
             marker_placement = nurtured_marker_placement(
                 1000,
                 420,
@@ -1125,7 +1139,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" role=\"button\" tabindex=\"0\"
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"button\" tabindex=\"0\"
   aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{marker_accessible}\"
   data-anki-garden-command=\"anki-garden:{action_command}\"
   onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"

@@ -145,6 +145,25 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     assert "self.setMaximumSize(policy.max_width, policy.max_height)" in source
 
 
+def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None:
+    shell = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "set_content_bounded_maximum_height",
+    )
+    replacement = _class_source(DASHBOARD, "FertilizerReplacementDialog")
+    species = _method_source(
+        DASHBOARD,
+        "GardenDashboard",
+        "_build_species_overview_dialog",
+    )
+
+    assert "bounded = max(self.minimumHeight(), int(maximum_height))" in shell
+    assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
+    assert "self.set_content_bounded_maximum_height(440)" in replacement
+    assert "dialog.set_content_bounded_maximum_height(500)" in species
+
+
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:
     constructors = (
         ("GardenSettingsDialog", "DialogSizeClass.CATALOG"),
