@@ -1,6 +1,10 @@
 import ast
 from math import isfinite
 from pathlib import Path
+from types import SimpleNamespace
+
+from ankigarden.models.state import GROWTH_THRESHOLDS
+from ankigarden.ui.plant_presenters import fertilizer_status, growth_forecast
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,13 +86,20 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     assert 'property_name="nurseryArtwork"' in preview
     helper = _function_source("ankigarden/ui/dashboard.py", "_asset_preview_label")
     assert 'getattr(engine, "resolve_plant_asset", None)' in helper
-    assert '"visible_bounds", placement.get("art_bounds")' in helper
-    assert "_padded_preview_bounds(bounds)" in helper
-    assert "pixmap.copy(crop_x, crop_y, crop_width, crop_height)" in helper
-    assert '"seed": 0.92' in helper
-    assert '"rare": 0.86' in helper
+    assert "_normalized_plant_thumbnail(" in helper
     assert "Qt.AlignmentFlag.AlignCenter" in helper
-    assert "Qt.TransformationMode.SmoothTransformation" in helper
+    normalized = _function_source(
+        "ankigarden/ui/dashboard.py", "_normalized_plant_thumbnail"
+    )
+    assert '"thumbnail_bounds"' in normalized
+    assert '"thumbnail_optical_center"' in normalized
+    assert '"thumbnail_scale"' in normalized
+    assert '"thumbnail_safe_padding"' in normalized
+    assert "source.copy(crop_x, crop_y, crop_width, crop_height)" in normalized
+    assert "Qt.AspectRatioMode.KeepAspectRatio" in normalized
+    assert "Qt.TransformationMode.SmoothTransformation" in normalized
+    assert '"seed": 0.92' in normalized
+    assert '"rare": 0.88' in normalized
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
@@ -158,6 +169,19 @@ def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> 
     assert "_asset_preview_label(" in nursery_artwork
     assert "self._plant_artwork(species, stage, 48)" in stage_strip
     assert "self._plant_artwork(species, stage, 132)" in stage_carousel
+
+    collection = _method_source(
+        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_collection_list"
+    )
+    overview = _method_source(
+        "ankigarden/ui/dashboard.py", "GardenDashboard", "_build_species_overview_dialog"
+    )
+    assert "highest_stage if collected_species else \"seed\"" in collection
+    assert "title = QLabel(format_status_label(species))" in collection
+    assert '"Not collected · Available in the Nursery"' in collection
+    assert 'dialog.setProperty("collectionState", "collected" if collected else "not-collected")' in overview
+    assert '"Mystery until Rare"' in overview
+    assert '"No collected plants yet"' in overview
 
 
 def test_nursery_stage_carousel_uses_clear_bounded_navigation() -> None:
@@ -503,19 +527,21 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     undo = _method_source("ankigarden/ui/dashboard.py", "GardenDashboard", "_undo_move")
 
     positions: list[int] = []
-    for label in ("Nurture", "Fertilize", "Move", "Story"):
+    for label in ("Nurture", "Fertilize", "Growth Charge", "Move", "Story"):
         assert f'QPushButton("{label}")' in card
         positions.append(card.index(f'QPushButton("{label}")'))
     assert positions == sorted(positions)
-    assert "actions.addWidget(self.nurture, 0, 0)" in card
-    assert "actions.addWidget(self.fertilize, 0, 1)" in card
-    assert "actions.addWidget(self.move, 1, 0)" in card
-    assert "actions.addWidget(self.story, 1, 1)" in card
+    assert "self.actions.addWidget(self.nurture, 0, 0, 1, 2)" in card
+    assert "self.actions.addWidget(self.fertilize, 0, 0)" in card
+    assert "self.actions.addWidget(self.growth_charge, 0, 1)" in card
+    assert "secondary_row = 1 if active else 2" in card
+    assert "self.actions.addWidget(self.move, secondary_row, 0)" in card
+    assert "self.actions.addWidget(self.story, secondary_row, 1)" in card
     assert 'self.nurture.setText("Nurture")' in card
     assert 'self.fertilize.setText("Fertilize")' in card
     assert "self.nurture.setChecked(False)" in card
     assert "self.nurture.setVisible(not active and not fully_grown)" in card
-    assert "self.nurtured_badge.setVisible(active or fully_grown)" in card
+    assert "self.nurtured_badge.setVisible(active and not fully_grown)" in card
     assert "nurture_reason" in card
     assert "fertilizer_reason" in card
     assert "Nurture this plant before using Fertilizer." in card
@@ -546,12 +572,13 @@ def test_story_is_chronological_compact_and_has_an_up_next_card() -> None:
     assert 'self.edit_name_btn = QPushButton("Rename")' in story
     assert 'self.edit_name_btn.setAccessibleName("Rename plant")' in story
     assert "self.edit_name_btn.setMinimumHeight(BUTTON_MIN_HEIGHT)" in story
-    assert 'up_next_title = QLabel("Up next")' in story
+    assert 'self.up_next_title = QLabel("Up next")' in story
     assert "memories = chronological_memories(plant.memories)" in refresh
     assert "reverse=True" not in refresh
     assert 'timeline_label = QLabel("Memories")' in dashboard
     assert "New memories will appear as this plant grows." in dashboard
-    assert "Anki card {'answer' if answers == 1 else 'answers'}" in refresh
+    assert "forecast = growth_forecast(self.engine, plant)" in refresh
+    assert 'f"About {answers:,} Anki card' not in refresh
     assert "self.stage_nodes" in story
     assert "stage_preview = ArtworkThumbnail()" in story
     assert 'stage_preview.setProperty("storyStagePreview", True)' in story
@@ -559,7 +586,8 @@ def test_story_is_chronological_compact_and_has_an_up_next_card() -> None:
     assert "plant.species" in refresh
     assert "stage_key" in refresh
     assert "storyStageMark" not in story
-    assert "FULLY_GROWN_MESSAGE" in refresh
+    assert 'self.up_next_title.setText("Growth summary")' in refresh
+    assert 'f"Fully grown · {plant.growth_points:,} total Growth"' in refresh
     assert "FULLY_GROWN_ACTION" in story
 
 
@@ -573,11 +601,9 @@ def test_story_reuses_the_nurtured_badge_and_shows_one_growth_counter() -> None:
         "ankigarden/ui/dashboard.py", "PlantInfoCard", "set_selected"
     )
 
-    assert 'self.nurturing_status.setProperty("nurturedBadge", True)' in story
-    assert 'self.nurturing_status.setProperty("detailStatus", True)' not in story
-    assert dashboard.count(
-        "QLabel[nurturedBadge='true'] {{ {_nurtured_badge_declarations()} }}"
-    ) == 2
+    assert "self.nurturing_status = NurturedPlantBadge(nurtured_asset)" in story
+    assert "class NurturedPlantBadge(QFrame):" in dashboard
+    assert 'self.icon.setAccessibleName("Watering can")' in dashboard
     assert 'self.stage_progress.set_progress(\n                "Growth",' in story_refresh
     assert story_refresh.count(
         'value_text=f"{progress.stage_points:,} / {progress.stage_goal:,} Growth"'
@@ -734,10 +760,10 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     ) == 1
     assert "self.growth_summary.setText(" in plant_card
     assert ".replace('card answer', 'eligible answer')" not in plant_card
-    assert "_card_answer_count(reviews_remaining)" in plant_card
+    assert 'forecast = plant.get("growth_forecast", {})' in plant_card
     assert "self.growth_remaining.setText(" not in plant_card
     assert plant_card.count("self.growth_remaining.hide()") == 2
-    assert 'f"{remaining:,} Growth remaining. "' in plant_card
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in plant_card
     assert "% to {next_stage}" not in plant_card
     overview = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
@@ -748,7 +774,8 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
     assert 'duration = f"{hours} hour" if hours == 1 else f"{hours} hours"' in fertilizer
-    assert '"Active fertilizer · None"' in fertilizer
+    assert "current_status = FertilizerStatusBlock(allow_description=True)" in fertilizer
+    assert "fertilizer_status(" in fertilizer
     assert "_fertilizer_action_label(" in fertilizer
     assert '_affordability_status(spec.price, balance_value)' in fertilizer
 
@@ -915,10 +942,12 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
     assert "owned_count + available_count" in nursery_refresh
     assert "'plant' if max(owned_count, owned_count + available_count) == 1 else 'plants'" in nursery_refresh
     assert "self.intro.setAccessibleDescription(intro_text)" in nursery_refresh
-    assert 'f"{discovered} of {len(species_catalog)} species discovered"' in collection_refresh
-    assert '"Undiscovered species"' in collection_refresh
+    assert 'f"{collected} of {len(species_catalog)} species collected"' in collection_refresh
+    assert '("not_collected", "Not collected")' in collection_refresh
+    assert '"Not collected · Available in the Nursery"' in collection_refresh
     assert "_card_answer_count(review_count)" in catchup
-    assert "_card_answer_count(reviews_remaining)" in dashboard
+    assert "growth_forecast(self.engine, plant)" in dashboard
+    assert 'f"About {answers:,} Anki card' not in dashboard
 
 
 def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
@@ -1037,13 +1066,78 @@ def test_progress_surfaces_show_one_growth_value_plus_a_card_answer_forecast() -
     story = _method_source(
         "ankigarden/ui/dashboard.py", "PlantStoryDialog", "refresh"
     )
+    overview = _method_source(
+        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
+    )
 
     assert 'progress.set_progress(\n                "Growth",' in growth
     assert 'value_text=f"{display.stage_points:,} / {display.stage_goal:,} Growth"' in growth
-    assert 'f"About {answers:,} Anki card' in growth
+    assert "forecast = growth_forecast(self.engine, plant)" in growth
+    assert 'f"About {answers:,} Anki card' not in growth
     assert 'f"{display.points_remaining:,} Growth remaining' not in growth
     assert 'self.stage_progress.set_progress(\n                "Growth",' in story
-    assert 'f"About {answers:,} Anki card' in story
+    assert "forecast = growth_forecast(self.engine, plant)" in story
+    assert 'f"About {answers:,} Anki card' not in story
+    assert 'f"Fully grown · {active_plant.growth_points:,} total Growth"' in overview
+    assert "1 if display.fully_grown" not in overview
+
+
+def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time() -> None:
+    class Engine:
+        FERTILIZERS = {
+            "basic": SimpleNamespace(name="Basic Fertilizer"),
+        }
+
+        def __init__(self, rate: int = 10, bonus: int = 0) -> None:
+            self.state = SimpleNamespace(active_plant_id="plant-1")
+            self.award = SimpleNamespace(
+                total_growth=rate,
+                bonus_percent=0,
+                bonus_growth=bonus,
+                paused_reason="",
+            )
+
+        def project_review_growth(self, _plant: object, *, now=None):
+            return self.award
+
+    engine = Engine()
+    plant = SimpleNamespace(
+        plant_id="plant-1", growth_stage="seed", growth_points=0, fully_grown=False
+    )
+    assert growth_forecast(engine, plant).text == "50 cards left to sprout"
+    plant.growth_stage = "mature"
+    plant.growth_points = GROWTH_THRESHOLDS[4] - 10
+    assert growth_forecast(engine, plant).text == "1 card left to flowering"
+    plant.growth_points = GROWTH_THRESHOLDS[-1]
+    assert growth_forecast(engine, plant).text == "Fully grown"
+
+    plant.growth_stage = "young"
+    plant.growth_points = GROWTH_THRESHOLDS[2]
+    engine.award = SimpleNamespace(
+        total_growth=12,
+        bonus_percent=0,
+        bonus_growth=2,
+        paused_reason="",
+    )
+    forecast = growth_forecast(engine, plant)
+    assert forecast.tooltip == "Based on the current Growth per card"
+    assert forecast.cards_left is not None and forecast.cards_left >= 0
+
+    plant.fertilizer = SimpleNamespace(
+        tier="basic", growth_per_answer=1, expires_at=7_900.0
+    )
+    active = fertilizer_status(engine, plant, now=1_000.0)
+    assert (active.name, active.effect, active.duration) == (
+        "Basic Fertilizer",
+        "+1 Growth per card",
+        "1h 55m remaining",
+    )
+    plant.fertilizer.expires_at = 1_030.0
+    assert fertilizer_status(engine, plant, now=1_000.0).duration == (
+        "Under 1 minute remaining"
+    )
+    plant.fertilizer.expires_at = 999.0
+    assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"
 
 
 def test_compact_dashboard_keeps_words_for_progress_and_anki_streak() -> None:
@@ -1169,4 +1263,5 @@ def test_progress_reward_badges_and_fertilizer_countdown_are_runtime_safe() -> N
     assert '"detailPositive" if int(transaction.delta) >= 0 else "detailNegative",\n                True,' in overview
     assert "countdown_timer.setInterval(1_000)" in fertilizer
     assert "countdown_timer.timeout.connect(refresh_fertilizer_countdown)" in fertilizer
-    assert '"Less than 1 minute remaining"' in fertilizer_text
+    assert "fertilizer_status(" in fertilizer_text
+    assert "status.duration" in fertilizer_text

@@ -195,9 +195,9 @@ def test_plant_popover_uses_one_slash_progress_value_and_hides_fully_grown_ferti
     }
     assert grown_actions == {"choose_another", "move", "story"}
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in selected_source
-    assert 'value_text=f"{growth_points:,} Growth"' in selected_source
-    assert '"Plant Growth"' in selected_source
-    assert _calls(selected, "self.growth_summary.hide")
+    assert 'self.growth_summary.setText(f"Fully grown · {growth_points:,} total Growth")' in selected_source
+    assert _calls(selected, "self.stage_progress.hide")
+    assert _calls(selected, "self.growth_summary.show")
     assert _calls(selected, "self.growth_remaining.hide")
     assert not _calls(selected, "self.growth_remaining.show")
     assert not _calls(selected, "self.growth_remaining.setText")
@@ -287,7 +287,7 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
-    assert len(scroll_constructors) == 16
+    assert len(scroll_constructors) == 15
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper

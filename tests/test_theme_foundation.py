@@ -379,7 +379,7 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(balance_value)",
         "apply_tabular_numerals(amount)",
         "apply_tabular_numerals(resulting)",
-        "apply_tabular_numerals(current_status)",
+        "apply_tabular_numerals(self.duration_label)",
         "apply_tabular_numerals(balance)",
         "apply_tabular_numerals(self.status_value)",
         "apply_tabular_numerals(affordability_label)",

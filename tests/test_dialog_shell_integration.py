@@ -166,7 +166,7 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert "breathing_room=10" in replacement
     assert 'comparison.mode == "compact"' in replacement
     assert 'mode_ceiling = 440 if comparison.mode == "compact" else 380' in replacement
-    assert "dialog.set_content_bounded_maximum_height(500)" in species
+    assert "dialog.set_content_bounded_maximum_height(540)" in species
 
 
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:

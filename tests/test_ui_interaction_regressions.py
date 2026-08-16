@@ -1189,18 +1189,18 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     source = _method_source(DASHBOARD_PATH, "PlantInfoCard", "set_selected")
 
     assert 'self.nurture.setVisible(not active and not fully_grown)' in source
-    assert 'self.nurtured_badge.setVisible(active or fully_grown)' in source
+    assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
     assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
-    assert 'self.fertilizer_summary.setVisible(fertilizer_growth > 0)' in source
+    assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
     assert "self.growth_summary.setText(" in source
     assert ".replace('card answer', 'eligible answer')" not in source
-    assert "_card_answer_count(reviews_remaining)" in source
+    assert 'forecast = plant.get("growth_forecast", {})' in source
     assert source.count("self.growth_remaining.hide()") == 2
     assert "self.growth_remaining.setText(" not in source
     assert "self.growth_summary.setAccessibleDescription(" in source
-    assert 'f"{remaining:,} Growth remaining. "' in source
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in source
     assert 'self.status_row.hide()' in source
     assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 

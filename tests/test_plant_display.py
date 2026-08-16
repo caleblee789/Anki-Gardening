@@ -934,7 +934,7 @@ def test_dashboard_is_garden_first_with_one_progress_architecture():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
     assert "from .formatters import format_status_label" in dashboard
     assert "root.addWidget(hero_card, 1)" in dashboard
-    assert 'self.garden_stats_bar = GardenStatsStrip()' in dashboard
+    assert 'self.garden_stats_bar = GardenStatsStrip(self.engine)' in dashboard
     assert '("growth", "Plant Growth"' in dashboard
     assert '("currency", "Garden Coins"' in dashboard
     assert "self.streak_ticks = QLabel" not in dashboard
