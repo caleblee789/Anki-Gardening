@@ -45,7 +45,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 8
+CAPTURE_CONTRACT_VERSION = 9
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -175,7 +175,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "clear-recall-separate-conditions",
             "streak-at-risk",
             "streak-missed-day",
-            "streak-reward-claimed-unclaimed",
+            "streak-reward-earned-next",
         ),
     ),
     (
@@ -337,6 +337,29 @@ NURTURED_MARKER_GEOMETRY_CAPTURE_LABELS = frozenset({
     "watering-can-overview-plot-6",
 })
 
+WATERING_CAPTURE_GARDEN_NAME = "My Garden"
+WATERING_CAPTURE_CURRENCY_BALANCE = 30
+WATERING_CAPTURE_GROWTH_POINTS = 500
+
+# ``development_populate()`` intentionally randomizes its broad developer
+# fixture. Release evidence needs the same ten source-owned instances in the
+# same order on every run, so the capture harness verifies this literal against
+# both the current catalog and the release-ready asset projection before using
+# it. Keeping the expected order literal also lets offline manifest validators
+# bind the live postcondition without importing Anki or Qt.
+DEVELOPMENT_STRESS_SPECIES_ORDER: tuple[str, ...] = (
+    "bonsai",
+    "rose",
+    "sunflower",
+    "lavender",
+    "hydrangea",
+    "peony",
+    "foxglove",
+    "japanese_maple",
+    "wisteria",
+    "dahlia",
+)
+
 
 RESIZE_MATRIX_SPECS: tuple[
     tuple[str, str, str, int, int, int, int], ...
@@ -399,6 +422,464 @@ RESIZE_MATRIX_SPECS: tuple[
     ("resize-species-overview-large", "species-overview", "default-to-large", 760, 700, 560, 500),
 )
 
+# Each resize face owns a semantic layout state in addition to its requested
+# geometry.  Native window managers may trim a client surface to the available
+# screen, so exact pixels alone are not sufficient to prove that the two sides
+# of a breakpoint remained distinct.
+RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
+    "resize-dashboard-minimum": "narrow",
+    "resize-dashboard-content-699": "narrow",
+    "resize-dashboard-content-701": "narrow",
+    "resize-dashboard-content-819": "narrow",
+    "resize-dashboard-content-821": "compact",
+    "resize-dashboard-content-899": "compact",
+    "resize-dashboard-content-901": "compact",
+    "resize-dashboard-content-999": "compact",
+    "resize-dashboard-content-1001": "compact",
+    "resize-dashboard-content-1359": "compact",
+    "resize-dashboard-content-1361": "wide",
+    "resize-dashboard-default": "compact",
+    "resize-dashboard-large": "wide",
+    "resize-settings-minimum": "display",
+    "resize-settings-content-699": "display",
+    "resize-settings-content-701": "display",
+    "resize-settings-content-759": "display",
+    "resize-settings-content-761": "display",
+    "resize-settings-default": "display",
+    "resize-settings-large": "display",
+    "resize-progress-minimum": "compact",
+    "resize-progress-content-819": "compact",
+    "resize-progress-content-821": "wide",
+    "resize-progress-default": "wide",
+    "resize-progress-large": "wide",
+    "resize-customize-minimum": "compact",
+    "resize-customize-content-819": "compact",
+    "resize-customize-content-821": "wide",
+    "resize-customize-default": "wide",
+    "resize-customize-large": "wide",
+    "resize-nursery-minimum": "compact",
+    "resize-nursery-content-759": "compact",
+    "resize-nursery-content-761": "wide",
+    "resize-nursery-default": "wide",
+    "resize-nursery-large": "wide",
+    "resize-story-minimum": "compact",
+    "resize-story-content-539": "compact",
+    "resize-story-content-541": "wide",
+    "resize-story-default": "wide",
+    "resize-story-large": "wide",
+    "resize-starter-confirmation-minimum": "compact",
+    "resize-starter-confirmation-content-399": "compact",
+    "resize-starter-confirmation-content-401": "wide",
+    "resize-starter-confirmation-default": "wide",
+    "resize-starter-confirmation-large": "wide",
+    "resize-fertilizer-minimum": "default",
+    "resize-fertilizer-default": "default",
+    "resize-fertilizer-large": "default",
+    "resize-fertilizer-replacement-minimum": "compact",
+    "resize-fertilizer-replacement-content-399": "compact",
+    "resize-fertilizer-replacement-content-401": "wide",
+    "resize-fertilizer-replacement-default": "wide",
+    "resize-fertilizer-replacement-large": "wide",
+    "resize-species-overview-minimum": "default",
+    "resize-species-overview-default": "default",
+    "resize-species-overview-large": "default",
+}
+
+
+_HOME_CAPTURE_LABELS = frozenset({
+    "starter-deck-browser-home",
+    "starter-overview-home",
+    "deck-browser-home",
+    "overview-home",
+    "active-deck-browser-home-after-nurture",
+    "active-overview-home-after-nurture",
+    "watering-can-deck-browser-plot-1",
+    "watering-can-deck-browser-plot-3",
+    "watering-can-deck-browser-plot-5",
+    "watering-can-overview-plot-2",
+    "watering-can-overview-plot-4",
+    "watering-can-overview-plot-6",
+})
+
+_DASHBOARD_CAPTURE_LABELS = frozenset({
+    "starter-garden-onboarding",
+    "full-garden",
+    "hover-outline",
+    "selected-plant-not-nurtured",
+    "selected-plant-nurtured",
+    "move-mode",
+    "long-garden-name",
+    "long-plant-name",
+    "four-digit-coin-balance",
+    "growth-near-stage-completion",
+    "all-six-beds-occupied",
+    "plant-at-every-stage",
+    "fully-grown-plant-without-fertilize",
+    "move-occupied-empty-destinations",
+    "keyboard-focus-state",
+    "narrow-window-responsive",
+    "display-scaling-150",
+    "display-scaling-200-qt-representative",
+    *(f"popover-plot-{slot}" for slot in range(1, 7)),
+    *(f"watering-can-garden-plot-{slot}" for slot in range(1, 7)),
+})
+
+_PROGRESS_CAPTURE_LABELS = frozenset({
+    "growth-zero",
+    "growth-nonzero",
+    "streak-new",
+    "streak-active",
+    "coins-zero",
+    "coins-activity",
+    "progress-overview",
+    "progress-achievements",
+    "progress-collection",
+    "collection-several-discovered",
+    "collection-no-filter-matches",
+    "achievement-completed",
+    "clear-recall-separate-conditions",
+    "streak-at-risk",
+    "streak-missed-day",
+    "streak-reward-earned-next",
+})
+
+_NURSERY_CAPTURE_LABELS = frozenset({
+    "starter-nursery-plants",
+    "starter-action-above-footer",
+    "nursery-plants",
+    "nursery-fertilizer-booster",
+    "nursery-garden-spaces",
+    "nursery-weather-scenery",
+    "nursery-item-owned",
+    "nursery-item-locked",
+    "nursery-purchase-success",
+    "nursery-final-row-above-footer",
+    "missing-artwork-graphical-fallback",
+})
+
+_SETTINGS_CAPTURE_LABELS = frozenset({
+    "settings-menu-display",
+    "settings-display",
+    "settings-display-advanced-open",
+    "diagnostics-clean",
+    "diagnostics-warning",
+    "settings-unsaved-changes",
+    "settings-validation-error",
+    "diagnostics-expanded",
+    "production-build-controls-absent",
+    "reduced-motion-enabled",
+})
+
+_RESIZE_WINDOW_FAMILIES = {
+    "dashboard": "GardenDashboard",
+    "settings": "GardenSettingsDialog",
+    "progress": "GardenProgressDialog",
+    "customize": "CustomizeGardenDialog",
+    "nursery": "NurseryDialog",
+    "story": "PlantStoryDialog",
+    "starter-confirmation": "StarterConfirmationDialog",
+    "fertilizer": "FertilizerDialog",
+    "fertilizer-replacement": "FertilizerReplacementDialog",
+    "species-overview": "SpeciesOverviewDialog",
+}
+
+
+def expected_capture_window_family(label: str) -> str:
+    """Return the exact renderer family required for one manifest fixture."""
+
+    if label in _HOME_CAPTURE_LABELS:
+        return "AnkiQt"
+    if label in _DASHBOARD_CAPTURE_LABELS:
+        return "GardenDashboard"
+    if label in _PROGRESS_CAPTURE_LABELS:
+        return "GardenProgressDialog"
+    if label in _NURSERY_CAPTURE_LABELS:
+        return "NurseryDialog"
+    if label in _SETTINGS_CAPTURE_LABELS:
+        return "GardenSettingsDialog"
+    if label in {
+        "starter-selection-confirmation",
+    }:
+        return "StarterConfirmationDialog"
+    if label in {
+        "fertilizer-unaffordable",
+        "fertilizer-affordable",
+        "fertilizer-active",
+        "fertilizer-expiring-under-minute",
+    }:
+        return "FertilizerDialog"
+    if label == "fertilizer-replacement-confirmation":
+        return "FertilizerReplacementDialog"
+    if label == "plant-story":
+        return "PlantStoryDialog"
+    if label == "collection-species-overview":
+        return "SpeciesOverviewDialog"
+    if label in {
+        "customize-garden",
+        "customize-effects-on",
+        "customize-effects-off",
+    }:
+        return "CustomizeGardenDialog"
+    for resize_label, resize_family, *_geometry in RESIZE_MATRIX_SPECS:
+        if resize_label == label:
+            return _RESIZE_WINDOW_FAMILIES.get(resize_family, "")
+    return ""
+
+
+def expected_capture_state_profile(label: str) -> dict[str, Any]:
+    """Return the state-specific fixture profile required by one capture label.
+
+    Renderer identity alone cannot distinguish two states rendered by the same
+    dialog.  Every manifest label therefore receives an exact profile which is
+    checked against live widget and storage state immediately before pixels are
+    saved.
+    """
+
+    family = expected_capture_window_family(label)
+    if not family:
+        return {}
+    profile: dict[str, Any] = {
+        "profile_id": label,
+        "window_family": family,
+    }
+    if label in _HOME_CAPTURE_LABELS:
+        surface = "deckBrowser" if "deck-browser" in label else "overview"
+        fixture_state = (
+            "starter-not-selected"
+            if label.startswith("starter-") else
+            "starter-planted-not-nurtured"
+            if label in {"deck-browser-home", "overview-home"} else
+            "nurtured-active"
+        )
+        profile.update({
+            "kind": "home",
+            "surface": surface,
+            "fixture_state": fixture_state,
+        })
+        match = re.search(r"-plot-(\d+)$", label)
+        if match:
+            profile["active_slot"] = int(match.group(1)) - 1
+        return profile
+    for (
+        resize_label,
+        resize_family,
+        transition,
+        width,
+        height,
+        _start_width,
+        _start_height,
+    ) in RESIZE_MATRIX_SPECS:
+        if resize_label == label:
+            profile.update({
+                "kind": "resize",
+                "resize_family": resize_family,
+                "transition_path": transition,
+                "declared_client_size": [width, height],
+                "layout_mode": RESIZE_MATRIX_LAYOUT_MODES.get(label, ""),
+            })
+            if resize_family == "progress":
+                profile["canonical_page"] = "overview"
+            return profile
+    if label in _DASHBOARD_CAPTURE_LABELS:
+        profile.update({"kind": "dashboard", "state": label})
+        return profile
+    if label in _PROGRESS_CAPTURE_LABELS:
+        page = (
+            "growth" if label.startswith("growth-") else
+            "streak" if label.startswith("streak-") else
+            "currency" if label.startswith("coins-") else
+            "overview" if label == "progress-overview" else
+            "collection" if label in {
+                "progress-collection",
+                "collection-several-discovered",
+                "collection-no-filter-matches",
+            } else
+            "achievements"
+        )
+        profile.update({"kind": "progress", "page": page, "state": label})
+        return profile
+    if label in _NURSERY_CAPTURE_LABELS:
+        tab_by_label = {
+            "starter-nursery-plants": 0,
+            "starter-action-above-footer": 0,
+            "nursery-plants": 0,
+            "nursery-fertilizer-booster": 1,
+            "nursery-garden-spaces": 2,
+            "nursery-weather-scenery": 3,
+            "nursery-item-owned": 0,
+            "nursery-item-locked": 1,
+            "nursery-purchase-success": 3,
+            "nursery-final-row-above-footer": 0,
+            "missing-artwork-graphical-fallback": 3,
+        }
+        profile.update({
+            "kind": "nursery",
+            "tab": tab_by_label[label],
+            "state": label,
+            "starter_mode": label.startswith("starter-"),
+        })
+        return profile
+    if label in _SETTINGS_CAPTURE_LABELS:
+        diagnostics_labels = {
+            "diagnostics-clean",
+            "diagnostics-warning",
+            "diagnostics-expanded",
+            "production-build-controls-absent",
+        }
+        profile.update({
+            "kind": "settings",
+            "tab": 1 if label in diagnostics_labels else 0,
+            "state": label,
+        })
+        return profile
+    if label in {
+        "customize-garden",
+        "customize-effects-on",
+        "customize-effects-off",
+    }:
+        profile.update({"kind": "customize", "state": label})
+        return profile
+    profile.update({"kind": "dialog", "state": label})
+    return profile
+
+
+def resize_geometry_acceptance(
+    *,
+    label: str,
+    declared_size: list[int] | tuple[int, int],
+    actual_size: list[int] | tuple[int, int],
+    minimum_size: list[int] | tuple[int, int],
+    maximum_size: list[int] | tuple[int, int],
+    screen_limited: bool,
+    constraint_limited: bool,
+    native_normalized: bool,
+    normalization_reason: str,
+) -> dict[str, Any]:
+    """Classify requested-to-actual drift without hiding unsafe clamps.
+
+    Breakpoint probes keep their declared width within one logical pixel so a
+    native resize cannot cross or collapse the audited boundary.  Height may be
+    reduced by the window manager, but it must remain inside the widget's
+    declared constraints and may never grow unexpectedly beyond the request.
+    """
+
+    declared_width, declared_height = (int(value) for value in declared_size)
+    actual_width, actual_height = (int(value) for value in actual_size)
+    minimum_width, minimum_height = (int(value) for value in minimum_size)
+    maximum_width, maximum_height = (int(value) for value in maximum_size)
+    exact = [actual_width, actual_height] == [declared_width, declared_height]
+    breakpoint_fixture = "-content-" in str(label)
+    reasons = {
+        token.strip()
+        for token in str(normalization_reason or "").split(",")
+        if token.strip()
+    }
+    provenance_flags = {
+        "screen_limited": bool(screen_limited),
+        "constraint_limited": bool(constraint_limited),
+        "native_normalized": bool(native_normalized),
+    }
+    provenance_tokens_match = (
+        (not screen_limited or "extends-beyond-available-screen" in reasons)
+        and (not constraint_limited or "widget-constraint" in reasons)
+        and (not native_normalized or "native-frame-or-scale" in reasons)
+    )
+    provenance_explains_drift = bool(any(provenance_flags.values())) and bool(
+        reasons
+    ) and provenance_tokens_match
+    breakpoint_width_within_one = (
+        not breakpoint_fixture
+        or abs(actual_width - declared_width) <= 1
+    )
+    safe_bounded_width = (
+        max(1, minimum_width) <= actual_width <= max(1, maximum_width)
+        and actual_width <= max(declared_width + 1, minimum_width)
+    )
+    safe_bounded_height = (
+        max(1, minimum_height) <= actual_height <= max(1, maximum_height)
+        and actual_height <= max(declared_height + 1, minimum_height)
+    )
+    accepted = exact or (
+        provenance_explains_drift
+        and breakpoint_width_within_one
+        and safe_bounded_width
+        and safe_bounded_height
+    )
+    return {
+        "exact": exact,
+        "drifted": not exact,
+        "accepted": accepted,
+        "breakpoint_fixture": breakpoint_fixture,
+        "breakpoint_width_within_one": breakpoint_width_within_one,
+        "safe_bounded_width": safe_bounded_width,
+        "safe_bounded_height": safe_bounded_height,
+        "provenance_explains_drift": provenance_explains_drift,
+        "provenance_flags": provenance_flags,
+        "normalization_reasons": sorted(reasons),
+        "declared_client_size": [declared_width, declared_height],
+        "actual_client_size": [actual_width, actual_height],
+        "minimum_client_size": [minimum_width, minimum_height],
+        "maximum_client_size": [maximum_width, maximum_height],
+    }
+
+
+def intentional_scroll_viewport_exemption(
+    *,
+    candidate_rect: list[int] | tuple[int, int, int, int],
+    viewport_rect: list[int] | tuple[int, int, int, int],
+    horizontal_scrollable: bool,
+    vertical_scrollable: bool,
+) -> bool:
+    """Return whether a widget is wholly outside an intentional scroll viewport.
+
+    An empty QWidget visible region is normally evidence of clipping or
+    occlusion.  The sole safe exemption is content beyond a scroll viewport on
+    axes that are actually reachable through a nonzero scrollbar range.
+    """
+
+    left, top, width, height = (int(value) for value in candidate_rect)
+    view_left, view_top, view_width, view_height = (
+        int(value) for value in viewport_rect
+    )
+    if width <= 0 or height <= 0 or view_width <= 0 or view_height <= 0:
+        return False
+    right = left + width
+    bottom = top + height
+    view_right = view_left + view_width
+    view_bottom = view_top + view_height
+    outside_horizontal = right <= view_left or left >= view_right
+    outside_vertical = bottom <= view_top or top >= view_bottom
+    if not outside_horizontal and not outside_vertical:
+        return False
+    return (
+        (not outside_horizontal or bool(horizontal_scrollable))
+        and (not outside_vertical or bool(vertical_scrollable))
+    )
+
+
+def canonicalize_development_stress_plants(
+    plants: list[Any],
+    species_order: list[str] | tuple[str, ...],
+    generated_name: Callable[[str], str],
+) -> list[Any]:
+    """Return every development plant in deterministic source-catalog order."""
+
+    order = tuple(str(species) for species in species_order)
+    rank = {species: index for index, species in enumerate(order)}
+    canonical = sorted(
+        list(plants),
+        key=lambda plant: (
+            rank.get(str(getattr(plant, "species", "") or ""), len(rank)),
+            str(getattr(plant, "species", "") or ""),
+            str(getattr(plant, "plant_id", "") or ""),
+        ),
+    )
+    for plant in canonical:
+        species = str(getattr(plant, "species", "") or "")
+        plant.name = str(generated_name(species))
+        plant.name_customized = False
+    return canonical
+
 
 def start_capture(app: Any) -> None:
     """Launch the UI-face capture sequence for a running add-on instance."""
@@ -408,6 +889,20 @@ def start_capture(app: Any) -> None:
 class _UiFaceCaptureRunner:
     def __init__(self, app: Any) -> None:
         self.app = app
+        self._capture_started_at = datetime.now().isoformat(timespec="milliseconds")
+        self._capture_started_monotonic = time.perf_counter()
+        self._capture_requested_monotonic: dict[str, float] = {}
+        self._performance_samples: dict[str, list[float]] = {
+            "garden_open_ms": [],
+        }
+        self._dialog_memory_probe: dict[str, Any] = {
+            "status": "not-run",
+            "cycles": 0,
+        }
+        self._dialog_memory_probe_attempted = False
+        self._finished = False
+        self._active_fixture_source = "capture-runner-initialization"
+        self._active_fixture_expected_label = ""
         self.capture_root = Path(
             os.environ.get(
                 "ANKI_GARDEN_UI_CAPTURE_DIR",
@@ -422,6 +917,8 @@ class _UiFaceCaptureRunner:
         self._screenshots: list[str] = []
         self._capture_records: list[dict[str, Any]] = []
         self._capture_annotations: dict[str, dict[str, Any]] = {}
+        self._active_home_fixture_state = ""
+        self._active_home_dom_audit: dict[str, Any] = {}
         self._text_layout_warnings: list[dict[str, Any]] = []
         self._failures: list[dict[str, str]] = []
         self._step_index = 0
@@ -669,6 +1166,10 @@ class _UiFaceCaptureRunner:
 
     def _prepare_capture_state(self) -> None:
         if self._ensure_capture_state():
+            coordinator = getattr(self.app, "state_events", None)
+            notify = getattr(coordinator, "notify", None)
+            if callable(notify):
+                notify("Capture starter fixture committed")
             reset = getattr(mw, "reset", None)
             if callable(reset):
                 try:
@@ -681,7 +1182,14 @@ class _UiFaceCaptureRunner:
             QTimer.singleShot(800, self._next_step)
             return
         if self._starter_seed_attempts >= 80:
-            self._next_step()
+            self._failures.append({
+                "label": "release-fixture-seed",
+                "reason": (
+                    "Starter fixture did not reach the planted, not-yet-nurtured "
+                    "release boundary"
+                ),
+            })
+            self._finish()
             return
         self._starter_seed_attempts += 1
         QTimer.singleShot(250, self._prepare_capture_state)
@@ -727,30 +1235,324 @@ class _UiFaceCaptureRunner:
                 self._close_dashboard()
                 QTimer.singleShot(350, self._prepare_capture_state)
                 return
+            if (
+                self._capture_profile == "full"
+                and not self._dialog_memory_probe_attempted
+            ):
+                self._dialog_memory_probe_attempted = True
+                self._run_dialog_memory_probe()
+                return
             self._finish()
             return
         current = self._steps[self._step_index]
         self._step_index += 1
+        expected_index = max(0, self._capture_index - 1)
+        expected_label = (
+            self._capture_face_labels[expected_index]
+            if expected_index < len(self._capture_face_labels) else
+            f"capture-step-{self._step_index}"
+        )
+        self._active_fixture_source = (
+            f"ordered-step-{self._step_index:03d}:"
+            f"{getattr(current, '__name__', type(current).__name__)}"
+        )
+        self._active_fixture_expected_label = expected_label
         try:
             current()
-        except Exception:
+        except Exception as exc:
+            self._failures.append({
+                "label": expected_label,
+                "reason": (
+                    f"Capture step {self._active_fixture_source!r} raised "
+                    f"{type(exc).__name__}"
+                ),
+            })
             logger.exception("Anki Garden capture: step failed, moving on")
             self._next_after(300)
 
     def _next_after(self, delay_ms: int) -> None:
         QTimer.singleShot(max(80, int(delay_ms)), self._next_step)
 
-    def _wait_for_collection(self, ready: Callable[[], None], *, tries: int = 40) -> None:
+    def _one_shot_async_callback(
+        self,
+        label: str,
+        callback: Callable[..., Any],
+        *,
+        on_error: Callable[[], None] | None = None,
+        advance_on_error: bool = True,
+    ) -> Callable[..., Any]:
+        """Guard a Qt callback so it runs once and exceptions fail closed.
+
+        WebEngine, timers, and nested dialog loops may deliver a callback late
+        or more than once.  A raised callback must never be mistaken for a
+        predicate miss and retried against a later fixture.
+        """
+
+        if bool(getattr(callback, "_anki_garden_capture_one_shot", False)):
+            return callback
+        called = False
+
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            nonlocal called
+            if called:
+                return None
+            called = True
+            try:
+                return callback(*args, **kwargs)
+            except Exception as exc:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Capture readiness callback raised "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+                logger.exception(
+                    "Anki Garden capture: asynchronous callback failed for %s",
+                    label,
+                )
+                if on_error is not None:
+                    try:
+                        on_error()
+                    except Exception as cleanup_exc:
+                        self._failures.append({
+                            "label": label,
+                            "reason": (
+                                "Capture failure cleanup raised "
+                                f"{type(cleanup_exc).__name__}"
+                            ),
+                        })
+                        logger.exception(
+                            "Anki Garden capture: callback cleanup failed for %s",
+                            label,
+                        )
+                if advance_on_error:
+                    self._next_after(120)
+                return None
+
+        setattr(guarded, "_anki_garden_capture_one_shot", True)
+        setattr(guarded, "_anki_garden_capture_label", str(label))
+        return guarded
+
+    def _run_dialog_memory_probe(self, *, cycles: int = 12) -> None:
+        """Measure retained Qt widgets after repeated real Nursery open/close cycles."""
+
+        dashboard = getattr(self.app, "dashboard", None)
+        app = QApplication.instance()
+        opener = getattr(dashboard, "_open_nursery", None)
+        if app is None or dashboard is None or not callable(opener):
+            self._dialog_memory_probe = {
+                "status": "unavailable",
+                "cycles": 0,
+                "visible_cycles": 0,
+                "closed_cycles": 0,
+                "passed": False,
+                "reason": "Dashboard or Nursery opener was unavailable",
+            }
+            self._failures.append({
+                "label": "dialog-memory-probe",
+                "reason": "Dashboard or Nursery opener was unavailable",
+            })
+            QTimer.singleShot(80, self._finish)
+            return
+
+        def class_counts() -> dict[str, int]:
+            counts: dict[str, int] = {}
+            for widget in tuple(app.allWidgets()):
+                name = type(widget).__name__
+                counts[name] = counts.get(name, 0) + 1
+            return counts
+
+        def max_rss_kib() -> int | None:
+            try:
+                usage = __import__("resource").getrusage(
+                    __import__("resource").RUSAGE_SELF
+                )
+                raw = int(getattr(usage, "ru_maxrss", 0) or 0)
+                # macOS reports bytes; Linux reports KiB.
+                return raw // 1024 if platform.system() == "Darwin" else raw
+            except Exception:
+                return None
+
+        before = class_counts()
+        before_total = len(tuple(app.allWidgets()))
+        before_rss = max_rss_kib()
+        completed = 0
+        visible_cycles = 0
+        closed_cycles = 0
+        cycle_observations: list[dict[str, Any]] = []
+        try:
+            for index in range(max(1, int(cycles))):
+                observation: dict[str, Any] = {
+                    "cycle": index + 1,
+                    "visible": False,
+                    "closed": False,
+                }
+
+                def close_current() -> None:
+                    dialog = getattr(dashboard, "nursery_dialog", None)
+                    observation["dialog_class"] = (
+                        type(dialog).__name__ if dialog is not None else ""
+                    )
+                    try:
+                        is_nursery = bool(
+                            dialog is not None
+                            and str(
+                                dialog.property("windowFamily")
+                                or type(dialog).__name__
+                            ) == "NurseryDialog"
+                        )
+                        observation["visible"] = bool(
+                            is_nursery and dialog.isVisible()
+                        )
+                        if dialog is not None:
+                            self._close_widget(dialog)
+                        app.processEvents()
+                        observation["closed"] = bool(
+                            dialog is not None and not dialog.isVisible()
+                        )
+                    except RuntimeError:
+                        # A Qt object deleted immediately after close still
+                        # proves closure if it was visibly observed first.
+                        observation["closed"] = bool(observation["visible"])
+                    except Exception as exc:
+                        observation["close_error"] = type(exc).__name__
+                        if dialog is not None:
+                            self._close_widget(dialog)
+
+                QTimer.singleShot(80, close_current)
+                opener(0)
+                app.processEvents()
+                cycle_observations.append(dict(observation))
+                if not bool(observation["visible"]):
+                    raise RuntimeError(
+                        f"Nursery cycle {index + 1} never became visible"
+                    )
+                visible_cycles += 1
+                if not bool(observation["closed"]):
+                    raise RuntimeError(
+                        f"Nursery cycle {index + 1} did not close"
+                    )
+                closed_cycles += 1
+                completed += 1
+        except Exception as exc:
+            logger.exception("Anki Garden capture: dialog memory probe failed")
+            self._dialog_memory_probe = {
+                "status": "error",
+                "cycles": completed,
+                "visible_cycles": visible_cycles,
+                "closed_cycles": closed_cycles,
+                "cycle_observations": cycle_observations,
+                "passed": False,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+            self._failures.append({
+                "label": "dialog-memory-probe",
+                "reason": f"Nursery visibility/closure probe failed: {exc}",
+            })
+            QTimer.singleShot(80, self._finish)
+            return
+
+        app.processEvents()
+        after = class_counts()
+        after_rss = max_rss_kib()
+        watched = (
+            "NurseryDialog",
+            "DialogShell",
+            "PlantStoryDialog",
+            "GardenDialog",
+        )
+        passed = (
+            int(cycles) == 12
+            and completed == 12
+            and visible_cycles == 12
+            and closed_cycles == 12
+        )
+        self._dialog_memory_probe = {
+            "status": "measured",
+            "cycles": completed,
+            "visible_cycles": visible_cycles,
+            "closed_cycles": closed_cycles,
+            "cycle_observations": cycle_observations,
+            "passed": passed,
+            "measurement": "QApplication.allWidgets plus process peak RSS",
+            "current_rss_available": False,
+            "peak_rss_before_kib": before_rss,
+            "peak_rss_after_kib": after_rss,
+            "widget_count_before": before_total,
+            "widget_count_after": len(tuple(app.allWidgets())),
+            "watched_class_counts_before": {
+                name: before.get(name, 0) for name in watched
+            },
+            "watched_class_counts_after": {
+                name: after.get(name, 0) for name in watched
+            },
+            "watched_class_delta": {
+                name: after.get(name, 0) - before.get(name, 0)
+                for name in watched
+            },
+        }
+        if not passed:
+            self._failures.append({
+                "label": "dialog-memory-probe",
+                "reason": (
+                    "Release memory probe required 12 visible and closed Nursery "
+                    f"cycles, observed {visible_cycles} visible and {closed_cycles} closed"
+                ),
+            })
+        QTimer.singleShot(120, self._finish)
+
+    def _wait_for_collection(
+        self,
+        ready: Callable[[], None],
+        *,
+        tries: int = 40,
+        failure_label: str = "collection-ready",
+        on_error: Callable[[], None] | None = None,
+    ) -> None:
+        ready = self._one_shot_async_callback(
+            failure_label,
+            ready,
+            on_error=on_error or self._finish,
+            advance_on_error=False,
+        )
         collection = getattr(mw, "col", None)
         if collection is not None and getattr(collection, "db", None) is not None:
             ready()
             return
         if tries <= 0:
-            ready()
+            self._failures.append({
+                "label": failure_label,
+                "reason": "Anki collection did not become ready before capture",
+            })
+            if on_error is not None:
+                on_error()
+            else:
+                self._finish()
             return
-        QTimer.singleShot(120, lambda: self._wait_for_collection(ready, tries=tries - 1))
+        QTimer.singleShot(
+            120,
+            lambda: self._wait_for_collection(
+                ready,
+                tries=tries - 1,
+                failure_label=failure_label,
+                on_error=on_error,
+            ),
+        )
 
-    def _wait_for_dashboard(self, ready: Callable[[], None], *, tries: int = 80) -> None:
+    def _wait_for_dashboard(
+        self,
+        ready: Callable[[], None],
+        *,
+        tries: int = 80,
+        failure_label: str = "dashboard-ready",
+        on_error: Callable[[], None] | None = None,
+    ) -> None:
+        ready = self._one_shot_async_callback(
+            failure_label,
+            ready,
+            on_error=on_error,
+        )
         dashboard = getattr(self.app, "dashboard", None)
         visible = False
         if dashboard is not None:
@@ -762,9 +1564,23 @@ class _UiFaceCaptureRunner:
             ready()
             return
         if tries <= 0:
-            ready()
+            self._failures.append({
+                "label": failure_label,
+                "reason": "Garden Dashboard did not become visible before capture",
+            })
+            if on_error is not None:
+                on_error()
+            self._next_after(120)
             return
-        QTimer.singleShot(120, lambda: self._wait_for_dashboard(ready, tries=tries - 1))
+        QTimer.singleShot(
+            120,
+            lambda: self._wait_for_dashboard(
+                ready,
+                tries=tries - 1,
+                failure_label=failure_label,
+                on_error=on_error,
+            ),
+        )
 
     def _wait_for(
         self,
@@ -772,24 +1588,42 @@ class _UiFaceCaptureRunner:
         on_ready: Callable[[], None],
         *,
         tries: int = 80,
-        failure_label: str = "",
+        failure_label: str,
         failure_reason: str = "",
+        started_monotonic: float | None = None,
+        on_error: Callable[[], None] | None = None,
     ) -> None:
+        on_ready = self._one_shot_async_callback(
+            failure_label,
+            on_ready,
+            on_error=on_error,
+        )
+        if started_monotonic is None:
+            started_monotonic = time.perf_counter()
+        is_ready = False
         try:
-            if predicate():
-                on_ready()
-                return
+            is_ready = bool(predicate())
         except Exception:
             pass
-        if tries <= 0:
-            if failure_label:
-                self._failures.append({
-                    "label": failure_label,
-                    "reason": failure_reason or "Timed out waiting for the requested UI surface",
-                })
-                self._next_after(120)
-                return
+        if is_ready:
+            elapsed_ms = max(
+                0.0,
+                (time.perf_counter() - started_monotonic) * 1000.0,
+            )
+            self._performance_samples.setdefault(
+                f"surface_ready:{failure_label}",
+                [],
+            ).append(round(elapsed_ms, 3))
             on_ready()
+            return
+        if tries <= 0:
+            self._failures.append({
+                "label": failure_label,
+                "reason": failure_reason or "Timed out waiting for the requested UI surface",
+            })
+            if on_error is not None:
+                on_error()
+            self._next_after(120)
             return
         QTimer.singleShot(
             120,
@@ -799,59 +1633,188 @@ class _UiFaceCaptureRunner:
                 tries=tries - 1,
                 failure_label=failure_label,
                 failure_reason=failure_reason,
+                started_monotonic=started_monotonic,
+                on_error=on_error,
             ),
         )
 
     def _wait_for_home_surface(
         self,
         state: str,
+        capture_label: str,
         on_ready: Callable[[], None],
         *,
         tries: int = 100,
     ) -> None:
+        on_ready = self._one_shot_async_callback(capture_label, on_ready)
         if str(getattr(mw, "state", "")) != state:
             if tries <= 0:
-                self._failures.append({"label": state, "reason": "Anki surface did not become active"})
+                self._failures.append({
+                    "label": capture_label,
+                    "reason": f"Anki surface {state!r} did not become active",
+                })
                 self._next_after(120)
                 return
             QTimer.singleShot(
                 120,
-                lambda: self._wait_for_home_surface(state, on_ready, tries=tries - 1),
+                lambda: self._wait_for_home_surface(
+                    state,
+                    capture_label,
+                    on_ready,
+                    tries=tries - 1,
+                ),
             )
             return
         web = getattr(mw, "web", None)
         evaluate = getattr(web, "evalWithCallback", None)
         if not callable(evaluate):
-            on_ready()
+            self._failures.append({
+                "label": capture_label,
+                "reason": "Home fixture identity could not be verified without WebEngine",
+            })
+            self._next_after(120)
             return
+
+        garden_state = getattr(self.app.storage, "state", None)
+        starter_complete = bool(
+            getattr(garden_state, "starter_selection_complete", False)
+        )
+        active_plant_id = str(
+            getattr(garden_state, "active_plant_id", "") or ""
+        )
+        plants = list(getattr(garden_state, "plants", ()) or ())
+        if not starter_complete:
+            fixture_state = "starter-not-selected"
+        elif active_plant_id:
+            fixture_state = "nurtured-active"
+        elif plants:
+            fixture_state = "starter-planted-not-nurtured"
+        else:
+            fixture_state = "starter-complete-without-plant"
+        self._active_home_fixture_state = fixture_state
         script = """
             (() => {
-              const root = document.querySelector('#ag-home-root');
-              if (!root || !['success', 'partial'].includes(root.dataset.state)) return false;
+              const roots = [...document.querySelectorAll('#ag-home-root')];
+              const visibleRoots = roots.filter(candidate => {
+                const bounds = candidate.getBoundingClientRect();
+                const style = window.getComputedStyle(candidate);
+                return bounds.width >= 100 && bounds.height >= 100
+                  && style.display !== 'none' && style.visibility !== 'hidden';
+              });
+              const root = visibleRoots.length
+                ? visibleRoots[visibleRoots.length - 1]
+                : null;
+              if (!root) {
+                return {
+                  ready: false,
+                  reason: 'no-visible-root',
+                  rootCount: roots.length,
+                  visibleRootCount: visibleRoots.length,
+                };
+              }
               const rect = root.getBoundingClientRect();
-              if (rect.width < 100 || rect.height < 100) return false;
-              return [...root.querySelectorAll('img')].every(img => img.complete);
+              const imagesComplete = [...root.querySelectorAll('img')]
+                .every(img => img.complete);
+              const command = root.dataset.ankiGardenCommand || '';
+              const growth = root.querySelector('[data-testid="home-growth"]');
+              const growthText = growth ? growth.textContent || '' : '';
+              const activeSlot = Number(root.dataset.activeSlot || '-1');
+              const marker = root.querySelector(
+                '[data-testid="home-nurturing-marker"], '
+                + '[data-testid="home-nurturing-marker-fallback"]'
+              );
+              const fixtureState = __FIXTURE_STATE__;
+              let fixtureMatches = false;
+              if (fixtureState === 'starter-not-selected') {
+                fixtureMatches = command.endsWith(':choose-starter')
+                  && activeSlot < 0
+                  && !marker;
+              } else if (fixtureState === 'starter-planted-not-nurtured') {
+                fixtureMatches = command.endsWith(':open')
+                  && activeSlot < 0
+                  && !marker;
+              } else if (fixtureState === 'nurtured-active') {
+                fixtureMatches = command.endsWith(':open')
+                  && activeSlot >= 0
+                  && !!marker;
+              }
+              const paintedState = ['success', 'partial'].includes(root.dataset.state);
+              return {
+                ready: paintedState && imagesComplete && fixtureMatches,
+                reason: !paintedState ? 'unpainted-state'
+                  : !imagesComplete ? 'images-pending'
+                  : !fixtureMatches ? 'fixture-mismatch'
+                  : 'ready',
+                rootCount: roots.length,
+                visibleRootCount: visibleRoots.length,
+                state: root.dataset.state || '',
+                command,
+                activeSlot,
+                markerPresent: !!marker,
+                imagesComplete,
+                plantedSummaryPresent: !!root.querySelector('.planted-starter-summary'),
+                nurturedSummaryPresent: !!root.querySelector('.nurtured-plant-summary'),
+                growthText,
+                fixtureState,
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              };
             })()
-        """
+        """.replace("__FIXTURE_STATE__", repr(fixture_state))
 
         settled = False
 
         def retry_or_fail() -> None:
             if tries <= 0:
-                self._failures.append({"label": state, "reason": "Home widget never reached painted success or partial state"})
+                observed = dict(getattr(self, "_active_home_dom_audit", {}) or {})
+                self._failures.append({
+                    "label": capture_label,
+                    "reason": (
+                        "Home widget never reached the source-backed fixture state "
+                        f"{fixture_state!r}; last DOM observation: {observed!r}"
+                    ),
+                })
                 self._next_after(120)
             else:
+                if tries in {75, 50, 25}:
+                    invalidate = getattr(self.app, "_invalidate_home_cache", None)
+                    if callable(invalidate):
+                        invalidate(f"capture readiness retry for {capture_label}")
+                    reset = getattr(mw, "reset", None)
+                    if callable(reset):
+                        try:
+                            reset()
+                        except Exception:
+                            logger.debug(
+                                "Anki Garden capture: Home retry refresh failed",
+                                exc_info=True,
+                            )
                 QTimer.singleShot(
                     120,
-                    lambda: self._wait_for_home_surface(state, on_ready, tries=tries - 1),
+                    lambda: self._wait_for_home_surface(
+                        state,
+                        capture_label,
+                        on_ready,
+                        tries=tries - 1,
+                    ),
                 )
 
-        def resolved(ready: Any) -> None:
+        def resolved(result: Any) -> None:
             nonlocal settled
             if settled:
                 return
             settled = True
-            if bool(ready):
+            observation = dict(result) if isinstance(result, dict) else {
+                "ready": bool(result),
+                "reason": "legacy-boolean-result",
+            }
+            observation.update({
+                "capture_label": capture_label,
+                "surface": state,
+                "expected_fixture_state": fixture_state,
+            })
+            self._active_home_dom_audit = observation
+            if bool(observation.get("ready", False)):
                 QTimer.singleShot(32, on_ready)
             else:
                 retry_or_fail()
@@ -865,15 +1828,42 @@ class _UiFaceCaptureRunner:
             settled = True
             retry_or_fail()
 
+        resolved_once = self._one_shot_async_callback(
+            capture_label,
+            resolved,
+        )
         try:
-            evaluate(script, resolved)
+            evaluate(script, resolved_once)
             QTimer.singleShot(750, callback_watchdog)
         except Exception:
             settled = True
             retry_or_fail()
 
-    def _with_dashboard(self, on_ready: Callable[[], None]) -> None:
+    def _with_dashboard(
+        self,
+        on_ready: Callable[[], None],
+        *,
+        failure_label: str | None = None,
+        on_error: Callable[[], None] | None = None,
+    ) -> None:
+        callback_label = str(
+            failure_label
+            or getattr(self, "_active_fixture_expected_label", "")
+            or "dashboard-ready"
+        )
+        on_ready = self._one_shot_async_callback(
+            callback_label,
+            on_ready,
+            on_error=on_error,
+        )
+        opened_at: float | None = None
+
         def prepare_dashboard() -> None:
+            if opened_at is not None:
+                elapsed_ms = max(0.0, (time.perf_counter() - opened_at) * 1000.0)
+                self._performance_samples.setdefault("garden_open_ms", []).append(
+                    round(elapsed_ms, 3)
+                )
             dashboard = getattr(self.app, "dashboard", None)
             toast = getattr(dashboard, "toast_region", None)
             clear_toast = getattr(toast, "clear", None)
@@ -882,15 +1872,36 @@ class _UiFaceCaptureRunner:
             self._move_to_capture_display(dashboard)
             on_ready()
 
+        prepare_dashboard_once = self._one_shot_async_callback(
+            callback_label,
+            prepare_dashboard,
+            on_error=on_error,
+        )
+
         dashboard = getattr(self.app, "dashboard", None)
         try:
             if dashboard is not None and bool(dashboard.isVisible()):
-                prepare_dashboard()
+                prepare_dashboard_once()
                 return
         except Exception:
             pass
-        self.app.open_dashboard()
-        self._wait_for_dashboard(prepare_dashboard)
+        opened_at = time.perf_counter()
+        try:
+            self.app.open_dashboard()
+        except Exception as exc:
+            self._failures.append({
+                "label": callback_label,
+                "reason": f"Garden Dashboard opener raised {type(exc).__name__}",
+            })
+            if on_error is not None:
+                on_error()
+            self._next_after(120)
+            return
+        self._wait_for_dashboard(
+            prepare_dashboard_once,
+            failure_label=callback_label,
+            on_error=on_error,
+        )
 
     def _record_nurtured_marker_audit(
         self,
@@ -1317,23 +2328,40 @@ class _UiFaceCaptureRunner:
             "passed": generic_passed and semantic_passed,
         }
 
-    def _capture_home_pixmap(self, widget: QWidget) -> tuple[Any | None, str]:
-        """Choose the Home image that proves the foreground Garden UI painted."""
+    def _capture_home_pixmap(
+        self,
+        widget: QWidget,
+    ) -> tuple[Any | None, str, bool]:
+        """Capture the exact Home widget without trusting an obscured desktop."""
 
-        if not self._activate_current_process_window(widget):
+        foreground_confirmed = bool(self._activate_current_process_window(widget))
+        if not foreground_confirmed:
             logger.warning(
-                "Anki Garden capture: exact Anki Home window did not become foreground"
+                "Anki Garden capture: exact Anki Home window did not become "
+                "foreground; limiting capture to the app-owned Qt surface"
             )
-            return None, "foreground-window-not-ready"
 
-        def capture_candidates() -> list[tuple[str, Any, dict[str, Any]]]:
+        def capture_candidates(
+            *,
+            allow_screen_capture: bool,
+        ) -> list[tuple[str, Any, dict[str, Any]]]:
             candidates: list[tuple[str, Any]] = []
-            handle = widget.windowHandle()
-            screen = handle.screen() if handle is not None else None
-            screen = screen or QGuiApplication.primaryScreen()
-            origin = widget.mapToGlobal(widget.rect().topLeft())
-            screen_geometry = screen.geometry() if screen is not None else None
-            if screen is not None and screen_geometry is not None:
+            screen = None
+            if allow_screen_capture:
+                handle = widget.windowHandle()
+                screen = handle.screen() if handle is not None else None
+                screen = screen or QGuiApplication.primaryScreen()
+                origin = widget.mapToGlobal(widget.rect().topLeft())
+                screen_geometry = screen.geometry() if screen is not None else None
+            else:
+                origin = None
+                screen_geometry = None
+            if (
+                allow_screen_capture
+                and screen is not None
+                and screen_geometry is not None
+                and origin is not None
+            ):
                 try:
                     candidates.append((
                         "foreground-screen-region",
@@ -1384,7 +2412,7 @@ class _UiFaceCaptureRunner:
                     exc_info=True,
                 )
 
-            if screen is not None:
+            if allow_screen_capture and screen is not None:
                 try:
                     candidates.append((
                         "native-window",
@@ -1415,9 +2443,13 @@ class _UiFaceCaptureRunner:
             return viable
 
         for capture_attempt in range(3):
-            if capture_attempt and not self._activate_current_process_window(widget):
-                continue
-            viable = capture_candidates()
+            if capture_attempt:
+                foreground_confirmed = bool(
+                    self._activate_current_process_window(widget)
+                )
+            viable = capture_candidates(
+                allow_screen_capture=foreground_confirmed,
+            )
             ready = [
                 row for row in viable
                 if row[2]["passed"]
@@ -1430,7 +2462,7 @@ class _UiFaceCaptureRunner:
                         float(row[2]["dark_shell_sample_ratio"]),
                     ),
                 )
-                return pixmap, method
+                return pixmap, method, foreground_confirmed
 
             diagnostic = [
                 {
@@ -1463,7 +2495,12 @@ class _UiFaceCaptureRunner:
                 app = QApplication.instance()
                 if app is not None:
                     app.processEvents()
-        return None, "semantic-window-not-ready"
+        failure_kind = (
+            "semantic-window-not-ready"
+            if foreground_confirmed else
+            "app-owned-home-surface-not-ready"
+        )
+        return None, failure_kind, foreground_confirmed
 
     def _activate_current_process_window(self, widget: QWidget) -> bool:
         """Foreground this Anki process and its exact Home window on macOS."""
@@ -1622,9 +2659,896 @@ class _UiFaceCaptureRunner:
                 ),
             })
 
-    def _capture_now(self, label: str, widget: Any | None = None) -> None:
-        path = self.session_dir / f"{self._capture_index:02d}-{label}.png"
-        self._capture_index += 1
+    def _capture_fixture_postcondition(
+        self,
+        label: str,
+        widget: Any,
+        *,
+        expected_fixture_label: str,
+        actual_family: str,
+        geometry_request: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Validate the exact live state represented by a manifest fixture."""
+
+        expectation = expected_capture_state_profile(label)
+        facts: dict[str, Any] = {}
+        issues: list[str] = []
+
+        def require(name: str, condition: bool, value: Any) -> None:
+            facts[name] = value
+            if not bool(condition):
+                issues.append(name)
+
+        require(
+            "ordered_fixture_label",
+            str(expected_fixture_label) == label,
+            str(expected_fixture_label),
+        )
+        require(
+            "state_profile_declared",
+            bool(expectation),
+            str(expectation.get("profile_id", "")),
+        )
+        require(
+            "window_family",
+            str(expectation.get("window_family", "")) == actual_family,
+            actual_family,
+        )
+        if not expectation:
+            return {
+                "profile_id": "",
+                "kind": "unmapped",
+                "facts": facts,
+                "issues": issues,
+                "passed": False,
+            }
+
+        kind = str(expectation.get("kind", ""))
+        state_name = str(expectation.get("state", label))
+        garden_state = getattr(getattr(self.app, "storage", None), "state", None)
+        plants = list(getattr(garden_state, "plants", ()) or ())
+        active_id = str(getattr(garden_state, "active_plant_id", "") or "")
+        active_plant = next(
+            (
+                plant for plant in plants
+                if str(getattr(plant, "plant_id", "") or "") == active_id
+            ),
+            None,
+        )
+        annotation = dict(self._capture_annotations.get(label, {}) or {})
+
+        if state_name == "keyboard-focus-state":
+            dashboard = getattr(self.app, "dashboard", None)
+            capture_config = getattr(dashboard, "config", None)
+            config_value = getattr(capture_config, "value", None)
+            reduced_motion = (
+                bool(config_value("reduced_motion", False))
+                if callable(config_value) else None
+            )
+            require(
+                "reduced_motion_baseline_restored",
+                reduced_motion is False,
+                reduced_motion,
+            )
+
+        if (
+            state_name in {
+                "narrow-window-responsive",
+                "display-scaling-150",
+                "display-scaling-200-qt-representative",
+            }
+            or state_name.startswith("resize-dashboard-")
+        ):
+            dashboard = getattr(self.app, "dashboard", None)
+            capture_config = getattr(dashboard, "config", None)
+            config_value = getattr(capture_config, "value", None)
+            reduced_motion = (
+                bool(config_value("reduced_motion", False))
+                if callable(config_value) else None
+            )
+            progress_button = getattr(dashboard, "progress_btn", None)
+            try:
+                focus_owner = QApplication.focusWidget()
+            except Exception:
+                focus_owner = None
+            progress_has_focus = bool(
+                progress_button is not None and progress_button.hasFocus()
+            )
+            require(
+                "reduced_motion_baseline_restored",
+                reduced_motion is False,
+                reduced_motion,
+            )
+            require(
+                "keyboard_focus_fixture_cleared",
+                progress_button is not None
+                and focus_owner is not progress_button
+                and not progress_has_focus,
+                {
+                    "focus_owner": (
+                        type(focus_owner).__name__ if focus_owner is not None else ""
+                    ),
+                    "progress_button_has_focus": progress_has_focus,
+                },
+            )
+
+        if (
+            state_name in {
+                "all-six-beds-occupied",
+                "plant-at-every-stage",
+                "fully-grown-plant-without-fertilize",
+                "move-occupied-empty-destinations",
+                "fertilizer-expiring-under-minute",
+                "fertilizer-replacement-confirmation",
+                "collection-no-filter-matches",
+                "achievement-completed",
+                "clear-recall-separate-conditions",
+                "streak-at-risk",
+                "streak-missed-day",
+                "streak-reward-earned-next",
+                "nursery-item-owned",
+                "nursery-item-locked",
+                "nursery-purchase-success",
+                "nursery-final-row-above-footer",
+                "missing-artwork-graphical-fallback",
+                "settings-unsaved-changes",
+                "settings-validation-error",
+                "diagnostics-expanded",
+                "production-build-controls-absent",
+                "reduced-motion-enabled",
+                "keyboard-focus-state",
+                "narrow-window-responsive",
+                "display-scaling-150",
+                "display-scaling-200-qt-representative",
+            }
+            or state_name.startswith("popover-plot-")
+            or state_name.startswith("watering-can-")
+            or state_name.startswith("resize-")
+        ):
+            development_species = [
+                str(getattr(plant, "species", "") or "") for plant in plants
+            ]
+            development_ids = [
+                str(getattr(plant, "plant_id", "") or "") for plant in plants
+            ]
+            development_names = [
+                str(getattr(plant, "name", "") or "") for plant in plants
+            ]
+            expected_species = list(DEVELOPMENT_STRESS_SPECIES_ORDER)
+            expected_ids = [f"dev_{species}" for species in expected_species]
+            expected_names = [
+                f"{species.replace('_', ' ').title()} Plant"[:40]
+                for species in expected_species
+            ]
+            require(
+                "canonical_development_species_order",
+                development_species == expected_species,
+                development_species,
+            )
+            require(
+                "canonical_development_plant_ids",
+                development_ids == expected_ids,
+                development_ids,
+            )
+            require(
+                "canonical_development_generated_names",
+                development_names == expected_names
+                and all(
+                    not bool(getattr(plant, "name_customized", False))
+                    for plant in plants
+                ),
+                development_names,
+            )
+
+        if label.startswith("watering-can-"):
+            planted = sorted(
+                (
+                    plant for plant in plants
+                    if getattr(plant, "slot_index", None) is not None
+                ),
+                key=lambda plant: int(getattr(plant, "slot_index", -1)),
+            )[:6]
+            canonical_names = {
+                str(getattr(plant, "name", "") or "")
+                == (
+                    f"{str(getattr(plant, 'species', '') or '').replace('_', ' ').title()} Plant"
+                )[:40]
+                for plant in planted
+            }
+            require(
+                "canonical_watering_garden_name",
+                str(getattr(garden_state, "garden_name", "") or "")
+                == WATERING_CAPTURE_GARDEN_NAME,
+                str(getattr(garden_state, "garden_name", "") or ""),
+            )
+            require(
+                "canonical_watering_currency_balance",
+                int(getattr(garden_state, "currency_balance", -1) or 0)
+                == WATERING_CAPTURE_CURRENCY_BALANCE,
+                int(getattr(garden_state, "currency_balance", -1) or 0),
+            )
+            require(
+                "canonical_watering_plant_names",
+                len(planted) == 6 and canonical_names == {True},
+                [str(getattr(plant, "name", "") or "") for plant in planted],
+            )
+            require(
+                "canonical_watering_growth",
+                len(planted) == 6
+                and all(
+                    int(getattr(plant, "growth_points", -1) or 0)
+                    == WATERING_CAPTURE_GROWTH_POINTS
+                    for plant in planted
+                ),
+                [
+                    int(getattr(plant, "growth_points", -1) or 0)
+                    for plant in planted
+                ],
+            )
+
+        if kind == "home":
+            dom = dict(getattr(self, "_active_home_dom_audit", {}) or {})
+            expected_fixture = str(expectation.get("fixture_state", ""))
+            require(
+                "anki_surface",
+                str(getattr(mw, "state", "")) == expectation.get("surface"),
+                str(getattr(mw, "state", "")),
+            )
+            require(
+                "source_fixture_state",
+                self._active_home_fixture_state == expected_fixture,
+                self._active_home_fixture_state,
+            )
+            require(
+                "dom_capture_label",
+                str(dom.get("capture_label", "")) == label,
+                str(dom.get("capture_label", "")),
+            )
+            require("dom_fixture_ready", bool(dom.get("ready", False)), dom)
+            if "active_slot" in expectation:
+                expected_slot = int(expectation["active_slot"])
+                actual_slot = int(getattr(active_plant, "slot_index", -1) or 0)
+                require("active_plant_slot", actual_slot == expected_slot, actual_slot)
+                require(
+                    "dom_active_slot",
+                    int(dom.get("activeSlot", -1)) == expected_slot,
+                    int(dom.get("activeSlot", -1)),
+                )
+        elif kind == "resize":
+            request = dict(geometry_request or {})
+            expected_size = list(expectation.get("declared_client_size", ()))
+            require("geometry_request_present", bool(request), request)
+            require(
+                "geometry_fixture_label",
+                str(request.get("label", "")) == label,
+                str(request.get("label", "")),
+            )
+            require(
+                "declared_client_size",
+                list(request.get("declared_client_size", ())) == expected_size,
+                list(request.get("declared_client_size", ())),
+            )
+            require(
+                "requested_client_size",
+                list(request.get("requested_client_size", ())) == expected_size,
+                list(request.get("requested_client_size", ())),
+            )
+            require(
+                "transition_path",
+                str(request.get("transition_path", ""))
+                == str(expectation.get("transition_path", "")),
+                str(request.get("transition_path", "")),
+            )
+            actual_layout_mode = str(widget.property("layoutMode") or "default")
+            expected_layout_mode = str(expectation.get("layout_mode", ""))
+            require(
+                "layout_mode",
+                bool(expected_layout_mode)
+                and actual_layout_mode == expected_layout_mode,
+                actual_layout_mode,
+            )
+            geometry = resize_geometry_acceptance(
+                label=label,
+                declared_size=(
+                    expected_size if len(expected_size) == 2 else [0, 0]
+                ),
+                actual_size=[int(widget.width()), int(widget.height())],
+                minimum_size=[
+                    int(widget.minimumWidth()),
+                    int(widget.minimumHeight()),
+                ],
+                maximum_size=[
+                    int(widget.maximumWidth()),
+                    int(widget.maximumHeight()),
+                ],
+                screen_limited=bool(request.get("screen_limited", False)),
+                constraint_limited=bool(request.get("constraint_limited", False)),
+                native_normalized=bool(request.get("native_normalized", False)),
+                normalization_reason=str(request.get("normalization_reason", "")),
+            )
+            require(
+                "geometry_acceptance",
+                bool(geometry.get("accepted", False)),
+                geometry,
+            )
+            canonical_page = str(expectation.get("canonical_page", ""))
+            if canonical_page:
+                navigation = getattr(widget, "navigation", None)
+                keys = list(getattr(navigation, "keys", ()) or ())
+                stack = getattr(navigation, "stack", None)
+                current_index = int(stack.currentIndex()) if stack is not None else -1
+                current_page = (
+                    str(keys[current_index])
+                    if 0 <= current_index < len(keys) else ""
+                )
+                require(
+                    "canonical_progress_page",
+                    current_page == canonical_page,
+                    current_page,
+                )
+        elif kind == "dashboard":
+            scene = getattr(widget, "scene", None)
+            scene_payload = dict(getattr(scene, "scene", {}) or {})
+            plant_card = getattr(widget, "plant_card", None)
+            selected_id = str(getattr(plant_card, "plant_id", "") or "")
+            selected_plant = next(
+                (
+                    plant for plant in plants
+                    if str(getattr(plant, "plant_id", "") or "") == selected_id
+                ),
+                None,
+            )
+            occupied_slots = sorted(
+                int(getattr(plant, "slot_index"))
+                for plant in plants
+                if getattr(plant, "slot_index", None) is not None
+            )
+            require("garden_scene_present", scene is not None, bool(scene))
+            if state_name == "starter-garden-onboarding":
+                panel = getattr(widget, "onboarding_panel", None)
+                require(
+                    "starter_incomplete",
+                    not bool(getattr(garden_state, "starter_selection_complete", False)),
+                    bool(getattr(garden_state, "starter_selection_complete", False)),
+                )
+                require(
+                    "onboarding_visible",
+                    bool(panel is not None and panel.isVisible()),
+                    bool(panel is not None and panel.isVisible()),
+                )
+            elif state_name == "full-garden":
+                require("planted_garden", bool(plants), len(plants))
+                require(
+                    "starter_complete",
+                    bool(getattr(garden_state, "starter_selection_complete", False)),
+                    bool(getattr(garden_state, "starter_selection_complete", False)),
+                )
+            elif state_name == "hover-outline":
+                require(
+                    "hover_outline_active",
+                    bool(getattr(scene, "_hover_opacity", {})),
+                    dict(getattr(scene, "_hover_opacity", {}) or {}),
+                )
+            elif state_name in {
+                "selected-plant-not-nurtured",
+                "selected-plant-nurtured",
+            }:
+                card_visible = bool(plant_card is not None and plant_card.isVisible())
+                require("plant_card_visible", card_visible, card_visible)
+                require("selected_plant", selected_plant is not None, selected_id)
+                expects_active = state_name == "selected-plant-nurtured"
+                require(
+                    "nurture_boundary",
+                    bool(active_id) is expects_active
+                    and (not expects_active or selected_id == active_id),
+                    {"active_plant_id": active_id, "selected_plant_id": selected_id},
+                )
+            elif state_name in {"move-mode", "move-occupied-empty-destinations"}:
+                placing = bool(getattr(getattr(scene, "_interaction", None), "placing", False))
+                require("move_mode_active", placing, placing)
+                if state_name == "move-occupied-empty-destinations":
+                    require("four_occupied_slots", len(occupied_slots) == 4, occupied_slots)
+                    require(
+                        "empty_destinations",
+                        sum(
+                            getattr(plant, "slot_index", None) is None
+                            for plant in plants
+                        ) >= 2,
+                        sum(
+                            getattr(plant, "slot_index", None) is None
+                            for plant in plants
+                        ),
+                    )
+            elif state_name == "long-garden-name":
+                name = str(getattr(garden_state, "garden_name", "") or "")
+                require("long_garden_name", len(name) >= 35, name)
+            elif state_name == "long-plant-name":
+                longest = max(
+                    (str(getattr(plant, "name", "") or "") for plant in plants),
+                    key=len,
+                    default="",
+                )
+                require("long_plant_name", len(longest) >= 35, longest)
+            elif state_name == "four-digit-coin-balance":
+                balance = int(getattr(garden_state, "currency_balance", 0) or 0)
+                require("four_digit_balance", balance == 9_999, balance)
+            elif state_name == "growth-near-stage-completion":
+                from .models.state import GROWTH_THRESHOLDS
+
+                points = int(getattr(selected_plant, "growth_points", -1) or 0)
+                require(
+                    "near_stage_completion",
+                    points == int(GROWTH_THRESHOLDS[-1]) - 25,
+                    points,
+                )
+            elif state_name == "all-six-beds-occupied":
+                require("six_occupied_slots", occupied_slots == list(range(6)), occupied_slots)
+            elif state_name == "plant-at-every-stage":
+                stages = {
+                    str(getattr(plant, "growth_stage", "") or "")
+                    for plant in plants[:6]
+                }
+                require("six_growth_stages", len(stages) == 6, sorted(stages))
+            elif state_name == "fully-grown-plant-without-fertilize":
+                require(
+                    "fully_grown_selected",
+                    bool(getattr(selected_plant, "fully_grown", False)),
+                    selected_id,
+                )
+                require("fixture_audit", bool(annotation.get("passed", False)), annotation)
+            elif state_name.startswith("popover-plot-"):
+                expected_slot = int(state_name.rsplit("-", 1)[1]) - 1
+                actual_slot = getattr(selected_plant, "slot_index", None)
+                require(
+                    "selected_popover_slot",
+                    actual_slot == expected_slot
+                    and bool(plant_card is not None and plant_card.isVisible()),
+                    actual_slot,
+                )
+            elif state_name.startswith("watering-can-garden-plot-"):
+                expected_slot = int(state_name.rsplit("-", 1)[1]) - 1
+                actual_slot = getattr(active_plant, "slot_index", None)
+                require("active_plant_slot", actual_slot == expected_slot, actual_slot)
+            elif state_name == "keyboard-focus-state":
+                button = getattr(widget, "progress_btn", None)
+                try:
+                    focus_owner = QApplication.focusWidget()
+                except Exception:
+                    focus_owner = None
+                require(
+                    "keyboard_focus_visible",
+                    bool(button is not None and button.hasFocus()),
+                    bool(button is not None and button.hasFocus()),
+                )
+                require(
+                    "keyboard_focus_owner",
+                    button is not None
+                    and focus_owner is button
+                    and bool(button.hasFocus()),
+                    "progress_btn" if focus_owner is button else (
+                        type(focus_owner).__name__ if focus_owner is not None else ""
+                    ),
+                )
+            elif state_name == "narrow-window-responsive":
+                require(
+                    "narrow_logical_viewport",
+                    [int(widget.width()), int(widget.height())] == [760, 620],
+                    [int(widget.width()), int(widget.height())],
+                )
+            elif state_name == "display-scaling-150":
+                require(
+                    "capture_process_scale",
+                    self._requested_scale_factor in {"1.5", "1.50", "1.500"},
+                    self._requested_scale_factor,
+                )
+            elif state_name == "display-scaling-200-qt-representative":
+                required_size = [
+                    int(getattr(widget, "MIN_WINDOW_WIDTH", 620)),
+                    int(getattr(widget, "MIN_WINDOW_HEIGHT", 520)),
+                ]
+                require(
+                    "minimum_logical_viewport",
+                    [int(widget.width()), int(widget.height())] == required_size,
+                    [int(widget.width()), int(widget.height())],
+                )
+        elif kind == "progress":
+            navigation = getattr(widget, "navigation", None)
+            keys = list(getattr(navigation, "keys", ()) or ())
+            current_index = int(
+                navigation.stack.currentIndex()
+                if navigation is not None and getattr(navigation, "stack", None) is not None
+                else -1
+            )
+            current_page = keys[current_index] if 0 <= current_index < len(keys) else ""
+            require(
+                "progress_page",
+                current_page == expectation.get("page"),
+                current_page,
+            )
+            stats = getattr(garden_state, "daily_stats", None)
+            if state_name == "growth-zero":
+                require(
+                    "zero_growth",
+                    active_plant is not None
+                    and int(getattr(active_plant, "growth_points", -1) or 0) == 0
+                    and int(getattr(stats, "growth_earned", -1) or 0) == 0,
+                    {
+                        "plant": int(getattr(active_plant, "growth_points", -1) or 0),
+                        "today": int(getattr(stats, "growth_earned", -1) or 0),
+                    },
+                )
+            elif state_name == "growth-nonzero":
+                require(
+                    "nonzero_growth",
+                    int(getattr(active_plant, "growth_points", 0) or 0) == 1_250
+                    and int(getattr(stats, "growth_earned", 0) or 0) == 37,
+                    {
+                        "plant": int(getattr(active_plant, "growth_points", 0) or 0),
+                        "today": int(getattr(stats, "growth_earned", 0) or 0),
+                    },
+                )
+            elif state_name == "streak-new":
+                require(
+                    "new_streak",
+                    int(getattr(garden_state, "streak_days", -1) or 0) == 0
+                    and int(getattr(stats, "reviewed", -1) or 0) == 0,
+                    [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
+                )
+            elif state_name == "streak-active":
+                require(
+                    "active_streak",
+                    int(getattr(garden_state, "streak_days", 0) or 0) == 7
+                    and int(getattr(stats, "reviewed", 0) or 0) == 12,
+                    [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
+                )
+            elif state_name == "coins-zero":
+                transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
+                require(
+                    "zero_coins",
+                    int(getattr(garden_state, "currency_balance", -1) or 0) == 0
+                    and not transactions,
+                    [getattr(garden_state, "currency_balance", None), len(transactions)],
+                )
+            elif state_name == "coins-activity":
+                transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
+                require("coin_activity", len(transactions) >= 2, len(transactions))
+            elif state_name == "collection-several-discovered":
+                require(
+                    "several_discovered_audit",
+                    bool(annotation.get("passed", False))
+                    and int(annotation.get("discovered_count", 0)) == 4,
+                    annotation,
+                )
+            elif state_name == "collection-no-filter-matches":
+                dashboard = getattr(self.app, "dashboard", None)
+                require(
+                    "locked_collection_filter",
+                    str(getattr(dashboard, "_collection_filter", "")) == "locked",
+                    str(getattr(dashboard, "_collection_filter", "")),
+                )
+            elif state_name == "achievement-completed":
+                achievements = list(
+                    dict(getattr(garden_state, "achievements", {}) or {}).values()
+                )
+                require(
+                    "completed_achievements",
+                    int(getattr(stats, "reviewed", 0) or 0) == 100
+                    and bool(achievements)
+                    and all(bool(getattr(item, "unlocked", False)) for item in achievements),
+                    {
+                        "reviewed": getattr(stats, "reviewed", None),
+                        "unlocked": sum(
+                            bool(getattr(item, "unlocked", False)) for item in achievements
+                        ),
+                    },
+                )
+            elif state_name == "clear-recall-separate-conditions":
+                achievements = dict(getattr(garden_state, "achievements", {}) or {})
+                require(
+                    "isolated_clear_recall",
+                    bool(annotation.get("passed", False))
+                    and achievements
+                    and not any(
+                        bool(getattr(item, "unlocked", False))
+                        for item in achievements.values()
+                    ),
+                    annotation,
+                )
+            elif state_name == "streak-at-risk":
+                require(
+                    "at_risk_streak",
+                    int(getattr(garden_state, "streak_days", 0) or 0) == 7
+                    and int(getattr(stats, "reviewed", -1) or 0) == 0,
+                    [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
+                )
+            elif state_name == "streak-missed-day":
+                require(
+                    "missed_day_streak",
+                    int(getattr(garden_state, "streak_days", 0) or 0) == 3
+                    and int(getattr(stats, "reviewed", -1) or 0) == 0,
+                    [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
+                )
+            elif state_name == "streak-reward-earned-next":
+                require(
+                    "earned_streak_rewards",
+                    int(getattr(garden_state, "streak_days", 0) or 0) == 14
+                    and list(getattr(garden_state, "claimed_streak_rewards", ()) or ()) == [7, 14]
+                    and bool(annotation.get("passed", False)),
+                    annotation,
+                )
+        elif kind == "nursery":
+            tabs = getattr(widget, "catalog_tabs", None)
+            tab = int(tabs.currentIndex()) if tabs is not None else -1
+            starter_mode = bool(getattr(widget, "_starter_mode", False))
+            require("nursery_tab", tab == int(expectation.get("tab", -1)), tab)
+            require(
+                "starter_mode",
+                starter_mode is bool(expectation.get("starter_mode", False)),
+                starter_mode,
+            )
+            visible_buttons = [
+                str(button.text())
+                for button in widget.findChildren(QAbstractButton)
+                if button.isVisible()
+            ]
+            if state_name == "nursery-item-owned":
+                unlocked = set(
+                    str(item)
+                    for item in list(getattr(garden_state, "unlocked_species", ()) or ())
+                )
+                owned_species = {
+                    str(getattr(plant, "species", "") or "") for plant in plants
+                }
+                require(
+                    "owned_catalog_action",
+                    len(plants) >= 6
+                    and bool(owned_species)
+                    and owned_species.issubset(unlocked)
+                    and "Shelve" in visible_buttons,
+                    {
+                        "buttons": visible_buttons,
+                        "owned_species": sorted(owned_species),
+                        "unlocked_species": sorted(unlocked),
+                    },
+                )
+            elif state_name == "nursery-item-locked":
+                disabled_catalog_actions = [
+                    str(button.text())
+                    for button in widget.findChildren(QAbstractButton)
+                    if button.isVisible()
+                    and not button.isEnabled()
+                    and str(button.text()) in {
+                        "Apply",
+                        "Buy",
+                        "Use potion",
+                        "Use on nurtured plant",
+                    }
+                ]
+                helper_text = [
+                    str(label_widget.text())
+                    for label_widget in widget.findChildren(QLabel)
+                    if label_widget.isVisible()
+                    and (
+                        "more coin" in str(label_widget.text()).lower()
+                        or "owned" in str(label_widget.text()).lower()
+                    )
+                ]
+                require(
+                    "locked_catalog_state",
+                    int(getattr(garden_state, "currency_balance", -1) or 0) == 0
+                    and bool(disabled_catalog_actions)
+                    and bool(helper_text),
+                    {
+                        "currency_balance": int(
+                            getattr(garden_state, "currency_balance", -1) or 0
+                        ),
+                        "disabled_catalog_actions": disabled_catalog_actions,
+                        "helper_text": helper_text,
+                    },
+                )
+            elif state_name == "nursery-purchase-success":
+                title = str(
+                    getattr(getattr(widget, "environment_feature_title", None), "text", lambda: "")()
+                )
+                status = getattr(widget, "status", None)
+                status_text = str(
+                    getattr(status, "text", lambda: "")()
+                    if status is not None else ""
+                )
+                require(
+                    "purchased_item_preview",
+                    bool(title)
+                    and bool(status is not None and status.isVisible())
+                    and "Owned" in status_text
+                    and "Ready in Customize Garden" in status_text
+                    and "Customize" in visible_buttons,
+                    {
+                        "title": title,
+                        "status": status_text,
+                        "buttons": visible_buttons,
+                    },
+                )
+            elif state_name in {
+                "starter-action-above-footer",
+                "nursery-final-row-above-footer",
+                "missing-artwork-graphical-fallback",
+            }:
+                require("fixture_audit", bool(annotation.get("passed", False)), annotation)
+        elif kind == "settings":
+            tabs = getattr(widget, "tabs", None)
+            tab = int(tabs.currentIndex()) if tabs is not None else -1
+            require("settings_tab", tab == int(expectation.get("tab", -1)), tab)
+            if state_name == "settings-display-advanced-open":
+                require(
+                    "advanced_display_open",
+                    bool(widget.behavior.advanced_toggle.isChecked())
+                    and bool(widget.behavior.advanced_panel.isVisible()),
+                    bool(widget.behavior.advanced_panel.isVisible()),
+                )
+            elif state_name == "diagnostics-clean":
+                value = str(widget.diagnostics_card.property("diagnosticState") or "")
+                require("clean_diagnostics", value == "clean", value)
+            elif state_name == "diagnostics-warning":
+                value = str(widget.diagnostics_card.property("diagnosticState") or "")
+                require("warning_diagnostics", value == "warning", value)
+            elif state_name == "settings-unsaved-changes":
+                value = str(widget.garden_name_edit.text())
+                require("unsaved_name", value == "Unsaved Moonlit Garden", value)
+            elif state_name == "settings-validation-error":
+                value = str(widget.garden_name_edit.text())
+                require(
+                    "validation_error",
+                    not value.strip() and bool(widget.garden_name_error.isVisible()),
+                    {"value": value, "error_visible": widget.garden_name_error.isVisible()},
+                )
+            elif state_name == "diagnostics-expanded":
+                require(
+                    "diagnostics_details_expanded",
+                    bool(widget.report_details_toggle.isChecked()),
+                    bool(widget.report_details_toggle.isChecked()),
+                )
+            elif state_name == "production-build-controls-absent":
+                require("production_controls_audit", bool(annotation.get("passed", False)), annotation)
+            elif state_name == "reduced-motion-enabled":
+                dashboard = getattr(self.app, "dashboard", None)
+                capture_config = getattr(dashboard, "config", None)
+                config_value = getattr(capture_config, "value", None)
+                reduced_motion = (
+                    bool(config_value("reduced_motion", False))
+                    if callable(config_value) else None
+                )
+                require(
+                    "reduced_motion_checked",
+                    bool(widget.behavior.reduced_motion.isChecked()),
+                    bool(widget.behavior.reduced_motion.isChecked()),
+                )
+                require(
+                    "reduced_motion_config_enabled",
+                    reduced_motion is True,
+                    reduced_motion,
+                )
+        elif kind == "customize":
+            tabs = getattr(widget, "option_tabs", None)
+            tab = int(tabs.currentIndex()) if tabs is not None else -1
+            if state_name == "customize-garden":
+                require("customize_garden_tab", tab == 0, tab)
+            else:
+                enabled = state_name.endswith("-on")
+                require("customize_effects_tab", tab == 2, tab)
+                require(
+                    "effect_visibility",
+                    bool(widget.show_weather.isChecked()) is enabled
+                    and bool(widget.show_scenery.isChecked()) is enabled,
+                    [widget.show_weather.isChecked(), widget.show_scenery.isChecked()],
+                )
+        elif kind == "dialog":
+            title = str(widget.windowTitle() or "")
+            require("dialog_title", bool(title), title)
+            if state_name == "starter-selection-confirmation":
+                buttons = [
+                    str(button.text()) for button in widget.findChildren(QAbstractButton)
+                ]
+                require(
+                    "starter_confirmation",
+                    title.startswith("Choose ") and "Choose" in buttons,
+                    {"title": title, "buttons": buttons},
+                )
+            elif state_name == "plant-story":
+                require(
+                    "plant_story_target",
+                    title == "Plant Story" and bool(getattr(widget, "plant_id", "")),
+                    getattr(widget, "plant_id", ""),
+                )
+            elif state_name == "collection-species-overview":
+                require(
+                    "species_overview",
+                    actual_family == "SpeciesOverviewDialog",
+                    actual_family,
+                )
+            elif state_name == "fertilizer-replacement-confirmation":
+                buttons = [
+                    str(button.text()) for button in widget.findChildren(QAbstractButton)
+                ]
+                require(
+                    "fertilizer_replacement",
+                    title == "Replace active Fertilizer?" and "Replace" in buttons,
+                    {"title": title, "buttons": buttons},
+                )
+            elif state_name in {
+                "fertilizer-unaffordable",
+                "fertilizer-affordable",
+                "fertilizer-active",
+                "fertilizer-expiring-under-minute",
+            }:
+                balance = int(getattr(garden_state, "currency_balance", 0) or 0)
+                fertilizer = getattr(active_plant, "fertilizer", None)
+                active = bool(
+                    fertilizer is not None
+                    and getattr(fertilizer, "active", lambda _now: False)(time.time())
+                )
+                if state_name == "fertilizer-unaffordable":
+                    require("unaffordable_fertilizer", balance == 0 and not active, [balance, active])
+                elif state_name == "fertilizer-affordable":
+                    require("affordable_fertilizer", balance == 500 and not active, [balance, active])
+                elif state_name == "fertilizer-active":
+                    require("active_fertilizer", active, active)
+                else:
+                    remaining = (
+                        float(getattr(fertilizer, "expires_at", 0.0) or 0.0)
+                        - time.time()
+                    )
+                    require("expiring_fertilizer", active and 0 < remaining < 60, remaining)
+
+        return {
+            "profile_id": str(expectation.get("profile_id", "")),
+            "kind": kind,
+            "facts": facts,
+            "issues": list(dict.fromkeys(issues)),
+            "passed": not issues,
+        }
+
+    def _capture_now(
+        self,
+        label: str,
+        widget: Any | None = None,
+        *,
+        capture_identity: tuple[int, str, str, str] | None = None,
+    ) -> None:
+        capture_started_monotonic = time.perf_counter()
+        if not isinstance(capture_identity, tuple) or len(capture_identity) != 4:
+            self._failures.append({
+                "label": label,
+                "reason": "Scheduled capture identity snapshot was missing or malformed",
+            })
+            return
+        capture_id, scheduled_label, fixture_source, expected_fixture_label = (
+            capture_identity
+        )
+        identity_issues: list[str] = []
+        if type(capture_id) is not int or capture_id < 1:
+            identity_issues.append("capture_id")
+        if not isinstance(scheduled_label, str) or scheduled_label != label:
+            identity_issues.append("scheduled_label")
+        if (
+            not isinstance(fixture_source, str)
+            or not fixture_source.startswith("ordered-step-")
+        ):
+            identity_issues.append("fixture_source")
+        if (
+            not isinstance(expected_fixture_label, str)
+            or expected_fixture_label != label
+        ):
+            identity_issues.append("expected_fixture_label")
+        if identity_issues:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Scheduled capture identity did not match the requested fixture: "
+                    + ", ".join(identity_issues)
+                ),
+            })
+            return
+        path = self.session_dir / f"{capture_id:02d}-{label}.png"
         app = QApplication.instance()
         if app is None:
             self._failures.append({"label": label, "reason": "Qt application unavailable"})
@@ -1646,6 +3570,73 @@ class _UiFaceCaptureRunner:
                 else None
             )
             family = str(widget.property("windowFamily") or type(widget).__name__)
+            expected_family = expected_capture_window_family(label)
+            try:
+                postcondition = self._capture_fixture_postcondition(
+                    label,
+                    widget,
+                    expected_fixture_label=expected_fixture_label,
+                    actual_family=family,
+                    geometry_request=geometry_request,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Anki Garden capture: fixture postcondition failed for %s",
+                    label,
+                )
+                postcondition = {
+                    "profile_id": label,
+                    "kind": "validation-error",
+                    "facts": {"exception": type(exc).__name__},
+                    "issues": ["postcondition_exception"],
+                    "passed": False,
+                }
+            fixture_validation = {
+                "capture_id": capture_id,
+                "fixture_id": label,
+                "fixture_source": fixture_source,
+                "expected_window_family": expected_family,
+                "actual_window_family": family,
+                "state_profile": str(postcondition.get("profile_id", "")),
+                "postcondition": postcondition,
+                "passed": bool(
+                    expected_family
+                    and family == expected_family
+                    and postcondition.get("passed", False)
+                ),
+            }
+            annotation = self._capture_annotations.setdefault(label, {})
+            annotation["fixture_identity"] = fixture_validation
+            annotation["passed"] = (
+                bool(annotation.get("passed", True))
+                and bool(fixture_validation["passed"])
+            )
+            if not expected_family:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Capture fixture is not mapped to a renderer family",
+                })
+                return
+            if family != expected_family:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        f"Capture fixture required {expected_family}, but "
+                        f"{family} was visible"
+                    ),
+                })
+                return
+            if not bool(postcondition.get("passed", False)):
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Capture fixture postcondition failed: "
+                        + ", ".join(
+                            str(issue)
+                            for issue in list(postcondition.get("issues", ()))
+                        )
+                    ),
+                })
             requested_size = (
                 list(geometry_request["requested_client_size"])
                 if geometry_request is not None else
@@ -1655,15 +3646,26 @@ class _UiFaceCaptureRunner:
                 requested = geometry_request["requested_client_size"]
                 actual = [int(widget.width()), int(widget.height())]
                 geometry_request["actual_client_size"] = actual
-                exact = actual == requested
+                geometry_acceptance = dict(
+                    dict(postcondition.get("facts", {}) or {}).get(
+                        "geometry_acceptance",
+                        {},
+                    ) or {}
+                )
+                exact = bool(geometry_acceptance.get("exact", actual == requested))
+                accepted = bool(geometry_acceptance.get("accepted", False))
                 geometry_request["exact_size_reached"] = exact
-                if not exact:
+                geometry_request["geometry_drift_accepted"] = bool(
+                    accepted and not exact
+                )
+                geometry_request["geometry_acceptance"] = geometry_acceptance
+                if not accepted:
                     self._failures.append({
                         "label": label,
                         "reason": (
-                            "Window manager or widget constraints clamped the requested "
+                            "Unexplained or unsafe geometry drift from requested "
                             f"client size {requested[0]} by {requested[1]} to "
-                            f"{actual[0]} by {actual[1]}"
+                            f"{actual[0]} by {actual[1]}: {geometry_acceptance!r}"
                         ),
                     })
             if label == "display-scaling-150":
@@ -1687,7 +3689,7 @@ class _UiFaceCaptureRunner:
                         scene_top_gap <= 24
                         and title_stack_extra_height <= 16
                     )
-                    self._capture_annotations[label] = {
+                    self._capture_annotations.setdefault(label, {}).update({
                         "scene_top_gap": scene_top_gap,
                         "maximum_allowed_gap": 24,
                         "title_stack_extra_height": title_stack_extra_height,
@@ -1697,7 +3699,7 @@ class _UiFaceCaptureRunner:
                         "feedback_panel_visible": bool(dashboard.feedback_panel.isVisible()),
                         "scene_height": int(scene.height()),
                         "passed": spacing_passed,
-                    }
+                    })
                     if not spacing_passed:
                         self._failures.append({
                             "label": label,
@@ -1709,13 +3711,32 @@ class _UiFaceCaptureRunner:
                         })
             self._audit_nurtured_marker_capture(label, widget)
             if widget is mw:
-                pixmap, capture_method = self._capture_home_pixmap(widget)
+                pixmap, capture_method, foreground_confirmed = (
+                    self._capture_home_pixmap(widget)
+                )
                 annotation = self._capture_annotations.setdefault(label, {})
                 annotation["home_capture_method"] = capture_method
+                annotation["home_foreground_confirmed"] = foreground_confirmed
+                annotation["home_fixture_state"] = self._active_home_fixture_state
+                annotation["home_capture_scope"] = (
+                    "foreground-window"
+                    if capture_method in {
+                        "foreground-screen-region",
+                        "native-window",
+                    } else
+                    "app-owned-qt-surface"
+                )
             else:
                 pixmap = widget.grab()
             if pixmap is None:
-                self._failures.append({"label": label, "reason": "Qt returned no pixmap"})
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        f"Anki Home capture failed: {capture_method}"
+                        if widget is mw else
+                        "Qt returned no pixmap"
+                    ),
+                })
                 return
             if pixmap.isNull():
                 screen = QGuiApplication.primaryScreen()
@@ -1762,6 +3783,7 @@ class _UiFaceCaptureRunner:
                     float(widget.devicePixelRatio())
                 )
                 record = {
+                    "capture_id": capture_id,
                     "label": label,
                     "path": str(path),
                     "widget": type(widget).__name__,
@@ -1795,6 +3817,18 @@ class _UiFaceCaptureRunner:
                         str(geometry_request.get("normalization_reason", ""))
                         if geometry_request is not None else ""
                     ),
+                    "exact_size_reached": bool(
+                        geometry_request.get("exact_size_reached", True)
+                        if geometry_request is not None else True
+                    ),
+                    "geometry_drift_accepted": bool(
+                        geometry_request.get("geometry_drift_accepted", False)
+                        if geometry_request is not None else False
+                    ),
+                    "geometry_acceptance": (
+                        dict(geometry_request.get("geometry_acceptance", {}) or {})
+                        if geometry_request is not None else {}
+                    ),
                     "frame_overhead": (
                         list(geometry_request.get("frame_overhead", [0, 0]))
                         if geometry_request is not None else [0, 0]
@@ -1811,6 +3845,29 @@ class _UiFaceCaptureRunner:
                     ),
                     "text_layout_warnings": text_layout_warnings,
                     "geometry_layout_warnings": geometry_layout_warnings,
+                    "fixture_source": fixture_source,
+                    "fixture_validation": dict(fixture_validation),
+                    "ready_to_capture_ms": round(
+                        max(
+                            0.0,
+                            (
+                                capture_started_monotonic
+                                - self._capture_requested_monotonic.pop(
+                                    label,
+                                    capture_started_monotonic,
+                                )
+                            ) * 1000.0,
+                        ),
+                        3,
+                    ),
+                    "capture_duration_ms": round(
+                        max(
+                            0.0,
+                            (time.perf_counter() - capture_started_monotonic)
+                            * 1000.0,
+                        ),
+                        3,
+                    ),
                 }
                 annotation = self._capture_annotations.get(label)
                 if annotation:
@@ -1930,12 +3987,12 @@ class _UiFaceCaptureRunner:
         widget.raise_()
         QApplication.processEvents()
 
-        # A macOS top-level window's available geometry includes the native
-        # title-bar footprint while QWidget.resize() addresses only the client
-        # area.  Establish that footprint after the window is shown, then cap
-        # the requested client size against both the screen and any deliberate
-        # per-dialog maximum.  The first geometry reached is the normalized
-        # request; the delayed capture still fails if it subsequently drifts.
+        # QWidget.grab() captures the complete client surface even when a test
+        # viewport is larger than the current physical display.  Keep the
+        # declared logical target intact; silently capping 1,359/1,361/default/
+        # large fixtures to one macOS screen collapses distinct responsive
+        # states into duplicate screenshots.  Native or widget constraints are
+        # recorded below and fail the exact-size postcondition instead.
         frame = widget.frameGeometry()
         frame_overhead_width = max(0, int(frame.width()) - int(widget.width()))
         frame_overhead_height = max(0, int(frame.height()) - int(widget.height()))
@@ -1949,14 +4006,8 @@ class _UiFaceCaptureRunner:
         )
         widget_maximum_width = int(widget.maximumWidth())
         widget_maximum_height = int(widget.maximumHeight())
-        target_width = max(
-            int(widget.minimumWidth()),
-            min(declared_width, screen_maximum_width, widget_maximum_width),
-        )
-        target_height = max(
-            int(widget.minimumHeight()),
-            min(declared_height, screen_maximum_height, widget_maximum_height),
-        )
+        target_width = declared_width
+        target_height = declared_height
         widget.resize(target_width, target_height)
         QApplication.processEvents()
         normalized_width = int(widget.width())
@@ -1972,12 +4023,12 @@ class _UiFaceCaptureRunner:
             or declared_height < int(widget.minimumHeight())
         )
         native_normalized = (
-            normalized_width != target_width
-            or normalized_height != target_height
+            normalized_width != declared_width
+            or normalized_height != declared_height
         )
         normalization_reasons: list[str] = []
         if screen_limited:
-            normalization_reasons.append("available-screen")
+            normalization_reasons.append("extends-beyond-available-screen")
         if constraint_limited:
             normalization_reasons.append("widget-constraint")
         if native_normalized:
@@ -1985,7 +4036,7 @@ class _UiFaceCaptureRunner:
         self._active_geometry_request = {
             "label": label,
             "declared_client_size": [declared_width, declared_height],
-            "requested_client_size": [normalized_width, normalized_height],
+            "requested_client_size": [declared_width, declared_height],
             "available_screen_size": (
                 [int(available.width()), int(available.height())]
                 if available is not None else None
@@ -1997,6 +4048,12 @@ class _UiFaceCaptureRunner:
             "frame_overhead": [frame_overhead_width, frame_overhead_height],
             "transition_path": str(transition_path),
         }
+        if label == "resize-dashboard-minimum":
+            self._capture_annotations[label] = {
+                "same_logical_geometry_as": "display-scaling-200-qt-representative",
+                "distinct_audit_purpose": "responsive minimum resize transition",
+                "passed": True,
+            }
         self._capture_and_advance(
             label,
             widget,
@@ -2005,6 +4062,56 @@ class _UiFaceCaptureRunner:
             close_ms=620 if close_callback is not None else None,
             next_ms=820,
         )
+
+    @staticmethod
+    def _text_candidate_is_intentionally_scrolled_out(
+        candidate: QWidget,
+        root: QWidget,
+    ) -> bool:
+        """Narrowly exempt content wholly outside a reachable scroll viewport."""
+
+        ancestor = candidate.parentWidget()
+        while ancestor is not None:
+            if isinstance(ancestor, QAbstractScrollArea):
+                viewport = ancestor.viewport()
+                if viewport is not None:
+                    origin = candidate.mapTo(
+                        viewport,
+                        candidate.rect().topLeft(),
+                    )
+                    horizontal = ancestor.horizontalScrollBar()
+                    vertical = ancestor.verticalScrollBar()
+                    horizontal_scrollable = bool(
+                        ancestor.horizontalScrollBarPolicy()
+                        != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                        and int(horizontal.maximum()) > int(horizontal.minimum())
+                    )
+                    vertical_scrollable = bool(
+                        ancestor.verticalScrollBarPolicy()
+                        != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                        and int(vertical.maximum()) > int(vertical.minimum())
+                    )
+                    if intentional_scroll_viewport_exemption(
+                        candidate_rect=[
+                            int(origin.x()),
+                            int(origin.y()),
+                            int(candidate.width()),
+                            int(candidate.height()),
+                        ],
+                        viewport_rect=[
+                            int(viewport.rect().x()),
+                            int(viewport.rect().y()),
+                            int(viewport.width()),
+                            int(viewport.height()),
+                        ],
+                        horizontal_scrollable=horizontal_scrollable,
+                        vertical_scrollable=vertical_scrollable,
+                    ):
+                        return True
+            if ancestor is root:
+                break
+            ancestor = ancestor.parentWidget()
+        return False
 
     @staticmethod
     def _find_text_layout_warnings(root: QWidget) -> list[dict[str, Any]]:
@@ -2024,6 +4131,31 @@ class _UiFaceCaptureRunner:
             try:
                 if not candidate.isVisibleTo(root):
                     continue
+                if int(candidate.width()) <= 0 or int(candidate.height()) <= 0:
+                    continue
+                text = str(candidate.text() or "").strip()
+                visible_region = candidate.visibleRegion()
+                if visible_region is None or visible_region.isEmpty():
+                    if _UiFaceCaptureRunner._text_candidate_is_intentionally_scrolled_out(
+                        candidate,
+                        root,
+                    ):
+                        continue
+                    warnings.append({
+                        "kind": "empty-visible-region",
+                        "widget": type(candidate).__name__,
+                        "object_name": str(candidate.objectName() or ""),
+                        "text": text[:120],
+                        "width": int(candidate.width()),
+                        "height": int(candidate.height()),
+                        "required_height": 0,
+                        "horizontal_clip": False,
+                        "vertical_clip": False,
+                        "ancestor_clip_horizontal": False,
+                        "ancestor_clip_vertical": False,
+                        "empty_visible_region": True,
+                    })
+                    continue
                 # QScrollArea intentionally clips off-screen content and makes
                 # it reachable through the allowed scroll axis. Auditing the
                 # candidate's own glyph box is sufficient there; walking to
@@ -2036,7 +4168,6 @@ class _UiFaceCaptureRunner:
                         inside_scroll = True
                         break
                     ancestor = ancestor.parentWidget()
-                text = str(candidate.text() or "").strip()
                 if not text or "<" in text:
                     continue
                 metrics = candidate.fontMetrics()
@@ -2144,6 +4275,22 @@ class _UiFaceCaptureRunner:
                 logger.debug("Anki Garden capture: text geometry audit failed", exc_info=True)
         return warnings
 
+    def _reserve_capture_identity(
+        self,
+        label: str,
+    ) -> tuple[int, str, str, str]:
+        """Reserve immutable identity before any delayed or re-entrant Qt work."""
+
+        capture_id = int(self._capture_index)
+        identity = (
+            capture_id,
+            str(label),
+            str(getattr(self, "_active_fixture_source", "")),
+            str(getattr(self, "_active_fixture_expected_label", "")),
+        )
+        self._capture_index = capture_id + 1
+        return identity
+
     def _capture_and_advance(
         self,
         label: str,
@@ -2154,6 +4301,9 @@ class _UiFaceCaptureRunner:
         close_callback: Callable[[], None] | None = None,
         next_ms: int = 900,
     ) -> None:
+        capture_identity = self._reserve_capture_identity(label)
+        scheduled_label = capture_identity[1]
+        self._capture_requested_monotonic[scheduled_label] = time.perf_counter()
         if widget is mw:
             if not self._activate_current_process_window(widget):
                 logger.debug(
@@ -2161,7 +4311,11 @@ class _UiFaceCaptureRunner:
                 )
         QTimer.singleShot(
             max(20, int(capture_delay_ms)),
-            lambda: self._capture_now(label, widget),
+            lambda identity=capture_identity: self._capture_now(
+                identity[1],
+                widget,
+                capture_identity=identity,
+            ),
         )
         if close_callback is not None:
             if close_ms is None:
@@ -2358,7 +4512,29 @@ class _UiFaceCaptureRunner:
         for widget in settings_dialog.findChildren(QTabWidget):
             if widget.count() > index:
                 widget.setCurrentIndex(index)
-                return
+                break
+        for scroll in settings_dialog.findChildren(QAbstractScrollArea):
+            try:
+                scroll.verticalScrollBar().setValue(0)
+                scroll.horizontalScrollBar().setValue(0)
+            except Exception:
+                logger.debug(
+                    "Anki Garden capture: could not reset Settings scroll state",
+                    exc_info=True,
+                )
+
+    @staticmethod
+    def _show_reduced_motion_fixture(dialog: Any) -> None:
+        control = dialog.behavior.reduced_motion
+        control.setChecked(True)
+        controls_scroll = getattr(dialog.behavior, "controls_scroll", None)
+        ensure_controls = getattr(controls_scroll, "ensureWidgetVisible", None)
+        if callable(ensure_controls):
+            ensure_controls(control, 0, 28)
+        for scroll in dialog.findChildren(QAbstractScrollArea):
+            if str(scroll.accessibleName() or "") == "Display settings":
+                scroll.ensureWidgetVisible(control, 0, 20)
+                break
 
     def _capture_metric(self, metric: str, label: str) -> None:
         dashboard = getattr(self.app, "dashboard", None)
@@ -2426,6 +4602,7 @@ class _UiFaceCaptureRunner:
                 500,
                 lambda: self._wait_for_home_surface(
                     "deckBrowser",
+                    "starter-deck-browser-home",
                     lambda: self._capture_and_advance(
                         "starter-deck-browser-home",
                         mw,
@@ -2443,6 +4620,7 @@ class _UiFaceCaptureRunner:
             350,
             lambda: self._wait_for_home_surface(
                 "overview",
+                "starter-overview-home",
                 lambda: self._capture_and_advance(
                     "starter-overview-home",
                     mw,
@@ -2619,6 +4797,7 @@ class _UiFaceCaptureRunner:
                 500,
                 lambda: self._wait_for_home_surface(
                     "deckBrowser",
+                    "deck-browser-home",
                     lambda: self._capture_and_advance(
                         "deck-browser-home",
                         mw,
@@ -2636,6 +4815,7 @@ class _UiFaceCaptureRunner:
             350,
             lambda: self._wait_for_home_surface(
                 "overview",
+                "overview-home",
                 lambda: self._capture_and_advance(
                     "overview-home",
                     mw,
@@ -2967,6 +5147,7 @@ class _UiFaceCaptureRunner:
             self._switch_surface("deckBrowser")
             self._wait_for_home_surface(
                 "deckBrowser",
+                label,
                 lambda: self._capture_and_advance(
                     label,
                     mw,
@@ -2992,6 +5173,7 @@ class _UiFaceCaptureRunner:
             350,
             lambda: self._wait_for_home_surface(
                 "overview",
+                label,
                 lambda: self._capture_and_advance(
                     label,
                     mw,
@@ -3097,13 +5279,51 @@ class _UiFaceCaptureRunner:
 
         self._with_dashboard(ready)
 
-    def _capture_progress_page(self, key: str, label: str) -> None:
+    def _capture_progress_page(
+        self,
+        key: str,
+        label: str,
+        *,
+        restore_callback: Callable[[], None] | None = None,
+    ) -> None:
+        restored = False
+
+        def restore_once() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            if restore_callback is not None:
+                restore_callback()
+
         self._with_dashboard(
-            lambda: self._capture_progress_page_after(key, label)
+            lambda: self._capture_progress_page_after(
+                key,
+                label,
+                restore_callback=restore_once,
+            ),
+            failure_label=label,
+            on_error=restore_once,
         )
 
-    def _capture_collection_filter(self, selected: str, label: str) -> None:
+    def _capture_collection_filter(
+        self,
+        selected: str,
+        label: str,
+        *,
+        restore_callback: Callable[[], None] | None = None,
+    ) -> None:
         """Open Collection, then apply its filter after the dialog refresh."""
+        restored = False
+
+        def restore_fixture() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            if restore_callback is not None:
+                restore_callback()
+
         def after() -> None:
             dashboard = getattr(self.app, "dashboard", None)
             dialog = getattr(dashboard, "progress_dialog", None)
@@ -3113,6 +5333,7 @@ class _UiFaceCaptureRunner:
                     "label": label,
                     "reason": "Garden Progress Collection was unavailable",
                 })
+                restore_fixture()
                 self._next_after(250)
                 return
             refresh = getattr(dialog, "refresh", None)
@@ -3127,11 +5348,24 @@ class _UiFaceCaptureRunner:
             dialog.activateWindow()
 
             def ready() -> None:
+                def close_collection() -> None:
+                    try:
+                        self._close_widget(dialog)
+                    finally:
+                        restore_fixture()
+
+                close_collection_once = self._one_shot_async_callback(
+                    label,
+                    close_collection,
+                    on_error=restore_fixture,
+                    advance_on_error=False,
+                )
+
                 self._capture_and_advance(
                     label,
                     dialog,
                     capture_delay_ms=420,
-                    close_callback=lambda: self._close_widget(dialog),
+                    close_callback=close_collection_once,
                     close_ms=820,
                     next_ms=1160,
                 )
@@ -3147,13 +5381,26 @@ class _UiFaceCaptureRunner:
                 tries=80,
                 failure_label=label,
                 failure_reason=f"Collection filter {selected!r} did not become ready",
+                on_error=restore_fixture,
             )
 
-        self._with_dashboard(after)
+        self._with_dashboard(
+            after,
+            failure_label=label,
+            on_error=restore_fixture,
+        )
 
-    def _capture_progress_page_after(self, key: str, label: str) -> None:
+    def _capture_progress_page_after(
+        self,
+        key: str,
+        label: str,
+        *,
+        restore_callback: Callable[[], None] | None = None,
+    ) -> None:
         dashboard = getattr(self.app, "dashboard", None)
         if dashboard is None:
+            if restore_callback is not None:
+                restore_callback()
             self._next_after(250)
             return
         dialog = getattr(dashboard, "progress_dialog", None)
@@ -3163,6 +5410,8 @@ class _UiFaceCaptureRunner:
                 "label": label,
                 "reason": "Garden Progress dialog or requested page was unavailable",
             })
+            if restore_callback is not None:
+                restore_callback()
             self._next_after(250)
             return
         refresh = getattr(dialog, "refresh", None)
@@ -3176,11 +5425,18 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def ready() -> None:
+            def close_progress() -> None:
+                try:
+                    self._close_widget(dialog)
+                finally:
+                    if restore_callback is not None:
+                        restore_callback()
+
             self._capture_and_advance(
                 label,
                 dialog,
                 capture_delay_ms=360,
-                close_callback=lambda: self._close_widget(dialog),
+                close_callback=close_progress,
                 close_ms=760,
                 next_ms=1100,
             )
@@ -3194,6 +5450,7 @@ class _UiFaceCaptureRunner:
             tries=80,
             failure_label=label,
             failure_reason=f"Garden Progress page {key!r} did not become ready",
+            on_error=restore_callback,
         )
 
     def _capture_progress_today(self) -> None:
@@ -3560,6 +5817,10 @@ class _UiFaceCaptureRunner:
             if mutate is not None:
                 mutate()
             self._refresh_capture_dashboard()
+            toast = getattr(self.app.dashboard, "toast_region", None)
+            clear_toast = getattr(toast, "clear", None)
+            if callable(clear_toast):
+                clear_toast()
             self._capture_and_advance(
                 label,
                 self.app.dashboard,
@@ -3613,7 +5874,11 @@ class _UiFaceCaptureRunner:
     def _ensure_development_stress_state(self) -> bool:
         if bool(getattr(self, "_development_stress_ready", False)):
             return True
-        from .models.state import GROWTH_THRESHOLDS, MAX_GARDEN_SLOTS
+        from .models.state import (
+            CURRENT_CATALOG_SPECIES_ORDER,
+            GROWTH_THRESHOLDS,
+            MAX_GARDEN_SLOTS,
+        )
 
         ok, message = self.app.engine.development_populate()
         if not ok:
@@ -3622,18 +5887,57 @@ class _UiFaceCaptureRunner:
                 "reason": str(message),
             })
             return False
-        plants = list(self.app.storage.state.plants)
-        if len(plants) < MAX_GARDEN_SLOTS:
+        state = self.app.storage.state
+        catalog_order = tuple(str(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
+        release_ready_order = tuple(
+            str(species) for species in self.app.engine.release_ready_species()
+        )
+        declared_order = tuple(DEVELOPMENT_STRESS_SPECIES_ORDER)
+        if catalog_order != declared_order or release_ready_order != declared_order:
             self._failures.append({
                 "label": "development-stress-state",
-                "reason": "Development population did not create six plants",
+                "reason": (
+                    "Development capture species order disagreed with the current "
+                    "catalog or release-ready asset projection "
+                    f"(catalog={catalog_order!r}, release_ready={release_ready_order!r})"
+                ),
             })
             return False
+        original_plants = list(state.plants)
+        original_ids = sorted(
+            str(getattr(plant, "plant_id", "") or "")
+            for plant in original_plants
+        )
+        plants = canonicalize_development_stress_plants(
+            original_plants,
+            catalog_order,
+            self.app.engine._generated_name,
+        )
+        canonical_species = tuple(
+            str(getattr(plant, "species", "") or "") for plant in plants
+        )
+        canonical_ids = [
+            str(getattr(plant, "plant_id", "") or "") for plant in plants
+        ]
+        if (
+            len(plants) != len(declared_order)
+            or canonical_species != declared_order
+            or len(set(canonical_ids)) != len(declared_order)
+            or sorted(canonical_ids) != original_ids
+        ):
+            self._failures.append({
+                "label": "development-stress-state",
+                "reason": (
+                    "Development population did not preserve one canonical "
+                    f"instance for all ten species ({canonical_species!r})"
+                ),
+            })
+            return False
+        state.plants = plants
         for index, plant in enumerate(plants):
             plant.slot_index = index if index < MAX_GARDEN_SLOTS else None
-            if index < MAX_GARDEN_SLOTS:
-                plant.growth_points = GROWTH_THRESHOLDS[index]
-        state = self.app.storage.state
+            plant.growth_points = GROWTH_THRESHOLDS[index % len(GROWTH_THRESHOLDS)]
+        state.unlocked_species = list(declared_order)
         state.unlocked_slots = MAX_GARDEN_SLOTS
         state.currency_balance = 9_999
         state.active_plant_id = plants[0].plant_id
@@ -3883,15 +6187,35 @@ class _UiFaceCaptureRunner:
 
         if not self._ensure_development_stress_state():
             return False
-        from .models.state import GROWTH_THRESHOLDS
+        from .models.state import CURRENT_CATALOG_SPECIES_ORDER
 
-        plants = list(self.app.storage.state.plants)
+        state = self.app.storage.state
+        catalog_order = {
+            species: index
+            for index, species in enumerate(CURRENT_CATALOG_SPECIES_ORDER)
+        }
+        plants = sorted(
+            list(state.plants),
+            key=lambda item: (
+                catalog_order.get(str(getattr(item, "species", "") or ""), 10_000),
+                str(getattr(item, "plant_id", "") or ""),
+            ),
+        )
         # Earlier release faces deliberately exercise an occupied/empty move
-        # matrix. Re-seat the canonical first six before each marker face so
-        # every plot remains independently capturable regardless of that prior
-        # transient mutation.
+        # matrix, long names, large balances, and stage extremes. Re-seat a
+        # canonical, deterministic six-plant scene before every marker face so
+        # watering position is the only variable under audit.
+        state.garden_name = WATERING_CAPTURE_GARDEN_NAME
+        state.currency_balance = WATERING_CAPTURE_CURRENCY_BALANCE
         for index, item in enumerate(plants):
             item.slot_index = index if index < 6 else None
+            item.name = (
+                f"{str(item.species).replace('_', ' ').title()} Plant"
+            )[:40]
+            item.name_customized = False
+            if index < 6:
+                item.growth_points = WATERING_CAPTURE_GROWTH_POINTS
+                item.fertilizer = None
         plant = plants[slot] if 0 <= int(slot) < min(6, len(plants)) else None
         if plant is None:
             self._failures.append({
@@ -3899,11 +6223,6 @@ class _UiFaceCaptureRunner:
                 "reason": f"Plot {slot + 1} did not contain a plant",
             })
             return False
-        # A fully grown plant cannot be nurtured by the product contract. The
-        # disposable visual fixture keeps the same species and plot while
-        # returning only that representative to the last unfinished stage.
-        if bool(getattr(plant, "fully_grown", False)):
-            plant.growth_points = GROWTH_THRESHOLDS[-2]
         ok, message = self.app.engine.set_active_plant(plant.plant_id)
         if not ok:
             self._failures.append({"label": label, "reason": str(message)})
@@ -3959,6 +6278,7 @@ class _UiFaceCaptureRunner:
             self._switch_surface(surface)
             self._wait_for_home_surface(
                 surface,
+                label,
                 lambda: self._capture_and_advance(
                     label,
                     mw,
@@ -3970,8 +6290,82 @@ class _UiFaceCaptureRunner:
         QTimer.singleShot(500, enter_surface)
 
     def _capture_collection_several(self) -> None:
-        self._ensure_development_stress_state()
-        self._capture_collection_filter("all", "collection-several-discovered")
+        label = "collection-several-discovered"
+        state = self.app.storage.state
+        original_plants = list(state.plants)
+        original_unlocked = list(state.unlocked_species)
+        original_active = state.active_plant_id
+        dashboard = getattr(self.app, "dashboard", None)
+        original_filter = str(
+            getattr(dashboard, "_collection_filter", "all") or "all"
+        )
+        restored = False
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            state.plants = original_plants
+            state.unlocked_species = original_unlocked
+            state.active_plant_id = original_active
+            if dashboard is not None:
+                dashboard._collection_filter = original_filter
+            self._refresh_capture_dashboard()
+
+        if not self._ensure_development_stress_state():
+            restore()
+            self._next_after(200)
+            return
+
+        release_ready = list(self.app.engine.release_ready_species())
+        plants_by_species = {
+            str(plant.species): plant for plant in original_plants
+        }
+        discovered_species = [
+            species for species in release_ready
+            if species in plants_by_species
+        ][:4]
+        if len(discovered_species) != 4 or len(release_ready) <= 4:
+            self._failures.append({
+                "label": label,
+                "reason": "Several-discovered fixture could not retain four of a larger catalog",
+            })
+            restore()
+            self._next_after(200)
+            return
+        try:
+            state.plants = [plants_by_species[species] for species in discovered_species]
+            state.unlocked_species = list(discovered_species)
+            state.active_plant_id = state.plants[0].plant_id
+            summary = self.app.engine.catalog_summary()
+            discovered_count = len(summary.get("owned_species", ()))
+            total_count = len(summary.get("release_ready_species", ()))
+            passed = discovered_count == 4 and total_count > discovered_count
+            self._capture_annotations[label] = {
+                "discovered_species": list(discovered_species),
+                "discovered_count": discovered_count,
+                "catalog_count": total_count,
+                "passed": passed,
+            }
+            if not passed:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Several-discovered fixture did not project four discovered "
+                        f"species in a larger catalog ({discovered_count}/{total_count})"
+                    ),
+                })
+
+            self._refresh_capture_dashboard()
+            self._capture_collection_filter(
+                "all",
+                label,
+                restore_callback=restore,
+            )
+        except Exception:
+            restore()
+            raise
 
     def _capture_collection_no_matches(self) -> None:
         self._ensure_development_stress_state()
@@ -4011,15 +6405,67 @@ class _UiFaceCaptureRunner:
             return
         state = self.app.storage.state
         stats = state.daily_stats
+        original_stats = {
+            "reviewed": stats.reviewed,
+            "correct": stats.correct,
+            "wrong": stats.wrong,
+            "completed_due_cards": stats.completed_due_cards,
+        }
+        original_state_values = {
+            "streak_days": state.streak_days,
+            "total_reviews": state.total_reviews,
+            "last_active_day": state.last_active_day,
+        }
+        achievement_snapshots = {
+            key: (
+                bool(getattr(item, "unlocked", False)),
+                getattr(item, "unlocked_at", None),
+                float(getattr(item, "progress", 0.0) or 0.0),
+            )
+            for key, item in dict(state.achievements).items()
+        }
+        restored = False
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            stats.reviewed = original_stats["reviewed"]
+            stats.correct = original_stats["correct"]
+            stats.wrong = original_stats["wrong"]
+            stats.completed_due_cards = original_stats["completed_due_cards"]
+            state.streak_days = original_state_values["streak_days"]
+            state.total_reviews = original_state_values["total_reviews"]
+            state.last_active_day = original_state_values["last_active_day"]
+            for key, values in achievement_snapshots.items():
+                item = state.achievements.get(key)
+                if item is None:
+                    continue
+                item.unlocked, item.unlocked_at, item.progress = values
+            self._refresh_capture_dashboard()
+
+        # The preceding development fixture deliberately unlocks everything.
+        # Reset every achievement and every backing condition so this face
+        # demonstrates only Clear Recall's two independent requirements.
+        for item in state.achievements.values():
+            item.unlocked = False
+            item.unlocked_at = None
+            item.progress = 0.0
+        state.streak_days = 0
+        state.total_reviews = 0
+        state.last_active_day = ""
         stats.reviewed = 12
         stats.correct = 10
         stats.wrong = 2
+        stats.completed_due_cards = False
         achievement = state.achievements.get("retention_90")
         if achievement is None:
             self._failures.append({
                 "label": "clear-recall-separate-conditions",
                 "reason": "Clear Recall achievement was unavailable",
             })
+            restore()
             self._next_after(200)
             return
         achievement.unlocked = False
@@ -4034,19 +6480,27 @@ class _UiFaceCaptureRunner:
             ("Accuracy", "83% / 90%"),
             ("Anki card answers", "12 / 20"),
         )
-        if condition_rows != expected_rows:
+        other_unlocked = sorted(
+            key for key, item in state.achievements.items()
+            if key != "retention_90" and bool(getattr(item, "unlocked", False))
+        )
+        passed = condition_rows == expected_rows and not other_unlocked
+        if not passed:
             self._failures.append({
                 "label": "clear-recall-separate-conditions",
                 "reason": f"Clear Recall conditions were not separate and coherent: {condition_rows!r}",
             })
         self._capture_annotations["clear-recall-separate-conditions"] = {
             "condition_rows": [list(row) for row in condition_rows],
-            "passed": condition_rows == expected_rows,
+            "achievement_state_isolated": True,
+            "other_unlocked_achievements": other_unlocked,
+            "passed": passed,
         }
         self._refresh_capture_dashboard()
         self._capture_progress_page(
             "achievements",
             "clear-recall-separate-conditions",
+            restore_callback=restore,
         )
 
     def _set_streak_capture_state(
@@ -4103,7 +6557,14 @@ class _UiFaceCaptureRunner:
             last_active_offset=0,
             claimed=[7, 14],
         )
-        self._capture_metric("streak", "streak-reward-claimed-unclaimed")
+        self._capture_annotations["streak-reward-earned-next"] = {
+            "current_streak_days": 14,
+            "automatically_earned_milestones": [7, 14],
+            "next_milestone_days": 30,
+            "manual_claim_action_supported": False,
+            "passed": True,
+        }
+        self._capture_metric("streak", "streak-reward-earned-next")
 
     def _capture_nursery_owned_item(self) -> None:
         self._ensure_development_stress_state()
@@ -4375,21 +6836,68 @@ class _UiFaceCaptureRunner:
         label: str,
         tab: int,
         prepare: Callable[[Any], None],
+        *,
+        restore_callback: Callable[[], None] | None = None,
     ) -> None:
+        dialog_for_cleanup: Any | None = None
+        cleanup_complete = False
+
+        def cleanup_once() -> None:
+            nonlocal cleanup_complete
+            if cleanup_complete:
+                return
+            cleanup_complete = True
+            dialog = dialog_for_cleanup
+            if dialog is None:
+                try:
+                    dialog = self._find_settings_dialog()
+                except Exception as exc:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Settings fixture cleanup could not inspect the dialog: "
+                            f"{type(exc).__name__}"
+                        ),
+                    })
+            if dialog is not None:
+                try:
+                    self._close_settings_capture(dialog)
+                except Exception as exc:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Settings fixture cleanup could not close the dialog: "
+                            f"{type(exc).__name__}"
+                        ),
+                    })
+            if restore_callback is not None:
+                try:
+                    restore_callback()
+                except Exception as exc:
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Settings fixture state restoration failed: "
+                            f"{type(exc).__name__}"
+                        ),
+                    })
+
         def dashboard_ready() -> None:
             dashboard = self.app.dashboard
             dashboard._open_settings()
 
             def settings_ready() -> None:
+                nonlocal dialog_for_cleanup
                 dialog = self._find_settings_dialog()
+                dialog_for_cleanup = dialog
                 self._set_settings_tab(dialog, tab)
                 prepare(dialog)
                 self._capture_and_advance(
                     label,
                     dialog,
                     capture_delay_ms=480,
-                    close_callback=lambda: self._close_settings_capture(dialog),
-                    close_ms=880,
+                    close_callback=cleanup_once,
+                    close_ms=700,
                     next_ms=1250,
                 )
 
@@ -4401,9 +6909,14 @@ class _UiFaceCaptureRunner:
                 settings_ready,
                 failure_label=label,
                 failure_reason=f"Settings stress state {label!r} did not become ready",
+                on_error=cleanup_once,
             )
 
-        self._with_dashboard(dashboard_ready)
+        self._with_dashboard(
+            dashboard_ready,
+            failure_label=label,
+            on_error=cleanup_once,
+        )
 
     @staticmethod
     def _close_settings_capture(dialog: Any) -> None:
@@ -4516,28 +7029,109 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(dashboard_ready)
 
     def _capture_reduced_motion(self) -> None:
+        label = "reduced-motion-enabled"
+        dashboard = getattr(self.app, "dashboard", None)
+        config = getattr(dashboard, "config", None)
+        config_value = getattr(config, "value", None)
+        config_update = getattr(config, "update", None)
+        if not callable(config_value) or not callable(config_update):
+            self._failures.append({
+                "label": label,
+                "reason": "Reduced-motion capture configuration was unavailable",
+            })
+            self._next_after(120)
+            return
+        baseline_reduced_motion = bool(config_value("reduced_motion", False))
+
+        def restore_reduced_motion() -> None:
+            config_update({"reduced_motion": baseline_reduced_motion})
+            self._refresh_capture_dashboard()
+
         try:
-            self.app.dashboard.config.update({"reduced_motion": True})
+            config_update({"reduced_motion": True})
+        except Exception as exc:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Reduced-motion fixture could not enable its configuration: "
+                    f"{type(exc).__name__}"
+                ),
+            })
+            self._next_after(120)
+            return
+        try:
+            self._capture_custom_settings(
+                label,
+                0,
+                self._show_reduced_motion_fixture,
+                restore_callback=restore_reduced_motion,
+            )
         except Exception:
-            logger.debug("Anki Garden capture: could not persist reduced motion", exc_info=True)
-        self._capture_custom_settings(
-            "reduced-motion-enabled",
-            0,
-            lambda dialog: dialog.behavior.reduced_motion.setChecked(True),
-        )
+            try:
+                restore_reduced_motion()
+            except Exception as cleanup_exc:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Reduced-motion synchronous cleanup failed: "
+                        f"{type(cleanup_exc).__name__}"
+                    ),
+                })
+            raise
 
     def _capture_keyboard_focus(self) -> None:
+        label = "keyboard-focus-state"
+        cleanup_complete = False
+
+        def clear_focus_once() -> None:
+            nonlocal cleanup_complete
+            if cleanup_complete:
+                return
+            cleanup_complete = True
+            dashboard = getattr(self.app, "dashboard", None)
+            button = getattr(dashboard, "progress_btn", None)
+            if button is None:
+                return
+            try:
+                button.clearFocus()
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+                focus_owner = QApplication.focusWidget()
+                if focus_owner is button or bool(button.hasFocus()):
+                    self._failures.append({
+                        "label": label,
+                        "reason": "Keyboard-focus fixture retained Garden Progress focus",
+                    })
+            except Exception as exc:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Keyboard-focus fixture cleanup failed: "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+
         def ready() -> None:
             dashboard = self.app.dashboard
             dashboard.progress_btn.setFocus(Qt.FocusReason.TabFocusReason)
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
             self._capture_and_advance(
-                "keyboard-focus-state",
+                label,
                 dashboard,
                 capture_delay_ms=420,
+                close_callback=clear_focus_once,
+                close_ms=620,
                 next_ms=900,
             )
 
-        self._with_dashboard(ready)
+        self._with_dashboard(
+            ready,
+            failure_label=label,
+            on_error=clear_focus_once,
+        )
 
     def _capture_narrow_window(self) -> None:
         def ready() -> None:
@@ -4599,6 +7193,8 @@ class _UiFaceCaptureRunner:
                     "representative_kind": "deterministic-qt-logical-viewport",
                     "effective_scale_percent": 200,
                     "os_display_scaling_changed": False,
+                    "same_logical_geometry_as": "resize-dashboard-minimum",
+                    "distinct_audit_purpose": "200 percent scaling representative",
                     "capture_process_scale_factor": self._requested_scale_factor,
                     "logical_width": actual_width,
                     "logical_height": actual_height,
@@ -4681,6 +7277,21 @@ class _UiFaceCaptureRunner:
             return
         if family == "progress":
             progress = getattr(dashboard, "progress_dialog", None)
+            navigation = getattr(progress, "navigation", None)
+            keys = list(getattr(navigation, "keys", ()) or ())
+            if progress is None or navigation is None or "overview" not in keys:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Garden Progress overview was unavailable for the resize matrix"
+                    ),
+                })
+                self._next_after(200)
+                return
+            # Every Progress resize face is a geometry audit of the canonical
+            # overview, never whichever metric page the preceding stress
+            # fixture left selected. Route first, then rebuild that page.
+            navigation.set_current("overview")
             refresh = getattr(progress, "refresh", None)
             if callable(refresh):
                 refresh()
@@ -4767,6 +7378,9 @@ class _UiFaceCaptureRunner:
         capture_widget(None, close=True)
 
     def _finish(self) -> None:
+        if bool(getattr(self, "_finished", False)):
+            return
+        self._finished = True
         captured_labels = [
             str(record.get("label", ""))
             for record in self._capture_records
@@ -4784,8 +7398,73 @@ class _UiFaceCaptureRunner:
             if capture_displays else
             self._capture_display
         )
+        fixture_validations_complete = (
+            len(self._capture_records) == len(expected_labels)
+            and all(
+                int(record.get("capture_id", -1)) == index
+                and str(record.get("label", "")) == expected_labels[index - 1]
+                and bool(
+                    dict(record.get("fixture_validation", {})).get("passed", False)
+                )
+                for index, record in enumerate(self._capture_records, start=1)
+            )
+        )
+        finished_at = datetime.now().isoformat(timespec="milliseconds")
+        capture_duration_ms = round(
+            max(
+                0.0,
+                (
+                    __import__("time").perf_counter()
+                    - float(getattr(self, "_capture_started_monotonic", 0.0))
+                ) * 1000.0,
+            ),
+            3,
+        )
+        performance: dict[str, Any] = {}
+        for name, raw_values in dict(
+            getattr(self, "_performance_samples", {})
+        ).items():
+            values = [float(value) for value in list(raw_values or ())]
+            performance[str(name)] = {
+                "samples": [round(value, 3) for value in values],
+                "count": len(values),
+                "minimum_ms": round(min(values), 3) if values else None,
+                "maximum_ms": round(max(values), 3) if values else None,
+                "mean_ms": (
+                    round(sum(values) / len(values), 3) if values else None
+                ),
+            }
+        memory_probe = dict(
+            getattr(self, "_dialog_memory_probe", {"status": "not-run"})
+        )
+        memory_probe_complete = (
+            self._capture_profile != "full"
+            or (
+                str(memory_probe.get("status", "")) == "measured"
+                and int(memory_probe.get("cycles", 0) or 0) == 12
+                and int(memory_probe.get("visible_cycles", 0) or 0) == 12
+                and int(memory_probe.get("closed_cycles", 0) or 0) == 12
+                and bool(memory_probe.get("passed", False))
+            )
+        )
+        complete = (
+            captured_labels == expected_labels
+            and len(self._screenshots) == len(expected_labels)
+            and fixture_validations_complete
+            and memory_probe_complete
+            and not self._failures
+            and not self._text_layout_warnings
+        )
         manifest = {
-            "captured_at": datetime.now().isoformat(timespec="seconds"),
+            "captured_at": finished_at,
+            "started_at": str(
+                getattr(self, "_capture_started_at", finished_at)
+            ),
+            "finished_at": finished_at,
+            "duration_ms": capture_duration_ms,
+            "performance": performance,
+            "dialog_memory_probe": memory_probe,
+            "dialog_memory_probe_complete": memory_probe_complete,
             "capture_contract_version": CAPTURE_CONTRACT_VERSION,
             "capture_profile": self._capture_profile,
             "capture_display": capture_display,
@@ -4801,27 +7480,30 @@ class _UiFaceCaptureRunner:
             "text_layout_warnings": self._text_layout_warnings,
             "failures": self._failures,
             "expected_count": len(expected_labels),
-            "complete": (
-                captured_labels == expected_labels
-                and len(self._screenshots) == len(expected_labels)
-                and not self._failures
-                and not self._text_layout_warnings
-            ),
+            "fixture_validations_complete": fixture_validations_complete,
+            "complete": complete,
+            "manifest_write_succeeded": True,
         }
         try:
             self._close_top_level_dialogs()
             self._close_dashboard()
         except Exception:
             pass
+        manifest_write_succeeded = False
         try:
             manifest_path = self.session_dir / "manifest.json"
             manifest_path.write_text(
                 __import__("json").dumps(manifest, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+            manifest_write_succeeded = True
         except Exception:
-            logger.debug("Anki Garden capture: could not write manifest", exc_info=True)
-        if os.environ.get("ANKI_GARDEN_CAPTURE_QUIT_WHEN_DONE") == "1":
+            logger.error("Anki Garden capture: could not write manifest", exc_info=True)
+        if (
+            os.environ.get("ANKI_GARDEN_CAPTURE_QUIT_WHEN_DONE") == "1"
+            or not manifest_write_succeeded
+        ):
             app = QApplication.instance()
             if app is not None:
-                QTimer.singleShot(350, app.quit)
+                exit_code = 0 if complete and manifest_write_succeeded else 1
+                QTimer.singleShot(350, lambda: app.exit(exit_code))

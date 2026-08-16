@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import re
 import textwrap
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +40,26 @@ def _compiled_method(class_name: str, method_name: str, **globals_: object) -> o
     return namespace[method_name]
 
 
+def _compiled_function(function_name: str, **globals_: object) -> object:
+    source = CAPTURE_PATH.read_text("utf-8")
+    module = ast.parse(source)
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            segment = ast.get_source_segment(source, node)
+            assert segment is not None
+            namespace = dict(globals_)
+            exec(
+                compile(
+                    "from __future__ import annotations\n" + segment,
+                    str(CAPTURE_PATH),
+                    "exec",
+                ),
+                namespace,
+            )
+            return namespace[function_name]
+    raise AssertionError(f"Missing function {function_name}")
+
+
 def _literal_assignment(name: str) -> object:
     module = ast.parse(CAPTURE_PATH.read_text("utf-8"))
     for node in module.body:
@@ -52,10 +74,49 @@ def _literal_assignment(name: str) -> object:
     raise AssertionError(f"{name} was not found")
 
 
+def _compiled_renderer_family_contract() -> dict[str, object]:
+    source = CAPTURE_PATH.read_text("utf-8")
+    module = ast.parse(source)
+    assignment_names = {
+        "CAPTURE_FACE_GROUPS",
+        "RESIZE_MATRIX_SPECS",
+        "RESIZE_MATRIX_LAYOUT_MODES",
+        "_HOME_CAPTURE_LABELS",
+        "_DASHBOARD_CAPTURE_LABELS",
+        "_PROGRESS_CAPTURE_LABELS",
+        "_NURSERY_CAPTURE_LABELS",
+        "_SETTINGS_CAPTURE_LABELS",
+        "_RESIZE_WINDOW_FAMILIES",
+    }
+    selected: list[ast.stmt] = []
+    for node in module.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(
+                isinstance(target, ast.Name) and target.id in assignment_names
+                for target in targets
+            ):
+                selected.append(node)
+        elif (
+            isinstance(node, ast.FunctionDef)
+            and node.name in {
+                "expected_capture_window_family",
+                "expected_capture_state_profile",
+            }
+        ):
+            selected.append(node)
+    namespace: dict[str, object] = {"Any": object, "re": re}
+    exec(
+        compile(ast.Module(body=selected, type_ignores=[]), str(CAPTURE_PATH), "exec"),
+        namespace,
+    )
+    return namespace
+
+
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 8
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 9
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -150,7 +211,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "clear-recall-separate-conditions",
         "streak-at-risk",
         "streak-missed-day",
-        "streak-reward-claimed-unclaimed",
+        "streak-reward-earned-next",
     )
     assert groups["Release stress — Nursery"] == (
         "nursery-item-owned",
@@ -178,6 +239,59 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     labels = [label for group in groups.values() for label in group]
     assert len(labels) == 146
     assert len(labels) == len(set(labels))
+
+
+def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
+    contract = _compiled_renderer_family_contract()
+    groups = contract["CAPTURE_FACE_GROUPS"]
+    resolver = contract["expected_capture_window_family"]
+    assert isinstance(groups, tuple)
+    assert callable(resolver)
+    labels = [label for _group, group_labels in groups for label in group_labels]
+    families = [resolver(label) for label in labels]
+
+    assert all(families)
+    assert Counter(families) == {
+        "AnkiQt": 12,
+        "GardenDashboard": 43,
+        "GardenProgressDialog": 21,
+        "GardenSettingsDialog": 17,
+        "NurseryDialog": 16,
+        "CustomizeGardenDialog": 8,
+        "FertilizerDialog": 7,
+        "StarterConfirmationDialog": 6,
+        "PlantStoryDialog": 6,
+        "FertilizerReplacementDialog": 6,
+        "SpeciesOverviewDialog": 4,
+    }
+
+
+def test_every_capture_fixture_has_one_state_specific_profile() -> None:
+    contract = _compiled_renderer_family_contract()
+    groups = contract["CAPTURE_FACE_GROUPS"]
+    resolver = contract["expected_capture_state_profile"]
+    assert isinstance(groups, tuple)
+    assert callable(resolver)
+    labels = [label for _group, group_labels in groups for label in group_labels]
+    profiles = [resolver(label) for label in labels]
+
+    assert all(profile for profile in profiles)
+    assert [profile["profile_id"] for profile in profiles] == labels
+    assert len({profile["profile_id"] for profile in profiles}) == 146
+    assert all(profile.get("kind") for profile in profiles)
+    assert resolver("deck-browser-home")["fixture_state"] == (
+        "starter-planted-not-nurtured"
+    )
+    assert resolver("active-overview-home-after-nurture")["fixture_state"] == (
+        "nurtured-active"
+    )
+    assert resolver("resize-dashboard-content-1359")["declared_client_size"] == [
+        1383,
+        900,
+    ]
+    assert resolver("resize-dashboard-content-1359")["layout_mode"] == "compact"
+    assert resolver("resize-dashboard-content-1361")["layout_mode"] == "wide"
+    assert resolver("resize-progress-minimum")["canonical_page"] == "overview"
 
 
 def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
@@ -224,6 +338,7 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
 
 def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -> None:
     specs = _literal_assignment("RESIZE_MATRIX_SPECS")
+    layout_modes = _literal_assignment("RESIZE_MATRIX_LAYOUT_MODES")
     families = {spec[1] for spec in specs}
 
     assert families == {
@@ -251,9 +366,11 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
     assert any("above-1000" in spec[2] for spec in specs)
     assert any("below-1360" in spec[2] for spec in specs)
     assert any("above-1360" in spec[2] for spec in specs)
+    assert set(layout_modes) == {spec[0] for spec in specs}
+    assert all(layout_modes[spec[0]] in {"default", "display", "narrow", "compact", "wide"} for spec in specs)
 
 
-def test_capture_manifest_records_exact_geometry_and_fails_on_clamping() -> None:
+def test_capture_manifest_records_geometry_and_fails_unexplained_or_unsafe_drift() -> None:
     capture_now = _method_source("_UiFaceCaptureRunner", "_capture_now")
     requested = _method_source(
         "_UiFaceCaptureRunner",
@@ -274,6 +391,8 @@ def test_capture_manifest_records_exact_geometry_and_fails_on_clamping() -> None
         '"constraint_limited"',
         '"native_normalized"',
         '"normalization_reason"',
+        '"geometry_drift_accepted"',
+        '"geometry_acceptance"',
         '"frame_overhead"',
         '"frame_size"',
         '"device_pixel_ratio"',
@@ -283,14 +402,108 @@ def test_capture_manifest_records_exact_geometry_and_fails_on_clamping() -> None
     ):
         assert field in capture_now
     assert "exact_size_reached" in capture_now
-    assert "clamped the requested" in capture_now
+    assert "Unexplained or unsafe geometry drift" in capture_now
+    assert "geometry_acceptance.get(\"accepted\", False)" in capture_now
     assert "Geometry audit found" in capture_now
     assert "widget.resize(initial_width, initial_height)" in requested
     assert "widget.resize(target_width, target_height)" in requested
     assert '"declared_client_size": [declared_width, declared_height]' in requested
-    assert '"requested_client_size": [normalized_width, normalized_height]' in requested
+    assert '"requested_client_size": [declared_width, declared_height]' in requested
+    assert "min(declared_width, screen_maximum_width" not in requested
+    assert "min(declared_height, screen_maximum_height" not in requested
     assert "forbidden-horizontal-overflow" in geometry_audit
     assert "painted-frame-outside-root" in geometry_audit
+
+
+def test_resize_geometry_accepts_only_explained_safe_drift() -> None:
+    classify = _compiled_function("resize_geometry_acceptance", Any=object)
+    common = {
+        "label": "resize-dashboard-content-1359",
+        "declared_size": [1383, 900],
+        "minimum_size": [620, 520],
+        "maximum_size": [16777215, 16777215],
+        "constraint_limited": False,
+    }
+
+    explained = classify(
+        **common,
+        actual_size=[1383, 699],
+        screen_limited=True,
+        native_normalized=True,
+        normalization_reason=(
+            "extends-beyond-available-screen,native-frame-or-scale"
+        ),
+    )
+    assert explained["accepted"] is True
+    assert explained["breakpoint_width_within_one"] is True
+    assert explained["safe_bounded_height"] is True
+
+    unexplained = classify(
+        **common,
+        actual_size=[1383, 699],
+        screen_limited=False,
+        native_normalized=False,
+        normalization_reason="",
+    )
+    assert unexplained["accepted"] is False
+    assert unexplained["provenance_explains_drift"] is False
+
+    crossed_breakpoint = classify(
+        **common,
+        actual_size=[1380, 699],
+        screen_limited=True,
+        native_normalized=True,
+        normalization_reason=(
+            "extends-beyond-available-screen,native-frame-or-scale"
+        ),
+    )
+    assert crossed_breakpoint["accepted"] is False
+    assert crossed_breakpoint["breakpoint_width_within_one"] is False
+
+    unsafe_height = classify(
+        **common,
+        actual_size=[1383, 400],
+        screen_limited=True,
+        native_normalized=True,
+        normalization_reason=(
+            "extends-beyond-available-screen,native-frame-or-scale"
+        ),
+    )
+    assert unsafe_height["accepted"] is False
+    assert unsafe_height["safe_bounded_height"] is False
+
+
+def test_capture_timeouts_and_step_exceptions_fail_closed() -> None:
+    next_step = _method_source("_UiFaceCaptureRunner", "_next_step")
+    wait = _method_source("_UiFaceCaptureRunner", "_wait_for")
+    collection = _method_source("_UiFaceCaptureRunner", "_wait_for_collection")
+    dashboard = _method_source("_UiFaceCaptureRunner", "_wait_for_dashboard")
+    seed = _method_source("_UiFaceCaptureRunner", "_prepare_capture_state")
+
+    assert "Capture step" in next_step
+    assert "type(exc).__name__" in next_step
+    assert "on_ready()" not in wait.split("if tries <= 0:", 1)[1]
+    assert '"Timed out waiting for the requested UI surface"' in wait
+    assert '"Anki collection did not become ready before capture"' in collection
+    assert '"Garden Dashboard did not become visible before capture"' in dashboard
+    assert '"release-fixture-seed"' in seed
+    assert "self._finish()" in seed
+
+
+def test_capture_readiness_callbacks_are_one_shot_and_fail_closed() -> None:
+    wrapper = _method_source("_UiFaceCaptureRunner", "_one_shot_async_callback")
+    collection = _method_source("_UiFaceCaptureRunner", "_wait_for_collection")
+    dashboard = _method_source("_UiFaceCaptureRunner", "_wait_for_dashboard")
+    wait = _method_source("_UiFaceCaptureRunner", "_wait_for")
+    home = _method_source("_UiFaceCaptureRunner", "_wait_for_home_surface")
+
+    assert "if called:" in wrapper
+    assert "called = True" in wrapper
+    assert "Capture readiness callback raised" in wrapper
+    assert "_one_shot_async_callback" in collection
+    assert "_one_shot_async_callback" in dashboard
+    assert "_one_shot_async_callback" in wait
+    assert "resolved_once = self._one_shot_async_callback" in home
 
 
 def test_capture_state_variants_use_writable_sources_and_clear_stale_toasts() -> None:
@@ -328,6 +541,32 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     assert "callback_watchdog" in source
     assert "QTimer.singleShot(750, callback_watchdog)" in source
     assert "retry_or_fail()" in source
+    assert 'fixture_state = "starter-not-selected"' in source
+    assert 'fixture_state = "starter-planted-not-nurtured"' in source
+    assert 'fixture_state = "nurtured-active"' in source
+    assert "root.dataset.activeSlot" in source
+    assert "capture_label: str" in source
+    assert "visibleRoots[visibleRoots.length - 1]" in source
+    assert "command.endsWith(':open')" in source
+    assert 'if tries in {75, 50, 25}:' in source
+    assert 'invalidate(f"capture readiness retry for {capture_label}")' in source
+    assert '"last DOM observation"' not in source
+    assert "last DOM observation" in source
+    assert "Home fixture identity could not be verified without WebEngine" in source
+
+
+def test_home_capture_call_sites_supply_the_exact_manifest_label() -> None:
+    source = CAPTURE_PATH.read_text("utf-8")
+
+    for surface, label in (
+        ("deckBrowser", "starter-deck-browser-home"),
+        ("overview", "starter-overview-home"),
+        ("deckBrowser", "deck-browser-home"),
+        ("overview", "overview-home"),
+    ):
+        assert f'self._wait_for_home_surface(\n                    "{surface}",\n                    "{label}"' in source or (
+            f'self._wait_for_home_surface(\n                "{surface}",\n                "{label}"' in source
+        )
 
 
 def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() -> None:
@@ -349,12 +588,14 @@ def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() 
 
 def test_capture_uses_the_real_starter_then_nurture_state_boundary() -> None:
     seed = _method_source("_UiFaceCaptureRunner", "_ensure_capture_state")
+    prepare = _method_source("_UiFaceCaptureRunner", "_prepare_capture_state")
     planted = _method_source("_UiFaceCaptureRunner", "_capture_selected_card_after")
     nurtured = _method_source("_UiFaceCaptureRunner", "_capture_nurture_after")
 
     assert "choose_starter(species)" in seed
     assert "active_plant_id =" not in seed
     assert "set_active_plant" not in seed
+    assert 'notify("Capture starter fixture committed")' in prepare
     assert "onboarding_state_display" in planted
     assert "OnboardingState.STARTER_PLANTED_NOT_NURTURED" in planted
     assert "active_plant_id =" not in planted
@@ -367,6 +608,7 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     achievement = _method_source("_UiFaceCaptureRunner", "_capture_achievement_completed")
     missed_streak = _method_source("_UiFaceCaptureRunner", "_capture_streak_missed_day")
     streak_rewards = _method_source("_UiFaceCaptureRunner", "_capture_streak_reward_states")
+    collection = _method_source("_UiFaceCaptureRunner", "_capture_collection_several")
     purchase = _method_source("_UiFaceCaptureRunner", "_capture_nursery_purchase_success")
 
     assert "stats.reviewed = 100" in achievement
@@ -381,6 +623,12 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "presentation.current_days == 0" in missed_streak
     assert "presentation.previous_days == 3" in missed_streak
     assert "claimed=[7, 14]" in streak_rewards
+    assert '"streak-reward-earned-next"' in streak_rewards
+    assert '"manual_claim_action_supported": False' in streak_rewards
+
+    assert "][:4]" in collection.replace(" ", "")
+    assert "discovered_count == 4" in collection
+    assert 'restore_callback=restore' in collection
 
     assert "dialog._purchase_environment(item.kind, item.item_id)" in purchase
     assert purchase.count("dialog._preview_environment_item(item)") == 2
@@ -445,7 +693,8 @@ def test_watering_can_faces_cover_six_native_and_six_home_plot_positions() -> No
     assert "for slot in (0, 2, 4)" in init
     assert "for slot in (1, 3, 5)" in init
     assert "self.app.engine.set_active_plant(plant.plant_id)" in select_slot
-    assert "GROWTH_THRESHOLDS[-2]" in select_slot
+    assert "WATERING_CAPTURE_GROWTH_POINTS" in select_slot
+    assert "state.garden_name = WATERING_CAPTURE_GARDEN_NAME" in select_slot
     assert "item.slot_index = index if index < 6 else None" in select_slot
     assert 'f"watering-can-garden-plot-{slot + 1}"' in garden
     assert 'surface == "deckBrowser"' in home
@@ -503,6 +752,9 @@ def test_watering_can_capture_profile_skips_unrelated_release_interfaces() -> No
     assert "expected_labels = list(self._capture_face_labels)" in finish
     assert '"capture_profile": self._capture_profile' in finish
     assert "for group, labels in self._capture_face_groups" in finish
+    assert "fixture_validations_complete" in finish
+    assert "complete and manifest_write_succeeded" in finish
+    assert "app.exit(exit_code)" in finish
 
 
 def test_capture_manifest_reports_per_face_and_aggregate_display_provenance(
@@ -514,7 +766,7 @@ def test_capture_manifest_reports_per_face_and_aggregate_display_provenance(
         "_UiFaceCaptureRunner",
         "_finish",
         QApplication=SimpleNamespace(instance=lambda: None),
-        CAPTURE_CONTRACT_VERSION=8,
+        CAPTURE_CONTRACT_VERSION=9,
         QTimer=SimpleNamespace(singleShot=lambda *_args: None),
         datetime=datetime,
         logger=SimpleNamespace(debug=lambda *_args, **_kwargs: None),
@@ -619,7 +871,7 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert capture_home.index(
         "self._activate_current_process_window(widget)"
     ) < capture_home.index("candidates:")
-    assert 'return None, "foreground-window-not-ready"' in capture_home
+    assert "allow_screen_capture=foreground_confirmed" in capture_home
     assert "screen.grabWindow(" in capture_home
     assert "int(widget.winId())" in capture_home
     assert "widget.mapToGlobal(widget.rect().topLeft())" in capture_home
@@ -635,6 +887,7 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert "expected_width=int(widget.width())" in capture_now
     assert "expected_height=int(widget.height())" in capture_now
     assert 'annotation["home_capture_method"] = capture_method' in capture_now
+    assert 'annotation["home_foreground_confirmed"] = foreground_confirmed' in capture_now
     assert "dominant_ratio < 0.92" in pixmap_metrics
     assert "saturated_ratio >= 0.04" in pixmap_metrics
     assert "aspect_ratio_error <= 0.12" in pixmap_metrics
@@ -654,34 +907,62 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert "for _attempt in range(5):" in activate_window
     assert "and not self._capture_force_primary" in move_to_display
     assert "branded or viable" not in capture_home
-    assert 'return None, "semantic-window-not-ready"' in capture_home
+    assert '"app-owned-home-surface-not-ready"' in capture_home
+    assert '"semantic-window-not-ready"' in capture_home
     assert 'if self._capture_display == "secondary"' in capture_home
     assert "self._capture_force_primary = True" in capture_home
     assert "self._move_to_capture_display(widget)" in capture_home
 
 
-def test_home_capture_waits_for_exact_foreground_window_before_grabbing_pixels() -> None:
-    warnings: list[str] = []
+def test_home_capture_uses_only_the_app_owned_qt_surface_without_foreground() -> None:
+    class Pixmap:
+        def isNull(self) -> bool:
+            return False
+
+    class Widget:
+        def grab(self) -> Pixmap:
+            return Pixmap()
+
+        def width(self) -> int:
+            return 667
+
+        def height(self) -> int:
+            return 570
+
+    warnings: list[tuple[object, ...]] = []
     capture_home = _compiled_method(
         "_UiFaceCaptureRunner",
         "_capture_home_pixmap",
-        logger=SimpleNamespace(warning=lambda message: warnings.append(message)),
+        QApplication=SimpleNamespace(instance=lambda: None),
+        QGuiApplication=SimpleNamespace(
+            primaryScreen=lambda: (_ for _ in ()).throw(
+                AssertionError("screen capture must not run without foreground")
+            ),
+        ),
+        logger=SimpleNamespace(
+            debug=lambda *_args, **_kwargs: None,
+            warning=lambda *args: warnings.append(args),
+        ),
+        mw=SimpleNamespace(web=None),
+        time=SimpleNamespace(sleep=lambda _seconds: None),
     )
-
-    class GrabProbe:
-        def windowHandle(self) -> object:
-            raise AssertionError("capture source reached before foreground readiness")
-
     runner = SimpleNamespace(
         _activate_current_process_window=lambda _widget: False,
+        _capture_display="primary",
+        _capture_force_primary=True,
+        _home_pixmap_metrics=lambda *_args, **_kwargs: {
+            "generic_content_passed": True,
+            "semantic_identity_passed": True,
+            "passed": True,
+            "brand_sample_ratio": 0.01,
+            "dark_shell_sample_ratio": 0.1,
+        },
     )
-    assert capture_home(runner, GrabProbe()) == (
-        None,
-        "foreground-window-not-ready",
-    )
-    assert warnings == [
-        "Anki Garden capture: exact Anki Home window did not become foreground"
-    ]
+    pixmap, method, foreground = capture_home(runner, Widget())
+    assert isinstance(pixmap, Pixmap)
+    assert method == "qt-widget"
+    assert foreground is False
+    assert "limiting capture to the app-owned Qt surface" in str(warnings[0][0])
 
 
 def test_current_window_activation_keeps_the_cross_platform_qt_path() -> None:
@@ -869,9 +1150,10 @@ def test_secondary_home_capture_retries_on_primary_instead_of_selecting_desktop(
     runner._home_pixmap_metrics = metrics
     runner._move_to_capture_display = move_to_display
 
-    pixmap, method = capture_home(runner, widget)
+    pixmap, method, foreground = capture_home(runner, widget)
     assert method == "foreground-screen-region"
     assert pixmap.name == "garden"
+    assert foreground is True
     assert runner._capture_force_primary is True
     assert widget.capture_display == "primary"
     assert process_events == [True]
@@ -981,3 +1263,678 @@ def test_200_percent_face_is_a_labeled_qt_representative_with_manifest_audit() -
     assert "scene_top_gap <= 24" in capture_now
     assert "title_stack_extra_height <= 16" in capture_now
     assert '"feedback_panel_visible": bool(dashboard.feedback_panel.isVisible())' in capture_now
+
+
+def test_settings_fixtures_reset_scroll_and_reveal_reduced_motion() -> None:
+    tab = _method_source("_UiFaceCaptureRunner", "_set_settings_tab")
+    custom = _method_source("_UiFaceCaptureRunner", "_capture_custom_settings")
+    reduced = _method_source(
+        "_UiFaceCaptureRunner",
+        "_show_reduced_motion_fixture",
+    )
+    capture = _method_source("_UiFaceCaptureRunner", "_capture_reduced_motion")
+
+    assert "scroll.verticalScrollBar().setValue(0)" in tab
+    assert "scroll.horizontalScrollBar().setValue(0)" in tab
+    assert "controls_scroll" in reduced
+    assert "ensureWidgetVisible(control" in reduced
+    assert 'str(scroll.accessibleName() or "") == "Display settings"' in reduced
+    assert "self._show_reduced_motion_fixture" in capture
+    assert 'config_update({"reduced_motion": True})' in capture
+    assert "restore_callback=restore_reduced_motion" in capture
+    assert "restore_callback: Callable[[], None] | None = None" in custom
+    assert "close_callback=cleanup_once" in custom
+    assert "on_error=cleanup_once" in custom
+    assert "cleanup_complete" in custom
+
+
+def test_custom_settings_cleanup_runs_once_on_success_timeout_and_error() -> None:
+    capture_custom = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_custom_settings",
+    )
+
+    def exercise(mode: str) -> tuple[list[str], list[dict[str, str]]]:
+        events: list[str] = []
+        dialog = SimpleNamespace()
+        runner = SimpleNamespace(
+            _failures=[],
+            app=SimpleNamespace(
+                dashboard=SimpleNamespace(
+                    _open_settings=lambda: events.append("open"),
+                ),
+            ),
+        )
+        runner._find_settings_dialog = lambda: dialog
+        runner._set_settings_tab = (
+            lambda found, tab: events.append(f"tab:{tab}")
+        )
+        runner._close_settings_capture = (
+            lambda found: events.append("close")
+        )
+
+        def capture_and_advance(
+            _label: str,
+            _widget: object,
+            **kwargs: object,
+        ) -> None:
+            events.append("capture")
+            callback = kwargs.get("close_callback")
+            assert callable(callback)
+            callback()
+            callback()
+
+        def wait_for(
+            _predicate: object,
+            on_ready: object,
+            **kwargs: object,
+        ) -> None:
+            on_error = kwargs.get("on_error")
+            assert callable(on_error)
+            if mode == "timeout":
+                on_error()
+                on_error()
+                return
+            assert callable(on_ready)
+            try:
+                on_ready()
+            except RuntimeError:
+                on_error()
+                on_error()
+
+        def with_dashboard(on_ready: object, **kwargs: object) -> None:
+            on_error = kwargs.get("on_error")
+            assert callable(on_error)
+            if mode == "dashboard-error":
+                on_error()
+                on_error()
+                return
+            assert callable(on_ready)
+            on_ready()
+
+        runner._capture_and_advance = capture_and_advance
+        runner._wait_for = wait_for
+        runner._with_dashboard = with_dashboard
+
+        def prepare(_dialog: object) -> None:
+            events.append("prepare")
+            if mode == "prepare-error":
+                raise RuntimeError("fixture preparation failed")
+
+        def restore() -> None:
+            events.append("restore")
+            if mode == "restore-error":
+                raise RuntimeError("fixture restoration failed")
+
+        capture_custom(
+            runner,
+            "fixture",
+            0,
+            prepare,
+            restore_callback=restore,
+        )
+        return events, runner._failures
+
+    success, success_failures = exercise("success")
+    timeout, timeout_failures = exercise("timeout")
+    prepare_error, prepare_failures = exercise("prepare-error")
+    dashboard_error, dashboard_failures = exercise("dashboard-error")
+    restore_error, restore_failures = exercise("restore-error")
+
+    assert success == ["open", "tab:0", "prepare", "capture", "close", "restore"]
+    assert timeout == ["open", "close", "restore"]
+    assert prepare_error == ["open", "tab:0", "prepare", "close", "restore"]
+    assert dashboard_error == ["close", "restore"]
+    assert restore_error == ["open", "tab:0", "prepare", "capture", "close", "restore"]
+    assert not success_failures
+    assert not timeout_failures
+    assert not prepare_failures
+    assert not dashboard_failures
+    assert [failure["reason"] for failure in restore_failures] == [
+        "Settings fixture state restoration failed: RuntimeError"
+    ]
+
+
+def test_keyboard_focus_fixture_clears_its_focus_before_advancing() -> None:
+    events: list[str] = []
+
+    class Button:
+        focused = False
+
+        def setFocus(self, _reason: object) -> None:
+            self.focused = True
+            events.append("focus")
+
+        def clearFocus(self) -> None:
+            self.focused = False
+            events.append("clear")
+
+        def hasFocus(self) -> bool:
+            return bool(self.focused)
+
+    button = Button()
+    application = SimpleNamespace(processEvents=lambda: events.append("events"))
+    qapplication = SimpleNamespace(
+        instance=lambda: application,
+        focusWidget=lambda: button if button.focused else None,
+    )
+    capture_focus = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_keyboard_focus",
+        QApplication=qapplication,
+        Qt=SimpleNamespace(
+            FocusReason=SimpleNamespace(TabFocusReason="tab"),
+        ),
+    )
+    dashboard = SimpleNamespace(progress_btn=button)
+    runner = SimpleNamespace(
+        _failures=[],
+        app=SimpleNamespace(dashboard=dashboard),
+    )
+
+    def capture_and_advance(
+        label: str,
+        widget: object,
+        **kwargs: object,
+    ) -> None:
+        assert label == "keyboard-focus-state"
+        assert widget is dashboard
+        assert button.hasFocus() is True
+        events.append("capture")
+        callback = kwargs.get("close_callback")
+        assert callable(callback)
+        callback()
+        callback()
+
+    runner._capture_and_advance = capture_and_advance
+    runner._with_dashboard = lambda ready, **_kwargs: ready()
+
+    capture_focus(runner)
+
+    assert events == ["focus", "events", "capture", "clear", "events"]
+    assert button.hasFocus() is False
+    assert runner._failures == []
+
+
+def test_accessibility_fixture_postconditions_prove_isolation() -> None:
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+    keyboard = _method_source("_UiFaceCaptureRunner", "_capture_keyboard_focus")
+
+    assert 'state_name == "keyboard-focus-state"' in postcondition
+    assert '"reduced_motion_config_enabled"' in postcondition
+    assert '"reduced_motion_baseline_restored"' in postcondition
+    assert '"keyboard_focus_owner"' in postcondition
+    assert '"keyboard_focus_fixture_cleared"' in postcondition
+    assert 'state_name.startswith("resize-dashboard-")' in postcondition
+    assert "focus_owner is button" in postcondition
+    assert "focus_owner is not progress_button" in postcondition
+    assert "close_callback=clear_focus_once" in keyboard
+    assert "on_error=clear_focus_once" in keyboard
+    assert "cleanup_complete" in keyboard
+    assert '"Keyboard-focus fixture cleanup failed: "' in keyboard
+    assert "self._failures.append" in keyboard
+
+
+def test_capture_records_surface_timings_and_repeated_dialog_retention() -> None:
+    wait = _method_source("_UiFaceCaptureRunner", "_wait_for")
+    probe = _method_source("_UiFaceCaptureRunner", "_run_dialog_memory_probe")
+    finish = _method_source("_UiFaceCaptureRunner", "_finish")
+
+    assert "started_monotonic" in wait
+    assert 'f"surface_ready:{failure_label}"' in wait
+    assert "cycles: int = 12" in probe
+    assert "app.allWidgets()" in probe
+    assert 'getattr(dashboard, "_open_nursery", None)' in probe
+    assert 'observation["visible"]' in probe
+    assert 'observation["closed"]' in probe
+    assert "visible_cycles == 12" in probe
+    assert "closed_cycles == 12" in probe
+    assert '"current_rss_available": False' in probe
+    assert '"watched_class_delta"' in probe
+    assert '"dialog_memory_probe"' in finish
+    assert "memory_probe_complete" in finish
+    assert "and memory_probe_complete" in finish
+
+
+def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
+    capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
+    finish = _method_source("_UiFaceCaptureRunner", "_finish")
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+
+    assert "expected_capture_state_profile(label)" in postcondition
+    assert '"ordered_fixture_label"' in postcondition
+    assert '"dom_fixture_ready"' in postcondition
+    assert '"progress_page"' in postcondition
+    assert '"nursery_tab"' in postcondition
+    assert '"settings_tab"' in postcondition
+    assert '"declared_client_size"' in postcondition
+    assert '"layout_mode"' in postcondition
+    assert '"geometry_acceptance"' in postcondition
+    assert '"canonical_progress_page"' in postcondition
+    assert "self._capture_fixture_postcondition(" in capture
+    assert '"postcondition": postcondition' in capture
+    assert "postcondition.get(\"passed\", False)" in capture
+    assert 'dict(record.get("fixture_validation", {})).get("passed", False)' in finish
+
+
+def test_delayed_capture_keeps_reserved_identity_after_global_provenance_advances() -> None:
+    home_widget = object()
+    timer_callbacks: list[object] = []
+    qtimer = SimpleNamespace(
+        singleShot=lambda _delay, callback: timer_callbacks.append(callback),
+    )
+    reserve = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_reserve_capture_identity",
+    )
+    schedule = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_and_advance",
+        QTimer=qtimer,
+        logger=SimpleNamespace(debug=lambda *_args, **_kwargs: None),
+        mw=home_widget,
+        time=SimpleNamespace(perf_counter=lambda: 123.0),
+    )
+
+    def exercise(widget: object) -> tuple[object, ...]:
+        timer_callbacks.clear()
+        saved: list[tuple[object, ...]] = []
+        runner = SimpleNamespace(
+            _active_fixture_expected_label="deck-browser-home",
+            _active_fixture_source="ordered-step-001:_capture_deck_browser",
+            _capture_index=7,
+            _capture_requested_monotonic={},
+        )
+        runner._reserve_capture_identity = (
+            lambda label: reserve(runner, label)
+        )
+
+        def advance_global_provenance() -> None:
+            runner._active_fixture_expected_label = "overview-home"
+            runner._active_fixture_source = "ordered-step-002:_capture_overview"
+
+        def activate(_widget: object) -> bool:
+            # Home activation pumps Qt events in production. Simulate a
+            # provenance advance before the delayed screenshot callback.
+            advance_global_provenance()
+            return True
+
+        runner._activate_current_process_window = activate
+        runner._next_after = lambda _delay: advance_global_provenance()
+        runner._capture_now = lambda label, captured_widget, **kwargs: saved.append(
+            (label, captured_widget, kwargs["capture_identity"])
+        )
+
+        schedule(
+            runner,
+            "deck-browser-home",
+            widget,
+            capture_delay_ms=20,
+            next_ms=80,
+        )
+
+        assert runner._capture_index == 8
+        assert runner._active_fixture_source == "ordered-step-002:_capture_overview"
+        assert len(timer_callbacks) == 1
+        callback = timer_callbacks.pop()
+        assert callable(callback)
+        callback()
+        assert len(saved) == 1
+        return saved[0]
+
+    generic = exercise(object())
+    home = exercise(home_widget)
+    expected_identity = (
+        7,
+        "deck-browser-home",
+        "ordered-step-001:_capture_deck_browser",
+        "deck-browser-home",
+    )
+
+    assert generic[0] == home[0] == "deck-browser-home"
+    assert generic[2] == home[2] == expected_identity
+
+
+def test_capture_identity_mismatches_fail_before_reading_qt_or_saving() -> None:
+    capture_now = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_now",
+        time=SimpleNamespace(perf_counter=lambda: 10.0),
+    )
+    runner = SimpleNamespace(_failures=[])
+
+    capture_now(runner, "deck-browser-home", capture_identity=None)
+    capture_now(
+        runner,
+        "deck-browser-home",
+        capture_identity=(
+            7,
+            "overview-home",
+            "ordered-step-001:_capture_deck_browser",
+            "deck-browser-home",
+        ),
+    )
+    capture_now(
+        runner,
+        "deck-browser-home",
+        capture_identity=(
+            0,
+            "deck-browser-home",
+            "stale-global-source",
+            "overview-home",
+        ),
+    )
+
+    assert [failure["reason"] for failure in runner._failures] == [
+        "Scheduled capture identity snapshot was missing or malformed",
+        (
+            "Scheduled capture identity did not match the requested fixture: "
+            "scheduled_label"
+        ),
+        (
+            "Scheduled capture identity did not match the requested fixture: "
+            "capture_id, fixture_source, expected_fixture_label"
+        ),
+    ]
+
+
+def test_saved_capture_provenance_never_reads_mutable_next_step_globals() -> None:
+    reserve = _method_source("_UiFaceCaptureRunner", "_reserve_capture_identity")
+    schedule = _method_source("_UiFaceCaptureRunner", "_capture_and_advance")
+    capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+
+    assert "self._capture_index = capture_id + 1" in reserve
+    assert 'getattr(self, "_active_fixture_source", "")' in reserve
+    assert 'getattr(self, "_active_fixture_expected_label", "")' in reserve
+    assert schedule.index("self._reserve_capture_identity(label)") < schedule.index(
+        "self._activate_current_process_window(widget)"
+    )
+    assert "lambda identity=capture_identity" in schedule
+    assert "capture_identity=identity" in schedule
+    assert '"fixture_source": fixture_source' in capture
+    assert "expected_fixture_label=expected_fixture_label" in capture
+    assert "self._active_fixture_source" not in capture
+    assert "self._active_fixture_expected_label" not in capture
+    assert "self._capture_index" not in capture
+    assert "expected_fixture_label: str" in postcondition
+    assert "self._active_fixture_expected_label" not in postcondition
+
+
+def test_collection_and_clear_recall_fixtures_restore_on_failure_and_close() -> None:
+    collection_filter = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_collection_filter",
+    )
+    collection_several = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_collection_several",
+    )
+    clear_recall = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_clear_recall_conditions",
+    )
+    progress_page = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_progress_page_after",
+    )
+
+    assert "def restore_fixture()" in collection_filter
+    assert "on_error=restore_fixture" in collection_filter
+    assert "finally:\n                        restore_fixture()" in collection_filter
+    assert "def restore()" in collection_several
+    assert "except Exception:\n            restore()" in collection_several
+    assert "self._refresh_capture_dashboard()" in collection_several
+    assert "dashboard._collection_filter = original_filter" in collection_several
+    assert collection_several.index("original_plants =") < collection_several.index(
+        "if not self._ensure_development_stress_state():"
+    )
+
+    assert "achievement_snapshots" in clear_recall
+    assert "for item in state.achievements.values():" in clear_recall
+    assert "item.unlocked = False" in clear_recall
+    assert '"achievement_state_isolated": True' in clear_recall
+    assert "restore_callback=restore" in clear_recall
+    assert "finally:\n                    if restore_callback is not None:" in progress_page
+    assert "on_error=restore_callback" in progress_page
+
+
+def test_capture_scope_matches_the_pixel_acquisition_method() -> None:
+    capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
+
+    assert 'if capture_method in {' in capture
+    assert '"foreground-screen-region"' in capture
+    assert '"native-window"' in capture
+    assert '"app-owned-qt-surface"' in capture
+    scope_branch = capture.split('annotation["home_capture_scope"] = (', 1)[1].split(
+        ")\n", 1
+    )[0]
+    assert "foreground_confirmed" not in scope_branch
+
+
+def test_duplicate_minimum_dashboard_geometry_has_two_explicit_audit_purposes() -> None:
+    representative = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_display_scaling_200_representative",
+    )
+    requested = _method_source("_UiFaceCaptureRunner", "_capture_requested_size")
+
+    assert '"same_logical_geometry_as": "resize-dashboard-minimum"' in representative
+    assert '"distinct_audit_purpose": "200 percent scaling representative"' in representative
+    assert 'if label == "resize-dashboard-minimum":' in requested
+    assert '"same_logical_geometry_as": "display-scaling-200-qt-representative"' in requested
+    assert '"distinct_audit_purpose": "responsive minimum resize transition"' in requested
+
+
+def test_progress_resize_faces_reset_to_the_canonical_overview() -> None:
+    resize = _method_source("_UiFaceCaptureRunner", "_capture_resize_matrix_face")
+    route_position = resize.index('navigation.set_current("overview")')
+    refresh_position = resize.index("refresh()", route_position)
+    capture_position = resize.index("capture_widget(progress, close=True)")
+
+    assert route_position < refresh_position < capture_position
+    assert '"overview" not in keys' in resize
+    assert "Garden Progress overview was unavailable" in resize
+
+
+def test_watering_faces_clear_unrelated_stress_state_and_audit_the_name() -> None:
+    setup = _method_source("_UiFaceCaptureRunner", "_set_nurtured_capture_slot")
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+
+    assert "CURRENT_CATALOG_SPECIES_ORDER" in setup
+    assert "state.garden_name = WATERING_CAPTURE_GARDEN_NAME" in setup
+    assert "state.currency_balance = WATERING_CAPTURE_CURRENCY_BALANCE" in setup
+    assert "item.growth_points = WATERING_CAPTURE_GROWTH_POINTS" in setup
+    assert "item.fertilizer = None" in setup
+    assert 'if label.startswith("watering-can-"):' in postcondition
+    assert '"canonical_watering_garden_name"' in postcondition
+    assert '"canonical_watering_currency_balance"' in postcondition
+    assert '"canonical_watering_plant_names"' in postcondition
+    assert '"canonical_watering_growth"' in postcondition
+
+
+def test_development_stress_permutations_normalize_to_one_source_order() -> None:
+    normalize = _compiled_function("canonicalize_development_stress_plants")
+    species_order = tuple(_literal_assignment("DEVELOPMENT_STRESS_SPECIES_ORDER"))
+
+    def plants_for(permutation: tuple[str, ...]) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                plant_id=f"dev_{species}",
+                species=species,
+                name=f"randomized-{index}",
+                name_customized=True,
+            )
+            for index, species in enumerate(permutation)
+        ]
+
+    first_input = plants_for(species_order[3:] + species_order[:3])
+    second_input = plants_for(tuple(reversed(species_order)))
+    first_instances = {id(plant) for plant in first_input}
+    second_instances = {id(plant) for plant in second_input}
+    generated_name = lambda species: (
+        f"{species.replace('_', ' ').title()} Plant"[:40]
+    )
+
+    first = normalize(first_input, species_order, generated_name)
+    second = normalize(second_input, species_order, generated_name)
+    expected_names = [generated_name(species) for species in species_order]
+
+    assert [plant.species for plant in first] == list(species_order)
+    assert [plant.species for plant in second] == list(species_order)
+    assert [plant.plant_id for plant in first] == [
+        f"dev_{species}" for species in species_order
+    ]
+    assert [plant.plant_id for plant in second] == [
+        f"dev_{species}" for species in species_order
+    ]
+    assert [plant.name for plant in first] == expected_names
+    assert [plant.name for plant in second] == expected_names
+    assert not any(plant.name_customized for plant in [*first, *second])
+    assert {id(plant) for plant in first} == first_instances
+    assert {id(plant) for plant in second} == second_instances
+    assert len(first) == len(second) == 10
+
+
+def test_development_stress_state_binds_catalog_assets_and_live_order_fact() -> None:
+    setup = _method_source(
+        "_UiFaceCaptureRunner",
+        "_ensure_development_stress_state",
+    )
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+
+    assert "CURRENT_CATALOG_SPECIES_ORDER" in setup
+    assert "self.app.engine.release_ready_species()" in setup
+    assert "DEVELOPMENT_STRESS_SPECIES_ORDER" in setup
+    assert "canonicalize_development_stress_plants(" in setup
+    assert "self.app.engine._generated_name" in setup
+    assert "state.plants = plants" in setup
+    assert "len(plants) != len(declared_order)" in setup
+    assert "len(set(canonical_ids)) != len(declared_order)" in setup
+    assert "GROWTH_THRESHOLDS[index % len(GROWTH_THRESHOLDS)]" in setup
+    assert "state.active_plant_id = plants[0].plant_id" in setup
+    assert '"canonical_development_species_order"' in postcondition
+    assert '"canonical_development_plant_ids"' in postcondition
+    assert '"canonical_development_generated_names"' in postcondition
+    assert 'state_name.startswith("resize-")' in postcondition
+
+
+def test_text_layout_audit_only_exempts_intentionally_scrolled_out_content() -> None:
+    audit = _method_source("_UiFaceCaptureRunner", "_find_text_layout_warnings")
+    qt_exemption = _method_source(
+        "_UiFaceCaptureRunner",
+        "_text_candidate_is_intentionally_scrolled_out",
+    )
+
+    assert "int(candidate.width()) <= 0" in audit
+    assert "int(candidate.height()) <= 0" in audit
+    assert "visible_region = candidate.visibleRegion()" in audit
+    assert "visible_region.isEmpty()" in audit
+    assert "_text_candidate_is_intentionally_scrolled_out" in audit
+    assert '"kind": "empty-visible-region"' in audit
+    assert audit.index("_text_candidate_is_intentionally_scrolled_out") < audit.index(
+        '"kind": "empty-visible-region"'
+    )
+    assert "isinstance(ancestor, QAbstractScrollArea)" in qt_exemption
+    assert "horizontal.maximum()" in qt_exemption
+    assert "vertical.maximum()" in qt_exemption
+    assert "intentional_scroll_viewport_exemption(" in qt_exemption
+
+
+def test_scroll_viewport_exemption_rejects_covered_or_forbidden_axis_controls() -> None:
+    exempt = _compiled_function("intentional_scroll_viewport_exemption")
+    viewport = [0, 0, 300, 200]
+
+    assert exempt(
+        candidate_rect=[10, 240, 120, 30],
+        viewport_rect=viewport,
+        horizontal_scrollable=False,
+        vertical_scrollable=True,
+    ) is True
+    assert exempt(
+        candidate_rect=[10, 240, 120, 30],
+        viewport_rect=viewport,
+        horizontal_scrollable=False,
+        vertical_scrollable=False,
+    ) is False
+    # A control geometrically inside the viewport but covered by another
+    # widget is never mistaken for intentionally scrolled-out content.
+    assert exempt(
+        candidate_rect=[10, 40, 120, 30],
+        viewport_rect=viewport,
+        horizontal_scrollable=True,
+        vertical_scrollable=True,
+    ) is False
+    # Being out on an unreachable horizontal axis remains a failure even when
+    # the vertical axis is intentionally scrollable.
+    assert exempt(
+        candidate_rect=[340, 240, 120, 30],
+        viewport_rect=viewport,
+        horizontal_scrollable=False,
+        vertical_scrollable=True,
+    ) is False
+    assert exempt(
+        candidate_rect=[340, 40, 120, 30],
+        viewport_rect=viewport,
+        horizontal_scrollable=True,
+        vertical_scrollable=False,
+    ) is True
+
+
+def test_manifest_write_failure_forces_a_nonzero_exit(tmp_path: Path) -> None:
+    exits: list[int] = []
+    app = SimpleNamespace(exit=lambda code: exits.append(int(code)))
+    finish = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_finish",
+        QApplication=SimpleNamespace(instance=lambda: app),
+        CAPTURE_CONTRACT_VERSION=9,
+        QTimer=SimpleNamespace(singleShot=lambda _delay, callback: callback()),
+        datetime=datetime,
+        logger=SimpleNamespace(error=lambda *_args, **_kwargs: None),
+        os=SimpleNamespace(environ={}),
+    )
+    invalid_session_dir = tmp_path / "not-a-directory"
+    invalid_session_dir.write_text("occupied", encoding="utf-8")
+    record = {
+        "capture_id": 1,
+        "label": "face-1",
+        "capture_display": "primary",
+        "fixture_validation": {"passed": True},
+    }
+    runner = SimpleNamespace(
+        _finished=False,
+        _capture_display="primary",
+        _capture_face_groups=(("Test", ("face-1",)),),
+        _capture_face_labels=("face-1",),
+        _capture_profile="test",
+        _capture_records=[record],
+        _close_dashboard=lambda: None,
+        _close_top_level_dialogs=lambda: None,
+        _dialog_memory_probe={"status": "not-run"},
+        _failures=[],
+        _performance_samples={},
+        _requested_scale_factor="1.5",
+        _screenshots=["face-1.png"],
+        _text_layout_warnings=[],
+        session_dir=invalid_session_dir,
+    )
+
+    finish(runner)
+
+    assert exits == [1]
