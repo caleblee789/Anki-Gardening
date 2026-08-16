@@ -8,8 +8,10 @@ substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
 visual acceptance. Current source declares capture contract v10 with 149
-ordered surfaces. No complete v10 manifest or contact-sheet set has been
-recorded yet; the v8 and v9 results below cannot satisfy the after-change gate.
+ordered surfaces. The after-change v10 macOS Qt run at
+`build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
+149 of 149 and validator-clean. It closes current capture completeness, but not
+the native-platform, human-accessibility, or full visual-acceptance gates.
 
 ## Baseline identity and scope
 
@@ -192,15 +194,15 @@ not deliberate mixed-DPI transition acceptance. It does not provide native
 Windows, true standard-scale, or true OS 200-percent evidence; 090 is a logical
 Qt proxy. Screen height capped several resize fixtures, although 100 and 101
 preserved distinct historical-v9 widths at 1383x699 compact and 1385x699 wide.
-Current v10 source retains both as stability probes and expects both to remain
-top-level compact.
-Manual contact-sheet review also retains product-layout risks:
-039 shows partial helper context at a Settings scroll boundary, 066 ellipsizes
-the Home detail line, and 111 clips the final “s” in Achievements. Therefore,
-zero warnings and 146-of-146 capture completeness are not claims of full
-platform or product visual acceptance.
+Current v10 retains both as stability probes and confirms both as top-level
+compact.
+Historical v9 contact-sheet review reported Home detail-line ellipsis in 066
+and the final “s” of Achievements clipped in 111. Capture 039 was subsequently
+confirmed as the intentional Advanced-scroll context fixture, not a clipping
+defect. Therefore, zero warnings and 146-of-146 historical completeness were
+not claims of current platform or product visual acceptance.
 
-## Current v10 capture requirement
+## Current v10 capture evidence
 
 Current source preserves IDs 001-146 and appends three actual Collection-page
 resize states:
@@ -211,17 +213,70 @@ resize states:
 | 148 | `resize-collection-default` | 940x680 |
 | 149 | `resize-collection-large` | 1000x820 |
 
-These source declarations are not capture evidence. A fresh deterministic v10
-run must regenerate 001-149—including 019 and 064-069—and its exact manifest
-and manifest-owned contact sheets must pass the independent repository
-validator with no failures or warnings before current completeness is claimed.
-The current Dashboard policy also requires live font/content measurement: the
-macOS probe reports a 944 px full-copy metric requirement plus the shared 24 px
-reserve, while a complete full header becomes wide only around 1,595 inner px.
-The 620 px minimum remains top-level narrow; all other declared Dashboard
-resize states through 1440 are expected top-level compact. Metric density is
-compact through the 901 probe and wide from the 999 probe upward. These are
-uncaptured v10 source expectations, not results.
+The fresh deterministic run regenerated 001-149, including 019, 064-069, and
+147-149. Its manifest reports `expected_count: 149`, 149 ordered capture
+records, 149 PNG paths, `complete: true`, empty `failures` and
+`text_layout_warnings`, complete fixture validation, and successful manifest
+writing. It started at `2026-08-16T13:45:43.228`, finished at
+`2026-08-16T13:49:03.937`, and recorded 200,710.379 ms (200.710 seconds) of
+monotonic duration.
+
+The manifest-owned contact-sheet set is
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-134539`.
+Its index reports 149 surfaces, 19 pages, and `complete: true`. A fresh direct
+invocation of `scripts/validate_ui_capture.py` against the exact manifest and
+index returned status `valid`, capture count 149, surface count 149, and page
+count 19. The capture report records `quality_status: clean`.
+
+| Artifact | File count | Archive size | SHA-256 |
+|---|---:|---:|---|
+| `build/ui-face-captures/capture-sequence-20260816-134539/anki_garden_capture.ankiaddon` | 266 | 81,797,828 bytes | `feb06adc124a8fcd3e5babaddd7681ce8f5e9c36ba59b516f6d5a43bc73df771` |
+| `build/ui-face-captures/anki-garden-ui-faces-20260816-134539.zip` | — | 146,280,767 bytes | `2b6b19ad4d0c09d1237ecca2d1f34a1a612f7806786134137fe113f81900df63` |
+
+All 60 required dialog-scroll audit records pass, including the long, short,
+minimum, and large states represented in the contract. All 13 two-pixel
+responsive-stability pairs pass. The clean resize/scaling fixtures observe
+Dashboard semantic thresholds of 1,568 inner px for the full header, 632 px for
+title plus actions, and 948 px for full metric copy. Earlier Dashboard content
+states 003, 009-012, and 016 record 1,502/566/948 px because their measured
+visible action content is shorter. The representative source regression floors
+remain about 1,595, 639, and 968 px respectively; runtime values are measured
+from the active font and content rather than hardcoded. The final manifest also
+records the independent `dashboard.growth-identity` semantic with observed
+content requirements from 187 to 506 px. It is compact with compact metrics
+through the 901 probe and wide from the 999 probe upward, avoiding the earlier
+identity clipping. The 620 px minimum is top-level narrow; every other captured
+Dashboard resize state through 1440 is top-level compact. Metric density is
+compact through the 901 probe and wide from the 999 probe upward.
+
+The Garden-open readiness samples are 453.981, 122.832, 127.288, and 123.575
+ms. Their mean is 206.919 ms, minimum 122.832 ms, and maximum 453.981 ms. As in
+v9, these are request-to-visible/readiness proxies, not isolated first-paint
+timings.
+
+The current Nursery memory probe completed 12 of 12 visible opens and closes.
+Peak RSS was 1,608,752 KiB before and after, while current RSS remained
+unavailable. `QApplication.allWidgets()` increased from 4,769 to 4,793 (+24).
+Watched `NurseryDialog` instances remained 7 before and after, and every other
+watched dialog-family count was also unchanged. The probe therefore observed
+no watched-dialog retention, but without current RSS, allocation attribution,
+or repeated probes it does not prove the absence of a leak.
+
+The run records six captures on the secondary display at DPR 1.5 and 143 on
+the primary display at DPR 3.0 under requested `QT_SCALE_FACTOR=1.5`. That is
+display provenance, not deliberate mixed-DPI transition acceptance. Capture
+090 remains a logical Qt proxy, not true OS 200-percent evidence. The process
+log also contains expected Home-candidate and intentional
+warning-fixture messages; `quality_status: clean` and zero text-layout warnings
+must not be read as an absence of log warnings or as a human visual verdict.
+Targeted inspection of the final raw PNGs confirms that 039 is intentional
+scroll context; 066 shows the full Home identity and Growth value; 090/091 keep
+the compact Dashboard identity readable; 111 wraps the Progress navigation
+without clipping; 57 and 143 fit their wide replacement content at 820x360
+with `scroll_maximum: 0`; 146 fits at 900x400; and minimum Collection state 147
+remains readable and operable. This
+closes the previously reported 066/111 defects and targeted resize checks.
+Screenshot inspection is not human assistive-technology acceptance.
 
 ## Pre-foundation startup, Garden, dialog, and memory boundaries
 
@@ -249,9 +304,10 @@ is a potential retention path to measure, not evidence of a memory leak.
 
 ## Capture-only instrumentation
 
-Capture contract v9 adds low-risk instrumentation inside
-`ankigarden/capture_ui_faces.py`. These fields describe the realized output
-schema used by the post-foundation evidence above.
+Capture contract v9 added low-risk instrumentation inside
+`ankigarden/capture_ui_faces.py`; v10 extends it with realized geometry,
+responsive semantics, and dialog-scroll gates. These fields describe the
+output schema used by the post-foundation evidence above.
 
 Top-level manifest fields:
 
@@ -268,6 +324,10 @@ Top-level manifest fields:
 | `performance.surface_ready:<capture>.samples` | Bounded readiness-wait samples for native dialog/surface fixtures that use the shared wait helper; these are route-specific readiness proxies, not a uniform first-paint benchmark |
 | `dialog_memory_probe` | Twelve real Nursery open/visible/close cycles, before/after `QApplication.allWidgets()` counts by watched dialog family, and process peak RSS before/after |
 | `dialog_memory_probe_complete` | True only when all 12 Nursery cycles were visibly opened and closed |
+| `dialog_scroll_audits` | Required one-scroll/footer-clearance records, aggregate required count, issues, and pass/fail result |
+| `dialog_scroll_audits_complete` | True only when every required dialog-scroll audit record is present and passing |
+| `responsive_stability` | Required two-pixel pair records with semantic modes, thresholds, region order, issues, and aggregate pass/fail result |
+| `responsive_stability_complete` | True only when every required responsive-stability pair is present and passing |
 
 Per-capture record fields:
 
@@ -276,6 +336,10 @@ Per-capture record fields:
 | `capture_id` | Ordered integer capture ID |
 | `fixture_source` | Immutable scheduled capture-step provenance used to prepare the fixture |
 | `fixture_validation` | Source-owned renderer family, exact state-profile ID, live source/widget facts, state-specific postcondition issues, and pass/fail result |
+| `declared_client_size` / `actual_client_size` | Requested source-contract client size and the realized logical Qt client size |
+| `geometry_acceptance` / `geometry_layout_warnings` | Bounded native-normalization evidence and any unexplained geometry/layout issue |
+| `responsive_semantics` | Owning semantic region, available width, measured threshold, region order, and realized mode |
+| `dialog_scroll_audit` | Surface-level one-scroll, reachable-content, footer-clearance, and issue record |
 | `ready_to_capture_ms` | Monotonic time from scheduling `_capture_and_advance()` until `_capture_now()` begins; includes the configured settling delay and event-loop scheduling |
 | `capture_duration_ms` | Monotonic time inside `_capture_now()` through successful PNG saving, layout audits, and record assembly |
 
@@ -292,9 +356,9 @@ startup and exact first paint remain unmeasured.
 
 For the historical v9 source, the explicit package, fresh disposable-profile
 run, 146-file completeness gate, and independent manifest/contact-sheet
-validation are complete. They are stale for current source. The current v10
-149-file capture and validation gate remains pending. The remaining performance
-and platform work is:
+validation are complete. The current v10 run now supplies the corresponding
+149-file macOS Qt after-change gate. The remaining performance and platform
+work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit
    first-paint boundary.
@@ -313,5 +377,7 @@ but the release cannot be approved until that native platform evidence exists.
 
 The 188.832-second incomplete v8 run remains the frozen pre-change baseline.
 The v9 run supersedes the v8 capture-completeness and capture-duration evidence
-for that historical source only. It does not replace the pending current v10
-capture or the explicit unmeasured performance and platform boundaries above.
+for that historical source only. The clean v10 run supersedes v9 for current
+macOS Qt capture completeness; it does not replace the frozen pre-change
+baseline or the explicit unmeasured performance, human-accessibility, and
+native-platform boundaries above.

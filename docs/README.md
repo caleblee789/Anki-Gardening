@@ -25,8 +25,8 @@ full-Garden landmark; the compact home preview remains noninteractive.
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
-  accessibility, and v10/149 capture requirements; fresh v10 evidence is
-  pending.
+  accessibility, and v10/149 capture requirements; the current macOS Qt
+  manifest and 19-page contact-sheet set are validator-clean.
 - `ui-surface-inventory.md`: current ordered 149-surface source inventory plus
   explicitly historical v8/v9 reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,

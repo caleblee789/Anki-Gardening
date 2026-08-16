@@ -1,10 +1,10 @@
 # Anki Garden UI release-overhaul contract
 
 Status: foundation contract for Release 2.1.0. The current source capture
-contract is v10 with 149 ordered surfaces; its fresh complete capture is
-pending. This document records the current implementation boundary and the
-rules that downstream UI work must preserve. It is not approval to implement
-product-specific redesigns.
+contract is v10 with 149 ordered surfaces. Its after-change macOS Qt capture is
+complete and validator-clean. This document records the current implementation
+boundary and the rules that downstream UI work must preserve. It is not
+approval to implement product-specific redesigns.
 
 The source code and persisted-state behavior are authoritative. Existing UI
 documents remain useful context, but any conflict called out in
@@ -67,11 +67,30 @@ source. The current source declares capture contract v10 with 149 ordered
 surfaces. IDs 001-146 retain their established identities, and IDs 147-149 add
 `resize-collection-minimum`, `resize-collection-default`, and
 `resize-collection-large` for the actual Collection page in
-`GardenProgressDialog`. No complete v10 manifest or contact-sheet set exists at
-the time of this documentation reconciliation. Current visual coverage must
-not be called complete until a fresh deterministic run regenerates all 149
-IDs—including 019 and 064-069—and the exact manifest and manifest-owned contact
-sheets pass the independent repository validator without failures or warnings.
+`GardenProgressDialog`.
+
+The current after-change capture is:
+
+`build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543`
+
+Its manifest, ordered records, and filesystem agree on all 149 PNGs, including
+019, 064-069, and 147-149. It records capture contract v10, `complete: true`,
+empty `failures` and `text_layout_warnings`, complete fixture validation and
+manifest writing, 60 of 60 required dialog-scroll audit records passing, and
+all 13 responsive-stability pairs passing. Its 12-cycle Nursery memory probe
+opened and closed every cycle and reported zero delta for every watched dialog
+family; `NurseryDialog` remained at 7 instances before and after. The
+manifest-owned contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-134539`
+contains 19 pages and is marked complete. A fresh invocation of the independent
+repository validator reported 149 surfaces and all 19 pages valid. The capture
+report records `quality_status: clean` and package SHA-256
+`feb06adc124a8fcd3e5babaddd7681ce8f5e9c36ba59b516f6d5a43bc73df771`.
+
+This closes current manifest and contact-sheet completeness for this macOS Qt
+run. It does not establish native Windows, true OS 100/150/200-percent,
+deliberate mixed-DPI transition, human assistive-technology, contrast, or full
+product visual acceptance.
 
 ## Approved downstream decisions
 
@@ -468,16 +487,17 @@ a shared 24 logical-pixel reserve. The values below are minimum content floors;
 localized or platform font metrics may raise a threshold, but a historical
 two-pixel probe must retain the same semantic mode on both sides.
 
-| Surface / region | Minimum content requirement | Independent behavior |
+| Surface / region | Representative source floor; clean-v10 observed threshold | Independent behavior |
 |---|---:|---|
 | Dashboard top-level shell | 620 px minimum | Minimum supported window remains intentionally narrow |
-| Dashboard full header | Live measurement; about 1,595 inner px in the current macOS probe | A 230 px title region, full-copy metrics, complete measured actions, two 12 px gaps, and the 24 px reserve fit in one row |
-| Dashboard title and actions | Live measurement; about 639 inner px in the current macOS probe | Complete title and action copy fit in one row without involving metric density |
-| Dashboard metric full copy | 968 inner px in the current macOS probe | The live 944 px font/content requirement plus the 24 px reserve fits; otherwise metrics use compact copy |
+| Dashboard full header | About 1,595 px; 1,568 inner px in the resize states | A 230 px title region, full-copy metrics, complete measured actions, two 12 px gaps, and the 24 px reserve fit in one row |
+| Dashboard title and actions | About 639 px; 632 inner px in the resize states | Complete title and action copy fit in one row without involving metric density |
+| Dashboard metric full copy | 968 px; 948 inner px observed | The source regression floor uses 944 px of content plus the 24 px reserve; the live run measured its active font/content at 924 px plus the same reserve |
+| Dashboard Growth identity | Live content measurement; 187-506 px observed | Plant name, stage, and Growth value use their own semantic range instead of clipping or changing the whole header |
 | Dashboard milestone | 750 px | Copy, progress, and choices become one row |
 | Dashboard rearrange actions | 584 px | Full move guidance |
 | Settings Display studio | 684 px | Controls and preview become two columns |
-| Settings footer | 240 px | Persistent actions share one row |
+| Settings footer | 240 px; 250 px observed | Persistent actions share one row |
 | Garden Progress | 768 px | Navigation rail and page become two columns |
 | Customize Garden | 920 px | Library and preview become two columns |
 | Nursery hero | 638 px | Context and Garden Coins share one row |
@@ -493,13 +513,21 @@ blend across responsive ranges instead of switching at a single pixel. The
 selected-plant card attempts content-aware in-scene placement and docks only
 when no protected overlay lane is available.
 
-Dashboard header composition and metric density are independent. In the
-current macOS probe, every declared Dashboard resize state through the 1440 px
-large window remains top-level `compact`; only the 620 px minimum is
-top-level `narrow`. Metric copy remains compact through the historical 901 px
-probe and becomes wide by the 999 px probe. These are source expectations for
-v10, not fresh capture results, and localized or platform font metrics may move
-the measured thresholds while preserving the same content-first policy.
+Dashboard header composition and metric density are independent. The clean v10
+resize/scaling fixtures observe thresholds of 1,568 inner px for the complete
+header, 632 px for title plus actions, and 948 px for full metric copy. Earlier
+Dashboard content states 003, 009-012, and 016 measure shorter visible actions
+and record 1,502/566/948 px; the threshold is intentionally content-derived.
+The final manifest also records `dashboard.growth-identity` independently: it
+uses compact presentation with compact metrics through the 901 probe and wide
+presentation from the 999 probe upward, while long-name and near-stage fixtures
+publish their own measured requirements.
+Every captured Dashboard resize state through the 1440 px large window is
+top-level `compact`; only the 620 px minimum is top-level `narrow`. Metric copy
+is compact through the historical 901 px probe and wide from the 999 px probe
+upward. These are realized macOS values, not fixed cross-platform constants:
+localized or platform font metrics may move them while preserving the same
+content-first policy and stable semantic pair results.
 
 Global CSS transforms, Qt scaling transforms, and fixed screenshot-specific
 offsets are prohibited. Standard scale, 150%, 200%, and high-DPI behavior must
@@ -765,9 +793,16 @@ canonical catalog order: `bonsai`, `rose`, `sunflower`, `lavender`,
 Those results validate the historical v9 source only. The current v10/149
 contract adds the three Collection resize fixtures and follows source changes
 across the responsive, dialog, control, and accessibility foundations. The v9
-run cannot serve as current after-change evidence. A new complete,
-validator-clean v10 manifest and its manifest-owned contact sheets are required
-before current visual coverage can be reported as complete.
+run cannot serve as current after-change evidence.
+
+The current after-change run at
+`build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543`
+regenerated all 149 fixtures. Its exact manifest and the 19-page manifest-owned
+contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
+capture count 149, surface count 149, and page count 19. The manifest also
+records all 60 required dialog-scroll audits and all 13 responsive-stability
+pairs as passing. This is complete current capture evidence, subject to the
+visual, accessibility, and platform boundaries below.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel
@@ -777,19 +812,30 @@ or human visual quality.
 
 The v9 manifest records `capture_display: mixed`: six first-run files came from
 the secondary macOS display at DPR 1.5 and 140 files came from the primary
-display at DPR 3.0, under requested Qt scale 1.5. Capture 090 is a logical
-620 x 520 proxy and explicitly does not change OS display scaling. There is no
-native standard-scale, true OS 200%, Windows, Windows-high-DPI, or deliberate
-mixed-DPI transition acceptance in this run. In that historical v9 run, 100 was
-1383x699 compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Those
-old fixed-edge modes are not the current v10 source expectation. The available
-screen still capped several requested resize heights.
+display at DPR 3.0, under requested Qt scale 1.5. In the current v10 run, six
+files came from the secondary display at DPR 1.5 and 143 came from the primary
+display at DPR 3.0, again under requested Qt scale 1.5. Capture 090 is a logical
+620 x 520 proxy and explicitly does not change OS display scaling. Neither run
+provides native standard-scale, true OS 200%, Windows, Windows-high-DPI, or
+deliberate mixed-DPI transition acceptance. In historical v9, 100 was 1383x699
+compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Current v10 keeps
+100, 101, and 103 top-level compact; the available screen still caps several
+requested resize heights.
 
-The complete count must not be confused with clean product visual acceptance.
-Manual review still finds partial Advanced-tab context at the scroll boundary
-in 039, Home detail-line ellipsis in 066, and the final “s” of Achievements
-clipped at the minimum Progress width in 111. The zero-warning value records
-only automated thresholds, not a human-quality result.
+The complete count must not be confused with unrestricted product visual
+acceptance. Targeted inspection of the final raw PNGs confirms that 039 is the
+intentional Advanced-scroll context fixture, not a clipping defect; 066 shows
+the full Home identity and Growth value; 090 and 091 keep the compact Dashboard
+identity readable; 111 wraps the Progress navigation without clipping; 57 and
+143 fit their wide replacement content at the realized 820x360 client size
+with `scroll_maximum: 0`; 146 fits at 900x400; and the minimum Collection state
+147 remains readable and operable. This
+closes the previously reported 066/111 defects and the targeted 090/091/143/146/
+147 checks. The zero text-layout-warning value still records automated
+thresholds, not human assistive-technology acceptance. The capture log contains
+expected Home-candidate and intentional warning-fixture messages; report
+`quality_status: clean` is not a claim that the process log contains no warning
+lines.
 
 The v8 stress fixtures mutated shared in-memory state in sequence, and later
 resize captures inherited that state. Deterministic order is not sufficient to
