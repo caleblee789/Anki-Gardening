@@ -2772,7 +2772,15 @@ class _UiFaceCaptureRunner:
                 viable.append((method, candidate, metrics))
             return viable
 
-        for capture_attempt in range(3):
+        # WebEngine can briefly expose an app-owned but unpainted surface after
+        # a Deck Browser/Overview transition, especially when the window moves
+        # between mixed-DPI displays. Poll the semantic pixels for a bounded
+        # interval instead of treating the first 180 ms as authoritative.
+        attempt_count = max(
+            3,
+            int(getattr(self, "_home_capture_ready_attempts", 20)),
+        )
+        for capture_attempt in range(attempt_count):
             if capture_attempt:
                 foreground_confirmed = bool(
                     self._activate_current_process_window(widget)
@@ -2820,9 +2828,15 @@ class _UiFaceCaptureRunner:
                 # same real window on primary and keep later captures there.
                 self._capture_force_primary = True
                 self._move_to_capture_display(widget)
-            if capture_attempt < 2:
-                time.sleep(0.06)
+            if capture_attempt < attempt_count - 1:
                 app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+                for render_target in (getattr(mw, "web", None), widget):
+                    update = getattr(render_target, "update", None)
+                    if callable(update):
+                        update()
+                time.sleep(0.12)
                 if app is not None:
                     app.processEvents()
         failure_kind = (

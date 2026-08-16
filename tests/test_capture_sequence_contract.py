@@ -979,6 +979,83 @@ def test_home_capture_uses_only_the_app_owned_qt_surface_without_foreground() ->
     assert "limiting capture to the app-owned Qt surface" in str(warnings[0][0])
 
 
+def test_home_capture_waits_for_late_webengine_semantic_paint() -> None:
+    class Pixmap:
+        def __init__(self, attempt: int) -> None:
+            self.attempt = attempt
+
+        def isNull(self) -> bool:
+            return False
+
+        def toImage(self) -> "Pixmap":
+            return self
+
+        def width(self) -> int:
+            return 1001
+
+        def height(self) -> int:
+            return 855
+
+    class Widget:
+        def __init__(self) -> None:
+            self.attempts = 0
+            self.updates = 0
+
+        def grab(self) -> Pixmap:
+            self.attempts += 1
+            return Pixmap(self.attempts)
+
+        def update(self) -> None:
+            self.updates += 1
+
+        def width(self) -> int:
+            return 667
+
+        def height(self) -> int:
+            return 570
+
+    process_events: list[bool] = []
+    capture_home = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_home_pixmap",
+        QApplication=SimpleNamespace(
+            instance=lambda: SimpleNamespace(
+                processEvents=lambda: process_events.append(True),
+            ),
+        ),
+        QGuiApplication=SimpleNamespace(primaryScreen=lambda: None),
+        logger=SimpleNamespace(
+            debug=lambda *_args, **_kwargs: None,
+            warning=lambda *_args, **_kwargs: None,
+        ),
+        mw=SimpleNamespace(web=None),
+        time=SimpleNamespace(sleep=lambda _seconds: None),
+    )
+    runner = SimpleNamespace(
+        _activate_current_process_window=lambda _widget: False,
+        _capture_display="primary",
+        _capture_force_primary=True,
+        _home_capture_ready_attempts=6,
+        _home_pixmap_metrics=lambda candidate, **_expected: {
+            "generic_content_passed": candidate.attempt >= 5,
+            "semantic_identity_passed": candidate.attempt >= 5,
+            "passed": candidate.attempt >= 5,
+            "brand_sample_ratio": 0.01 if candidate.attempt >= 5 else 0.0,
+            "dark_shell_sample_ratio": 0.1 if candidate.attempt >= 5 else 0.0,
+        },
+    )
+    widget = Widget()
+
+    pixmap, method, foreground = capture_home(runner, widget)
+
+    assert pixmap.attempt == 5
+    assert method == "qt-widget"
+    assert foreground is False
+    assert widget.attempts == 5
+    assert widget.updates == 4
+    assert len(process_events) == 8
+
+
 def test_current_window_activation_keeps_the_cross_platform_qt_path() -> None:
     calls: list[object] = []
 
@@ -1170,7 +1247,7 @@ def test_secondary_home_capture_retries_on_primary_instead_of_selecting_desktop(
     assert foreground is True
     assert runner._capture_force_primary is True
     assert widget.capture_display == "primary"
-    assert process_events == [True]
+    assert process_events == [True, True]
     assert len(warnings) == 1
     assert warnings[0][1] == "secondary"
     assert warnings[0][2][0] == {
