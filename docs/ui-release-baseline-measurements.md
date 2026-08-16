@@ -6,6 +6,11 @@ repository measurements, historical capture-derived proxies, and values that
 have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
+Current-contract note: this is a historical measurement record, not current
+visual acceptance. Current source declares capture contract v10 with 149
+ordered surfaces. No complete v10 manifest or contact-sheet set has been
+recorded yet; the v8 and v9 results below cannot satisfy the after-change gate.
+
 ## Baseline identity and scope
 
 - Audit date: 2026-08-15
@@ -116,7 +121,7 @@ and filesystem metadata:
 
 | Proxy | Start | Finish | Duration | Interpretation |
 |---|---|---|---:|---|
-| Capture Anki process | First log record at `17:00:56.786` | Process-close log at `17:04:05.618` | 188.832 seconds | Best available current capture-run duration; includes startup, waits, failed Home attempts, captures, and shutdown initiation |
+| Capture Anki process | First log record at `17:00:56.786` | Process-close log at `17:04:05.618` | 188.832 seconds | Best available reference-v8 capture-run duration; includes startup, waits, failed Home attempts, captures, and shutdown initiation |
 | Screenshot production | First PNG mtime | Last PNG mtime | 184.433 seconds | Span across the 139 successfully written PNGs; excludes failed-file writes as distinct records |
 | Screenshot to manifest | First PNG mtime | Manifest mtime | 184.799 seconds | Successful output span through manifest finalization |
 | Contact-sheet writing | First sheet mtime | Final sheet/set mtime | 18.592 seconds | File-write span only; sheets were generated separately about 42 minutes after capture, so this is not an end-to-end capture duration |
@@ -193,6 +198,22 @@ the Home detail line, and 111 clips the final “s” in Achievements. Therefore
 zero warnings and 146-of-146 capture completeness are not claims of full
 platform or product visual acceptance.
 
+## Current v10 capture requirement
+
+Current source preserves IDs 001-146 and appends three actual Collection-page
+resize states:
+
+| ID | Capture state | Requested logical size |
+|---:|---|---:|
+| 147 | `resize-collection-minimum` | 720x500 |
+| 148 | `resize-collection-default` | 940x680 |
+| 149 | `resize-collection-large` | 1000x820 |
+
+These source declarations are not capture evidence. A fresh deterministic v10
+run must regenerate 001-149—including 019 and 064-069—and its exact manifest
+and manifest-owned contact sheets must pass the independent repository
+validator with no failures or warnings before current completeness is claimed.
+
 ## Pre-foundation startup, Garden, dialog, and memory boundaries
 
 | Measurement | Baseline status | Exact boundary |
@@ -260,9 +281,11 @@ startup and exact first paint remain unmeasured.
 
 ## Remaining measurement work
 
-The explicit v9 package, fresh disposable-profile run, 146-file completeness
-gate, and independent manifest/contact-sheet validation are complete. The
-remaining performance and platform work is:
+For the historical v9 source, the explicit package, fresh disposable-profile
+run, 146-file completeness gate, and independent manifest/contact-sheet
+validation are complete. They are stale for current source. The current v10
+149-file capture and validation gate remains pending. The remaining performance
+and platform work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit
    first-paint boundary.
@@ -280,6 +303,6 @@ gate. Product-specific agents may begin implementation from the foundation,
 but the release cannot be approved until that native platform evidence exists.
 
 The 188.832-second incomplete v8 run remains the frozen pre-change baseline.
-The v9 run supersedes its capture-completeness and capture-duration evidence,
-but it does not replace the explicit unmeasured performance and platform
-boundaries above.
+The v9 run supersedes the v8 capture-completeness and capture-duration evidence
+for that historical source only. It does not replace the pending current v10
+capture or the explicit unmeasured performance and platform boundaries above.

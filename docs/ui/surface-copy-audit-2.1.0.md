@@ -1,6 +1,11 @@
 # Anki Garden Historical 134-Surface UI Copy and Polish Audit
 
-Status: historical and superseded by `docs/ui/final-ui-audit-2.1.0.md`. This file preserves the original v7/134 baseline ledger and its then-pending After cells; a later pre-freeze v8 run covered all 146 current surfaces cleanly, but it is not exact-frozen-package release acceptance.
+Status: historical and superseded by `docs/ui/final-ui-audit-2.1.0.md`, which is
+itself superseded for current visual coverage by
+`docs/ui-release-overhaul-contract.md`. This file preserves the original
+v7/134 baseline ledger and its then-pending After cells; a later pre-freeze v8
+run covered all 146 then-current surfaces cleanly, but it is not
+exact-frozen-package release acceptance or current v10/149 evidence.
 
 ## Evidence baseline
 
@@ -8,11 +13,11 @@ Status: historical and superseded by `docs/ui/final-ui-audit-2.1.0.md`. This fil
 - **B manifest:** `build/ui-face-captures/capture-sequence-20260813-140556/20260813-140559/manifest.json`
 - **B contact-sheet set:** `build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260813-140556/contact-sheet-set.json`
 - **B package SHA-256:** `2bb447bcd9edf53b1009a1aee06a2a7d2e8f3b342bbaf249d6b073ddf990342f`
-- **A (after, historical visual evidence):** complete under capture contract v8: 146/146 surfaces, 19 contact sheets, zero failures, zero layout warnings, quality status `clean`. This run predates the frozen package hashes and is not release acceptance. See the ignored local record at `build/ui-face-captures/capture-sequence-20260813-190602/capture-report.json` and the current boundary in `docs/ui/final-ui-audit-2.1.0.md`.
+- **A (after, historical visual evidence):** complete under capture contract v8: 146/146 surfaces, 19 contact sheets, zero failures, zero layout warnings, quality status `clean`. This run predates the frozen package hashes and is not release acceptance. See the ignored local record at `build/ui-face-captures/capture-sequence-20260813-190602/capture-report.json` and its historical boundary in `docs/ui/final-ui-audit-2.1.0.md`.
 - **Intermediate evidence (not acceptance):** the v7 run at `build/ui-face-captures/capture-sequence-20260813-154226/20260813-154228/manifest.json` reached 134/134 with clean automated quality, but the all-sheet comparison found four additional defects that were subsequently fixed. Later attempts are intentionally not used as A evidence because they were incomplete.
 - **Contract delta:** concurrent user-owned watering-can work expanded the source capture contract from v7/134 to v8/146 after this baseline audit began. An earlier held attempt at `build/ui-face-captures/capture-sequence-20260813-161347/20260813-161349/manifest.json` reached 142/146 and correctly remained fail-closed. The later complete pre-freeze v8 set is historical visual evidence only; its 12 new labels are summarized in the final audit rather than retrofitted into this ledger.
 
-The rows below are the historical v7 review state and are intentionally not rewritten as a v8 ledger. Every current surface was independently reviewed in the complete v8 contact-sheet set. “No source change” means the baseline review found no independent defect. Accessible descriptions remain self-contained and may repeat essential item identity, cost, affordability, and consequence. Transient selected-plant details also remain self-contained so any selected plot can be interpreted without relying on the header.
+The rows below are the historical v7 review state and are intentionally not rewritten as a v8 ledger. Every then-current surface was independently reviewed in the complete v8 contact-sheet set. “No source change” means the baseline review found no independent defect. Accessible descriptions remain self-contained and may repeat essential item identity, cost, affordability, and consequence. Transient selected-plant details also remain self-contained so any selected plot can be interpreted without relying on the header.
 
 ## Surface ledger
 

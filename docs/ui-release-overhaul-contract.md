@@ -1,8 +1,10 @@
 # Anki Garden UI release-overhaul contract
 
-Status: foundation contract for Release 2.1.0. This document records the
-current implementation boundary and the rules that downstream UI work must
-preserve. It is not approval to implement product-specific redesigns.
+Status: foundation contract for Release 2.1.0. The current source capture
+contract is v10 with 149 ordered surfaces; its fresh complete capture is
+pending. This document records the current implementation boundary and the
+rules that downstream UI work must preserve. It is not approval to implement
+product-specific redesigns.
 
 The source code and persisted-state behavior are authoritative. Existing UI
 documents remain useful context, but any conflict called out in
@@ -26,7 +28,7 @@ Its manifest declares capture contract version 8 and 146 required surfaces,
 but contains 139 screenshots, seven failures, and `complete: false`. The
 missing required states in that reference run are exactly:
 
-| Capture ID | Required state | Current failure |
+| Capture ID | Required state | Recorded v8 failure |
 |---:|---|---|
 | 019 | `active-overview-home-after-nurture` | Qt returned no pixmap after the exact Anki Home window failed to become foreground. |
 | 064 | `watering-can-deck-browser-plot-1` | Same foreground-window failure. |
@@ -60,23 +62,35 @@ macOS Qt 1.5 run. The manifest records both primary and secondary display
 provenance; it does not establish full product visual acceptance or native
 Windows, standard-scale, true OS 200-percent, or deliberate mixed-DPI coverage.
 
+That v9 run is historical pre-overhaul evidence and is stale for the current
+source. The current source declares capture contract v10 with 149 ordered
+surfaces. IDs 001-146 retain their established identities, and IDs 147-149 add
+`resize-collection-minimum`, `resize-collection-default`, and
+`resize-collection-large` for the actual Collection page in
+`GardenProgressDialog`. No complete v10 manifest or contact-sheet set exists at
+the time of this documentation reconciliation. Current visual coverage must
+not be called complete until a fresh deterministic run regenerates all 149
+IDs—including 019 and 064-069—and the exact manifest and manifest-owned contact
+sheets pass the independent repository validator without failures or warnings.
+
 ## Approved downstream decisions
 
 The following product decisions were approved on 2026-08-16. They define the
 target contract for downstream implementation; they do not claim that schema
 or product behavior has already changed in this foundation branch.
 
-1. Retry-safe purchases will use a schema-17, bounded purchase-request history
-   keyed by the caller-stable `PurchaseRequest.request_id`. It is separate from
-   the currency transaction ledger. Replaying the same request must return its
-   recorded outcome without a second debit, grant, activation, or replacement.
+1. This cross-cutting layout/accessibility assignment keeps schema 16. Durable
+   retry idempotency for repeatable Fertilizer and Growth Charge purchases is a
+   separate release blocker and must be resolved in a focused state/transaction
+   change before release. A UI in-flight flag is not accepted as that fix.
 2. **Customize Garden** is the sole canonical owner of Weather/Scenery Equip
    and artwork-visibility changes. **Progress Collection** remains the owner of
    discovery, ownership, status, and details; it may route to Customize but may
    not commit equipment or visibility changes directly.
-3. Downstream implementation may begin from this foundation. Native Windows,
-   true OS 100/150/200-percent scaling, and high/mixed-DPI validation are
-   mandatory release-acceptance gates, not implementation-entry gates.
+3. Native Windows, true OS 100/150/200-percent scaling, and high/mixed-DPI
+   validation are mandatory completion gates for this assignment, as well as
+   release-acceptance gates. macOS logical-viewport proxies do not satisfy
+   those platform claims.
 
 ## Architecture boundary
 
@@ -116,7 +130,7 @@ surface family.
 | 013-015, 056-057, 136-143 | Fertilizer and replacement confirmation | `DialogShell`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; target plant, active interval/history, nurtured capability, balance, and transaction ledger | Purchase/Extend/Replace, cancel; unaffordable, affordable, active, expiring, history-cap, save-error, and responsive variants |
 | 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
 | 020-025 | Growth, streak, and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; daily source allocation, review totals, streak, currency, and ledger | Navigate/close; zero, new, nonzero, active, history, empty, and error variants |
-| 026-029, 070-076, 144-146 | Garden Progress, Achievements, Collection, species overview | `GardenProgressDialog`, species overview `GardenDialog` | Header Progress, cottage, metric routes, Collection selection | Native Qt; totals, daily stats, achievements/rewards, plants, discovery, environment ownership/status, and assets | Filter, inspect, open Customize for equipment changes, navigate; several/none/filter-empty/locked/completed/at-risk/missed/automatically-earned/next and responsive variants |
+| 026-029, 070-076, 144-149 | Garden Progress, Achievements, Collection, species overview | `GardenProgressDialog`, species overview `GardenDialog` | Header Progress, cottage, metric routes, Collection selection | Native Qt; totals, daily stats, achievements/rewards, plants, discovery, environment ownership/status, and assets | Filter, inspect, open Customize for equipment changes, navigate; several/none/filter-empty/locked/completed/at-risk/missed/automatically-earned/next and responsive variants |
 | 030-032, 116-120 | Customize Garden | `CustomizeGardenDialog` | Dashboard header Customize | Native Qt with `GardenStudioWidget`/`GardenSceneWidget` preview; one transient draft over persisted environment loadout | Select owned Weather/Scenery, toggle visuals, Save changes, cancel; on/off, locked, clean/dirty, save-success/error, and responsive variants |
 | 033-036, 077-081, 121-125 | Nursery catalog and commerce | `NurseryDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalog, balance, ownership, consumables, spaces, environment inventory, release-ready asset records | Choose, Purchase, Use, Plant, browse; owned, locked/disabled, success/error, empty/no-stock, missing-art fallback, final-row/footer, and responsive variants |
 | 037-041, 082-086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, invalid, save rollback/error, production-controls-absent, reduced-motion, and responsive variants |
@@ -301,8 +315,9 @@ class PurchaseOutcome:
 
 The engine, not the dialog, validates price, capability, ownership, target, and
 replacement rules. The same `request_id` must produce the recorded outcome
-without a second debit, grant, activation, or replacement. The approved
-persistence target is the bounded schema-17 request history described below.
+without a second debit, grant, activation, or replacement. The persistence and
+migration design belongs to the separate transaction-hardening blocker; it is
+not part of this schema-16 layout/accessibility change.
 
 ## Plant asset and thumbnail pipeline
 
@@ -446,33 +461,36 @@ per-option scrolls, `ankigarden/ui/dashboard.py:7015-7058`) and Settings Display
 `ankigarden/ui/dashboard.py:2261-2273`). These are downstream layout risks, not
 permission for a foundation rewrite.
 
-## Current responsive breakpoints
+## Current responsive ranges
 
-Responsive decisions use content width, not a hardcoded screenshot width.
+Native surfaces use the owning content container, live minimum-size hints, and
+a shared 24 logical-pixel reserve. The values below are minimum content floors;
+localized or platform font metrics may raise a threshold, but a historical
+two-pixel probe must retain the same semantic mode on both sides.
 
-| Surface | Current threshold or constraint | Result |
-|---|---|---|
-| Dashboard | minimum 620 x 520 | Smallest supported logical window |
-| Dashboard header | `< 1360` | Compact header |
-| Dashboard | `<= 820` | Narrow layout |
-| Dashboard metrics | `< 1000` | Compact metrics |
-| Dashboard cards | `< 900` | Compact card layout |
-| Dashboard Progress label | `<= 700` | Shortened control copy |
-| Selected plant card | scene width `< 540` | Bottom-sheet placement |
-| Settings footer/content | `< 700` | Compact footer/content |
-| Settings / GardenStudio | `< 760` | Stacked preview and controls |
-| Garden Progress | `< 820` | Compact rather than wide |
-| Customize | `< 820` | Compact rather than wide |
-| Nursery | `< 760` | Compact rather than wide |
-| Plant Story | `< 540` | Compact rather than wide |
-| Starter confirmation | `< 400` | Compact rather than wide |
-| Fertilizer replacement | `< 400` | Compact rather than wide |
+| Surface / region | Minimum content requirement | Independent behavior |
+|---|---:|---|
+| Dashboard full header | 998 px | Three regions become one row |
+| Dashboard title and actions | 566 px | Title/actions become one row |
+| Dashboard metrics | 784 px | Full metric support copy |
+| Dashboard milestone | 750 px | Copy, progress, and choices become one row |
+| Dashboard rearrange actions | 584 px | Full move guidance |
+| Settings Display studio | 684 px | Controls and preview become two columns |
+| Settings footer | 240 px | Persistent actions share one row |
+| Garden Progress | 768 px | Navigation rail and page become two columns |
+| Customize Garden | 920 px | Library and preview become two columns |
+| Nursery hero | 638 px | Context and Garden Coins share one row |
+| Plant Story hero | 480 px | Artwork and identity share one row |
+| Starter actions | 272 px | Actions share one row |
+| Fertilizer replacement comparison | 474 px | Comparison cards share one row |
 
-Shared constants currently include `SETTINGS_STACK_BREAKPOINT = 760` and
-`DASHBOARD_COMPACT_BREAKPOINT = 900`
-(`ankigarden/ui/plant_display.py:16-17,75-82`). Dashboard-specific behavior is
-implemented at `ankigarden/ui/dashboard.py:8702-8847`; other dialog thresholds
-are implemented in their owning classes.
+Each controller publishes its semantic region order, owning width, measured
+threshold, and mode for deterministic capture audits. Layout reflow preserves
+source and focus order. Home uses container-scoped 420/469 px refinements, not
+viewport media queries. Scene aspect, plant fit, and minimum scene height now
+blend across responsive ranges instead of switching at a single pixel. The
+selected-plant card attempts content-aware in-scene placement and docks only
+when no protected overlay lane is available.
 
 Global CSS transforms, Qt scaling transforms, and fixed screenshot-specific
 offsets are prohibited. Standard scale, 150%, 200%, and high-DPI behavior must
@@ -592,7 +610,7 @@ concept. Proposed types below are explicitly non-persisted unless stated.
 | Plant asset metadata | `AssetPlacement`, `ResolvedAsset` | Extend manifest/asset validation only through these types. |
 | Effect descriptor | `CatalogItem`, `GrowthChargeSpec`, Fertilizer spec | Reuse; a display Protocol may expose shared card fields without flattening business differences. |
 | Collectible descriptor | `CatalogItem` plus ownership projection | Reuse catalog plus state-derived ownership; do not persist UI cards. |
-| Purchase intent/result | Proposed `PurchaseRequest`, `PurchaseOutcome` | Add before retry-sensitive economy work; persist completed request outcomes in a bounded schema-17 request history separate from the currency ledger. |
+| Purchase intent/result | Proposed `PurchaseRequest`, `PurchaseOutcome` | Resolve in the separate transaction-hardening blocker before release; this assignment does not select or ship a migration. |
 | Growth event | `ReviewAward`, `StageTransition`, `FeedbackEvent` | Extend current types; no parallel event log. |
 | Growth allocation | `ReviewAward` source fields and persisted `DailyStats` | Preserve separate source accounting. |
 | Dialog route | Proposed `DialogTarget` | Transient enum/dataclass; no routing framework. |
@@ -734,6 +752,13 @@ Two clean same-stamp renders matched on all 20 page/index artifact hashes. The
 live postconditions also pin the development-population stress state to the
 canonical catalog order: `bonsai`, `rose`, `sunflower`, `lavender`,
 `hydrangea`, `peony`, `foxglove`, `japanese_maple`, `wisteria`, `dahlia`.
+
+Those results validate the historical v9 source only. The current v10/149
+contract adds the three Collection resize fixtures and follows source changes
+across the responsive, dialog, control, and accessibility foundations. The v9
+run cannot serve as current after-change evidence. A new complete,
+validator-clean v10 manifest and its manifest-owned contact sheets are required
+before current visual coverage can be reported as complete.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel

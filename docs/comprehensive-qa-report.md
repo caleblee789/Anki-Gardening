@@ -5,7 +5,12 @@
 - Anki runtime target: 26.08
 - Package line: `2.1.0`, state schema 16, scene geometry 6
 
-## Current release status
+Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
+remain evidence for the source audited on 2026-08-15, not for current source.
+Current visual coverage is governed by capture contract v10 with 149 ordered
+surfaces and requires a fresh complete validator-clean capture.
+
+## Historical release status
 
 Verdant Twilight V6, its geometry-compatible environment library, and the
 schema 16 garden-first interface supersede the
@@ -16,7 +21,7 @@ the seven explicitly listed macOS Home-capture omissions and the incomplete
 exact-production live gate recorded here; neither boundary is relabeled as a
 pass.
 
-## Current candidate verification
+## Historical candidate verification
 
 - Automated gates: 1,536 tests passed in 84.21 seconds; isolated-cache Python
   compilation, local Markdown-link audit, asset audit, and `git diff --check`

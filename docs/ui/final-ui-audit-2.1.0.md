@@ -1,6 +1,16 @@
 # Anki Garden 2.1.0 Final UI Audit
 
-Status: repository/package acceptance complete; strict live acceptance incomplete under an explicit owner-approved release boundary. Historical capture contract v8 evidence is clean at 146/146 surfaces. The exact final capture archive produced 139/146 uniform-primary screenshots and safely omitted seven Home frames after macOS refused exact-window pixels; the owner authorized proceeding without them. The frozen production archive passes every repository-local package gate. Windows and Linux remain a static portability review, not live GUI acceptance.
+Status: historical frozen-release record, superseded for current visual coverage
+by `docs/ui-release-overhaul-contract.md`. For the source audited here,
+repository/package acceptance was complete and strict live acceptance remained
+incomplete under an explicit owner-approved release boundary. Historical
+capture contract v8 evidence was clean at 146/146 surfaces. The exact final
+capture archive produced 139/146 uniform-primary screenshots and safely omitted
+seven Home frames after macOS refused exact-window pixels; the owner authorized
+proceeding without them. The frozen production archive passed every
+repository-local package gate. Windows and Linux remained a static portability
+review, not live GUI acceptance. Current source uses capture contract v10 with
+149 ordered surfaces, and this audit is not evidence for it.
 
 ## Outcome
 
@@ -10,7 +20,10 @@ The candidate preserves the approved Verdant Twilight V6 identity, six-bed scene
 2. The compact Customize Garden Effects view compressed its advanced copy into an unreadable column and did not clearly distinguish previewing from saving. It now uses a stable vertical block with `Included appearance`, explicit draft/save guidance, and the action `Preview included appearance`.
 3. The first-run statistics/header card was taller and emptier than its content required. Its guided-state minimum heights now compact responsively while normal dashboard density remains unchanged.
 
-No other current surface showed a release-blocking display, wording, repetition, control, asset, preview, focus, clipping, or responsive defect after the repairs. The current macOS candidate therefore has no known remaining UI defect within the audited contract.
+No other then-current surface showed a release-blocking display, wording,
+repetition, control, asset, preview, focus, clipping, or responsive defect after
+the repairs. The audited macOS candidate therefore had no known remaining UI
+defect within that historical contract.
 
 ## Complete review scope
 

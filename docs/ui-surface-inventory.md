@@ -3,17 +3,20 @@
 Status: Release 2.1.0 foundation inventory. The authoritative reference input is
 `build/ui-face-captures/capture-sequence-20260815-170054/20260815-170057`, read
 together with its manifest, metadata, logs, fixture source, and contact sheets.
-That v8 run contains 139 of 146 required PNGs and `complete: false`. Capture
-contract v9 reconciled it in
+That v8 run contains 139 of 146 required PNGs and `complete: false`. Historical
+capture contract v9 reconciled it in
 `build/ui-face-captures/capture-sequence-20260815-220049/20260815-220051` with
-146 of 146 PNGs and `complete: true`. This closes the manifest-owned macOS Qt
-capture set; it is not full product, platform, or human visual acceptance.
+146 of 146 PNGs and `complete: true`. That closes the historical v9 macOS Qt
+set only. Current source is capture contract v10 with 149 ordered surfaces, and
+no complete v10 manifest or contact-sheet set exists yet.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
-Capture contract v9 source-faithfully renames ID 076 from
+Current v10 preserves IDs 001-146 and appends Collection resize IDs 147-149.
+Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
-and total count do not change. Viewports are logical Qt client sizes from the
-reconciled v9 manifest. A `declared -> actual` value means the screen or widget
+did not change in v9. Viewports for IDs 001-146 are logical Qt client sizes from
+the reconciled v9 manifest. IDs 147-149 list the requested source-contract size
+and remain uncaptured. A `declared -> actual` value means the screen or widget
 constraint normalized the request. The formerly missing Home rows use the same
 667x570 Anki window as their adjacent Home fixtures.
 
@@ -49,6 +52,12 @@ required fixture silently fell back to a neighboring renderer or state
 according to the v9 immutable scheduled provenance and live-postcondition
 records. The reduced-motion fixture restores its baseline before focus capture,
 and the focus owner is cleared before narrow, scaling, and resize fixtures.
+
+The v9 result is historical and stale for the current source. Capture contract
+v10 requires all 149 ordered IDs, including a fresh regeneration of 019 and
+064-069 and the new Collection states 147-149. Current completeness remains
+unproven until the v10 manifest and manifest-owned contact sheets pass the
+independent repository validator with no failures or warnings.
 
 Manual review of every raw PNG and all 18 partial contact sheets found these
 successful-file exceptions in the v8 baseline:
@@ -281,6 +290,9 @@ Responsive mode is transient capture metadata and is never persisted.
 | 144 | `resize-species-overview-minimum` | SO | GardenDialog (`SpeciesOverviewDialog`) | Declared resize-matrix transition `species-overview-minimum` | 500x420 | default | Progress + Collection |
 | 145 | `resize-species-overview-default` | SO | GardenDialog (`SpeciesOverviewDialog`) | Declared resize-matrix transition `species-overview-default` | 560x500 | default | Progress + Collection |
 | 146 | `resize-species-overview-large` | SO | GardenDialog (`SpeciesOverviewDialog`) | Declared resize-matrix transition `species-overview-large` | 760x700 -> 760x699 | default | Progress + Collection |
+| 147 | `resize-collection-minimum` | P | GardenProgressDialog | Collection page; declared transition `default-to-minimum` | 720x500 requested; uncaptured | compact | Progress + Collection |
+| 148 | `resize-collection-default` | P | GardenProgressDialog | Collection page; declared transition `minimum-to-default` | 940x680 requested; uncaptured | wide | Progress + Collection |
+| 149 | `resize-collection-large` | P | GardenProgressDialog | Collection page; declared transition `default-to-large` | 1000x820 requested; uncaptured | wide | Progress + Collection |
 
 ## Ownership and implementation boundary
 
@@ -295,8 +307,10 @@ with each surface owner rather than owning the whole module.
 This foundation does not implement the uncaptured loading, error, rollback,
 Windows, true standard-scale, or true 200-percent variants listed in the
 profiles. Those remain explicit downstream coverage requirements. The complete
-146/146 v9 run closes the manifest gap; it does not close those native platform
-and variant gaps or the visual residuals identified above.
+146/146 v9 run closes its historical manifest gap, but is stale after the
+current source and capture-contract changes. A fresh validator-clean v10 run of
+149/149 is required; even that will not by itself close the native platform,
+variant, human-accessibility, or visual residuals identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true
 OS 100/150/200-percent scaling, and high/mixed-DPI evidence are required before

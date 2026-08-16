@@ -24,11 +24,16 @@ full-Garden landmark; the compact home preview remains noninteractive.
 - `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
-- `ui/final-ui-audit-2.1.0.md`: current 146-surface visual, responsive,
-  accessibility, package-static evidence, and exact-production acceptance
-  boundary.
+- `ui-release-overhaul-contract.md`: current source, state, layout,
+  accessibility, and v10/149 capture requirements; fresh v10 evidence is
+  pending.
+- `ui-surface-inventory.md`: current ordered 149-surface source inventory plus
+  explicitly historical v8/v9 reconciliation evidence.
+- `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
+  accessibility, package-static evidence, and frozen-production acceptance
+  boundary; it is not current v10 evidence.
 - `ui/surface-copy-audit-2.1.0.md`: historical v7 copy/polish ledger and its
-  relationship to the current v8 capture contract.
+  relationship to the historical v8 capture contract.
 - `planter-family-geometry-baseline.md`: canonical six-space planter and plant
   grounding geometry across supported scene profiles.
 - `planter-family-regression-evidence.md`: deterministic compositor evidence
