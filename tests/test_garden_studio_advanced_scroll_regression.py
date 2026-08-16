@@ -1001,10 +1001,51 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         parent=dashboard,
     )
     assert species is not None
-    assert replacement.maximumHeight() == 440
-    assert replacement.property("contentBoundedMaximumHeight") == 440
-    assert species.maximumHeight() == 500
-    assert species.property("contentBoundedMaximumHeight") == 500
+    replacement.resize(820, replacement.height())
+    replacement.show()
+    application.processEvents()
+    application.processEvents()
+    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 380
+    assert replacement.property("comparisonMode") == "wide"
+    assert replacement.minimumHeight() <= 320
+    assert replacement.maximumHeight() < 400
+    assert replacement.maximumHeight() == replacement.property(
+        "contentBoundedMaximumHeight"
+    )
+    assert replacement.maximumHeight() <= (
+        replacement.property("contentNaturalHeight") + 10
+    )
+    assert species.minimumHeight() <= species.maximumHeight() <= 500
+    assert species.maximumHeight() == species.property(
+        "contentBoundedMaximumHeight"
+    )
+
+    wide_bound = replacement.maximumHeight()
+    comparison_threshold = replacement.comparison_responsive.evaluate(
+        100_000
+    ).threshold_width
+    margins = replacement.layout().contentsMargins()
+    compact_width = max(
+        replacement.minimumWidth(),
+        comparison_threshold - 2 + margins.left() + margins.right(),
+    )
+    replacement.resize(compact_width, wide_bound)
+    application.processEvents()
+    application.processEvents()
+    assert replacement.property("comparisonMode") == "compact"
+    assert (
+        replacement.minimumHeight()
+        == replacement._comparison_policy_minimum_height
+    )
+    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 440
+    assert replacement.maximumHeight() >= wide_bound
+    compact_bound = replacement.maximumHeight()
+    replacement.resize(820, compact_bound)
+    application.processEvents()
+    application.processEvents()
+    assert replacement.property("comparisonMode") == "wide"
+    assert replacement.minimumHeight() <= 320
+    assert abs(replacement.maximumHeight() - wide_bound) <= 2
     settings = GardenSettingsDialog(dashboard, engine, config)
     progress = dashboard.progress_dialog
     customize = dashboard.customize_dialog

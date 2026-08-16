@@ -562,19 +562,52 @@ class DialogShell(QWidget):
         self.setProperty("dialogSizeClass", size_class.value)
         return width, height
 
-    def set_content_bounded_maximum_height(self, maximum_height: int) -> int:
-        """Cap short semantic dialogs without weakening their shared minimum.
+    def set_content_bounded_maximum_height(
+        self,
+        maximum_height: int,
+        *,
+        minimum_height: int | None = None,
+        breathing_room: int = 0,
+    ) -> int:
+        """Cap short semantic dialogs at their natural layout height.
 
         Width can still grow for comparisons and readable rows. The explicit
         vertical cap prevents a short body from inheriting a catalogue-sized
-        empty viewport on a large display.
+        empty viewport on a large display, while the size-class minimum still
+        protects small windows and the deliberate scroll region.
         """
 
-        bounded = max(self.minimumHeight(), int(maximum_height))
-        bounded = min(self.maximumHeight(), bounded)
+        requested_cap = max(1, int(maximum_height))
+        requested_minimum = max(
+            1,
+            int(self.minimumHeight() if minimum_height is None else minimum_height),
+        )
+        requested_minimum = min(requested_minimum, requested_cap)
+        # A previous content-aware pass may have installed a shorter maximum.
+        # Restore this caller's explicit ceiling before measuring another
+        # responsive mode so compact content can grow again when needed.
+        self.setMaximumHeight(requested_cap)
+        self.setMinimumHeight(requested_minimum)
+        for scroll in tuple(self._registered_scroll_regions):
+            content = scroll.widget()
+            content_layout = content.layout() if content is not None else None
+            if content_layout is not None:
+                content_layout.invalidate()
+                content_layout.activate()
+        root_layout = self.layout()
+        natural_height = requested_cap
+        if root_layout is not None:
+            root_layout.invalidate()
+            root_layout.activate()
+            natural_height = max(1, int(root_layout.sizeHint().height()))
+        bounded = max(
+            requested_minimum,
+            min(requested_cap, natural_height + max(0, int(breathing_room))),
+        )
         self.setMaximumHeight(bounded)
         if self.height() > bounded:
             self.resize(self.width(), bounded)
+        self.setProperty("contentNaturalHeight", natural_height)
         self.setProperty("contentBoundedMaximumHeight", bounded)
         return bounded
 
@@ -1308,7 +1341,7 @@ class FertilizerReplacementDialog(DialogShell):
         self.setWindowTitle("Replace active Fertilizer?")
         self.setModal(True)
         self.apply_size_policy(DialogSizeClass.COMPARISON)
-        self.set_content_bounded_maximum_height(440)
+        self._comparison_policy_minimum_height = self.minimumHeight()
         self.setStyleSheet(_garden_dialog_stylesheet())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 20, 22, 18)
@@ -1446,19 +1479,35 @@ class FertilizerReplacementDialog(DialogShell):
             spacing=8,
             telemetry_target=self.action_footer,
         )
+        self._update_responsive_layout(self.width())
 
-    def resizeEvent(self, event: Any) -> None:
+    def _update_responsive_layout(self, width: int) -> None:
         margins = self.layout().contentsMargins()
         available = max(
             0,
-            int(event.size().width()) - margins.left() - margins.right(),
+            int(width) - margins.left() - margins.right(),
         )
+        comparison = self.comparison_responsive.evaluate(available)
+        actions = self.actions_responsive.evaluate(available)
+        self.setProperty("comparisonMode", comparison.mode)
+        self.setProperty("actionMode", actions.mode)
+        self.setProperty("layoutMode", comparison.mode)
+        policy_minimum = max(1, int(self._comparison_policy_minimum_height))
+        mode_minimum = (
+            policy_minimum
+            if comparison.mode == "compact"
+            else min(policy_minimum, 320)
+        )
+        mode_ceiling = 440 if comparison.mode == "compact" else 380
+        self.set_content_bounded_maximum_height(
+            mode_ceiling,
+            minimum_height=mode_minimum,
+            breathing_room=10,
+        )
+
+    def resizeEvent(self, event: Any) -> None:
         if hasattr(self, "comparison_responsive"):
-            comparison = self.comparison_responsive.evaluate(available)
-            actions = self.actions_responsive.evaluate(available)
-            self.setProperty("comparisonMode", comparison.mode)
-            self.setProperty("actionMode", actions.mode)
-            self.setProperty("layoutMode", comparison.mode)
+            self._update_responsive_layout(event.size().width())
         super().resizeEvent(event)
 
     def keyPressEvent(self, event: Any) -> None:
@@ -10108,13 +10157,24 @@ class GardenDashboard(DialogShell):
         if self.details_dialog.isVisible():
             self.details_dialog.close()
         self.scene.dismiss_selection()
-        self.nursery_dialog = NurseryDialog(self, self.engine, self.storage)
-        self.nursery_dialog.catalog_tabs.setCurrentIndex(
+        dialog = NurseryDialog(self, self.engine, self.storage)
+        self.nursery_dialog = dialog
+        dialog.catalog_tabs.setCurrentIndex(
             max(0, min(3, int(tab_index)))
         )
         if status_message:
-            self.nursery_dialog._show_result(True, status_message)
-        self.nursery_dialog.exec()
+            dialog._show_result(True, status_message)
+        try:
+            dialog.exec()
+        finally:
+            # Nursery is rebuilt from current persisted state on every open.
+            # Detach and defer-delete the closed instance so the long-lived
+            # Dashboard does not retain one complete catalogue tree per visit.
+            if self.nursery_dialog is dialog:
+                self.nursery_dialog = None
+            dialog.hide()
+            dialog.setParent(None)
+            dialog.deleteLater()
         if not bool(getattr(self.storage.state, "starter_selection_complete", True)):
             self._starter_prompt_scheduled = False
         self._refresh_after_commit("Nursery dialog")
@@ -11426,7 +11486,6 @@ class GardenDashboard(DialogShell):
             preferred_width=760,
             preferred_height=620,
         )
-        dialog.set_content_bounded_maximum_height(500)
         dialog.setProperty("windowFamily", "SpeciesOverviewDialog")
         dialog.setProperty("layoutMode", "default")
         scroll = QScrollArea()
@@ -11479,6 +11538,7 @@ class GardenDashboard(DialogShell):
         scroll.setWidget(body)
         _set_scroll_surface(scroll, body, GARDEN_THEME["dialog_surface"])
         dialog.set_body_widget(scroll)
+        dialog.set_content_bounded_maximum_height(500)
         return dialog
 
     def _environment_collection_artwork(

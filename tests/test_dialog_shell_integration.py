@@ -158,9 +158,13 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
         "_build_species_overview_dialog",
     )
 
-    assert "bounded = max(self.minimumHeight(), int(maximum_height))" in shell
+    assert "natural_height + max(0, int(breathing_room))" in shell
+    assert 'self.setProperty("contentNaturalHeight", natural_height)' in shell
     assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
-    assert "self.set_content_bounded_maximum_height(440)" in replacement
+    assert "minimum_height=mode_minimum" in replacement
+    assert "breathing_room=10" in replacement
+    assert 'comparison.mode == "compact"' in replacement
+    assert 'mode_ceiling = 440 if comparison.mode == "compact" else 380' in replacement
     assert "dialog.set_content_bounded_maximum_height(500)" in species
 
 
@@ -190,3 +194,15 @@ def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima()
     assert "dialog.setMinimumSize(" not in species
     assert "dialog.apply_size_policy(" in fertilizer
     assert "dialog.setMinimumSize(" not in fertilizer
+
+
+def test_nursery_open_releases_each_rebuilt_catalog_after_exec() -> None:
+    opener = _method_source(DASHBOARD, "GardenDashboard", "_open_nursery")
+
+    assert "dialog = NurseryDialog(self, self.engine, self.storage)" in opener
+    assert "self.nursery_dialog = dialog" in opener
+    assert "try:\n            dialog.exec()\n        finally:" in opener
+    assert "if self.nursery_dialog is dialog:" in opener
+    assert "self.nursery_dialog = None" in opener
+    assert opener.index("dialog.hide()") < opener.index("dialog.setParent(None)")
+    assert opener.index("dialog.setParent(None)") < opener.index("dialog.deleteLater()")
