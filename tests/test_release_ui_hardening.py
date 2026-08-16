@@ -647,14 +647,14 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
         _method_node("GardenDashboard", "_sync_header_minimum_heights")
     )
 
-    assert "cell.setMinimumHeight(64 if enabled else 96)" in stats
+    assert "cell.setMinimumHeight(96)" in stats
     assert "self.garden_stats_bar.set_onboarding_mode(guided)" in refresh
     assert refresh.index("self.garden_stats_bar.set_onboarding_mode(guided)") < refresh.index(
         "self._sync_header_minimum_heights()"
     )
-    assert "64 if guided else (192 if metrics_compact else 104)" in heights
-    assert "154 if self._header_narrow_layout else" in heights
-    assert "128 if self._header_compact_layout else" in heights
+    assert "96 if guided else (192 if metrics_compact else 104)" in heights
+    assert "186 if self._header_narrow_layout else" in heights
+    assert "160 if self._header_compact_layout else" in heights
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 
 

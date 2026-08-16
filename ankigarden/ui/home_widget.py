@@ -736,6 +736,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     else:
         background_style += f";background-image:{fallback_background}"
     background_style += '"'
+    scenery_identity = (
+        ' data-testid="home-scenery-layer"'
+        f' data-scenery="{escape(preview.selected_scenery, quote=True)}"'
+        if background_url else
+        ""
+    )
     layouts = compact_plant_layout(
         1000,
         420,
@@ -1119,7 +1125,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             + occlusion_markup.get("front", "")
         )
     scenery_layer = (
-        f'<img class="ag-home__scenery-layer" data-testid="home-scenery-layer" '
+        f'<img class="ag-home__scenery-layer" data-testid="home-garden-overlay-layer" '
         f'src="{escape(data.garden_overlay_url, quote=True)}" alt="" aria-hidden="true" '
         'onerror="this.onerror=null;this.style.display=\'none\';">'
         if data.garden_overlay_url else
@@ -1269,7 +1275,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     {stage_up_html}
     {partial_banner}
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
-      <div class=\"ag-home__scene-frame\" data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
+      <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
         {scenery_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
         {weather_layer}

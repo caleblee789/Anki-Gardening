@@ -56,7 +56,7 @@ class DialogSizePolicy:
 DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     DialogSizeClass.COMPACT_CONFIRMATION: DialogSizePolicy(
         360,
-        250,
+        280,
         480,
         300,
         520,

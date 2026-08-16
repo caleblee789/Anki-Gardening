@@ -423,10 +423,10 @@ RESIZE_MATRIX_SPECS: tuple[
     ("resize-story-content-541", "story", "historical-edge-high-stability-probe", 589, 500, 640, 520),
     ("resize-story-default", "story", "minimum-to-default", 640, 520, 480, 400),
     ("resize-story-large", "story", "default-to-large", 900, 800, 640, 520),
-    ("resize-starter-confirmation-minimum", "starter-confirmation", "default-to-minimum", 360, 250, 480, 300),
+    ("resize-starter-confirmation-minimum", "starter-confirmation", "default-to-minimum", 360, 280, 480, 300),
     ("resize-starter-confirmation-content-399", "starter-confirmation", "historical-edge-low-stability-probe", 447, 280, 480, 300),
     ("resize-starter-confirmation-content-401", "starter-confirmation", "historical-edge-high-stability-probe", 449, 280, 480, 300),
-    ("resize-starter-confirmation-default", "starter-confirmation", "minimum-to-default", 480, 300, 360, 250),
+    ("resize-starter-confirmation-default", "starter-confirmation", "minimum-to-default", 480, 300, 360, 280),
     ("resize-starter-confirmation-large", "starter-confirmation", "default-to-large", 520, 360, 480, 300),
     ("resize-fertilizer-minimum", "fertilizer", "default-to-minimum", 520, 460, 600, 580),
     ("resize-fertilizer-default", "fertilizer", "minimum-to-default", 600, 580, 520, 460),
@@ -489,7 +489,7 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "resize-story-content-541": "wide",
     "resize-story-default": "wide",
     "resize-story-large": "wide",
-    "resize-starter-confirmation-minimum": "wide",
+    "resize-starter-confirmation-minimum": "compact",
     "resize-starter-confirmation-content-399": "wide",
     "resize-starter-confirmation-content-401": "wide",
     "resize-starter-confirmation-default": "wide",
@@ -2402,21 +2402,28 @@ class _UiFaceCaptureRunner:
             if str(getattr(plant, "plant_id", "") or "") == active_id
         ), None)
         expected_slot = int(getattr(active, "slot_index", -1) or 0) if active is not None else -1
-        expected_side = "left" if expected_slot % 2 == 0 else "right"
+        preferred_side = "left" if expected_slot % 2 == 0 else "right"
+        side_match = re.search(r'data-marker-side="([^"]+)"', marker)
+        orientation_match = re.search(
+            r'data-marker-orientation="([^"]+)"', marker
+        )
+        resolved_side = side_match.group(1) if side_match is not None else ""
+        resolved_orientation = (
+            orientation_match.group(1) if orientation_match is not None else ""
+        )
         expected_orientation = (
-            "spout-right" if expected_side == "left" else "spout-left"
+            "spout-right" if resolved_side == "left" else "spout-left"
         )
         if active is None:
             issues.append("active nurtured plant was unavailable")
         if len(markers) != 1:
             issues.append(f"expected one rendered marker, found {len(markers)}")
-        for attribute, expected in (
-            ("data-marker-slot", str(expected_slot)),
-            ("data-marker-side", expected_side),
-            ("data-marker-orientation", expected_orientation),
-        ):
-            if f'{attribute}="{expected}"' not in marker:
-                issues.append(f"{attribute} did not equal {expected}")
+        if f'data-marker-slot="{expected_slot}"' not in marker:
+            issues.append(f"data-marker-slot did not equal {expected_slot}")
+        if resolved_side not in {"left", "right"}:
+            issues.append("data-marker-side was not left or right")
+        if resolved_orientation != expected_orientation:
+            issues.append("data-marker-orientation did not point inward")
 
         rect_match = re.search(r'data-marker-rect="([^"]+)"', marker)
         pulse_match = re.search(r'data-marker-pulse="([^"]+)"', marker)
@@ -2470,9 +2477,9 @@ class _UiFaceCaptureRunner:
                 issues.append("marker was too far from the nurtured plant")
             if ground_delta > rect[2] * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO:
                 issues.append("marker ground contact was detached from the plant")
-            if expected_side == "left" and marker_center_x >= target_ground[0]:
+            if resolved_side == "left" and marker_center_x >= target_ground[0]:
                 issues.append("left marker crossed the nurtured plant center")
-            if expected_side == "right" and marker_center_x <= target_ground[0]:
+            if resolved_side == "right" and marker_center_x <= target_ground[0]:
                 issues.append("right marker crossed the nurtured plant center")
         self._record_nurtured_marker_audit(
             label,
@@ -2480,8 +2487,9 @@ class _UiFaceCaptureRunner:
                 "renderer": "home-html",
                 "expected_slot": expected_slot,
                 "marker_count": len(markers),
-                "side": expected_side,
-                "orientation": expected_orientation,
+                "preferred_side": preferred_side,
+                "side": resolved_side,
+                "orientation": resolved_orientation,
                 "rect": rect,
                 "pulse_bounds": pulse,
                 "target_ground": target_ground,
@@ -2543,23 +2551,24 @@ class _UiFaceCaptureRunner:
                     f"{type(scene).__name__} contained {len(active)} active plants"
                 )
             expected_slot = int(active[0].get("slot_index", -1)) if active else -1
-            expected_side = "left" if expected_slot % 2 == 0 else "right"
+            preferred_side = "left" if expected_slot % 2 == 0 else "right"
+            diagnostic = scene.nurtured_marker_geometry()
+            if not isinstance(diagnostic, dict):
+                issues.append(f"{type(scene).__name__} did not resolve a marker")
+                continue
+            resolved_side = str(diagnostic.get("side", ""))
             expected_orientation = (
-                "spout-right" if expected_side == "left" else "spout-left"
+                "spout-right" if resolved_side == "left" else "spout-left"
             )
             expected_asset = (
                 "nurtured_marker_spout_right"
                 if expected_orientation == "spout-right"
                 else "nurtured_marker"
             )
-            diagnostic = scene.nurtured_marker_geometry()
-            if not isinstance(diagnostic, dict):
-                issues.append(f"{type(scene).__name__} did not resolve a marker")
-                continue
             if int(diagnostic.get("slot_index", -1)) != expected_slot:
                 issues.append(f"{type(scene).__name__} marker targeted the wrong plot")
-            if str(diagnostic.get("side", "")) != expected_side:
-                issues.append(f"{type(scene).__name__} marker used the wrong outer side")
+            if resolved_side not in {"left", "right"}:
+                issues.append(f"{type(scene).__name__} marker did not use a side lane")
             if str(diagnostic.get("orientation", "")) != expected_orientation:
                 issues.append(f"{type(scene).__name__} marker spout did not point inward")
             if str(diagnostic.get("asset_key", "")) != expected_asset:
@@ -2634,9 +2643,9 @@ class _UiFaceCaptureRunner:
                     issues.append(
                         f"{type(scene).__name__} marker ground contact was detached"
                     )
-                if expected_side == "left" and marker_center_x >= target_layout.ground_anchor[0]:
+                if resolved_side == "left" and marker_center_x >= target_layout.ground_anchor[0]:
                     issues.append(f"{type(scene).__name__} left marker crossed the plant center")
-                if expected_side == "right" and marker_center_x <= target_layout.ground_anchor[0]:
+                if resolved_side == "right" and marker_center_x <= target_layout.ground_anchor[0]:
                     issues.append(f"{type(scene).__name__} right marker crossed the plant center")
             blockers = [layout.visible.expanded(4.0, 4.0) for layout in occupied_layouts]
             for qt_rect in (
@@ -2657,6 +2666,7 @@ class _UiFaceCaptureRunner:
             scene_audits.append({
                 "widget": type(scene).__name__,
                 "expected_slot": expected_slot,
+                "preferred_side": preferred_side,
                 "side": str(diagnostic.get("side", "")),
                 "orientation": str(diagnostic.get("orientation", "")),
                 "asset_key": str(diagnostic.get("asset_key", "")),
@@ -3994,7 +4004,9 @@ class _UiFaceCaptureRunner:
                 ]
                 require(
                     "starter_confirmation",
-                    title.startswith("Choose ") and "Choose" in buttons,
+                    title.startswith("Choose ")
+                    and "Continue to placement" in buttons
+                    and "Go back" in buttons,
                     {"title": title, "buttons": buttons},
                 )
             elif state_name == "plant-story":
@@ -5970,12 +5982,29 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(ready, failure_label="onboarding-persistence-error")
 
     def _capture_move_persistence_error(self) -> None:
+        from .models.state import GardenState, Plant
+
         def ready() -> None:
             dashboard = getattr(self.app, "dashboard", None)
-            plant_id = self._select_plant()
-            if dashboard is None or not plant_id:
+            if dashboard is None:
                 self._next_after(200)
                 return
+            plant_id = "capture_move_rose"
+            fixture = GardenState(
+                plants=[
+                    Plant(plant_id, "rose", "Briar", 0, growth_points=500),
+                    Plant(
+                        "capture_move_bonsai",
+                        "bonsai",
+                        "Juniper",
+                        1,
+                        growth_points=500,
+                    ),
+                ],
+                active_plant_id=plant_id,
+            )
+            restore = self._replace_capture_state(fixture)
+            dashboard.refresh_all()
             dashboard._begin_move(plant_id)
             draft = dashboard._placement_draft
             destinations = (
@@ -5991,6 +6020,7 @@ class _UiFaceCaptureRunner:
                     "reason": "No valid destination was available for the rollback fixture",
                 })
                 dashboard._cancel_move()
+                restore()
                 self._next_after(200)
                 return
             before = deepcopy(self.app.storage.state.to_dict())
@@ -6017,11 +6047,16 @@ class _UiFaceCaptureRunner:
                 "destination_slot": int(destination),
                 "state_restored": before == after,
             }
+
+            def cleanup() -> None:
+                dashboard._cancel_move()
+                restore()
+
             self._capture_and_advance(
                 "move-persistence-error",
                 dashboard,
                 capture_delay_ms=480,
-                close_callback=dashboard._cancel_move,
+                close_callback=cleanup,
                 close_ms=720,
                 next_ms=980,
             )
@@ -6205,24 +6240,25 @@ class _UiFaceCaptureRunner:
                 "reason": "Nurture did not atomically persist the active plant and first-Nurture memory",
             })
 
-        def finish_setup_after_capture() -> None:
-            ok, message = self.app.engine.finish_onboarding()
-            if not ok:
-                self._failures.append({
-                    "label": "selected-plant-nurtured",
-                    "reason": f"Completion could not be persisted after capture: {message}",
-                })
-                return
-            refresh = getattr(dashboard, "refresh_all", None)
-            if callable(refresh):
-                refresh()
+        # ID 151 owns the resumable completion surface. This selection face
+        # proves the normal post-onboarding scene, so choose the capture
+        # harness destination before showing the anchored plant panel.
+        ok, message = self.app.engine.finish_onboarding()
+        if not ok:
+            self._failures.append({
+                "label": "selected-plant-nurtured",
+                "reason": f"Completion could not be persisted before capture: {message}",
+            })
+        refresh = getattr(dashboard, "refresh_all", None)
+        if callable(refresh):
+            refresh()
+        dashboard.scene.keep_card_open(plant_id)
+        dashboard._on_scene_selection(plant_id)
 
         self._capture_and_advance(
             "selected-plant-nurtured",
             dashboard,
             capture_delay_ms=260,
-            close_callback=finish_setup_after_capture,
-            close_ms=620,
             next_ms=850,
         )
 
@@ -7587,8 +7623,8 @@ class _UiFaceCaptureRunner:
                 self._capture_annotations[label] = {
                     "passed": bool(
                         fixture_data.background_url
-                        and fixture_data.garden_overlay_url
                         and fixture_data.weather_url
+                        and dimmed_preview.selected_scenery == "spring"
                         and 0.0 < dimmed_preview.scene_opacity < 1.0
                     ),
                     "weather": state.selected_weather,

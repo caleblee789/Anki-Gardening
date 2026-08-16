@@ -1178,7 +1178,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert '"dashboard.rearrange-actions"' in dashboard
     assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "64 if guided else (192 if metrics_compact else 104)" in dashboard
+    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "self._position_scene_overlays()" in dashboard

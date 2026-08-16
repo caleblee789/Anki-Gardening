@@ -102,7 +102,7 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert stats.count("QSizePolicy.Policy.Ignored") >= 3
     assert "stretches = (1, 1, 1, 1)" in stats
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "64 if guided else (192 if metrics_compact else 104)" in dashboard
+    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
     assert "self.garden_stats_bar.setFixedHeight" not in dashboard
 
 
@@ -113,8 +113,8 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     )[0]
 
     assert "self.top_bar.setMinimumHeight(minimum)" in dashboard
-    assert "154 if self._header_narrow_layout else" in dashboard
-    assert "128 if self._header_compact_layout else" in dashboard
+    assert "186 if self._header_narrow_layout else" in dashboard
+    assert "160 if self._header_compact_layout else" in dashboard
     assert "320 if self._header_narrow_layout and metrics_compact else" in dashboard
     assert "264 if self._header_compact_layout and metrics_compact else" in dashboard
     assert "top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)" in dashboard

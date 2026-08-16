@@ -7007,7 +7007,10 @@ class GardenStatsStrip(QFrame):
             return
         self._onboarding_mode = enabled
         for cell in self.cells.values():
-            cell.setMinimumHeight(64 if enabled else 96)
+            # The guided header still contains the complete Growth identity
+            # at nurture/completion. Keep the same content-safe vertical floor
+            # while hiding the unrelated Streak and Coin cells.
+            cell.setMinimumHeight(96)
         set_control_enabled(
             self.cells["growth"],
             not enabled,
@@ -7061,9 +7064,10 @@ class GardenStatsStrip(QFrame):
         safe_maximum = max(1, int(maximum))
         safe_current = min(safe_maximum, max(0, int(current)))
         normalized_status = str(status_label or "FIRST PLANT").upper()
-        onboarding_state_only = normalized_status in {
+        onboarding_state_only = not str(plant_name).strip() or normalized_status in {
             "NO PLANT SELECTED",
             "READY TO NURTURE",
+            "READY TO PLACE",
         }
         if onboarding_state_only:
             self.growth_kicker.hide()
@@ -10602,13 +10606,13 @@ class GardenDashboard(DialogShell):
         guided = bool(getattr(self.garden_stats_bar, "_onboarding_mode", False))
         metrics_compact = bool(self._header_metrics_compact)
         self.garden_stats_bar.setMinimumHeight(
-            64 if guided else (192 if metrics_compact else 104)
+            96 if guided else (192 if metrics_compact else 104)
         )
         if guided:
             minimum = (
-                154 if self._header_narrow_layout else
-                128 if self._header_compact_layout else
-                88
+                186 if self._header_narrow_layout else
+                160 if self._header_compact_layout else
+                120
             )
         else:
             minimum = (
@@ -10700,6 +10704,13 @@ class GardenDashboard(DialogShell):
             # instead of silently making every action disappear.
             self._show_docked_plant_card(full_width=False)
             return
+        placement_reader = getattr(self.scene, "card_popover_placement", None)
+        placement = placement_reader() if callable(placement_reader) else None
+        docked = bool(getattr(placement, "docked", False))
+        self.plant_card.set_docked_mode(docked)
+        self.plant_card.setMaximumWidth(
+            max(330, round(geometry.width())) if docked else 330
+        )
         connector = getattr(self.scene, "set_card_connector_geometry", None)
         if callable(connector):
             connector(geometry, self.plant_card.plant_id)

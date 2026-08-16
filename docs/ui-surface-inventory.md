@@ -301,7 +301,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 128 | `resize-story-content-541` | ST | PlantStoryDialog | Declared resize-matrix transition `story-content-541` | 589x500 | wide | Story + Collection |
 | 129 | `resize-story-default` | ST | PlantStoryDialog | Declared resize-matrix transition `story-default` | 640x520 | wide | Story + Collection |
 | 130 | `resize-story-large` | ST | PlantStoryDialog | Declared resize-matrix transition `story-large` | 900x800 -> 900x699 | wide | Story + Collection |
-| 131 | `resize-starter-confirmation-minimum` | FC | StarterConfirmationDialog | Declared resize-matrix transition `starter-confirmation-minimum` | 360x250 | wide | First run |
+| 131 | `resize-starter-confirmation-minimum` | FC | StarterConfirmationDialog | Declared resize-matrix transition `starter-confirmation-minimum` | 360x280 | compact | First run |
 | 132 | `resize-starter-confirmation-content-399` | FC | StarterConfirmationDialog | Declared resize-matrix transition `starter-confirmation-content-399` | 447x280 | wide | First run |
 | 133 | `resize-starter-confirmation-content-401` | FC | StarterConfirmationDialog | Declared resize-matrix transition `starter-confirmation-content-401` | 449x280 | wide | First run |
 | 134 | `resize-starter-confirmation-default` | FC | StarterConfirmationDialog | Declared resize-matrix transition `starter-confirmation-default` | 480x300 | wide | First run |

@@ -35,6 +35,7 @@ from .landmarks import (
 )
 from .plant_display import (
     NurturedMarkerPlacement,
+    PopoverPlacement,
     SceneGeometryLayout,
     PlantInteractionState,
     PlantPlacement,
@@ -105,6 +106,7 @@ class GardenSceneWidget(QWidget):
         self._plant_anchors: dict[str, tuple[float, float]] = {}
         self._card_connector_rect: QRectF | None = None
         self._card_connector_plant_id = ""
+        self._card_popover_placement: PopoverPlacement | None = None
         self._status_rect: QRectF | None = None
         self._stats_help_visible = False
         self._slot_placements: dict[int, PlantPlacement] = {}
@@ -690,6 +692,7 @@ class GardenSceneWidget(QWidget):
     def card_geometry(self, card_width: int, card_height: int) -> QRectF | None:
         plant_id = self._interaction.pinned_id
         if not plant_id or self._interaction.placing:
+            self._card_popover_placement = None
             return None
         layout_rows = self._layout_plants(self.width(), self.height())
         plant_lookup = getattr(self, "_plant_for_id", None)
@@ -725,7 +728,9 @@ class GardenSceneWidget(QWidget):
                 ),
             )
             if legacy is None:
+                self._card_popover_placement = None
                 return None
+            self._card_popover_placement = None
             return QRectF(*legacy)
         selected_plant = plant_lookup(plant_id)
         selected_slot = (
@@ -734,6 +739,7 @@ class GardenSceneWidget(QWidget):
         )
         geometry_layout = self._scene_geometry_layout
         if geometry_layout is None or geometry_layout.bed(selected_slot) is None:
+            self._card_popover_placement = None
             return None
         # The selected plant is an obstacle too. Prefer a clean side lane; the
         # geometry helper uses the least-obstructive in-scene fallback only for
@@ -775,15 +781,21 @@ class GardenSceneWidget(QWidget):
         placement = geometry_layout.resolve_popover(
             selected_slot,
             (float(card_width), float(card_height)),
-            (136.0, 132.0),
+            (float(card_width), float(card_height)),
             obstacles,
         )
+        self._card_popover_placement = placement
         box = placement.rectangle
         result = QRectF(box.x, box.y, box.width, box.height)
         self._card_connector_rect = result
         self._card_connector_plant_id = plant_id
         self.update()
         return result
+
+    def card_popover_placement(self) -> PopoverPlacement | None:
+        """Return the most recently resolved placement for the selected card."""
+
+        return self._card_popover_placement
 
     def plant_geometry(self, plant_id: str) -> QRectF | None:
         """Return current in-scene plant geometry for anchored native overlays."""

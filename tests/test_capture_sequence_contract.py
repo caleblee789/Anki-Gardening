@@ -736,7 +736,9 @@ def test_watering_can_faces_cover_six_native_and_six_home_plot_positions() -> No
     assert 'f"watering-can-garden-plot-{slot + 1}"' in garden
     assert 'surface == "deckBrowser"' in home
     assert 'self._switch_surface(surface)' in home
-    assert '"data-marker-orientation"' in home_audit
+    assert "data-marker-orientation" in home_audit
+    assert "resolved_side" in home_audit
+    assert "resolved_side" in qt_audit
     assert "data-marker-pulse" in home_audit
     assert "data-marker-target-ground" in home_audit
     assert "data-marker-planter-rect" in home_audit
