@@ -542,11 +542,40 @@ def test_all_due_check_persists_scheduler_rollover_even_when_not_earned():
     assert storage.save_count == saves_before + 1
 
 
-def test_progress_estimates_return_card_answers_only():
+def test_progress_estimates_recalculate_from_the_effective_growth_rate(monkeypatch):
     engine, storage = make_engine()
     plant = storage.state.plants[0]
     plant.growth_points = 500
     assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 10)
+    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
+    plant.fertilizer = Fertilizer("quality", 2, 2_000.0, 500.0)
+    assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 12)
+
+
+def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    storage.state.daily_stats.reviewed = 1
+    storage.state.streak_days = 7
+    storage.state.selected_weather = "breeze"
+    storage.state.selected_background = "spring"
+    plant.bonus_remainder = 50
+    plant.fertilizer = Fertilizer(
+        "quality",
+        2,
+        storage.now_ms / 1_000 + 3_600,
+        storage.now_ms / 1_000 - 60,
+    )
+    before_state = storage.state.to_dict()
+    before_saves = storage.save_count
+    next_event_seconds = (storage.now_ms + 1_000) / 1_000
+
+    projected = engine.project_review_growth(plant, now=next_event_seconds)
+
+    assert storage.state.to_dict() == before_state
+    assert storage.save_count == before_saves
+    awarded = answer(engine, storage)
+    assert awarded == projected
 
 
 def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypatch):

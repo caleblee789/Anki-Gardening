@@ -919,15 +919,33 @@ class GardenGameEngine:
             return self.BASE_GROWTH_PER_REVIEW
         return 0
 
-    def _award_review_growth(self, plant: Plant | None, event_ms: int) -> ReviewAward:
+    def _review_growth_projection(
+        self,
+        plant: Plant | None,
+        event_ms: int,
+        *,
+        answer_number: int,
+    ) -> tuple[ReviewAward, int]:
+        """Project one review award without mutating plant or daily state."""
+
         if plant is None:
-            return ReviewAward(None, 0, 0, 0, 0, "Choose an unfinished plant to nurture to resume Growth.")
+            return (
+                ReviewAward(
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "Choose an unfinished plant to nurture to resume Growth.",
+                ),
+                0,
+            )
         bonus_percent = self.current_streak_bonus_percent()
         bonus_numerator = plant.bonus_remainder + (self.BASE_GROWTH_PER_REVIEW * bonus_percent)
         proposed_streak_bonus, next_remainder = divmod(bonus_numerator, 100)
         proposed_fertilizer_bonus = self.fertilizer_growth(plant, now=event_ms / 1000)
         proposed_booster_bonus = self.booster_growth(plant, now=event_ms / 1000)
-        answer_number = max(1, int(self.state.daily_stats.reviewed))
+        answer_number = max(1, int(answer_number))
         proposed_weather_bonus = self._weather_review_growth(answer_number)
         proposed_scenery_bonus = self._scenery_review_growth(answer_number)
         remaining = max(0, GROWTH_THRESHOLDS[-1] - plant.growth_points)
@@ -963,17 +981,74 @@ class GardenGameEngine:
             + scenery_bonus
         )
         if total <= 0:
-            return ReviewAward(plant.plant_id, 0, 0, 0, bonus_percent, "This plant is fully grown.")
+            return (
+                ReviewAward(
+                    plant.plant_id,
+                    0,
+                    0,
+                    0,
+                    bonus_percent,
+                    "This plant is fully grown.",
+                ),
+                0,
+            )
+        return (
+            ReviewAward(
+                plant.plant_id,
+                base,
+                streak_bonus,
+                fertilizer_bonus,
+                bonus_percent,
+                booster_growth=booster_bonus,
+                weather_growth=weather_bonus,
+                scenery_growth=scenery_bonus,
+            ),
+            next_remainder,
+        )
+
+    def project_review_growth(
+        self,
+        plant: Plant | None = None,
+        *,
+        now: float | None = None,
+        answer_number: int | None = None,
+    ) -> ReviewAward:
+        """Return the next eligible card's effective Growth without mutation."""
+
+        target = plant if plant is not None else self.active_plant()
+        projected_answer = (
+            max(1, int(answer_number))
+            if answer_number is not None
+            else max(1, int(self.state.daily_stats.reviewed) + 1)
+        )
+        event_ms = int(
+            round((self._now_seconds() if now is None else float(now)) * 1000)
+        )
+        award, _next_remainder = self._review_growth_projection(
+            target,
+            event_ms,
+            answer_number=projected_answer,
+        )
+        return award
+
+    def _award_review_growth(self, plant: Plant | None, event_ms: int) -> ReviewAward:
+        award, next_remainder = self._review_growth_projection(
+            plant,
+            event_ms,
+            answer_number=max(1, int(self.state.daily_stats.reviewed)),
+        )
+        if plant is None or award.total_growth <= 0:
+            return award
         before = plant.growth_points
-        plant.growth_points += total
+        plant.growth_points += award.total_growth
         plant.bonus_remainder = next_remainder if plant.growth_points < GROWTH_THRESHOLDS[-1] else 0
         stats = self.state.daily_stats
-        stats.base_growth += base
-        stats.streak_bonus_growth += streak_bonus
-        stats.fertilizer_growth += fertilizer_bonus
-        stats.booster_growth += booster_bonus
-        stats.weather_growth += weather_bonus
-        stats.scenery_growth += scenery_bonus
+        stats.base_growth += award.base_growth
+        stats.streak_bonus_growth += award.streak_bonus_growth
+        stats.fertilizer_growth += award.fertilizer_growth
+        stats.booster_growth += award.booster_growth
+        stats.weather_growth += award.weather_growth
+        stats.scenery_growth += award.scenery_growth
         stats.bonus_growth = (
             stats.streak_bonus_growth
             + stats.fertilizer_growth
@@ -985,19 +1060,10 @@ class GardenGameEngine:
         stats.growth_earned = stats.base_growth + stats.bonus_growth
         stats.plant_growth[plant.plant_id] = (
             stats.plant_growth.get(plant.plant_id, 0)
-            + total
+            + award.total_growth
         )
         self._record_growth_crossings(plant, before, plant.growth_points)
-        return ReviewAward(
-            plant.plant_id,
-            base,
-            streak_bonus,
-            fertilizer_bonus,
-            bonus_percent,
-            booster_growth=booster_bonus,
-            weather_growth=weather_bonus,
-            scenery_growth=scenery_bonus,
-        )
+        return award
 
     def _reward_digest(self, revlog_id: int, *, namespace: bytes) -> bytes:
         return hashlib.blake2b(
@@ -2726,7 +2792,10 @@ class GardenGameEngine:
         if stage_index >= len(GROWTH_STAGES) - 1:
             return 0
         remaining = GROWTH_THRESHOLDS[stage_index + 1] - plant.growth_points
-        return int(math.ceil(remaining / self.BASE_GROWTH_PER_REVIEW))
+        award = self.project_review_growth(plant)
+        if award.total_growth <= 0:
+            return 0
+        return int(math.ceil(max(0, remaining) / award.total_growth))
 
     def export_progress_summary(self) -> str:
         payload = {
