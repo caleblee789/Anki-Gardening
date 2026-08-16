@@ -275,6 +275,10 @@ remaining performance and platform work is:
 4. Repeat the complete capture and timing contract on Windows, true standard
    scaling, true OS 200-percent scaling, and mixed/high-DPI display setups.
 
+Item 4 is an approved release-acceptance gate, not an implementation-entry
+gate. Product-specific agents may begin implementation from the foundation,
+but the release cannot be approved until that native platform evidence exists.
+
 The 188.832-second incomplete v8 run remains the frozen pre-change baseline.
 The v9 run supersedes its capture-completeness and capture-duration evidence,
 but it does not replace the explicit unmeasured performance and platform
