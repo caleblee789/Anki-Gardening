@@ -74,7 +74,7 @@ def test_home_and_native_actions_share_the_same_visual_roles() -> None:
     assert "background:#71D39C" in home
     assert "outline:3px solid #82E2AC" in home
     assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in dashboard
-    assert "_set_button_variant(copy_debug, BUTTON_VARIANT_SECONDARY)" in dashboard
+    assert "_set_button_variant(self.copy_debug, BUTTON_VARIANT_SECONDARY)" in dashboard
     assert "min-height:44px; max-height:44px; min-width:44px" in dashboard
     assert "tool_button_stylesheet()" in studio
 

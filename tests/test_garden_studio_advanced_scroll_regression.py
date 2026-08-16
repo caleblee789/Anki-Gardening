@@ -161,6 +161,18 @@ def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
     assert "self.set_initial_focus(self.top_close)" not in dialog
 
 
+def test_settings_troubleshooting_actions_reflow_from_their_own_viewport() -> None:
+    settings = _class_source(DASHBOARD_PATH, "GardenSettingsDialog")
+
+    assert '"settings.troubleshooting-actions"' in settings
+    assert "self.troubleshooting_scroll.viewport()" in settings
+    assert "QBoxLayout.Direction.TopToBottom" in settings
+    assert "QBoxLayout.Direction.LeftToRight" in settings
+    assert '"refresh-diagnostics"' in settings
+    assert '"copy-report"' in settings
+    assert '"technical-details"' in settings
+
+
 def test_live_qt_advanced_content_stays_inside_inner_viewport_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -459,6 +471,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     )
     story = PlantStoryDialog(dashboard, engine, "p1")
     nursery = NurseryDialog(dashboard, engine, storage)
+    assert nursery.currently_growing_strip is not None
     assert tuple(
         region.accessibleName()
         for region in (
@@ -476,6 +489,20 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     progress = dashboard.progress_dialog
     customize = dashboard.customize_dialog
     settings = GardenSettingsDialog(dashboard, engine, config)
+    dashboard._refresh_collection_list()
+    assert dashboard.collection_filter_responsive is not None
+    assert nursery.catalog_content_responsive
+    nursery_controllers = (
+        (nursery.hero_responsive, "nursery-hero"),
+        (nursery.receipt_responsive, "nursery-receipt"),
+        (
+            nursery.currently_growing_strip.responsive,
+            "nursery-current-plant",
+        ),
+    ) + tuple(
+        (controller, f"nursery-content-{index}")
+        for index, controller in enumerate(nursery.catalog_content_responsive)
+    )
 
     surfaces = (
         (
@@ -508,10 +535,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         (
             "nursery",
             nursery,
-            (
-                (nursery.hero_responsive, "nursery-hero"),
-                (nursery.receipt_responsive, "nursery-receipt"),
-            ),
+            nursery_controllers,
             (795, 797),
             "heroMode",
             "wide",
@@ -533,6 +557,17 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             "compact",
         ),
     )
+
+    shared_controllers = (
+        settings.report_actions_responsive,
+        dashboard.collection_filter_responsive,
+    )
+    for controller in shared_controllers:
+        threshold = controller.evaluate(100_000).threshold_width
+        assert [
+            controller.evaluate(threshold + offset).mode
+            for offset in (-2, -1, 0, 1, 2)
+        ] == ["compact", "compact", "wide", "wide", "wide"]
 
     for _label, surface, controllers, historical, property_name, expected in surfaces:
         surface.show()
@@ -797,6 +832,8 @@ def test_live_qt_settings_details_rewrap_to_full_height_when_available(
     regions = settings.active_vertical_scroll_regions()
     assert len(regions) == 1
     outer_scroll = regions[0]
+    assert settings.report_actions_panel.width() <= outer_scroll.viewport().width()
+    assert settings.report_actions_panel.property("troubleshootingActionsMode") == "compact"
     assert outer_scroll.verticalScrollBar().maximum() > 0
     outer_scroll.verticalScrollBar().setValue(
         outer_scroll.verticalScrollBar().maximum()
@@ -828,6 +865,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
             NurseryDialog,
             PlantStoryDialog,
         )
+        from ankigarden.capture_ui_faces import _UiFaceCaptureRunner
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
 
@@ -845,6 +883,13 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     dashboard._open_fertilizer_menu("p1")
     fertilizer_selection = dashboard.fertilizer_dialog
     assert isinstance(fertilizer_selection, DialogShell)
+    assert fertilizer_selection.fertilizer_option_responsive
+    for controller in fertilizer_selection.fertilizer_option_responsive:
+        threshold = controller.evaluate(100_000).threshold_width
+        assert [
+            controller.evaluate(threshold + offset).mode
+            for offset in (-2, -1, 0, 1, 2)
+        ] == ["compact", "compact", "wide", "wide", "wide"]
 
     replacement = FertilizerReplacementDialog(
         dashboard,
@@ -867,6 +912,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     customize = dashboard.customize_dialog
 
     natural_ranges: dict[str, int] = {}
+    capture_auditor = _UiFaceCaptureRunner.__new__(_UiFaceCaptureRunner)
 
     def active_region(dialog: Any, label: str) -> Any:
         regions = dialog.active_vertical_scroll_regions()
@@ -920,6 +966,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         application.processEvents()
         assert active_region(dialog, label) is scroll
         assert_footer_geometry(dialog, scroll, label)
+        assert not capture_auditor._find_geometry_layout_warnings(dialog), label
 
         bar = scroll.verticalScrollBar()
         natural_ranges[label] = int(bar.maximum())
@@ -964,6 +1011,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
                 viewport.height(),
             )
         assert_footer_geometry(dialog, scroll, label)
+        assert not capture_auditor._find_geometry_layout_warnings(dialog), label
 
         content.setMinimumHeight(original_minimum)
         content.updateGeometry()
@@ -972,6 +1020,21 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         application.processEvents()
 
     assert_surface(nursery, "Nursery")
+    nursery.show()
+    for index, expected_name in enumerate(
+        (
+            "Plants catalog",
+            "Fertilizer and Boosters catalog",
+            "Garden Spaces catalog",
+            "Weather and Scenery catalog",
+        )
+    ):
+        nursery.catalog_tabs.setCurrentIndex(index)
+        application.processEvents()
+        application.processEvents()
+        assert active_region(nursery, f"Nursery tab {index}").accessibleName() == expected_name
+        assert not capture_auditor._find_geometry_layout_warnings(nursery), expected_name
+    nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")
     assert_surface(replacement, "Fertilizer replacement")
     assert_surface(story, "Plant Story")
