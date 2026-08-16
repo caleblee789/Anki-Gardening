@@ -1190,7 +1190,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "move_badge_label(" in scene
     assert 'f"Garden space {slot + 1}: {label}"' in scene
     assert "self._interaction.placing and not self._drag_started" in scene
-    assert "slot < unlocked" in scene
+    assert "valid = list(range(unlocked))" in scene
 
 
 def test_every_weather_has_procedural_motion_and_respects_motion_toggle():

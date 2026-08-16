@@ -53,6 +53,7 @@ def test_cancel_move_wraps_finish_then_notifies_dashboard_once() -> None:
 
 def test_mouse_origin_cancels_but_empty_scene_keeps_the_dashboard_draft() -> None:
     block = _method_source("mousePressEvent")
+    valid_slots = _method_source("_valid_slots")
 
     origin_branch = block.split("if slot == self._interaction.drag_origin_slot:", 1)[1]
     assert origin_branch.lstrip().startswith("self.cancel_move()")
@@ -61,6 +62,8 @@ def test_mouse_origin_cancels_but_empty_scene_keeps_the_dashboard_draft() -> Non
     )[0]
     assert "self.cancel_move()" not in outside_branch
     assert "Choose a highlighted garden space, or press Escape to cancel." in outside_branch
+    assert "list(range(unlocked))" in valid_slots
+    assert "sorted(self._slot_placements)" not in valid_slots
 
 
 def test_keyboard_confirmation_on_origin_follows_cancel_path() -> None:

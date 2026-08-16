@@ -2038,7 +2038,11 @@ class GardenSceneWidget(QWidget):
 
     def _valid_slots(self) -> list[int]:
         unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", 0))))
-        valid = [slot for slot in sorted(self._slot_placements) if slot < unlocked]
+        # Slot validity is state, not paint timing. A persistence rollback can
+        # refresh the scene payload and restart move mode before the next paint
+        # has rebuilt ``_slot_placements``; the unlocked count remains the
+        # authoritative source for all six deterministic bed IDs.
+        valid = list(range(unlocked))
         if self._allowed_move_slots is not None:
             valid = [slot for slot in valid if slot in self._allowed_move_slots]
         return valid
