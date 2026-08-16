@@ -537,11 +537,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 149
+    assert capture_result["capture_count"] == 156
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
-        "page_count": 19,
-        "surface_count": 149,
+        "page_count": 20,
+        "surface_count": 156,
         "status": "valid",
     }
 
@@ -551,7 +551,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     pages = expected_contact_sheet_pages(contract)
 
     assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 9,
+        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 9, 7,
     ]
     assert pages[6:10] == (
         (("Release stress — Garden", 10),),
@@ -561,21 +561,21 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     )
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
         4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
-        4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 5078,
+        4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 5078, 4148,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_149_faces() -> None:
+def test_renderer_families_are_derived_from_source_for_all_156_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
     assert tuple(families) == contract.labels
     assert Counter(families.values()) == Counter({
-        "GardenDashboard": 43,
+        "GardenDashboard": 47,
         "GardenProgressDialog": 24,
         "GardenSettingsDialog": 17,
         "NurseryDialog": 16,
-        "AnkiQt": 12,
+        "AnkiQt": 15,
         "CustomizeGardenDialog": 8,
         "FertilizerDialog": 7,
         "StarterConfirmationDialog": 6,
@@ -593,7 +593,7 @@ def test_renderer_families_are_derived_from_source_for_all_149_faces() -> None:
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_149_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_all_156_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -603,9 +603,9 @@ def test_state_evidence_contracts_are_derived_for_all_149_faces() -> None:
     assert tuple(states) == contract.labels
     assert Counter(state["kind"] for state in states.values()) == Counter({
         "resize": 59,
-        "dashboard": 30,
+        "dashboard": 34,
         "progress": 16,
-        "home": 12,
+        "home": 15,
         "nursery": 11,
         "settings": 10,
         "dialog": 8,
@@ -1197,8 +1197,8 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 149" in message
-    assert "pages account for 148 surfaces" in message
+    assert "surface_count must be 156" in message
+    assert "pages account for 155 surfaces" in message
     assert "PNG dimensions must be 3000x4262px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message

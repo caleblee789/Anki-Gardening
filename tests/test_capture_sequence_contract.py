@@ -116,7 +116,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 10
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 11
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -236,8 +236,17 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert groups["Responsive resize matrix"] == tuple(
         spec[0] for spec in _literal_assignment("RESIZE_MATRIX_SPECS")
     )
+    assert groups["Release overhaul — resumable and resilient states"] == (
+        "starter-placement",
+        "starter-completion",
+        "home-preview-loading",
+        "home-preview-error",
+        "home-preview-stale",
+        "onboarding-persistence-error",
+        "move-persistence-error",
+    )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 149
+    assert len(labels) == 156
     assert len(labels) == len(set(labels))
 
 
@@ -252,8 +261,8 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
 
     assert all(families)
     assert Counter(families) == {
-        "AnkiQt": 12,
-        "GardenDashboard": 43,
+        "AnkiQt": 15,
+        "GardenDashboard": 47,
         "GardenProgressDialog": 24,
         "GardenSettingsDialog": 17,
         "NurseryDialog": 16,
@@ -277,7 +286,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 149
+    assert len({profile["profile_id"] for profile in profiles}) == 156
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -285,6 +294,9 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
     assert resolver("active-overview-home-after-nurture")["fixture_state"] == (
         "nurtured-active"
     )
+    assert resolver("home-preview-loading")["fixture_state"] == "preview-loading"
+    assert resolver("home-preview-error")["surface"] == "overview"
+    assert resolver("home-preview-stale")["fixture_state"] == "preview-stale"
     assert resolver("resize-dashboard-content-1359")["declared_client_size"] == [
         1383,
         900,
@@ -319,6 +331,13 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
         "customize-effects-on",
         "customize-effects-off",
         "settings-display-advanced-open",
+        "starter-placement",
+        "starter-completion",
+        "home-preview-loading",
+        "home-preview-error",
+        "home-preview-stale",
+        "onboarding-persistence-error",
+        "move-persistence-error",
     ):
         assert f'"{label}"' in source
     for index, label in enumerate(
@@ -606,7 +625,10 @@ def test_capture_uses_the_real_starter_then_nurture_state_boundary() -> None:
     planted = _method_source("_UiFaceCaptureRunner", "_capture_selected_card_after")
     nurtured = _method_source("_UiFaceCaptureRunner", "_capture_nurture_after")
 
-    assert "choose_starter(species)" in seed
+    assert "enter_starter_nursery" in seed
+    assert "select_starter_species" in seed
+    assert "confirm_starter_species" in seed
+    assert "place_starter(0)" in seed
     assert "active_plant_id =" not in seed
     assert "set_active_plant" not in seed
     assert 'notify("Capture starter fixture committed")' in prepare
@@ -616,6 +638,7 @@ def test_capture_uses_the_real_starter_then_nurture_state_boundary() -> None:
     assert 'getattr(dashboard, "_nurture_plant", None)' in nurtured
     assert '== "first_nurture"' in nurtured
     assert '== "nurture:first"' in nurtured
+    assert "finish_onboarding()" in nurtured
 
 
 def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:

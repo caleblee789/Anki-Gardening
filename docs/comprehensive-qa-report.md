@@ -7,10 +7,11 @@
 
 Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
 remain evidence for the source audited on 2026-08-15, not for current source.
-Current visual coverage is governed by capture contract v10 with 149 ordered
-surfaces. The current macOS Qt run is 149/149 and validator-clean; see
-`docs/ui-release-overhaul-contract.md` for its evidence and the remaining
-native-platform, human-accessibility, and visual-acceptance boundaries.
+Current visual coverage is governed by capture contract v11 with 156 ordered
+surfaces. The validator-clean v10 macOS Qt run remains the 149/149 pre-change
+baseline; it is not current evidence for schema 17. See
+`docs/ui-release-overhaul-contract.md` for the pending v11 gate and the
+remaining native-platform, human-accessibility, and visual-acceptance boundaries.
 
 ## Historical release status
 

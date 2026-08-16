@@ -13,6 +13,7 @@ import os
 import platform
 import re
 import time
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
@@ -48,7 +49,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 10
+CAPTURE_CONTRACT_VERSION = 11
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -272,6 +273,18 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "resize-collection-minimum",
             "resize-collection-default",
             "resize-collection-large",
+        ),
+    ),
+    (
+        "Release overhaul — resumable and resilient states",
+        (
+            "starter-placement",
+            "starter-completion",
+            "home-preview-loading",
+            "home-preview-error",
+            "home-preview-stale",
+            "onboarding-persistence-error",
+            "move-persistence-error",
         ),
     ),
 )
@@ -828,6 +841,9 @@ _HOME_CAPTURE_LABELS = frozenset({
     "watering-can-overview-plot-2",
     "watering-can-overview-plot-4",
     "watering-can-overview-plot-6",
+    "home-preview-loading",
+    "home-preview-error",
+    "home-preview-stale",
 })
 
 _DASHBOARD_CAPTURE_LABELS = frozenset({
@@ -851,6 +867,10 @@ _DASHBOARD_CAPTURE_LABELS = frozenset({
     "display-scaling-200-qt-representative",
     *(f"popover-plot-{slot}" for slot in range(1, 7)),
     *(f"watering-can-garden-plot-{slot}" for slot in range(1, 7)),
+    "starter-placement",
+    "starter-completion",
+    "onboarding-persistence-error",
+    "move-persistence-error",
 })
 
 _PROGRESS_CAPTURE_LABELS = frozenset({
@@ -973,14 +993,24 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         "window_family": family,
     }
     if label in _HOME_CAPTURE_LABELS:
-        surface = "deckBrowser" if "deck-browser" in label else "overview"
-        fixture_state = (
-            "starter-not-selected"
-            if label.startswith("starter-") else
-            "starter-planted-not-nurtured"
-            if label in {"deck-browser-home", "overview-home"} else
-            "nurtured-active"
-        )
+        if label == "home-preview-error":
+            surface = "overview"
+        elif label.startswith("home-preview-"):
+            surface = "deckBrowser"
+        else:
+            surface = "deckBrowser" if "deck-browser" in label else "overview"
+        if label == "home-preview-loading":
+            fixture_state = "preview-loading"
+        elif label == "home-preview-error":
+            fixture_state = "preview-error"
+        elif label == "home-preview-stale":
+            fixture_state = "preview-stale"
+        elif label.startswith("starter-"):
+            fixture_state = "starter-not-selected"
+        elif label in {"deck-browser-home", "overview-home"}:
+            fixture_state = "starter-planted-not-nurtured"
+        else:
+            fixture_state = "nurtured-active"
         profile.update({
             "kind": "home",
             "surface": surface,
@@ -1359,6 +1389,19 @@ class _UiFaceCaptureRunner:
                 lambda spec=spec: self._capture_resize_matrix_face(spec)
                 for spec in RESIZE_MATRIX_SPECS
             ),
+            self._capture_starter_placement,
+            self._capture_starter_completion,
+            lambda: self._capture_home_preview_phase(
+                "home-preview-loading", "deckBrowser", "loading"
+            ),
+            lambda: self._capture_home_preview_phase(
+                "home-preview-error", "overview", "error"
+            ),
+            lambda: self._capture_home_preview_phase(
+                "home-preview-stale", "deckBrowser", "stale"
+            ),
+            self._capture_onboarding_persistence_error,
+            self._capture_move_persistence_error,
         ]
         self._capture_profile = str(
             os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
@@ -1367,8 +1410,8 @@ class _UiFaceCaptureRunner:
         if self._capture_profile == "watering-can":
             # The targeted regression profile still seeds through the real
             # first-run transaction, but does not spend time screenshotting
-            # unrelated interfaces. The full v8 release contract remains the
-            # default and is unchanged.
+            # unrelated interfaces. The full v11 release contract remains the
+            # default.
             self._capture_face_groups = WATERING_CAN_CAPTURE_FACE_GROUPS
             self._starter_steps = []
             self._release_steps = [
@@ -1530,19 +1573,26 @@ class _UiFaceCaptureRunner:
         """Make capture deterministic with a planted, not-yet-nurtured starter.
 
         The release sequence captures the consequential boundary on both sides:
-        ``choose_starter`` persists the planted starter and its no-active-plant
-        sentinel, then the later Nurture face uses the normal dashboard action
-        to make the active assignment. Capture setup must not skip that boundary.
+        the real select, confirm, and placement transitions persist the starter
+        and its no-active-plant sentinel, then the later Nurture face uses the
+        normal dashboard action to make the active assignment. Capture setup
+        must not skip that boundary.
         """
+        from .models.state import OnboardingStep
+
         state = getattr(self.app.storage, "state", None)
         if state is None:
             return False
         plants = list(getattr(state, "plants", []) or [])
-        if bool(getattr(state, "starter_selection_complete", False)) and plants:
+        if (
+            bool(getattr(state, "starter_selection_complete", False))
+            and plants
+            and not getattr(state, "active_plant_id", None)
+            and state.onboarding.step == OnboardingStep.NURTURE
+        ):
             return True
         ready = getattr(self.app.engine, "release_ready_species", None)
-        choose_starter = getattr(self.app.engine, "choose_starter", None)
-        if ready is None or choose_starter is None:
+        if ready is None:
             return False
         try:
             candidates = list(ready())
@@ -1552,9 +1602,19 @@ class _UiFaceCaptureRunner:
             return False
         species = str(candidates[0]).lower()
         try:
-            ok, _message, plant = choose_starter(species)
-            if ok and plant is not None:
-                return True
+            step = state.onboarding.step
+            if step == OnboardingStep.INTRODUCTION:
+                self.app.engine.enter_starter_nursery()
+                return False
+            if step == OnboardingStep.NURSERY:
+                self.app.engine.select_starter_species(species)
+                return False
+            if step == OnboardingStep.CONFIRMATION:
+                self.app.engine.confirm_starter_species()
+                return False
+            if step == OnboardingStep.PLACEMENT:
+                ok, _message, plant = self.app.engine.place_starter(0)
+                return bool(ok and plant is not None)
         except Exception:
             logger.debug("Anki Garden capture: starter bootstrap waiting for scheduler", exc_info=True)
         return False
@@ -2041,6 +2101,11 @@ class _UiFaceCaptureRunner:
             self._next_after(120)
             return
 
+        special_fixture_state = {
+            "home-preview-loading": "preview-loading",
+            "home-preview-error": "preview-error",
+            "home-preview-stale": "preview-stale",
+        }.get(capture_label, "")
         garden_state = getattr(self.app.storage, "state", None)
         starter_complete = bool(
             getattr(garden_state, "starter_selection_complete", False)
@@ -2049,7 +2114,9 @@ class _UiFaceCaptureRunner:
             getattr(garden_state, "active_plant_id", "") or ""
         )
         plants = list(getattr(garden_state, "plants", ()) or ())
-        if not starter_complete:
+        if special_fixture_state:
+            fixture_state = special_fixture_state
+        elif not starter_complete:
             fixture_state = "starter-not-selected"
         elif active_plant_id:
             fixture_state = "nurtured-active"
@@ -2089,6 +2156,9 @@ class _UiFaceCaptureRunner:
                 '[data-testid="home-nurturing-marker"], '
                 + '[data-testid="home-nurturing-marker-fallback"]'
               );
+              const sceneFrame = root.querySelector('.ag-home__scene-frame');
+              const weatherLayer = root.querySelector('[data-testid="home-weather-layer"]');
+              const sceneryLayer = root.querySelector('[data-testid="home-scenery-layer"]');
               const fixtureState = __FIXTURE_STATE__;
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
@@ -2103,8 +2173,20 @@ class _UiFaceCaptureRunner:
                 fixtureMatches = command.endsWith(':open')
                   && activeSlot >= 0
                   && !!marker;
+              } else if (fixtureState === 'preview-loading') {
+                fixtureMatches = root.dataset.state === 'loading'
+                  && !!root.querySelector('[data-testid="home-loading"]');
+              } else if (fixtureState === 'preview-error') {
+                fixtureMatches = root.dataset.state === 'error'
+                  && !!root.querySelector('[data-testid="home-error"]');
+              } else if (fixtureState === 'preview-stale') {
+                fixtureMatches = root.dataset.state === 'stale'
+                  && command.endsWith(':open')
+                  && !!root.querySelector('[data-testid="home-preview-status"]');
               }
-              const paintedState = ['success', 'partial'].includes(root.dataset.state);
+              const paintedState = fixtureState.startsWith('preview-')
+                ? root.dataset.state === fixtureState.replace('preview-', '')
+                : ['success', 'partial'].includes(root.dataset.state);
               return {
                 ready: paintedState && imagesComplete && fixtureMatches,
                 reason: !paintedState ? 'unpainted-state'
@@ -2117,6 +2199,11 @@ class _UiFaceCaptureRunner:
                 command,
                 activeSlot,
                 markerPresent: !!marker,
+                weatherLayerPresent: !!weatherLayer,
+                sceneryLayerPresent: !!sceneryLayer,
+                sceneOpacity: sceneFrame
+                  ? Number.parseFloat(window.getComputedStyle(sceneFrame).opacity || '1')
+                  : null,
                 imagesComplete,
                 plantedSummaryPresent: !!root.querySelector('.planted-starter-summary'),
                 nurturedSummaryPresent: !!root.querySelector('.nurtured-plant-summary'),
@@ -3097,6 +3184,67 @@ class _UiFaceCaptureRunner:
         )
         annotation = dict(self._capture_annotations.get(label, {}) or {})
 
+        if state_name == "starter-selection-confirmation":
+            progress = getattr(garden_state, "onboarding", None)
+            step = getattr(progress, "step", "")
+            require(
+                "persisted_confirmation_step",
+                str(getattr(step, "value", step)) == "confirmation"
+                and bool(getattr(progress, "pending_species", "")),
+                str(getattr(step, "value", step)),
+            )
+
+        if state_name in {
+            "starter-placement",
+            "starter-completion",
+            "onboarding-persistence-error",
+            "move-persistence-error",
+        }:
+            dashboard = getattr(self.app, "dashboard", None)
+            progress = getattr(garden_state, "onboarding", None)
+            step = getattr(progress, "step", "")
+            step_value = str(getattr(step, "value", step))
+            if state_name == "starter-placement":
+                require("onboarding_step", step_value == "placement", step_value)
+                require(
+                    "starter_not_created_before_placement",
+                    not plants and not bool(getattr(garden_state, "starter_selection_complete", False)),
+                    len(plants),
+                )
+                require(
+                    "starter_placement_mode",
+                    bool(
+                        dashboard is not None
+                        and getattr(dashboard, "_starter_placement_active", False)
+                        and dashboard.scene._interaction.placing
+                    ),
+                    bool(dashboard is not None and dashboard.scene._interaction.placing),
+                )
+            elif state_name == "starter-completion":
+                require("onboarding_step", step_value == "completion", step_value)
+                require(
+                    "completion_has_nurtured_starter",
+                    bool(active_id and plants and active_id == str(getattr(progress, "starter_plant_id", "") or "")),
+                    active_id,
+                )
+                require(
+                    "completion_not_done_before_destination",
+                    int(getattr(garden_state, "garden_setup_version", -1)) == 0,
+                    int(getattr(garden_state, "garden_setup_version", -1)),
+                )
+            else:
+                if state_name == "onboarding-persistence-error":
+                    require(
+                        "onboarding_step",
+                        step_value == "introduction",
+                        step_value,
+                    )
+                require(
+                    "rollback_fixture_audit",
+                    bool(annotation.get("passed", False)),
+                    annotation,
+                )
+
         if state_name == "keyboard-focus-state":
             dashboard = getattr(self.app, "dashboard", None)
             capture_config = getattr(dashboard, "config", None)
@@ -3293,6 +3441,22 @@ class _UiFaceCaptureRunner:
                     "dom_active_slot",
                     int(dom.get("activeSlot", -1)) == expected_slot,
                     int(dom.get("activeSlot", -1)),
+                )
+            if label == "watering-can-deck-browser-plot-1":
+                opacity = dom.get("sceneOpacity")
+                require(
+                    "unified_dimmed_weather_scenery_scene",
+                    bool(
+                        dom.get("weatherLayerPresent", False)
+                        and dom.get("sceneryLayerPresent", False)
+                        and isinstance(opacity, (int, float))
+                        and 0.0 < float(opacity) < 1.0
+                    ),
+                    {
+                        "weather": bool(dom.get("weatherLayerPresent", False)),
+                        "scenery": bool(dom.get("sceneryLayerPresent", False)),
+                        "scene_opacity": opacity,
+                    },
                 )
         elif kind == "resize":
             request = dict(geometry_request or {})
@@ -5443,6 +5607,7 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_starter_confirmation(self) -> None:
+        from .models.state import OnboardingStep
         from .ui.dashboard import StarterConfirmationDialog
 
         dashboard = getattr(self.app, "dashboard", None)
@@ -5457,6 +5622,23 @@ class _UiFaceCaptureRunner:
             self._failures.append({
                 "label": "starter-selection-confirmation",
                 "reason": "Starter confirmation prerequisites were unavailable",
+            })
+            self._next_after(200)
+            return
+        progress = self.app.storage.state.onboarding
+        if progress.step == OnboardingStep.INTRODUCTION:
+            self.app.engine.enter_starter_nursery()
+            progress = self.app.storage.state.onboarding
+        if progress.step == OnboardingStep.NURSERY:
+            self.app.engine.select_starter_species(species)
+            progress = self.app.storage.state.onboarding
+        if (
+            progress.step != OnboardingStep.CONFIRMATION
+            or progress.pending_species != species
+        ):
+            self._failures.append({
+                "label": "starter-selection-confirmation",
+                "reason": "Starter confirmation did not reach its persisted source state",
             })
             self._next_after(200)
             return
@@ -5557,6 +5739,294 @@ class _UiFaceCaptureRunner:
                 failure_reason="Starter Nursery Plants tab did not become ready",
             ),
         )
+
+    def _replace_capture_state(self, state: Any) -> Callable[[], None]:
+        """Install one in-memory fixture and return an idempotent restoration."""
+
+        storage = self.app.storage
+        engine = self.app.engine
+        original_storage_state = storage.state
+        original_engine_state = engine.state
+        restored = False
+        storage.state = state
+        engine.state = state
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            dashboard = getattr(self.app, "dashboard", None)
+            if dashboard is not None:
+                dashboard._starter_placement_active = False
+                dashboard._placement_draft = None
+                dashboard.scene.finish_move("Capture fixture restored.")
+                dashboard.rearrange_bar.hide()
+                dashboard.rearrange_bar.cancel.setText("Cancel")
+                dashboard.toast_region.clear()
+            storage.state = original_storage_state
+            engine.state = original_engine_state
+            if dashboard is not None:
+                dashboard.refresh_all()
+
+        return restore
+
+    def _capture_starter_placement(self) -> None:
+        from .models.state import GardenState, OnboardingProgress, OnboardingStep
+
+        def ready() -> None:
+            dashboard = getattr(self.app, "dashboard", None)
+            if dashboard is None:
+                self._next_after(200)
+                return
+            fixture = GardenState()
+            fixture.onboarding = OnboardingProgress(
+                step=OnboardingStep.PLACEMENT,
+                pending_species="rose",
+            )
+            restore = self._replace_capture_state(fixture)
+            dashboard._starter_setup_dismissed = False
+            dashboard.refresh_all()
+            dashboard._begin_starter_placement()
+            self._capture_annotations["starter-placement"] = {
+                "passed": bool(
+                    fixture.onboarding.step == OnboardingStep.PLACEMENT
+                    and not fixture.plants
+                    and dashboard.scene._interaction.placing
+                ),
+                "pending_species": fixture.onboarding.pending_species,
+            }
+            self._capture_and_advance(
+                "starter-placement",
+                dashboard,
+                capture_delay_ms=420,
+                close_callback=restore,
+                close_ms=700,
+                next_ms=980,
+            )
+
+        self._with_dashboard(ready, failure_label="starter-placement")
+
+    def _capture_starter_completion(self) -> None:
+        from .models.state import (
+            GardenState,
+            OnboardingProgress,
+            OnboardingStep,
+            Plant,
+            PlantMemory,
+        )
+
+        def ready() -> None:
+            dashboard = getattr(self.app, "dashboard", None)
+            if dashboard is None:
+                self._next_after(200)
+                return
+            fixture = GardenState()
+            plant = Plant(
+                "capture_starter",
+                "rose",
+                "Briar",
+                0,
+                memories=[
+                    PlantMemory("planted", "planted", fixture.daily_stats.day),
+                    PlantMemory("nurture:first", "first_nurture", fixture.daily_stats.day),
+                ],
+            )
+            fixture.plants = [plant]
+            fixture.unlocked_species = [plant.species]
+            fixture.starter_selection_complete = True
+            fixture.active_plant_id = plant.plant_id
+            fixture.onboarding = OnboardingProgress(
+                step=OnboardingStep.COMPLETION,
+                starter_plant_id=plant.plant_id,
+            )
+            restore = self._replace_capture_state(fixture)
+            dashboard._starter_setup_dismissed = False
+            dashboard.refresh_all()
+            self._capture_annotations["starter-completion"] = {
+                "passed": bool(
+                    fixture.onboarding.step == OnboardingStep.COMPLETION
+                    and fixture.active_plant_id == plant.plant_id
+                    and fixture.garden_setup_version == 0
+                ),
+                "starter_plant_id": plant.plant_id,
+            }
+            self._capture_and_advance(
+                "starter-completion",
+                dashboard,
+                capture_delay_ms=420,
+                close_callback=restore,
+                close_ms=700,
+                next_ms=980,
+            )
+
+        self._with_dashboard(ready, failure_label="starter-completion")
+
+    def _capture_home_preview_phase(
+        self,
+        label: str,
+        surface: str,
+        phase: str,
+    ) -> None:
+        from .ui.home_widget import HomeWidgetSnapshot, render_home_widget
+
+        self._close_top_level_dialogs()
+        self._close_dashboard()
+        controller = self.app._home_widget_controller
+        if phase == "stale" and controller.snapshot.data is None:
+            self.app._build_home_garden_html()
+        original_snapshot = controller.snapshot
+        original_cache = getattr(self.app, "_home_html_cache", None)
+        original_revision = int(getattr(self.app, "_home_html_revision", -1))
+        state_events = getattr(self.app, "state_events", None)
+        current_revision = int(getattr(state_events, "revision", 0))
+        error_message = {
+            "error": "Garden preview is unavailable. Retry to refresh.",
+            "stale": "Updating garden preview…",
+        }.get(phase)
+        fixture_snapshot = HomeWidgetSnapshot(
+            request_id=original_snapshot.request_id + 1,
+            phase=phase,
+            data=original_snapshot.data if phase == "stale" else None,
+            error_message=error_message,
+            enable_animations=original_snapshot.enable_animations,
+            reduced_motion=original_snapshot.reduced_motion,
+        )
+        controller.snapshot = fixture_snapshot
+        self.app._home_html_cache = render_home_widget(fixture_snapshot)
+        self.app._home_html_revision = current_revision
+        restored = False
+
+        def restore() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            controller.snapshot = original_snapshot
+            self.app._home_html_cache = original_cache
+            self.app._home_html_revision = original_revision
+
+        alternate = "overview" if surface == "deckBrowser" else "deckBrowser"
+        self._switch_surface(alternate)
+
+        def enter_surface() -> None:
+            self._switch_surface(surface)
+            self._wait_for_home_surface(
+                surface,
+                label,
+                lambda: self._capture_and_advance(
+                    label,
+                    mw,
+                    capture_delay_ms=650,
+                    close_callback=restore,
+                    close_ms=720,
+                    next_ms=980,
+                ),
+            )
+
+        QTimer.singleShot(420, enter_surface)
+
+    def _capture_onboarding_persistence_error(self) -> None:
+        from .models.state import GardenState, OnboardingStep
+
+        def ready() -> None:
+            dashboard = getattr(self.app, "dashboard", None)
+            if dashboard is None:
+                self._next_after(200)
+                return
+            fixture = GardenState()
+            restore = self._replace_capture_state(fixture)
+            dashboard._starter_setup_dismissed = False
+            dashboard.refresh_all()
+            original_save = self.app.storage.save
+
+            def fail_save() -> None:
+                raise OSError("capture persistence failure")
+
+            self.app.storage.save = fail_save
+            try:
+                dashboard._open_starter_nursery()
+            finally:
+                self.app.storage.save = original_save
+            current = self.app.storage.state
+            self._capture_annotations["onboarding-persistence-error"] = {
+                "passed": bool(
+                    current.onboarding.step == OnboardingStep.INTRODUCTION
+                    and not current.plants
+                    and dashboard.toast_region.isVisible()
+                    and bool(dashboard.toast_region.property("error"))
+                ),
+                "onboarding_step": current.onboarding.step.value,
+            }
+            self._capture_and_advance(
+                "onboarding-persistence-error",
+                dashboard,
+                capture_delay_ms=420,
+                close_callback=restore,
+                close_ms=700,
+                next_ms=980,
+            )
+
+        self._with_dashboard(ready, failure_label="onboarding-persistence-error")
+
+    def _capture_move_persistence_error(self) -> None:
+        def ready() -> None:
+            dashboard = getattr(self.app, "dashboard", None)
+            plant_id = self._select_plant()
+            if dashboard is None or not plant_id:
+                self._next_after(200)
+                return
+            dashboard._begin_move(plant_id)
+            draft = dashboard._placement_draft
+            destinations = (
+                self.app.engine.valid_destination_slots(draft)
+                if draft is not None else
+                []
+            )
+            origin = draft.current.get(plant_id) if draft is not None else None
+            destination = next((slot for slot in destinations if slot != origin), None)
+            if destination is None:
+                self._failures.append({
+                    "label": "move-persistence-error",
+                    "reason": "No valid destination was available for the rollback fixture",
+                })
+                dashboard._cancel_move()
+                self._next_after(200)
+                return
+            before = deepcopy(self.app.storage.state.to_dict())
+            original_save = self.app.storage.save
+
+            def fail_save() -> None:
+                raise OSError("capture persistence failure")
+
+            self.app.storage.save = fail_save
+            try:
+                dashboard._place_plant(plant_id, int(destination))
+            finally:
+                self.app.storage.save = original_save
+            after = self.app.storage.state.to_dict()
+            self._capture_annotations["move-persistence-error"] = {
+                "passed": bool(
+                    before == after
+                    and dashboard.scene._interaction.placing
+                    and dashboard.scene._interaction.dragged_id == plant_id
+                    and dashboard.toast_region.isVisible()
+                    and bool(dashboard.toast_region.property("error"))
+                ),
+                "selected_plant_id": plant_id,
+                "destination_slot": int(destination),
+                "state_restored": before == after,
+            }
+            self._capture_and_advance(
+                "move-persistence-error",
+                dashboard,
+                capture_delay_ms=480,
+                close_callback=dashboard._cancel_move,
+                close_ms=720,
+                next_ms=980,
+            )
+
+        self._with_dashboard(ready, failure_label="move-persistence-error")
 
     def _capture_deck_browser(self) -> None:
         # A disposable profile starts on Deck Browser before deterministic
@@ -5734,10 +6204,25 @@ class _UiFaceCaptureRunner:
                 "label": "selected-plant-nurtured",
                 "reason": "Nurture did not atomically persist the active plant and first-Nurture memory",
             })
+
+        def finish_setup_after_capture() -> None:
+            ok, message = self.app.engine.finish_onboarding()
+            if not ok:
+                self._failures.append({
+                    "label": "selected-plant-nurtured",
+                    "reason": f"Completion could not be persisted after capture: {message}",
+                })
+                return
+            refresh = getattr(dashboard, "refresh_all", None)
+            if callable(refresh):
+                refresh()
+
         self._capture_and_advance(
             "selected-plant-nurtured",
             dashboard,
             capture_delay_ms=260,
+            close_callback=finish_setup_after_capture,
+            close_ms=620,
             next_ms=850,
         )
 
@@ -7045,6 +7530,88 @@ class _UiFaceCaptureRunner:
         reset = getattr(mw, "reset", None)
         if callable(reset):
             reset()
+        restore_fixture: Callable[[], None] | None = None
+        if label == "watering-can-deck-browser-plot-1":
+            # ID 064 carries the shared-fade proof in addition to its plot-1
+            # marker position: use a real non-default scenery and Weather
+            # layer, then render a stale/dimmed preview from one scene frame.
+            from dataclasses import replace
+
+            from .ui.home_widget import render_home_widget
+            from .ui.state import preview_with_phase
+
+            state = self.app.storage.state
+            original_weather = state.selected_weather
+            original_background = state.selected_background
+            original_visibility = dict(state.environment_visibility)
+            controller = self.app._home_widget_controller
+            original_snapshot = controller.snapshot
+            original_last_valid = getattr(controller, "_last_valid_data", None)
+            state.selected_weather = "gentle_rain"
+            state.selected_background = "spring"
+            state.environment_visibility = {"weather": True, "scenery": True}
+            self.app._home_html_cache = None
+            self.app._home_html_revision = -1
+            self.app._build_home_garden_html()
+            source_snapshot = controller.snapshot
+            source_data = source_snapshot.data
+            source_preview = (
+                source_data.preview_snapshot if source_data is not None else None
+            )
+            if source_data is None or source_preview is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Unified dimming fixture could not build a valid Home preview",
+                })
+            else:
+                dimmed_preview = preview_with_phase(
+                    source_preview,
+                    "stale",
+                    status_text="Updating garden preview…",
+                )
+                fixture_data = replace(
+                    source_data,
+                    preview_snapshot=dimmed_preview,
+                )
+                fixture_snapshot = replace(
+                    source_snapshot,
+                    phase="success",
+                    data=fixture_data,
+                    error_message=None,
+                )
+                controller.snapshot = fixture_snapshot
+                self.app._home_html_cache = render_home_widget(fixture_snapshot)
+                self.app._home_html_revision = int(
+                    getattr(getattr(self.app, "state_events", None), "revision", 0)
+                )
+                self._capture_annotations[label] = {
+                    "passed": bool(
+                        fixture_data.background_url
+                        and fixture_data.garden_overlay_url
+                        and fixture_data.weather_url
+                        and 0.0 < dimmed_preview.scene_opacity < 1.0
+                    ),
+                    "weather": state.selected_weather,
+                    "scenery": state.selected_background,
+                    "scene_opacity": dimmed_preview.scene_opacity,
+                }
+
+            restored = False
+
+            def restore_unified_fixture() -> None:
+                nonlocal restored
+                if restored:
+                    return
+                restored = True
+                state.selected_weather = original_weather
+                state.selected_background = original_background
+                state.environment_visibility = original_visibility
+                controller.snapshot = original_snapshot
+                controller._last_valid_data = original_last_valid
+                self.app._home_html_cache = None
+                self.app._home_html_revision = -1
+
+            restore_fixture = restore_unified_fixture
         opposite = "overview" if surface == "deckBrowser" else "deckBrowser"
         self._switch_surface(opposite)
 
@@ -7057,6 +7624,8 @@ class _UiFaceCaptureRunner:
                     label,
                     mw,
                     capture_delay_ms=650,
+                    close_callback=restore_fixture,
+                    close_ms=760 if restore_fixture is not None else 0,
                     next_ms=1200,
                 ),
             )

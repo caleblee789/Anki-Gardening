@@ -22,5 +22,5 @@
 | Responsive layout | Available dialog/webview geometry | Pages scroll vertically, Settings stacks at the compact breakpoint, cards remain onscreen, and no horizontal scrolling is required. |
 
 Strict runtime acceptance compares Deck Browser, Overview, the full Garden,
-selected-plant card, Nursery, Story, Settings, schema 16 JSON, and Anki's own
+selected-plant card, Nursery, Story, Settings, schema 17 JSON, and Anki's own
 studied-today result after real reviews.

@@ -186,6 +186,15 @@ Nursery's fourth tab sells purchasable Weather and Scenery. The cottage's
 odds, and pity display. A committed placement and its resulting plant slots are
 persisted; the temporary Undo snapshot lasts only for the open Garden session.
 
+Scene interaction geometry is also derived. `SceneGeometryLayout` projects the
+six normalized bed records into logical coordinates after each resize or DPR
+change. Each planter perspective variant supplies one normalized
+`accessory_exclusions` record measured from its opaque alpha bounds; native and
+Home watering-can renderers use the same projected lanes and exclusions rather
+than surface-specific offsets. Popover placement is transient and returns its
+chosen side, connector, usable height, avoided beds, and docked state without
+entering `garden_state.json`.
+
 ## Configuration contract
 
 Configuration retains legacy internal visual keys for saved-state compatibility,
@@ -234,13 +243,18 @@ name, reward seed/history, and empty Booster inventory. Schema 15 upgrades to
 schema 16 with neutral environment entitlements, visible layers, zero Charges,
 zero Ultra misses, empty daily environment claims, and separate Weather,
 Scenery, and Charge Growth counters. No historical review is replayed as Growth
-or a random gift.
+or a random gift. Schema 16 upgrades to schema 17 with a persisted
+`OnboardingProgress(version, step, pending_species, starter_plant_id)` record.
+Empty gardens resume at introduction, planted starters without nurture evidence
+resume at nurture, and established or completed gardens migrate to `done`. The
+legacy add-on `onboarding_version` is read only as migration evidence; schema-17
+renderers and transitions use the Garden-state record as their authority.
 
 Migration backup or save failure is fail-closed: the original state is not
 overwritten and a fresh state is not returned as though conversion succeeded.
 
 Removed Quest, Vitality, seven-day-history, daily-goal, history-import,
-milestone-choice, and rare-variant fields are discarded. Schemas 10 through 15
+milestone-choice, and rare-variant fields are discarded. Schemas 10 through 16
 are migrated; any other unsupported schema is copied to a schema-labeled backup
 and starts a fresh recovery garden. Unreadable JSON is copied to
 `garden_state.invalid.json` before recovery.

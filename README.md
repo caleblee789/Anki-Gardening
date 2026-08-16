@@ -68,7 +68,7 @@ retries later.
 - Move highlights valid garden spaces. Click or keyboard-select one to save immediately, then use the inline Undo action if needed; Escape cancels before placement.
 - Overlap hit testing follows depth order, and geometry-v2 `interaction_bounds` keep transparent artwork margins from stealing clicks.
 
-The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Garden Progress** in the header—and the Garden Progress cottage inside the scene—opens the broader Today, Achievements, Collection, and progression guide window. Plant-specific information lives in the clicked-plant card or Plant Story.
+The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Garden Progress** opens the broader Today, Achievements, Collection, and progression guide window; the cottage opens that existing window directly on **Collection**. Plant-specific information lives in the clicked-plant card or Plant Story.
 
 Verdant Twilight V6 uses six direct-soil beds across three staggered perspective
 bands. The nursery entrance is a keyboard-accessible landmark that opens the
@@ -146,17 +146,21 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current state is schema 16. It stores Weather
-and Scenery entitlements, loadout and visibility, Growth Charges, daily passive
-claims, Ultra pity, separate Growth-source totals, the deterministic reward
-seed/drop history, and the existing Garden, Booster Potion, Fertilizer, and bounded
-scheduler-day review state. Schema 15 development state is accepted and
-upgraded; failed reads or writes remain fail-closed.
+add-on upgrades. The current state is schema 17. It stores the resumable
+six-step onboarding state alongside Weather and Scenery entitlements, loadout
+and visibility, Growth Charges, daily passive claims, Ultra pity, separate
+Growth-source totals, the deterministic reward seed/drop history, and the
+existing Garden, Booster Potion, Fertilizer, and bounded scheduler-day review
+state. Schema 16 development state is accepted and upgraded; failed reads or
+writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser and Overview share one compact, height-bounded scenic postcard: a fixed safe-content frame keeps the Nursery, cottage, and all six garden spaces visible above a two-row information rail with the Garden name, nurtured-plant Growth, Anki streak, Garden Coins, and one **Open Garden** action. The artwork is noninteractive.
-- The Nursery and Garden Progress cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Garden Progress. Both work with mouse and keyboard.
+- The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, foreground, and the watering can in one effects layer while the Garden name, plant summary, and **Open Garden** action remain legible.
+- The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
+- The full Garden header gives the Garden name primary title position, followed by **Garden Progress**, **Collection**, and secondary **Settings** navigation.
+- Long metric values keep their normal type size; the Nurtured Plant, Anki Streak, and Garden Coin groups wrap onto two rows when their measured content no longer fits.
+- Watering cans use the six-bed geometry authority and row-level opaque planter-and-soil exclusions, so they stay beside the nurtured plant, clear of planter artwork, and behind the correct foreground layer in both Garden and Home renderers.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
 - Weather and Scenery are equipped, changed, shown, and hidden from the Garden Progress cottage's collection window. They are no longer settings controls.
@@ -176,7 +180,7 @@ assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
 current-only file set and a ratcheted 78 MiB archive ceiling for the complete
-schema-16 scenery, plant, and planter library.
+schema-17 scenery, plant, and planter library.
 
 The frozen 2.1.0 production build contains 262 files and is 81,702,743 bytes
 (77.92 MiB), SHA-256

@@ -1,7 +1,7 @@
 # Anki Garden 2.1 codebase audit
 
 This ledger records the comprehensive stabilization and product rework. The
-schema 16 / Verdant Twilight V6 section is current; later dated sections are
+schema 17 / Verdant Twilight V6 section is current; later dated sections are
 historical evidence for older packages and do not describe the present UI or
 progression contract.
 
@@ -14,7 +14,7 @@ progression contract.
 | All due | Live collection-wide Anki due tree plus introduced learning/relearning through cutoff; unseen new and unavailable suspended/buried excluded; filtered decks included; one answer required; once/day and no revoke. | Due-tree/SQL semantics and reward tests; exact-package runtime scenario required. |
 | Supplements | Plant-specific Fertilizer adds +1/+2/+3 under its interval contract. Booster Potions add +5 per answer and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 direct Growth atomically. | Price/tier/stacking/timer/sync/expiry/Charge transition/cap/rollback/restart tests. |
 | Economy and drops | The Garden Coin ledger records every reason/balance. One ordered deterministic reward band grants at most one environment, Charge, Booster, or 50-Coin cache; exact odds, tier fallbacks, duplicate safety, and stepped Ultra pity are persisted. | Exact-band/priority/determinism/deduplication/fallback/pity/debit/rollback tests. |
-| Information architecture | Home is compact/noninteractive. Full Garden integrates its name/actions; metric buttons open focused details; header/cottage Progress opens Today/Achievements/Collection/Weather & Scenery/How it grows. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
+| Information architecture | Home is compact/noninteractive and shares one preview snapshot with Settings. Full Garden promotes its name; metric buttons and Garden Progress open focused details, while Collection and the cottage route directly to the Collection page in the same window. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
 | Nursery | The shaped manifest landmark opens a four-tab catalog including Weather & Scenery. Environment purchases are one-time/no-auto-equip; Charges live with Supplements; plant stock remains derived from complete V6 lines. | Landmark, starter, tab, environment/Charge transaction, catalog-readiness, preview, and accessibility tests. |
 | Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
 | Story and Settings | Story separates name/species/stage with enlarged art and relative Growth. Production Settings removes environment, art-quality/detail/performance, animation, Fine tune, and state-mutation controls; explicit backup/populate/restore tools exist only in isolated capture builds. | Story ordering/progress/accessibility tests and production/capture capability, config, dev-tool, and responsive tests. |
@@ -81,7 +81,9 @@ systems are absent.
 The manifest contains one canonical Verdant Twilight V6 environment, eight
 geometry-compatible Scenery reskins, 60 current plant sprites, seven balanced
 Weather overlays, one lantern, seven transparent catalog UI assets, two
-Nurtured-marker orientations, and six geometry-matched planter layers.
+Nurtured-marker orientations, six geometry-matched planter layers, and three
+perspective-row opaque planter/soil exclusion records used by the shared
+watering-can resolver.
 `scripts/audit_assets.py` is the
 count and validity source of truth and rejects unreferenced runtime files.
 Nursery readiness applies a strict complete-six-stage V6 rule, while a

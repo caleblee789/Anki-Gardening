@@ -7,11 +7,12 @@ have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
-visual acceptance. Current source declares capture contract v10 with 149
-ordered surfaces. The after-change v10 macOS Qt run at
+visual acceptance. Current source declares capture contract v11 with 156
+ordered surfaces. The v10 macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
-149 of 149 and validator-clean. It closes current capture completeness, but not
-the native-platform, human-accessibility, or full visual-acceptance gates.
+149 of 149 and validator-clean, but is now the pre-change baseline. It does not
+close v11 capture completeness or the native-platform, human-accessibility, and
+full visual-acceptance gates.
 
 ## Baseline identity and scope
 
@@ -356,8 +357,8 @@ startup and exact first paint remain unmeasured.
 
 For the historical v9 source, the explicit package, fresh disposable-profile
 run, 146-file completeness gate, and independent manifest/contact-sheet
-validation are complete. The current v10 run now supplies the corresponding
-149-file macOS Qt after-change gate. The remaining performance and platform
+validation are complete. The v10 run supplies the corresponding 149-file
+pre-change macOS Qt gate; v11 requires 156 files. The remaining performance and platform
 work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit

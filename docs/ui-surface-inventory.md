@@ -7,17 +7,20 @@ That v8 run contains 139 of 146 required PNGs and `complete: false`. Historical
 capture contract v9 reconciled it in
 `build/ui-face-captures/capture-sequence-20260815-220049/20260815-220051` with
 146 of 146 PNGs and `complete: true`. That closes the historical v9 macOS Qt
-set only. Current source is capture contract v10 with 149 ordered surfaces. Its
-after-change macOS Qt run at
+set only. Capture contract v10 added three Collection resize states; its
+validator-clean macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
-149 of 149 and validator-clean.
+149 of 149. It is the preserved pre-change baseline. Current source is capture
+contract v11 with 156 ordered surfaces and does not have complete current visual
+evidence until the final v11 run succeeds.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
-Current v10 preserves IDs 001-146 and appends Collection resize IDs 147-149.
+Current v11 preserves IDs 001-149 and appends resilient-state IDs 150-156.
 Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
 did not change in v9. Viewports for IDs 001-146 are logical Qt client sizes from
-the current v10 manifest; IDs 147-149 are now realized Collection captures. A
+the v10 manifest; IDs 147-149 are realized Collection captures and IDs 150-156
+list their intended logical targets until the final v11 manifest is recorded. A
 `declared -> actual` value means a screen, widget, or native-frame constraint
 normalized the request. Responsive modes come from the v10 manifest rather
 than from stale v9 fixed-edge labels. The formerly missing Home rows use the
@@ -168,8 +171,8 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 
 | ID | Capture state | Profile | Component / renderer | Fixture data and preparation | Viewport (logical px) | Responsive mode | Owning agent |
 |---:|---|:---:|---|---|---:|---|---|
-| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-16 starter state on Deck Browser | 667x570 | default | Home + First run |
-| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-16 starter state on Overview | 667x570 | default | Home + First run |
+| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-17 starter state on Deck Browser | 667x570 | default | Home + First run |
+| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-17 starter state on Overview | 667x570 | default | Home + First run |
 | 003 | `starter-garden-onboarding` | FG | GardenDashboard / GardenSceneWidget | Untouched state; onboarding step 1 visible | 1177x630 | compact | First run + Garden |
 | 004 | `starter-nursery-plants` | FN | NurseryDialog | Release-ready starter catalog; no owned plant | 1177x630 | wide | Nursery + First run |
 | 005 | `starter-selection-confirmation` | FC | StarterConfirmationDialog | First release-ready species awaiting confirmation | 480x300 | wide | First run |
@@ -317,6 +320,13 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 147 | `resize-collection-minimum` | P | GardenProgressDialog | Collection page; declared transition `default-to-minimum` | 720x500 | compact | Progress + Collection |
 | 148 | `resize-collection-default` | P | GardenProgressDialog | Collection page; declared transition `minimum-to-default` | 940x680 | wide | Progress + Collection |
 | 149 | `resize-collection-large` | P | GardenProgressDialog | Collection page; declared transition `default-to-large` | 1000x820 -> 1000x699 | wide | Progress + Collection |
+| 150 | `starter-placement` | FG | GardenDashboard / GardenSceneWidget | Persisted placement step; no starter created; unlocked beds highlighted | 1177x630 target | compact target | First run + Garden |
+| 151 | `starter-completion` | FG | GardenDashboard / GardenSceneWidget | Persisted completion step after the starter is nurtured, before destination choice | 1177x630 target | compact target | First run + Garden |
+| 152 | `home-preview-loading` | H | AnkiQt / Home HTML | Explicit loading preview on Deck Browser | 667x570 target | default target | Home |
+| 153 | `home-preview-error` | H | AnkiQt / Home HTML | Recoverable preview error on Overview | 667x570 target | default target | Home |
+| 154 | `home-preview-stale` | H | AnkiQt / Home HTML | Last valid scene retained with textual updating status | 667x570 target | default target | Home |
+| 155 | `onboarding-persistence-error` | FG | GardenDashboard / GardenSceneWidget | Failed introduction-to-Nursery save rolls back and announces the error | 1177x630 target | compact target | First run + Garden |
+| 156 | `move-persistence-error` | G | GardenDashboard / GardenSceneWidget | Failed move save restores slots, retains selection, and offers retry | 1177x630 target | compact target | Garden + Scene |
 
 ## Ownership and implementation boundary
 
@@ -332,8 +342,9 @@ This foundation does not implement every loading, error, rollback, Windows,
 true standard-scale, or true 200-percent variant listed in the profiles. Those
 remain explicit downstream coverage requirements. The complete 146/146 v9 run
 closes its historical manifest gap but is stale after the current source and
-capture-contract changes. The validator-clean v10 run now supplies 149/149
-current macOS Qt capture evidence; it does not by itself close the native
+capture-contract changes. The validator-clean v10 run supplies 149/149
+pre-change macOS Qt evidence; the current v11 source still requires 156/156. No
+local capture by itself closes the native
 platform, uncaptured variant, or human-accessibility gates identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true

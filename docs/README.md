@@ -1,14 +1,15 @@
 # Documentation index
 
-The current schema 16 product has one progression path: card answers create
+The current schema 17 product has one progression path: card answers create
 Growth for the unfinished plant the learner chooses to **Nurture**; Anki streak
 tiers, Fertilizer, Booster Potions, equipped Weather and Scenery, and one-use
 Growth Charges can add Growth; study goals, milestones, and deterministic rare
 study gifts award **Garden Coins** or collectible items.
 
-The full Garden is scene-first. Its integrated named header contains Progress
-and Settings; its three metric buttons open focused details; and the cottage
-also opens the separate Garden Progress window. Plant details and actions
+The full Garden is scene-first. Its integrated named header contains Garden
+Progress, Collection, and Settings; its three metric buttons open focused
+details; and the cottage opens Collection in the existing Garden Progress
+window. Plant details and actions
 appear only after selecting a plant. The tabbed Nursery opens from its clickable
 full-Garden landmark; the compact home preview remains noninteractive.
 
@@ -19,15 +20,15 @@ full-Garden landmark; the compact home preview remains noninteractive.
 - `display-validation-matrix.md`: prominent visible values and their
   authoritative sources.
 - `e2e_display_assertions.md`: isolated-Anki journeys for the rebuilt archive.
-- `ui/data_contracts.md`: schema 16 persistence, migration, environment/drop
+- `ui/data_contracts.md`: schema 17 persistence, migration, onboarding, environment/drop
   catalog, catalog readiness, streak tiers, and all-due definition.
 - `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
-  accessibility, and v10/149 capture requirements; the current macOS Qt
-  manifest and 19-page contact-sheet set are validator-clean.
-- `ui-surface-inventory.md`: current ordered 149-surface source inventory plus
+  accessibility, and v11/156 capture requirements; the validator-clean v10
+  run is retained as the pre-change baseline until the final v11 run completes.
+- `ui-surface-inventory.md`: current ordered 156-surface source inventory plus
   explicitly historical v8/v9 reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
   accessibility, package-static evidence, and frozen-production acceptance

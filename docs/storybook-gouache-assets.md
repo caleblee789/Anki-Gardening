@@ -36,12 +36,17 @@ settings.
 ## Garden landmarks
 
 The Nursery entrance and cottage are declared with `garden.nursery.open` and
-`garden.progress.open`. Each responsive variant supplies a forgiving accessible
+`garden.collection.open`. Each responsive variant supplies a forgiving accessible
 hit rectangle, shaped visual polygon, and label anchor. Runtime hover/focus
 draws the warm outline around the illustrated silhouette and places an in-scene
 label; it never exposes the transparent control rectangle as the visual effect.
 Both landmarks exist only in the interactive full Garden and are disabled while
 a plant is moving. Home and Settings variants never expose a hotspot.
+
+The back, middle, and front planter variants also declare normalized opaque
+`accessory_exclusions` measured from their alpha bounds. These shared records
+keep watering accessories off painted soil and stone without treating the
+transparent 1024 by 512 sprite canvas as artwork or adding per-bed offsets.
 
 Additional landmarks may reuse the manifest-backed action registry later, but
 unknown actions must fail closed.

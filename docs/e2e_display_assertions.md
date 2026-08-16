@@ -10,10 +10,11 @@ control the normal profile.
 2. Confirm Deck Browser and Overview show only the noninteractive scene,
    nurtured-plant Growth, Anki streak, Garden Coins, and **Open Garden**. Plant
    and Nursery clicks must do nothing there.
-3. With fresh schema 16 state, choose **Open Garden**, name the Garden, and
-   confirm the Nursery opens automatically. It must offer every release-ready species as
-   a free starter, show no hard-coded collection denominator, and leave the
-   second unlocked direct-soil space empty after selection.
+3. With fresh schema 17 state, choose **Open Garden**, verify the introduction,
+   and proceed to the Starter Nursery. It must offer every release-ready species
+   as a free starter and show no hard-coded collection denominator. Complete
+   confirmation, placement, nurture, and completion; the other unlocked
+   direct-soil space remains empty.
 4. Before choosing a starter, answer a real card and verify study totals and the
    Anki streak advance while plant Growth stays at zero. Choose a starter and
    confirm the earlier answer is never backfilled.
@@ -92,7 +93,7 @@ control the normal profile.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     4:3, 16:9, home, and wide compositions.
-21. Restart only the disposable Anki process and re-verify schema 16,
+21. Restart only the disposable Anki process and re-verify schema 17,
     `starter_selection_complete`, nurtured plant, Growth, streak, Garden Coin
     processed-ID ledger, reward history, Ultra pity, daily claims, environment
     entitlements/loadout/visibility, Growth Charge and Booster inventory/current/history,

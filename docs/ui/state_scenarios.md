@@ -2,17 +2,20 @@
 
 ## Fresh garden and starter
 
-- Schema 16 begins with two unlocked direct-soil spaces, no plants, Clear Skies
-  plus Verdant Twilight entitlements, visible environment layers, incomplete
-  naming setup, and `starter_selection_complete=false`.
-- The first **Open Garden** asks for a Garden name, then automatically opens the
-  same Nursery used later.
-  Every release-ready species is offered as one free starter; the current bundle
+- Schema 17 begins with two unlocked direct-soil spaces, no plants, Clear Skies
+  plus Verdant Twilight entitlements, visible environment layers,
+  `starter_selection_complete=false`, and onboarding at `introduction`.
+- Anki Home is the unnumbered entry/resume surface. The Garden counts six saved
+  steps: introduction, Starter Nursery, confirmation, placement, nurture
+  selection, and completion. Closing a dialog or Anki preserves the current
+  step; `Not now` appears only where resuming is safe.
+- Every release-ready species is offered as one free starter; the current bundle
   supplies complete Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony,
   Foxglove, Japanese Maple, Wisteria, and Dahlia lines.
-- The selected Seed-stage starter occupies the first space and becomes the
-  plant being nurtured. The second space remains empty, and
-  `starter_selection_complete` becomes true only after a successful save.
+- Species choice and confirmation do not create a plant. Placement atomically
+  creates the Seed-stage starter in the selected unlocked bed. Nurture then
+  atomically makes it active; completion saves `done` before either destination
+  action. The other unlocked space remains empty.
 - Card answers completed before starter selection still count toward study
   totals and the Anki streak, but give no plant Growth and are never backfilled.
 - If no species is release-ready, Nursery explains that it is stocking plants
@@ -24,18 +27,21 @@
   Growth, Anki streak, Garden Coins, and one **Open Garden** action.
 - Plants, garden spaces, and the Nursery landmark are noninteractive. No card
   counts, collection denominator, milestone ruler, or duplicate actions appear.
-- Loading, unavailable, and recoverable-error states retain the normal card
-  layout, accessible status semantics, and a working Retry where appropriate.
+- Loading, empty, disabled, success, stale, and recoverable-error states use one
+  preview snapshot. Stale content retains the last valid scene and adds a text
+  updating indicator. Background, weather, scenery, plants, foreground, and
+  watering can share one fade/effects layer.
 
 ## Full Garden information hierarchy
 
-- The themed frame integrates the centered Garden name, Progress, and Settings
+- The themed frame gives the elided Garden name the primary title position,
+  followed by Garden Progress, Collection, and secondary Settings navigation
   above Plant Growth, Anki streak, Garden Coins, and the scene. Rename is in the
   Settings Display tab.
 - Plant Growth and Anki streak include relative mini bars. All three metric
   buttons open focused details with exact rules and progress.
-- Header **Progress** and the cottage open the same window with Today,
-  Achievements, Collection, Weather & Scenery, and How it grows.
+- Header **Garden Progress** opens its primary page. Header **Collection** and
+  the cottage reuse that window and select Collection without duplicates.
 - Selecting a plant is the only way to show plant-specific details; the compact
   card keeps Nurture, Fertilize, Move, and Story in a stable order.
 
@@ -175,9 +181,11 @@
 
 ## Migration, invalid data, and failures
 
-- Schema 15 development state upgrades to schema 16 with neutral environment
+- Schema 15 development state gains the schema-16 neutral environment
   entitlements, visibility, zero Charges, daily claims, Ultra pity, and separate
-  Growth-source defaults. Older supported
+  Growth-source defaults. Schema 16 then upgrades to schema 17 with resumable
+  onboarding: empty gardens start at introduction, planted incomplete starters
+  resume at nurture, and established Gardens migrate to done. Older supported
   schemas continue through the established stage/ledger migration boundary. An
   atomic current-day ID-ledger seed prevents duplicate or missed out-of-order
   synced answers across restarts. Cutoff, database, backup, and state-write
@@ -185,7 +193,7 @@
 - The first transition to scene geometry 6 refreshes incompatible visual
   placement only; it does not change plant progression. The migration notice
   explains any plant returned to Collection.
-- Schema 16 repairs bounded numeric values, duplicate IDs/species/slots, invalid
+- Schema 17 repairs bounded numeric values, duplicate IDs/species/slots, invalid
   `active_plant_id`, and malformed story/economy/reward records.
 - Unreadable state is copied to `garden_state.invalid.json`; other unsupported
   schemas are backed up before recovery.
