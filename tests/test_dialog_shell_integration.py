@@ -162,6 +162,7 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert 'self.setProperty("contentNaturalHeight", natural_height)' in shell
     assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
     assert "minimum_height=mode_minimum" in replacement
+    assert "else min(policy_minimum, 360)" in replacement
     assert "breathing_room=10" in replacement
     assert 'comparison.mode == "compact"' in replacement
     assert 'mode_ceiling = 440 if comparison.mode == "compact" else 380' in replacement

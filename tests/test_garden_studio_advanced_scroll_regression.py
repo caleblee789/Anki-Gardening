@@ -1007,13 +1007,17 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     application.processEvents()
     assert replacement.minimumHeight() <= replacement.maximumHeight() <= 380
     assert replacement.property("comparisonMode") == "wide"
-    assert replacement.minimumHeight() <= 320
+    assert replacement.minimumHeight() == min(
+        360,
+        replacement._comparison_policy_minimum_height,
+    )
     assert replacement.maximumHeight() < 400
     assert replacement.maximumHeight() == replacement.property(
         "contentBoundedMaximumHeight"
     )
-    assert replacement.maximumHeight() <= (
-        replacement.property("contentNaturalHeight") + 10
+    assert replacement.maximumHeight() == max(
+        replacement.minimumHeight(),
+        min(380, replacement.property("contentNaturalHeight") + 10),
     )
     assert species.minimumHeight() <= species.maximumHeight() <= 500
     assert species.maximumHeight() == species.property(
@@ -1044,7 +1048,10 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     application.processEvents()
     application.processEvents()
     assert replacement.property("comparisonMode") == "wide"
-    assert replacement.minimumHeight() <= 320
+    assert replacement.minimumHeight() == min(
+        360,
+        replacement._comparison_policy_minimum_height,
+    )
     assert abs(replacement.maximumHeight() - wide_bound) <= 2
     settings = GardenSettingsDialog(dashboard, engine, config)
     progress = dashboard.progress_dialog

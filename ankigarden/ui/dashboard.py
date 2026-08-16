@@ -1496,7 +1496,7 @@ class FertilizerReplacementDialog(DialogShell):
         mode_minimum = (
             policy_minimum
             if comparison.mode == "compact"
-            else min(policy_minimum, 320)
+            else min(policy_minimum, 360)
         )
         mode_ceiling = 440 if comparison.mode == "compact" else 380
         self.set_content_bounded_maximum_height(
