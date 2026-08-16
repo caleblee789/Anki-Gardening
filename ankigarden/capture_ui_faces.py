@@ -22,7 +22,9 @@ from aqt.qt import (
     QAbstractButton,
     QAbstractScrollArea,
     QApplication,
+    QCoreApplication,
     QDialog,
+    QEvent,
     QFrame,
     QGuiApplication,
     QLabel,
@@ -1783,7 +1785,37 @@ class _UiFaceCaptureRunner:
             QTimer.singleShot(80, self._finish)
             return
 
-        app.processEvents()
+        try:
+            # ``processEvents()`` alone does not guarantee delivery of
+            # DeferredDelete events while this probe is itself running inside
+            # a capture callback. Drain them explicitly so the after-count
+            # measures retained widgets rather than queued Qt cleanup.
+            app.processEvents()
+            QCoreApplication.sendPostedEvents(
+                None,
+                QEvent.Type.DeferredDelete,
+            )
+            app.processEvents()
+        except Exception as exc:
+            logger.exception(
+                "Anki Garden capture: dialog memory cleanup drain failed"
+            )
+            self._dialog_memory_probe = {
+                "status": "error",
+                "cycles": completed,
+                "visible_cycles": visible_cycles,
+                "closed_cycles": closed_cycles,
+                "cycle_observations": cycle_observations,
+                "passed": False,
+                "reason": f"DeferredDelete drain failed: {type(exc).__name__}: {exc}",
+            }
+            self._failures.append({
+                "label": "dialog-memory-probe",
+                "reason": f"Nursery retention cleanup could not be measured: {exc}",
+            })
+            QTimer.singleShot(80, self._finish)
+            return
+
         after = class_counts()
         after_rss = max_rss_kib()
         watched = (
@@ -1792,11 +1824,16 @@ class _UiFaceCaptureRunner:
             "PlantStoryDialog",
             "GardenDialog",
         )
+        watched_delta = {
+            name: after.get(name, 0) - before.get(name, 0)
+            for name in watched
+        }
         passed = (
             int(cycles) == 12
             and completed == 12
             and visible_cycles == 12
             and closed_cycles == 12
+            and watched_delta["NurseryDialog"] == 0
         )
         self._dialog_memory_probe = {
             "status": "measured",
@@ -1817,17 +1854,16 @@ class _UiFaceCaptureRunner:
             "watched_class_counts_after": {
                 name: after.get(name, 0) for name in watched
             },
-            "watched_class_delta": {
-                name: after.get(name, 0) - before.get(name, 0)
-                for name in watched
-            },
+            "watched_class_delta": watched_delta,
         }
         if not passed:
             self._failures.append({
                 "label": "dialog-memory-probe",
                 "reason": (
                     "Release memory probe required 12 visible and closed Nursery "
-                    f"cycles, observed {visible_cycles} visible and {closed_cycles} closed"
+                    "cycles with exactly zero retained NurseryDialog widgets; "
+                    f"observed {visible_cycles} visible, {closed_cycles} closed, "
+                    f"and a NurseryDialog delta of {watched_delta['NurseryDialog']}"
                 ),
             })
         QTimer.singleShot(120, self._finish)

@@ -1583,6 +1583,10 @@ def test_capture_records_surface_timings_and_repeated_dialog_retention() -> None
     assert 'observation["closed"]' in probe
     assert "visible_cycles == 12" in probe
     assert "closed_cycles == 12" in probe
+    assert "QCoreApplication.sendPostedEvents" in probe
+    assert "QEvent.Type.DeferredDelete" in probe
+    assert 'watched_delta["NurseryDialog"] == 0' in probe
+    assert "exactly zero retained NurseryDialog widgets" in probe
     assert '"current_rss_available": False' in probe
     assert '"watched_class_delta"' in probe
     assert '"dialog_memory_probe"' in finish

@@ -1100,6 +1100,27 @@ def test_manifest_rejects_memory_probe_bad_class_delta(tmp_path: Path) -> None:
         validate_capture_manifest(manifest)
 
 
+def test_manifest_rejects_internally_consistent_nursery_retention(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    probe = payload["dialog_memory_probe"]
+    assert isinstance(probe, dict)
+    after = probe["watched_class_counts_after"]
+    deltas = probe["watched_class_delta"]
+    assert isinstance(after, dict)
+    assert isinstance(deltas, dict)
+    after["NurseryDialog"] = 1
+    deltas["NurseryDialog"] = 1
+    _write_json(manifest, payload)
+
+    with pytest.raises(
+        CaptureValidationError,
+        match="NurseryDialog delta must be exactly zero",
+    ):
+        validate_capture_manifest(manifest)
+
+
 def test_manifest_rejects_incomplete_or_fabricated_memory_cycles(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     payload["dialog_memory_probe_complete"] = False

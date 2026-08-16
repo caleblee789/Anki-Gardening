@@ -1776,6 +1776,11 @@ def _validate_memory_probe(payload: dict[str, Any], issues: list[str]) -> None:
                 issues.append(
                     f"dialog_memory_probe delta for {name} does not match before/after"
                 )
+        nursery_delta = class_maps["watched_class_delta"]["NurseryDialog"]
+        if type(nursery_delta) is int and nursery_delta != 0:
+            issues.append(
+                "dialog_memory_probe NurseryDialog delta must be exactly zero"
+            )
 
 
 def validate_capture_manifest(
