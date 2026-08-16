@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from typing import Any, Callable
 
 from aqt.qt import (
@@ -9,6 +10,7 @@ from aqt.qt import (
     QComboBox,
     QFormLayout,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLayout,
@@ -30,6 +32,7 @@ from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .scene import GardenSceneWidget
 from .plant_display import growth_display
+from .state import GardenPreviewSnapshot, garden_preview_from_values
 from .responsive import AdaptiveRegion, AdaptiveSplit, COMPACT_MODE
 from .theme import (
     BUTTON_MIN_HEIGHT,
@@ -141,6 +144,10 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Expanding,
         )
+        self._scene = scene
+        self._scene_opacity = QGraphicsOpacityEffect(scene)
+        self._scene_opacity.setOpacity(1.0)
+        scene.setGraphicsEffect(self._scene_opacity)
         grid.addWidget(scene, 0, 0)
         self.scrim = QFrame()
         self.scrim.setProperty("previewScrim", True)
@@ -174,9 +181,17 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
+        self.status = QLabel("")
+        self.status.setProperty("previewStatus", True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        self.status.setWordWrap(True)
+        self.status.setMinimumWidth(0)
+        self.status.setAccessibleName("Preview status")
+        self.status.hide()
         identity.addWidget(eyebrow)
         identity.addWidget(self.title)
         identity.addWidget(self.support)
+        identity.addWidget(self.status)
         scrim_layout.addLayout(identity, 1)
         self.action = QLabel(HOME_ACTIVE_ACTION)
         self.action.setProperty("previewAction", True)
@@ -185,18 +200,41 @@ class HomeGardenPreview(QFrame):
         scrim_layout.addWidget(self.action, 0, Qt.AlignmentFlag.AlignBottom)
         grid.addWidget(self.scrim, 0, 0, Qt.AlignmentFlag.AlignBottom)
 
-    def set_content(self, title: str, support: str, *, enabled: bool) -> None:
-        safe_title = str(title or "My Garden")
-        safe_support = str(support)
+    def set_snapshot(self, snapshot: GardenPreviewSnapshot) -> None:
+        safe_title = str(snapshot.title or "My Garden")
+        safe_support = str(snapshot.summary)
         self.title.setText(safe_title)
         self.title.setToolTip(safe_title)
+        self.title.setAccessibleDescription(safe_title)
         self.support.setText(safe_support)
         self.support.setToolTip(safe_support)
-        self.setEnabled(bool(enabled))
+        self.status.setText(snapshot.status_text)
+        self.status.setVisible(bool(snapshot.status_text))
+        self._scene_opacity.setOpacity(snapshot.scene_opacity)
+        enabled = snapshot.phase != "disabled"
+        self.action.setText(HOME_ACTIVE_ACTION if enabled else "Preview off")
+        self.action.setAccessibleName(
+            f"Home preview action: {HOME_ACTIVE_ACTION}"
+            if enabled else
+            "Home preview is off"
+        )
         self.setAccessibleDescription(
             f"{safe_title}. {safe_support}. "
+            + (snapshot.status_text + ". " if snapshot.status_text else "")
             + ("Shown on Anki home screens." if enabled else "Hidden on Anki home screens.")
         )
+
+    def set_content(self, title: str, support: str, *, enabled: bool) -> None:
+        """Compatibility adapter for callers outside the shared preview model."""
+
+        preview = garden_preview_from_values(
+            consumer="settings",
+            phase="success",
+            garden_name=title,
+            enabled=enabled,
+        )
+        preview = replace(preview, summary=str(support))
+        self.set_snapshot(preview)
 
 
 class GardenStudioWidget(QWidget):
@@ -619,7 +657,7 @@ class GardenStudioWidget(QWidget):
 
     def _sync_preview_enabled(self, checked: bool) -> None:
         self.preview_disabled_note.setVisible(not checked)
-        self.home_preview.setEnabled(checked)
+        self._apply_preview()
 
     def set_preview_garden_name(self, name: str) -> None:
         self._preview_garden_name = str(name or "My Garden")
@@ -995,31 +1033,41 @@ class GardenStudioWidget(QWidget):
             (item for item in scene_plants if isinstance(item, dict) and item.get("is_active")),
             scene_plants[0] if scene_plants else {},
         )
-        plant_name = str(active.get("name") or "No nurtured plant")
-        stage = str(active.get("stage") or "seed").replace("_", " ").title()
-        stage_points = max(0, int(active.get("stage_points", 0) or 0))
-        stage_goal = max(0, int(active.get("stage_goal", 0) or 0))
-        support = (
-            f"{plant_name} · {stage} · {stage_points:,} / {stage_goal:,} Growth"
-            if active else
-            "No nurtured plant · Open the garden to choose one"
+        motion_enabled = effective_motion_enabled(
+            bool(self._animation_flags[0]),
+            self.reduced_motion.isChecked(),
+            os_reader=lambda: self._system_reduced_motion,
         )
-        self.home_preview.set_content(
-            self._preview_garden_name,
-            support,
+        preview_snapshot = garden_preview_from_values(
+            consumer="settings",
+            phase=(
+                "success"
+                if bool(snapshot.get("starter_selected", True)) else
+                "empty"
+            ),
+            garden_name=self._preview_garden_name,
+            active_plant_name=str(active.get("name") or "") if active else "",
+            active_stage=str(active.get("stage") or "") if active else "",
+            active_growth_points=max(0, int(active.get("growth_points", 0) or 0)) if active else 0,
+            active_stage_points=max(0, int(active.get("stage_points", 0) or 0)) if active else 0,
+            active_stage_goal=max(0, int(active.get("stage_goal", 0) or 0)) if active else 0,
+            active_fully_grown=bool(active.get("fully_grown", False)) if active else False,
+            starter_selected=bool(snapshot.get("starter_selected", True)),
+            selected_weather=preview_weather,
+            selected_scenery=str(snapshot.get("background") or self.preview["theme"]),
+            scene_items=scene_plants,
+            unlocked_slots=int(snapshot.get("unlocked_slots", 6) or 6),
             enabled=self.show_home_widget.isChecked(),
+            motion_enabled=motion_enabled,
         )
+        self.home_preview.set_snapshot(preview_snapshot)
         self.scene.set_scene({
             "weather": preview_weather,
             "growth": growth,
             "theme": self.preview["theme"],
             "animation_intensity": self.preview["animation_intensity"],
             "weather_particle_density": self.preview["weather_particle_density"],
-            "motion_enabled": effective_motion_enabled(
-                bool(self._animation_flags[0]),
-                self.reduced_motion.isChecked(),
-                os_reader=lambda: self._system_reduced_motion,
-            ),
+            "motion_enabled": preview_snapshot.motion_enabled,
             "asset_paths": {
                 "background": asset_paths.get("background"),
                 "garden_overlay": asset_paths.get("garden_overlay"),

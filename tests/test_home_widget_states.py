@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ankigarden.ui.home_widget import (
@@ -18,6 +20,7 @@ from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
 )
+from ankigarden.ui.state import garden_preview_from_values
 
 
 def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
@@ -197,7 +200,8 @@ def test_home_scene_layers_theme_terrace_and_readable_seedling_cue() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
     assert 'class="ag-home__terrace"' not in html
-    assert "terrace.svg" not in html
+    assert 'class="ag-home__scenery-layer"' in html
+    assert "terrace.svg" in html
     assert 'class="ag-home__seedling-cue"' not in html
     assert "🌱" not in html
 
@@ -666,8 +670,8 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert 'data-testid="home-nurturing-marker"' in html
     assert 'data-testid="home-nurturing-marker-fallback"' in html
     assert 'class="ag-home__marker-layer"' in html
-    assert html.index('class="ag-home__details home-summary-panel"') < html.index(
-        'class="ag-home__marker-layer"'
+    assert html.index('class="ag-home__marker-layer"') < html.index(
+        'class="ag-home__details home-summary-panel"'
     )
     assert "/_addons/123/assets/nurtured_marker_spout_right.webp" in html
     assert 'data-marker-slot="0"' in html
@@ -737,7 +741,14 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
         )
         assert len(markers) == 1
         marker = markers[0]
-        expected_side = "left" if active_slot % 2 == 0 else "right"
+        marker_band = ("far", "middle", "near")[active_slot // 2]
+        assert f'data-marker-band="{marker_band}"' in html
+        assert html.index(f'data-marker-band="{marker_band}"') < html.index(
+            f'ag-home__planter-fallback--foreground" data-fallback-planter-band="{marker_band}"'
+        )
+        expected_side = re.search(
+            r'data-marker-side="(left|right)"', marker
+        ).group(1)
         expected_orientation = (
             "spout-right" if expected_side == "left" else "spout-left"
         )
@@ -769,9 +780,16 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
                 r'data-marker-planter-rect="([^"]+)"', marker
             ).group(1).split(",")
         ]
+        planter_exclusions = [
+            [float(value) for value in bounds.split(",")]
+            for bounds in re.search(
+                r'data-marker-planter-exclusions="([^"]+)"', marker
+            ).group(1).split(";")
+            if bounds
+        ]
         expected_clearance = (
             "center-left-marker"
-            if rect[0] < 500 and rect[1] + rect[3] > 300
+            if pulse[0] < 340 and pulse[1] + pulse[3] > 300
             else "none"
         )
         assert f'data-summary-clearance="{expected_clearance}"' in html
@@ -786,6 +804,14 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
         assert pulse[0] >= 0 and pulse[1] >= 0
         assert pulse[0] + pulse[2] <= 1000
         assert pulse[1] + pulse[3] <= 420
+        assert planter_exclusions
+        for exclusion in planter_exclusions:
+            assert (
+                pulse[0] + pulse[2] <= exclusion[0]
+                or exclusion[0] + exclusion[2] <= pulse[0]
+                or pulse[1] + pulse[3] <= exclusion[1]
+                or exclusion[1] + exclusion[3] <= pulse[1]
+            )
         marker_center_x = rect[0] + rect[2] / 2
         marker_ground_y = rect[1] + rect[3] * 0.916
         if active_slot == 4:
@@ -873,6 +899,57 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-support" title="Moss · Seed · 14 / 500 Growth"' in html
     assert "Moss · Seed · 99 / 500 Growth" not in html
+
+    refresh_request = controller.begin_request()
+    assert refresh_request > request_2
+    stale_html = render_home_widget(controller.snapshot)
+    assert 'data-state="stale"' in stale_html
+    assert 'data-testid="home-preview-status"' in stale_html
+    assert "Moss · Seed · 14 / 500 Growth" in stale_html
+    assert "--ag-scene-opacity:0.720" in stale_html
+
+
+@pytest.mark.parametrize(
+    ("consumer", "phase", "enabled", "expected_opacity"),
+    (
+        ("deck-browser", "loading", True, 1.0),
+        ("overview", "empty", True, 1.0),
+        ("first-run", "success", True, 1.0),
+        ("active-plant", "stale", True, 0.72),
+        ("settings", "error", True, 1.0),
+        ("settings", "success", False, 0.46),
+    ),
+)
+def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
+    consumer,
+    phase,
+    enabled,
+    expected_opacity,
+):
+    scene_items = ({"plant_id": "moss", "slot_index": 2, "is_active": True},)
+    preview = garden_preview_from_values(
+        consumer=consumer,
+        phase=phase,
+        garden_name="The Long Moss and Moon Garden",
+        active_plant_name="Moss",
+        active_stage="young",
+        selected_weather="gentle_rain",
+        selected_scenery="spring",
+        scene_items=scene_items,
+        unlocked_slots=6,
+        enabled=enabled,
+        motion_enabled=False,
+        status_text="Refreshing…" if phase == "stale" else "",
+    )
+
+    assert preview.consumer == consumer
+    assert preview.phase == ("disabled" if not enabled else phase)
+    assert preview.scene_items == scene_items
+    assert preview.selected_weather == "gentle_rain"
+    assert preview.selected_scenery == "spring"
+    assert preview.scene_opacity == expected_opacity
+    assert preview.motion_enabled is False
+    assert preview.summary.count("Young") <= 1
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:

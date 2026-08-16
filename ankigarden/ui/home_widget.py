@@ -16,14 +16,19 @@ from .copy import (
     HOME_NO_STARTER_TITLE,
 )
 from .formatters import format_integer, format_status_label
+from .state import (
+    GardenPreviewSnapshot,
+    garden_preview_from_values,
+    preview_with_phase,
+)
 from .plant_display import (
     compact_plant_layout,
     growth_display,
     nurtured_marker_fallback_rect,
-    nurtured_marker_placement,
     plant_layout,
     planter_draw_rect,
     Rect,
+    SceneGeometryLayout,
     scene_surface_variant,
 )
 
@@ -48,6 +53,7 @@ class HomeWidgetData:
     stage_transition_message: str = ""
     background_url: str = ""
     garden_overlay_url: str = ""
+    weather_url: str = ""
     nurtured_marker_url: str = ""
     nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
@@ -71,6 +77,7 @@ class HomeWidgetData:
     # Direct callers from older surfaces omit this derived field. Treat those
     # snapshots as established Gardens; the state builder sets it explicitly.
     starter_selected: bool = True
+    preview_snapshot: GardenPreviewSnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +99,7 @@ class HomeWidgetStateController:
 
     def __init__(self) -> None:
         self._next_request_id = 0
+        self._last_valid_data: HomeWidgetData | None = None
         self.snapshot = HomeWidgetSnapshot(request_id=0, phase="empty")
 
     def set_motion_preferences(
@@ -132,7 +140,15 @@ class HomeWidgetStateController:
     def begin_request(self) -> int:
         self._next_request_id += 1
         req_id = self._next_request_id
-        self.snapshot = self._snapshot(request_id=req_id, phase="loading")
+        self.snapshot = self._snapshot(
+            request_id=req_id,
+            phase="stale" if self._last_valid_data is not None else "loading",
+            data=self._last_valid_data,
+            error_message=(
+                "Updating garden preview…"
+                if self._last_valid_data is not None else None
+            ),
+        )
         return req_id
 
     def resolve_success(self, request_id: int, data: HomeWidgetData) -> bool:
@@ -143,6 +159,7 @@ class HomeWidgetStateController:
             phase="success",
             data=data,
         )
+        self._last_valid_data = data
         return True
 
     def resolve_partial(self, request_id: int, data: HomeWidgetData, error_message: str) -> bool:
@@ -159,9 +176,22 @@ class HomeWidgetStateController:
     def resolve_error(self, request_id: int, error_message: str) -> bool:
         if request_id != self.snapshot.request_id:
             return False
+        retained = self.snapshot.data or self._last_valid_data
         self.snapshot = self._snapshot(
             request_id=request_id,
-            phase="error",
+            phase="stale" if retained is not None else "error",
+            data=retained,
+            error_message=error_message,
+        )
+        return True
+
+    def resolve_stale(self, request_id: int, error_message: str = "Updating garden preview…") -> bool:
+        if request_id != self.snapshot.request_id or self._last_valid_data is None:
+            return False
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="stale",
+            data=self._last_valid_data,
             error_message=error_message,
         )
         return True
@@ -226,6 +256,22 @@ HOME_WIDGET_STYLE = """
 .ag-home__state-message, .ag-home__partial-message {
   line-height: 1.45;
 }
+.ag-home__loading-track {
+  width:100%;
+  height:4px;
+  margin-top:14px;
+  overflow:hidden;
+  border-radius:4px;
+  background:#183a30;
+}
+.ag-home__loading-track::after {
+  content:"";
+  display:block;
+  width:42%;
+  height:100%;
+  border-radius:4px;
+  background:#5cc58b;
+}
 .ag-home__partial-message {
   box-sizing: border-box;
   width: 100%;
@@ -241,7 +287,10 @@ HOME_WIDGET_STYLE = """
   min-width:0;
 }
 .ag-home__art { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
-.ag-home__marker-layer { position:absolute; z-index:101; left:0; top:50%; width:100%; aspect-ratio:var(--ag-source-aspect,2.4); transform:translateY(-50%); overflow:hidden; pointer-events:none; }
+.ag-home__scenery-layer,.ag-home__weather-layer { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; }
+.ag-home__scenery-layer { z-index:2; }
+.ag-home__weather-layer { z-index:86; }
+.ag-home__marker-layer { position:absolute; z-index:84; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
 .ag-home__nurtured-marker { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__nurtured-marker-fallback { position:absolute; display:none; box-sizing:border-box; border:1px solid #4c3e18; border-radius:50%; background:#dfbd57; pointer-events:none; }
@@ -292,6 +341,8 @@ HOME_WIDGET_STYLE = """
   background-repeat:no-repeat;
   background-size:100% 100%;
   background-color:#17332d;
+  opacity:var(--ag-scene-opacity,1);
+  transition:opacity 140ms ease;
 }
 .ag-home__scene::after { content:""; position:absolute; inset:0; z-index:90; pointer-events:none; box-shadow:inset 0 -12px 24px rgba(5,14,12,.13); }
 .ag-home__details {
@@ -483,10 +534,12 @@ HOME_WIDGET_STYLE = """
 #ag-home-root[data-motion="reduced"] { transition:none; }
 #ag-home-root[data-motion="reduced"]:hover { transform:none; }
 #ag-home-root[data-motion="reduced"] button:active { transform:none; }
+#ag-home-root[data-motion="reduced"] .ag-home__scene-frame { transition:none; }
 @media (prefers-reduced-motion: reduce) {
   #ag-home-root { transition:none; }
   #ag-home-root:hover { transform:none; }
   #ag-home-root button:active { transform:none; }
+  .ag-home__scene-frame { transition:none; }
 }
 @container (max-width: 469px) {
   .ag-home__body { min-height:168px; }
@@ -538,7 +591,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             f'<div id="ag-home-root" data-state="loading"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-loading" role="status" aria-live="polite">'
             '<div class="ag-home__state-title">Anki Garden</div>'
-            '<div class="ag-home__state-message">Loading overview…</div></div>'
+            '<div class="ag-home__state-message">Loading overview…</div>'
+            '<div class="ag-home__loading-track" aria-hidden="true"></div></div>'
             "</div>"
         )
     if phase == "empty":
@@ -588,12 +642,45 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     if not data.weather:
         DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="weather")
 
+    source_preview = data.preview_snapshot
+    if source_preview is None:
+        source_preview = garden_preview_from_values(
+            consumer="home",
+            garden_name=data.garden_name,
+            active_plant_name=data.active_plant_name,
+            active_stage=data.active_plant_stage,
+            active_growth_points=data.active_growth_points,
+            active_stage_points=data.active_stage_points,
+            active_stage_goal=data.active_stage_goal,
+            active_fully_grown=data.active_fully_grown,
+            starter_selected=data.starter_selected,
+            planted_starter_name=data.planted_starter_name,
+            planted_starter_stage=data.planted_starter_stage,
+            selected_weather=data.weather,
+            scene_items=data.scene_items,
+            unlocked_slots=data.unlocked_slots,
+        )
+    requested_preview_phase = (
+        phase if phase in {"stale", "disabled"} else source_preview.phase
+    )
+    preview = preview_with_phase(
+        source_preview,
+        requested_preview_phase,
+        motion_enabled=snapshot.motion_enabled,
+        status_text=(snapshot.error_message or source_preview.status_text),
+    )
+
     partial_banner = ""
     if phase == "partial":
         partial_error = escape(snapshot.error_message or "Some details are temporarily unavailable.")
         partial_banner = (
             '<div class="ag-home__partial-message" data-testid="home-partial-error" '
             f'role="status" aria-live="polite">{partial_error}</div>'
+        )
+    elif preview.status_text:
+        partial_banner = (
+            '<div class="ag-home__partial-message" data-testid="home-preview-status" '
+            f'role="status" aria-live="polite">{escape(preview.status_text)}</div>'
         )
 
     stage_up_html = ""
@@ -632,7 +719,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     crop_center_y = crop_y + crop_height / 2
     background_style = (
         f' style="--ag-source-aspect:{source_aspect:.6f};'
-        f'--ag-preview-x:{crop_center_x * 100:.2f}%;--ag-preview-y:{crop_center_y * 100:.2f}%'
+        f'--ag-preview-x:{crop_center_x * 100:.2f}%;--ag-preview-y:{crop_center_y * 100:.2f}%;'
+        f'--ag-scene-opacity:{preview.scene_opacity:.3f}'
     )
     background_url = str(surface_variant.get("url") or data.background_url)
     fallback_background = (
@@ -692,6 +780,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         slot_layout.slot_index: planter_draw_rect(slot_layout, planter_family)
         for slot_layout in slot_layouts
     }
+    occupied_layouts = {layout.slot_index: layout for layout in layouts}
+    home_geometry = SceneGeometryLayout.from_placements(
+        1000,
+        420,
+        (
+            occupied_layouts.get(layout.slot_index, layout)
+            for layout in slot_layouts
+        ),
+        planter_family=planter_family,
+    )
     marker_obstacles = [
         layout.visible.expanded(4.0, 4.0)
         for layout in layouts
@@ -707,7 +805,11 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         "middle": [],
         "near": [],
     }
-    marker_overlays: list[str] = []
+    marker_overlays: dict[str, list[str]] = {
+        "far": [],
+        "middle": [],
+        "near": [],
+    }
     summary_clearance = "none"
     theme = str(data.scene_items[0].get("background_theme", "verdant_twilight")) if data.scene_items else "verdant_twilight"
     band_counts = {"far": 0, "middle": 0, "near": 0}
@@ -780,6 +882,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         marker_markup = ""
         if bool(item.get("is_active")):
             placement_protected_regions = marker_protected_regions
+            center_left_summary_region: Rect | None = None
             marker_needs_center_left_clearance = (
                 layout.depth_band == "near"
                 and float(layout.ground_anchor[0]) < 500.0
@@ -788,24 +891,28 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 # Derive the summary gap from the front-left soil region, not
                 # a plot-number exception. This keeps the same collision-safe
                 # placement if the scene metadata reorders its plots.
+                center_left_summary_region = Rect(0.0, 300.0, 340.0, 120.0)
                 placement_protected_regions = (
-                    Rect(0.0, 300.0, 340.0, 120.0),
+                    center_left_summary_region,
                     marker_protected_regions[1],
                 )
-                summary_clearance = "center-left-marker"
-            marker_placement = nurtured_marker_placement(
-                1000,
-                420,
+            marker_placement = home_geometry.resolve_watering_can(
+                layout.slot_index,
                 layout,
-                planter_rect=planter_boxes.get(layout.slot_index),
                 obstacles=marker_obstacles,
                 protected_regions=placement_protected_regions,
             )
+            if (
+                center_left_summary_region is not None
+                and marker_placement.pulse_bounds.intersects(
+                    center_left_summary_region
+                )
+            ):
+                summary_clearance = "center-left-marker"
             marker_box = marker_placement.rect
             marker_common = (
                 f"left:{marker_box.x / 10:.3f}%;top:{marker_box.y / 4.2:.3f}%;"
-                f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%;"
-                "z-index:89"
+                f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%"
             )
             marker_rect_data = ",".join(
                 f"{value:.3f}"
@@ -837,11 +944,25 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                     marker_placement.planter_rect.height,
                 )
             )
+            marker_bed = home_geometry.bed(layout.slot_index)
+            marker_exclusions_data = ";".join(
+                ",".join(
+                    f"{value:.3f}"
+                    for value in (
+                        exclusion.x,
+                        exclusion.y,
+                        exclusion.width,
+                        exclusion.height,
+                    )
+                )
+                for exclusion in (
+                    marker_bed.planter_exclusions if marker_bed is not None else ()
+                )
+            )
             fallback_box = nurtured_marker_fallback_rect(marker_placement)
             fallback_common = (
                 f"left:{fallback_box.x / 10:.3f}%;top:{fallback_box.y / 4.2:.3f}%;"
-                f"width:{fallback_box.width / 10:.3f}%;height:{fallback_box.height / 4.2:.3f}%;"
-                "z-index:89"
+                f"width:{fallback_box.width / 10:.3f}%;height:{fallback_box.height / 4.2:.3f}%"
             )
             marker_url = (
                 data.nurtured_marker_spout_right_url
@@ -865,6 +986,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                     f'data-marker-pulse="{marker_pulse_data}" '
                     f'data-marker-target-ground="{marker_target_ground_data}" '
                     f'data-marker-planter-rect="{marker_planter_data}" '
+                    f'data-marker-planter-exclusions="{marker_exclusions_data}" '
                     f'src="{marker_src}" style="{marker_common}" '
                     'onerror="this.style.display=\'none\';var f=this.nextElementSibling;'
                     'if(f){f.style.display=\'block\';}">'
@@ -880,9 +1002,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 f'data-marker-pulse="{marker_pulse_data}" '
                 f'data-marker-target-ground="{marker_target_ground_data}" '
                 f'data-marker-planter-rect="{marker_planter_data}" '
+                f'data-marker-planter-exclusions="{marker_exclusions_data}" '
                 f'style="{fallback_common};display:{fallback_display}"></span>'
             )
-            marker_overlays.append(marker_markup)
+            marker_overlays[depth_band].append(marker_markup)
         plant_markup[depth_band].append(shadow + plant + tint)
 
     planter_markup: dict[str, dict[str, list[str]]] = {
@@ -963,10 +1086,23 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'<img class="ag-home__occlusion" src="{escape(legacy_occlusion_url, quote=True)}" alt="" aria-hidden="true" onerror="this.onerror=null;this.style.display=\'none\';">'
         if not planter_enabled and legacy_occlusion_url and not occlusion_markup else ""
     )
+    marker_z = {"far": 27, "middle": 57, "near": 87}
+    marker_layers = {
+        band: (
+            '<div class="ag-home__marker-layer" aria-hidden="true" '
+            f'data-marker-band="{band}" style="z-index:{marker_z[band]}">'
+            + "".join(marker_overlays[band])
+            + "</div>"
+            if marker_overlays[band] else
+            ""
+        )
+        for band in ("far", "middle", "near")
+    }
     if planter_enabled:
         layered_art = "".join(
             "".join(planter_markup[band]["base"])
             + "".join(plant_markup[band])
+            + marker_layers[band]
             + "".join(planter_markup[band]["foreground"])
             for band in ("far", "middle", "near")
         )
@@ -974,16 +1110,26 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         layered_art = (
             legacy_occlusion
             + "".join(plant_markup["far"])
+            + marker_layers["far"]
             + "".join(plant_markup["middle"])
+            + marker_layers["middle"]
             + occlusion_markup.get("rear", "")
             + "".join(plant_markup["near"])
+            + marker_layers["near"]
             + occlusion_markup.get("front", "")
         )
-    marker_layer = (
-        '<div class="ag-home__marker-layer" aria-hidden="true">'
-        + "".join(marker_overlays)
-        + "</div>"
-        if marker_overlays else
+    scenery_layer = (
+        f'<img class="ag-home__scenery-layer" data-testid="home-scenery-layer" '
+        f'src="{escape(data.garden_overlay_url, quote=True)}" alt="" aria-hidden="true" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+        if data.garden_overlay_url else
+        ""
+    )
+    weather_layer = (
+        f'<img class="ag-home__weather-layer" data-testid="home-weather-layer" '
+        f'src="{escape(data.weather_url, quote=True)}" alt="" aria-hidden="true" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+        if data.weather_url else
         ""
     )
     starter_selected = bool(data.starter_selected)
@@ -992,35 +1138,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     planted_starter_stage = format_status_label(
         data.planted_starter_stage or "seed"
     )
-    garden_name_value = str(data.garden_name or FALLBACK_GARDEN_NAME)
+    garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
-    if not starter_selected:
-        preview_title = HOME_NO_STARTER_TITLE
-        preview_support = HOME_NO_STARTER_BODY
-    else:
-        preview_title = garden_name_value
-        active_name = str(data.active_plant_name or "").strip()
-        if active_name:
-            active_stage = format_status_label(data.active_plant_stage or "seed")
-            if data.active_fully_grown:
-                preview_support = (
-                    f"{active_name} · {active_stage} · "
-                    f"{format_integer(data.active_growth_points)} Growth"
-                )
-            else:
-                preview_support = (
-                    f"{active_name} · {active_stage} · "
-                    f"{format_integer(data.active_stage_points)} / "
-                    f"{format_integer(data.active_stage_goal)} Growth"
-                )
-        elif starter_waiting_for_nurture:
-            preview_support = (
-                f"{planted_starter_name} · {planted_starter_stage} · Planted starter"
-                if planted_starter_name else
-                "Planted starter · Open the garden to nurture it"
-            )
-        else:
-            preview_support = "No nurtured plant · Open the garden to choose one"
+    preview_title = preview.title
+    preview_support = preview.summary
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
@@ -1149,7 +1270,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     {partial_banner}
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
       <div class=\"ag-home__scene-frame\" data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
+        {scenery_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
+        {weather_layer}
       </div>
     </div>
     <aside class=\"ag-home__details home-summary-panel\">
@@ -1163,7 +1286,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
       {no_starter_body}
       {metrics_html}
     </aside>
-    {marker_layer}
   </div>
 </div>
 """
@@ -1178,6 +1300,7 @@ def build_home_widget_success_data(
     stage_transition_message: str = "",
     background_url: str = "",
     garden_overlay_url: str = "",
+    weather_url: str = "",
     nurtured_marker_url: str = "",
     nurtured_marker_spout_right_url: str = "",
     status_notice: str = "",
@@ -1212,6 +1335,30 @@ def build_home_widget_success_data(
             reason="missing_or_empty",
             value=getattr(state, "selected_weather", None),
         )
+    preview_snapshot = garden_preview_from_values(
+        consumer="home",
+        phase="success",
+        garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
+        active_plant_name=str(getattr(active_plant, "name", "") or ""),
+        active_stage=str(getattr(active_plant, "growth_stage", "") or ""),
+        active_growth_points=max(0, int(getattr(active_plant, "growth_points", 0) or 0)),
+        active_stage_points=active_growth.stage_points if active_plant is not None else 0,
+        active_stage_goal=active_growth.stage_goal if active_plant is not None else 0,
+        active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
+        starter_selected=bool(starter_complete),
+        planted_starter_name=(
+            str(getattr(planted_starter, "name", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        planted_starter_stage=(
+            str(getattr(planted_starter, "growth_stage", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        selected_weather=str(getattr(state, "selected_weather", "sunny") or "sunny"),
+        selected_scenery=str(getattr(state, "selected_background", "verdant_twilight") or "verdant_twilight"),
+        scene_items=scene_items,
+        unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
+    )
     return HomeWidgetData(
         reviews_today=reviews_today,
         growth_earned=int(stats.growth_earned),
@@ -1231,6 +1378,7 @@ def build_home_widget_success_data(
         stage_transition_message=stage_transition_message,
         background_url=background_url,
         garden_overlay_url=garden_overlay_url,
+        weather_url=weather_url,
         nurtured_marker_url=nurtured_marker_url,
         nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),
@@ -1256,6 +1404,7 @@ def build_home_widget_success_data(
         starter_planted_not_nurtured=starter_waiting_for_nurture,
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
         starter_selected=bool(starter_complete),
+        preview_snapshot=preview_snapshot,
     )
 
 

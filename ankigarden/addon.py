@@ -820,6 +820,7 @@ class AnkiGardenApp:
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 garden_overlay_url=self._home_garden_overlay_url(),
+                weather_url=self._home_weather_url(),
                 nurtured_marker_url=self._home_nurtured_marker_url(),
                 nurtured_marker_spout_right_url=(
                     self._home_nurtured_marker_spout_right_url()
@@ -956,6 +957,19 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else None
         except Exception:
             logger.debug("Anki Garden: unable to resolve home garden-bed overlay", exc_info=True)
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_weather_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_weather_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve home weather overlay",
+                exc_info=True,
+            )
             return ""
         return self._asset_web_url(path)
 
