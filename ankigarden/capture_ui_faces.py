@@ -45,7 +45,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 9
+CAPTURE_CONTRACT_VERSION = 10
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -266,6 +266,9 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "resize-species-overview-minimum",
             "resize-species-overview-default",
             "resize-species-overview-large",
+            "resize-collection-minimum",
+            "resize-collection-default",
+            "resize-collection-large",
         ),
     ),
 )
@@ -365,61 +368,64 @@ RESIZE_MATRIX_SPECS: tuple[
     tuple[str, str, str, int, int, int, int], ...
 ] = (
     ("resize-dashboard-minimum", "dashboard", "default-to-minimum", 620, 520, 1240, 840),
-    ("resize-dashboard-content-699", "dashboard", "default-to-below-700", 723, 700, 1240, 840),
-    ("resize-dashboard-content-701", "dashboard", "default-to-above-700", 725, 700, 1240, 840),
-    ("resize-dashboard-content-819", "dashboard", "default-to-below-820", 843, 720, 1240, 840),
-    ("resize-dashboard-content-821", "dashboard", "default-to-above-820", 845, 720, 1240, 840),
-    ("resize-dashboard-content-899", "dashboard", "default-to-below-900", 923, 740, 1240, 840),
-    ("resize-dashboard-content-901", "dashboard", "default-to-above-900", 925, 740, 1240, 840),
-    ("resize-dashboard-content-999", "dashboard", "default-to-below-1000", 1023, 760, 1240, 840),
-    ("resize-dashboard-content-1001", "dashboard", "default-to-above-1000", 1025, 760, 1240, 840),
-    ("resize-dashboard-content-1359", "dashboard", "default-to-below-1360", 1383, 900, 1240, 840),
-    ("resize-dashboard-content-1361", "dashboard", "default-to-above-1360", 1385, 900, 1240, 840),
+    ("resize-dashboard-content-699", "dashboard", "historical-edge-low-stability-probe", 723, 700, 1240, 840),
+    ("resize-dashboard-content-701", "dashboard", "historical-edge-high-stability-probe", 725, 700, 1240, 840),
+    ("resize-dashboard-content-819", "dashboard", "historical-edge-low-stability-probe", 843, 720, 1240, 840),
+    ("resize-dashboard-content-821", "dashboard", "historical-edge-high-stability-probe", 845, 720, 1240, 840),
+    ("resize-dashboard-content-899", "dashboard", "historical-edge-low-stability-probe", 923, 740, 1240, 840),
+    ("resize-dashboard-content-901", "dashboard", "historical-edge-high-stability-probe", 925, 740, 1240, 840),
+    ("resize-dashboard-content-999", "dashboard", "historical-edge-low-stability-probe", 1023, 760, 1240, 840),
+    ("resize-dashboard-content-1001", "dashboard", "historical-edge-high-stability-probe", 1025, 760, 1240, 840),
+    ("resize-dashboard-content-1359", "dashboard", "historical-edge-low-stability-probe", 1383, 900, 1240, 840),
+    ("resize-dashboard-content-1361", "dashboard", "historical-edge-high-stability-probe", 1385, 900, 1240, 840),
     ("resize-dashboard-default", "dashboard", "minimum-to-default", 1240, 840, 620, 520),
     ("resize-dashboard-large", "dashboard", "default-to-large", 1440, 960, 1240, 840),
     ("resize-settings-minimum", "settings", "default-to-minimum", 560, 420, 980, 680),
-    ("resize-settings-content-699", "settings", "default-to-below-700", 747, 620, 980, 680),
-    ("resize-settings-content-701", "settings", "default-to-above-700", 749, 620, 980, 680),
-    ("resize-settings-content-759", "settings", "default-to-below-760", 807, 650, 980, 680),
-    ("resize-settings-content-761", "settings", "default-to-above-760", 809, 650, 980, 680),
+    ("resize-settings-content-699", "settings", "historical-edge-low-stability-probe", 747, 620, 980, 680),
+    ("resize-settings-content-701", "settings", "historical-edge-high-stability-probe", 749, 620, 980, 680),
+    ("resize-settings-content-759", "settings", "historical-edge-low-stability-probe", 807, 650, 980, 680),
+    ("resize-settings-content-761", "settings", "historical-edge-high-stability-probe", 809, 650, 980, 680),
     ("resize-settings-default", "settings", "minimum-to-default", 980, 680, 560, 420),
     ("resize-settings-large", "settings", "default-to-large", 1000, 820, 980, 680),
     ("resize-progress-minimum", "progress", "default-to-minimum", 720, 500, 940, 680),
-    ("resize-progress-content-819", "progress", "default-to-below-820", 867, 620, 940, 680),
-    ("resize-progress-content-821", "progress", "default-to-above-820", 869, 620, 940, 680),
+    ("resize-progress-content-819", "progress", "historical-edge-low-stability-probe", 867, 620, 940, 680),
+    ("resize-progress-content-821", "progress", "historical-edge-high-stability-probe", 869, 620, 940, 680),
     ("resize-progress-default", "progress", "minimum-to-default", 940, 680, 720, 500),
     ("resize-progress-large", "progress", "default-to-large", 1000, 820, 940, 680),
     ("resize-customize-minimum", "customize", "default-to-minimum", 680, 480, 1040, 700),
-    ("resize-customize-content-819", "customize", "default-to-below-820", 867, 620, 1040, 700),
-    ("resize-customize-content-821", "customize", "default-to-above-820", 869, 620, 1040, 700),
+    ("resize-customize-content-819", "customize", "historical-edge-low-stability-probe", 867, 620, 1040, 700),
+    ("resize-customize-content-821", "customize", "historical-edge-high-stability-probe", 869, 620, 1040, 700),
     ("resize-customize-default", "customize", "minimum-to-default", 1040, 700, 680, 480),
     ("resize-customize-large", "customize", "default-to-large", 1120, 860, 1040, 700),
     ("resize-nursery-minimum", "nursery", "default-to-minimum", 640, 460, 840, 640),
-    ("resize-nursery-content-759", "nursery", "default-to-below-760", 795, 600, 840, 640),
-    ("resize-nursery-content-761", "nursery", "default-to-above-760", 797, 600, 840, 640),
+    ("resize-nursery-content-759", "nursery", "historical-edge-low-stability-probe", 795, 600, 840, 640),
+    ("resize-nursery-content-761", "nursery", "historical-edge-high-stability-probe", 797, 600, 840, 640),
     ("resize-nursery-default", "nursery", "minimum-to-default", 840, 640, 640, 460),
     ("resize-nursery-large", "nursery", "default-to-large", 1050, 800, 840, 640),
     ("resize-story-minimum", "story", "default-to-minimum", 480, 400, 640, 520),
-    ("resize-story-content-539", "story", "default-to-below-540", 587, 500, 640, 520),
-    ("resize-story-content-541", "story", "default-to-above-540", 589, 500, 640, 520),
+    ("resize-story-content-539", "story", "historical-edge-low-stability-probe", 587, 500, 640, 520),
+    ("resize-story-content-541", "story", "historical-edge-high-stability-probe", 589, 500, 640, 520),
     ("resize-story-default", "story", "minimum-to-default", 640, 520, 480, 400),
-    ("resize-story-large", "story", "default-to-large", 640, 680, 640, 520),
+    ("resize-story-large", "story", "default-to-large", 900, 800, 640, 520),
     ("resize-starter-confirmation-minimum", "starter-confirmation", "default-to-minimum", 360, 250, 480, 300),
-    ("resize-starter-confirmation-content-399", "starter-confirmation", "default-to-below-400", 447, 280, 480, 300),
-    ("resize-starter-confirmation-content-401", "starter-confirmation", "default-to-above-400", 449, 280, 480, 300),
+    ("resize-starter-confirmation-content-399", "starter-confirmation", "historical-edge-low-stability-probe", 447, 280, 480, 300),
+    ("resize-starter-confirmation-content-401", "starter-confirmation", "historical-edge-high-stability-probe", 449, 280, 480, 300),
     ("resize-starter-confirmation-default", "starter-confirmation", "minimum-to-default", 480, 300, 360, 250),
     ("resize-starter-confirmation-large", "starter-confirmation", "default-to-large", 520, 360, 480, 300),
     ("resize-fertilizer-minimum", "fertilizer", "default-to-minimum", 520, 460, 600, 580),
     ("resize-fertilizer-default", "fertilizer", "minimum-to-default", 600, 580, 520, 460),
-    ("resize-fertilizer-large", "fertilizer", "default-to-large", 760, 760, 600, 580),
+    ("resize-fertilizer-large", "fertilizer", "default-to-large", 900, 800, 600, 580),
     ("resize-fertilizer-replacement-minimum", "fertilizer-replacement", "default-to-minimum", 420, 400, 480, 420),
-    ("resize-fertilizer-replacement-content-399", "fertilizer-replacement", "default-to-below-400", 443, 420, 480, 420),
-    ("resize-fertilizer-replacement-content-401", "fertilizer-replacement", "default-to-above-400", 445, 420, 480, 420),
+    ("resize-fertilizer-replacement-content-399", "fertilizer-replacement", "historical-edge-low-stability-probe", 443, 420, 480, 420),
+    ("resize-fertilizer-replacement-content-401", "fertilizer-replacement", "historical-edge-high-stability-probe", 445, 420, 480, 420),
     ("resize-fertilizer-replacement-default", "fertilizer-replacement", "minimum-to-default", 480, 420, 420, 400),
-    ("resize-fertilizer-replacement-large", "fertilizer-replacement", "default-to-large", 560, 500, 480, 420),
+    ("resize-fertilizer-replacement-large", "fertilizer-replacement", "default-to-large", 820, 660, 480, 420),
     ("resize-species-overview-minimum", "species-overview", "default-to-minimum", 500, 420, 560, 500),
     ("resize-species-overview-default", "species-overview", "minimum-to-default", 560, 500, 500, 420),
-    ("resize-species-overview-large", "species-overview", "default-to-large", 760, 700, 560, 500),
+    ("resize-species-overview-large", "species-overview", "default-to-large", 900, 800, 560, 500),
+    ("resize-collection-minimum", "collection", "default-to-minimum", 720, 500, 940, 680),
+    ("resize-collection-default", "collection", "minimum-to-default", 940, 680, 720, 500),
+    ("resize-collection-large", "collection", "default-to-large", 1000, 820, 940, 680),
 )
 
 # Each resize face owns a semantic layout state in addition to its requested
@@ -427,18 +433,18 @@ RESIZE_MATRIX_SPECS: tuple[
 # screen, so exact pixels alone are not sufficient to prove that the two sides
 # of a breakpoint remained distinct.
 RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
-    "resize-dashboard-minimum": "narrow",
-    "resize-dashboard-content-699": "narrow",
-    "resize-dashboard-content-701": "narrow",
-    "resize-dashboard-content-819": "narrow",
+    "resize-dashboard-minimum": "compact",
+    "resize-dashboard-content-699": "compact",
+    "resize-dashboard-content-701": "compact",
+    "resize-dashboard-content-819": "compact",
     "resize-dashboard-content-821": "compact",
     "resize-dashboard-content-899": "compact",
     "resize-dashboard-content-901": "compact",
-    "resize-dashboard-content-999": "compact",
-    "resize-dashboard-content-1001": "compact",
-    "resize-dashboard-content-1359": "compact",
+    "resize-dashboard-content-999": "wide",
+    "resize-dashboard-content-1001": "wide",
+    "resize-dashboard-content-1359": "wide",
     "resize-dashboard-content-1361": "wide",
-    "resize-dashboard-default": "compact",
+    "resize-dashboard-default": "wide",
     "resize-dashboard-large": "wide",
     "resize-settings-minimum": "display",
     "resize-settings-content-699": "display",
@@ -448,27 +454,27 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "resize-settings-default": "display",
     "resize-settings-large": "display",
     "resize-progress-minimum": "compact",
-    "resize-progress-content-819": "compact",
+    "resize-progress-content-819": "wide",
     "resize-progress-content-821": "wide",
     "resize-progress-default": "wide",
     "resize-progress-large": "wide",
     "resize-customize-minimum": "compact",
     "resize-customize-content-819": "compact",
-    "resize-customize-content-821": "wide",
+    "resize-customize-content-821": "compact",
     "resize-customize-default": "wide",
     "resize-customize-large": "wide",
     "resize-nursery-minimum": "compact",
-    "resize-nursery-content-759": "compact",
+    "resize-nursery-content-759": "wide",
     "resize-nursery-content-761": "wide",
     "resize-nursery-default": "wide",
     "resize-nursery-large": "wide",
     "resize-story-minimum": "compact",
-    "resize-story-content-539": "compact",
+    "resize-story-content-539": "wide",
     "resize-story-content-541": "wide",
     "resize-story-default": "wide",
     "resize-story-large": "wide",
-    "resize-starter-confirmation-minimum": "compact",
-    "resize-starter-confirmation-content-399": "compact",
+    "resize-starter-confirmation-minimum": "wide",
+    "resize-starter-confirmation-content-399": "wide",
     "resize-starter-confirmation-content-401": "wide",
     "resize-starter-confirmation-default": "wide",
     "resize-starter-confirmation-large": "wide",
@@ -477,13 +483,273 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "resize-fertilizer-large": "default",
     "resize-fertilizer-replacement-minimum": "compact",
     "resize-fertilizer-replacement-content-399": "compact",
-    "resize-fertilizer-replacement-content-401": "wide",
-    "resize-fertilizer-replacement-default": "wide",
+    "resize-fertilizer-replacement-content-401": "compact",
+    "resize-fertilizer-replacement-default": "compact",
     "resize-fertilizer-replacement-large": "wide",
     "resize-species-overview-minimum": "default",
     "resize-species-overview-default": "default",
     "resize-species-overview-large": "default",
+    "resize-collection-minimum": "compact",
+    "resize-collection-default": "wide",
+    "resize-collection-large": "wide",
 }
+
+
+# Canonical and resize evidence that exercises the shared one-scroll/footer
+# contract. Collection is a page inside Garden Progress, but the Progress
+# resize family intentionally selects Overview. Keep those records attributed
+# to Overview and use Collection's real canonical/stress fixtures for its
+# surface-specific proof.
+DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
+    "Nursery": (
+        "nursery-plants",
+        "nursery-final-row-above-footer",
+        "resize-nursery-minimum",
+        "resize-nursery-default",
+        "resize-nursery-large",
+    ),
+    "Fertilizer selection": (
+        "fertilizer-unaffordable",
+        "fertilizer-affordable",
+        "fertilizer-active",
+        "resize-fertilizer-minimum",
+        "resize-fertilizer-default",
+        "resize-fertilizer-large",
+    ),
+    "Fertilizer replacement": (
+        "fertilizer-replacement-confirmation",
+        "resize-fertilizer-replacement-minimum",
+        "resize-fertilizer-replacement-default",
+        "resize-fertilizer-replacement-large",
+    ),
+    "Plant Story": (
+        "plant-story",
+        "resize-story-minimum",
+        "resize-story-default",
+        "resize-story-large",
+    ),
+    "Species overview": (
+        "collection-species-overview",
+        "resize-species-overview-minimum",
+        "resize-species-overview-default",
+        "resize-species-overview-large",
+    ),
+    "Settings": (
+        "settings-display",
+        "settings-display-advanced-open",
+        "diagnostics-expanded",
+        "resize-settings-minimum",
+        "resize-settings-default",
+        "resize-settings-large",
+    ),
+    "Garden Progress": (
+        "progress-overview",
+        "progress-achievements",
+        "resize-progress-minimum",
+        "resize-progress-default",
+        "resize-progress-large",
+    ),
+    "Collection": (
+        "progress-collection",
+        "collection-several-discovered",
+        "collection-no-filter-matches",
+        "resize-collection-minimum",
+        "resize-collection-default",
+        "resize-collection-large",
+    ),
+    "Customize Garden": (
+        "customize-garden",
+        "customize-effects-on",
+        "customize-effects-off",
+        "resize-customize-minimum",
+        "resize-customize-default",
+        "resize-customize-large",
+    ),
+}
+
+
+# Expected live renderer/page identity for every scroll-coverage record. The
+# geometry audit records the independently observed value so a valid Progress
+# shell cannot be misrepresented as Collection (or vice versa).
+DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
+    "nursery-plants": "NurseryDialog:plants",
+    "nursery-final-row-above-footer": "NurseryDialog:plants",
+    "resize-nursery-minimum": "NurseryDialog:plants",
+    "resize-nursery-default": "NurseryDialog:plants",
+    "resize-nursery-large": "NurseryDialog:plants",
+    "fertilizer-unaffordable": "FertilizerDialog",
+    "fertilizer-affordable": "FertilizerDialog",
+    "fertilizer-active": "FertilizerDialog",
+    "resize-fertilizer-minimum": "FertilizerDialog",
+    "resize-fertilizer-default": "FertilizerDialog",
+    "resize-fertilizer-large": "FertilizerDialog",
+    "fertilizer-replacement-confirmation": "FertilizerReplacementDialog",
+    "resize-fertilizer-replacement-minimum": "FertilizerReplacementDialog",
+    "resize-fertilizer-replacement-default": "FertilizerReplacementDialog",
+    "resize-fertilizer-replacement-large": "FertilizerReplacementDialog",
+    "plant-story": "PlantStoryDialog",
+    "resize-story-minimum": "PlantStoryDialog",
+    "resize-story-default": "PlantStoryDialog",
+    "resize-story-large": "PlantStoryDialog",
+    "collection-species-overview": "SpeciesOverviewDialog",
+    "resize-species-overview-minimum": "SpeciesOverviewDialog",
+    "resize-species-overview-default": "SpeciesOverviewDialog",
+    "resize-species-overview-large": "SpeciesOverviewDialog",
+    "settings-display": "GardenSettingsDialog:display",
+    "settings-display-advanced-open": "GardenSettingsDialog:display",
+    "diagnostics-expanded": "GardenSettingsDialog:diagnostics",
+    "resize-settings-minimum": "GardenSettingsDialog:display",
+    "resize-settings-default": "GardenSettingsDialog:display",
+    "resize-settings-large": "GardenSettingsDialog:display",
+    "progress-overview": "GardenProgressDialog:overview",
+    "progress-achievements": "GardenProgressDialog:achievements",
+    "resize-progress-minimum": "GardenProgressDialog:overview",
+    "resize-progress-default": "GardenProgressDialog:overview",
+    "resize-progress-large": "GardenProgressDialog:overview",
+    "progress-collection": "GardenProgressDialog:collection",
+    "collection-several-discovered": "GardenProgressDialog:collection",
+    "collection-no-filter-matches": "GardenProgressDialog:collection",
+    "resize-collection-minimum": "GardenProgressDialog:collection",
+    "resize-collection-default": "GardenProgressDialog:collection",
+    "resize-collection-large": "GardenProgressDialog:collection",
+    "customize-garden": "CustomizeGardenDialog:garden",
+    "customize-effects-on": "CustomizeGardenDialog:effects",
+    "customize-effects-off": "CustomizeGardenDialog:effects",
+    "resize-customize-minimum": "CustomizeGardenDialog:garden",
+    "resize-customize-default": "CustomizeGardenDialog:garden",
+    "resize-customize-large": "CustomizeGardenDialog:garden",
+}
+
+
+RESPONSIVE_STABILITY_PAIRS: tuple[tuple[str, str], ...] = (
+    ("resize-dashboard-content-699", "resize-dashboard-content-701"),
+    ("resize-dashboard-content-819", "resize-dashboard-content-821"),
+    ("resize-dashboard-content-899", "resize-dashboard-content-901"),
+    ("resize-dashboard-content-999", "resize-dashboard-content-1001"),
+    ("resize-dashboard-content-1359", "resize-dashboard-content-1361"),
+    ("resize-settings-content-699", "resize-settings-content-701"),
+    ("resize-settings-content-759", "resize-settings-content-761"),
+    ("resize-progress-content-819", "resize-progress-content-821"),
+    ("resize-customize-content-819", "resize-customize-content-821"),
+    ("resize-nursery-content-759", "resize-nursery-content-761"),
+    ("resize-story-content-539", "resize-story-content-541"),
+    (
+        "resize-starter-confirmation-content-399",
+        "resize-starter-confirmation-content-401",
+    ),
+    (
+        "resize-fertilizer-replacement-content-399",
+        "resize-fertilizer-replacement-content-401",
+    ),
+)
+
+
+def dialog_scroll_geometry_issue_codes(
+    *,
+    registered_count: int,
+    active_count: int,
+    footer_visible: bool,
+    footer_height: int,
+    footer_top: int,
+    viewport_top: int,
+    viewport_height: int,
+    declared_clearance: int,
+    layout_clearance: int,
+    content_height: int,
+    content_size_hint_height: int,
+    content_minimum_size_hint_height: int,
+    scroll_minimum: int,
+    scroll_maximum: int,
+) -> tuple[str, ...]:
+    """Return fail-closed issue codes for one dialog's vertical scroll owner."""
+
+    registered = max(0, int(registered_count))
+    active = max(0, int(active_count))
+    issues: list[str] = []
+    if registered and active != 1:
+        issues.append("active-scroll-count")
+    if active != 1:
+        return tuple(issues)
+
+    visible_footer_height = (
+        max(0, int(footer_height)) if bool(footer_visible) else 0
+    )
+    if int(declared_clearance) != visible_footer_height:
+        issues.append("footer-clearance-mismatch")
+    if int(layout_clearance) != visible_footer_height:
+        issues.append("footer-layout-clearance-mismatch")
+    viewport_bottom = int(viewport_top) + max(0, int(viewport_height))
+    if bool(footer_visible) and viewport_bottom > int(footer_top):
+        issues.append("footer-viewport-overlap")
+
+    required_content_height = max(
+        0,
+        int(content_height),
+        int(content_size_hint_height),
+        int(content_minimum_size_hint_height),
+    )
+    scroll_span = max(0, int(scroll_maximum) - int(scroll_minimum))
+    reachable_content_height = max(0, int(viewport_height)) + scroll_span
+    if reachable_content_height < required_content_height:
+        issues.append("unreachable-scroll-content")
+    return tuple(issues)
+
+
+def responsive_semantic_maps(
+    entries: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> tuple[
+    dict[str, tuple[str, int, int, tuple[str, ...]]],
+    dict[str, tuple[str, int, tuple[str, ...]]],
+    tuple[str, ...],
+]:
+    """Return exact and pair-stability maps plus conflicting duplicate IDs."""
+
+    exact: dict[str, tuple[str, int, int, tuple[str, ...]]] = {}
+    stable: dict[str, tuple[str, int, tuple[str, ...]]] = {}
+    conflicts: list[str] = []
+    for entry in entries:
+        semantic_id = str(entry.get("semantic_id", "")).strip()
+        if not semantic_id:
+            continue
+        order = tuple(str(item) for item in entry.get("region_order", ()))
+        exact_state = (
+            str(entry.get("mode", "")),
+            int(entry.get("available_width", -1)),
+            int(entry.get("threshold_width", -1)),
+            order,
+        )
+        stable_state = (exact_state[0], exact_state[2], exact_state[3])
+        if semantic_id in exact and exact[semantic_id] != exact_state:
+            conflicts.append(semantic_id)
+            continue
+        exact[semantic_id] = exact_state
+        stable[semantic_id] = stable_state
+    return exact, stable, tuple(dict.fromkeys(conflicts))
+
+
+def responsive_stability_pair_issue_codes(
+    low_entries: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    high_entries: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> tuple[str, ...]:
+    """Compare nested responsive state while ignoring the expected 2 px delta."""
+
+    _low_exact, low, low_conflicts = responsive_semantic_maps(low_entries)
+    _high_exact, high, high_conflicts = responsive_semantic_maps(high_entries)
+    issues: list[str] = []
+    if not low:
+        issues.append("missing-low-semantic-telemetry")
+    if not high:
+        issues.append("missing-high-semantic-telemetry")
+    for semantic_id in low_conflicts:
+        issues.append(f"conflicting-low-semantic-id:{semantic_id}")
+    for semantic_id in high_conflicts:
+        issues.append(f"conflicting-high-semantic-id:{semantic_id}")
+    if set(low) != set(high):
+        issues.append("semantic-id-set-mismatch")
+    for semantic_id in sorted(set(low) & set(high)):
+        if low[semantic_id] != high[semantic_id]:
+            issues.append(f"semantic-state-mismatch:{semantic_id}")
+    return tuple(issues)
 
 
 _HOME_CAPTURE_LABELS = frozenset({
@@ -574,6 +840,7 @@ _RESIZE_WINDOW_FAMILIES = {
     "dashboard": "GardenDashboard",
     "settings": "GardenSettingsDialog",
     "progress": "GardenProgressDialog",
+    "collection": "GardenProgressDialog",
     "customize": "CustomizeGardenDialog",
     "nursery": "NurseryDialog",
     "story": "PlantStoryDialog",
@@ -677,8 +944,10 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
                 "declared_client_size": [width, height],
                 "layout_mode": RESIZE_MATRIX_LAYOUT_MODES.get(label, ""),
             })
-            if resize_family == "progress":
-                profile["canonical_page"] = "overview"
+            if resize_family in {"progress", "collection"}:
+                profile["canonical_page"] = (
+                    "collection" if resize_family == "collection" else "overview"
+                )
             return profile
     if label in _DASHBOARD_CAPTURE_LABELS:
         profile.update({"kind": "dashboard", "state": label})
@@ -3709,6 +3978,20 @@ class _UiFaceCaptureRunner:
                                 f"{title_stack_extra_height}px)"
                             ),
                         })
+            # Capture the exact semantic/layout state that is about to be
+            # painted. These readers are non-mutating and fail closed through
+            # structured warnings rather than silently accepting partial data.
+            responsive_semantics, responsive_warnings = (
+                self._responsive_semantic_telemetry(widget)
+            )
+            geometry_layout_warnings = self._find_geometry_layout_warnings(
+                widget,
+                capture_label=label,
+            )
+            dialog_scroll_audit = dict(
+                getattr(self, "_last_dialog_scroll_audit", {}) or {}
+            )
+            geometry_layout_warnings.extend(responsive_warnings)
             self._audit_nurtured_marker_capture(label, widget)
             if widget is mw:
                 pixmap, capture_method, foreground_confirmed = (
@@ -3761,7 +4044,6 @@ class _UiFaceCaptureRunner:
             if pixmap.save(str(path), "png"):
                 self._screenshots.append(str(path))
                 text_layout_warnings = self._find_text_layout_warnings(widget)
-                geometry_layout_warnings = self._find_geometry_layout_warnings(widget)
                 for warning in text_layout_warnings:
                     warning["capture"] = label
                 for warning in geometry_layout_warnings:
@@ -3843,6 +4125,8 @@ class _UiFaceCaptureRunner:
                         if geometry_request is not None else
                         "canonical-open"
                     ),
+                    "responsive_semantics": responsive_semantics,
+                    "dialog_scroll_audit": dialog_scroll_audit,
                     "text_layout_warnings": text_layout_warnings,
                     "geometry_layout_warnings": geometry_layout_warnings,
                     "fixture_source": fixture_source,
@@ -3886,13 +4170,366 @@ class _UiFaceCaptureRunner:
                 self._active_geometry_request = None
 
     @staticmethod
-    def _find_geometry_layout_warnings(root: QWidget) -> list[dict[str, Any]]:
-        """Report painted children outside their root and forbidden horizontal scroll."""
+    def _responsive_semantic_telemetry(
+        root: QWidget,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Record visible content-aware decisions and reject ambiguous IDs."""
+
+        entries: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
+        try:
+            candidates = (root, *tuple(root.findChildren(QWidget)))
+        except Exception as exc:
+            return [], [{
+                "kind": "responsive-telemetry-audit-error",
+                "exception": type(exc).__name__,
+            }]
+        for candidate in candidates:
+            try:
+                if candidate.window() is not root:
+                    continue
+                if candidate is not root and not candidate.isVisibleTo(root):
+                    continue
+                semantic_id = str(
+                    candidate.property("responsiveRegion") or ""
+                ).strip()
+                mode = str(candidate.property("responsiveMode") or "").strip()
+                available = candidate.property("responsiveAvailableWidth")
+                threshold = candidate.property("responsiveThreshold")
+                raw_order = str(
+                    candidate.property("responsiveRegionOrder") or ""
+                ).strip()
+                # AdaptiveRegion targets intentionally publish only their
+                # region ID. An owner publishes the complete telemetry tuple.
+                owner_signal = bool(
+                    mode
+                    or available is not None
+                    or threshold is not None
+                    or raw_order
+                )
+                if not owner_signal:
+                    continue
+                missing = [
+                    name
+                    for name, present in (
+                        ("responsiveRegion", bool(semantic_id)),
+                        ("responsiveMode", bool(mode)),
+                        ("responsiveAvailableWidth", available is not None),
+                        ("responsiveThreshold", threshold is not None),
+                        ("responsiveRegionOrder", bool(raw_order)),
+                    )
+                    if not present
+                ]
+                if missing:
+                    warnings.append({
+                        "kind": "incomplete-responsive-semantic-telemetry",
+                        "widget": type(candidate).__name__,
+                        "object_name": str(candidate.objectName() or ""),
+                        "missing": missing,
+                    })
+                    continue
+                entries.append({
+                    "semantic_id": semantic_id,
+                    "mode": mode,
+                    "available_width": int(available),
+                    "threshold_width": int(threshold),
+                    "region_order": raw_order.split("|"),
+                    "widget": type(candidate).__name__,
+                    "object_name": str(candidate.objectName() or ""),
+                })
+            except Exception as exc:
+                warnings.append({
+                    "kind": "responsive-telemetry-audit-error",
+                    "widget": type(candidate).__name__,
+                    "exception": type(exc).__name__,
+                })
+        _exact, _stable, conflicts = responsive_semantic_maps(entries)
+        for semantic_id in conflicts:
+            warnings.append({
+                "kind": "conflicting-responsive-semantic-id",
+                "semantic_id": semantic_id,
+            })
+        return entries, warnings
+
+    @staticmethod
+    def _dialog_surface_page_semantic(root: QWidget) -> str:
+        """Return the visible dialog family plus its selected page/tab."""
+
+        family = str(root.property("windowFamily") or type(root).__name__)
+        if family == "GardenProgressDialog":
+            navigation = getattr(root, "navigation", None)
+            keys = list(getattr(navigation, "keys", ()) or ())
+            stack = getattr(navigation, "stack", None)
+            index = int(stack.currentIndex()) if stack is not None else -1
+            page = str(keys[index]) if 0 <= index < len(keys) else "unknown"
+            return f"{family}:{page}"
+        if family == "GardenSettingsDialog":
+            tabs = getattr(root, "tabs", None)
+            index = int(tabs.currentIndex()) if tabs is not None else -1
+            page = {0: "display", 1: "diagnostics"}.get(index, f"tab-{index}")
+            return f"{family}:{page}"
+        if family == "NurseryDialog":
+            tabs = getattr(root, "catalog_tabs", None)
+            index = int(tabs.currentIndex()) if tabs is not None else -1
+            page = {
+                0: "plants",
+                1: "fertilizer",
+                2: "garden-spaces",
+                3: "weather-scenery",
+            }.get(index, f"tab-{index}")
+            return f"{family}:{page}"
+        if family == "CustomizeGardenDialog":
+            tabs = getattr(root, "option_tabs", None)
+            index = int(tabs.currentIndex()) if tabs is not None else -1
+            page = {0: "garden", 1: "style", 2: "effects"}.get(
+                index,
+                f"tab-{index}",
+            )
+            return f"{family}:{page}"
+        return family
+
+    def _find_geometry_layout_warnings(
+        self,
+        root: QWidget,
+        *,
+        capture_label: str = "",
+    ) -> list[dict[str, Any]]:
+        """Report painted children outside their root and unsafe scrolling."""
 
         warnings: list[dict[str, Any]] = []
+        dialog_scroll_audit: dict[str, Any] = {
+            "applicable": False,
+            "registered_count": 0,
+            "active_count": 0,
+            "issues": [],
+            "passed": True,
+        }
+        coverage_surface = ""
+        for surface, labels in DIALOG_SCROLL_CAPTURE_COVERAGE.items():
+            if capture_label in labels:
+                coverage_surface = surface
+                break
+        expected_page_semantic = DIALOG_SCROLL_CAPTURE_SEMANTICS.get(
+            capture_label,
+            "",
+        )
+        actual_page_semantic = ""
+        try:
+            actual_page_semantic = self._dialog_surface_page_semantic(root)
+            registered = tuple(
+                getattr(root, "_registered_scroll_regions", ()) or ()
+            )
+            registered_ids = {id(scroll) for scroll in registered}
+            discovered = tuple(root.findChildren(QScrollArea))
+            deliberate: list[QScrollArea] = []
+            seen_ids: set[int] = set()
+            for scroll in (*registered, *discovered):
+                scroll_id = id(scroll)
+                if scroll_id in seen_ids:
+                    continue
+                if scroll.window() is not root:
+                    continue
+                is_deliberate = (
+                    scroll_id in registered_ids
+                    or bool(scroll.property("dialogScrollRegion"))
+                )
+                if not is_deliberate:
+                    continue
+                seen_ids.add(scroll_id)
+                deliberate.append(scroll)
+            active_scrolls = tuple(
+                scroll
+                for scroll in deliberate
+                if scroll.window() is root
+                and scroll.isVisibleTo(root)
+                and scroll.verticalScrollBarPolicy()
+                != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            dialog_scroll_audit.update({
+                "applicable": bool(deliberate),
+                "registered_count": len(deliberate),
+                "active_count": len(active_scrolls),
+                "issues": (
+                    ["active-scroll-count"]
+                    if deliberate and len(active_scrolls) != 1 else []
+                ),
+                "passed": not deliberate or len(active_scrolls) == 1,
+            })
+            if deliberate and len(active_scrolls) != 1:
+                warnings.append({
+                    "kind": (
+                        "multiple-active-vertical-scroll-regions"
+                        if len(active_scrolls) > 1
+                        else "missing-active-vertical-scroll-region"
+                    ),
+                    "count": len(active_scrolls),
+                    "registered_count": len(deliberate),
+                    "scrolls": [
+                        str(
+                            scroll.accessibleName()
+                            or scroll.objectName()
+                            or type(scroll).__name__
+                        )
+                        for scroll in active_scrolls
+                    ],
+                })
+            if len(active_scrolls) == 1:
+                scroll = active_scrolls[0]
+                content = scroll.widget()
+                viewport = scroll.viewport()
+                footer = getattr(root, "_pinned_footer", None)
+                footer_visible = bool(
+                    footer is not None and footer.isVisibleTo(root)
+                )
+                footer_height = (
+                    max(0, int(footer.height())) if footer_visible else 0
+                )
+                footer_top = (
+                    int(footer.mapTo(root, footer.rect().topLeft()).y())
+                    if footer_visible else 0
+                )
+                viewport_top = int(
+                    viewport.mapTo(root, viewport.rect().topLeft()).y()
+                )
+                content_layout = content.layout() if content is not None else None
+                base_margins = getattr(root, "_scroll_base_margins", {}) or {}
+                base = base_margins.get(id(scroll))
+                layout_clearance = -1
+                if content_layout is not None and base is not None:
+                    layout_clearance = (
+                        int(content_layout.contentsMargins().bottom())
+                        - int(base[3])
+                    )
+                declared = scroll.property("footerClearance")
+                declared_clearance = -1 if declared is None else int(declared)
+                size_hint_height = (
+                    int(content.sizeHint().height()) if content is not None else 0
+                )
+                minimum_hint_height = (
+                    int(content.minimumSizeHint().height())
+                    if content is not None else 0
+                )
+                content_height = (
+                    max(int(content.height()), int(content.minimumHeight()))
+                    if content is not None else 0
+                )
+                vertical = scroll.verticalScrollBar()
+                metrics = {
+                    "registered_count": len(deliberate),
+                    "active_count": len(active_scrolls),
+                    "footer_visible": footer_visible,
+                    "footer_height": footer_height,
+                    "footer_top": footer_top,
+                    "viewport_top": viewport_top,
+                    "viewport_height": int(viewport.height()),
+                    "declared_clearance": declared_clearance,
+                    "layout_clearance": layout_clearance,
+                    "content_height": content_height,
+                    "content_size_hint_height": size_hint_height,
+                    "content_minimum_size_hint_height": minimum_hint_height,
+                    "scroll_minimum": int(vertical.minimum()),
+                    "scroll_maximum": int(vertical.maximum()),
+                }
+                issue_codes = dialog_scroll_geometry_issue_codes(**metrics)
+                required_content_height = max(
+                    content_height,
+                    size_hint_height,
+                    minimum_hint_height,
+                )
+                reachable_content_height = (
+                    int(viewport.height())
+                    + max(0, int(vertical.maximum()) - int(vertical.minimum()))
+                )
+                dialog_scroll_audit = {
+                    "applicable": True,
+                    "scroll_name": str(
+                        scroll.accessibleName()
+                        or scroll.objectName()
+                        or type(scroll).__name__
+                    ),
+                    **metrics,
+                    "viewport_bottom": viewport_top + int(viewport.height()),
+                    "required_content_height": required_content_height,
+                    "reachable_content_height": reachable_content_height,
+                    "issues": list(issue_codes),
+                    "passed": not issue_codes,
+                }
+                for issue_code in issue_codes:
+                    if issue_code == "active-scroll-count":
+                        continue
+                    if issue_code == "footer-clearance-mismatch":
+                        issue_kind = (
+                            "insufficient-footer-scroll-clearance"
+                            if declared_clearance < footer_height
+                            else "excess-footer-scroll-clearance"
+                        )
+                    else:
+                        issue_kind = {
+                            "footer-layout-clearance-mismatch": (
+                                "footer-layout-clearance-mismatch"
+                            ),
+                            "footer-viewport-overlap": (
+                                "footer-overlaps-scroll-viewport"
+                            ),
+                            "unreachable-scroll-content": (
+                                "unreachable-scroll-content"
+                            ),
+                        }[issue_code]
+                    warnings.append({
+                        "kind": issue_kind,
+                        "widget": type(scroll).__name__,
+                        "object_name": str(scroll.objectName() or ""),
+                        **metrics,
+                    })
+        except Exception as exc:
+            dialog_scroll_audit = {
+                "applicable": True,
+                "registered_count": int(
+                    dialog_scroll_audit.get("registered_count", 0) or 0
+                ),
+                "active_count": int(
+                    dialog_scroll_audit.get("active_count", 0) or 0
+                ),
+                "issues": ["dialog-scroll-contract-audit-error"],
+                "exception": type(exc).__name__,
+                "passed": False,
+            }
+            warnings.append({
+                "kind": "dialog-scroll-contract-audit-error",
+                "exception": type(exc).__name__,
+            })
+        if coverage_surface or expected_page_semantic:
+            identity_issues: list[str] = []
+            if not coverage_surface:
+                identity_issues.append("missing-scroll-coverage-surface")
+            if not expected_page_semantic:
+                identity_issues.append("missing-scroll-page-semantic")
+            elif actual_page_semantic != expected_page_semantic:
+                identity_issues.append("scroll-surface-page-mismatch")
+            dialog_scroll_audit.update({
+                "surface": coverage_surface,
+                "expected_page_semantic": expected_page_semantic,
+                "actual_page_semantic": actual_page_semantic,
+                "issues": list(dict.fromkeys([
+                    *list(dialog_scroll_audit.get("issues", ()) or ()),
+                    *identity_issues,
+                ])),
+            })
+            dialog_scroll_audit["passed"] = bool(
+                dialog_scroll_audit.get("passed", False)
+                and not identity_issues
+            )
+            for issue in identity_issues:
+                warnings.append({
+                    "kind": issue,
+                    "surface": coverage_surface,
+                    "expected_page_semantic": expected_page_semantic,
+                    "actual_page_semantic": actual_page_semantic,
+                })
+        self._last_dialog_scroll_audit = dialog_scroll_audit
         for scroll in root.findChildren(QAbstractScrollArea):
             try:
-                if not scroll.isVisibleTo(root):
+                if scroll.window() is not root or not scroll.isVisibleTo(root):
                     continue
                 # QScrollArea reports the visible vertical scrollbar's width as
                 # horizontal range until its viewport completes a relayout.
@@ -7275,23 +7912,24 @@ class _UiFaceCaptureRunner:
                 close=True,
             )
             return
-        if family == "progress":
+        if family in {"progress", "collection"}:
             progress = getattr(dashboard, "progress_dialog", None)
             navigation = getattr(progress, "navigation", None)
             keys = list(getattr(navigation, "keys", ()) or ())
-            if progress is None or navigation is None or "overview" not in keys:
+            target_page = "collection" if family == "collection" else "overview"
+            if progress is None or navigation is None or target_page not in keys:
                 self._failures.append({
                     "label": label,
                     "reason": (
-                        "Garden Progress overview was unavailable for the resize matrix"
+                        f"Garden Progress {target_page} was unavailable for the resize matrix"
                     ),
                 })
                 self._next_after(200)
                 return
-            # Every Progress resize face is a geometry audit of the canonical
-            # overview, never whichever metric page the preceding stress
-            # fixture left selected. Route first, then rebuild that page.
-            navigation.set_current("overview")
+            # Progress and Collection are distinct resize surfaces hosted by
+            # the same window. Route to the declared page before every probe;
+            # never inherit whichever page the preceding fixture selected.
+            navigation.set_current(target_page)
             refresh = getattr(progress, "refresh", None)
             if callable(refresh):
                 refresh()
@@ -7377,6 +8015,256 @@ class _UiFaceCaptureRunner:
             return
         capture_widget(None, close=True)
 
+    def _dialog_scroll_coverage_report(self) -> dict[str, Any]:
+        """Require positive scroll/footer facts for every named dialog face."""
+
+        if self._capture_profile != "full":
+            return {
+                "required": False,
+                "required_count": 0,
+                "records": [],
+                "passed": True,
+            }
+        coverage_by_label: dict[str, tuple[str, str]] = {}
+        duplicate_labels: list[str] = []
+        for surface, labels in DIALOG_SCROLL_CAPTURE_COVERAGE.items():
+            for label in labels:
+                if label in coverage_by_label:
+                    duplicate_labels.append(label)
+                    continue
+                coverage_by_label[label] = (
+                    surface,
+                    DIALOG_SCROLL_CAPTURE_SEMANTICS.get(label, ""),
+                )
+        records = {
+            str(record.get("label", "")): record
+            for record in self._capture_records
+        }
+        results: list[dict[str, Any]] = []
+        for duplicate in dict.fromkeys(duplicate_labels):
+            self._failures.append({
+                "label": duplicate,
+                "reason": "Dialog scroll coverage label belongs to multiple surfaces",
+            })
+        integer_fields = (
+            "registered_count",
+            "active_count",
+            "footer_height",
+            "footer_top",
+            "viewport_top",
+            "viewport_height",
+            "viewport_bottom",
+            "declared_clearance",
+            "layout_clearance",
+            "content_height",
+            "content_size_hint_height",
+            "content_minimum_size_hint_height",
+            "scroll_minimum",
+            "scroll_maximum",
+            "required_content_height",
+            "reachable_content_height",
+        )
+        geometry_fields = (
+            "registered_count",
+            "active_count",
+            "footer_height",
+            "footer_top",
+            "viewport_top",
+            "viewport_height",
+            "declared_clearance",
+            "layout_clearance",
+            "content_height",
+            "content_size_hint_height",
+            "content_minimum_size_hint_height",
+            "scroll_minimum",
+            "scroll_maximum",
+        )
+        for label, (surface, expected_semantic) in coverage_by_label.items():
+            record = records.get(label, {})
+            audit = record.get("dialog_scroll_audit")
+            issues: list[str] = []
+            if not isinstance(audit, dict):
+                issues.append("missing-dialog-scroll-audit")
+                audit = {}
+            fixture = record.get("fixture_validation")
+            if (
+                not isinstance(fixture, dict)
+                or fixture.get("passed") is not True
+                or fixture.get("state_profile") != label
+            ):
+                issues.append("scroll-fixture-identity-not-proven")
+            if audit.get("applicable") is not True:
+                issues.append("dialog-scroll-audit-not-applicable")
+            if audit.get("passed") is not True:
+                issues.append("dialog-scroll-audit-did-not-pass")
+            if audit.get("surface") != surface:
+                issues.append("scroll-coverage-surface-mismatch")
+            if not expected_semantic:
+                issues.append("missing-scroll-page-semantic")
+            if audit.get("expected_page_semantic") != expected_semantic:
+                issues.append("expected-scroll-page-semantic-mismatch")
+            if audit.get("actual_page_semantic") != expected_semantic:
+                issues.append("actual-scroll-page-semantic-mismatch")
+            if (
+                not isinstance(audit.get("scroll_name"), str)
+                or not str(audit.get("scroll_name", "")).strip()
+            ):
+                issues.append("missing-scroll-name")
+            if type(audit.get("footer_visible")) is not bool:
+                issues.append("invalid-footer-visibility")
+            for field in integer_fields:
+                if type(audit.get(field)) is not int:
+                    issues.append(f"invalid-scroll-metric:{field}")
+            if (
+                type(audit.get("registered_count")) is int
+                and int(audit.get("registered_count", 0)) < 1
+            ):
+                issues.append("registered-scroll-count")
+            if audit.get("active_count") != 1:
+                issues.append("active-scroll-count")
+            if (
+                audit.get("footer_visible") is True
+                and type(audit.get("footer_height")) is int
+                and int(audit.get("footer_height", 0)) <= 0
+            ):
+                issues.append("visible-footer-height")
+            if not isinstance(audit.get("issues"), list) or audit.get("issues"):
+                issues.append("dialog-scroll-audit-reported-issues")
+            if not any(issue.startswith("invalid-scroll-metric:") for issue in issues):
+                metrics = {
+                    field: int(audit[field])
+                    for field in geometry_fields
+                }
+                metrics["footer_visible"] = bool(audit.get("footer_visible"))
+                issues.extend(dialog_scroll_geometry_issue_codes(**metrics))
+                required = max(
+                    0,
+                    int(audit["content_height"]),
+                    int(audit["content_size_hint_height"]),
+                    int(audit["content_minimum_size_hint_height"]),
+                )
+                reachable = int(audit["viewport_height"]) + max(
+                    0,
+                    int(audit["scroll_maximum"])
+                    - int(audit["scroll_minimum"]),
+                )
+                if int(audit["viewport_bottom"]) != (
+                    int(audit["viewport_top"])
+                    + int(audit["viewport_height"])
+                ):
+                    issues.append("viewport-bottom-mismatch")
+                if int(audit["required_content_height"]) != required:
+                    issues.append("required-content-height-mismatch")
+                if int(audit["reachable_content_height"]) != reachable:
+                    issues.append("reachable-content-height-mismatch")
+            passed = not issues
+            results.append({
+                "label": label,
+                "surface": surface,
+                "expected_page_semantic": expected_semantic,
+                "actual_page_semantic": audit.get("actual_page_semantic", ""),
+                "registered_count": audit.get("registered_count"),
+                "active_count": audit.get("active_count"),
+                "footer_height": audit.get("footer_height"),
+                "viewport_height": audit.get("viewport_height"),
+                "declared_clearance": audit.get("declared_clearance"),
+                "layout_clearance": audit.get("layout_clearance"),
+                "required_content_height": audit.get("required_content_height"),
+                "reachable_content_height": audit.get("reachable_content_height"),
+                "issues": list(dict.fromkeys(issues)),
+                "passed": passed,
+            })
+            if not passed:
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Dialog scroll coverage failed: "
+                        + ", ".join(dict.fromkeys(issues))
+                    ),
+                })
+        return {
+            "required": True,
+            "required_count": len(coverage_by_label),
+            "records": results,
+            "passed": (
+                not duplicate_labels
+                and len(results) == len(coverage_by_label)
+                and all(result["passed"] for result in results)
+            ),
+        }
+
+    def _responsive_stability_report(self) -> dict[str, Any]:
+        """Compare every historical low/high probe's nested semantic state."""
+
+        if self._capture_profile != "full":
+            return {
+                "required": False,
+                "pair_count": 0,
+                "pairs": [],
+                "passed": True,
+            }
+        records = {
+            str(record.get("label", "")): record
+            for record in self._capture_records
+        }
+        pair_reports: list[dict[str, Any]] = []
+        for low_label, high_label in RESPONSIVE_STABILITY_PAIRS:
+            low_record = records.get(low_label, {})
+            high_record = records.get(high_label, {})
+            low_entries = list(low_record.get("responsive_semantics", ()) or ())
+            high_entries = list(high_record.get("responsive_semantics", ()) or ())
+            issues = list(
+                responsive_stability_pair_issue_codes(
+                    low_entries,
+                    high_entries,
+                )
+            )
+            _low_exact, low_states, _low_conflicts = responsive_semantic_maps(
+                low_entries
+            )
+            _high_exact, high_states, _high_conflicts = responsive_semantic_maps(
+                high_entries
+            )
+
+            def serialized(
+                states: dict[str, tuple[str, int, tuple[str, ...]]],
+            ) -> dict[str, dict[str, Any]]:
+                return {
+                    semantic_id: {
+                        "mode": state[0],
+                        "threshold_width": state[1],
+                        "region_order": list(state[2]),
+                    }
+                    for semantic_id, state in sorted(states.items())
+                }
+
+            passed = not issues
+            pair_reports.append({
+                "low": low_label,
+                "high": high_label,
+                "low_semantics": serialized(low_states),
+                "high_semantics": serialized(high_states),
+                "issues": issues,
+                "passed": passed,
+            })
+            if not passed:
+                self._failures.append({
+                    "label": f"{low_label} / {high_label}",
+                    "reason": (
+                        "Responsive semantic stability failed: "
+                        + ", ".join(issues)
+                    ),
+                })
+        return {
+            "required": True,
+            "pair_count": len(pair_reports),
+            "pairs": pair_reports,
+            "passed": (
+                len(pair_reports) == len(RESPONSIVE_STABILITY_PAIRS)
+                and all(pair["passed"] for pair in pair_reports)
+            ),
+        }
+
     def _finish(self) -> None:
         if bool(getattr(self, "_finished", False)):
             return
@@ -7447,11 +8335,69 @@ class _UiFaceCaptureRunner:
                 and bool(memory_probe.get("passed", False))
             )
         )
+        dialog_scroll_reporter = getattr(
+            self,
+            "_dialog_scroll_coverage_report",
+            None,
+        )
+        if callable(dialog_scroll_reporter):
+            dialog_scroll_audits = dialog_scroll_reporter()
+        elif self._capture_profile == "full":
+            dialog_scroll_audits = {
+                "required": True,
+                "required_count": 0,
+                "records": [],
+                "passed": False,
+            }
+            self._failures.append({
+                "label": "dialog-scroll-audits",
+                "reason": "Dialog scroll coverage reporter was unavailable",
+            })
+        else:
+            dialog_scroll_audits = {
+                "required": False,
+                "required_count": 0,
+                "records": [],
+                "passed": True,
+            }
+        dialog_scroll_audits_complete = bool(
+            dialog_scroll_audits.get("passed", False)
+        )
+        responsive_reporter = getattr(
+            self,
+            "_responsive_stability_report",
+            None,
+        )
+        if callable(responsive_reporter):
+            responsive_stability = responsive_reporter()
+        elif self._capture_profile == "full":
+            responsive_stability = {
+                "required": True,
+                "pair_count": 0,
+                "pairs": [],
+                "passed": False,
+            }
+            self._failures.append({
+                "label": "responsive-stability",
+                "reason": "Responsive stability reporter was unavailable",
+            })
+        else:
+            responsive_stability = {
+                "required": False,
+                "pair_count": 0,
+                "pairs": [],
+                "passed": True,
+            }
+        responsive_stability_complete = bool(
+            responsive_stability.get("passed", False)
+        )
         complete = (
             captured_labels == expected_labels
             and len(self._screenshots) == len(expected_labels)
             and fixture_validations_complete
             and memory_probe_complete
+            and dialog_scroll_audits_complete
+            and responsive_stability_complete
             and not self._failures
             and not self._text_layout_warnings
         )
@@ -7465,6 +8411,10 @@ class _UiFaceCaptureRunner:
             "performance": performance,
             "dialog_memory_probe": memory_probe,
             "dialog_memory_probe_complete": memory_probe_complete,
+            "dialog_scroll_audits": dialog_scroll_audits,
+            "dialog_scroll_audits_complete": dialog_scroll_audits_complete,
+            "responsive_stability": responsive_stability,
+            "responsive_stability_complete": responsive_stability_complete,
             "capture_contract_version": CAPTURE_CONTRACT_VERSION,
             "capture_profile": self._capture_profile,
             "capture_display": capture_display,

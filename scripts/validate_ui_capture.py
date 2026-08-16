@@ -174,6 +174,93 @@ def load_capture_contract(source_path: Path = DEFAULT_CAPTURE_SOURCE) -> Capture
     return CaptureContract(int(version_value), tuple(normalized_groups))
 
 
+def load_dialog_scroll_capture_coverage(
+    source_path: Path = DEFAULT_CAPTURE_SOURCE,
+    *,
+    contract: CaptureContract | None = None,
+) -> dict[str, dict[str, str]]:
+    """Load the source-owned surface, label, and page-semantic scroll proof."""
+
+    module = _source_module(source_path)
+    contract = contract or load_capture_contract(source_path)
+    try:
+        raw_coverage = ast.literal_eval(
+            _assignment_value(module, "DIALOG_SCROLL_CAPTURE_COVERAGE")
+        )
+        raw_semantics = ast.literal_eval(
+            _assignment_value(module, "DIALOG_SCROLL_CAPTURE_SEMANTICS")
+        )
+    except CaptureValidationError:
+        raise
+    except (ValueError, SyntaxError) as error:
+        raise CaptureValidationError(
+            ("dialog scroll capture coverage must be literal",)
+        ) from error
+
+    issues: list[str] = []
+    contract_labels = set(contract.labels)
+    normalized: dict[str, dict[str, str]] = {}
+    all_labels: list[str] = []
+    if not isinstance(raw_coverage, dict) or not raw_coverage:
+        issues.append("DIALOG_SCROLL_CAPTURE_COVERAGE must be a non-empty object")
+    else:
+        for raw_surface, raw_labels in raw_coverage.items():
+            surface = raw_surface.strip() if isinstance(raw_surface, str) else ""
+            if not surface:
+                issues.append("dialog scroll coverage contains an empty surface")
+                continue
+            if not isinstance(raw_labels, (tuple, list)) or not raw_labels:
+                issues.append(f"dialog scroll surface {surface!r} has no labels")
+                continue
+            surface_contract: dict[str, str] = {}
+            for raw_label in raw_labels:
+                label = raw_label.strip() if isinstance(raw_label, str) else ""
+                if not label:
+                    issues.append(
+                        f"dialog scroll surface {surface!r} has an invalid label"
+                    )
+                    continue
+                all_labels.append(label)
+                if label not in contract_labels:
+                    issues.append(
+                        f"dialog scroll label {label!r} is outside CAPTURE_FACE_GROUPS"
+                    )
+                semantic = (
+                    raw_semantics.get(label, "").strip()
+                    if isinstance(raw_semantics, dict)
+                    and isinstance(raw_semantics.get(label), str)
+                    else ""
+                )
+                if not semantic:
+                    issues.append(
+                        f"dialog scroll label {label!r} has no page semantic"
+                    )
+                surface_contract[label] = semantic
+            normalized[surface] = surface_contract
+
+    if len(all_labels) != len(set(all_labels)):
+        duplicates = sorted(
+            label for label in set(all_labels) if all_labels.count(label) > 1
+        )
+        issues.append(
+            "dialog scroll labels belong to multiple surfaces: "
+            + ", ".join(duplicates)
+        )
+    if not isinstance(raw_semantics, dict):
+        issues.append("DIALOG_SCROLL_CAPTURE_SEMANTICS must be an object")
+    else:
+        semantic_labels = {
+            label for label in raw_semantics if isinstance(label, str)
+        }
+        if semantic_labels != set(all_labels):
+            issues.append(
+                "DIALOG_SCROLL_CAPTURE_SEMANTICS must exactly match coverage labels"
+            )
+    if issues:
+        raise CaptureValidationError(issues)
+    return normalized
+
+
 def _source_module(source_path: Path) -> ast.Module:
     try:
         return ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
@@ -1312,6 +1399,203 @@ def _strict_size(value: Any, *, minimum: int = 1) -> tuple[int, int] | None:
     return value[0], value[1]
 
 
+def dialog_scroll_audit_issue_codes(
+    audit: Any,
+    *,
+    expected_surface: str = "",
+    expected_page_semantic: str = "",
+) -> tuple[str, ...]:
+    """Independently validate positive scroll/footer geometry evidence."""
+
+    if not isinstance(audit, dict):
+        return ("missing-dialog-scroll-audit",)
+    issues: list[str] = []
+    if audit.get("applicable") is not True:
+        issues.append("dialog-scroll-audit-not-applicable")
+    if audit.get("passed") is not True:
+        issues.append("dialog-scroll-audit-did-not-pass")
+    if audit.get("issues") != []:
+        issues.append("dialog-scroll-audit-reported-issues")
+    if (
+        not isinstance(audit.get("scroll_name"), str)
+        or not str(audit.get("scroll_name", "")).strip()
+    ):
+        issues.append("missing-scroll-name")
+    if expected_surface and audit.get("surface") != expected_surface:
+        issues.append("scroll-coverage-surface-mismatch")
+    if expected_page_semantic:
+        if audit.get("expected_page_semantic") != expected_page_semantic:
+            issues.append("expected-scroll-page-semantic-mismatch")
+        if audit.get("actual_page_semantic") != expected_page_semantic:
+            issues.append("actual-scroll-page-semantic-mismatch")
+
+    integer_fields = (
+        "registered_count",
+        "active_count",
+        "footer_height",
+        "footer_top",
+        "viewport_top",
+        "viewport_height",
+        "viewport_bottom",
+        "declared_clearance",
+        "layout_clearance",
+        "content_height",
+        "content_size_hint_height",
+        "content_minimum_size_hint_height",
+        "scroll_minimum",
+        "scroll_maximum",
+        "required_content_height",
+        "reachable_content_height",
+    )
+    invalid_metrics = [
+        field for field in integer_fields
+        if type(audit.get(field)) is not int
+    ]
+    issues.extend(f"invalid-scroll-metric:{field}" for field in invalid_metrics)
+    footer_visible = audit.get("footer_visible")
+    if type(footer_visible) is not bool:
+        issues.append("invalid-footer-visibility")
+    if invalid_metrics or type(footer_visible) is not bool:
+        return tuple(dict.fromkeys(issues))
+
+    registered = int(audit["registered_count"])
+    active = int(audit["active_count"])
+    footer_height = int(audit["footer_height"])
+    footer_top = int(audit["footer_top"])
+    viewport_top = int(audit["viewport_top"])
+    viewport_height = int(audit["viewport_height"])
+    viewport_bottom = int(audit["viewport_bottom"])
+    declared_clearance = int(audit["declared_clearance"])
+    layout_clearance = int(audit["layout_clearance"])
+    content_height = int(audit["content_height"])
+    size_hint = int(audit["content_size_hint_height"])
+    minimum_hint = int(audit["content_minimum_size_hint_height"])
+    scroll_minimum = int(audit["scroll_minimum"])
+    scroll_maximum = int(audit["scroll_maximum"])
+    required = int(audit["required_content_height"])
+    reachable = int(audit["reachable_content_height"])
+
+    if registered < 1:
+        issues.append("registered-scroll-count")
+    if active != 1:
+        issues.append("active-scroll-count")
+    nonnegative = {
+        "footer_height": footer_height,
+        "footer_top": footer_top,
+        "viewport_top": viewport_top,
+        "declared_clearance": declared_clearance,
+        "layout_clearance": layout_clearance,
+        "content_height": content_height,
+        "content_size_hint_height": size_hint,
+        "content_minimum_size_hint_height": minimum_hint,
+        "scroll_minimum": scroll_minimum,
+        "scroll_maximum": scroll_maximum,
+        "required_content_height": required,
+        "reachable_content_height": reachable,
+    }
+    for field, value in nonnegative.items():
+        if value < 0:
+            issues.append(f"negative-scroll-metric:{field}")
+    if viewport_height <= 0:
+        issues.append("invalid-scroll-metric:viewport_height")
+    if scroll_maximum < scroll_minimum:
+        issues.append("invalid-scroll-range")
+
+    expected_footer_height = footer_height if footer_visible else 0
+    if footer_visible and footer_height <= 0:
+        issues.append("visible-footer-height")
+    if not footer_visible and footer_height != 0:
+        issues.append("hidden-footer-height")
+    if declared_clearance != expected_footer_height:
+        issues.append("footer-clearance-mismatch")
+    if layout_clearance != expected_footer_height:
+        issues.append("footer-layout-clearance-mismatch")
+    if viewport_bottom != viewport_top + viewport_height:
+        issues.append("viewport-bottom-mismatch")
+    if footer_visible and viewport_bottom > footer_top:
+        issues.append("footer-viewport-overlap")
+
+    independently_required = max(0, content_height, size_hint, minimum_hint)
+    independently_reachable = viewport_height + max(
+        0,
+        scroll_maximum - scroll_minimum,
+    )
+    if required != independently_required:
+        issues.append("required-content-height-mismatch")
+    if reachable != independently_reachable:
+        issues.append("reachable-content-height-mismatch")
+    if independently_reachable < independently_required:
+        issues.append("unreachable-scroll-content")
+    return tuple(dict.fromkeys(issues))
+
+
+def _validate_dialog_scroll_summary(
+    payload: dict[str, Any],
+    coverage: dict[str, dict[str, str]],
+    record_audits: dict[str, dict[str, Any]],
+    issues: list[str],
+) -> None:
+    expected = [
+        (label, surface, semantic)
+        for surface, labels in coverage.items()
+        for label, semantic in labels.items()
+    ]
+    if payload.get("dialog_scroll_audits_complete") is not True:
+        issues.append("dialog_scroll_audits_complete must be true")
+    summary = payload.get("dialog_scroll_audits")
+    if not isinstance(summary, dict):
+        issues.append("dialog_scroll_audits must be an object")
+        return
+    if summary.get("required") is not True:
+        issues.append("dialog_scroll_audits required must be true")
+    if summary.get("passed") is not True:
+        issues.append("dialog_scroll_audits passed must be true")
+    if summary.get("required_count") != len(expected):
+        issues.append(
+            f"dialog_scroll_audits required_count must be {len(expected)}"
+        )
+    summaries = summary.get("records")
+    if not isinstance(summaries, list) or len(summaries) != len(expected):
+        issues.append(
+            f"dialog_scroll_audits records must contain {len(expected)} entries"
+        )
+        return
+    metric_fields = (
+        "registered_count",
+        "active_count",
+        "footer_height",
+        "viewport_height",
+        "declared_clearance",
+        "layout_clearance",
+        "required_content_height",
+        "reachable_content_height",
+    )
+    for index, ((label, surface, semantic), summary_record) in enumerate(
+        zip(expected, summaries),
+        start=1,
+    ):
+        prefix = f"dialog scroll summary {index:02d} {label}"
+        if not isinstance(summary_record, dict):
+            issues.append(f"{prefix}: record must be an object")
+            continue
+        if summary_record.get("label") != label:
+            issues.append(f"{prefix}: label is out of source order")
+        if summary_record.get("surface") != surface:
+            issues.append(f"{prefix}: surface must be {surface!r}")
+        if summary_record.get("expected_page_semantic") != semantic:
+            issues.append(f"{prefix}: expected page semantic must be {semantic!r}")
+        if summary_record.get("actual_page_semantic") != semantic:
+            issues.append(f"{prefix}: actual page semantic must be {semantic!r}")
+        if summary_record.get("issues") != []:
+            issues.append(f"{prefix}: issues must be empty")
+        if summary_record.get("passed") is not True:
+            issues.append(f"{prefix}: passed must be true")
+        audit = record_audits.get(label, {})
+        for field in metric_fields:
+            if summary_record.get(field) != audit.get(field):
+                issues.append(f"{prefix}: {field} does not match capture audit")
+
+
 def expected_resize_geometry_acceptance(
     *,
     label: str,
@@ -1506,6 +1790,15 @@ def validate_capture_manifest(
         capture_source,
         contract=contract,
     )
+    dialog_scroll_coverage = load_dialog_scroll_capture_coverage(
+        capture_source,
+        contract=contract,
+    )
+    dialog_scroll_by_label = {
+        label: (surface, semantic)
+        for surface, labels in dialog_scroll_coverage.items()
+        for label, semantic in labels.items()
+    }
     manifest_path = manifest_path.resolve()
     payload = _load_json_object(manifest_path, "capture manifest")
     session_dir = manifest_path.parent.resolve()
@@ -1579,6 +1872,7 @@ def validate_capture_manifest(
     record_displays: list[str] = []
     record_geometry: dict[str, tuple[int, int, float, str]] = {}
     record_audits: dict[str, dict[str, Any]] = {}
+    record_scroll_audits: dict[str, dict[str, Any]] = {}
     for index, label in enumerate(expected_labels, start=1):
         state_contract = state_evidence_contracts[label]
         expected_state_profile = state_contract["profile"]
@@ -1833,6 +2127,42 @@ def validate_capture_manifest(
                     f"capture {index:03d} {label}: {warning_field} is not empty"
                 )
 
+        scroll_audit = record.get("dialog_scroll_audit")
+        if not isinstance(scroll_audit, dict):
+            issues.append(
+                f"capture {index:03d} {label}: dialog_scroll_audit must be an object"
+            )
+        else:
+            record_scroll_audits[label] = scroll_audit
+            if type(scroll_audit.get("applicable")) is not bool:
+                issues.append(
+                    f"capture {index:03d} {label}: dialog scroll applicable must be boolean"
+                )
+            if scroll_audit.get("passed") is not True:
+                issues.append(
+                    f"capture {index:03d} {label}: dialog scroll audit did not pass"
+                )
+            if scroll_audit.get("issues") != []:
+                issues.append(
+                    f"capture {index:03d} {label}: dialog scroll issues must be empty"
+                )
+            expected_scroll = dialog_scroll_by_label.get(label)
+            if expected_scroll is not None:
+                surface, semantic = expected_scroll
+                for issue in dialog_scroll_audit_issue_codes(
+                    scroll_audit,
+                    expected_surface=surface,
+                    expected_page_semantic=semantic,
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: dialog scroll {issue}"
+                    )
+            elif scroll_audit.get("applicable") is True:
+                for issue in dialog_scroll_audit_issue_codes(scroll_audit):
+                    issues.append(
+                        f"capture {index:03d} {label}: dialog scroll {issue}"
+                    )
+
         fixture_source = record.get("fixture_source")
         if (
             not isinstance(fixture_source, str)
@@ -1975,6 +2305,13 @@ def validate_capture_manifest(
                 dpr,
                 renderer_families[label],
             )
+
+    _validate_dialog_scroll_summary(
+        payload,
+        dialog_scroll_coverage,
+        record_scroll_audits,
+        issues,
+    )
 
     first_seen_displays = list(dict.fromkeys(record_displays))
     if payload.get("capture_displays") != first_seen_displays:

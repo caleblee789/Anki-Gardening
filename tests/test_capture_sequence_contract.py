@@ -116,7 +116,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 9
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 10
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -237,7 +237,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         spec[0] for spec in _literal_assignment("RESIZE_MATRIX_SPECS")
     )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 146
+    assert len(labels) == 149
     assert len(labels) == len(set(labels))
 
 
@@ -254,7 +254,7 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
     assert Counter(families) == {
         "AnkiQt": 12,
         "GardenDashboard": 43,
-        "GardenProgressDialog": 21,
+        "GardenProgressDialog": 24,
         "GardenSettingsDialog": 17,
         "NurseryDialog": 16,
         "CustomizeGardenDialog": 8,
@@ -277,7 +277,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 146
+    assert len({profile["profile_id"] for profile in profiles}) == 149
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -289,9 +289,10 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
         1383,
         900,
     ]
-    assert resolver("resize-dashboard-content-1359")["layout_mode"] == "compact"
+    assert resolver("resize-dashboard-content-1359")["layout_mode"] == "wide"
     assert resolver("resize-dashboard-content-1361")["layout_mode"] == "wide"
     assert resolver("resize-progress-minimum")["canonical_page"] == "overview"
+    assert resolver("resize-collection-minimum")["canonical_page"] == "collection"
 
 
 def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
@@ -345,6 +346,7 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         "dashboard",
         "settings",
         "progress",
+        "collection",
         "customize",
         "nursery",
         "story",
@@ -354,20 +356,32 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         "species-overview",
     }
     assert all(spec[3] > 0 and spec[4] > 0 for spec in specs)
-    assert any("below-700" in spec[2] for spec in specs)
-    assert any("above-700" in spec[2] for spec in specs)
-    assert any("below-760" in spec[2] for spec in specs)
-    assert any("above-760" in spec[2] for spec in specs)
-    assert any("below-820" in spec[2] for spec in specs)
-    assert any("above-820" in spec[2] for spec in specs)
-    assert any("below-900" in spec[2] for spec in specs)
-    assert any("above-900" in spec[2] for spec in specs)
-    assert any("below-1000" in spec[2] for spec in specs)
-    assert any("above-1000" in spec[2] for spec in specs)
-    assert any("below-1360" in spec[2] for spec in specs)
-    assert any("above-1360" in spec[2] for spec in specs)
+    assert sum("historical-edge-low-stability-probe" == spec[2] for spec in specs) == 13
+    assert sum("historical-edge-high-stability-probe" == spec[2] for spec in specs) == 13
     assert set(layout_modes) == {spec[0] for spec in specs}
     assert all(layout_modes[spec[0]] in {"default", "display", "narrow", "compact", "wide"} for spec in specs)
+    paired_ids = (
+        ("resize-dashboard-content-699", "resize-dashboard-content-701"),
+        ("resize-dashboard-content-819", "resize-dashboard-content-821"),
+        ("resize-dashboard-content-899", "resize-dashboard-content-901"),
+        ("resize-dashboard-content-999", "resize-dashboard-content-1001"),
+        ("resize-dashboard-content-1359", "resize-dashboard-content-1361"),
+        ("resize-settings-content-699", "resize-settings-content-701"),
+        ("resize-settings-content-759", "resize-settings-content-761"),
+        ("resize-progress-content-819", "resize-progress-content-821"),
+        ("resize-customize-content-819", "resize-customize-content-821"),
+        ("resize-nursery-content-759", "resize-nursery-content-761"),
+        ("resize-story-content-539", "resize-story-content-541"),
+        (
+            "resize-starter-confirmation-content-399",
+            "resize-starter-confirmation-content-401",
+        ),
+        (
+            "resize-fertilizer-replacement-content-399",
+            "resize-fertilizer-replacement-content-401",
+        ),
+    )
+    assert all(layout_modes[low] == layout_modes[high] for low, high in paired_ids)
 
 
 def test_capture_manifest_records_geometry_and_fails_unexplained_or_unsafe_drift() -> None:
@@ -1735,15 +1749,16 @@ def test_duplicate_minimum_dashboard_geometry_has_two_explicit_audit_purposes() 
     assert '"distinct_audit_purpose": "responsive minimum resize transition"' in requested
 
 
-def test_progress_resize_faces_reset_to_the_canonical_overview() -> None:
+def test_progress_resize_faces_route_to_their_declared_page() -> None:
     resize = _method_source("_UiFaceCaptureRunner", "_capture_resize_matrix_face")
-    route_position = resize.index('navigation.set_current("overview")')
+    route_position = resize.index("navigation.set_current(target_page)")
     refresh_position = resize.index("refresh()", route_position)
     capture_position = resize.index("capture_widget(progress, close=True)")
 
     assert route_position < refresh_position < capture_position
-    assert '"overview" not in keys' in resize
-    assert "Garden Progress overview was unavailable" in resize
+    assert 'target_page = "collection" if family == "collection" else "overview"' in resize
+    assert "target_page not in keys" in resize
+    assert "Garden Progress {target_page} was unavailable" in resize
 
 
 def test_watering_faces_clear_unrelated_stress_state_and_audit_the_name() -> None:

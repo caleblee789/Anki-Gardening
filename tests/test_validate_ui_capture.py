@@ -17,6 +17,7 @@ from scripts.validate_ui_capture import (
     expected_contact_sheet_page_groups,
     expected_resize_geometry_acceptance,
     load_capture_contract,
+    load_dialog_scroll_capture_coverage,
     load_expected_renderer_families,
     load_expected_resize_layout_modes,
     load_expected_state_evidence_contracts,
@@ -119,6 +120,15 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         CAPTURE_SOURCE,
         contract=contract,
     )
+    scroll_coverage = load_dialog_scroll_capture_coverage(
+        CAPTURE_SOURCE,
+        contract=contract,
+    )
+    scroll_by_label = {
+        label: (surface, semantic)
+        for surface, labels in scroll_coverage.items()
+        for label, semantic in labels.items()
+    }
     screenshots: list[str] = []
     records: list[dict[str, object]] = []
     for capture_id, label in enumerate(contract.labels, start=1):
@@ -193,6 +203,43 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             },
             "passed": True,
         }
+        scroll_expectation = scroll_by_label.get(label)
+        if scroll_expectation is None:
+            dialog_scroll_audit: dict[str, object] = {
+                "applicable": False,
+                "registered_count": 0,
+                "active_count": 0,
+                "issues": [],
+                "passed": True,
+            }
+        else:
+            surface, page_semantic = scroll_expectation
+            dialog_scroll_audit = {
+                "applicable": True,
+                "surface": surface,
+                "expected_page_semantic": page_semantic,
+                "actual_page_semantic": page_semantic,
+                "scroll_name": f"{surface} scroll",
+                "registered_count": 1,
+                "active_count": 1,
+                "footer_visible": True,
+                "footer_height": 64,
+                "footer_top": 400,
+                "viewport_top": 100,
+                "viewport_height": 300,
+                "viewport_bottom": 400,
+                "declared_clearance": 64,
+                "layout_clearance": 64,
+                "content_height": 300,
+                "content_size_hint_height": 280,
+                "content_minimum_size_hint_height": 260,
+                "scroll_minimum": 0,
+                "scroll_maximum": 0,
+                "required_content_height": 300,
+                "reachable_content_height": 300,
+                "issues": [],
+                "passed": True,
+            }
         records.append({
             "audit": {
                 "fixture_identity": fixture_validation,
@@ -205,6 +252,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "constraint_limited": False,
             "declared_client_size": list(logical_size),
             "device_pixel_ratio": dpr,
+            "dialog_scroll_audit": dialog_scroll_audit,
             "exact_size_reached": True,
             "fixture_source": fixture_source,
             "fixture_validation": fixture_validation,
@@ -231,6 +279,33 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "width": logical_size[0],
             "window_family": family,
         })
+    records_by_label = {str(record["label"]): record for record in records}
+    scroll_summary_records: list[dict[str, object]] = []
+    for surface, labels in scroll_coverage.items():
+        for label, semantic in labels.items():
+            record_audit = records_by_label[label]["dialog_scroll_audit"]
+            assert isinstance(record_audit, dict)
+            scroll_summary_records.append({
+                "label": label,
+                "surface": surface,
+                "expected_page_semantic": semantic,
+                "actual_page_semantic": semantic,
+                **{
+                    field: record_audit[field]
+                    for field in (
+                        "registered_count",
+                        "active_count",
+                        "footer_height",
+                        "viewport_height",
+                        "declared_clearance",
+                        "layout_clearance",
+                        "required_content_height",
+                        "reachable_content_height",
+                    )
+                },
+                "issues": [],
+                "passed": True,
+            })
     payload: dict[str, object] = {
         "capture_contract_version": contract.version,
         "capture_profile": "full",
@@ -288,6 +363,13 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             },
         },
         "dialog_memory_probe_complete": True,
+        "dialog_scroll_audits": {
+            "required": True,
+            "required_count": len(scroll_summary_records),
+            "records": scroll_summary_records,
+            "passed": True,
+        },
+        "dialog_scroll_audits_complete": True,
         "fixture_validations_complete": True,
         "complete": True,
     }
@@ -455,11 +537,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 146
+    assert capture_result["capture_count"] == 149
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
         "page_count": 19,
-        "surface_count": 146,
+        "surface_count": 149,
         "status": "valid",
     }
 
@@ -469,7 +551,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     pages = expected_contact_sheet_pages(contract)
 
     assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 6,
+        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10, 9,
     ]
     assert pages[6:10] == (
         (("Release stress — Garden", 10),),
@@ -479,18 +561,18 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     )
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
         4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
-        4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 3218,
+        4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 5078,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_146_faces() -> None:
+def test_renderer_families_are_derived_from_source_for_all_149_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
     assert tuple(families) == contract.labels
     assert Counter(families.values()) == Counter({
         "GardenDashboard": 43,
-        "GardenProgressDialog": 21,
+        "GardenProgressDialog": 24,
         "GardenSettingsDialog": 17,
         "NurseryDialog": 16,
         "AnkiQt": 12,
@@ -505,13 +587,13 @@ def test_renderer_families_are_derived_from_source_for_all_146_faces() -> None:
     assert families["watering-can-garden-plot-6"] == "GardenDashboard"
     assert families["resize-species-overview-large"] == "SpeciesOverviewDialog"
     resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
-    assert len(resize_modes) == 56
-    assert resize_modes["resize-dashboard-content-819"] == "narrow"
+    assert len(resize_modes) == 59
+    assert resize_modes["resize-dashboard-content-819"] == "compact"
     assert resize_modes["resize-dashboard-content-821"] == "compact"
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_146_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_all_149_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -520,7 +602,7 @@ def test_state_evidence_contracts_are_derived_for_all_146_faces() -> None:
 
     assert tuple(states) == contract.labels
     assert Counter(state["kind"] for state in states.values()) == Counter({
-        "resize": 56,
+        "resize": 59,
         "dashboard": 30,
         "progress": 16,
         "home": 12,
@@ -1094,8 +1176,8 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 146" in message
-    assert "pages account for 145 surfaces" in message
+    assert "surface_count must be 149" in message
+    assert "pages account for 148 surfaces" in message
     assert "PNG dimensions must be 3000x4262px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message
@@ -1276,3 +1358,50 @@ def test_manifest_accepts_qt_proxy_duplicate_with_explicit_provenance(
     _write_json(manifest, payload)
 
     assert validate_capture_manifest(manifest)["status"] == "valid"
+
+
+def test_manifest_rejects_scroll_geometry_and_collection_page_drift(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    contract = load_capture_contract(CAPTURE_SOURCE)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    index = contract.labels.index("progress-collection")
+    record = records[index]
+    assert isinstance(record, dict)
+    scroll_audit = record["dialog_scroll_audit"]
+    assert isinstance(scroll_audit, dict)
+    scroll_audit.update({
+        "actual_page_semantic": "GardenProgressDialog:overview",
+        "declared_clearance": 63,
+        "content_height": 301,
+        "required_content_height": 301,
+    })
+    _write_json(manifest, payload)
+
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    assert "actual-scroll-page-semantic-mismatch" in message
+    assert "footer-clearance-mismatch" in message
+    assert "unreachable-scroll-content" in message
+
+
+def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    payload["dialog_scroll_audits_complete"] = False
+    summary = payload["dialog_scroll_audits"]
+    assert isinstance(summary, dict)
+    summary["passed"] = False
+    summary["records"] = []
+    _write_json(manifest, payload)
+
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    assert "dialog_scroll_audits_complete must be true" in message
+    assert "dialog_scroll_audits passed must be true" in message
+    assert "dialog_scroll_audits records must contain" in message
