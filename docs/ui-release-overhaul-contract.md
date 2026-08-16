@@ -94,7 +94,7 @@ surface family.
 | 003 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-16 onboarding and scene projection | Choose first plant; no-stock, save-error, planted-not-nurtured, and normal variants |
 | 004-006 | Starter Nursery and confirmation | `NurseryDialog`, `StarterConfirmationDialog` | First-run route from Dashboard | Native Qt; release-ready asset catalog plus onboarding and ownership state | Choose, confirm, cancel/back; locked/no-stock, missing artwork, disabled, and action-above-footer variants |
 | 007-008, 018-019, 064-069 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from shared garden projection; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
-| 009-012, 016, 042-055, 058-063, 087-103 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and manifest geometry | Select, Nurture, Fertilize, Move, Store, Plant, Story, Progress, Customize, Settings, Undo; hover/focus, long values, all stages/plots, full-grown, invalid destination, save error, narrow/scaling variants |
+| 009-012, 016, 042-055, 058-063, 087-103 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and manifest geometry | Select, Nurture, Fertilize, Move, Move to Collection, Plant, Story, Progress, Customize, Settings, Undo; hover/focus, long values, all stages/plots, full-grown, invalid destination, save error, narrow/scaling variants |
 | 013-015, 056-057, 136-143 | Fertilizer and replacement confirmation | `DialogShell`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; target plant, active interval/history, nurtured capability, balance, and transaction ledger | Purchase/Extend/Replace, cancel; unaffordable, affordable, active, expiring, history-cap, save-error, and responsive variants |
 | 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
 | 020-025 | Growth, streak, and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; daily source allocation, review totals, streak, currency, and ledger | Navigate/close; zero, new, nonzero, active, history, empty, and error variants |
@@ -128,7 +128,7 @@ webview bridge, not a general routing framework.
 | Selected plant card | Move | Scene placement mode | Destination commit changes slots atomically; Undo is session-local |
 | Selected plant card | Story | `PlantStoryDialog` | None except a confirmed rename |
 | Collection plant | Plant | Engine `plant_from_collection()` | Atomically assigns an empty unlocked slot |
-| Garden plant | Store / Move to Collection | Engine `move_to_collection()` | Atomically clears its slot; prohibited for the nurtured plant |
+| Garden plant | Move to Collection | Engine `move_to_collection()` | Atomically clears its slot; prohibited for the nurtured plant |
 | Collection species | Inspect | Species overview dialog | None |
 | Progress Collection | Select environment / visibility | Direct equip or visibility engine action | Atomically commits one state change per action |
 | Customize | Save changes | Engine `apply_environment_loadout()` | Atomically commits both selected effects and both visibility switches |
@@ -388,7 +388,7 @@ slot are distinct states:
 
 - Purchasing a species creates a stored zero-Growth plant instance.
 - Plant assigns an owned stored instance to an empty unlocked slot.
-- Store / Move to Collection clears its slot and preserves identity, Growth,
+- Move to Collection clears its slot and preserves identity, Growth,
   memories, Fertilizer, and Booster.
 - The currently nurtured plant cannot be stored until another unfinished plant
   is nurtured.
@@ -504,7 +504,7 @@ same action rather than overloading a generic verb.
 | Unequip | No supported action in Release 2.1.0. | Exactly one Weather and one Scenery remain selected. Hiding artwork is not Unequip and does not disable its passive. |
 | Plant | Assign one owned stored plant instance to an empty unlocked garden space. | Preserves all plant identity and progression. |
 | Move | Relocate or swap a planted instance through direct scene placement. | Valid destination saves immediately; the open-session Undo may restore the latest placement. |
-| Store / Move to Collection | Remove a non-nurtured planted instance from its slot without deleting it. | Preserves Growth, memories, Fertilizer, Booster, and identity. The semantic category is defined; the visible learner-facing phrase that replaces “Shelve” still requires user approval. |
+| Move to Collection | Remove a non-nurtured planted instance from its slot without deleting it. | Preserves Growth, memories, Fertilizer, Booster, and identity. This is the approved canonical learner-facing phrase; **Store** is not a competing action label. |
 | Replace | Confirm discarding the remaining interval of a different active Fertilizer and activate the purchased tier. | Old interval is truncated/archived; debit and replacement save together. |
 | Nurture | Route future eligible review Growth to one unfinished planted plant. | Updates active plant periods. It never moves or backfills prior Growth. |
 | Fertilize | Open and complete the target-plant Fertilizer purchase flow. Same tier extends; another active tier requires Replace. | Purchase, interval history, activation/extension, balance, and ledger commit together. |
@@ -537,10 +537,11 @@ All current user-facing uses must be resolved deliberately:
 
 The current UI/state copy uses Shelve/Shelved at
 `ankigarden/ui/dashboard.py:3838,3850-3868,9307,9854-9857`. The engine operation
-is `move_to_collection()` (`ankigarden/game.py:2103-2115`). Use one approved
-learner-facing phrase—**Store** or **Move to Collection**—and one corresponding
-state adjective. No current visible **Remove**, **Store**, or **Unequip** action
-exists.
+is `move_to_collection()` (`ankigarden/game.py:2103-2115`). **Move to
+Collection** is the approved canonical learner-facing action and must replace
+**Shelve** in downstream UI work; use a corresponding Collection-based state
+phrase rather than **Shelved**. No current visible **Remove**, **Store**, or
+**Unequip** action exists.
 
 ### Proposed shared action descriptor
 
@@ -654,7 +655,7 @@ explicitly approves a contract change:
 7. Purchase, Use, equipment, placement, reward, and Growth changes are atomic.
    Repeatable user intents must be idempotent across retry, not only guarded
    against double-click.
-8. Plant, Store, and Move preserve the stable plant instance, Growth, memories,
+8. Plant, Move to Collection, and Move preserve the stable plant instance, Growth, memories,
    Fertilizer, Booster, and identity.
 9. Six V6 direct-soil slots, manifest support geometry, crop, and painterly
    layering are visual contracts. Runtime fitting may scale but may not move a
