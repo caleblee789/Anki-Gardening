@@ -72,9 +72,9 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
 
 @pytest.mark.parametrize(
     ("width", "compact"),
-    [(0, True), (640, True), (759, True), (760, False), (920, False)],
+    [(0, True), (640, True), (683, True), (684, False), (759, False), (761, False)],
 )
-def test_settings_layout_breakpoint_is_deterministic(width, compact):
+def test_settings_layout_compatibility_uses_the_shared_content_requirement(width, compact):
     assert settings_layout_is_compact(width) is compact
 
 
@@ -1053,11 +1053,13 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert 'self.done = QPushButton("Done")' not in dashboard
     assert "destination_selector" not in dashboard
     assert "self.engine.commit_placement_draft(draft)" in dashboard
-    assert "COMPACT_LAYOUT_WIDTH = 900" in dashboard
+    assert "COMPACT_LAYOUT_WIDTH" not in dashboard
     assert "self.onboarding_layout = QVBoxLayout(self.onboarding_panel)" in dashboard
     assert "self.onboarding_layout.addLayout(onboarding_actions)" in dashboard
-    assert "self.milestone_layout.setDirection(direction)" in dashboard
-    assert "self.rearrange_bar.set_compact(compact)" in dashboard
+    assert '"dashboard.milestone"' in dashboard
+    assert "self.dashboard_milestone_responsive.evaluate(available)" in dashboard
+    assert '"dashboard.rearrange-actions"' in dashboard
+    assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
     assert "64 if guided else (96 if metrics_compact else 104)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard

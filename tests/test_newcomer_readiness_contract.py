@@ -269,7 +269,8 @@ def test_reduced_motion_is_visible_and_suppresses_scene_motion() -> None:
     assert "self.motion_row = ToggleSettingRow(" in studio
     assert 'controls_layout.addWidget(self.motion_row)' in studio
     assert '"reduced_motion": animation_flags[1]' in studio
-    assert 'not self.reduced_motion.isChecked()' in studio
+    assert "effective_motion_enabled(" in studio
+    assert "os_reader=lambda: self._system_reduced_motion" in studio
     assert 'if transition_ids and bool(self.scene.get("motion_enabled", True)):' in scene
     assert 'if bool(self.scene.get("motion_enabled", True)):' in scene
     assert 'if not self.timer.isActive()' in scene

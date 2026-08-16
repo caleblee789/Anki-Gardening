@@ -810,11 +810,20 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
         def singleShot(cls, _delay: int, callback: Any) -> None:
             cls.callbacks.append(callback)
 
+    def set_control_enabled(widget: Any, enabled: bool, **_kwargs: Any) -> None:
+        widget.setEnabled(enabled)
+
     unlock = _compiled_method(
-        DASHBOARD_PATH, "NurseryDialog", "_unlock_bed", {"QTimer": Timer}
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_unlock_bed",
+        {"QTimer": Timer, "set_control_enabled": set_control_enabled},
     )
     release = _compiled_method(
-        DASHBOARD_PATH, "NurseryDialog", "_release_bed_purchase"
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_release_bed_purchase",
+        {"set_control_enabled": set_control_enabled},
     )
     begin_catalog_transaction = _compiled_method(
         DASHBOARD_PATH, "NurseryDialog", "_begin_catalog_transaction"
@@ -898,11 +907,31 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
 
 
 def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() -> None:
+    class Timer:
+        callbacks: list[Any] = []
+
+        @classmethod
+        def singleShot(cls, _delay: int, callback: Any) -> None:
+            cls.callbacks.append(callback)
+
+    class Priority:
+        POLITE = "polite"
+        ASSERTIVE = "assertive"
+
     show_result = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_show_result",
-        {"_learner_text": lambda value: value},
+        {
+            "_learner_text": lambda value: value,
+            "AnnouncementPriority": Priority,
+            "QTimer": Timer,
+        },
+    )
+    hide_status = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_hide_status_if_current",
     )
     sync_recovery = _compiled_method(
         DASHBOARD_PATH,
@@ -934,6 +963,9 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         def show(self) -> None:
             self.visible = True
 
+        def hide(self) -> None:
+            self.visible = False
+
         def setFocus(self) -> None:
             self.focused = True
 
@@ -946,8 +978,23 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
 
     status = Status()
     receipt_actions = ReceiptActions()
+    announcements: list[tuple[str, str]] = []
+    nursery = SimpleNamespace(
+        _status_generation=0,
+        status=status,
+        receipt_actions=receipt_actions,
+        accessibility_announcer=SimpleNamespace(
+            announce=lambda message, *, priority, target: announcements.append(
+                (message, priority)
+            )
+        ),
+    )
+    nursery._hide_status_if_current = lambda generation: hide_status(
+        nursery,
+        generation,
+    )
     show_result(
-        SimpleNamespace(status=status, receipt_actions=receipt_actions),
+        nursery,
         False,
         "Not enough Garden Coins.",
     )
@@ -955,6 +1002,14 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         "Not enough Garden Coins.", "Not enough Garden Coins.", True, True,
     )
     assert receipt_actions.visible is False
+    assert announcements[-1] == ("Not enough Garden Coins.", "assertive")
+
+    show_result(nursery, True, "Garden space unlocked.")
+    assert len(Timer.callbacks) == 1
+    show_result(nursery, False, "A newer purchase failed.")
+    Timer.callbacks.pop()()
+    assert status.visible is True
+    assert status.text == "A newer purchase failed."
 
     class Recovery:
         def setVisible(self, value: bool) -> None:
@@ -1065,7 +1120,7 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
     assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in stats_source
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
-    assert "font-size:11px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
+    assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
     assert "font-size:16px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
     assert "font-size:22px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
@@ -1341,7 +1396,9 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert dock.shown is True
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "self.plant_card_dock = QFrame()" in dashboard_source
-    assert "narrow_sheet = self.scene.width() < 540" in dashboard_source
+    assert "geometry = self.scene.card_geometry(" in dashboard_source
+    assert "if geometry is None:" in dashboard_source
+    assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 
 
 def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_views() -> None:

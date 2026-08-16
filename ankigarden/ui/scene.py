@@ -23,6 +23,7 @@ except Exception:
             QSvgRenderer = None  # type: ignore[assignment]
 
 from .formatters import format_percent
+from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
 from .landmarks import (
     DEFAULT_LANDMARK_ACTIONS,
     LandmarkAction,
@@ -48,9 +49,11 @@ from .plant_display import (
     partition_scene_rows,
     repair_unique_slot_items,
     requires_native_destination_selector,
+    scene_height_for_width,
     scene_profile_name,
     scene_surface_variant,
     smart_card_rect,
+    status_overlay_rect,
     theme_integration_profile,
 )
 from ..terminology import PROGRESSION_SUMMARY
@@ -118,6 +121,7 @@ class GardenSceneWidget(QWidget):
         self._keyboard_hint_timer.setInterval(5000)
         self._keyboard_hint_timer.timeout.connect(self._hide_keyboard_hint)
         self.interactive = bool(interactive)
+        self.accessibility_announcer = AccessibilityAnnouncer(self)
         self._stats_help_button = QToolButton(self)
         self._stats_help_button.setText("?")
         self._stats_help_button.setAccessibleName("About garden statistics")
@@ -185,8 +189,7 @@ class GardenSceneWidget(QWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        aspect = 4 / 3 if width < 620 else 16 / 9 if width < 1400 else 12 / 5
-        return max(250, min(800, int(width / aspect)))
+        return scene_height_for_width(width)
 
     def set_motion_enabled(self, enabled: bool) -> None:
         if enabled and self.isVisible() and not self.timer.isActive():
@@ -845,7 +848,7 @@ class GardenSceneWidget(QWidget):
             background_placement if isinstance(background_placement, dict) else None,
             composition_count=max(1, len(plants)),
             protected_status=bool(self.scene.get("show_status_overlay", True)),
-            reserve_move_controls=self._interaction.placing and self.width() >= 900,
+            reserve_move_controls=self._interaction.placing,
         )
         result: list[tuple[dict[str, Any], PlantPlacement]] = []
         self._plant_hit_rects = {}
@@ -1206,7 +1209,11 @@ class GardenSceneWidget(QWidget):
         painter.restore()
 
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
-        if not bool(self.scene.get("show_status_overlay", True)) or rect.width() < 520:
+        status_geometry = status_overlay_rect(
+            rect.width(),
+            protected=bool(self.scene.get("show_status_overlay", True)),
+        )
+        if status_geometry is None:
             self._status_rect = None
             self._stats_help_button.hide()
             return
@@ -1223,10 +1230,12 @@ class GardenSceneWidget(QWidget):
         else:
             streak_label = f"{streak_days}-day Anki streak"
         labels = [streak_label, f"{format_percent(growth)} Growth today"]
-        panel_width = min(430.0, max(1.0, rect.width() - 32.0))
-        narrow = rect.width() < 440
-        panel_height = 78 if narrow else 68
-        panel = QRectF(16, 14, panel_width, panel_height)
+        panel = QRectF(
+            status_geometry.x,
+            status_geometry.y,
+            status_geometry.width,
+            status_geometry.height,
+        )
         self._status_rect = panel
         help_x = int(panel.right() - SCENE_HELP_BUTTON_SIZE - 10)
         help_y = int(panel.top() + 8)
@@ -1912,6 +1921,18 @@ class GardenSceneWidget(QWidget):
     def _finish_move_accessibility(self, message: str) -> None:
         self.setAccessibleName("Interactive garden")
         self.setAccessibleDescription(message)
+        normalized = str(message or "").lower()
+        self.accessibility_announcer.announce(
+            message,
+            priority=(
+                AnnouncementPriority.ASSERTIVE
+                if any(
+                    token in normalized
+                    for token in ("failed", "could not", "unavailable", "error")
+                )
+                else AnnouncementPriority.POLITE
+            ),
+        )
 
     def _begin_move(self, plant_id: str, *, keyboard: bool) -> bool:
         origin = self._slot_for_plant(plant_id)

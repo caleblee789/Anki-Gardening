@@ -11,12 +11,26 @@ from .state_contracts import (
     AchievementProgressDisplay,
     achievement_progress_display,
 )
+from .responsive import (
+    COMPACT_MODE,
+    adaptive_layout_mode,
+    responsive_interpolate,
+    responsive_progress,
+)
 
 
-SETTINGS_STACK_BREAKPOINT = 760
-DASHBOARD_COMPACT_BREAKPOINT = 900
 NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO = 0.90
 NURTURED_MARKER_MAX_GROUND_DELTA_RATIO = 1.50
+
+SCENE_COMPACT_ASPECT = 4 / 3
+SCENE_STANDARD_ASPECT = 16 / 9
+SCENE_WIDE_ASPECT = 12 / 5
+SCENE_COMPACT_BLEND_START = 520.0
+SCENE_COMPACT_BLEND_END = 720.0
+SCENE_WIDE_BLEND_START = 1200.0
+SCENE_WIDE_BLEND_END = 1600.0
+STATUS_OVERLAY_MIN_WIDTH = 520.0
+STATUS_OVERLAY_HEIGHT = 68.0
 
 THEME_INTEGRATION_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "verdant_twilight": {
@@ -73,13 +87,49 @@ def theme_integration_profile(
     return result
 
 def settings_layout_is_compact(width: int) -> bool:
-    """Return whether settings controls should stack above the preview."""
-    return max(0, int(width)) < SETTINGS_STACK_BREAKPOINT
+    """Compatibility wrapper for the shared content-measured Settings split."""
+
+    return adaptive_layout_mode(
+        width,
+        (280, 360),
+        spacing=20,
+    ) == COMPACT_MODE
 
 
-def dashboard_layout_is_compact(width: int) -> bool:
-    """Return whether dashboard cards should use the narrow docked layout."""
-    return max(0, int(width)) < DASHBOARD_COMPACT_BREAKPOINT
+def scene_preferred_aspect(width: float) -> float:
+    """Return a continuous, clamped scene aspect for the available width."""
+
+    safe_width = max(1.0, float(width))
+    compact_progress = responsive_progress(
+        safe_width,
+        SCENE_COMPACT_BLEND_START,
+        SCENE_COMPACT_BLEND_END,
+    )
+    aspect = SCENE_COMPACT_ASPECT + (
+        SCENE_STANDARD_ASPECT - SCENE_COMPACT_ASPECT
+    ) * compact_progress
+    wide_progress = responsive_progress(
+        safe_width,
+        SCENE_WIDE_BLEND_START,
+        SCENE_WIDE_BLEND_END,
+    )
+    aspect += (SCENE_WIDE_ASPECT - SCENE_STANDARD_ASPECT) * wide_progress
+    return max(SCENE_COMPACT_ASPECT, min(SCENE_WIDE_ASPECT, aspect))
+
+
+def scene_height_for_width(
+    width: float,
+    *,
+    minimum: int = 250,
+    maximum: int = 800,
+) -> int:
+    """Return the stable Qt height hint for a scene of ``width`` pixels."""
+
+    safe_width = max(1.0, float(width))
+    lower = max(1, int(minimum))
+    upper = max(lower, int(maximum))
+    preferred = int(round(safe_width / scene_preferred_aspect(safe_width)))
+    return max(lower, min(upper, preferred))
 
 
 @dataclass(frozen=True)
@@ -115,6 +165,29 @@ class Rect:
         width = max(0.0, min(self.right, other.right) - max(self.x, other.x))
         height = max(0.0, min(self.bottom, other.bottom) - max(self.y, other.y))
         return width * height
+
+
+def status_overlay_rect(
+    width: float,
+    *,
+    protected: bool = True,
+    surface_context: str = "dashboard",
+) -> Rect | None:
+    """Return the one visible status-panel geometry shared by layout and paint."""
+
+    safe_width = max(1.0, float(width))
+    if (
+        not protected
+        or str(surface_context) == "home"
+        or safe_width < STATUS_OVERLAY_MIN_WIDTH
+    ):
+        return None
+    return Rect(
+        16.0,
+        14.0,
+        min(430.0, max(1.0, safe_width - 32.0)),
+        STATUS_OVERLAY_HEIGHT,
+    )
 
 
 def nurtured_marker_rect(
@@ -867,12 +940,23 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
     left, right = left + clearance, right - clearance
 
     available_w = right - left
-    context_scale = (
-        1.14 if profile_name == "home"
-        else 1.18 if width < 420
-        else 1.10 if width < 720
-        else 1.0
-    )
+    if profile_name == "home":
+        context_scale = 1.14
+    else:
+        compact_scale = responsive_interpolate(
+            width,
+            360,
+            520,
+            1.18,
+            1.10,
+        )
+        context_scale = responsive_interpolate(
+            width,
+            600,
+            840,
+            compact_scale,
+            1.0,
+        )
     nominal_h = min(height * 0.29, available_w * 0.205) * context_scale
     specs: list[
         tuple[int, dict[str, Any], BedAnchor, tuple[float, float, float, float], tuple[float, float]]
@@ -1121,10 +1205,11 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             slot_envelope = envelope_for(bed, placement)
             control_width = min(148.0, max(74.0, bed_width * 0.92))
             control_rect = Rect(label_anchor[0] - control_width / 2, label_anchor[1] - 22, control_width, 44)
-            protected = (
-                Rect(16, 14, min(430.0, max(1.0, width - 32)), 78.0 if width < 440 else 68.0)
-                if protected_status and width >= 520 and surface_context != "home" else Rect(0, 0, 0, 0)
-            )
+            protected = status_overlay_rect(
+                width,
+                protected=protected_status,
+                surface_context=surface_context,
+            ) or Rect(0, 0, 0, 0)
             protected_hits = ("status",) if visible.intersects(protected) else ()
             slot_reasons = reasons.get(slot, set()) if reasons else set()
             slot_warnings = set(warning_map.get(slot, set())) if warning_map else set()
@@ -1216,10 +1301,11 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
         if str((item.get("placement") or {}).get("layout_family", "standard")) == "expanded"
     }
     group_scale = 1.0
-    protected = (
-        Rect(16, 14, min(430.0, max(1.0, width - 32)), 78.0 if width < 440 else 68.0)
-        if protected_status and width >= 520 and surface_context != "home" else Rect(0, 0, 0, 0)
-    )
+    protected = status_overlay_rect(
+        width,
+        protected=protected_status,
+        surface_context=surface_context,
+    ) or Rect(0, 0, 0, 0)
 
     def adjust(slot: int, *, scale_by: float = 1.0, dx: float = 0.0, dy: float = 0.0, reason: str) -> bool:
         current_scale, current_x, current_y = adjustments[slot]
@@ -1228,8 +1314,8 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
         # is selective (only a colliding sprite is reduced) and comes after
         # anchor, perspective, spacing, and envelope placement.
         minimum_local_scale = (
-            0.74 if enforce_slot_envelopes and count >= 4 and width <= 720
-            else 0.84 if enforce_slot_envelopes and count >= 4
+            responsive_interpolate(width, 660, 780, 0.74, 0.84)
+            if enforce_slot_envelopes and count >= 4
             else 0.92
         )
         next_scale = max(minimum_local_scale, current_scale * scale_by)
@@ -1253,7 +1339,20 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
 
     def finish(rows: list[PlantPlacement]) -> list[PlantPlacement]:
         resolved: list[PlantPlacement] = []
-        readable_art = 22.0 if width < 480 else 33.0 if width < 720 else 42.0
+        compact_readable_art = responsive_interpolate(
+            width,
+            440,
+            520,
+            22.0,
+            33.0,
+        )
+        readable_art = responsive_interpolate(
+            width,
+            680,
+            760,
+            compact_readable_art,
+            42.0,
+        )
         placed_controls: list[Rect] = []
         severe_by_slot: dict[int, set[str]] = {row.slot_index: set() for row in rows}
         active_rows = [row for row in rows if row.slot_index in active_slots]
@@ -1410,7 +1509,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
         # Reserve compact move badges during the same fitting pass.  If the
         # best control position is still blocked, reduce the blocking plant
         # locally before considering a whole-garden shrink.
-        if reserve_move_controls and width >= 480:
+        if reserve_move_controls:
             for row in active_result:
                 obstacles = [other.foliage_rect.expanded(3, 2) for other in active_result]
                 badge = bed_badge_rect(row, "Swap with plant", width, height, obstacles)

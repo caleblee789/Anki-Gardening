@@ -168,8 +168,11 @@ def test_nursery_stage_carousel_uses_clear_bounded_navigation() -> None:
     assert 'QPushButton("← Previous")' in carousel
     assert 'QPushButton("Next →")' in carousel
     assert 'stage_count.setText(f"Stage {index + 1} of {len(GROWTH_STAGES)}")' in carousel
-    assert "previous.setEnabled(index > 0)" in carousel
-    assert "next_button.setEnabled(index < len(GROWTH_STAGES) - 1)" in carousel
+    assert carousel.count("set_control_enabled(") >= 2
+    assert "index > 0" in carousel
+    assert "index < len(GROWTH_STAGES) - 1" in carousel
+    assert "This is the first growth stage." in carousel
+    assert "This is the final growth stage." in carousel
     assert "state[\"index\"] = max(" in carousel
     assert "% len(GROWTH_STAGES)" not in carousel
     assert "preview.setToolTip(replacement.toolTip())" in carousel
@@ -266,6 +269,9 @@ def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
 def test_garden_chrome_uses_one_unified_progress_dialog() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     capture = _source("ankigarden/capture_ui_faces.py")
+    progress_source = _class_source(
+        "ankigarden/ui/dashboard.py", "GardenProgressDialog"
+    )
     open_progress = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDashboard", "_open_progress"
     )
@@ -289,7 +295,8 @@ def test_garden_chrome_uses_one_unified_progress_dialog() -> None:
     assert '("streak", "Anki Streak")' in dashboard
     assert '("currency", "Garden Coins")' in dashboard
     assert "self.progress_dialog = GardenProgressDialog(" in dashboard
-    assert "self.setMaximumWidth(1000)" in dashboard
+    assert "DialogSizeClass.CATALOG" in progress_source
+    assert "self.apply_size_policy(" in progress_source
     assert "self.navigation = GardenSideNavigation()" in dashboard
     assert "self.set_body_widget(self.navigation)" in dashboard
     assert "self.details_dialog = self.progress_dialog" in dashboard
@@ -318,9 +325,11 @@ def test_garden_details_shell_preserves_user_position_and_keyboard_focus() -> No
     )[0]
 
     assert 'super().__init__(parent, "Plant Growth")' in details
-    assert "self.setMinimumSize(620, 460)" in details
-    assert "self.setMaximumWidth(740)" in details
-    assert "self.resize(740, min(570, maximum_height))" in details
+    assert "self.apply_size_policy(" in details
+    assert "DialogSizeClass.STANDARD_TEXT" in details
+    assert "preferred_width=740" in details
+    assert "preferred_height=570" in details
+    assert "self.setMinimumSize(620, 460)" not in details
     assert 'self.tabs = GardenTabs("Garden detail sections")' in details
     assert "def _position_over_parent_once" in dashboard
     assert "parent.window().frameGeometry()" in dashboard
@@ -511,7 +520,7 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     assert "fertilizer_reason" in card
     assert "Nurture this plant before using Fertilizer." in card
     plant_section_style = dashboard.split("QLabel[plantCardSection='true']", 1)[1].split("}", 1)[0]
-    assert "font-size:11px" in plant_section_style
+    assert "font-size:12px" in plant_section_style
     assert "self.plant_card.nurture.clicked.connect" in build_ui
     assert "self.plant_card.fertilize.clicked.connect" in build_ui
     assert "self.plant_card.move.clicked.connect" in build_ui
@@ -947,7 +956,9 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     )
 
     assert "_affordability_status(price, balance)" in available_card
-    assert "action.setEnabled(affordable)" in available_card
+    assert "set_control_enabled(" in available_card
+    assert "affordable," in available_card
+    assert "is not affordable yet" in available_card
     assert "card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in available_card
     assert "apply_explanatory_tooltip(" in available_card
     assert "self.bed_affordability" in nursery
@@ -957,7 +968,9 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert "more needed" in space_card
     assert "current_status" in fertilizer
     assert "self._fertilizer_text(plant)" in fertilizer
-    assert "choose.setEnabled(affordable and active)" in fertilizer
+    assert "set_control_enabled(" in fertilizer
+    assert "affordable and active" in fertilizer
+    assert "Nurture this plant before purchasing Fertilizer." in fertilizer
     assert 'action_label = "Apply"' in fertilizer
     assert 'action_label = "Replace"' in fertilizer
     assert 'f"{semantic_action} for {spec.price:,} Garden Coins"' in fertilizer
@@ -998,7 +1011,9 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert '"Customize" if owned else "Buy"' in environment
     assert 'QPushButton("Unlock")' in spaces
     assert 'QPushButton("Replace")' in replacement
-    assert "self.setMinimumSize(420, 400)" in replacement
+    assert "DialogSizeClass.COMPARISON" in replacement
+    assert "self.register_scroll_region(self.content_scroll)" in replacement
+    assert "self.register_pinned_footer(self.action_footer)" in replacement
     for source in (available, supplement, charge, environment, spaces, replacement):
         assert "Buy for" not in source
         assert "Apply for" not in source
@@ -1039,7 +1054,8 @@ def test_compact_dashboard_keeps_words_for_progress_and_anki_streak() -> None:
         "ankigarden/ui/dashboard.py", "GardenStatsStrip", "set_compact"
     )
 
-    assert 'self.progress_btn.setText("Progress" if smallest else "Garden Progress")' in responsive
+    assert 'self.progress_btn.setText("Garden Progress")' in responsive
+    assert '"Progress" if smallest else "Garden Progress"' not in responsive
     assert 'self.progress_btn.setText("↗"' not in responsive
     assert 'self.streak_label.setText("ANKI STREAK")' in compact_stats
     assert "self.streak_heading.removeWidget(self.streak_bonus)" in compact_stats

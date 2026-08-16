@@ -125,7 +125,8 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     assert "self.title_label.setMinimumWidth(0)" in dashboard
     assert "self.top_bar.adjustSize()" in dashboard
     assert "self.header_grid.addWidget(self.garden_stats_bar" in dashboard
-    assert "compact = int(width) < 700" in settings
+    assert '"settings.footer-actions"' in settings
+    assert "self.settings_footer_responsive.evaluate(width)" in settings
     assert "self.settings_footer_grid.addWidget(self.cancel_settings, 0, 0)" in settings
     assert "self.settings_footer_grid.addWidget(self.save_settings, 0, 1)" in settings
     assert "garden_name_panel.setMinimumHeight(96)" in settings

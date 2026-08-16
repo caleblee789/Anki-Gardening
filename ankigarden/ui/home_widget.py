@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from math import isfinite
 from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
@@ -78,6 +79,12 @@ class HomeWidgetSnapshot:
     phase: str
     data: HomeWidgetData | None = None
     error_message: str | None = None
+    enable_animations: bool = True
+    reduced_motion: bool = False
+
+    @property
+    def motion_enabled(self) -> bool:
+        return bool(self.enable_animations and not self.reduced_motion)
 
 
 class HomeWidgetStateController:
@@ -87,22 +94,61 @@ class HomeWidgetStateController:
         self._next_request_id = 0
         self.snapshot = HomeWidgetSnapshot(request_id=0, phase="empty")
 
+    def set_motion_preferences(
+        self,
+        *,
+        enable_animations: bool,
+        reduced_motion: bool,
+    ) -> None:
+        """Project the add-on motion settings without persisting WebView state."""
+
+        current = self.snapshot
+        self.snapshot = HomeWidgetSnapshot(
+            request_id=current.request_id,
+            phase=current.phase,
+            data=current.data,
+            error_message=current.error_message,
+            enable_animations=bool(enable_animations),
+            reduced_motion=bool(reduced_motion),
+        )
+
+    def _snapshot(
+        self,
+        *,
+        request_id: int,
+        phase: str,
+        data: HomeWidgetData | None = None,
+        error_message: str | None = None,
+    ) -> HomeWidgetSnapshot:
+        return HomeWidgetSnapshot(
+            request_id=request_id,
+            phase=phase,
+            data=data,
+            error_message=error_message,
+            enable_animations=self.snapshot.enable_animations,
+            reduced_motion=self.snapshot.reduced_motion,
+        )
+
     def begin_request(self) -> int:
         self._next_request_id += 1
         req_id = self._next_request_id
-        self.snapshot = HomeWidgetSnapshot(request_id=req_id, phase="loading")
+        self.snapshot = self._snapshot(request_id=req_id, phase="loading")
         return req_id
 
     def resolve_success(self, request_id: int, data: HomeWidgetData) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(request_id=request_id, phase="success", data=data)
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="success",
+            data=data,
+        )
         return True
 
     def resolve_partial(self, request_id: int, data: HomeWidgetData, error_message: str) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(
+        self.snapshot = self._snapshot(
             request_id=request_id,
             phase="partial",
             data=data,
@@ -113,11 +159,38 @@ class HomeWidgetStateController:
     def resolve_error(self, request_id: int, error_message: str) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(request_id=request_id, phase="error", error_message=error_message)
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="error",
+            error_message=error_message,
+        )
         return True
 
 
 DEFAULT_ERROR_MESSAGE = "Garden progress could not be loaded. Try again in a moment."
+
+HOME_COMPACT_CONTAINER_MAX_WIDTH = 469
+HOME_NARROW_CONTAINER_MAX_WIDTH = 420
+HOME_LAYOUT_STANDARD = "standard"
+HOME_LAYOUT_COMPACT = "compact"
+HOME_LAYOUT_NARROW = "narrow"
+
+
+def home_container_layout(width: int | float) -> str:
+    """Return the CSS-equivalent Home layout range for one inline size."""
+
+    try:
+        available = float(width)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Home container width must be finite") from exc
+    if not isfinite(available):
+        raise ValueError("Home container width must be finite")
+    available = max(0.0, available)
+    if available <= HOME_NARROW_CONTAINER_MAX_WIDTH:
+        return HOME_LAYOUT_NARROW
+    if available <= HOME_COMPACT_CONTAINER_MAX_WIDTH:
+        return HOME_LAYOUT_COMPACT
+    return HOME_LAYOUT_STANDARD
 
 
 HOME_WIDGET_STYLE = """
@@ -189,7 +262,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__fallback-silhouette::before,.ag-home__fallback-silhouette::after { content:""; position:absolute; width:14px; height:9px; top:25%; border:1px solid #8fb18a; background:rgba(72,108,73,.74); }
 .ag-home__fallback-silhouette::before { right:0; border-radius:12px 2px 12px 2px; transform:rotate(18deg); transform-origin:right center; }
 .ag-home__fallback-silhouette::after { left:0; top:48%; border-radius:2px 12px 2px 12px; transform:rotate(-18deg); transform-origin:left center; }
-.ag-home__fallback-label { max-width:92%; overflow:hidden; padding:4px 6px; border-radius:5px; background:rgba(8,27,23,.84); color:#dce9dd; font-size:11px; line-height:1.2; text-align:center; }
+.ag-home__fallback-label { max-width:92%; overflow:hidden; padding:4px 6px; border-radius:5px; background:rgba(8,27,23,.84); color:#dce9dd; font-size:12px; line-height:1.2; text-align:center; }
 .ag-home__fallback-label > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ag-home__fallback-stage { margin-top:1px; color:#aac3b1; }
 .ag-home__sr-only { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
@@ -241,8 +314,8 @@ HOME_WIDGET_STYLE = """
 .ag-home__details,.ag-home__details * { box-sizing:border-box; }
 .ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-width:0; }
 .ag-home__identity { min-width:0; }
-.ag-home__garden-context { display:block; margin-top:2px; color:#aebfb4; font-size:11.5px; line-height:1.1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__eyebrow { margin-bottom:1px; color:#d8b875; font-size:10px; font-weight:700; letter-spacing:.09em; line-height:1.05; text-transform:uppercase; }
+.ag-home__garden-context { display:block; margin-top:2px; color:#aebfb4; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__eyebrow { margin-bottom:1px; color:#d8b875; font-size:12px; font-weight:700; letter-spacing:.09em; line-height:1.2; text-transform:uppercase; }
 .ag-home__focus-name {
   display:block;
   overflow:hidden;
@@ -265,10 +338,10 @@ HOME_WIDGET_STYLE = """
 .ag-home__metric { min-width:0; color:#edf5ea; font-size:13px; line-height:1.08; }
 .ag-home__metric + .ag-home__metric { margin-left:12px; padding-left:12px; border-left:1px solid rgba(153,178,159,.22); }
 .ag-home__metric strong { display:block; min-width:0; overflow:hidden; color:#edf5ea; font-size:13px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__metric span { display:block; min-width:0; margin-top:1px; overflow:hidden; color:#aebfb4; font-size:11.5px; font-weight:500; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__metric span { display:block; min-width:0; margin-top:1px; overflow:hidden; color:#aebfb4; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
 .ag-home__metric--streak strong { color:#edf5ea; }
 .ag-home__metric--coins strong { color:#f2dda4; }
-.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:11.5px; line-height:1.3; overflow-wrap:anywhere; }
+.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
 .ag-home__stage-up {
   box-sizing: border-box;
   width: 100%;
@@ -312,20 +385,6 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__open { flex:none; min-width:108px !important; min-height:36px !important; padding:0 14px !important; border-radius:8px !important; font-size:13px !important; }
 .nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
-@media (max-width: 600px) {
-  #ag-home-root { margin-top:18px; }
-}
-@container (max-width: 469px) {
-  .ag-home__scene { height:160px; }
-  .ag-home__details { padding-top:3px; padding-bottom:4px; }
-  .ag-home__metrics { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"plant plant" "streak coins"; row-gap:3px; }
-  .ag-home__metric--plant { grid-area:plant; display:flex; align-items:baseline; gap:6px; }
-  .ag-home__metric--plant strong,.ag-home__metric--plant span { max-width:50%; }
-  .ag-home__metric--plant span { margin-top:0; }
-  .ag-home__metric--streak { grid-area:streak; }
-  .ag-home__metric--coins { grid-area:coins; }
-  .ag-home__metric--streak { margin-left:0 !important; padding-left:0 !important; border-left:0 !important; }
-}
 
 /* Release redesign: one artwork-first, full-bleed preview with a bottom scrim. */
 #ag-home-root {
@@ -378,7 +437,7 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__details::before { display:none; }
 .ag-home__identity-row { gap:16px; align-items:end; }
-.ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:10.5px; }
+.ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:12px; }
 .ag-home__focus-name { font-size:20px; line-height:1.15; }
 .ag-home__support {
   display:block;
@@ -421,27 +480,28 @@ HOME_WIDGET_STYLE = """
 #ag-home-root button:hover { background:#71D39C; }
 #ag-home-root button:active { background:#49AA75; }
 #ag-home-root button.ag-home__open::after { display:none; }
+#ag-home-root[data-motion="reduced"] { transition:none; }
+#ag-home-root[data-motion="reduced"]:hover { transform:none; }
+#ag-home-root[data-motion="reduced"] button:active { transform:none; }
 @media (prefers-reduced-motion: reduce) {
   #ag-home-root { transition:none; }
   #ag-home-root:hover { transform:none; }
   #ag-home-root button:active { transform:none; }
 }
-@media (max-width:650px) {
+@container (max-width: 469px) {
+  .ag-home__body { min-height:168px; }
+  .ag-home__details { padding:26px 14px 12px; }
+  .ag-home__support { max-width:100%; }
   .ag-home--no-starter .ag-home__support {
-    max-width:390px;
     overflow:visible;
     text-overflow:clip;
     white-space:normal;
   }
 }
-@media (max-width:520px) {
-  #ag-home-root { height:168px; }
-  .ag-home__state { min-height:168px; }
-  .ag-home__support { max-width:330px; }
-}
 @container (max-width:420px) {
   .ag-home__details { padding:24px 12px 12px; }
-  .ag-home__support { max-width:240px; font-size:12.5px; }
+  .ag-home__identity-row { gap:12px; }
+  .ag-home__support { max-width:100%; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
 #ag-home-root[data-active-slot="4"] .ag-home__identity-row {
@@ -461,11 +521,13 @@ def _plant_fallback(_stage: Any) -> str:
 def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     DISPLAY_TELEMETRY.track_render("home_widget")
     phase = snapshot.phase
+    motion_mode = "standard" if snapshot.motion_enabled else "reduced"
+    motion_attribute = f' data-motion="{motion_mode}"'
     if phase == "loading":
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="loading" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="loading"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-loading" role="status" aria-live="polite">'
             '<div class="ag-home__state-title">Anki Garden</div>'
             '<div class="ag-home__state-message">Loading overview…</div></div>'
@@ -475,7 +537,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="empty" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="empty"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
             f'<div class="ag-home__state-title">{HOME_NO_STARTER_TITLE}</div>'
             f'<div class="ag-home__state-message">{HOME_NO_STARTER_BODY}</div>'
@@ -489,7 +551,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
             '<div class="ag-home__state-title">Overview unavailable</div>'
             f'<div class="ag-home__state-message" data-testid="home-error" role="alert">{message}</div>'
@@ -509,7 +571,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
             '<div class="ag-home__state-title">Overview unavailable</div>'
             '<div class="ag-home__state-message" data-testid="home-error" role="alert">The summary could not be displayed.</div></div>'
@@ -1063,7 +1125,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-active-slot=\"{marker_slot}\" role=\"button\" tabindex=\"0\"
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" role=\"button\" tabindex=\"0\"
   aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{marker_accessible}\"
   data-anki-garden-command=\"anki-garden:{action_command}\"
   onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"

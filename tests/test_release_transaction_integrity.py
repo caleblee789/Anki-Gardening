@@ -126,6 +126,14 @@ def _compiled_method(
     return globals_dict[method_name]
 
 
+def _set_control_enabled_stub(
+    widget: Any,
+    enabled: bool,
+    **_kwargs: Any,
+) -> None:
+    widget.setEnabled(enabled)
+
+
 @pytest.mark.parametrize(
     "purchase_kind",
     ["fertilizer", "species", "bed", "growth_charge", "weather"],
@@ -302,6 +310,9 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
         def setAccessibleDescription(self, text: str) -> None:
             self.accessible_description = text
 
+        def accessibleDescription(self) -> str:
+            return self.accessible_description
+
         def setStyleSheet(self, text: str) -> None:
             self.style = text
 
@@ -326,8 +337,16 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             "cost_label": cost_label,
         },
     )
+    announcements: list[str] = []
     show_receipt(
-        SimpleNamespace(status=status, receipt_actions=receipt_actions),
+        SimpleNamespace(
+            _status_generation=0,
+            status=status,
+            receipt_actions=receipt_actions,
+            accessibility_announcer=SimpleNamespace(
+                announce=lambda message, **_kwargs: announcements.append(message)
+            ),
+        ),
         purchased,
         observed["message"],
     )
@@ -341,6 +360,7 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     assert "Cost: 100 Garden Coins" in status.accessible_description
     assert "Owned · Ready in Customize Garden" in status.accessible_description
     assert receipt_actions.visible is True
+    assert announcements == [status.accessible_description]
 
 
 def test_catalog_engine_exception_keeps_double_activation_guarded_until_release() -> None:
@@ -464,7 +484,8 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
         {
             "QTimer": SimpleNamespace(
                 singleShot=lambda _delay, callback: scheduled.append(callback)
-            )
+            ),
+            "set_control_enabled": _set_control_enabled_stub,
         },
     )
     begin = _compiled_method(
@@ -481,7 +502,10 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_release_bed_purchase",
-        {"logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None)},
+        {
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+            "set_control_enabled": _set_control_enabled_stub,
+        },
     )
 
     class _Button:

@@ -126,8 +126,9 @@ def test_dashboard_is_a_fixed_root_shell_without_focus_driven_self_scrolling() -
     )
 
 
-def test_820_header_stacks_title_actions_and_stats_on_distinct_rows() -> None:
+def test_content_measured_narrow_header_stacks_regions_on_distinct_rows() -> None:
     method = _method_node("GardenDashboard", "_apply_responsive_layout")
+    source = _segment(method)
     narrow_assignment = next(
         node
         for node in method.body
@@ -137,11 +138,9 @@ def test_820_header_stacks_title_actions_and_stats_on_distinct_rows() -> None:
             for target in node.targets
         )
     )
-    comparison = narrow_assignment.value
-    assert isinstance(comparison, ast.Compare)
-    assert isinstance(comparison.ops[0], ast.LtE)
-    assert isinstance(comparison.comparators[0], ast.Constant)
-    assert comparison.comparators[0].value == 820
+    assert isinstance(narrow_assignment.value, ast.BoolOp)
+    assert "header_compact and title_actions.mode == COMPACT_MODE" in source
+    assert "<= 820" not in source
 
     narrow_branch = next(
         node
@@ -611,6 +610,9 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
     customize = _segment(
         _method_node("CustomizeGardenDialog", "resizeEvent")
     )
+    customize_mode = _segment(
+        _method_node("CustomizeGardenDialog", "_apply_customize_layout_mode")
+    )
     nursery = _segment(_method_node("NurseryDialog", "resizeEvent"))
 
     assert "advanced = QScrollArea()" in settings
@@ -620,10 +622,12 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
     assert "self.scene.setMaximumHeight(16777215)" in dashboard_scene
     assert "self.scene.setMaximumHeight(target)" not in dashboard_scene
     assert "margins = self._shell_layout.contentsMargins()" in customize
-    assert "self.main_grid.setColumnStretch(column, 0)" in customize
-    assert "self.main_grid.setRowStretch(row, 0)" in customize
+    assert "self.customize_responsive.evaluate(content_width)" in customize
+    assert "self.main_grid.setColumnStretch(column, 0)" in customize_mode
+    assert "self.main_grid.setRowStretch(row, 0)" in customize_mode
     assert "margins = self.layout().contentsMargins()" in nursery
-    assert 'self.setProperty("layoutMode", "compact" if compact else "wide")' in nursery
+    assert "self.hero_responsive.evaluate(available)" in nursery
+    assert 'self.setProperty("heroMode", hero.mode)' in nursery
 
 
 def test_compact_stats_preserve_the_anki_streak_accessible_name() -> None:
@@ -709,7 +713,9 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
     ) >= 2, "The inline validation message must also reach assistive technology."
 
     update_source = _segment(update)
-    assert "self.save_settings.setEnabled(dirty and valid)" in update_source
+    assert "set_control_enabled(" in update_source
+    assert "dirty and valid" in update_source
+    assert "Fix the Garden name error before saving." in update_source
     assert (
         "invalid" in update_source
         or "validation" in update_source

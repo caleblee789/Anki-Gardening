@@ -765,6 +765,7 @@ class AnkiGardenApp:
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
+        self._sync_home_motion_preferences()
         state_events = getattr(self, "state_events", None)
         revision = int(getattr(state_events, "revision", 0))
         cached_html = getattr(self, "_home_html_cache", None)
@@ -783,6 +784,24 @@ class AnkiGardenApp:
         self._home_html_cache = html
         self._home_html_revision = int(getattr(state_events, "revision", revision))
         return html
+
+    def _sync_home_motion_preferences(self) -> None:
+        """Project current add-on motion settings into the transient Home view."""
+
+        enable_animations = bool(self.config.value("enable_animations", True))
+        reduced_motion = bool(self.config.value("reduced_motion", False))
+        snapshot = self._home_widget_controller.snapshot
+        if (
+            snapshot.enable_animations == enable_animations
+            and snapshot.reduced_motion == reduced_motion
+        ):
+            return
+        self._home_widget_controller.set_motion_preferences(
+            enable_animations=enable_animations,
+            reduced_motion=reduced_motion,
+        )
+        self._home_html_cache = None
+        self._home_html_revision = -1
 
     def _build_home_garden_html(self) -> str:
         request_id = self._home_widget_controller.begin_request()

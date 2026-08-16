@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DASHBOARD = ROOT / "ankigarden" / "ui" / "dashboard.py"
+STUDIO = ROOT / "ankigarden" / "ui" / "garden_studio.py"
+CAPTURE = ROOT / "ankigarden" / "capture_ui_faces.py"
+
+
+def _class_source(path: Path, class_name: str) -> str:
+    source = path.read_text("utf-8")
+    tree = ast.parse(source)
+    node = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.ClassDef) and item.name == class_name
+    )
+    segment = ast.get_source_segment(source, node)
+    assert segment is not None
+    return segment
+
+
+def _method_source(path: Path, class_name: str, method_name: str) -> str:
+    source = path.read_text("utf-8")
+    tree = ast.parse(source)
+    owner = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.ClassDef) and item.name == class_name
+    )
+    node = next(
+        item
+        for item in owner.body
+        if isinstance(item, ast.FunctionDef) and item.name == method_name
+    )
+    segment = ast.get_source_segment(source, node)
+    assert segment is not None
+    return segment
+
+
+def test_dialog_shell_owns_focus_escape_restoration_and_scroll_contracts() -> None:
+    shell = _class_source(DASHBOARD, "DialogShell")
+    assert "def focusNextPrevChild" in shell
+    assert "focusable[(index + 1) % len(focusable)]" in shell
+    assert "focusable[(index - 1) % len(focusable)]" in shell
+    assert "Qt.Key.Key_Escape" in shell
+    assert "QTimer.singleShot(0, restore)" in shell
+    assert "QApplication.focusWidget()" in shell
+    assert "def register_scroll_region" in shell
+    assert "def register_pinned_footer" in shell
+    assert "base[3] + clearance" in shell
+    assert "def active_vertical_scroll_regions" in shell
+    assert shell.count("scroll.window()") >= 3
+
+
+def test_shared_dialog_state_supports_ready_loading_error_and_retry() -> None:
+    dialog = _class_source(DASHBOARD, "GardenDialog")
+    assert "DialogViewState.READY" in dialog
+    assert "DialogViewState.LOADING" in dialog
+    assert "DialogViewState.ERROR" in dialog
+    assert 'self.state_retry = QPushButton("Try again")' in dialog
+    assert "AnnouncementPriority.ASSERTIVE" in dialog
+    assert "text_column_width(" in dialog
+    assert "setMaximumWidth(readable_header_width)" in dialog
+
+
+def test_settings_and_customize_have_one_active_vertical_scroll_owner() -> None:
+    studio = _class_source(STUDIO, "GardenStudioWidget")
+    customize = _class_source(DASHBOARD, "CustomizeGardenDialog")
+    option_page = _method_source(DASHBOARD, "CustomizeGardenDialog", "_option_page")
+    studio_scroll = _method_source(STUDIO, "GardenStudioWidget", "_scroll_controls_to")
+
+    assert "self.controls_scroll.setVerticalScrollBarPolicy(" in studio
+    assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in studio
+    assert "self.controls_scroll.verticalScrollBar()" not in studio_scroll
+    assert "parent is not self.controls_scroll" in studio_scroll
+    assert "self.body_scroll = QScrollArea()" in customize
+    assert "QScrollArea" not in option_page
+    assert "host = QWidget()" in option_page
+
+
+def test_fixed_footers_and_scroll_regions_are_registered_on_catalog_dialogs() -> None:
+    replacement = _class_source(DASHBOARD, "FertilizerReplacementDialog")
+    nursery = _class_source(DASHBOARD, "NurseryDialog")
+    dashboard = _class_source(DASHBOARD, "GardenDashboard")
+
+    assert "self.register_scroll_region(self.content_scroll)" in replacement
+    assert "self.register_pinned_footer(self.action_footer)" in replacement
+    assert "self.register_pinned_footer(self.nursery_footer)" in nursery
+    assert "self.register_scroll_region(scroll_region)" in nursery
+    assert "dialog.register_scroll_region(options_scroll)" in dashboard
+    assert "dialog.register_pinned_footer(footer_frame)" in dashboard
+
+
+def test_capture_gate_rejects_nested_scroll_and_footer_clearance_failures() -> None:
+    capture = CAPTURE.read_text("utf-8")
+    assert '"multiple-active-vertical-scroll-regions"' in capture
+    assert '"insufficient-footer-scroll-clearance"' in capture
+    assert 'scroll.property("footerClearance")' in capture
+    assert "footer.height()" in capture
+    assert "dialog_scroll_geometry_issue_codes(" in capture
+
+
+def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -> None:
+    source = DASHBOARD.read_text("utf-8")
+    expected = {
+        "FertilizerReplacementDialog": "DialogSizeClass.COMPARISON",
+        "PlantStoryDialog": "DialogSizeClass.STANDARD_TEXT",
+        "StarterConfirmationDialog": "DialogSizeClass.COMPACT_CONFIRMATION",
+        "NurseryDialog": "DialogSizeClass.CATALOG",
+        "GardenProgressDialog": "DialogSizeClass.CATALOG",
+        "CustomizeGardenDialog": "DialogSizeClass.PREVIEW",
+    }
+    for class_name, size_class in expected.items():
+        assert size_class in _class_source(DASHBOARD, class_name)
+    assert "self.setMaximumSize(policy.max_width, policy.max_height)" in source
+
+
+def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:
+    constructors = (
+        ("GardenSettingsDialog", "DialogSizeClass.CATALOG"),
+        ("GardenDetailsDialog", "DialogSizeClass.STANDARD_TEXT"),
+        ("GardenProgressDialog", "DialogSizeClass.CATALOG"),
+    )
+    for class_name, size_class in constructors:
+        constructor = _method_source(DASHBOARD, class_name, "__init__")
+        assert "apply_size_policy(" in constructor
+        assert size_class in constructor
+        assert "self.setMinimumSize(" not in constructor
+
+    species = _method_source(
+        DASHBOARD,
+        "GardenDashboard",
+        "_build_species_overview_dialog",
+    )
+    fertilizer = _method_source(
+        DASHBOARD,
+        "GardenDashboard",
+        "_open_fertilizer_menu",
+    )
+    assert "dialog.apply_size_policy(" in species
+    assert "dialog.setMinimumSize(" not in species
+    assert "dialog.apply_size_policy(" in fertilizer
+    assert "dialog.setMinimumSize(" not in fertilizer

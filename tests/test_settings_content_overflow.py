@@ -65,10 +65,10 @@ def _compiled_responsive_method() -> Any:
         "Qt": SimpleNamespace(ScrollBarPolicy=ScrollBarPolicy),
         "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 280,
         "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 380,
-        "settings_layout_is_compact": lambda width: max(0, int(width)) < 760,
+        "COMPACT_MODE": "compact",
     }
-    exec(textwrap.dedent(_method_source("GardenStudioWidget", "_apply_responsive_layout")), scope)
-    return scope["_apply_responsive_layout"]
+    exec(textwrap.dedent(_method_source("GardenStudioWidget", "_apply_studio_layout_mode")), scope)
+    return scope["_apply_studio_layout_mode"]
 
 
 class _Recorder:
@@ -134,14 +134,15 @@ def test_normal_settings_viewport_stays_two_column_and_narrow_width_stacks() -> 
     # after the shell, tab, and body margins. That is ample for 280 px
     # controls plus a shrinkable preview, so it should not need horizontal
     # scrolling or premature stacking.
-    apply_layout(widget, 880)
+    apply_layout(widget, "wide")
     assert ("setDirection", ("columns",)) in root_layout.calls
     assert ("setMinimumWidth", (280,)) in controls.calls
     assert ("setMaximumWidth", (380,)) in controls.calls
     assert ("setSizePolicy", ("preferred", "preferred")) in controls.calls
-    assert ("setMaximumHeight", (420,)) in widget.controls_scroll.calls
+    assert ("setMaximumHeight", (16777215,)) in widget.controls_scroll.calls
+    assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
 
-    apply_layout(widget, 700)
+    apply_layout(widget, "compact")
     assert ("setDirection", ("stacked",)) in root_layout.calls
     assert ("setMinimumWidth", (0,)) in controls.calls
     assert ("setMaximumWidth", (16777215,)) in controls.calls
@@ -154,7 +155,7 @@ def test_normal_settings_viewport_stays_two_column_and_narrow_width_stacks() -> 
     assert ("updateGeometry", ()) in widget.calls
 
 
-def test_advanced_controls_scroll_independently_from_the_preview() -> None:
+def test_advanced_controls_delegate_to_the_outer_settings_scroll() -> None:
     studio = _class_source("GardenStudioWidget")
     advanced_finish = _method_source(
         "GardenStudioWidget",
@@ -166,6 +167,12 @@ def test_advanced_controls_scroll_independently_from_the_preview() -> None:
     assert "self.root_layout.addWidget(self.controls_scroll, 0)" in studio
     assert "QLayout.SizeConstraint.SetMinAndMaxSize" in studio
     assert "self.controls.adjustSize()" in advanced_finish
+    assert "if self._compact_layout" not in advanced_finish
+    assert (
+        "self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())"
+        in advanced_finish
+    )
+    assert "self.controls_scroll.updateGeometry()" in advanced_finish
     assert "parent.ensureWidgetVisible(target, 12, 12)" in advanced_finish
     assert "self._scroll_controls_to(" in advanced_finish
 
@@ -173,14 +180,15 @@ def test_advanced_controls_scroll_independently_from_the_preview() -> None:
         "GardenStudioWidget",
         "_scroll_controls_to",
     )
-    assert "self.controls_scroll.verticalScrollBar()" in final_scroll
-    assert "target_bottom - viewport_height + 12" in final_scroll
+    assert "self.controls_scroll.verticalScrollBar()" not in final_scroll
+    assert "parent.ensureWidgetVisible(target, 12, 12)" in final_scroll
+    assert "parent is not self.controls_scroll" in final_scroll
 
 
 def test_compact_settings_delegate_vertical_scroll_to_the_outer_page() -> None:
     responsive = _method_source(
         "GardenStudioWidget",
-        "_apply_responsive_layout",
+        "_apply_studio_layout_mode",
     )
     final_scroll = _method_source(
         "GardenStudioWidget",
@@ -188,7 +196,7 @@ def test_compact_settings_delegate_vertical_scroll_to_the_outer_page() -> None:
     )
 
     assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in responsive
-    assert "self.controls.sizeHint().height() if compact else 0" in responsive
-    assert "self.controls_scroll.setMaximumHeight(16777215 if compact else 420)" in responsive
-    assert "QSizePolicy.Policy.Preferred if compact" in responsive
-    assert "if self._compact_layout:\n            return" in final_scroll
+    assert "self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())" in responsive
+    assert "self.controls_scroll.setMaximumHeight(16777215)" in responsive
+    assert "QSizePolicy.Policy.Preferred" in responsive
+    assert "self.controls_scroll.verticalScrollBar()" not in final_scroll
