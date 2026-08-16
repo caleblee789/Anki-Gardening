@@ -75,7 +75,6 @@ from .responsive import (
 from .formatters import format_status_label
 from .garden_studio import GardenStudioWidget
 from .plant_display import (
-    CURRENT_ONBOARDING_VERSION,
     achievement_progress_display,
     chronological_memories,
     growth_display,
@@ -123,6 +122,7 @@ from ..environment import (
     GrowthChargeSpec,
 )
 from ..config import ConfigError, DEFAULT_CONFIG
+from ..models.state import OnboardingStep
 from ..models.state import (
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
@@ -2913,12 +2913,7 @@ class GardenSettingsDialog(GardenDialog):
         self.restore_defaults.setAccessibleName("Restore display defaults")
         _set_button_variant(self.restore_defaults, BUTTON_VARIANT_TERTIARY)
         self.restore_defaults.clicked.connect(self._restore_defaults)
-        self.reset_tips = QPushButton("Restart onboarding tips")
-        self.reset_tips.setAccessibleDescription("Show Garden guidance again the next time the Garden opens.")
-        _set_button_variant(self.reset_tips, BUTTON_VARIANT_TERTIARY)
-        self.reset_tips.clicked.connect(self._reset_tips)
         self.behavior.advanced_actions_layout.addWidget(self.restore_defaults)
-        self.behavior.advanced_actions_layout.addWidget(self.reset_tips)
         self.cancel_settings = QPushButton("Cancel")
         _set_button_variant(self.cancel_settings, BUTTON_VARIANT_SECONDARY)
         self.cancel_settings.clicked.connect(self.reject)
@@ -3419,20 +3414,6 @@ class GardenSettingsDialog(GardenDialog):
         opener = getattr(parent, "_open_customize", None)
         if callable(opener):
             QTimer.singleShot(0, opener)
-
-    def _reset_tips(self) -> None:
-        try:
-            self.config.update({"onboarding_version": 0})
-        except ConfigError as exc:
-            self._show_save_error(str(exc))
-            return
-        parent = self.parent()
-        refresh_committed = getattr(parent, "_refresh_after_commit", None)
-        if callable(refresh_committed):
-            refresh_committed("tips reset")
-        self.save_status.show()
-        self.save_status.setText("Garden tips will be shown again.")
-        self.save_status.setStyleSheet("color:#baf3c6; background:#1d4931;")
 
     def _save_visual_settings(self) -> None:
         old_payload = deepcopy(self._persisted_payload)
@@ -4221,6 +4202,7 @@ class StarterConfirmationDialog(DialogShell):
 
     def __init__(self, parent: QWidget, engine: Any, species: str) -> None:
         super().__init__(parent)
+        self.back_requested = False
         species_name = format_status_label(species)
         item_name = seed_title(species_name)
         self.setWindowTitle(f"Choose {item_name}")
@@ -4242,6 +4224,8 @@ class StarterConfirmationDialog(DialogShell):
         )
         copy = QVBoxLayout()
         copy.setSpacing(6)
+        step = QLabel("STEP 3 OF 6")
+        step.setProperty("plantGuidanceStep", True)
         title = QLabel(f"Choose {item_name}?")
         title.setProperty("dialogTitle", True)
         title.setWordWrap(True)
@@ -4250,6 +4234,7 @@ class StarterConfirmationDialog(DialogShell):
         )
         body.setProperty("dialogSubtitle", True)
         body.setWordWrap(True)
+        copy.addWidget(step)
         copy.addWidget(title)
         copy.addWidget(body)
         heading.addLayout(copy, 1)
@@ -4258,11 +4243,11 @@ class StarterConfirmationDialog(DialogShell):
         self.actions.addStretch(1)
         self.back_action = QPushButton("Go back")
         _set_button_variant(self.back_action, BUTTON_VARIANT_TERTIARY)
-        self.back_action.clicked.connect(self.reject)
-        self.choose_action = QPushButton("Choose")
-        self.choose_action.setAccessibleName(f"Choose {item_name}")
+        self.back_action.clicked.connect(self._go_back)
+        self.choose_action = QPushButton("Continue to placement")
+        self.choose_action.setAccessibleName(f"Confirm {item_name}")
         self.choose_action.setAccessibleDescription(
-            f"Plant {item_name} as your first plant. {COST_FREE}."
+            f"Confirm {item_name}, then choose its garden bed. {COST_FREE}."
         )
         _set_button_variant(self.choose_action, BUTTON_VARIANT_PRIMARY)
         self.choose_action.clicked.connect(self.accept)
@@ -4294,6 +4279,10 @@ class StarterConfirmationDialog(DialogShell):
             spacing=8,
             telemetry_target=self,
         )
+
+    def _go_back(self) -> None:
+        self.back_requested = True
+        self.reject()
 
     def resizeEvent(self, event: Any) -> None:
         margins = self.layout().contentsMargins()
@@ -4546,7 +4535,7 @@ class NurseryDialog(DialogShell):
         footer.addStretch(1)
         self.close_button = QPushButton("Close")
         _set_button_variant(self.close_button, BUTTON_VARIANT_SECONDARY)
-        self.close_button.clicked.connect(self.accept)
+        self.close_button.clicked.connect(self._close_nursery)
         footer.addWidget(self.close_button)
         root.addWidget(self.nursery_footer)
         self.register_pinned_footer(self.nursery_footer)
@@ -5905,7 +5894,12 @@ class NurseryDialog(DialogShell):
             self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)
         self.starter_tab_note.hide()
         self.coin_resource.setVisible(not starter_mode)
-        self.close_button.setText("Back to garden" if starter_mode else "Close")
+        self.close_button.setText("Not now" if starter_mode else "Close")
+        self.close_button.setAccessibleDescription(
+            "Close the Nursery and resume starter setup later."
+            if starter_mode else
+            "Close the Nursery."
+        )
         self.catalog_tabs.setAccessibleDescription(
             DISABLED_STARTER_TABS if starter_mode else "All Nursery sections are available."
         )
@@ -6130,20 +6124,16 @@ class NurseryDialog(DialogShell):
             logger.exception("Anki Garden: Nursery change was saved but its parent did not refresh")
 
     def _choose_starter(self, species: str) -> None:
-        confirmation = StarterConfirmationDialog(self, self.engine, species)
-        if confirmation.exec() != QDialog.DialogCode.Accepted:
-            return
-        ok, message, plant = self.engine.choose_starter(species)
+        ok, message = self.engine.select_starter_species(species)
         self._show_result(ok, message)
         if ok:
-            # The persisted state now authorizes every normal Nursery tab.
-            # Refresh before closing so the dialog never retains stale
-            # starter-mode controls for callers that keep the instance alive.
-            self.refresh()
-            parent = self.parent()
             self._refresh_parent()
-            if parent is not None and hasattr(parent, "_on_starter_selected"):
-                parent._on_starter_selected(plant, message)
+            self.accept()
+
+    def _close_nursery(self) -> None:
+        if bool(getattr(self, "_starter_mode", False)):
+            self.reject()
+        else:
             self.accept()
 
     def _purchase_species(self, species: str) -> None:
@@ -6338,7 +6328,7 @@ class PlantInfoCard(QFrame):
         guidance_layout = QVBoxLayout(self.guidance)
         guidance_layout.setContentsMargins(10, 8, 10, 8)
         guidance_layout.setSpacing(3)
-        self.guidance_step = QLabel("STEP 2 OF 2")
+        self.guidance_step = QLabel("STEP 5 OF 6")
         self.guidance_step.setProperty("plantGuidanceStep", True)
         self.guidance_text = QLabel(GARDEN_NURTURE_BODY)
         self.guidance_text.setWordWrap(True)
@@ -6958,6 +6948,13 @@ class GardenStatsStrip(QFrame):
             self.grid.removeWidget(self.cells[key])
         if onboarding_mode:
             self.grid.addWidget(self.cells["growth"], 0, 0, 1, 4)
+        elif compact:
+            # Long plant, streak, and coin values retain their natural font
+            # size. Move complete metric groups onto two rows instead of
+            # compressing labels or clipping tabular values into one line.
+            self.grid.addWidget(self.cells["growth"], 0, 0, 1, 4)
+            self.grid.addWidget(self.cells["streak"], 1, 0, 1, 2)
+            self.grid.addWidget(self.cells["currency"], 1, 2, 1, 2)
         else:
             self.grid.addWidget(self.cells["growth"], 0, 0, 1, 2)
             self.grid.addWidget(self.cells["streak"], 0, 2)
@@ -8901,6 +8898,7 @@ class GardenDashboard(DialogShell):
         self.state_events = coordinator or GardenUiCoordinator(self)
         self.state_events.stateChanged.connect(self._on_state_changed)
         self._starter_selected_callback = starter_selected_callback
+        self._collection_activation_pending = False
         self.settings_dialog: GardenSettingsDialog | None = None
         self.nursery_dialog: NurseryDialog | None = None
         self.story_dialog: PlantStoryDialog | None = None
@@ -8909,8 +8907,10 @@ class GardenDashboard(DialogShell):
         self._undo_nurture_plant_id = ""
         self._starter_prompt_scheduled = False
         self._starter_setup_dismissed = False
+        self._starter_confirmation_pending = False
         self._undo_placement: Any = None
         self._placement_draft: Any = None
+        self._starter_placement_active = False
         self._stage_message_generation = 0
         self._pending_feedback_ack_ids: tuple[str, ...] = ()
         self._pending_transition_ack: tuple[Any, ...] = ()
@@ -8919,6 +8919,7 @@ class GardenDashboard(DialogShell):
         self._onboarding_save_error = ""
         self._starter_confirmation_message = ""
         self._onboarding_plant_id = ""
+        self._onboarding_focus_return: QWidget | None = None
         self._compact_layout: bool | None = None
         self._header_compact_layout: bool | None = None
         self._header_narrow_layout: bool | None = None
@@ -8977,7 +8978,7 @@ class GardenDashboard(DialogShell):
     def _present_starter_setup_if_needed(self) -> None:
         """Refresh first-run guidance without opening a modal or naming gate."""
 
-        if not bool(getattr(self.storage.state, "starter_selection_complete", True)):
+        if self.storage.state.onboarding.step != OnboardingStep.DONE:
             self._refresh_onboarding()
 
     def _derived_ux_state(self) -> str:
@@ -9136,10 +9137,10 @@ class GardenDashboard(DialogShell):
         self.product_label.setStyleSheet(
             "color:#d8b875; font-size:12px; font-weight:800; letter-spacing:1.2px;"
         )
-        self.title_label = QLabel("")
+        self.title_label = ElidingLabel("")
         self._apply_typography(self.title_label, "title")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.title_label.setWordWrap(True)
+        self.title_label.setWordWrap(False)
         self.title_label.setMinimumWidth(0)
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -9149,18 +9150,21 @@ class GardenDashboard(DialogShell):
         title_stack.addWidget(self.title_label)
         self.progress_btn = QPushButton("Garden Progress")
         self.progress_btn.setProperty("headerAction", True)
-        _set_button_variant(self.progress_btn, BUTTON_VARIANT_SECONDARY)
+        _set_button_variant(self.progress_btn, BUTTON_VARIANT_PRIMARY)
         self.progress_btn.setAccessibleDescription(
             "Open today, achievement, collection, and progression details."
         )
         self.progress_btn.clicked.connect(self._open_progress)
-        self.customize_btn = QPushButton("Customize Garden")
-        self.customize_btn.setProperty("headerAction", True)
-        _set_button_variant(self.customize_btn, BUTTON_VARIANT_TERTIARY)
-        self.customize_btn.setAccessibleDescription(
-            "Choose Weather and Scenery without changing plant placement."
+        self.collection_btn = QPushButton("Collection")
+        self.collection_btn.setProperty("headerAction", True)
+        _set_button_variant(self.collection_btn, BUTTON_VARIANT_SECONDARY)
+        self.collection_btn.setAccessibleDescription(
+            "Open the plant Collection in Garden Progress."
         )
-        self.customize_btn.clicked.connect(self._open_customize)
+        self.collection_btn.clicked.connect(self._open_collection)
+        # Compatibility alias for fixture and extension code that queried the
+        # old header control. It now routes to Collection, never Customize.
+        self.customize_btn = self.collection_btn
         self.settings_btn = QPushButton()
         self.settings_btn.setProperty("headerAction", True)
         self.settings_btn.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
@@ -9201,7 +9205,7 @@ class GardenDashboard(DialogShell):
         action_row.addWidget(self.starter_header_btn)
         action_row.addWidget(self.nursery_recovery_btn)
         action_row.addWidget(self.progress_btn)
-        action_row.addWidget(self.customize_btn)
+        action_row.addWidget(self.collection_btn)
         action_row.addWidget(self.settings_btn)
         self.garden_stats_bar = GardenStatsStrip()
         self.garden_stats_bar.setMinimumHeight(104)
@@ -9224,7 +9228,7 @@ class GardenDashboard(DialogShell):
         self.onboarding_layout.setSpacing(8)
         onboarding_copy = QVBoxLayout()
         onboarding_copy.setSpacing(3)
-        self.onboarding_step = QLabel("STEP 1 OF 2")
+        self.onboarding_step = QLabel("STEP 1 OF 6")
         self.onboarding_step.setStyleSheet(
             "color:#82E2AC; font-size:12px; font-weight:700; letter-spacing:.8px;"
         )
@@ -9249,6 +9253,18 @@ class GardenDashboard(DialogShell):
         self.dismiss_onboarding.clicked.connect(self._dismiss_onboarding)
         onboarding_actions.addWidget(self.dismiss_onboarding, 1)
         self.onboarding_layout.addLayout(onboarding_actions)
+        self.onboarding_actions_responsive = AdaptiveRow.for_box_layout(
+            "dashboard.onboarding-actions",
+            (
+                AdaptiveRegion.measured("primary", self.onboarding_action, floor=104),
+                AdaptiveRegion.measured("secondary", self.dismiss_onboarding, floor=104),
+            ),
+            layout=onboarding_actions,
+            wide_direction=QBoxLayout.Direction.LeftToRight,
+            compact_direction=QBoxLayout.Direction.TopToBottom,
+            spacing=8,
+            telemetry_target=self.onboarding_panel,
+        )
         self.onboarding_panel.setMaximumWidth(280)
 
         hero_card = self._card_frame()
@@ -9257,6 +9273,20 @@ class GardenDashboard(DialogShell):
         h_layout.setContentsMargins(0, 0, 0, 0)
         h_layout.setSpacing(self.CARD_SPACING)
         self.scene = GardenSceneWidget()
+        self.onboarding_shield = QFrame(self.scene)
+        self.onboarding_shield.setProperty("onboardingShield", True)
+        self.onboarding_shield.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        self.onboarding_shield.setStyleSheet(
+            "QFrame[onboardingShield='true'] { background:rgba(5,22,18,96); border:0; }"
+        )
+        self.onboarding_shield.setAccessibleName("Garden interaction paused")
+        self.onboarding_shield.setAccessibleDescription(
+            "Complete or postpone the current setup instruction before using the garden scene."
+        )
+        self.onboarding_shield.hide()
         self.onboarding_panel.setParent(self.scene)
         self.scene.placementRequested.connect(self._place_plant)
         self.scene.selectionChanged.connect(self._on_scene_selection)
@@ -9499,6 +9529,21 @@ class GardenDashboard(DialogShell):
     def _open_progress(self) -> None:
         self._progress_return_focus = self.focusWidget()
         self.progress_dialog.open_page("overview")
+
+    def _open_collection(self) -> None:
+        """Reuse the single Garden Progress shell and select Collection."""
+
+        if self._collection_activation_pending:
+            return
+        self._collection_activation_pending = True
+        self._progress_return_focus = self.focusWidget()
+        try:
+            self.progress_dialog.open_page("collection")
+        finally:
+            QTimer.singleShot(0, self._release_collection_activation)
+
+    def _release_collection_activation(self) -> None:
+        self._collection_activation_pending = False
 
     def _open_customize(self) -> None:
         if self.scene._interaction.placing:
@@ -9838,10 +9883,10 @@ class GardenDashboard(DialogShell):
                 for event in self.engine.peek_feedback()
             )
         )
-        self.customize_btn.setAccessibleDescription(
-            "New Weather or Scenery is available. Open Customize Garden."
+        self.collection_btn.setAccessibleDescription(
+            "New Garden rewards are available. Open the Collection in Garden Progress."
             if environment_new else
-            "Choose Weather and Scenery without changing plant placement."
+            "Open the plant Collection in Garden Progress."
         )
         if self.details_dialog.isVisible():
             self.details_dialog.refresh()
@@ -10135,6 +10180,11 @@ class GardenDashboard(DialogShell):
             and onboarding_display.state == OnboardingState.STARTER_PLANTED_NOT_NURTURED
         )
         self.plant_card.set_onboarding_guidance(guide_nurture)
+        if guide_nurture:
+            self.onboarding_panel.hide()
+            self._set_onboarding_shield(False)
+        elif onboarding_display.step == OnboardingStep.NURTURE:
+            self._refresh_onboarding()
         if plant is None:
             self._update_scene_height()
         self._position_plant_card()
@@ -10142,13 +10192,19 @@ class GardenDashboard(DialogShell):
     def _on_landmark_activated(self, action_id: str) -> None:
         action = str(action_id)
         handlers = {
-            "garden.nursery.open": self._open_nursery,
+            "garden.nursery.open": (
+                self._open_starter_nursery
+                if self.storage.state.onboarding.step in {
+                    OnboardingStep.INTRODUCTION,
+                    OnboardingStep.NURSERY,
+                }
+                else self._open_nursery
+            ),
             "garden.progress.open": self._open_progress,
+            "garden.collection.open": self._open_collection,
         }
         handler = handlers.get(action)
         if handler is not None:
-            if action == "garden.nursery.open" and self._derived_ux_state() != UX_NO_STARTER:
-                self._complete_onboarding()
             handler()
 
     def _open_nursery(self, tab_index: int = 0, *, status_message: str = "") -> None:
@@ -10164,8 +10220,9 @@ class GardenDashboard(DialogShell):
         )
         if status_message:
             dialog._show_result(True, status_message)
+        result = int(QDialog.DialogCode.Rejected)
         try:
-            dialog.exec()
+            result = dialog.exec()
         finally:
             # Nursery is rebuilt from current persisted state on every open.
             # Detach and defer-delete the closed instance so the long-lived
@@ -10177,13 +10234,102 @@ class GardenDashboard(DialogShell):
             dialog.deleteLater()
         if not bool(getattr(self.storage.state, "starter_selection_complete", True)):
             self._starter_prompt_scheduled = False
+        if (
+            result == int(QDialog.DialogCode.Rejected)
+            and self.storage.state.onboarding.step == OnboardingStep.NURSERY
+        ):
+            self._starter_setup_dismissed = True
         self._refresh_after_commit("Nursery dialog")
+        if self.storage.state.onboarding.step == OnboardingStep.CONFIRMATION:
+            QTimer.singleShot(0, self._show_starter_confirmation)
 
     def _open_starter_nursery(self) -> None:
         """Shared direct route for every pre-starter call to action."""
 
         self._starter_setup_dismissed = False
-        self._open_nursery(0)
+        step = self.storage.state.onboarding.step
+        if step == OnboardingStep.INTRODUCTION:
+            ok, message = self.engine.enter_starter_nursery()
+            if not ok:
+                self.toast_region.show_message(message, error=True, duration_ms=0)
+                return
+            self._refresh_after_commit("onboarding Nursery entry")
+            step = self.storage.state.onboarding.step
+        if step == OnboardingStep.NURSERY:
+            self._open_nursery(0)
+        elif step == OnboardingStep.CONFIRMATION:
+            self._show_starter_confirmation()
+        elif step == OnboardingStep.PLACEMENT:
+            self._begin_starter_placement()
+
+    def _show_starter_confirmation(self) -> None:
+        progress = self.storage.state.onboarding
+        if (
+            self._starter_confirmation_pending
+            or progress.step != OnboardingStep.CONFIRMATION
+            or not progress.pending_species
+        ):
+            return
+        self._starter_confirmation_pending = True
+        self._set_onboarding_shield(False)
+        self.onboarding_panel.hide()
+        dialog = StarterConfirmationDialog(
+            self,
+            self.engine,
+            progress.pending_species,
+        )
+        result = int(QDialog.DialogCode.Rejected)
+        try:
+            result = dialog.exec()
+        finally:
+            self._starter_confirmation_pending = False
+            dialog.hide()
+            dialog.setParent(None)
+            dialog.deleteLater()
+        if result == int(QDialog.DialogCode.Accepted):
+            ok, message = self.engine.confirm_starter_species()
+            if not ok:
+                self._onboarding_save_error = message
+                self._refresh_onboarding()
+                return
+            self._onboarding_save_error = ""
+            self._refresh_after_commit("starter confirmation")
+            QTimer.singleShot(0, self._begin_starter_placement)
+            return
+        if dialog.back_requested:
+            ok, message = self.engine.back_onboarding()
+            if not ok:
+                self._onboarding_save_error = message
+                self._refresh_onboarding()
+                return
+            self._refresh_after_commit("starter confirmation back")
+            QTimer.singleShot(0, self._open_starter_nursery)
+            return
+        self._refresh_onboarding()
+
+    def _begin_starter_placement(self) -> None:
+        if self.storage.state.onboarding.step != OnboardingStep.PLACEMENT:
+            self._refresh_onboarding()
+            return
+        self._starter_setup_dismissed = False
+        self._starter_placement_active = True
+        self._set_onboarding_shield(False)
+        self.onboarding_panel.hide()
+        self.rearrange_bar.plant_id = "__starter__"
+        self.rearrange_bar.title.setText("Place your starter")
+        self.rearrange_bar.instructions.setText(
+            "Choose a highlighted bed. Press Esc or Back to return to confirmation."
+        )
+        self.rearrange_bar.cancel.setText("Back")
+        allowed = list(range(max(0, min(6, int(self.storage.state.unlocked_slots)))))
+        if self.scene.begin_starter_placement(allowed):
+            self.rearrange_bar.show()
+            QTimer.singleShot(0, self._position_scene_overlays)
+            return
+        self._starter_placement_active = False
+        self.rearrange_bar.cancel.setText("Cancel")
+        self._onboarding_save_error = "No unlocked garden bed is available for placement."
+        self._refresh_onboarding()
 
     def _show_nursery_landmark(self) -> None:
         # Landmark emphasis is supplementary; the actionable route is always
@@ -10192,8 +10338,22 @@ class GardenDashboard(DialogShell):
         self._open_starter_nursery()
 
     def _activate_onboarding_action(self) -> None:
-        if self._derived_ux_state() == UX_NO_STARTER:
-            self._show_nursery_landmark()
+        step = self.storage.state.onboarding.step
+        if step in {OnboardingStep.INTRODUCTION, OnboardingStep.NURSERY}:
+            self._open_starter_nursery()
+            return
+        if step == OnboardingStep.CONFIRMATION:
+            self._show_starter_confirmation()
+            return
+        if step == OnboardingStep.PLACEMENT:
+            self._begin_starter_placement()
+            return
+        if step == OnboardingStep.COMPLETION:
+            if self._complete_onboarding():
+                self._refresh_after_commit("onboarding Explore Garden")
+                self._refresh_onboarding()
+            return
+        if step != OnboardingStep.NURTURE:
             return
         plant = next(
             (
@@ -10216,14 +10376,11 @@ class GardenDashboard(DialogShell):
         available = self.scene.landmark_geometry("garden.nursery.open") is not None
         derive = getattr(self, "_derived_ux_state", None)
         ux_state = derive() if callable(derive) else UX_ACTIVE_GROWTH
-        config = getattr(self, "config", None)
-        onboarding_version = (
-            int(config.value("onboarding_version", 0) or 0)
-            if config is not None and hasattr(config, "value") else CURRENT_ONBOARDING_VERSION
-        )
-        guided = ux_state in {UX_NO_STARTER, UX_STARTER_READY} and (
-            ux_state == UX_NO_STARTER or onboarding_version < CURRENT_ONBOARDING_VERSION
-        )
+        storage = getattr(self, "storage", None)
+        state = getattr(storage, "state", None)
+        progress = getattr(state, "onboarding", None)
+        raw_step = getattr(progress, "step", "done")
+        guided = str(getattr(raw_step, "value", raw_step)) != "done"
         self.nursery_recovery_btn.setVisible(
             not guided and not available and not self.scene._interaction.placing
         )
@@ -10243,6 +10400,8 @@ class GardenDashboard(DialogShell):
             )
             self._apply_responsive_layout(content_width)
         self._update_scene_height(event.size().height())
+        if hasattr(self, "onboarding_shield"):
+            self.onboarding_shield.setGeometry(self.scene.rect())
         QTimer.singleShot(0, self._position_plant_card)
         QTimer.singleShot(0, self._position_onboarding_coachmark)
         QTimer.singleShot(0, self._position_scene_overlays)
@@ -10308,17 +10467,23 @@ class GardenDashboard(DialogShell):
             return
         width = min(280, max(240, self.scene.width() - 24))
         self.onboarding_panel.setFixedWidth(width)
+        if hasattr(self, "onboarding_actions_responsive"):
+            margins = self.onboarding_layout.contentsMargins()
+            self.onboarding_actions_responsive.evaluate(
+                max(0, width - margins.left() - margins.right())
+            )
         self.onboarding_panel.adjustSize()
         height = max(
             104,
             min(self.onboarding_panel.sizeHint().height(), max(112, self.scene.height() - 24)),
         )
-        step_two = self.onboarding_step.text() == "STEP 2 OF 2"
-        anchor_geometry = (
-            self.scene.plant_geometry(self._onboarding_plant_id)
-            if step_two and self._onboarding_plant_id else
-            self.scene.landmark_geometry("garden.nursery.open")
-        )
+        step = self.storage.state.onboarding.step
+        if step == OnboardingStep.NURTURE and self._onboarding_plant_id:
+            anchor_geometry = self.scene.plant_geometry(self._onboarding_plant_id)
+        elif step in {OnboardingStep.INTRODUCTION, OnboardingStep.NURSERY}:
+            anchor_geometry = self.scene.landmark_geometry("garden.nursery.open")
+        else:
+            anchor_geometry = None
         if anchor_geometry is None:
             x, y = 12, 12
         else:
@@ -10437,7 +10602,7 @@ class GardenDashboard(DialogShell):
         guided = bool(getattr(self.garden_stats_bar, "_onboarding_mode", False))
         metrics_compact = bool(self._header_metrics_compact)
         self.garden_stats_bar.setMinimumHeight(
-            64 if guided else (96 if metrics_compact else 104)
+            64 if guided else (192 if metrics_compact else 104)
         )
         if guided:
             minimum = (
@@ -10447,8 +10612,9 @@ class GardenDashboard(DialogShell):
             )
         else:
             minimum = (
+                320 if self._header_narrow_layout and metrics_compact else
+                264 if self._header_compact_layout and metrics_compact else
                 224 if self._header_narrow_layout else
-                168 if self._header_compact_layout and metrics_compact else
                 176 if self._header_compact_layout else
                 112
             )
@@ -10613,7 +10779,12 @@ class GardenDashboard(DialogShell):
     def done(self, result: int) -> None:
         """Refresh the underlying Anki home surface after the modal dashboard closes."""
         self._fertilizer_timer.stop()
-        if self.scene._interaction.placing:
+        if self._starter_placement_active:
+            self._starter_placement_active = False
+            self.scene.finish_move("Starter placement paused. Resume it when you return.")
+            self.rearrange_bar.hide()
+            self.rearrange_bar.cancel.setText("Cancel")
+        elif self.scene._interaction.placing:
             self._cancel_move()
         if self.scene.selected_plant_id():
             self.scene.dismiss_selection()
@@ -10782,7 +10953,11 @@ class GardenDashboard(DialogShell):
         active_progress = growth_display(active.growth_points).progress if active is not None else 0.0
         return {
             "garden_name": str(getattr(state, "garden_name", "My Garden") or "My Garden"),
+            "starter_selected": bool(
+                getattr(state, "starter_selection_complete", bool(state.plants))
+            ),
             "weather": state.selected_weather,
+            "background": str(getattr(state, "selected_background", "verdant_twilight") or "verdant_twilight"),
             "unlocked_slots": state.unlocked_slots,
             "growth": active_progress,
             "streak_days": state.streak_days,
@@ -10866,6 +11041,12 @@ class GardenDashboard(DialogShell):
 
     def _nurture_plant(self, plant_id: str) -> None:
         if self.storage.state.active_plant_id == plant_id:
+            if self.storage.state.onboarding.step == OnboardingStep.NURTURE:
+                ok, message = self.engine.set_active_plant(plant_id)
+                if not ok:
+                    self.toast_region.show_message(message, error=True, duration_ms=0)
+                    return
+                self._refresh_after_commit("nurtured-plant onboarding resume")
             self.scene.keep_card_open(plant_id)
             self._refresh_selected_plant_card()
             self._complete_first_nurture_guidance()
@@ -10941,7 +11122,10 @@ class GardenDashboard(DialogShell):
         self._placement_draft = draft
         plant = next((row for row in self.storage.state.plants if row.plant_id == plant_id), None)
         name = str(getattr(plant, "name", "Plant"))
-        move_message = "Choose a highlighted garden bed. Press Esc to cancel."
+        move_message = (
+            "Choose a highlighted garden bed. Empty beds move; occupied beds swap. "
+            "Press Esc or Cancel to stop."
+        )
         self.rearrange_bar.plant_id = plant_id
         self.rearrange_bar.title.setText(f"Moving {name}")
         self.rearrange_bar.instructions.setText(move_message)
@@ -10956,23 +11140,19 @@ class GardenDashboard(DialogShell):
             }
         )
         origin_slot = scene_slots.get(plant_id)
-        occupied_slots = {
-            int(slot) for occupant_id, slot in scene_slots.items()
-            if occupant_id != plant_id
-        }
-        empty_destinations = [
+        valid_destinations = [
             int(slot) for slot in self.engine.valid_destination_slots(draft)
-            if int(slot) not in occupied_slots and int(slot) != origin_slot
+            if int(slot) != origin_slot
         ]
-        if not empty_destinations:
+        if not valid_destinations:
             self._placement_draft = None
             self.toast_region.show_message(
-                "No empty garden space is available. Shelve a plant before moving this one.",
+                "No valid destination is available for this plant.",
                 error=True,
                 duration_ms=4500,
             )
             return
-        allowed_slots = ([int(origin_slot)] if origin_slot is not None else []) + empty_destinations
+        allowed_slots = ([int(origin_slot)] if origin_slot is not None else []) + valid_destinations
         if self.scene.begin_move(plant_id, allowed_slots):
             self.rearrange_bar.show()
             self.scene.setFocus()
@@ -10993,14 +11173,31 @@ class GardenDashboard(DialogShell):
         valid_slots = set(self.engine.valid_destination_slots(draft)) if draft is not None else set()
         self.rearrange_bar.set_destinations([
             (
-                f"Space {slot + 1} — empty",
+                f"Space {slot + 1} — " + (
+                    "Current"
+                    if slot == current_slot else
+                    f"Swap with {occupied[slot]}"
+                    if slot in occupied else
+                    "Move here"
+                ),
                 slot,
             )
             for slot in range(max(0, min(6, int(self.storage.state.unlocked_slots))))
-            if slot != current_slot and slot in valid_slots and slot not in occupied
+            if slot in valid_slots
         ])
 
     def _cancel_move(self) -> None:
+        if self._starter_placement_active:
+            self._starter_placement_active = False
+            self.scene.finish_move("Starter placement cancelled. Returning to confirmation.")
+            self.rearrange_bar.hide()
+            self.rearrange_bar.cancel.setText("Cancel")
+            ok, message = self.engine.back_onboarding()
+            if not ok:
+                self.toast_region.show_message(message, error=True, duration_ms=0)
+            self._refresh_after_commit("onboarding placement back")
+            QTimer.singleShot(0, self._show_starter_confirmation)
+            return
         selected_id = str(
             getattr(self._placement_draft, "selected_plant_id", "") or ""
         )
@@ -11018,24 +11215,41 @@ class GardenDashboard(DialogShell):
             QTimer.singleShot(0, self.plant_card.move.setFocus)
 
     def _finish_failed_move(self, message: str) -> None:
-        """Return the scene to persisted state after any terminal move error."""
+        """Restore persisted slots and retain a retryable selected move session."""
         message = _learner_text(message)
         selected_id = str(
             getattr(self._placement_draft, "selected_plant_id", "") or ""
         )
         self._placement_draft = None
         self.scene.finish_move(f"Move not saved. {message}")
-        self.rearrange_bar.hide()
         try:
             self.refresh_all()
         except Exception:
             logger.exception("Anki Garden: rejected move could not refresh persisted scene")
-        self.scene.setFocus()
-        if selected_id:
+        retry_started = False
+        engine = getattr(self, "engine", None)
+        begin_retry = getattr(engine, "begin_placement_draft", None)
+        if selected_id and callable(begin_retry):
+            ok, _retry_message, retry_draft = begin_retry(selected_id)
+            if ok and retry_draft is not None:
+                self._placement_draft = retry_draft
+                retry_started = self.scene.begin_move(
+                    selected_id,
+                    engine.valid_destination_slots(retry_draft),
+                )
+        if hasattr(self.rearrange_bar, "setVisible"):
+            self.rearrange_bar.setVisible(retry_started)
+        elif not retry_started and hasattr(self.rearrange_bar, "hide"):
+            self.rearrange_bar.hide()
+        if not retry_started and selected_id:
             self.scene.keep_card_open(selected_id, message)
             self._refresh_selected_plant_card()
         self.toast_region.show_message(message, error=True, duration_ms=0)
         self.toast_region.setFocus()
+        if retry_started:
+            self.scene.setFocus()
+        else:
+            self.scene.setFocus()
 
     def _done_move(self) -> None:
         draft = self._placement_draft
@@ -11068,6 +11282,21 @@ class GardenDashboard(DialogShell):
         self._place_plant(self.rearrange_bar.plant_id, destination)
 
     def _place_plant(self, plant_id: str, destination_slot: int) -> None:
+        if self._starter_placement_active and plant_id == "__starter__":
+            ok, message, plant = self.engine.place_starter(destination_slot)
+            if not ok or plant is None:
+                self.toast_region.show_message(message, error=True, duration_ms=0)
+                self.scene.begin_starter_placement(
+                    list(range(max(0, min(6, int(self.storage.state.unlocked_slots)))))
+                )
+                return
+            self._starter_placement_active = False
+            self.scene.finish_move("Starter planted. Continue to nurture selection.")
+            self.rearrange_bar.hide()
+            self.rearrange_bar.cancel.setText("Cancel")
+            self._on_starter_selected(plant, message)
+            self._refresh_after_commit("starter placement")
+            return
         draft = self._placement_draft
         if draft is None or draft.selected_plant_id != plant_id:
             self._finish_failed_move("That move session is no longer available.")
@@ -11160,43 +11389,25 @@ class GardenDashboard(DialogShell):
             self.storage.state,
             self.config.value("onboarding_version", 0),
         )
-        starter_incomplete = display.state in {
-            OnboardingState.NO_STARTER,
-            OnboardingState.STARTER_SELECTED,
-        }
-        nurture_step = display.state == OnboardingState.STARTER_PLANTED_NOT_NURTURED
-        guided = starter_incomplete or nurture_step
+        step = display.step or self.storage.state.onboarding.step
+        guided = step != OnboardingStep.DONE
         self.starter_header_btn.setVisible(
-            starter_incomplete and self._starter_setup_dismissed
+            step in {OnboardingStep.INTRODUCTION, OnboardingStep.NURSERY}
+            and self._starter_setup_dismissed
         )
         self.progress_btn.setVisible(not guided)
-        self.customize_btn.setVisible(not guided)
+        self.collection_btn.setVisible(not guided)
         self.settings_btn.setVisible(not guided)
         self.garden_stats_bar.set_onboarding_mode(guided)
         self._sync_header_minimum_heights()
         self.top_bar.updateGeometry()
-        if starter_incomplete:
-            visible = not self._starter_setup_dismissed
-            self.onboarding_panel.setVisible(visible)
+        if step == OnboardingStep.DONE:
+            self.onboarding_panel.hide()
+            self._set_onboarding_shield(False)
             self.plant_card.set_onboarding_guidance(False)
-            if not visible:
-                return
-            self.onboarding_step.setText("STEP 1 OF 2")
-            title = GARDEN_SETUP_TITLE
-            message = self._onboarding_save_error or GARDEN_SETUP_BODY
-            action_text = CHOOSE_STARTER_ACTION
-            dismiss_text = GARDEN_SETUP_SECONDARY_ACTION
-            self.onboarding_title.setText(title)
-            self.onboarding_message.setText(message)
-            self.onboarding_action.setText(action_text)
-            self.onboarding_action.setVisible(True)
-            self.dismiss_onboarding.setText(dismiss_text)
-            self.dismiss_onboarding.setVisible(True)
-            self.onboarding_panel.setAccessibleDescription(f"{title}. {message}")
-            QTimer.singleShot(0, self._position_onboarding_coachmark)
             return
 
-        if nurture_step:
+        if step == OnboardingStep.NURTURE:
             plant = next(
                 (
                     row for row in self.storage.state.plants
@@ -11208,25 +11419,148 @@ class GardenDashboard(DialogShell):
             selected = self.scene.selected_plant_id() == self._onboarding_plant_id
             self.plant_card.set_onboarding_guidance(selected)
             visible = not selected and not self._starter_setup_dismissed
-            self.onboarding_panel.setVisible(visible)
-            if visible:
-                self.onboarding_step.setText("STEP 2 OF 2")
-                self.onboarding_title.setText(GARDEN_NURTURE_TITLE)
-                self.onboarding_message.setText(GARDEN_NURTURE_BODY)
-                self.onboarding_action.setText(GARDEN_NURTURE_ACTION)
-                self.onboarding_action.show()
-                self.dismiss_onboarding.setText(GARDEN_SETUP_SECONDARY_ACTION)
-                self.dismiss_onboarding.show()
-                self.onboarding_panel.setAccessibleDescription(
-                    f"Step 2 of 2. {GARDEN_NURTURE_TITLE}. {GARDEN_NURTURE_BODY}"
-                )
-                QTimer.singleShot(0, self._position_onboarding_coachmark)
-            return
+        else:
+            self.plant_card.set_onboarding_guidance(False)
+            visible = not (
+                self._starter_setup_dismissed
+                and step in {
+                    OnboardingStep.INTRODUCTION,
+                    OnboardingStep.NURSERY,
+                }
+            )
+        if self._starter_placement_active:
+            visible = False
 
-        # Once a starter exists, feedback belongs to transient toasts and the
-        # metric strip. A permanent coachmark would compete with the garden.
-        self.onboarding_panel.hide()
-        self.plant_card.set_onboarding_guidance(False)
+        species = format_status_label(
+            self.storage.state.onboarding.pending_species or "starter"
+        )
+        content = {
+            OnboardingStep.INTRODUCTION: (
+                GARDEN_SETUP_TITLE,
+                GARDEN_SETUP_BODY,
+                CHOOSE_STARTER_ACTION,
+                "Not now",
+            ),
+            OnboardingStep.NURSERY: (
+                "Choose your starter",
+                "Open the Starter Nursery and choose the species you want to grow first.",
+                "Open Starter Nursery",
+                "Not now",
+            ),
+            OnboardingStep.CONFIRMATION: (
+                f"Confirm {species}",
+                "Review your starter choice before choosing its garden bed.",
+                "Review starter",
+                "Back",
+            ),
+            OnboardingStep.PLACEMENT: (
+                "Place your starter",
+                "Choose one of the highlighted unlocked beds. Your plant is created only after placement saves.",
+                "Choose a bed",
+                "Back",
+            ),
+            OnboardingStep.NURTURE: (
+                GARDEN_NURTURE_TITLE,
+                GARDEN_NURTURE_BODY,
+                GARDEN_NURTURE_ACTION,
+                "Not now",
+            ),
+            OnboardingStep.COMPLETION: (
+                "Your garden is ready",
+                "Your starter is nurtured. Future Anki card answers can now add Growth here.",
+                "Explore Garden",
+                "Return to Anki",
+            ),
+        }
+        title, body, action_text, secondary_text = content[step]
+        message = self._onboarding_save_error or body
+        step_number = display.counted_step or {
+            OnboardingStep.INTRODUCTION: 1,
+            OnboardingStep.NURSERY: 2,
+            OnboardingStep.CONFIRMATION: 3,
+            OnboardingStep.PLACEMENT: 4,
+            OnboardingStep.NURTURE: 5,
+            OnboardingStep.COMPLETION: 6,
+        }[step]
+        self.onboarding_step.setText(f"STEP {step_number} OF 6")
+        self.onboarding_title.setText(title)
+        self.onboarding_message.setText(message)
+        self.onboarding_action.setText(action_text)
+        self.onboarding_action.show()
+        self.dismiss_onboarding.setText(secondary_text)
+        self.dismiss_onboarding.show()
+        self.onboarding_panel.setAccessibleDescription(
+            f"Step {step_number} of 6. {title}. {message}"
+        )
+        self.onboarding_panel.setVisible(visible)
+        self._set_onboarding_shield(visible)
+        if visible:
+            QTimer.singleShot(0, self._position_onboarding_coachmark)
+
+    def _set_onboarding_shield(self, active: bool) -> None:
+        if not hasattr(self, "onboarding_shield"):
+            return
+        was_active = self.onboarding_shield.isVisible()
+        self.onboarding_shield.setGeometry(self.scene.rect())
+        self.onboarding_shield.setVisible(bool(active))
+        if active:
+            if not was_active:
+                focused = QApplication.focusWidget()
+                self._onboarding_focus_return = (
+                    focused
+                    if isinstance(focused, QWidget) and self.isAncestorOf(focused)
+                    else None
+                )
+            self.onboarding_shield.raise_()
+            self.onboarding_panel.raise_()
+            QTimer.singleShot(
+                0,
+                lambda: (
+                    self.onboarding_action.setFocus(Qt.FocusReason.OtherFocusReason)
+                    if self.onboarding_panel.isVisible()
+                    else None
+                ),
+            )
+        elif was_active:
+            target = self._onboarding_focus_return
+            self._onboarding_focus_return = None
+            if target is not None:
+                QTimer.singleShot(
+                    0,
+                    lambda candidate=target: (
+                        candidate.setFocus(Qt.FocusReason.OtherFocusReason)
+                        if candidate.isVisibleTo(self) and candidate.isEnabled()
+                        else None
+                    ),
+                )
+
+    def focusNextPrevChild(self, forward: bool) -> bool:
+        """Trap Tab inside a visible modal onboarding instruction."""
+
+        if (
+            hasattr(self, "onboarding_shield")
+            and self.onboarding_shield.isVisible()
+            and self.onboarding_panel.isVisible()
+        ):
+            targets = [
+                button
+                for button in (self.onboarding_action, self.dismiss_onboarding)
+                if button.isVisibleTo(self) and button.isEnabled()
+            ]
+            if targets:
+                current = QApplication.focusWidget()
+                try:
+                    index = targets.index(current)
+                except ValueError:
+                    index = -1 if forward else 0
+                target = targets[(index + (1 if forward else -1)) % len(targets)]
+                target.setFocus(
+                    Qt.FocusReason.TabFocusReason
+                    if forward else
+                    Qt.FocusReason.BacktabFocusReason
+                )
+                return True
+        return super().focusNextPrevChild(forward)
 
     def _on_starter_selected(self, plant: Any, confirmation: str = "") -> None:
         """Publish starter success only after the engine transaction returned OK."""
@@ -11246,40 +11580,46 @@ class GardenDashboard(DialogShell):
                 self.scene.keep_card_open(self._onboarding_plant_id)
                 self._refresh_selected_plant_card()
                 self.plant_card.set_onboarding_guidance(True)
+                self._refresh_onboarding()
                 QTimer.singleShot(0, self.plant_card.nurture.setFocus)
             QTimer.singleShot(0, open_nurture_step)
 
     def _complete_onboarding(self) -> bool:
-        if int(self.config.value("onboarding_version", 0) or 0) >= CURRENT_ONBOARDING_VERSION:
-            return True
-        try:
-            self.config.update({"onboarding_version": CURRENT_ONBOARDING_VERSION})
-        except ConfigError:
-            logger.warning("Anki Garden: could not persist the onboarding preference", exc_info=True)
-            self._onboarding_save_error = (
-                "The tip could not be saved yet. It will remain available until Anki can save it."
-            )
+        ok, message = self.engine.finish_onboarding()
+        if not ok:
+            self._onboarding_save_error = message
             self._refresh_onboarding()
             return False
         self._onboarding_save_error = ""
         return True
 
     def _dismiss_onboarding(self) -> None:
-        if self._derived_ux_state() in {UX_NO_STARTER, UX_STARTER_READY}:
+        step = self.storage.state.onboarding.step
+        if step in {
+            OnboardingStep.INTRODUCTION,
+            OnboardingStep.NURSERY,
+            OnboardingStep.NURTURE,
+        }:
             self._starter_setup_dismissed = True
             self._refresh_onboarding()
             return
-        if self._complete_onboarding():
-            self._onboarding_confirmation_generation += 1
-            self._onboarding_just_completed = False
+        if step in {OnboardingStep.CONFIRMATION, OnboardingStep.PLACEMENT}:
+            ok, message = self.engine.back_onboarding()
+            if not ok:
+                self._onboarding_save_error = message
+            else:
+                self._refresh_after_commit("onboarding back")
             self._refresh_onboarding()
+            return
+        if step == OnboardingStep.COMPLETION and self._complete_onboarding():
+            self._refresh_after_commit("onboarding Return to Anki")
+            self.accept()
 
     def _complete_first_nurture_guidance(self) -> None:
         self._onboarding_just_completed = False
         self._starter_setup_dismissed = False
         self.plant_card.set_onboarding_guidance(False)
-        if self._complete_onboarding():
-            self._refresh_onboarding()
+        self._refresh_onboarding()
 
     def _clear_onboarding_confirmation(self, generation: int) -> None:
         if generation != self._onboarding_confirmation_generation:

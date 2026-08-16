@@ -11,7 +11,11 @@ from typing import Any
 
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import DailyStats, GardenState
+from ankigarden.models.state import (
+    DailyStats,
+    GardenState,
+    OnboardingStep,
+)
 from ankigarden.storage import DueObligationStatus, GardenStorage
 from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
@@ -149,23 +153,62 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     )
     engine = _engine(storage)
 
-    ok, _message, starter = engine.choose_starter("rose")
+    assert storage.state.onboarding.step is OnboardingStep.INTRODUCTION
+    assert engine.enter_starter_nursery()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.NURSERY
+
+    before_failed_choice = storage.state.to_dict()
+    original_save = storage.save
+    storage.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+    try:
+        assert engine.select_starter_species("rose")[0] is False
+    finally:
+        storage.save = original_save
+    assert storage.state.to_dict() == before_failed_choice
+
+    assert engine.select_starter_species("rose")[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.CONFIRMATION
+    assert storage.state.onboarding.pending_species == "rose"
+    assert storage.state.plants == []
+
+    assert engine.confirm_starter_species()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
+    assert storage.state.onboarding.pending_species == "rose"
+    assert storage.state.plants == []
+
+    ok, _message, starter = engine.place_starter(0)
     assert ok and starter is not None
     starter_id = starter.plant_id
+    repeated_ok, _repeated_message, repeated_starter = engine.place_starter(0)
+    assert repeated_ok and repeated_starter is starter
+    assert [plant.plant_id for plant in storage.state.plants] == [starter_id]
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     assert storage.state.starter_selection_complete is True
     assert [plant.species for plant in storage.state.plants] == ["rose"]
     assert storage.state.active_plant_id is None
+    assert storage.state.onboarding.step is OnboardingStep.NURTURE
     assert onboarding_state_display(storage.state, 0).state is (
         OnboardingState.STARTER_PLANTED_NOT_NURTURED
     )
 
+    assert engine.set_active_plant(starter_id)[0]
     assert engine.set_active_plant(starter_id)[0]
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     starter = engine.plant_story(starter_id)
     assert starter is not None
     assert storage.state.active_plant_id == starter_id
     assert [memory.memory_id for memory in starter.memories].count("nurture:first") == 1
+    assert onboarding_state_display(storage.state, 0).state is (
+        OnboardingState.NURTURED_PLANT_ASSIGNED
+    )
+    assert storage.state.onboarding.step is OnboardingStep.COMPLETION
+
+    assert engine.finish_onboarding()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.DONE
     assert onboarding_state_display(storage.state, 0).state is (
         OnboardingState.ONBOARDING_COMPLETE
     )
@@ -496,8 +539,8 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     assert "if not self._interaction.placing:" in paint_source
     assert 'if bool(self.scene.get("motion_enabled", True)):' in paint_source
     assert "self._draw_weather_motion(" in paint_source
-    assert paint_source.index("self._draw_weather_motion(") < paint_source.index(
-        "self._draw_nurtured_marker("
+    assert paint_source.index("self._draw_nurtured_marker(") < paint_source.index(
+        "self._draw_weather_motion("
     ) < paint_source.index("self._draw_status_overlay(")
 
     assets_by_species_stage = {

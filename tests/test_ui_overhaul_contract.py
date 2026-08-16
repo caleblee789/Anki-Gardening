@@ -52,7 +52,7 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     nursery = dashboard.split("class NurseryDialog", 1)[1].split("class PlantInfoCard", 1)[0]
 
     assert "self.engine.catalog_summary()" in nursery
-    assert "self.engine.choose_starter(species)" in nursery
+    assert "self.engine.select_starter_species(species)" in nursery
     assert "self._currently_growing_strip(active)" in nursery
     assert '"Your collection"' in nursery
     assert '"Botanical catalog"' in nursery
@@ -239,15 +239,15 @@ def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
         "ankigarden/ui/scene.py", "GardenSceneWidget", "_activate_landmark"
     )
 
-    assert '"garden.nursery.open": self._open_nursery' in dashboard
+    assert '"garden.nursery.open": (' in dashboard
     assert '"garden.progress.open": self._open_progress' in dashboard
-    assert "starter_selection_complete" in starter_setup
+    assert "self.storage.state.onboarding.step" in starter_setup
     assert "QInputDialog" not in dashboard
     assert "def _open_starter_nursery" in dashboard
     assert "self.starter_header_btn.clicked.connect(self._open_starter_nursery)" in dashboard
     assert "self.onboarding_action.clicked.connect(self._activate_onboarding_action)" in dashboard
-    assert "STEP 1 OF 2" in dashboard
-    assert "STEP 2 OF 2" in dashboard
+    assert "STEP 1 OF 6" in dashboard
+    assert 'f"STEP {step_number} OF 6"' in dashboard
     assert "if opening_settings:" in open_dashboard
     assert "opening_starter" in open_dashboard
     assert "_open_starter_nursery" in open_dashboard
@@ -531,7 +531,7 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     assert "self.engine.stage_placement(draft, destination_slot)" in movement
     assert "self.engine.commit_placement_draft(draft)" in movement
     assert "self._undo_placement = committed" in movement
-    assert movement.index("self.engine.commit_placement_draft(draft)") < movement.index(
+    assert movement.index("self.engine.commit_placement_draft(draft)") < movement.rindex(
         "self.toast_region.show_message("
     )
     assert "self.engine.restore_placement(self._undo_placement)" in undo
@@ -1086,7 +1086,8 @@ def test_visible_navigation_uses_garden_coins_and_nurture_language() -> None:
     assert "Nurture" in dashboard and "nurture" in terminology.lower()
     assert "Make active" not in sources
     assert "Unlock species" not in sources
-    assert "Move here" not in dashboard
+    assert "Move here" in dashboard
+    assert "Swap with" in dashboard
 
 
 def test_shared_ui_snapshot_and_post_commit_event_are_the_refresh_boundary() -> None:

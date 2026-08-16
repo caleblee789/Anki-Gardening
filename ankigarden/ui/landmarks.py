@@ -37,6 +37,10 @@ DEFAULT_LANDMARK_ACTIONS: Mapping[str, LandmarkAction] = {
         accessible_name="Garden Progress",
         tooltip="Open Garden Progress",
     ),
+    "garden.collection.open": LandmarkAction(
+        accessible_name="Collection",
+        tooltip="Open Collection",
+    ),
 }
 
 

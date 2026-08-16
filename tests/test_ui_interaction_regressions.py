@@ -29,6 +29,7 @@ ADDON_PATH = ROOT / "ankigarden/addon.py"
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 SCENE_PATH = ROOT / "ankigarden/ui/scene.py"
 STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
+GAME_PATH = ROOT / "ankigarden/game.py"
 
 
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
@@ -98,6 +99,61 @@ def test_home_preview_has_one_explicit_action_and_a_keyboard_clickable_card() ->
     assert "event.key==='Enter'||event.key===' '" in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-scene" aria-hidden="true"' in html
+
+
+def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route() -> None:
+    dashboard = DASHBOARD_PATH.read_text("utf-8")
+    scene = SCENE_PATH.read_text("utf-8")
+    game = GAME_PATH.read_text("utf-8")
+    manifest = json.loads((ROOT / "ankigarden/assets/manifest.json").read_text("utf-8"))
+
+    shield = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_set_onboarding_shield",
+    )
+    focus_trap = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "focusNextPrevChild",
+    )
+    assert "self.onboarding_shield.raise_()" in shield
+    assert "self.onboarding_panel.raise_()" in shield
+    assert "self.onboarding_action" in focus_trap
+    assert "self.dismiss_onboarding" in focus_trap
+
+    interaction = PlantInteractionState()
+    assert interaction.cycle_focus(["left", "right"], 1) == "left"
+    interaction.toggle_pin("left")
+    assert interaction.pinned_id == "left"
+    assert "_spatial_destination(event.key())" in scene
+
+    place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
+    failed = _method_source(DASHBOARD_PATH, "GardenDashboard", "_finish_failed_move")
+    assert "occupant" in place and "swapped" in place
+    assert place.index("stage_placement") < place.index("commit_placement_draft")
+    assert "_persist_or_restore(snapshot)" in game
+    assert "self.refresh_all()" in failed
+    assert "begin_placement_draft" in failed
+    assert "error=True" in failed
+
+    background = next(
+        row for row in manifest["assets"]
+        if row.get("category") == "backgrounds" and row.get("release_preferred") is True
+    )
+    house = next(
+        row for row in background["placement"]["surface_profile"]["landmarks"]
+        if row.get("landmark_id") == "garden_house"
+    )
+    open_collection = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_open_collection",
+    )
+    assert house["action_id"] == "garden.collection.open"
+    assert '"garden.collection.open": self._open_collection' in dashboard
+    assert "self.progress_dialog.open_page(\"collection\")" in open_collection
+    assert "self._collection_activation_pending" in open_collection
 
 
 def test_six_plant_home_scene_keeps_each_depth_band_between_planter_layers() -> None:
@@ -311,7 +367,7 @@ def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -
         "GardenSceneWidget",
         "card_geometry",
     )
-    assert "marker_reservation = nurtured_marker_placement(" in source
+    assert "marker_reservation = geometry_layout.resolve_watering_can(" in source
     assert "marker_reservation.pulse_bounds.expanded(4.0, 4.0)" in source
     captured: list[tuple[list[Rect], Rect | None]] = []
 
@@ -1037,7 +1093,7 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     assert "self.status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in nursery_source
 
 
-def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> None:
+def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -> None:
     set_compact = _compiled_method(
         DASHBOARD_PATH,
         "GardenStatsStrip",
@@ -1110,9 +1166,9 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
     set_compact(strip, True)
 
     assert strip.grid.positions == [
-        ("growth", 0, 0, 1, 2),
-        ("streak", 0, 2, 1, 1),
-        ("currency", 0, 3, 1, 1),
+        ("growth", 0, 0, 1, 4),
+        ("streak", 1, 0, 1, 2),
+        ("currency", 1, 2, 1, 2),
     ]
     assert strip.grid.stretches == [(0, 1), (1, 1), (2, 1), (3, 1)]
     assert strip.streak_value_row.insertions == [

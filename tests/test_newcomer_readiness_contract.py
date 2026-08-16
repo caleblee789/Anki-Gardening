@@ -154,7 +154,8 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "NURSERY_STARTER_COUNT" in nursery
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Back to garden" if starter_mode else "Close")' in nursery
+    assert 'self.close_button.setText("Not now" if starter_mode else "Close")' in nursery
+    assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
     assert "self.catalog_tabs.setAccessibleDescription" in nursery
     assert "Cost: Free" not in nursery  # the visible label is centralized
@@ -196,10 +197,9 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert '"READY TO NURTURE"' in stats
     assert "self.growth_value.hide()" in stats
     assert 'self.progress["growth"].hide()' in stats
-    assert (
-        "starter_incomplete and self._starter_setup_dismissed"
-        in refresh_onboarding
-    )
+    assert refresh_onboarding.count('"Not now"') == 3
+    assert refresh_onboarding.count('"Back"') == 2
+    assert "self._set_onboarding_shield(visible)" in refresh_onboarding
 
 
 def test_nursery_tab_intros_do_not_repeat_section_details() -> None:
@@ -230,7 +230,7 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
     assert "prompt_starter_if_needed" not in addon
     assert "_open_starter_nursery" in dashboard
     assert "self._open_starter_nursery()" in show_landmark
-    assert "starter_selection_complete" in setup
+    assert "self.storage.state.onboarding.step != OnboardingStep.DONE" in setup
     assert "opening_starter" in addon
     assert "starter_selected_callback" in addon
     assert "starter_selected_callback" in dashboard
@@ -240,9 +240,9 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
     open_dashboard = _method_source(
         "ankigarden/addon.py", "AnkiGardenApp", "_open_dashboard_when_ready"
     )
-    assert "StarterConfirmationDialog" in choose_starter
-    assert "QDialog.DialogCode.Accepted" in choose_starter
-    assert "self.refresh()" in choose_starter
+    assert "self.engine.select_starter_species(species)" in choose_starter
+    assert "self.accept()" in choose_starter
+    assert "StarterConfirmationDialog" not in choose_starter
     assert "QTimer.singleShot(0, open_starter)" in open_dashboard
 
 
@@ -278,11 +278,13 @@ def test_reduced_motion_is_visible_and_suppresses_scene_motion() -> None:
     assert 'if not bool(self.scene.get("motion_enabled", True)):' in scene
 
 
-def test_onboarding_coachmark_is_removed_after_starter_selection() -> None:
+def test_onboarding_coachmark_is_removed_only_after_persisted_completion() -> None:
     onboarding = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_onboarding"
     )
-    assert "starter_incomplete" in onboarding
+    assert "if step == OnboardingStep.DONE:" in onboarding
     assert "self.onboarding_panel.hide()" in onboarding
+    assert "self._set_onboarding_shield(False)" in onboarding
     assert "ux_state == UX_ACTIVE_GROWTH" not in onboarding
-    assert "permanent coachmark" in onboarding
+    assert "guided = step != OnboardingStep.DONE" in onboarding
+    assert "self.progress_btn.setVisible(not guided)" in onboarding
