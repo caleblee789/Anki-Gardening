@@ -578,6 +578,10 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
 
     dashboard.show()
     application.processEvents()
+    dashboard.garden_stats_bar._growth_value_full_text = (
+        "29,975 / 30,000 Growth"
+    )
+    dashboard.garden_stats_bar._refresh_growth_value_copy()
     dashboard_controllers = {
         "header_full": dashboard.dashboard_header_full,
         "title_actions": dashboard.dashboard_header_title_actions,
@@ -586,11 +590,17 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         "rearrange": dashboard.dashboard_rearrange_responsive,
     }
     dashboard_focus_order = _focus_signature(dashboard)
+    header_inset = (
+        dashboard.header_grid.contentsMargins().left()
+        + dashboard.header_grid.contentsMargins().right()
+    )
+    header_controller_names = {"header_full", "title_actions", "metrics"}
     for target_name, controller in dashboard_controllers.items():
         threshold = controller.evaluate(100_000).threshold_width
+        owning_inset = header_inset if target_name in header_controller_names else 0
         snapshots: list[dict[str, str]] = []
         for offset in (-2, -1, 0, 1, 2):
-            dashboard._apply_responsive_layout(threshold + offset)
+            dashboard._apply_responsive_layout(threshold + owning_inset + offset)
             snapshots.append(
                 {
                     name: str(candidate.telemetry.mode)
@@ -610,15 +620,16 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         596: ("compact", "compact", "compact", "wide"),
         699: ("compact", "compact", "compact", "wide"),
         701: ("compact", "compact", "compact", "wide"),
-        819: ("compact", "wide", "wide", "wide"),
-        821: ("compact", "wide", "wide", "wide"),
-        899: ("compact", "wide", "wide", "wide"),
-        901: ("compact", "wide", "wide", "wide"),
-        999: ("wide", "wide", "wide", "wide"),
-        1001: ("wide", "wide", "wide", "wide"),
-        1216: ("wide", "wide", "wide", "wide"),
-        1359: ("wide", "wide", "wide", "wide"),
-        1361: ("wide", "wide", "wide", "wide"),
+        819: ("compact", "compact", "wide", "wide"),
+        821: ("compact", "compact", "wide", "wide"),
+        899: ("compact", "compact", "wide", "wide"),
+        901: ("compact", "compact", "wide", "wide"),
+        999: ("compact", "wide", "wide", "wide"),
+        1001: ("compact", "wide", "wide", "wide"),
+        1216: ("compact", "wide", "wide", "wide"),
+        1359: ("compact", "wide", "wide", "wide"),
+        1361: ("compact", "wide", "wide", "wide"),
+        1700: ("wide", "wide", "wide", "wide"),
     }
     for width, expected_modes in historical_dashboard.items():
         dashboard._apply_responsive_layout(width)
@@ -628,6 +639,26 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             str(dashboard.dashboard_milestone_responsive.telemetry.mode),
             str(dashboard.dashboard_rearrange_responsive.telemetry.mode),
         ) == expected_modes
+
+        dashboard.resize(width + 24, 700)
+        application.processEvents()
+        assert dashboard.title_stack_widget.width() >= 230
+        assert (
+            dashboard.garden_stats_bar.streak_label.width()
+            >= dashboard.garden_stats_bar.streak_label.sizeHint().width()
+        )
+        assert (
+            dashboard.garden_stats_bar.streak_bonus.width()
+            >= dashboard.garden_stats_bar.streak_bonus.sizeHint().width()
+        )
+        assert (
+            dashboard.garden_stats_bar.growth_value.width()
+            >= dashboard.garden_stats_bar.growth_value.sizeHint().width()
+        )
+        assert (
+            dashboard.customize_btn.width()
+            >= dashboard.customize_btn.sizeHint().width()
+        )
 
     dashboard._fertilizer_timer.stop()
     dashboard.hide()

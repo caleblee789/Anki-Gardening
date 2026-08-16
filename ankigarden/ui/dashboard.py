@@ -6337,6 +6337,9 @@ class GardenStatsStrip(QFrame):
         ("streak", "Anki Streak", ANKI_STREAK_EXPLANATION),
         ("currency", "Garden Coins", GARDEN_CURRENCY_EXPLANATION),
     )
+    CELL_HORIZONTAL_INSET = 32
+    STREAK_HEADING_SPACING = 6
+    BONUS_BADGE_HORIZONTAL_CHROME = 16
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -6513,6 +6516,42 @@ class GardenStatsStrip(QFrame):
                 child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.set_compact(False)
 
+    def wide_content_minimum_width(self) -> int:
+        """Return the stable width needed by the four-column full-copy mode.
+
+        Growth spans two grid columns while Streak and Garden Coins each own
+        one.  The Streak heading is the widest single-column requirement: its
+        label and the largest source-defined bonus badge must coexist without
+        either QLabel being compressed.  Measuring that content directly
+        keeps the decision tied to the active Qt font and display scale.
+        """
+
+        maximum_bonus = max(percent for _days, percent in STREAK_BONUS_TIERS)
+        bonus_text = f"+{maximum_bonus}% Growth"
+        label_width = max(
+            int(self.streak_label.sizeHint().width()),
+            int(self.streak_label.fontMetrics().horizontalAdvance("ANKI STREAK")),
+        )
+        bonus_width = (
+            int(self.streak_bonus.fontMetrics().horizontalAdvance(bonus_text))
+            + self.BONUS_BADGE_HORIZONTAL_CHROME
+        )
+        streak_column_width = (
+            self.CELL_HORIZONTAL_INSET
+            + label_width
+            + self.STREAK_HEADING_SPACING
+            + bonus_width
+        )
+        return streak_column_width * 4
+
+    def _streak_bonus_minimum_width(self, *, compact: bool) -> int:
+        maximum_bonus = max(percent for _days, percent in STREAK_BONUS_TIERS)
+        text = f"+{maximum_bonus}%" if compact else f"+{maximum_bonus}% Growth"
+        return (
+            int(self.streak_bonus.fontMetrics().horizontalAdvance(text))
+            + self.BONUS_BADGE_HORIZONTAL_CHROME
+        )
+
     def set_compact(self, compact: bool) -> None:
         self._compact = bool(compact)
         onboarding_mode = bool(getattr(self, "_onboarding_mode", False))
@@ -6534,9 +6573,9 @@ class GardenStatsStrip(QFrame):
         self.currency_support.setVisible(not compact and not onboarding_mode)
         self.streak_label.setText("ANKI STREAK")
         self.streak_label.setAccessibleName("ANKI STREAK")
-        self.streak_label.setMinimumWidth(
-            self.streak_label.sizeHint().width()
-            if compact else 0
+        self.streak_label.setMinimumWidth(self.streak_label.sizeHint().width())
+        self.streak_bonus.setMinimumWidth(
+            max(48, self._streak_bonus_minimum_width(compact=compact))
         )
         self.streak_heading.removeWidget(self.streak_bonus)
         self.streak_value_row.removeWidget(self.streak_bonus)
@@ -6602,6 +6641,7 @@ class GardenStatsStrip(QFrame):
             full_text
         )
         self.growth_value.setText(visible_text)
+        self.growth_value.setMinimumWidth(self.growth_value.sizeHint().width())
         self.growth_value.setAccessibleName(full_text)
         self.growth_value.setToolTip(full_text if visible_text != full_text else "")
 
@@ -8613,9 +8653,9 @@ class GardenDashboard(DialogShell):
         self.header_grid.setHorizontalSpacing(12)
         self.header_grid.setVerticalSpacing(8)
         self.title_stack_widget = QWidget()
-        self.title_stack_widget.setMinimumWidth(0)
+        self.title_stack_widget.setMinimumWidth(230)
         self.title_stack_widget.setSizePolicy(
-            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.MinimumExpanding,
             QSizePolicy.Policy.Maximum,
         )
         title_stack = QVBoxLayout()
@@ -8895,15 +8935,15 @@ class GardenDashboard(DialogShell):
                     self.title_stack_widget,
                     floor=230,
                 ),
-                AdaptiveRegion.measured(
+                AdaptiveRegion(
                     "garden-metrics",
+                    self.garden_stats_bar.wide_content_minimum_width,
                     self.garden_stats_bar,
-                    floor=420,
                 ),
-                AdaptiveRegion.measured(
+                AdaptiveRegion(
                     "garden-actions",
+                    self._header_actions_content_width,
                     self.header_actions_widget,
-                    floor=300,
                 ),
             ),
             spacing=12,
@@ -8917,10 +8957,10 @@ class GardenDashboard(DialogShell):
                     self.title_stack_widget,
                     floor=230,
                 ),
-                AdaptiveRegion.measured(
+                AdaptiveRegion(
                     "garden-actions",
+                    self._header_actions_content_width,
                     self.header_actions_widget,
-                    floor=300,
                 ),
             ),
             spacing=12,
@@ -8929,10 +8969,10 @@ class GardenDashboard(DialogShell):
         self.dashboard_metrics_responsive = AdaptiveRow(
             "dashboard.metrics-density",
             (
-                AdaptiveRegion.fixed(
+                AdaptiveRegion(
                     "full-metric-copy",
-                    760,
-                    target=self.garden_stats_bar,
+                    self.garden_stats_bar.wide_content_minimum_width,
+                    self.garden_stats_bar,
                 ),
             ),
             telemetry_target=self.garden_stats_bar,
@@ -9814,13 +9854,23 @@ class GardenDashboard(DialogShell):
         self.onboarding_panel.setGeometry(x, y, width, height)
         self.onboarding_panel.raise_()
 
+    def _header_actions_content_width(self) -> int:
+        """Measure complete visible action copy instead of shrinkable minima."""
+
+        return max(300, int(self.header_actions_widget.sizeHint().width()))
+
     def _apply_responsive_layout(self, width: int) -> None:
         available = max(0, int(width))
         if not hasattr(self, "dashboard_header_full"):
             return
-        full_header = self.dashboard_header_full.evaluate(available)
-        title_actions = self.dashboard_header_title_actions.evaluate(available)
-        metrics = self.dashboard_metrics_responsive.evaluate(available)
+        header_margins = self.header_grid.contentsMargins()
+        header_available = max(
+            0,
+            available - int(header_margins.left()) - int(header_margins.right()),
+        )
+        full_header = self.dashboard_header_full.evaluate(header_available)
+        title_actions = self.dashboard_header_title_actions.evaluate(header_available)
+        metrics = self.dashboard_metrics_responsive.evaluate(header_available)
         milestone = self.dashboard_milestone_responsive.evaluate(available)
         rearrange = self.dashboard_rearrange_responsive.evaluate(available)
 

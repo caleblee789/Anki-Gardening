@@ -1097,10 +1097,14 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
             setMinimumWidth=lambda value: None,
             sizeHint=lambda: SimpleNamespace(width=lambda: 56),
         ),
-        streak_bonus=SimpleNamespace(setText=lambda value: None),
+        streak_bonus=SimpleNamespace(
+            setText=lambda value: None,
+            setMinimumWidth=lambda value: None,
+        ),
         streak_heading=Layout(),
         streak_value_row=Layout(),
         _streak_bonus_percent=10,
+        _streak_bonus_minimum_width=lambda compact: 53 if compact else 102,
     )
 
     set_compact(strip, True)

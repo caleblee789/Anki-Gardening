@@ -171,6 +171,19 @@ def test_dialog_scroll_audit_is_visible_owner_aware_and_fail_closed() -> None:
     assert 'scroll.property("footerClearance")' in source
 
 
+def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
+    qt_import = next(
+        node
+        for node in _module().body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "aqt.qt"
+    )
+    imported = {alias.name for alias in qt_import.names}
+
+    assert "QAbstractScrollArea" in imported
+    assert "QScrollArea" in imported
+
+
 def test_all_nine_scroll_surfaces_have_canonical_and_size_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
@@ -241,6 +254,22 @@ def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     assert specs["resize-collection-minimum"][3:5] == (720, 500)
     assert specs["resize-collection-default"][3:5] == (940, 680)
     assert specs["resize-collection-large"][3:5] == (1000, 820)
+
+
+def test_resize_and_footer_stress_fixtures_reset_deferred_ui_state() -> None:
+    resize = _method_source("_UiFaceCaptureRunner", "_capture_resize_matrix_face")
+    final_row = _method_source("_UiFaceCaptureRunner", "_capture_nursery_final_row")
+
+    prepare_position = resize.index("prepare()")
+    tab_position = resize.index("option_tabs.setCurrentIndex(0)", prepare_position)
+    capture_position = resize.index("capture_widget(customize, close=True)", tab_position)
+    assert prepare_position < tab_position < capture_position
+
+    capture_ready = final_row.split("def capture_ready()", 1)[1]
+    audit_position = capture_ready.index("self._audit_nursery_action_above_footer")
+    before_audit = capture_ready[:audit_position]
+    assert before_audit.count("scrollbar.setValue(scrollbar.maximum())") == 2
+    assert "QApplication.processEvents()" in before_audit
 
 
 def test_responsive_pair_comparison_ignores_width_delta_but_not_state() -> None:

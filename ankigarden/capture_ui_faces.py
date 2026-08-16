@@ -27,6 +27,7 @@ from aqt.qt import (
     QGuiApplication,
     QLabel,
     QPainter,
+    QScrollArea,
     QTabWidget,
     QTimer,
     Qt,
@@ -433,19 +434,19 @@ RESIZE_MATRIX_SPECS: tuple[
 # screen, so exact pixels alone are not sufficient to prove that the two sides
 # of a breakpoint remained distinct.
 RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
-    "resize-dashboard-minimum": "compact",
+    "resize-dashboard-minimum": "narrow",
     "resize-dashboard-content-699": "compact",
     "resize-dashboard-content-701": "compact",
     "resize-dashboard-content-819": "compact",
     "resize-dashboard-content-821": "compact",
     "resize-dashboard-content-899": "compact",
     "resize-dashboard-content-901": "compact",
-    "resize-dashboard-content-999": "wide",
-    "resize-dashboard-content-1001": "wide",
-    "resize-dashboard-content-1359": "wide",
-    "resize-dashboard-content-1361": "wide",
-    "resize-dashboard-default": "wide",
-    "resize-dashboard-large": "wide",
+    "resize-dashboard-content-999": "compact",
+    "resize-dashboard-content-1001": "compact",
+    "resize-dashboard-content-1359": "compact",
+    "resize-dashboard-content-1361": "compact",
+    "resize-dashboard-default": "compact",
+    "resize-dashboard-large": "compact",
     "resize-settings-minimum": "display",
     "resize-settings-content-699": "display",
     "resize-settings-content-701": "display",
@@ -4830,7 +4831,14 @@ class _UiFaceCaptureRunner:
                 vertical_clip = required_height > available_height + 2
                 horizontal_clip = False
                 if isinstance(candidate, QLabel) and not candidate.wordWrap() and "\n" not in text:
-                    horizontal_clip = metrics.horizontalAdvance(text) > available_width + 1
+                    # QLabel clips painted glyphs, not the cursor advance after
+                    # the final glyph.  At fractional/high-DPI scaling the
+                    # advance can round several pixels wider than fully visible
+                    # ink (especially in padded badges and tabular values).
+                    # Tight ink bounds retain real truncation failures without
+                    # rejecting complete text at the style boundary.
+                    ink_width = int(metrics.tightBoundingRect(text).width())
+                    horizontal_clip = ink_width > available_width + 2
                 elif isinstance(candidate, QAbstractButton) and len(text) > 2:
                     horizontal_clip = metrics.horizontalAdvance(text) > max(
                         1,
@@ -7316,6 +7324,13 @@ class _UiFaceCaptureRunner:
             scrollbar.setValue(scrollbar.maximum())
 
             def capture_ready() -> None:
+                # Catalog rows can finish their deferred geometry after the
+                # dialog first becomes visible, which can increase the range
+                # after the initial scroll. Re-anchor to the settled edge
+                # immediately before the reachability audit.
+                scrollbar.setValue(scrollbar.maximum())
+                QApplication.processEvents()
+                scrollbar.setValue(scrollbar.maximum())
                 self._audit_nursery_action_above_footer(
                     dialog,
                     dialog.scroll,
@@ -7940,6 +7955,9 @@ class _UiFaceCaptureRunner:
             prepare = getattr(customize, "prepare_to_show", None)
             if callable(prepare):
                 prepare()
+            option_tabs = getattr(customize, "option_tabs", None)
+            if option_tabs is not None:
+                option_tabs.setCurrentIndex(0)
             capture_widget(customize, close=True)
             return
         if family == "nursery":

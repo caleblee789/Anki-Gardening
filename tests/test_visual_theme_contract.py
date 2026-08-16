@@ -121,7 +121,8 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     assert "self.feedback_panel.hide()" in dashboard
     assert "self._sync_feedback_panel_visibility()" in dashboard
     assert dashboard.count("QSizePolicy.Policy.Maximum") >= 8
-    assert "self.title_stack_widget.setMinimumWidth(0)" in dashboard
+    assert "self.title_stack_widget.setMinimumWidth(230)" in dashboard
+    assert "QSizePolicy.Policy.MinimumExpanding" in dashboard
     assert "self.title_label.setMinimumWidth(0)" in dashboard
     assert "self.top_bar.adjustSize()" in dashboard
     assert "self.header_grid.addWidget(self.garden_stats_bar" in dashboard

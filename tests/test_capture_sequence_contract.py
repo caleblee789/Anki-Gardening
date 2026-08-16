@@ -289,8 +289,8 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
         1383,
         900,
     ]
-    assert resolver("resize-dashboard-content-1359")["layout_mode"] == "wide"
-    assert resolver("resize-dashboard-content-1361")["layout_mode"] == "wide"
+    assert resolver("resize-dashboard-content-1359")["layout_mode"] == "compact"
+    assert resolver("resize-dashboard-content-1361")["layout_mode"] == "compact"
     assert resolver("resize-progress-minimum")["canonical_page"] == "overview"
     assert resolver("resize-collection-minimum")["canonical_page"] == "collection"
 
@@ -1869,6 +1869,8 @@ def test_text_layout_audit_only_exempts_intentionally_scrolled_out_content() -> 
     assert "horizontal.maximum()" in qt_exemption
     assert "vertical.maximum()" in qt_exemption
     assert "intentional_scroll_viewport_exemption(" in qt_exemption
+    assert "ink_width = int(metrics.tightBoundingRect(text).width())" in audit
+    assert "horizontal_clip = ink_width > available_width + 2" in audit
 
 
 def test_scroll_viewport_exemption_rejects_covered_or_forbidden_axis_controls() -> None:
