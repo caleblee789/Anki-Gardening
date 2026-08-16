@@ -901,7 +901,7 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
     try:
-        from aqt.qt import QApplication
+        from aqt.qt import QApplication, QPoint
         from ankigarden.ui.dashboard import GardenStatsStrip
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
@@ -930,10 +930,13 @@ def test_live_qt_growth_identity_preserves_short_name_and_numeric_value(
     assert strip.growth_name.text() == "Peony Plant"
     assert strip.growth_value.text() == "0 / 2,000"
     assert strip.growth_value.accessibleName() == "0 / 2,000 Growth"
-    assert strip.cells["growth"].property("growthIdentityMode") in {
-        "compact",
-        "wide",
-    }
+    assert strip.cells["growth"].property("growthIdentityMode") == "compact"
+    growth_cell = strip.cells["growth"]
+    for label in (strip.growth_name, strip.growth_value):
+        origin = label.mapTo(growth_cell, QPoint(0, 0))
+        assert origin.x() >= 0
+        assert origin.x() + label.width() <= growth_cell.contentsRect().right() + 1
+        assert label.width() >= label.fontMetrics().horizontalAdvance(label.text())
 
     strip.close()
     application.processEvents()

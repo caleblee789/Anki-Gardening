@@ -6841,11 +6841,15 @@ class GardenStatsStrip(QFrame):
 
     def _sync_growth_identity_layout(self) -> None:
         margins = self.cells["growth"].layout().contentsMargins()
-        available = max(
-            0,
-            int(self.cells["growth"].contentsRect().width())
-            - margins.left()
-            - margins.right(),
+        available = (
+            0
+            if self._compact
+            else max(
+                0,
+                int(self.cells["growth"].contentsRect().width())
+                - margins.left()
+                - margins.right(),
+            )
         )
         telemetry = self.growth_identity_responsive.evaluate(available)
         self.growth_name.setMinimumWidth(
