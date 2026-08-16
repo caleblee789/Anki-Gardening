@@ -10,19 +10,20 @@ capture contract v9 reconciled it in
 set only. Capture contract v10 added three Collection resize states; its
 validator-clean macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
-149 of 149. It is the preserved pre-change baseline. Current source is capture
-contract v11 with 156 ordered surfaces and does not have complete current visual
-evidence until the final v11 run succeeds.
+149 of 149 and remains the preserved pre-change baseline. Current source is
+capture contract v11 with 156 ordered surfaces. Its validator-clean macOS Qt
+run at
+`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427` is
+156 of 156 and `complete: true`.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
 Current v11 preserves IDs 001-149 and appends resilient-state IDs 150-156.
 Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
-did not change in v9. Viewports for IDs 001-146 are logical Qt client sizes from
-the v10 manifest; IDs 147-149 are realized Collection captures and IDs 150-156
-list their intended logical targets until the final v11 manifest is recorded. A
+did not change in v9. Viewports for IDs 001-156 are logical Qt client sizes from
+the v11 manifest. A
 `declared -> actual` value means a screen, widget, or native-frame constraint
-normalized the request. Responsive modes come from the v10 manifest rather
+normalized the request. Responsive modes come from the v11 manifest rather
 than from stale v9 fixed-edge labels. The formerly missing Home rows use the
 same 667x570 Anki window as their adjacent Home fixtures.
 
@@ -70,6 +71,17 @@ required dialog-scroll audits passing, and all 13 responsive-stability pairs
 passing. The complete 19-page manifest-owned contact-sheet set at
 `build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-134539`
 and exact manifest passed the independent repository validator.
+
+The frozen v11 run regenerated all IDs 001-156 at
+`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`.
+Its manifest and filesystem agree on 156 PNGs with `complete: true`, zero
+failures and text/layout warnings, complete fixture validation, 60 of 60
+dialog-scroll audits, all 13 responsive-stability pairs, and a passing 12-cycle
+dialog-memory probe. The complete 20-page contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-173425`
+and exact manifest passed the independent repository validator for all 156
+surfaces. IDs 019 and 064-069 are present and pass their fixture and geometry
+audits.
 
 Manual review of every raw PNG and all 18 partial contact sheets found these
 successful-file exceptions in the v8 baseline:
@@ -338,13 +350,11 @@ transaction owners must freeze any new projection/purchase/action interfaces
 before surface agents depend on them. Accessibility/responsive work coordinates
 with each surface owner rather than owning the whole module.
 
-This foundation does not implement every loading, error, rollback, Windows,
-true standard-scale, or true 200-percent variant listed in the profiles. Those
-remain explicit downstream coverage requirements. The complete 146/146 v9 run
-closes its historical manifest gap but is stale after the current source and
-capture-contract changes. The validator-clean v10 run supplies 149/149
-pre-change macOS Qt evidence; the current v11 source still requires 156/156. No
-local capture by itself closes the native
+The complete 146/146 v9 run closes its historical manifest gap but is stale
+after later source and capture-contract changes. The validator-clean v10 run
+supplies 149/149 pre-change macOS Qt evidence; the v11 run supplies 156/156
+current-source automated macOS Qt evidence, including the appended loading,
+error, stale, and rollback states. No local capture by itself closes the native
 platform, uncaptured variant, or human-accessibility gates identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true

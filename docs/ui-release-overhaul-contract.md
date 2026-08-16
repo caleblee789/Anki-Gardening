@@ -1,10 +1,12 @@
 # Anki Garden UI release-overhaul contract
 
-Status: implementation contract for Release 2.1.0. The current source capture
-contract is v11 with 156 ordered surfaces. The validator-clean v10 run is the
-preserved pre-change baseline; final v11 capture evidence is not complete until
-one frozen-source run passes all manifest, fixture, layout, and contact-sheet
-checks. This document records the current implementation boundary.
+Status: implemented contract for Release 2.1.0. The current source capture
+contract is v11 with 156 ordered surfaces. The frozen-source run at
+`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
+passes every manifest, fixture, layout, and contact-sheet check. The
+validator-clean v10 run remains the preserved pre-change baseline. This
+document records the current implementation boundary and the still-separate
+native-platform and human-acceptance gates.
 
 The source code and persisted-state behavior are authoritative. Existing UI
 documents remain useful context, but any conflict called out in
@@ -96,8 +98,27 @@ product visual acceptance.
 The current source appends IDs 150-156 for starter placement, starter
 completion, Home preview loading/error/stale, onboarding persistence failure,
 and move persistence failure. IDs 001-149 retain their semantic identities.
-Until the intended final v11 run reports 156/156 with zero failures and warnings,
-the current source must not be described as having complete visual coverage.
+
+The final v11 run is:
+
+`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
+
+Its manifest, ordered records, and filesystem agree on 156 PNGs, including IDs
+019 and 064-069. It records `complete: true`, zero failures, zero text/layout
+warnings, complete fixture validation and manifest writing, 60 of 60 required
+dialog-scroll audits passing, all 13 responsive-stability pairs passing, and a
+12-cycle dialog-memory probe with zero watched-class deltas. The manifest-owned
+20-page contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-173425`
+is complete. A fresh independent repository-validator invocation reported all
+156 surfaces and all 20 pages valid. The capture report records
+`quality_status: clean`; the capture package SHA-256 is
+`b4dada22a21891de3deebc022e268d20adef54c3bff6b34b76cdd7c5b370e342`.
+
+This closes current-source automated visual completeness for the captured
+macOS Qt mixed-display run. It does not establish native Windows, true OS-level
+100/150/200-percent or high-DPI acceptance, human assistive-technology review,
+contrast review, or full product visual acceptance.
 
 ## Approved downstream decisions
 
@@ -799,16 +820,17 @@ added the three Collection resize fixtures and followed source changes across
 the responsive, dialog, control, and accessibility foundations. The v9 run
 cannot serve as later after-change evidence.
 
-The current after-change run at
+The preserved pre-change run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543`
-regenerated all 149 fixtures. Its exact manifest and the 19-page manifest-owned
+regenerated all 149 v10 fixtures. The current after-change v11 run at
+`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
+regenerated all 156 fixtures. Its exact manifest and 20-page manifest-owned
 contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
-capture count 149, surface count 149, and page count 19. The manifest also
-records all 60 required dialog-scroll audits and all 13 responsive-stability
-pairs as passing. This is complete pre-change v10 capture evidence, subject to
-the visual, accessibility, and platform boundaries below. The current v11
-source requires 156/156 in a new frozen-source run before it has complete
-visual evidence.
+capture count 156, surface count 156, and page count 20. The manifest also
+records all 60 required dialog-scroll audits, all 13 responsive-stability
+pairs, and the 12-cycle dialog-memory probe as passing. This is complete
+current-source automated macOS Qt capture evidence, subject to the visual,
+accessibility, and native-platform boundaries below.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel
