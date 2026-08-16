@@ -191,7 +191,9 @@ The v9 evidence records a mixed-display macOS run under
 not deliberate mixed-DPI transition acceptance. It does not provide native
 Windows, true standard-scale, or true OS 200-percent evidence; 090 is a logical
 Qt proxy. Screen height capped several resize fixtures, although 100 and 101
-now preserve distinct breakpoint widths at 1383x699 compact and 1385x699 wide.
+preserved distinct historical-v9 widths at 1383x699 compact and 1385x699 wide.
+Current v10 source retains both as stability probes and expects both to remain
+top-level compact.
 Manual contact-sheet review also retains product-layout risks:
 039 shows partial helper context at a Settings scroll boundary, 066 ellipsizes
 the Home detail line, and 111 clips the final “s” in Achievements. Therefore,
@@ -213,6 +215,13 @@ These source declarations are not capture evidence. A fresh deterministic v10
 run must regenerate 001-149—including 019 and 064-069—and its exact manifest
 and manifest-owned contact sheets must pass the independent repository
 validator with no failures or warnings before current completeness is claimed.
+The current Dashboard policy also requires live font/content measurement: the
+macOS probe reports a 944 px full-copy metric requirement plus the shared 24 px
+reserve, while a complete full header becomes wide only around 1,595 inner px.
+The 620 px minimum remains top-level narrow; all other declared Dashboard
+resize states through 1440 are expected top-level compact. Metric density is
+compact through the 901 probe and wide from the 999 probe upward. These are
+uncaptured v10 source expectations, not results.
 
 ## Pre-foundation startup, Garden, dialog, and memory boundaries
 

@@ -15,10 +15,12 @@ Current v10 preserves IDs 001-146 and appends Collection resize IDs 147-149.
 Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
 did not change in v9. Viewports for IDs 001-146 are logical Qt client sizes from
-the reconciled v9 manifest. IDs 147-149 list the requested source-contract size
-and remain uncaptured. A `declared -> actual` value means the screen or widget
-constraint normalized the request. The formerly missing Home rows use the same
-667x570 Anki window as their adjacent Home fixtures.
+the reconciled v9 manifest. Responsive modes for Dashboard IDs 088-103 reflect
+the current v10 source expectation rather than the stale v9 fixed-edge modes.
+IDs 147-149 list the requested source-contract size and remain uncaptured. A
+`declared -> actual` value means the historical screen or widget constraint
+normalized the request. The formerly missing Home rows use the same 667x570
+Anki window as their adjacent Home fixtures.
 
 ## Capture reconciliation and visual-audit status
 
@@ -86,9 +88,11 @@ successful-file exceptions in the v8 baseline:
 - 090 is byte-identical to 091 because it is only a 620x520 logical proxy. Its
   manifest explicitly says the OS display scale did not change.
 - In v8, 100-103 normalized to the same 1140x699 window and were byte-identical.
-  The v9 run preserves their requested widths: 100 is 1383x699 in compact mode
-  and 101 is 1385x699 in wide mode, so the breakpoint pair is distinct. The
-  available screen still caps several requested resize heights at 699 pixels.
+  The v9 run preserved their requested widths: 100 was 1383x699 compact and 101
+  was 1385x699 wide. That old fixed-edge mode change is historical, not the
+  current v10 behavior. Current source keeps both top-level compact and retains
+  the pair as a stability probe. The available screen still capped several
+  requested resize heights at 699 pixels.
 
 The v8 and v9 values of zero text-layout warnings are automated threshold
 results. They cover visible native label/button glyph boxes, selected ancestor boundaries,
@@ -231,22 +235,22 @@ Responsive mode is transient capture metadata and is never persisted.
 | 085 | `production-build-controls-absent` | SD | GardenSettingsDialog / GardenStudioWidget | Production capability branch; dev controls absent | 980x629 | troubleshooting | Settings + Diagnostics |
 | 086 | `reduced-motion-enabled` | SD | GardenSettingsDialog / GardenStudioWidget | Reduced Motion checked and scrolled into view | 980x629 | display | Settings + Diagnostics |
 | 087 | `keyboard-focus-state` | G | GardenDashboard / GardenSceneWidget | Progress action focused by keyboard | 1140x630 | compact | Garden + Scene |
-| 088 | `narrow-window-responsive` | G | GardenDashboard / GardenSceneWidget | Dashboard resized to 760x620 | 760x620 | narrow | Garden + Scene |
-| 089 | `display-scaling-150` | G | GardenDashboard / GardenSceneWidget | Process `QT_SCALE_FACTOR=1.5` | 1140x630 | compact | Garden + Scene |
-| 090 | `display-scaling-200-qt-representative` | G | GardenDashboard / GardenSceneWidget | 620x520 logical proxy; OS scale unchanged | 620x520 | narrow | Garden + Scene |
-| 091 | `resize-dashboard-minimum` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-minimum` | 620x520 | narrow | Garden + Scene |
-| 092 | `resize-dashboard-content-699` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-699` | 723x700 -> 723x699 | narrow | Garden + Scene |
-| 093 | `resize-dashboard-content-701` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-701` | 725x700 -> 725x699 | narrow | Garden + Scene |
-| 094 | `resize-dashboard-content-819` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-819` | 843x720 -> 843x699 | narrow | Garden + Scene |
-| 095 | `resize-dashboard-content-821` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-821` | 845x720 -> 845x699 | compact | Garden + Scene |
-| 096 | `resize-dashboard-content-899` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-899` | 923x740 -> 923x699 | compact | Garden + Scene |
-| 097 | `resize-dashboard-content-901` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-901` | 925x740 -> 925x699 | compact | Garden + Scene |
-| 098 | `resize-dashboard-content-999` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-999` | 1023x760 -> 1023x699 | compact | Garden + Scene |
-| 099 | `resize-dashboard-content-1001` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-1001` | 1025x760 -> 1025x699 | compact | Garden + Scene |
-| 100 | `resize-dashboard-content-1359` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-1359` | 1383x900 -> 1383x699 | compact | Garden + Scene |
-| 101 | `resize-dashboard-content-1361` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-content-1361` | 1385x900 -> 1385x699 | wide | Garden + Scene |
-| 102 | `resize-dashboard-default` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-default` | 1240x840 -> 1240x699 | compact | Garden + Scene |
-| 103 | `resize-dashboard-large` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-large` | 1440x960 -> 1440x699 | wide | Garden + Scene |
+| 088 | `narrow-window-responsive` | G | GardenDashboard / GardenSceneWidget | Dashboard resized to 760x620 | 760x620 | narrow; metrics compact | Garden + Scene |
+| 089 | `display-scaling-150` | G | GardenDashboard / GardenSceneWidget | Process `QT_SCALE_FACTOR=1.5` | 1140x630 | compact; metrics wide | Garden + Scene |
+| 090 | `display-scaling-200-qt-representative` | G | GardenDashboard / GardenSceneWidget | 620x520 logical proxy; OS scale unchanged | 620x520 | narrow; metrics compact | Garden + Scene |
+| 091 | `resize-dashboard-minimum` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-minimum` | 620x520 | narrow; metrics compact | Garden + Scene |
+| 092 | `resize-dashboard-content-699` | G | GardenDashboard / GardenSceneWidget | Historical 699 px edge retained as a stability probe | 723x700 -> 723x699 | compact; metrics compact | Garden + Scene |
+| 093 | `resize-dashboard-content-701` | G | GardenDashboard / GardenSceneWidget | Historical 701 px edge retained as a stability probe | 725x700 -> 725x699 | compact; metrics compact | Garden + Scene |
+| 094 | `resize-dashboard-content-819` | G | GardenDashboard / GardenSceneWidget | Historical 819 px edge retained as a stability probe | 843x720 -> 843x699 | compact; metrics compact | Garden + Scene |
+| 095 | `resize-dashboard-content-821` | G | GardenDashboard / GardenSceneWidget | Historical 821 px edge retained as a stability probe | 845x720 -> 845x699 | compact; metrics compact | Garden + Scene |
+| 096 | `resize-dashboard-content-899` | G | GardenDashboard / GardenSceneWidget | Historical 899 px edge retained as a stability probe | 923x740 -> 923x699 | compact; metrics compact | Garden + Scene |
+| 097 | `resize-dashboard-content-901` | G | GardenDashboard / GardenSceneWidget | Historical 901 px edge retained as a stability probe | 925x740 -> 925x699 | compact; metrics compact | Garden + Scene |
+| 098 | `resize-dashboard-content-999` | G | GardenDashboard / GardenSceneWidget | Historical 999 px edge retained as a stability probe | 1023x760 -> 1023x699 | compact; metrics wide | Garden + Scene |
+| 099 | `resize-dashboard-content-1001` | G | GardenDashboard / GardenSceneWidget | Historical 1001 px edge retained as a stability probe | 1025x760 -> 1025x699 | compact; metrics wide | Garden + Scene |
+| 100 | `resize-dashboard-content-1359` | G | GardenDashboard / GardenSceneWidget | Historical 1359 px edge retained as a stability probe | 1383x900 -> 1383x699 | compact; metrics wide | Garden + Scene |
+| 101 | `resize-dashboard-content-1361` | G | GardenDashboard / GardenSceneWidget | Historical 1361 px edge retained as a stability probe | 1385x900 -> 1385x699 | compact; metrics wide | Garden + Scene |
+| 102 | `resize-dashboard-default` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-default` | 1240x840 -> 1240x699 | compact; metrics wide | Garden + Scene |
+| 103 | `resize-dashboard-large` | G | GardenDashboard / GardenSceneWidget | Declared resize-matrix transition `dashboard-large` | 1440x960 -> 1440x699 | compact; metrics wide | Garden + Scene |
 | 104 | `resize-settings-minimum` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-minimum` | 560x420 | display | Settings + Diagnostics |
 | 105 | `resize-settings-content-699` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-content-699` | 747x620 | display | Settings + Diagnostics |
 | 106 | `resize-settings-content-701` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-content-701` | 749x620 | display | Settings + Diagnostics |

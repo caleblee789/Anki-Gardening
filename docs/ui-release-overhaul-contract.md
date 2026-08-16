@@ -470,9 +470,10 @@ two-pixel probe must retain the same semantic mode on both sides.
 
 | Surface / region | Minimum content requirement | Independent behavior |
 |---|---:|---|
-| Dashboard full header | 998 px | Three regions become one row |
-| Dashboard title and actions | 566 px | Title/actions become one row |
-| Dashboard metrics | 784 px | Full metric support copy |
+| Dashboard top-level shell | 620 px minimum | Minimum supported window remains intentionally narrow |
+| Dashboard full header | Live measurement; about 1,595 inner px in the current macOS probe | A 230 px title region, full-copy metrics, complete measured actions, two 12 px gaps, and the 24 px reserve fit in one row |
+| Dashboard title and actions | Live measurement; about 639 inner px in the current macOS probe | Complete title and action copy fit in one row without involving metric density |
+| Dashboard metric full copy | 968 inner px in the current macOS probe | The live 944 px font/content requirement plus the 24 px reserve fits; otherwise metrics use compact copy |
 | Dashboard milestone | 750 px | Copy, progress, and choices become one row |
 | Dashboard rearrange actions | 584 px | Full move guidance |
 | Settings Display studio | 684 px | Controls and preview become two columns |
@@ -491,6 +492,14 @@ viewport media queries. Scene aspect, plant fit, and minimum scene height now
 blend across responsive ranges instead of switching at a single pixel. The
 selected-plant card attempts content-aware in-scene placement and docks only
 when no protected overlay lane is available.
+
+Dashboard header composition and metric density are independent. In the
+current macOS probe, every declared Dashboard resize state through the 1440 px
+large window remains top-level `compact`; only the 620 px minimum is
+top-level `narrow`. Metric copy remains compact through the historical 901 px
+probe and becomes wide by the 999 px probe. These are source expectations for
+v10, not fresh capture results, and localized or platform font metrics may move
+the measured thresholds while preserving the same content-first policy.
 
 Global CSS transforms, Qt scaling transforms, and fixed screenshot-specific
 offsets are prohibited. Standard scale, 150%, 200%, and high-DPI behavior must
@@ -771,10 +780,10 @@ the secondary macOS display at DPR 1.5 and 140 files came from the primary
 display at DPR 3.0, under requested Qt scale 1.5. Capture 090 is a logical
 620 x 520 proxy and explicitly does not change OS display scaling. There is no
 native standard-scale, true OS 200%, Windows, Windows-high-DPI, or deliberate
-mixed-DPI transition acceptance in this run. Captures 100 and 101 are distinct:
-100 is 1383x699 in compact mode and 101 is 1385x699 in wide mode. Capture 103
-now reaches 1440x699 wide. The available screen still caps several requested
-resize heights.
+mixed-DPI transition acceptance in this run. In that historical v9 run, 100 was
+1383x699 compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Those
+old fixed-edge modes are not the current v10 source expectation. The available
+screen still capped several requested resize heights.
 
 The complete count must not be confused with clean product visual acceptance.
 Manual review still finds partial Advanced-tab context at the scroll boundary
