@@ -5,6 +5,7 @@ import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from ..environment import (
@@ -15,7 +16,8 @@ from ..environment import (
     WEATHER_CATALOG,
 )
 
-STATE_VERSION = 16
+STATE_VERSION = 17
+ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
 WEATHER_TYPES = set(WEATHER_CATALOG)
@@ -221,6 +223,38 @@ class Achievement:
     unlocked_at: Optional[str] = None
 
 
+class OnboardingStep(str, Enum):
+    """The persisted six-step Garden setup state machine.
+
+    Anki Home is deliberately not represented here: it is an entry/resume
+    surface rather than a counted Garden step.
+    """
+
+    INTRODUCTION = "introduction"
+    NURSERY = "nursery"
+    CONFIRMATION = "confirmation"
+    PLACEMENT = "placement"
+    NURTURE = "nurture"
+    COMPLETION = "completion"
+    DONE = "done"
+
+
+@dataclass
+class OnboardingProgress:
+    version: int = ONBOARDING_PROGRESS_VERSION
+    step: OnboardingStep = OnboardingStep.INTRODUCTION
+    pending_species: Optional[str] = None
+    starter_plant_id: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": ONBOARDING_PROGRESS_VERSION,
+            "step": self.step.value,
+            "pending_species": self.pending_species,
+            "starter_plant_id": self.starter_plant_id,
+        }
+
+
 @dataclass
 class GardenState:
     version: int = STATE_VERSION
@@ -233,6 +267,7 @@ class GardenState:
     unlocked_slots: int = 2
     unlocked_species: List[str] = field(default_factory=list)
     starter_selection_complete: bool = False
+    onboarding: OnboardingProgress = field(default_factory=OnboardingProgress)
     selected_background: str = DEFAULT_SCENERY_ID
     selected_weather: str = DEFAULT_WEATHER_ID
     plants: List[Plant] = field(default_factory=list)
@@ -293,6 +328,11 @@ class GardenState:
                 *self.unlocked_species,
                 *(plant.species for plant in self.plants if plant.species in PLANT_SPECIES),
             ]))
+            if self.onboarding.step == OnboardingStep.INTRODUCTION:
+                self.onboarding = OnboardingProgress(
+                    step=OnboardingStep.DONE,
+                    starter_plant_id=self.plants[0].plant_id,
+                )
 
     def to_dict(self) -> dict[str, Any]:
         return deepcopy({
@@ -306,6 +346,7 @@ class GardenState:
             "unlocked_slots": self.unlocked_slots,
             "unlocked_species": list(self.unlocked_species),
             "starter_selection_complete": self.starter_selection_complete,
+            "onboarding": self.onboarding.to_dict(),
             "selected_background": self.selected_background,
             "selected_weather": self.selected_weather,
             "plants": [
@@ -417,6 +458,11 @@ class GardenState:
             issues.append("starter_selection_complete: repaired to true for an existing collection")
             starter_selection_complete = True
         state.starter_selection_complete = starter_selection_complete
+        state.onboarding = _onboarding_progress(
+            data.get("onboarding"),
+            state.plants,
+            issues,
+        )
         state.achievements = _achievements(data.get("achievements"), issues)
         state.currency_balance = _nonnegative_int(data.get("currency_balance"), 0, "currency_balance", issues)
         state.currency_transactions = _transactions(data.get("currency_transactions"), state.currency_balance, issues)
@@ -619,6 +665,74 @@ def _garden_name(value: Any, issues: list[str]) -> str:
     if len(clean) > MAX_GARDEN_NAME_LENGTH:
         issues.append("garden_name: truncated to the current length limit")
     return clean[:MAX_GARDEN_NAME_LENGTH]
+
+
+def _onboarding_progress(
+    value: Any,
+    plants: list[Plant],
+    issues: list[str],
+) -> OnboardingProgress:
+    """Validate setup progress without deriving it from display copy or config."""
+
+    if not isinstance(value, dict):
+        if value is not None:
+            issues.append("onboarding: expected object")
+        return OnboardingProgress()
+    version = value.get("version")
+    if version != ONBOARDING_PROGRESS_VERSION:
+        issues.append("onboarding.version: unsupported version")
+        return OnboardingProgress()
+    try:
+        step = OnboardingStep(str(value.get("step", "")))
+    except ValueError:
+        issues.append("onboarding.step: unexpected value")
+        step = OnboardingStep.INTRODUCTION
+
+    pending = value.get("pending_species")
+    if pending is not None and pending not in PLANT_SPECIES:
+        issues.append("onboarding.pending_species: unsupported species")
+        pending = None
+    starter_id = value.get("starter_plant_id")
+    if starter_id is not None and not isinstance(starter_id, str):
+        issues.append("onboarding.starter_plant_id: expected string or null")
+        starter_id = None
+
+    plant_ids = {plant.plant_id for plant in plants}
+    if starter_id not in plant_ids:
+        if starter_id is not None:
+            issues.append("onboarding.starter_plant_id: missing plant")
+        starter_id = plants[0].plant_id if plants else None
+
+    if step in {OnboardingStep.CONFIRMATION, OnboardingStep.PLACEMENT} and pending is None:
+        issues.append("onboarding.pending_species: required for current step")
+        step = OnboardingStep.NURSERY
+    if not plants and step in {
+        OnboardingStep.NURTURE,
+        OnboardingStep.COMPLETION,
+        OnboardingStep.DONE,
+    }:
+        issues.append("onboarding.step: requires a starter plant")
+        step = OnboardingStep.INTRODUCTION
+        starter_id = None
+    elif plants and step in {
+        OnboardingStep.INTRODUCTION,
+        OnboardingStep.NURSERY,
+        OnboardingStep.CONFIRMATION,
+        OnboardingStep.PLACEMENT,
+    }:
+        issues.append("onboarding.step: repaired past atomic placement")
+        step = OnboardingStep.NURTURE
+        pending = None
+    if step in {OnboardingStep.INTRODUCTION, OnboardingStep.NURTURE, OnboardingStep.COMPLETION, OnboardingStep.DONE}:
+        pending = None
+    if step == OnboardingStep.DONE:
+        starter_id = starter_id or (plants[0].plant_id if plants else None)
+    return OnboardingProgress(
+        version=ONBOARDING_PROGRESS_VERSION,
+        step=step,
+        pending_species=pending,
+        starter_plant_id=starter_id,
+    )
 
 
 def _reward_seed(value: Any, default: str, issues: list[str]) -> str:

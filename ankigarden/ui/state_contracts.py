@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Any
 
+from ..models.state import OnboardingStep
+
 
 CURRENT_ONBOARDING_VERSION = 3
 
@@ -24,6 +26,9 @@ class OnboardingStateDisplay:
     primary_action: str | None
     nurtured_marker_visible: bool
     onboarding_complete: bool
+    step: OnboardingStep | None = None
+    counted_step: int | None = None
+    total_steps: int = 6
 
 
 def onboarding_state_display(
@@ -34,11 +39,88 @@ def onboarding_state_display(
 ) -> OnboardingStateDisplay:
     """Derive the first-plant lifecycle from persisted Garden evidence.
 
-    ``first_nurture`` is written in the same Garden transaction as the active
-    plant assignment, so it is stronger completion evidence than the separate
-    add-on preference. The preference remains useful for legacy installations,
-    but it cannot make an empty or merely planted garden look nurtured.
+    Schema-17 onboarding progress is authoritative. The separate add-on
+    preference is consulted only by legacy callers that have no persisted
+    progress object, and can never make an empty or merely planted garden look
+    nurtured.
     """
+    persisted = getattr(garden_state, "onboarding", None)
+    persisted_step = getattr(persisted, "step", None)
+    if isinstance(persisted_step, str):
+        try:
+            persisted_step = OnboardingStep(persisted_step)
+        except ValueError:
+            persisted_step = None
+    if isinstance(persisted_step, OnboardingStep):
+        projections = {
+            OnboardingStep.INTRODUCTION: (
+                OnboardingState.NO_STARTER,
+                "No plant selected",
+                "Choose starter",
+                False,
+                False,
+                1,
+            ),
+            OnboardingStep.NURSERY: (
+                OnboardingState.STARTER_SELECTED,
+                "Choose a starter",
+                "Choose starter",
+                False,
+                False,
+                2,
+            ),
+            OnboardingStep.CONFIRMATION: (
+                OnboardingState.STARTER_SELECTED,
+                "Starter selected",
+                "Continue",
+                False,
+                False,
+                3,
+            ),
+            OnboardingStep.PLACEMENT: (
+                OnboardingState.STARTER_SELECTED,
+                "Ready to place",
+                "Place starter",
+                False,
+                False,
+                4,
+            ),
+            OnboardingStep.NURTURE: (
+                OnboardingState.STARTER_PLANTED_NOT_NURTURED,
+                "Ready to nurture",
+                "Nurture",
+                False,
+                False,
+                5,
+            ),
+            OnboardingStep.COMPLETION: (
+                OnboardingState.NURTURED_PLANT_ASSIGNED,
+                "Nurtured plant",
+                "Explore Garden",
+                True,
+                False,
+                6,
+            ),
+            OnboardingStep.DONE: (
+                OnboardingState.ONBOARDING_COMPLETE,
+                "Nurtured plant",
+                None,
+                True,
+                True,
+                None,
+            ),
+        }
+        state, label, action, marker, complete, number = projections[persisted_step]
+        return OnboardingStateDisplay(
+            state,
+            label,
+            action,
+            marker,
+            complete,
+            step=persisted_step,
+            counted_step=number,
+        )
+
     plants = tuple(getattr(garden_state, "plants", ()) or ())
     has_starter = bool(plants) and (
         bool(getattr(garden_state, "starter_selection_complete", False))

@@ -17,6 +17,8 @@ from .models.state import (
     GardenState,
     GROWTH_THRESHOLDS,
     MAX_PROCESSED_REVLOG_IDS,
+    OnboardingProgress,
+    OnboardingStep,
     Plant,
     PlantMemory,
     PLANT_MEMORY_KINDS,
@@ -28,7 +30,7 @@ from .models.state import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 
 
@@ -166,6 +168,11 @@ def _materialize_unlocked_species(state: GardenState) -> GardenState:
         # An entitlement can only come from an established pre-starter Garden
         # release; it is not a brand-new starter-selection state.
         state.starter_selection_complete = True
+        if state.onboarding.step == OnboardingStep.INTRODUCTION and state.plants:
+            state.onboarding = OnboardingProgress(
+                step=OnboardingStep.DONE,
+                starter_plant_id=state.plants[0].plant_id,
+            )
     return state
 
 
@@ -252,7 +259,15 @@ def migrate_previous_state(raw: Any) -> GardenState:
         "total_wrong": raw.get("total_wrong"),
         "unlocked_slots": raw.get("unlocked_slots"),
         "unlocked_species": list(dict.fromkeys(unlocked_species)),
-        "starter_selection_complete": True,
+        "starter_selection_complete": bool(migrated_plants or unlocked_species),
+        "onboarding": {
+            "version": 1,
+            "step": "done" if (migrated_plants or unlocked_species) else "introduction",
+            "pending_species": None,
+            "starter_plant_id": (
+                migrated_plants[0].get("plant_id") if migrated_plants else None
+            ),
+        },
         "selected_background": raw.get("selected_background"),
         "selected_weather": raw.get("selected_weather"),
         "plants": migrated_plants,
@@ -293,8 +308,13 @@ def migrate_previous_state(raw: Any) -> GardenState:
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
-def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> GardenState:
-    """Add current preservation boundaries to a schema 11-15 state.
+def migrate_modern_state(
+    raw: Any,
+    *,
+    migrated_at: float | None = None,
+    onboarding_version: Any = 0,
+) -> GardenState:
+    """Add current preservation boundaries to a schema 11-16 state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -304,8 +324,9 @@ def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> Garde
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11, 12, 13, 14, or 15 can use the modern migration")
+        raise ValueError("only schema 11 through 16 can use the modern migration")
     payload = deepcopy(raw)
+    source_version = int(payload.get("version", 0) or 0)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
         time.time() if migrated_at is None else migrated_at,
@@ -316,7 +337,8 @@ def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> Garde
     payload.setdefault("daily_environment_claims", {})
     payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
     payload.setdefault("garden_name", "My Garden")
-    payload["garden_setup_version"] = 1
+    if source_version < 16:
+        payload["garden_setup_version"] = 1
     plants = payload.get("plants")
     if isinstance(plants, list):
         for plant in plants:
@@ -327,7 +349,48 @@ def migrate_modern_state(raw: Any, *, migrated_at: float | None = None) -> Garde
                 "name_customized",
                 bool(isinstance(existing_name, str) and existing_name.strip()),
             )
-    payload["starter_selection_complete"] = True
+    raw_unlocked = payload.get("unlocked_species")
+    has_collection_evidence = bool(
+        (isinstance(plants, list) and any(isinstance(plant, dict) for plant in plants))
+        or (isinstance(raw_unlocked, list) and any(isinstance(value, str) for value in raw_unlocked))
+    )
+    if source_version < 16:
+        payload["starter_selection_complete"] = has_collection_evidence
+    planted = [
+        plant for plant in (plants if isinstance(plants, list) else [])
+        if isinstance(plant, dict) and plant.get("slot_index") is not None
+    ]
+    starter_id = planted[0].get("plant_id") if planted else None
+    has_first_nurture = any(
+        isinstance(memory, dict) and memory.get("kind") in {"first_nurture", "first_focus"}
+        for plant in planted
+        for memory in (
+            plant.get("memories") if isinstance(plant.get("memories"), list) else []
+        )
+    )
+    try:
+        legacy_onboarding_version = max(0, int(onboarding_version or 0))
+    except (TypeError, ValueError):
+        legacy_onboarding_version = 0
+    if not has_collection_evidence:
+        onboarding_step = "introduction"
+    elif (
+        source_version == 16
+        and bool(planted)
+        and int(payload.get("garden_setup_version", 0) or 0) < 1
+        and not has_first_nurture
+        and not payload.get("active_plant_id")
+        and legacy_onboarding_version < 3
+    ):
+        onboarding_step = "nurture"
+    else:
+        onboarding_step = "done"
+    payload["onboarding"] = {
+        "version": 1,
+        "step": onboarding_step,
+        "pending_species": None,
+        "starter_plant_id": starter_id,
+    }
     payload["processed_revlog_floor"] = payload.get("last_processed_revlog_id", 0)
     payload["processed_revlog_ids"] = []
     payload["revlog_ledger_migration_pending"] = True
@@ -389,7 +452,14 @@ class GardenStorage:
                     return (
                         migrate_previous_state(raw)
                         if version == PREVIOUS_STATE_VERSION
-                        else migrate_modern_state(raw)
+                        else migrate_modern_state(
+                            raw,
+                            onboarding_version=(
+                                self.config.value("onboarding_version", 0)
+                                if hasattr(getattr(self, "config", None), "value")
+                                else 0
+                            ),
+                        )
                     )
                 if version != STATE_VERSION:
                     backup = self.data_path.with_suffix(f".schema-{version}.legacy.json")

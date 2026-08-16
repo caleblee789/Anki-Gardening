@@ -7,6 +7,8 @@ from ankigarden.models.state import (
     Achievement,
     DailyStats,
     GardenState,
+    OnboardingProgress,
+    OnboardingStep,
     Plant,
     PlantMemory,
 )
@@ -41,34 +43,54 @@ def test_learner_copy_does_not_reintroduce_eligible_card_wording() -> None:
         assert "eligible answer" not in source, relative
 
 
-def _starter(*, active: bool = False, first_nurture: bool = False) -> GardenState:
+def _starter(
+    *,
+    active: bool = False,
+    first_nurture: bool = False,
+    step: OnboardingStep | None = None,
+) -> GardenState:
     memories = [PlantMemory("planted", "planted", "2026-08-12")]
     if first_nurture:
         memories.append(
             PlantMemory("nurture:first", "first_nurture", "2026-08-12")
         )
     plant = Plant("starter", "bonsai", "Moss", 0, growth_points=0, memories=memories)
+    resolved_step = step or (
+        OnboardingStep.COMPLETION if active else OnboardingStep.NURTURE
+    )
     return GardenState(
         starter_selection_complete=True,
         plants=[plant],
         active_plant_id=plant.plant_id if active else None,
+        onboarding=OnboardingProgress(
+            step=resolved_step,
+            starter_plant_id=plant.plant_id,
+        ),
     )
 
 
 def test_onboarding_state_contract_keeps_selection_planting_and_nurture_distinct() -> None:
     no_starter = onboarding_state_display(GardenState(), 0)
-    selected = onboarding_state_display(GardenState(), 0, starter_selected=True)
+    selected_state = GardenState(
+        onboarding=OnboardingProgress(
+            step=OnboardingStep.CONFIRMATION,
+            pending_species="bonsai",
+        )
+    )
+    selected = onboarding_state_display(selected_state, 0, starter_selected=True)
     planted = onboarding_state_display(_starter(), CURRENT_ONBOARDING_VERSION)
 
     assert no_starter.state is OnboardingState.NO_STARTER
     assert no_starter.header_label == "No plant selected"
     assert selected.state is OnboardingState.STARTER_SELECTED
-    assert selected.header_label == "Selected plant"
+    assert selected.header_label == "Starter selected"
+    assert selected.counted_step == 3
     assert planted.state is OnboardingState.STARTER_PLANTED_NOT_NURTURED
     assert planted.header_label == "Ready to nurture"
     assert planted.primary_action == "Nurture"
     assert planted.nurtured_marker_visible is False
     assert planted.onboarding_complete is False
+    assert planted.counted_step == 5
 
 
 def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence() -> None:
@@ -77,12 +99,18 @@ def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence()
     assert display.state is OnboardingState.NURTURED_PLANT_ASSIGNED
     assert display.header_label == "Nurtured plant"
     assert display.nurtured_marker_visible is True
-    assert display.primary_action is None
+    assert display.primary_action == "Explore Garden"
+    assert display.step is OnboardingStep.COMPLETION
+    assert display.counted_step == 6
 
 
-def test_first_nurture_memory_prevents_onboarding_replay_when_preference_is_stale() -> None:
+def test_persisted_done_prevents_onboarding_replay_when_preference_is_stale() -> None:
     display = onboarding_state_display(
-        _starter(active=True, first_nurture=True),
+        _starter(
+            active=True,
+            first_nurture=True,
+            step=OnboardingStep.DONE,
+        ),
         onboarding_version=0,
     )
 

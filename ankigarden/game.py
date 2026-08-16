@@ -46,6 +46,8 @@ from .models.state import (
     MAX_GARDEN_NAME_LENGTH,
     MAX_PLANT_NAME_LENGTH,
     MAX_PROCESSED_REVLOG_IDS,
+    OnboardingProgress,
+    OnboardingStep,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
@@ -1801,18 +1803,104 @@ class GardenGameEngine:
             return False, "The Growth Charge could not be saved, so it was not used."
         return True, f"{spec.name} gave {plant.name} {awarded:,} Growth."
 
-    def choose_starter(self, species: str) -> tuple[bool, str, Plant | None]:
-        """Plant the free starter; Nurture remains a separate explicit step.
+    def enter_starter_nursery(self) -> tuple[bool, str]:
+        progress = self.state.onboarding
+        if progress.step == OnboardingStep.NURSERY:
+            return True, "Choose your starter plant."
+        if progress.step != OnboardingStep.INTRODUCTION:
+            return False, "Resume the current Garden setup step first."
+        snapshot = self._state_snapshot()
+        self.state.onboarding = OnboardingProgress(step=OnboardingStep.NURSERY)
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Garden setup could not be saved. Try again."
+        return True, "Choose your starter plant."
 
-        The day-start null sentinel keeps every review answered before Nurture
-        ineligible for retroactive Growth, including reviews answered after the
-        species was chosen but before the learner completed setup.
-        """
+    def select_starter_species(self, species: str) -> tuple[bool, str]:
+        """Persist a Nursery choice without creating or placing a plant."""
+
         species = str(species).lower()
+        progress = self.state.onboarding
+        if self.state.plants or self.state.starter_selection_complete:
+            return False, "Your starter plant has already been chosen."
+        if progress.step not in {OnboardingStep.NURSERY, OnboardingStep.CONFIRMATION}:
+            return False, "Open the Starter Nursery before choosing a plant."
+        if species not in self.release_ready_species():
+            return False, "That starter is not currently stocked in the Nursery."
+        if (
+            progress.step == OnboardingStep.CONFIRMATION
+            and progress.pending_species == species
+        ):
+            return True, "Your starter choice is ready to confirm."
+        snapshot = self._state_snapshot()
+        self.state.onboarding = OnboardingProgress(
+            step=OnboardingStep.CONFIRMATION,
+            pending_species=species,
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Your starter choice could not be saved. Try again."
+        return True, "Your starter choice is ready to confirm."
+
+    def confirm_starter_species(self) -> tuple[bool, str]:
+        progress = self.state.onboarding
+        if progress.step == OnboardingStep.PLACEMENT and progress.pending_species:
+            return True, "Choose an unlocked garden bed for your starter."
+        if progress.step != OnboardingStep.CONFIRMATION or not progress.pending_species:
+            return False, "Choose a starter plant before continuing."
+        snapshot = self._state_snapshot()
+        self.state.onboarding = OnboardingProgress(
+            step=OnboardingStep.PLACEMENT,
+            pending_species=progress.pending_species,
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Your starter confirmation could not be saved. Try again."
+        return True, "Choose an unlocked garden bed for your starter."
+
+    def back_onboarding(self) -> tuple[bool, str]:
+        """Move to the one intentional previous setup surface."""
+
+        progress = self.state.onboarding
+        previous = {
+            OnboardingStep.NURSERY: OnboardingStep.INTRODUCTION,
+            OnboardingStep.CONFIRMATION: OnboardingStep.NURSERY,
+            OnboardingStep.PLACEMENT: OnboardingStep.CONFIRMATION,
+        }.get(progress.step)
+        if previous is None:
+            return False, "Back is not available on this setup step."
+        snapshot = self._state_snapshot()
+        self.state.onboarding = OnboardingProgress(
+            step=previous,
+            pending_species=(
+                progress.pending_species
+                if previous in {OnboardingStep.NURSERY, OnboardingStep.CONFIRMATION}
+                else None
+            ),
+        )
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Garden setup could not be saved. Try again."
+        return True, "Returned to the previous Garden setup step."
+
+    def _create_starter_at(self, species: str, slot: int) -> tuple[bool, str, Plant | None]:
+        """Create, place, and advance a starter in one durable transaction."""
+
+        species = str(species).lower()
+        try:
+            destination = int(slot)
+        except (TypeError, ValueError):
+            destination = -1
         if self.state.starter_selection_complete or self.state.plants:
             return False, "Your starter plant has already been chosen.", None
         if species not in self.release_ready_species():
             return False, "That starter is not currently stocked in the Nursery.", None
+        if not 0 <= destination < min(MAX_GARDEN_SLOTS, int(self.state.unlocked_slots)):
+            return False, "Choose an unlocked garden bed for your starter.", None
 
         snapshot = self._state_snapshot()
         today = self._scheduler_day()
@@ -1820,7 +1908,7 @@ class GardenGameEngine:
             plant_id=f"plant_{uuid.uuid4().hex[:12]}",
             species=species,
             name=self._generated_name(species),
-            slot_index=0,
+            slot_index=destination,
             personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
             planted_on=today,
             memories=[PlantMemory("planted", "planted", today)],
@@ -1833,6 +1921,10 @@ class GardenGameEngine:
         self.state.plants.append(plant)
         self.state.starter_selection_complete = True
         self.state.active_plant_id = None
+        self.state.onboarding = OnboardingProgress(
+            step=OnboardingStep.NURTURE,
+            starter_plant_id=plant.plant_id,
+        )
         if not any(
             period.day == today
             and period.plant_id is None
@@ -1856,6 +1948,52 @@ class GardenGameEngine:
             f"{plant.name} is planted and ready to nurture. "
             "Nurture it before studying so Anki card answers can add Growth."
         ), plant
+
+    def place_starter(self, slot: int) -> tuple[bool, str, Plant | None]:
+        try:
+            requested_slot = int(slot)
+        except (TypeError, ValueError):
+            requested_slot = -1
+        progress = self.state.onboarding
+        if progress.step in {
+            OnboardingStep.NURTURE,
+            OnboardingStep.COMPLETION,
+            OnboardingStep.DONE,
+        } and progress.starter_plant_id:
+            existing = self.plant_story(progress.starter_plant_id)
+            if existing is not None and existing.slot_index == requested_slot:
+                return True, "Your starter is already planted in that garden bed.", existing
+        if progress.step != OnboardingStep.PLACEMENT or not progress.pending_species:
+            return False, "Confirm a starter before choosing its garden bed.", None
+        return self._create_starter_at(progress.pending_species, requested_slot)
+
+    def choose_starter(self, species: str) -> tuple[bool, str, Plant | None]:
+        """Compatibility path for callers predating explicit starter placement.
+
+        New UI code uses select, confirm, and place. This wrapper remains atomic
+        and selects the first unlocked bed so older integrations do not create
+        a half-finished starter.
+        """
+
+        return self._create_starter_at(species, 0)
+
+    def finish_onboarding(self) -> tuple[bool, str]:
+        progress = self.state.onboarding
+        if progress.step == OnboardingStep.DONE:
+            return True, "Garden setup is complete."
+        if progress.step != OnboardingStep.COMPLETION:
+            return False, "Finish nurturing your starter before completing setup."
+        snapshot = self._state_snapshot()
+        self.state.onboarding = OnboardingProgress(
+            step=OnboardingStep.DONE,
+            starter_plant_id=progress.starter_plant_id,
+        )
+        self.state.garden_setup_version = 1
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "Garden setup could not be completed because it was not saved."
+        return True, "Garden setup is complete."
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
         spec = self.FERTILIZERS.get(str(tier).lower())
@@ -2177,7 +2315,21 @@ class GardenGameEngine:
             return False, "Plant this species in an unlocked garden space before nurturing it."
         if plant.fully_grown:
             return False, "This plant is fully grown. Choose an unfinished plant to nurture instead."
+        progress = self.state.onboarding
         if self.state.active_plant_id == plant.plant_id:
+            if (
+                progress.step == OnboardingStep.NURTURE
+                and progress.starter_plant_id == plant.plant_id
+            ):
+                snapshot = self._state_snapshot()
+                self.state.onboarding = OnboardingProgress(
+                    step=OnboardingStep.COMPLETION,
+                    starter_plant_id=plant.plant_id,
+                )
+                try:
+                    self._persist_or_restore(snapshot)
+                except Exception:
+                    return False, "The plant you chose to nurture could not be saved."
             return True, f"{plant.name} is already being nurtured and receives Growth from future card answers."
         snapshot = self._state_snapshot()
         self.state.active_plant_id = plant.plant_id
@@ -2185,6 +2337,14 @@ class GardenGameEngine:
             self.state.daily_stats.day, plant.plant_id, self._now_ms()
         ))
         self._add_memory(plant, "nurture:first", "first_nurture")
+        if (
+            progress.step == OnboardingStep.NURTURE
+            and progress.starter_plant_id == plant.plant_id
+        ):
+            self.state.onboarding = OnboardingProgress(
+                step=OnboardingStep.COMPLETION,
+                starter_plant_id=plant.plant_id,
+            )
         try:
             self._persist_or_restore(snapshot)
         except Exception:

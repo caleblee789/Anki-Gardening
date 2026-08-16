@@ -14,6 +14,7 @@ from ankigarden.models.state import (
     Fertilizer,
     GardenState,
     HISTORICAL_PLANT_SPECIES_ORDER,
+    OnboardingStep,
     Plant,
     PlantMemory,
     STATE_VERSION,
@@ -305,7 +306,7 @@ def test_modern_migration_preserves_every_historical_species_story_and_progress(
         )
 
 
-def test_modern_migration_marks_even_an_empty_preexisting_garden_complete():
+def test_modern_migration_resumes_an_empty_preexisting_garden_at_introduction():
     payload = GardenState().to_dict()
     payload["version"] = 12
     payload.pop("starter_selection_complete")
@@ -314,7 +315,8 @@ def test_modern_migration_marks_even_an_empty_preexisting_garden_complete():
 
     assert state.plants == []
     assert state.unlocked_species == []
-    assert state.starter_selection_complete
+    assert state.starter_selection_complete is False
+    assert state.onboarding.step is OnboardingStep.INTRODUCTION
 
 
 def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor():
@@ -339,6 +341,53 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     assert fertilizer.active(1_000.0)
     assert not fertilizer.active(2_000.0)
     assert state.revlog_ledger_migration_pending
+
+
+@pytest.mark.parametrize(
+    ("fixture", "legacy_preference", "expected_step"),
+    [
+        ("empty", 0, OnboardingStep.INTRODUCTION),
+        ("planted-incomplete", 0, OnboardingStep.NURTURE),
+        ("planted-legacy-complete", 3, OnboardingStep.DONE),
+        ("active", 0, OnboardingStep.DONE),
+        ("setup-complete", 0, OnboardingStep.DONE),
+        ("shelved-collection", 0, OnboardingStep.DONE),
+    ],
+)
+def test_schema16_onboarding_migration_matrix(
+    fixture,
+    legacy_preference,
+    expected_step,
+):
+    state = GardenState()
+    if fixture != "empty":
+        plant = Plant(
+            "legacy-starter",
+            "bonsai",
+            "Moss",
+            None if fixture == "shelved-collection" else 0,
+            memories=[PlantMemory("planted", "planted", "2026-08-08")],
+        )
+        state.plants = [plant]
+        state.unlocked_species = [plant.species]
+        state.starter_selection_complete = True
+        if fixture == "active":
+            state.active_plant_id = plant.plant_id
+        if fixture == "setup-complete":
+            state.garden_setup_version = 1
+    payload = state.to_dict()
+    payload["version"] = 16
+    payload.pop("onboarding", None)
+    if fixture in {"planted-incomplete", "planted-legacy-complete", "active", "shelved-collection"}:
+        payload["garden_setup_version"] = 0
+
+    migrated = migrate_modern_state(
+        payload,
+        onboarding_version=legacy_preference,
+    )
+
+    assert migrated.onboarding.step is expected_step
+    assert migrated.version == STATE_VERSION
 
 
 @pytest.mark.parametrize("saved_version", [11, 12, 13, 14, 15, STATE_VERSION])
