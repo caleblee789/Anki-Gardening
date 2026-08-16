@@ -381,9 +381,19 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(resulting)",
         "apply_tabular_numerals(current_status)",
         "apply_tabular_numerals(balance)",
+        "apply_tabular_numerals(self.status_value)",
+        "apply_tabular_numerals(affordability_label)",
+        "apply_tabular_numerals(helper)",
+        "apply_tabular_numerals(stage_reward_label)",
+        "apply_tabular_numerals(streak_reward)",
+        "apply_tabular_numerals(shortfall_label)",
     ):
         assert call in dashboard
     assert dashboard.count("apply_tabular_numerals(value)") >= 2
+    assert dashboard.count("apply_tabular_numerals(meta)") >= 6
+    assert dashboard.count("apply_tabular_numerals(title)") >= 3
+    assert dashboard.count("apply_tabular_numerals(detail)") >= 2
+    assert "apply_tabular_numerals(label)" in dashboard
     assert "font-variant-numeric:tabular-nums" in home
 
 

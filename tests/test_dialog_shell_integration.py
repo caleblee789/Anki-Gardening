@@ -82,6 +82,32 @@ def test_settings_and_customize_have_one_active_vertical_scroll_owner() -> None:
     assert "host = QWidget()" in option_page
 
 
+def test_settings_technical_details_remeasure_after_narrow_rewrap() -> None:
+    resize = _method_source(DASHBOARD, "GardenSettingsDialog", "resizeEvent")
+    refresh = _method_source(
+        DASHBOARD,
+        "GardenSettingsDialog",
+        "_refresh_debug_report",
+    )
+    sync_height = _method_source(
+        DASHBOARD,
+        "GardenSettingsDialog",
+        "_sync_debug_report_height",
+    )
+    toggle = _method_source(
+        DASHBOARD,
+        "GardenSettingsDialog",
+        "_toggle_debug_report",
+    )
+
+    assert "QTimer.singleShot(0, self._sync_debug_report_height)" in resize
+    assert "self._sync_debug_report_height()" in refresh
+    assert "self.debug_report.viewport().width()" in sync_height
+    assert "max(320" not in sync_height
+    assert "self.debug_report.setFixedHeight(report_height)" in sync_height
+    assert "QTimer.singleShot(0, self._sync_debug_report_height)" in toggle
+
+
 def test_fixed_footers_and_scroll_regions_are_registered_on_catalog_dialogs() -> None:
     replacement = _class_source(DASHBOARD, "FertilizerReplacementDialog")
     nursery = _class_source(DASHBOARD, "NurseryDialog")

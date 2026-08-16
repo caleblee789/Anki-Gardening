@@ -712,6 +712,74 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     application.processEvents()
 
 
+def test_live_qt_settings_details_rewrap_to_full_height_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, Qt, QWidget
+        from ankigarden.ui.dashboard import GardenSettingsDialog
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    config, _storage, engine = _live_engine_fixture()
+    owner = QWidget()
+    owner.resize(900, 700)
+    owner.show()
+    settings = GardenSettingsDialog(owner, engine, config)
+    settings.setMinimumWidth(1)
+    settings.tabs.setCurrentIndex(1)
+    settings.report_details_toggle.setChecked(True)
+    settings.debug_report.setPlainText(
+        "\n".join(
+            f"Diagnostic {index}: " + "responsive layout evidence " * 10
+            for index in range(40)
+        )
+    )
+    settings.show()
+
+    settings.resize(720, 620)
+    application.processEvents()
+    application.processEvents()
+    settings._sync_debug_report_height()
+    wide_height = settings.debug_report.height()
+
+    settings.resize(360, 620)
+    application.processEvents()
+    application.processEvents()
+    settings._sync_debug_report_height()
+    narrow_height = settings.debug_report.height()
+    required_height = (
+        int(settings.debug_report.document().size().height())
+        + 2 * int(settings.debug_report.frameWidth())
+        + 16
+    )
+
+    assert narrow_height > wide_height
+    assert narrow_height >= required_height
+    assert (
+        settings.debug_report.verticalScrollBarPolicy()
+        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    regions = settings.active_vertical_scroll_regions()
+    assert len(regions) == 1
+    outer_scroll = regions[0]
+    assert outer_scroll.verticalScrollBar().maximum() > 0
+    outer_scroll.verticalScrollBar().setValue(
+        outer_scroll.verticalScrollBar().maximum()
+    )
+    assert (
+        outer_scroll.verticalScrollBar().value()
+        == outer_scroll.verticalScrollBar().maximum()
+    )
+
+    settings.close()
+    owner.close()
+    application.processEvents()
+
+
 def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -145,8 +145,16 @@ def test_every_shared_semantic_breakpoint_is_stable_at_plus_or_minus_two(
     }
 
 
-def test_grid_column_count_changes_once_at_its_content_threshold() -> None:
-    threshold = stable_threshold((180, 180, 180), spacing=10)
+@pytest.mark.parametrize(
+    ("target_columns", "expected_threshold"),
+    ((2, 394), (3, 584)),
+)
+def test_grid_column_count_changes_once_at_each_content_threshold(
+    target_columns: int,
+    expected_threshold: int,
+) -> None:
+    threshold = stable_threshold((180,) * target_columns, spacing=10)
+    assert threshold == expected_threshold
     observed = {
         offset: responsive_column_count(
             threshold + offset,
@@ -156,7 +164,54 @@ def test_grid_column_count_changes_once_at_its_content_threshold() -> None:
         )
         for offset in (-2, -1, 0, 1, 2)
     }
-    assert observed == {-2: 2, -1: 2, 0: 3, 1: 3, 2: 3}
+    assert observed == {
+        -2: target_columns - 1,
+        -1: target_columns - 1,
+        0: target_columns,
+        1: target_columns,
+        2: target_columns,
+    }
+
+
+@pytest.mark.parametrize("breakpoint", (600, 620))
+def test_tile_grid_breakpoints_are_stable_at_plus_or_minus_two(
+    breakpoint: int,
+) -> None:
+    minimum_tile_width = max(180, (breakpoint - 10 - 24) // 2)
+    threshold = stable_threshold(
+        (minimum_tile_width, minimum_tile_width),
+        spacing=10,
+    )
+    assert threshold == breakpoint
+    assert {
+        offset: responsive_column_count(
+            threshold + offset,
+            minimum_item_width=minimum_tile_width,
+            maximum_columns=2,
+            spacing=10,
+        )
+        for offset in (-2, -1, 0, 1, 2)
+    } == {-2: 1, -1: 1, 0: 2, 1: 2, 2: 2}
+
+
+def test_shared_split_breakpoint_is_stable_at_plus_or_minus_two() -> None:
+    breakpoint = 620
+    region_floor = max(220, (breakpoint - 16 - 24) // 2)
+    assert stable_threshold((region_floor, region_floor), spacing=16) == breakpoint
+    assert {
+        offset: adaptive_layout_mode(
+            breakpoint + offset,
+            (region_floor, region_floor),
+            spacing=16,
+        )
+        for offset in (-2, -1, 0, 1, 2)
+    } == {
+        -2: COMPACT_MODE,
+        -1: COMPACT_MODE,
+        0: WIDE_MODE,
+        1: WIDE_MODE,
+        2: WIDE_MODE,
+    }
 
 
 def test_continuous_responsive_values_have_no_hidden_pixel_cliffs() -> None:

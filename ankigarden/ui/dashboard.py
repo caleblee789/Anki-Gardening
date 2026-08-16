@@ -3061,6 +3061,10 @@ class GardenSettingsDialog(GardenDialog):
                 )
             )
         super().resizeEvent(event)
+        if hasattr(self, "debug_report") and self.debug_report.isVisible():
+            # With both QTextEdit scrollbars disabled, its document retains
+            # the old wrap width until Qt settles the resized viewport.
+            QTimer.singleShot(0, self._sync_debug_report_height)
 
     def prepare_to_show(self) -> None:
         self._save_status_generation += 1
@@ -3323,15 +3327,7 @@ class GardenSettingsDialog(GardenDialog):
     def _refresh_debug_report(self) -> None:
         report_lines = list(DISPLAY_TELEMETRY.report_lines())
         self.debug_report.setPlainText("\n".join(report_lines))
-        document = self.debug_report.document()
-        document.setTextWidth(max(320, int(self.debug_report.viewport().width())))
-        report_height = max(
-            76,
-            int(document.size().height())
-            + 2 * int(self.debug_report.frameWidth())
-            + 16,
-        )
-        self.debug_report.setFixedHeight(report_height)
+        self._sync_debug_report_height()
 
         def issue_count(attribute: str, prefix: str) -> int:
             value = getattr(DISPLAY_TELEMETRY, attribute, None)
@@ -3384,10 +3380,23 @@ class GardenSettingsDialog(GardenDialog):
             f"Packaged build {_addon_build_identifier()}"
         )
 
+    def _sync_debug_report_height(self) -> None:
+        document = self.debug_report.document()
+        document.setTextWidth(max(1, int(self.debug_report.viewport().width())))
+        report_height = max(
+            76,
+            int(document.size().height())
+            + 2 * int(self.debug_report.frameWidth())
+            + 16,
+        )
+        self.debug_report.setFixedHeight(report_height)
+
     def _toggle_debug_report(self, expanded: bool) -> None:
         if expanded:
             self._refresh_debug_report()
         self.debug_report.setVisible(bool(expanded))
+        if expanded:
+            QTimer.singleShot(0, self._sync_debug_report_height)
         self.report_details_toggle.setText(
             "Hide technical details" if expanded else "View technical details"
         )
@@ -4264,6 +4273,7 @@ class NurseryDialog(DialogShell):
         self.status.setProperty("liveRegion", "polite")
         self.status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         set_keyboard_focus_surface(self.status)
+        apply_tabular_numerals(self.status)
         self._status_generation = 0
         self.status.hide()
         root.addWidget(self.status)
@@ -4298,6 +4308,7 @@ class NurseryDialog(DialogShell):
         self.bed_affordability.setAccessibleName("Garden space affordability")
         self.bed_affordability.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         set_keyboard_focus_surface(self.bed_affordability)
+        apply_tabular_numerals(self.bed_affordability)
         footer.addStretch(1)
         self.close_button = QPushButton("Close")
         _set_button_variant(self.close_button, BUTTON_VARIANT_SECONDARY)
@@ -4557,6 +4568,7 @@ class NurseryDialog(DialogShell):
         meta = QLabel(f"{stage} Stage\n{progress_text}")
         meta.setProperty("nurseryMeta", True)
         meta.setTextFormat(Qt.TextFormat.PlainText)
+        apply_tabular_numerals(meta)
         copy.addWidget(kicker)
         copy.addWidget(title)
         copy.addWidget(meta)
@@ -4696,11 +4708,13 @@ class NurseryDialog(DialogShell):
         meta = QLabel(cost_label(price))
         meta.setProperty("nurseryMeta", True)
         meta.setWordWrap(True)
+        apply_tabular_numerals(meta)
         affordability_label = QLabel(
             _compact_affordability_status(price, balance, ready_text="Ready to unlock")
         )
         affordability_label.setProperty("nurseryShortfall", True)
         affordability_label.setWordWrap(True)
+        apply_tabular_numerals(affordability_label)
         details = QPushButton("Details")
         details.setCheckable(True)
         _set_button_variant(details, BUTTON_VARIANT_TERTIARY)
@@ -4878,6 +4892,7 @@ class NurseryDialog(DialogShell):
         )
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
+        apply_tabular_numerals(meta)
         copy.addWidget(title)
         copy.addWidget(meta)
         row.addLayout(copy, 1)
@@ -4916,6 +4931,7 @@ class NurseryDialog(DialogShell):
             helper = QLabel(f"Need {shortfall:,} more coins")
             helper.setProperty("nurseryShortfall", True)
             helper.setWordWrap(True)
+            apply_tabular_numerals(helper)
             copy.addWidget(helper)
         return card
 
@@ -4932,11 +4948,13 @@ class NurseryDialog(DialogShell):
         copy = QVBoxLayout()
         title = QLabel(f"Booster Potion — {count} owned")
         title.setStyleSheet("font-weight:700;")
+        apply_tabular_numerals(title)
         meta = QLabel(
             "+5 Growth per Anki card answer for 2 hours. A rare study gift; not sold in the Nursery."
         )
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
+        apply_tabular_numerals(meta)
         copy.addWidget(title)
         copy.addWidget(meta)
         row.addLayout(copy, 1)
@@ -4976,6 +4994,7 @@ class NurseryDialog(DialogShell):
         copy = QVBoxLayout()
         title = QLabel(f"{spec.name} — {count} owned")
         title.setStyleSheet("font-weight:700;")
+        apply_tabular_numerals(title)
         meta = QLabel(
             f"Adds up to {spec.growth:,} Growth to the nurtured plant, capped at Rare.\n"
             + (
@@ -4986,6 +5005,7 @@ class NurseryDialog(DialogShell):
         )
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
+        apply_tabular_numerals(meta)
         copy.addWidget(title)
         copy.addWidget(meta)
         row.addLayout(copy, 1)
@@ -5092,6 +5112,7 @@ class NurseryDialog(DialogShell):
         )
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
+        apply_tabular_numerals(meta)
         layout.addWidget(title)
         layout.addWidget(category)
         layout.addWidget(meta)
@@ -5183,6 +5204,7 @@ class NurseryDialog(DialogShell):
         row.setContentsMargins(12, 10, 12, 10)
         title = QLabel(f"Garden space {index + 1}")
         title.setStyleSheet("font-weight:700;")
+        apply_tabular_numerals(title)
         status = QLabel(
             "Unlocked permanently"
             if unlocked else
@@ -5191,6 +5213,7 @@ class NurseryDialog(DialogShell):
             "Unlock the previous garden space first"
         )
         status.setProperty("nurseryMeta", True)
+        apply_tabular_numerals(status)
         copy = QVBoxLayout()
         copy.addWidget(title)
         copy.addWidget(status)
@@ -5958,6 +5981,7 @@ class PlantInfoCard(QFrame):
         ):
             label.setWordWrap(True)
             label.setProperty("actionMeta", True)
+            apply_tabular_numerals(label)
         self.status_row = QFrame()
         self.status_row.setProperty("plantStatus", True)
         status_layout = QHBoxLayout(self.status_row)
@@ -5969,6 +5993,7 @@ class PlantInfoCard(QFrame):
         self.status_value = QLabel("")
         self.status_value.setProperty("plantStatusValue", True)
         self.status_value.setWordWrap(True)
+        apply_tabular_numerals(self.status_value)
         status_layout.addWidget(status_label)
         status_layout.addStretch(1)
         status_layout.addWidget(self.status_value)
@@ -9497,6 +9522,7 @@ class GardenDashboard(DialogShell):
                 "detailPositive" if int(transaction.delta) >= 0 else "detailNegative",
                 True,
             )
+            apply_tabular_numerals(amount)
             row_layout.addWidget(reason, 1)
             row_layout.addWidget(amount)
             recent_layout.addWidget(row)
@@ -9521,6 +9547,7 @@ class GardenDashboard(DialogShell):
                 )
                 stage_reward_label.setProperty("dialogSubtitle", True)
                 stage_reward_label.setWordWrap(True)
+                apply_tabular_numerals(stage_reward_label)
                 milestone_layout.addWidget(stage_reward_label)
                 has_next_reward = True
         else:
@@ -9537,6 +9564,7 @@ class GardenDashboard(DialogShell):
             )
             streak_reward.setProperty("dialogSubtitle", True)
             streak_reward.setWordWrap(True)
+            apply_tabular_numerals(streak_reward)
             milestone_layout.addWidget(streak_reward)
             has_next_reward = True
         if not has_next_reward:
@@ -11424,6 +11452,7 @@ class GardenDashboard(DialogShell):
             )
             detail.setProperty("fertilizerMeta", True)
             detail.setWordWrap(True)
+            apply_tabular_numerals(detail)
             copy.addWidget(name)
             copy.addWidget(detail)
             if not affordable:
@@ -11432,6 +11461,7 @@ class GardenDashboard(DialogShell):
                     f"Need {shortfall:,} more {'coin' if shortfall == 1 else 'coins'}"
                 )
                 shortfall_label.setProperty("fertilizerShortfall", True)
+                apply_tabular_numerals(shortfall_label)
                 copy.addWidget(shortfall_label)
             row.addLayout(copy, 1)
             semantic_action = _fertilizer_action_label(
