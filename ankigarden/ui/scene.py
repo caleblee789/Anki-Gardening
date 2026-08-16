@@ -862,6 +862,26 @@ class GardenSceneWidget(QWidget):
             "used_fallback": placement.used_fallback,
         }
 
+    def nurtured_marker_protected_regions(self) -> tuple[QRectF, ...]:
+        """Return scene-world overlays that the watering can must avoid.
+
+        A bottom-docked plant panel is interface chrome layered above the scene,
+        not an object within the garden. Its connector relationship remains
+        visible, but reserving the panel's full rectangle would make every
+        underlying accessory lane impossible. Side/above/below popovers and
+        the scene status panel remain genuine marker obstacles.
+        """
+
+        regions: list[QRectF] = []
+        popover = self._card_popover_placement
+        if self._card_connector_rect is not None and not bool(
+            getattr(popover, "docked", False)
+        ):
+            regions.append(QRectF(self._card_connector_rect))
+        if self._status_rect is not None:
+            regions.append(QRectF(self._status_rect))
+        return tuple(regions)
+
     def set_card_connector_geometry(self, geometry: QRectF | None, plant_id: str = "") -> None:
         self._card_connector_rect = QRectF(geometry) if geometry is not None else None
         self._card_connector_plant_id = str(plant_id) if geometry is not None else ""
@@ -1527,18 +1547,15 @@ class GardenSceneWidget(QWidget):
             item.visible.expanded(4.0, 4.0)
             for item in occupied_layouts
         ]
-        protected: list[Rect] = []
-        for qt_rect in (
-            getattr(self, "_card_connector_rect", None),
-            getattr(self, "_status_rect", None),
-        ):
-            if qt_rect is not None:
-                protected.append(Rect(
-                    qt_rect.x(),
-                    qt_rect.y(),
-                    qt_rect.width(),
-                    qt_rect.height(),
-                ).expanded(4.0, 4.0))
+        protected = [
+            Rect(
+                qt_rect.x(),
+                qt_rect.y(),
+                qt_rect.width(),
+                qt_rect.height(),
+            ).expanded(4.0, 4.0)
+            for qt_rect in self.nurtured_marker_protected_regions()
+        ]
         geometry_layout = getattr(self, "_scene_geometry_layout", None)
         if geometry_layout is not None and geometry_layout.bed(layout.slot_index) is not None:
             resolved = geometry_layout.resolve_watering_can(

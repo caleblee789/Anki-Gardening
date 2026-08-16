@@ -330,7 +330,20 @@ class _Point:
 
 
 class _RectF:
-    def __init__(self, x: float, y: float, width: float, height: float) -> None:
+    def __init__(
+        self,
+        x: float | _RectF,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> None:
+        if isinstance(x, _RectF):
+            self._x = x._x
+            self._y = x._y
+            self._width = x._width
+            self._height = x._height
+            return
+        assert y is not None and width is not None and height is not None
         self._x = float(x)
         self._y = float(y)
         self._width = float(width)
@@ -529,6 +542,10 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     background, assets = _manifest_rows()
     selected_ring = _compiled_scene_method("_draw_selected_bed_ring", _SCENE_NAMESPACE)
     nurtured_marker = _compiled_scene_method("_draw_nurtured_marker", _SCENE_NAMESPACE)
+    marker_protected_regions = _compiled_scene_method(
+        "nurtured_marker_protected_regions",
+        _SCENE_NAMESPACE,
+    )
     draw_connector = _compiled_scene_method("_draw_card_connector", _SCENE_NAMESPACE)
     animate_move = _compiled_scene_method("animate_plant_move", _SCENE_NAMESPACE)
     paint_source = _method_source("paintEvent")
@@ -542,6 +559,21 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     assert paint_source.index("self._draw_nurtured_marker(") < paint_source.index(
         "self._draw_weather_motion("
     ) < paint_source.index("self._draw_status_overlay(")
+
+    docked_overlay = SimpleNamespace(
+        _card_connector_rect=_RectF(12, 180, 1_069, 420),
+        _status_rect=_RectF(16, 14, 430, 68),
+        _card_popover_placement=SimpleNamespace(docked=True),
+    )
+    docked_regions = marker_protected_regions(docked_overlay)
+    assert [region.as_rect() for region in docked_regions] == [
+        Rect(16, 14, 430, 68)
+    ]
+    docked_overlay._card_popover_placement = SimpleNamespace(docked=False)
+    assert [region.as_rect() for region in marker_protected_regions(docked_overlay)] == [
+        Rect(12, 180, 1_069, 420),
+        Rect(16, 14, 430, 68),
+    ]
 
     assets_by_species_stage = {
         (str(asset["slot"]["species"]), str(asset["slot"]["stage"])): asset
@@ -709,9 +741,13 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                     _RectF(*card) if card is not None else None
                                 ),
                                 _status_rect=None,
+                                _card_popover_placement=SimpleNamespace(docked=False),
                                 _asset_path=lambda _key: None,
                                 width=lambda: SCENE_WIDTH,
                                 height=lambda: SCENE_HEIGHT,
+                            )
+                            marker_scene.nurtured_marker_protected_regions = (
+                                lambda: marker_protected_regions(marker_scene)
                             )
                             nurtured_marker(
                                 marker_scene,

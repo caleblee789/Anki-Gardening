@@ -2648,10 +2648,23 @@ class _UiFaceCaptureRunner:
                 if resolved_side == "right" and marker_center_x <= target_layout.ground_anchor[0]:
                     issues.append(f"{type(scene).__name__} right marker crossed the plant center")
             blockers = [layout.visible.expanded(4.0, 4.0) for layout in occupied_layouts]
-            for qt_rect in (
-                getattr(scene, "_card_connector_rect", None),
-                getattr(scene, "_status_rect", None),
-            ):
+            protected_reader = getattr(
+                scene,
+                "nurtured_marker_protected_regions",
+                None,
+            )
+            protected_regions = (
+                protected_reader()
+                if callable(protected_reader)
+                else tuple(
+                    region for region in (
+                        getattr(scene, "_card_connector_rect", None),
+                        getattr(scene, "_status_rect", None),
+                    )
+                    if region is not None
+                )
+            )
+            for qt_rect in protected_regions:
                 if qt_rect is not None:
                     blockers.append(Rect(
                         qt_rect.x(),
@@ -6035,17 +6048,27 @@ class _UiFaceCaptureRunner:
             finally:
                 self.app.storage.save = original_save
             after = self.app.storage.state.to_dict()
+            retry_active = bool(dashboard.scene._interaction.placing)
+            retry_selected = (
+                dashboard.scene._interaction.dragged_id == plant_id
+            )
+            error_visible = bool(
+                dashboard.toast_region.isVisible()
+                and dashboard.toast_region.property("error")
+            )
             self._capture_annotations["move-persistence-error"] = {
                 "passed": bool(
                     before == after
-                    and dashboard.scene._interaction.placing
-                    and dashboard.scene._interaction.dragged_id == plant_id
-                    and dashboard.toast_region.isVisible()
-                    and bool(dashboard.toast_region.property("error"))
+                    and retry_active
+                    and retry_selected
+                    and error_visible
                 ),
                 "selected_plant_id": plant_id,
                 "destination_slot": int(destination),
                 "state_restored": before == after,
+                "retry_active": retry_active,
+                "retry_selected": retry_selected,
+                "error_visible": error_visible,
             }
 
             def cleanup() -> None:

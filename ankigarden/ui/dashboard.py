@@ -11244,9 +11244,20 @@ class GardenDashboard(DialogShell):
             ok, _retry_message, retry_draft = begin_retry(selected_id)
             if ok and retry_draft is not None:
                 self._placement_draft = retry_draft
+                retry_slots = retry_draft.scene_slots()
+                origin_slot = retry_slots.get(selected_id)
+                valid_destinations = [
+                    int(slot)
+                    for slot in engine.valid_destination_slots(retry_draft)
+                    if int(slot) != origin_slot
+                ]
+                allowed_slots = (
+                    ([int(origin_slot)] if origin_slot is not None else [])
+                    + valid_destinations
+                )
                 retry_started = self.scene.begin_move(
                     selected_id,
-                    engine.valid_destination_slots(retry_draft),
+                    allowed_slots,
                 )
         if hasattr(self.rearrange_bar, "setVisible"):
             self.rearrange_bar.setVisible(retry_started)

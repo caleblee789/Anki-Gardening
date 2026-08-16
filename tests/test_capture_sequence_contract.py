@@ -745,6 +745,7 @@ def test_watering_can_faces_cover_six_native_and_six_home_plot_positions() -> No
     assert "marker was too far from the nurtured plant" in home_audit
     assert "NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO" in home_audit
     assert "pulse_rect.intersects(blocker)" in qt_audit
+    assert "nurtured_marker_protected_regions" in qt_audit
     assert "marker was too far from the nurtured plant" in qt_audit
     assert "NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO" in qt_audit
     assert 'diagnostic.get("used_fallback", True)' in qt_audit

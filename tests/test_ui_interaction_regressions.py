@@ -1890,7 +1890,9 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     toast = Toast()
     scene = SimpleNamespace(
         keep_card_open=lambda *_args: None,
-        begin_move=lambda _plant_id, _slots: True,
+        begin_move=lambda plant_id, slots: (
+            setattr(scene, "retry", (plant_id, slots)) or True
+        ),
         finish_move=lambda message: setattr(scene, "message", message),
         setFocus=lambda: setattr(scene, "focused", True),
     )
@@ -1923,6 +1925,9 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         "focus",
     ]
     assert scene.focused is True
+    assert scene.retry == ("plant-a", [0, 1])
+    assert dashboard._placement_draft is draft
+    assert rearrange.visible is True
 
 
 def test_long_plant_names_wrap_in_nursery_and_collection_rows() -> None:
