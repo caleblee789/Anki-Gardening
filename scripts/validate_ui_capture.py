@@ -1498,6 +1498,8 @@ def dialog_scroll_audit_issue_codes(
             issues.append(f"negative-scroll-metric:{field}")
     if viewport_height <= 0:
         issues.append("invalid-scroll-metric:viewport_height")
+    if content_height <= 0:
+        issues.append("invalid-scroll-metric:content_height")
     if scroll_maximum < scroll_minimum:
         issues.append("invalid-scroll-range")
 
@@ -1515,7 +1517,10 @@ def dialog_scroll_audit_issue_codes(
     if footer_visible and viewport_bottom > footer_top:
         issues.append("footer-viewport-overlap")
 
-    independently_required = max(0, content_height, size_hint, minimum_hint)
+    # A Qt sizeHint is preferred geometry, not a reachability obligation.
+    # The capture-side content_height includes the bottom-most visible
+    # descendant, while minimum_hint remains the non-negotiable layout floor.
+    independently_required = max(0, content_height, minimum_hint)
     independently_reachable = viewport_height + max(
         0,
         scroll_maximum - scroll_minimum,

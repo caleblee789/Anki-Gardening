@@ -1389,6 +1389,22 @@ def test_manifest_rejects_scroll_geometry_and_collection_page_drift(
     assert "unreachable-scroll-content" in message
 
 
+def test_manifest_accepts_preferred_scroll_height_above_reachable_minimum(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    record = next(
+        item
+        for item in payload["captures"]
+        if item["dialog_scroll_audit"].get("applicable") is True
+    )
+    audit = record["dialog_scroll_audit"]
+    audit["content_size_hint_height"] = 360
+    _write_json(manifest, payload)
+
+    assert validate_capture_manifest(manifest)["status"] == "valid"
+
+
 def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     payload["dialog_scroll_audits_complete"] = False

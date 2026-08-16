@@ -506,6 +506,8 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "nursery-plants",
         "nursery-final-row-above-footer",
         "resize-nursery-minimum",
+        "resize-nursery-content-759",
+        "resize-nursery-content-761",
         "resize-nursery-default",
         "resize-nursery-large",
     ),
@@ -520,12 +522,16 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
     "Fertilizer replacement": (
         "fertilizer-replacement-confirmation",
         "resize-fertilizer-replacement-minimum",
+        "resize-fertilizer-replacement-content-399",
+        "resize-fertilizer-replacement-content-401",
         "resize-fertilizer-replacement-default",
         "resize-fertilizer-replacement-large",
     ),
     "Plant Story": (
         "plant-story",
         "resize-story-minimum",
+        "resize-story-content-539",
+        "resize-story-content-541",
         "resize-story-default",
         "resize-story-large",
     ),
@@ -540,6 +546,10 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "settings-display-advanced-open",
         "diagnostics-expanded",
         "resize-settings-minimum",
+        "resize-settings-content-699",
+        "resize-settings-content-701",
+        "resize-settings-content-759",
+        "resize-settings-content-761",
         "resize-settings-default",
         "resize-settings-large",
     ),
@@ -547,6 +557,8 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "progress-overview",
         "progress-achievements",
         "resize-progress-minimum",
+        "resize-progress-content-819",
+        "resize-progress-content-821",
         "resize-progress-default",
         "resize-progress-large",
     ),
@@ -563,6 +575,8 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "customize-effects-on",
         "customize-effects-off",
         "resize-customize-minimum",
+        "resize-customize-content-819",
+        "resize-customize-content-821",
         "resize-customize-default",
         "resize-customize-large",
     ),
@@ -576,6 +590,8 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "nursery-plants": "NurseryDialog:plants",
     "nursery-final-row-above-footer": "NurseryDialog:plants",
     "resize-nursery-minimum": "NurseryDialog:plants",
+    "resize-nursery-content-759": "NurseryDialog:plants",
+    "resize-nursery-content-761": "NurseryDialog:plants",
     "resize-nursery-default": "NurseryDialog:plants",
     "resize-nursery-large": "NurseryDialog:plants",
     "fertilizer-unaffordable": "FertilizerDialog",
@@ -586,10 +602,14 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-fertilizer-large": "FertilizerDialog",
     "fertilizer-replacement-confirmation": "FertilizerReplacementDialog",
     "resize-fertilizer-replacement-minimum": "FertilizerReplacementDialog",
+    "resize-fertilizer-replacement-content-399": "FertilizerReplacementDialog",
+    "resize-fertilizer-replacement-content-401": "FertilizerReplacementDialog",
     "resize-fertilizer-replacement-default": "FertilizerReplacementDialog",
     "resize-fertilizer-replacement-large": "FertilizerReplacementDialog",
     "plant-story": "PlantStoryDialog",
     "resize-story-minimum": "PlantStoryDialog",
+    "resize-story-content-539": "PlantStoryDialog",
+    "resize-story-content-541": "PlantStoryDialog",
     "resize-story-default": "PlantStoryDialog",
     "resize-story-large": "PlantStoryDialog",
     "collection-species-overview": "SpeciesOverviewDialog",
@@ -600,11 +620,17 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "settings-display-advanced-open": "GardenSettingsDialog:display",
     "diagnostics-expanded": "GardenSettingsDialog:diagnostics",
     "resize-settings-minimum": "GardenSettingsDialog:display",
+    "resize-settings-content-699": "GardenSettingsDialog:display",
+    "resize-settings-content-701": "GardenSettingsDialog:display",
+    "resize-settings-content-759": "GardenSettingsDialog:display",
+    "resize-settings-content-761": "GardenSettingsDialog:display",
     "resize-settings-default": "GardenSettingsDialog:display",
     "resize-settings-large": "GardenSettingsDialog:display",
     "progress-overview": "GardenProgressDialog:overview",
     "progress-achievements": "GardenProgressDialog:achievements",
     "resize-progress-minimum": "GardenProgressDialog:overview",
+    "resize-progress-content-819": "GardenProgressDialog:overview",
+    "resize-progress-content-821": "GardenProgressDialog:overview",
     "resize-progress-default": "GardenProgressDialog:overview",
     "resize-progress-large": "GardenProgressDialog:overview",
     "progress-collection": "GardenProgressDialog:collection",
@@ -617,6 +643,8 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "customize-effects-on": "CustomizeGardenDialog:effects",
     "customize-effects-off": "CustomizeGardenDialog:effects",
     "resize-customize-minimum": "CustomizeGardenDialog:garden",
+    "resize-customize-content-819": "CustomizeGardenDialog:garden",
+    "resize-customize-content-821": "CustomizeGardenDialog:garden",
     "resize-customize-default": "CustomizeGardenDialog:garden",
     "resize-customize-large": "CustomizeGardenDialog:garden",
 }
@@ -664,33 +692,65 @@ def dialog_scroll_geometry_issue_codes(
 ) -> tuple[str, ...]:
     """Return fail-closed issue codes for one dialog's vertical scroll owner."""
 
-    registered = max(0, int(registered_count))
-    active = max(0, int(active_count))
+    registered = int(registered_count)
+    active = int(active_count)
     issues: list[str] = []
     if registered and active != 1:
         issues.append("active-scroll-count")
     if active != 1:
         return tuple(issues)
 
-    visible_footer_height = (
-        max(0, int(footer_height)) if bool(footer_visible) else 0
-    )
+    metrics = {
+        "footer_height": int(footer_height),
+        "footer_top": int(footer_top),
+        "viewport_top": int(viewport_top),
+        "declared_clearance": int(declared_clearance),
+        "layout_clearance": int(layout_clearance),
+        "content_height": int(content_height),
+        "content_size_hint_height": int(content_size_hint_height),
+        "content_minimum_size_hint_height": int(
+            content_minimum_size_hint_height
+        ),
+        "scroll_minimum": int(scroll_minimum),
+        "scroll_maximum": int(scroll_maximum),
+    }
+    if registered < 1:
+        issues.append("registered-scroll-count")
+    for field, value in metrics.items():
+        if value < 0:
+            issues.append(f"negative-scroll-metric:{field}")
+    if int(viewport_height) <= 0:
+        issues.append("invalid-scroll-metric:viewport_height")
+    if int(content_height) <= 0:
+        issues.append("invalid-scroll-metric:content_height")
+    if int(scroll_maximum) < int(scroll_minimum):
+        issues.append("invalid-scroll-range")
+
+    visible_footer_height = int(footer_height) if bool(footer_visible) else 0
+    if bool(footer_visible) and int(footer_height) <= 0:
+        issues.append("visible-footer-height")
+    if not bool(footer_visible) and int(footer_height) != 0:
+        issues.append("hidden-footer-height")
     if int(declared_clearance) != visible_footer_height:
         issues.append("footer-clearance-mismatch")
     if int(layout_clearance) != visible_footer_height:
         issues.append("footer-layout-clearance-mismatch")
-    viewport_bottom = int(viewport_top) + max(0, int(viewport_height))
+    viewport_bottom = int(viewport_top) + int(viewport_height)
     if bool(footer_visible) and viewport_bottom > int(footer_top):
         issues.append("footer-viewport-overlap")
 
+    # ``sizeHint`` is a preferred height and may legitimately exceed the
+    # widgetResizable QScrollArea's laid-out height. Reachability is governed
+    # by the actual content/descendant geometry and its minimum size hint.
+    # Treating the preferred hint as mandatory rejects fully reachable Qt
+    # layouts by their ordinary style spacing delta.
     required_content_height = max(
         0,
         int(content_height),
-        int(content_size_hint_height),
         int(content_minimum_size_hint_height),
     )
     scroll_span = max(0, int(scroll_maximum) - int(scroll_minimum))
-    reachable_content_height = max(0, int(viewport_height)) + scroll_span
+    reachable_content_height = int(viewport_height) + scroll_span
     if reachable_content_height < required_content_height:
         issues.append("unreachable-scroll-content")
     return tuple(issues)
@@ -4410,8 +4470,28 @@ class _UiFaceCaptureRunner:
                     int(content.minimumSizeHint().height())
                     if content is not None else 0
                 )
+                visible_content_bottom = 0
+                if content is not None:
+                    for descendant in content.findChildren(QWidget):
+                        if (
+                            descendant.window() is not root
+                            or not descendant.isVisibleTo(content)
+                        ):
+                            continue
+                        descendant_top = descendant.mapTo(
+                            content,
+                            descendant.rect().topLeft(),
+                        )
+                        visible_content_bottom = max(
+                            visible_content_bottom,
+                            int(descendant_top.y()) + int(descendant.height()),
+                        )
                 content_height = (
-                    max(int(content.height()), int(content.minimumHeight()))
+                    max(
+                        int(content.height()),
+                        int(content.minimumHeight()),
+                        visible_content_bottom,
+                    )
                     if content is not None else 0
                 )
                 vertical = scroll.verticalScrollBar()
@@ -4434,7 +4514,6 @@ class _UiFaceCaptureRunner:
                 issue_codes = dialog_scroll_geometry_issue_codes(**metrics)
                 required_content_height = max(
                     content_height,
-                    size_hint_height,
                     minimum_hint_height,
                 )
                 reachable_content_height = (
@@ -4475,7 +4554,7 @@ class _UiFaceCaptureRunner:
                             "unreachable-scroll-content": (
                                 "unreachable-scroll-content"
                             ),
-                        }[issue_code]
+                        }.get(issue_code, issue_code)
                     warnings.append({
                         "kind": issue_kind,
                         "widget": type(scroll).__name__,
@@ -8158,7 +8237,6 @@ class _UiFaceCaptureRunner:
                 required = max(
                     0,
                     int(audit["content_height"]),
-                    int(audit["content_size_hint_height"]),
                     int(audit["content_minimum_size_hint_height"]),
                 )
                 reachable = int(audit["viewport_height"]) + max(

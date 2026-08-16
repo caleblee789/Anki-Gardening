@@ -116,6 +116,23 @@ def test_scroll_geometry_accepts_short_and_reachable_long_content() -> None:
     assert check(**long) == ()
 
 
+def test_scroll_geometry_does_not_treat_preferred_height_as_mandatory() -> None:
+    check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
+        "dialog_scroll_geometry_issue_codes"
+    ]
+    geometry = _valid_scroll_geometry()
+    geometry.update({
+        "viewport_height": 240,
+        "footer_top": 340,
+        "content_height": 360,
+        "content_size_hint_height": 420,
+        "content_minimum_size_hint_height": 340,
+        "scroll_maximum": 120,
+    })
+
+    assert check(**geometry) == ()
+
+
 def test_scroll_geometry_rejects_missing_nested_and_min_height_failures() -> None:
     check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
         "dialog_scroll_geometry_issue_codes"
@@ -137,6 +154,45 @@ def test_scroll_geometry_rejects_missing_nested_and_min_height_failures() -> Non
         "scroll_maximum": 499,
     })
     assert "unreachable-scroll-content" in check(**unreachable)
+
+
+def test_capture_and_validator_reject_the_same_invalid_scroll_metrics() -> None:
+    check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
+        "dialog_scroll_geometry_issue_codes"
+    ]
+    geometry = _valid_scroll_geometry()
+    geometry.update({
+        "footer_visible": False,
+        "footer_height": 64,
+        "footer_top": 0,
+        "viewport_top": 0,
+        "viewport_height": 0,
+        "declared_clearance": 0,
+        "layout_clearance": 0,
+        "content_height": 0,
+        "content_size_hint_height": -1,
+        "content_minimum_size_hint_height": 0,
+        "scroll_minimum": 4,
+        "scroll_maximum": 3,
+    })
+    capture_issues = check(**geometry)
+    audit = {
+        "applicable": True,
+        "scroll_name": "Test scroll",
+        **geometry,
+        "viewport_bottom": 0,
+        "required_content_height": 0,
+        "reachable_content_height": 0,
+        "issues": [],
+        "passed": True,
+    }
+
+    assert capture_issues == dialog_scroll_audit_issue_codes(audit)
+    assert "negative-scroll-metric:content_size_hint_height" in capture_issues
+    assert "invalid-scroll-metric:viewport_height" in capture_issues
+    assert "invalid-scroll-metric:content_height" in capture_issues
+    assert "invalid-scroll-range" in capture_issues
+    assert "hidden-footer-height" in capture_issues
 
 
 def test_scroll_geometry_requires_exact_clearance_and_no_footer_overlap() -> None:
@@ -169,6 +225,8 @@ def test_dialog_scroll_audit_is_visible_owner_aware_and_fail_closed() -> None:
     assert "viewport.mapTo(root" in source
     assert "footer.mapTo(root" in source
     assert 'scroll.property("footerClearance")' in source
+    assert "visible_content_bottom" in source
+    assert "descendant.isVisibleTo(content)" in source
 
 
 def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
@@ -225,6 +283,23 @@ def test_all_nine_scroll_surfaces_have_canonical_and_size_evidence() -> None:
     assert {
         semantics[label] for label in coverage["Collection"]
     } == {"GardenProgressDialog:collection"}
+    responsive_dialog_edges = {
+        "resize-settings-content-699",
+        "resize-settings-content-701",
+        "resize-settings-content-759",
+        "resize-settings-content-761",
+        "resize-progress-content-819",
+        "resize-progress-content-821",
+        "resize-customize-content-819",
+        "resize-customize-content-821",
+        "resize-nursery-content-759",
+        "resize-nursery-content-761",
+        "resize-story-content-539",
+        "resize-story-content-541",
+        "resize-fertilizer-replacement-content-399",
+        "resize-fertilizer-replacement-content-401",
+    }
+    assert responsive_dialog_edges <= set(flattened)
 
 
 def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
@@ -362,6 +437,18 @@ def test_capture_finish_requires_positive_scroll_metrics_and_surface_identity() 
         assert metric in report
     assert "and dialog_scroll_audits_complete" in finish
     assert '"dialog_scroll_audits_complete": dialog_scroll_audits_complete' in finish
+
+
+def test_capture_scroll_summary_uses_the_same_laid_out_reachability_rule() -> None:
+    report = _method_source("_UiFaceCaptureRunner", "_dialog_scroll_coverage_report")
+    required_block = report.split("required = max(", 1)[1].split(
+        "reachable =",
+        1,
+    )[0]
+
+    assert 'audit["content_height"]' in required_block
+    assert 'audit["content_minimum_size_hint_height"]' in required_block
+    assert 'audit["content_size_hint_height"]' not in required_block
 
 
 def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> None:
