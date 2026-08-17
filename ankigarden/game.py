@@ -9,7 +9,7 @@ import time
 import uuid
 from bisect import bisect_left, insort
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -29,6 +29,15 @@ from .environment import (
     environment_item,
     ultra_denominator,
 )
+from .growth import (
+    CompletedGrowthChargeRequest,
+    GrowthAllocation,
+    GrowthChargeOutcome,
+    GrowthChargeQuote,
+    GrowthChargeRequest,
+    GrowthChargeStatus,
+    StageRewardProjection,
+)
 from .models.state import (
     Achievement,
     ActivePlantPeriod,
@@ -44,6 +53,7 @@ from .models.state import (
     MAX_FERTILIZER_HISTORY,
     MAX_BOOSTER_HISTORY,
     MAX_COMPLETED_PURCHASE_REQUESTS,
+    MAX_COMPLETED_GROWTH_CHARGE_REQUESTS,
     MAX_GARDEN_SLOTS,
     MAX_GARDEN_NAME_LENGTH,
     MAX_PLANT_NAME_LENGTH,
@@ -55,6 +65,7 @@ from .models.state import (
     Plant,
     PlantMemory,
     RewardDrop,
+    STATE_VERSION,
     STREAK_BONUS_TIERS,
     utc_now_iso,
 )
@@ -106,6 +117,8 @@ class StageTransition:
     species: str
     previous_stage: str
     new_stage: str
+    plant_name: str = ""
+    source: str = "nurtured"
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -113,6 +126,8 @@ class StageTransition:
             "species": self.species,
             "previous_stage": self.previous_stage,
             "new_stage": self.new_stage,
+            "plant_name": self.plant_name,
+            "source": self.source,
         }
 
 
@@ -127,6 +142,7 @@ class ReviewAward:
     booster_growth: int = 0
     weather_growth: int = 0
     scenery_growth: int = 0
+    allocations: tuple[GrowthAllocation, ...] = ()
 
     @property
     def bonus_growth(self) -> int:
@@ -141,6 +157,10 @@ class ReviewAward:
     @property
     def total_growth(self) -> int:
         return self.base_growth + self.bonus_growth
+
+    @property
+    def total_garden_growth(self) -> int:
+        return sum(allocation.credited_growth for allocation in self.allocations)
 
 
 @dataclass(frozen=True)
@@ -775,6 +795,15 @@ class GardenGameEngine:
             revlog_id = max(0, int(source.get("revlog_id", 0)))
         except (TypeError, ValueError):
             revlog_id = 0
+        if revlog_id <= 0:
+            return ReviewAward(
+                None,
+                0,
+                0,
+                0,
+                0,
+                "This card answer has no stable review identity and was not counted.",
+            )
         if revlog_id:
             processed = self.state.processed_revlog_ids
             index = bisect_left(processed, revlog_id)
@@ -889,7 +918,11 @@ class GardenGameEngine:
         periods = [period for period in self.state.active_plant_periods if period.day == day and period.started_at_ms <= event_ms]
         plant_id = periods[-1].plant_id if periods else self.state.active_plant_id
         plant = next((item for item in self.state.plants if item.plant_id == plant_id), None)
-        return plant if plant is not None and not plant.fully_grown else None
+        return (
+            plant
+            if plant is not None and plant.planted and not plant.fully_grown
+            else None
+        )
 
     def equipped_environment(self, kind: str) -> CatalogItem:
         if str(kind) == "weather":
@@ -1042,7 +1075,64 @@ class GardenGameEngine:
             event_ms,
             answer_number=projected_answer,
         )
-        return award
+        return replace(
+            award,
+            allocations=self._project_review_allocations(target, award),
+        )
+
+    def _project_review_allocations(
+        self,
+        plant: Plant | None,
+        award: ReviewAward,
+    ) -> tuple[GrowthAllocation, ...]:
+        if plant is None or award.total_growth <= 0:
+            return ()
+        allocations: list[GrowthAllocation] = [GrowthAllocation(
+            plant_id=plant.plant_id,
+            role="nurtured",
+            exact_fifths=award.total_growth * 5,
+            credited_growth=award.total_growth,
+        )]
+        for passive in sorted(
+            (
+                candidate
+                for candidate in self.state.plants
+                if (
+                    candidate.plant_id != plant.plant_id
+                    and candidate.planted
+                    and not candidate.fully_grown
+                )
+            ),
+            key=lambda candidate: (
+                int(candidate.slot_index or 0),
+                candidate.plant_id,
+            ),
+        ):
+            residual_before = max(
+                0,
+                min(4, int(passive.passive_growth_remainder_fifths)),
+            )
+            whole_growth, residual_after = divmod(
+                residual_before + award.total_growth,
+                5,
+            )
+            credited = min(
+                whole_growth,
+                max(0, GROWTH_THRESHOLDS[-1] - int(passive.growth_points)),
+            )
+            allocations.append(GrowthAllocation(
+                plant_id=passive.plant_id,
+                role="passive",
+                exact_fifths=award.total_growth,
+                credited_growth=credited,
+                residual_before_fifths=residual_before,
+                residual_after_fifths=(
+                    0
+                    if int(passive.growth_points) + credited >= GROWTH_THRESHOLDS[-1]
+                    else residual_after
+                ),
+            ))
+        return tuple(allocations)
 
     def _award_review_growth(self, plant: Plant | None, event_ms: int) -> ReviewAward:
         award, next_remainder = self._review_growth_projection(
@@ -1052,6 +1142,22 @@ class GardenGameEngine:
         )
         if plant is None or award.total_growth <= 0:
             return award
+        passive_plants = sorted(
+            (
+                candidate
+                for candidate in self.state.plants
+                if (
+                    candidate.plant_id != plant.plant_id
+                    and candidate.planted
+                    and not candidate.fully_grown
+                )
+            ),
+            key=lambda candidate: (
+                int(candidate.slot_index or 0),
+                candidate.plant_id,
+            ),
+        )
+        allocations: list[GrowthAllocation] = []
         before = plant.growth_points
         plant.growth_points += award.total_growth
         plant.bonus_remainder = next_remainder if plant.growth_points < GROWTH_THRESHOLDS[-1] else 0
@@ -1062,21 +1168,66 @@ class GardenGameEngine:
         stats.booster_growth += award.booster_growth
         stats.weather_growth += award.weather_growth
         stats.scenery_growth += award.scenery_growth
-        stats.bonus_growth = (
-            stats.streak_bonus_growth
-            + stats.fertilizer_growth
-            + stats.booster_growth
-            + stats.weather_growth
-            + stats.scenery_growth
-            + stats.charge_growth
-        )
-        stats.growth_earned = stats.base_growth + stats.bonus_growth
-        stats.plant_growth[plant.plant_id] = (
-            stats.plant_growth.get(plant.plant_id, 0)
+        stats.plant_nurtured_growth[plant.plant_id] = (
+            stats.plant_nurtured_growth.get(plant.plant_id, 0)
             + award.total_growth
         )
-        self._record_growth_crossings(plant, before, plant.growth_points)
-        return award
+        allocations.append(GrowthAllocation(
+            plant_id=plant.plant_id,
+            role="nurtured",
+            exact_fifths=award.total_growth * 5,
+            credited_growth=award.total_growth,
+        ))
+        self._record_growth_crossings(
+            plant,
+            before,
+            plant.growth_points,
+            source="nurtured",
+        )
+
+        for passive in passive_plants:
+            passive_before = int(passive.growth_points)
+            residual_before = max(
+                0,
+                min(4, int(passive.passive_growth_remainder_fifths)),
+            )
+            whole_growth, residual_after = divmod(
+                residual_before + award.total_growth,
+                5,
+            )
+            credited = min(
+                whole_growth,
+                max(0, GROWTH_THRESHOLDS[-1] - passive_before),
+            )
+            passive.growth_points += credited
+            passive.passive_growth_remainder_fifths = (
+                0 if passive.fully_grown else residual_after
+            )
+            stats.plant_passive_growth_fifths[passive.plant_id] = (
+                stats.plant_passive_growth_fifths.get(passive.plant_id, 0)
+                + award.total_growth
+            )
+            if credited:
+                stats.plant_passive_growth_credited[passive.plant_id] = (
+                    stats.plant_passive_growth_credited.get(passive.plant_id, 0)
+                    + credited
+                )
+                self._record_growth_crossings(
+                    passive,
+                    passive_before,
+                    passive.growth_points,
+                    source="passive",
+                )
+            allocations.append(GrowthAllocation(
+                plant_id=passive.plant_id,
+                role="passive",
+                exact_fifths=award.total_growth,
+                credited_growth=credited,
+                residual_before_fifths=residual_before,
+                residual_after_fifths=passive.passive_growth_remainder_fifths,
+            ))
+        stats.reconcile_growth_totals()
+        return replace(award, allocations=tuple(allocations))
 
     def _reward_digest(self, revlog_id: int, *, namespace: bytes) -> bytes:
         return hashlib.blake2b(
@@ -1342,7 +1493,46 @@ class GardenGameEngine:
         else:
             self.state.ultra_pity_misses += 1
 
-    def _record_growth_crossings(self, plant: Plant, before: int, after: int) -> None:
+    def _project_stage_rewards(
+        self,
+        before: int,
+        after: int,
+    ) -> tuple[tuple[str, str, StageRewardProjection], ...]:
+        previous_index = max(
+            index
+            for index, threshold in enumerate(GROWTH_THRESHOLDS)
+            if before >= threshold
+        )
+        new_index = max(
+            index
+            for index, threshold in enumerate(GROWTH_THRESHOLDS)
+            if after >= threshold
+        )
+        projected: list[tuple[str, str, StageRewardProjection]] = []
+        for stage_index in range(previous_index + 1, new_index + 1):
+            previous_stage = GROWTH_STAGES[stage_index - 1]
+            new_stage = GROWTH_STAGES[stage_index]
+            base_reward = self.STAGE_CURRENCY[new_stage]
+            reward = (
+                (base_reward * 5 + 2) // 4
+                if self.state.selected_background == "autumn"
+                else base_reward
+            )
+            projected.append((
+                previous_stage,
+                new_stage,
+                StageRewardProjection(new_stage, reward),
+            ))
+        return tuple(projected)
+
+    def _record_growth_crossings(
+        self,
+        plant: Plant,
+        before: int,
+        after: int,
+        *,
+        source: str = "nurtured",
+    ) -> None:
         for index in range(len(GROWTH_STAGES) - 1):
             stage = GROWTH_STAGES[index]
             start, end = GROWTH_THRESHOLDS[index], GROWTH_THRESHOLDS[index + 1]
@@ -1355,11 +1545,10 @@ class GardenGameEngine:
                         f"{plant.name} is {percent}% of the way to {GROWTH_STAGES[index + 1].title()}.",
                         plant.plant_id,
                     )
-        previous_index = max(index for index, threshold in enumerate(GROWTH_THRESHOLDS) if before >= threshold)
-        new_index = max(index for index, threshold in enumerate(GROWTH_THRESHOLDS) if after >= threshold)
-        for stage_index in range(previous_index + 1, new_index + 1):
-            previous_stage = GROWTH_STAGES[stage_index - 1]
-            new_stage = GROWTH_STAGES[stage_index]
+        for previous_stage, new_stage, reward_projection in self._project_stage_rewards(
+            before,
+            after,
+        ):
             self._add_memory(
                 plant,
                 f"stage:{new_stage}",
@@ -1367,14 +1556,16 @@ class GardenGameEngine:
                 previous_stage=previous_stage,
                 new_stage=new_stage,
             )
-            transition = StageTransition(plant.plant_id, plant.species, previous_stage, new_stage)
-            self._pending_stage_transitions.append(transition)
-            base_reward = self.STAGE_CURRENCY[new_stage]
-            reward = (
-                (base_reward * 5 + 2) // 4
-                if self.state.selected_background == "autumn"
-                else base_reward
+            transition = StageTransition(
+                plant.plant_id,
+                plant.species,
+                previous_stage,
+                new_stage,
+                plant.name,
+                source,
             )
+            self._pending_stage_transitions.append(transition)
+            reward = reward_projection.garden_coins
             self._credit_currency(
                 f"stage:{plant.plant_id}:{new_stage}",
                 f"{plant.name} reached {new_stage.title()}",
@@ -1403,6 +1594,7 @@ class GardenGameEngine:
         requested: int,
         *,
         stats_field: str,
+        transition_source: str = "direct_reward",
     ) -> int:
         if plant is None or plant.fully_grown or requested <= 0:
             return 0
@@ -1416,21 +1608,22 @@ class GardenGameEngine:
         plant.growth_points += awarded
         if plant.fully_grown:
             plant.bonus_remainder = 0
+            plant.passive_growth_remainder_fifths = 0
         stats = self.state.daily_stats
-        setattr(stats, stats_field, int(getattr(stats, stats_field, 0)) + awarded)
-        stats.bonus_growth = (
-            stats.streak_bonus_growth
-            + stats.fertilizer_growth
-            + stats.booster_growth
-            + stats.weather_growth
-            + stats.scenery_growth
-            + stats.charge_growth
+        if stats_field == "charge_growth":
+            target_map = stats.plant_charge_growth
+        elif stats_field == "direct_reward_growth":
+            target_map = stats.plant_direct_reward_growth
+        else:
+            raise ValueError(f"unsupported direct Growth source: {stats_field}")
+        target_map[plant.plant_id] = target_map.get(plant.plant_id, 0) + awarded
+        stats.reconcile_growth_totals()
+        self._record_growth_crossings(
+            plant,
+            before,
+            plant.growth_points,
+            source=transition_source,
         )
-        stats.growth_earned = stats.base_growth + stats.bonus_growth
-        stats.plant_growth[plant.plant_id] = (
-            stats.plant_growth.get(plant.plant_id, 0) + awarded
-        )
-        self._record_growth_crossings(plant, before, plant.growth_points)
         return awarded
 
     def all_due_rewards(self) -> tuple[int, int]:
@@ -1451,6 +1644,7 @@ class GardenGameEngine:
         # snapshot so every early-return branch leaves memory and disk aligned.
         self.rollover_if_needed()
         snapshot = self._state_snapshot()
+        transition_snapshot = list(self._pending_stage_transitions)
         stats = self.state.daily_stats
         if stats.completed_due_cards:
             return False, "You already earned today’s reward for finishing all due cards."
@@ -1469,7 +1663,10 @@ class GardenGameEngine:
         weather_growth = 0
         if configured_growth:
             weather_growth = self._apply_direct_growth(
-                self.active_plant(), configured_growth, stats_field="weather_growth"
+                self.active_plant(),
+                configured_growth,
+                stats_field="direct_reward_growth",
+                transition_source="direct_reward",
             )
         feedback = (
             f"You finished all due cards and earned {coin_reward} Garden Coins"
@@ -1485,6 +1682,7 @@ class GardenGameEngine:
             self._update_achievements()
             self._persist_or_restore(snapshot)
         except Exception:
+            self._pending_stage_transitions = transition_snapshot
             return False, "The reward for finishing all due cards could not be saved."
         return True, feedback
 
@@ -3517,9 +3715,12 @@ class GardenGameEngine:
             return ""
         if len(transitions) == 1:
             item = transitions[0]
-            species = item.species.replace("_", " ").title()
-            return f"Your {species} reached {item.new_stage.title()}!"
-        names = ", ".join(item.species.replace("_", " ").title() for item in transitions[:3])
+            plant_name = item.plant_name or item.species.replace("_", " ").title()
+            return f"{plant_name} reached {item.new_stage.title()}!"
+        names = ", ".join(
+            item.plant_name or item.species.replace("_", " ").title()
+            for item in transitions[:3]
+        )
         if len(transitions) > 3:
             names += f" and {len(transitions) - 3} more"
         return f"Garden milestone! {names} reached new growth stages."
@@ -3569,12 +3770,46 @@ class GardenGameEngine:
         return int(math.ceil(max(0, remaining) / award.total_growth))
 
     def export_progress_summary(self) -> str:
+        stats = self.state.daily_stats
+        source_components = {
+            "base": max(0, int(stats.base_growth)),
+            "streak": max(0, int(stats.streak_bonus_growth)),
+            "fertilizer": max(0, int(stats.fertilizer_growth)),
+            "weather": max(0, int(stats.weather_growth)),
+            "scenery": max(0, int(stats.scenery_growth)),
+            "other": max(0, int(stats.booster_growth)),
+        }
+        ledger = list(self.state.completed_growth_charge_requests)
+        ledger_ids = [record.request_id for record in ledger]
         payload = {
+            "schema_version": STATE_VERSION,
             "date": self.state.daily_stats.day,
             "streak": self.state.streak_days,
             "total_reviews": self.state.total_reviews,
             "garden_currency": self.state.currency_balance,
             "streak_bonus_percent": self.current_streak_bonus_percent(),
+            "growth_reconciliation": {
+                "study_sources": source_components,
+                "study_source_total": sum(source_components.values()),
+                "study_growth_generated": stats.study_growth_generated,
+                "nurtured_by_plant": dict(stats.plant_nurtured_growth),
+                "passive_exact_fifths_by_plant": dict(
+                    stats.plant_passive_growth_fifths
+                ),
+                "passive_credited_by_plant": dict(
+                    stats.plant_passive_growth_credited
+                ),
+                "charge_by_plant": dict(stats.plant_charge_growth),
+                "direct_reward_by_plant": dict(
+                    stats.plant_direct_reward_growth
+                ),
+                "legacy_unattributed": stats.legacy_unattributed_growth,
+                "partially_stale": stats.growth_accounting_stale,
+            },
+            "growth_charge_replay_ledger": {
+                "entries": len(ledger),
+                "healthy": len(ledger_ids) == len(set(ledger_ids)),
+            },
             "plants": [
                 {
                     "name": plant.name,
@@ -3582,6 +3817,9 @@ class GardenGameEngine:
                     "stage": plant.growth_stage,
                     "growth": plant.growth_points,
                     "planted": plant.planted,
+                    "passive_growth_remainder_fifths": (
+                        plant.passive_growth_remainder_fifths
+                    ),
                 }
                 for plant in self.state.plants
             ],

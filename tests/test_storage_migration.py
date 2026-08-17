@@ -144,7 +144,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == 19
+    assert migrated.version == 20
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE
@@ -176,6 +176,50 @@ def test_schema18_migration_preserves_purchase_replay_history_and_collapses_load
     assert migrated.environment_visibility == {"weather": False, "scenery": True}
     assert "backgrounds" not in migrated.inventory
     assert not {"selected_weather", "selected_background", "equipped", "environment_visibility"} & migrated.to_dict().keys()
+
+
+def test_schema19_growth_migration_preserves_unattributed_day_and_backup(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        plants=[Plant("p", "bonsai", "Moss", 0, growth_points=777)],
+        active_plant_id="p",
+    ).to_dict()
+    payload["version"] = 19
+    payload["daily_stats"].update({
+        "day": "2026-08-17",
+        "base_growth": 30,
+        "streak_bonus_growth": 2,
+        "fertilizer_growth": 5,
+        "growth_earned": 37,
+        "plant_growth": {"p": 37},
+    })
+    for key in (
+        "plant_nurtured_growth",
+        "plant_passive_growth_fifths",
+        "plant_passive_growth_credited",
+        "plant_charge_growth",
+        "plant_direct_reward_growth",
+        "legacy_unattributed_growth",
+        "legacy_plant_growth",
+        "growth_accounting_stale",
+    ):
+        payload["daily_stats"].pop(key, None)
+    payload["plants"][0].pop("passive_growth_remainder_fifths", None)
+    payload.pop("completed_growth_charge_requests", None)
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    migrated = storage_at(state_path)._load()
+
+    assert migrated.version == STATE_VERSION
+    assert migrated.plants[0].growth_points == 777
+    assert migrated.plants[0].passive_growth_remainder_fifths == 0
+    assert migrated.daily_stats.legacy_unattributed_growth == 37
+    assert migrated.daily_stats.legacy_plant_growth == {"p": 37}
+    assert migrated.daily_stats.growth_accounting_stale
+    assert migrated.daily_stats.study_growth_generated == 0
+    assert migrated.daily_stats.growth_earned == 37
+    assert migrated.completed_growth_charge_requests == []
+    assert state_path.with_suffix(".schema-19.legacy.json").exists()
 
 
 def legacy_state_payload() -> dict:

@@ -15,9 +15,10 @@ from ..environment import (
     SCENERY_CATALOG,
     WEATHER_CATALOG,
 )
+from ..growth import CompletedGrowthChargeRequest
 from ..purchases import CompletedPurchaseRequest
 
-STATE_VERSION = 19
+STATE_VERSION = 20
 ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
@@ -57,6 +58,7 @@ MAX_PLANT_NAME_LENGTH = 40
 MAX_GARDEN_NAME_LENGTH = 40
 MAX_TRANSACTION_HISTORY = 500
 MAX_COMPLETED_PURCHASE_REQUESTS = 500
+MAX_COMPLETED_GROWTH_CHARGE_REQUESTS = 500
 MAX_FEEDBACK_EVENTS = 100
 MAX_REWARD_DROP_HISTORY = 500
 MAX_ACTIVE_PERIODS = 64
@@ -129,6 +131,7 @@ class Plant:
     booster: Optional[Booster] = None
     booster_history: List[Booster] = field(default_factory=list)
     name_customized: bool = False
+    passive_growth_remainder_fifths: int = 0
 
     @property
     def growth_stage(self) -> str:
@@ -164,16 +167,95 @@ class DailyStats:
     booster_growth: int = 0
     weather_growth: int = 0
     scenery_growth: int = 0
-    charge_growth: int = 0
-    bonus_growth: int = 0
-    growth_earned: int = 0
-    plant_growth: Dict[str, int] = field(default_factory=dict)
+    plant_nurtured_growth: Dict[str, int] = field(default_factory=dict)
+    plant_passive_growth_fifths: Dict[str, int] = field(default_factory=dict)
+    plant_passive_growth_credited: Dict[str, int] = field(default_factory=dict)
+    plant_charge_growth: Dict[str, int] = field(default_factory=dict)
+    plant_direct_reward_growth: Dict[str, int] = field(default_factory=dict)
+    legacy_unattributed_growth: int = 0
+    legacy_plant_growth: Dict[str, int] = field(default_factory=dict)
+    growth_accounting_stale: bool = False
     completed_due_cards: bool = False
 
     @property
     def accuracy(self) -> float:
         total = self.correct + self.wrong
         return 0 if total == 0 else self.correct / total
+
+    @property
+    def study_growth_generated(self) -> int:
+        return max(0, int(
+            self.base_growth
+            + self.streak_bonus_growth
+            + self.fertilizer_growth
+            + self.booster_growth
+            + self.weather_growth
+            + self.scenery_growth
+        ))
+
+    @property
+    def plant_growth(self) -> Dict[str, int]:
+        plant_ids = {
+            *self.plant_nurtured_growth,
+            *self.plant_passive_growth_credited,
+            *self.plant_charge_growth,
+            *self.plant_direct_reward_growth,
+        }
+        return {
+            plant_id: sum((
+                max(0, int(self.plant_nurtured_growth.get(plant_id, 0))),
+                max(0, int(self.plant_passive_growth_credited.get(plant_id, 0))),
+                max(0, int(self.plant_charge_growth.get(plant_id, 0))),
+                max(0, int(self.plant_direct_reward_growth.get(plant_id, 0))),
+            ))
+            for plant_id in sorted(plant_ids)
+        }
+
+    @property
+    def charge_growth(self) -> int:
+        return sum(max(0, int(value)) for value in self.plant_charge_growth.values())
+
+    @property
+    def direct_reward_growth(self) -> int:
+        return sum(
+            max(0, int(value))
+            for value in self.plant_direct_reward_growth.values()
+        )
+
+    @property
+    def bonus_growth(self) -> int:
+        return max(
+            0,
+            self.study_growth_generated
+            - max(0, int(self.base_growth))
+            + self.charge_growth
+            + self.direct_reward_growth,
+        )
+
+    @property
+    def growth_earned(self) -> int:
+        return (
+            max(0, int(self.legacy_unattributed_growth))
+            + sum(self.plant_growth.values())
+        )
+
+    def reconcile_growth_totals(self) -> None:
+        """Normalize canonical maps; compatibility totals are computed properties."""
+
+        for field_name in (
+            "plant_nurtured_growth",
+            "plant_passive_growth_fifths",
+            "plant_passive_growth_credited",
+            "plant_charge_growth",
+            "plant_direct_reward_growth",
+            "legacy_plant_growth",
+        ):
+            mapping = getattr(self, field_name)
+            setattr(self, field_name, {
+                str(plant_id): max(0, int(value))
+                for plant_id, value in mapping.items()
+                if str(plant_id)
+            })
 
 
 @dataclass
@@ -301,6 +383,7 @@ class GardenState:
     currency_balance: int = 0
     currency_transactions: List[CurrencyTransaction] = field(default_factory=list)
     completed_purchase_requests: List[CompletedPurchaseRequest] = field(default_factory=list)
+    completed_growth_charge_requests: List[CompletedGrowthChargeRequest] = field(default_factory=list)
     claimed_streak_rewards: List[int] = field(default_factory=list)
     pending_feedback: List[FeedbackEvent] = field(default_factory=list)
     reward_seed: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -416,14 +499,48 @@ class GardenState:
             ],
             "achievements": {key: value.__dict__ for key, value in self.achievements.items()},
             "daily_stats": {
-                **{key: value for key, value in self.daily_stats.__dict__.items() if key != "plant_growth"},
+                **{
+                    key: value
+                    for key, value in self.daily_stats.__dict__.items()
+                    if key not in {
+                        "plant_growth",
+                        "plant_nurtured_growth",
+                        "plant_passive_growth_fifths",
+                        "plant_passive_growth_credited",
+                        "plant_charge_growth",
+                        "plant_direct_reward_growth",
+                        "legacy_plant_growth",
+                    }
+                },
+                "growth_earned": self.daily_stats.growth_earned,
+                "charge_growth": self.daily_stats.charge_growth,
+                "direct_reward_growth": self.daily_stats.direct_reward_growth,
+                "bonus_growth": self.daily_stats.bonus_growth,
                 "plant_growth": dict(self.daily_stats.plant_growth),
+                "plant_nurtured_growth": dict(self.daily_stats.plant_nurtured_growth),
+                "plant_passive_growth_fifths": dict(
+                    self.daily_stats.plant_passive_growth_fifths
+                ),
+                "plant_passive_growth_credited": dict(
+                    self.daily_stats.plant_passive_growth_credited
+                ),
+                "plant_charge_growth": dict(self.daily_stats.plant_charge_growth),
+                "plant_direct_reward_growth": dict(
+                    self.daily_stats.plant_direct_reward_growth
+                ),
+                "legacy_plant_growth": dict(self.daily_stats.legacy_plant_growth),
             },
             "currency_balance": self.currency_balance,
             "currency_transactions": [tx.__dict__ for tx in self.currency_transactions[-MAX_TRANSACTION_HISTORY:]],
             "completed_purchase_requests": [
                 request.to_dict()
                 for request in self.completed_purchase_requests[-MAX_COMPLETED_PURCHASE_REQUESTS:]
+            ],
+            "completed_growth_charge_requests": [
+                request.to_dict()
+                for request in self.completed_growth_charge_requests[
+                    -MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:
+                ]
             ],
             "claimed_streak_rewards": sorted(set(self.claimed_streak_rewards)),
             "pending_feedback": [event.__dict__ for event in self.pending_feedback[-MAX_FEEDBACK_EVENTS:]],
@@ -505,6 +622,9 @@ class GardenState:
         state.currency_transactions = _transactions(data.get("currency_transactions"), state.currency_balance, issues)
         state.completed_purchase_requests = _completed_purchase_requests(
             data.get("completed_purchase_requests"), issues
+        )
+        state.completed_growth_charge_requests = _completed_growth_charge_requests(
+            data.get("completed_growth_charge_requests"), issues
         )
         claimed_streaks = data.get("claimed_streak_rewards", [])
         if isinstance(claimed_streaks, list):
@@ -628,6 +748,7 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
         "slot_index": plant.slot_index,
         "growth_points": plant.growth_points,
         "bonus_remainder": plant.bonus_remainder,
+        "passive_growth_remainder_fifths": plant.passive_growth_remainder_fifths,
         "personality": plant.personality,
         "planted_on": plant.planted_on,
         "memories": [memory.__dict__ for memory in plant.memories],
@@ -824,29 +945,42 @@ def _daily_stats(value: Any, issues: list[str]) -> DailyStats:
         "reviewed", "correct", "wrong", "new_count", "learning_count", "review_count",
         "difficult_count", "recovered_lapses", "base_growth", "streak_bonus_growth",
         "fertilizer_growth", "booster_growth", "weather_growth", "scenery_growth",
-        "charge_growth", "bonus_growth", "growth_earned",
+        "legacy_unattributed_growth",
     ):
         setattr(result, key, _nonnegative_int(value.get(key), 0, f"daily_stats.{key}", issues))
     result.correct = min(result.correct, result.reviewed)
     result.wrong = min(result.wrong, max(0, result.reviewed - result.correct))
-    result.bonus_growth = (
-        result.streak_bonus_growth
-        + result.fertilizer_growth
-        + result.booster_growth
-        + result.weather_growth
-        + result.scenery_growth
-        + result.charge_growth
-    )
-    result.growth_earned = result.base_growth + result.bonus_growth
-    plant_growth = value.get("plant_growth", {})
-    if isinstance(plant_growth, dict):
-        result.plant_growth = {
-            str(key): max(0, int(points))
-            for key, points in plant_growth.items()
-            if isinstance(key, str) and isinstance(points, int) and not isinstance(points, bool)
+    def growth_map(key: str) -> dict[str, int]:
+        raw_map = value.get(key, {})
+        if not isinstance(raw_map, dict):
+            issues.append(f"daily_stats.{key}: expected object")
+            return {}
+        return {
+            str(plant_id): max(0, int(points))
+            for plant_id, points in raw_map.items()
+            if (
+                isinstance(plant_id, str)
+                and plant_id
+                and isinstance(points, int)
+                and not isinstance(points, bool)
+            )
         }
-    else:
-        issues.append("daily_stats.plant_growth: expected object")
+
+    result.plant_nurtured_growth = growth_map("plant_nurtured_growth")
+    result.plant_passive_growth_fifths = growth_map("plant_passive_growth_fifths")
+    result.plant_passive_growth_credited = growth_map("plant_passive_growth_credited")
+    result.plant_charge_growth = growth_map("plant_charge_growth")
+    result.plant_direct_reward_growth = growth_map("plant_direct_reward_growth")
+    result.legacy_plant_growth = growth_map("legacy_plant_growth")
+    stale = value.get("growth_accounting_stale", False)
+    if not isinstance(stale, bool):
+        issues.append("daily_stats.growth_accounting_stale: expected bool")
+        stale = False
+    result.growth_accounting_stale = stale
+    persisted_plant_growth = growth_map("plant_growth")
+    result.reconcile_growth_totals()
+    if persisted_plant_growth and persisted_plant_growth != result.plant_growth:
+        issues.append("daily_stats.plant_growth: repaired from typed allocation totals")
     raw = value.get("completed_due_cards", False)
     result.completed_due_cards = raw if isinstance(raw, bool) else False
     return result
@@ -928,6 +1062,14 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             )),
             bonus_remainder=_bounded_int(
                 raw.get("bonus_remainder"), 0, 0, 99, f"plants[{index}].bonus_remainder", issues
+            ),
+            passive_growth_remainder_fifths=_bounded_int(
+                raw.get("passive_growth_remainder_fifths"),
+                0,
+                0,
+                4,
+                f"plants[{index}].passive_growth_remainder_fifths",
+                issues,
             ),
             personality=raw.get("personality", "balanced") if isinstance(raw.get("personality"), str) else "balanced",
             planted_on=_iso_date(
@@ -1192,6 +1334,32 @@ def _completed_purchase_requests(
         if record.request_id in request_ids:
             issues.append(
                 f"completed_purchase_requests[{index}]: duplicate request identity"
+            )
+            continue
+        request_ids.add(record.request_id)
+        result.append(record)
+    return result
+
+
+def _completed_growth_charge_requests(
+    value: Any,
+    issues: list[str],
+) -> list[CompletedGrowthChargeRequest]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("completed_growth_charge_requests: expected list")
+        return []
+    result: list[CompletedGrowthChargeRequest] = []
+    request_ids: set[str] = set()
+    for index, raw in enumerate(value[-MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:]):
+        record = CompletedGrowthChargeRequest.from_dict(raw)
+        if record is None:
+            issues.append(f"completed_growth_charge_requests[{index}]: invalid record")
+            continue
+        if record.request_id in request_ids:
+            issues.append(
+                f"completed_growth_charge_requests[{index}]: duplicate request identity"
             )
             continue
         request_ids.add(record.request_id)

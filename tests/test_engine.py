@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from ankigarden.models.state import (
     ActivePlantPeriod,
     CURRENT_CATALOG_SPECIES_ORDER,
     DailyStats,
+    Booster,
     Fertilizer,
     FeedbackEvent,
     GardenState,
@@ -99,12 +101,13 @@ def make_engine(*, goal: int = 50):
 
 def answer(engine: GardenGameEngine, storage: FakeStorage, *, ease: int = 3, revlog_id: int = 0):
     storage.now_ms += 1_000
+    stable_id = revlog_id or storage.now_ms
     return engine.register_review({
         "queue": 2,
         "ease": ease,
         "lapse_count": int(ease == 1),
-        "revlog_id": revlog_id,
-        "answered_at_ms": revlog_id or storage.now_ms,
+        "revlog_id": stable_id,
+        "answered_at_ms": stable_id,
     })
 
 
@@ -148,6 +151,44 @@ def test_new_scheduler_day_floor_ignores_future_scalar_cursor_and_counts_answer(
     assert storage.state.processed_revlog_ids == [answer_id]
     assert storage.state.last_processed_revlog_id == future_cursor
     assert gained == 10
+
+
+def test_scheduler_rollover_clears_migration_stale_growth_accounting():
+    engine, storage = make_engine()
+    storage.state.daily_stats.growth_accounting_stale = True
+    storage.state.daily_stats.legacy_unattributed_growth = 37
+    storage.state.daily_stats.legacy_plant_growth = {"p1": 37}
+    storage.state.daily_stats.reconcile_growth_totals()
+    storage.day = "2026-08-09"
+    storage.day_start_ms += 86_400_000
+
+    engine.rollover_if_needed()
+
+    assert storage.state.daily_stats.day == "2026-08-09"
+    assert not storage.state.daily_stats.growth_accounting_stale
+    assert storage.state.daily_stats.legacy_unattributed_growth == 0
+    assert storage.state.daily_stats.legacy_plant_growth == {}
+
+
+def test_progress_export_reports_growth_reconciliation_without_mutation():
+    engine, storage = make_engine()
+    storage.state.daily_stats.reviewed = 1
+    storage.state.selected_weather = "breeze"
+    answer(engine, storage)
+    before = storage.state.to_dict()
+
+    report = json.loads(engine.export_progress_summary())
+
+    assert report["schema_version"] == 20
+    assert report["growth_reconciliation"]["study_source_total"] == 11
+    assert report["growth_reconciliation"]["study_growth_generated"] == 11
+    assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 11}
+    assert report["growth_reconciliation"]["passive_exact_fifths_by_plant"] == {
+        "p2": 11,
+    }
+    assert report["plants"][1]["passive_growth_remainder_fifths"] == 1
+    assert report["growth_charge_replay_ledger"]["healthy"] is True
+    assert storage.state.to_dict() == before
 
 
 def test_catalog_price_name_and_personality_tables_match_exact_species_contract():
@@ -322,7 +363,7 @@ def test_streak_growth_bonus_is_fractional_and_never_reduces_base():
     assert storage.state.plants[0].growth_points == 21
 
 
-def test_growth_goes_only_to_active_plant_and_switches_for_future_answers():
+def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
     engine, storage = make_engine()
     answer(engine, storage)
     before = storage.state.plants[0].growth_points
@@ -331,7 +372,7 @@ def test_growth_goes_only_to_active_plant_and_switches_for_future_answers():
     assert ok
     answer(engine, storage)
 
-    assert storage.state.plants[0].growth_points == before
+    assert storage.state.plants[0].growth_points == before + 2
     assert storage.state.plants[1].growth_points > 0
     assert storage.state.daily_stats.plant_growth.keys() == {"p1", "p2"}
 
@@ -371,6 +412,7 @@ def test_growth_milestones_stage_reward_and_transition_are_durable():
 
     assert plant.growth_stage == "sprout"
     assert engine.peek_stage_transitions()[0].new_stage == "sprout"
+    assert engine.peek_stage_transitions()[0].source == "nurtured"
     assert storage.state.currency_balance == 5
     assert any(tx.reason == "Moss reached Sprout" for tx in storage.state.currency_transactions)
     assert any(memory.memory_id == "stage:sprout" for memory in plant.memories)
@@ -1306,7 +1348,11 @@ def test_currency_is_never_awarded_per_review():
     for _ in range(100):
         answer(engine, storage)
     assert all(not tx.event_key.startswith("review:") for tx in storage.state.currency_transactions)
-    assert {tx.event_key for tx in storage.state.currency_transactions} == {"stage:p1:sprout"}
+    assert {
+        tx.event_key
+        for tx in storage.state.currency_transactions
+        if tx.event_key.startswith("stage:")
+    } == {"stage:p1:sprout"}
 
 
 def test_streak_currency_milestones_are_once_ever_even_after_ledger_pruning():

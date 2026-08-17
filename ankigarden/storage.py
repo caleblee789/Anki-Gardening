@@ -31,7 +31,7 @@ from .models.state import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17, 18})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17, 18, 19})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 
 
@@ -247,6 +247,59 @@ def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
         payload.pop(legacy_key, None)
 
 
+def _migrate_growth_accounting_payload(payload: dict[str, Any]) -> None:
+    """Preserve pre-schema-20 daily Growth without inventing allocation roles."""
+
+    stats = payload.get("daily_stats")
+    if not isinstance(stats, dict):
+        stats = {}
+        payload["daily_stats"] = stats
+    old_total = _legacy_nonnegative_int(stats.get("growth_earned"))
+    old_plant_growth = stats.get("plant_growth")
+    legacy_plant_growth = (
+        {
+            str(plant_id): max(0, int(points))
+            for plant_id, points in old_plant_growth.items()
+            if (
+                isinstance(plant_id, str)
+                and plant_id
+                and isinstance(points, int)
+                and not isinstance(points, bool)
+            )
+        }
+        if isinstance(old_plant_growth, dict)
+        else {}
+    )
+    stats["legacy_unattributed_growth"] = old_total
+    stats["legacy_plant_growth"] = legacy_plant_growth
+    stats["growth_accounting_stale"] = bool(old_total or legacy_plant_growth)
+    for field_name in (
+        "base_growth",
+        "streak_bonus_growth",
+        "fertilizer_growth",
+        "booster_growth",
+        "weather_growth",
+        "scenery_growth",
+        "charge_growth",
+        "direct_reward_growth",
+        "bonus_growth",
+        "growth_earned",
+    ):
+        stats[field_name] = 0
+    stats["plant_growth"] = {}
+    stats["plant_nurtured_growth"] = {}
+    stats["plant_passive_growth_fifths"] = {}
+    stats["plant_passive_growth_credited"] = {}
+    stats["plant_charge_growth"] = {}
+    stats["plant_direct_reward_growth"] = {}
+    payload.setdefault("completed_growth_charge_requests", [])
+    plants = payload.get("plants")
+    if isinstance(plants, list):
+        for plant in plants:
+            if isinstance(plant, dict):
+                plant.setdefault("passive_growth_remainder_fifths", 0)
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -361,7 +414,7 @@ def migrate_modern_state(
     migrated_at: float | None = None,
     onboarding_version: Any = 0,
 ) -> GardenState:
-    """Add current preservation boundaries to a schema 11-18 state.
+    """Add current preservation boundaries to a schema 11-19 state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -371,9 +424,14 @@ def migrate_modern_state(
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11 through 18 can use the modern migration")
+        raise ValueError("only schema 11 through 19 can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    if source_version == 19:
+        payload["version"] = STATE_VERSION
+        payload.setdefault("completed_purchase_requests", [])
+        _migrate_growth_accounting_payload(payload)
+        return GardenState.from_dict(payload)
     if source_version in {17, 18}:
         # Schemas 17 and 18 already own every progression, onboarding, and
         # revlog field. Preserve their bounded purchase replay history while
@@ -381,6 +439,7 @@ def migrate_modern_state(
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_loadout_payload(payload)
+        _migrate_growth_accounting_payload(payload)
         return GardenState.from_dict(payload)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
@@ -393,6 +452,7 @@ def migrate_modern_state(
     payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
     payload.setdefault("garden_name", "My Garden")
     payload.setdefault("completed_purchase_requests", [])
+    _migrate_growth_accounting_payload(payload)
     if source_version < 16:
         payload["garden_setup_version"] = 1
     plants = payload.get("plants")
