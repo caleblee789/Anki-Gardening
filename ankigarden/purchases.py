@@ -382,12 +382,12 @@ def purchase_presentation(
                 True,
             ),
             PurchaseFact("equipment_limit", "", f"Only one {kind_name} can be equipped at a time"),
-            PurchaseFact("equipment", "Equipment", "Equip later in Customize Garden"),
+            PurchaseFact("equipment", "Equipment", "Preview and equip later in Collection"),
         ))
         badges.append("Permanent unlock")
         preview_style = PurchasePreviewStyle.LANDSCAPE
-        success_message = f"{item_name} unlocked. Equip it in Customize Garden."
-        next_actions = ("Open Customize", "Continue shopping")
+        success_message = f"{item_name} unlocked. Preview or equip it in Collection."
+        next_actions = ("Open Collection", "Continue shopping")
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Garden Bed")
@@ -459,12 +459,8 @@ def purchase_presentation(
         show_cost = False
         balance_after = None
         secondary_label = "Close"
-        primary_route = (
-            "customize"
-            if quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}
-            else "collection"
-        )
-        primary_label = "Open Customize" if primary_route == "customize" else "Open Collection"
+        primary_route = "collection"
+        primary_label = "Open Collection"
         primary_accessible = primary_label
         terminal = True
     elif effective_status in {

@@ -464,8 +464,8 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         PurchaseKind.SPECIES: "Sunflower added to your collection.",
         PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added to your inventory.",
         PurchaseKind.FERTILIZER: "Basic Fertilizer applied to Moss for 1 hour.",
-        PurchaseKind.WEATHER: "Soft Breeze unlocked. Equip it in Customize Garden.",
-        PurchaseKind.SCENERY: "Spring Bloom unlocked. Equip it in Customize Garden.",
+        PurchaseKind.WEATHER: "Soft Breeze unlocked. Preview or equip it in Collection.",
+        PurchaseKind.SCENERY: "Spring Bloom unlocked. Preview or equip it in Collection.",
         PurchaseKind.BED: "Garden Bed 3 unlocked.",
     }[kind]
     assert outcome.message == presentation.success_message
@@ -797,8 +797,8 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
         amount_spent=100,
         new_balance=400,
         disposition=PurchaseDisposition.OWNED_NOT_EQUIPPED,
-        message="Soft Breeze unlocked. Equip it in Customize Garden.",
-        next_actions=("Open Customize", "Continue shopping"),
+        message="Soft Breeze unlocked. Preview or equip it in Collection.",
+        next_actions=("Open Collection", "Continue shopping"),
     )
     nursery = SimpleNamespace(
         _begin_catalog_transaction=lambda: True,
@@ -880,13 +880,13 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     )
 
     assert status.text == (
-        "Soft Breeze unlocked. Equip it in Customize Garden.\n"
+        "Soft Breeze unlocked. Preview or equip it in Collection.\n"
         "Spent: 100 Garden Coins · Balance: 400 Garden Coins"
     )
     assert "Purchase complete" in status.accessible_description
     assert "Spent: 100 Garden Coins" in status.accessible_description
     assert "Balance: 400 Garden Coins" in status.accessible_description
-    assert receipt_action.text == "Open Customize"
+    assert receipt_action.text == "Open Collection"
     assert receipt_actions.visible is True
     assert announcements == [status.accessible_description]
 

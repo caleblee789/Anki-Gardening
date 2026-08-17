@@ -12,6 +12,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict
 
+from .environment import DEFAULT_SCENERY_ID, DEFAULT_WEATHER_ID
 from .models.state import (
     ActivePlantPeriod,
     GardenState,
@@ -30,7 +31,7 @@ from .models.state import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17, 18})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 
 
@@ -201,6 +202,51 @@ def _add_legacy_fertilizer_activation_boundaries(
         fertilizer["started_at"] = min(float(expires), boundary)
 
 
+def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
+    """Collapse legacy appearance mirrors into schema 19's one authority."""
+
+    inventory = payload.get("inventory")
+    if not isinstance(inventory, dict):
+        inventory = {}
+        payload["inventory"] = inventory
+    backgrounds = inventory.get("backgrounds")
+    scenery = inventory.get("scenery")
+    legacy_scenery = backgrounds if isinstance(backgrounds, list) else []
+    current_scenery = scenery if isinstance(scenery, list) else []
+    inventory["scenery"] = list(dict.fromkeys(
+        item for item in [*legacy_scenery, *current_scenery]
+        if isinstance(item, str) and item
+    ))
+    inventory.pop("backgrounds", None)
+
+    equipped = payload.get("equipped")
+    equipped = equipped if isinstance(equipped, dict) else {}
+    visibility = payload.get("environment_visibility")
+    if not isinstance(visibility, dict):
+        visibility = {"weather": True, "scenery": True}
+    decoration = equipped.get("decoration")
+    payload["loadout"] = {
+        "weather_id": payload.get(
+            "selected_weather", equipped.get("weather", DEFAULT_WEATHER_ID)
+        ),
+        "scenery_id": payload.get(
+            "selected_background", equipped.get("background", DEFAULT_SCENERY_ID)
+        ),
+        "decoration_id": None if decoration in (None, "", "none") else decoration,
+        "visibility": {
+            "weather": bool(visibility.get("weather", True)),
+            "scenery": bool(visibility.get("scenery", True)),
+        },
+    }
+    for legacy_key in (
+        "selected_weather",
+        "selected_background",
+        "equipped",
+        "environment_visibility",
+    ):
+        payload.pop(legacy_key, None)
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -305,6 +351,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
         "revlog_ledger_migration_pending": True,
         "scene_geometry_version": 0,
     }
+    _migrate_loadout_payload(payload)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -314,7 +361,7 @@ def migrate_modern_state(
     migrated_at: float | None = None,
     onboarding_version: Any = 0,
 ) -> GardenState:
-    """Add current preservation boundaries to a schema 11-17 state.
+    """Add current preservation boundaries to a schema 11-18 state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -324,16 +371,16 @@ def migrate_modern_state(
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11 through 17 can use the modern migration")
+        raise ValueError("only schema 11 through 18 can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
-    if source_version == 17:
-        # Schema 17 already owns every current progression, onboarding, and
-        # revlog field. The purchase overhaul adds only the bounded replay
-        # ledger, so do not run older compatibility repairs that could rewrite
-        # otherwise valid in-progress state.
+    if source_version in {17, 18}:
+        # Schemas 17 and 18 already own every progression, onboarding, and
+        # revlog field. Preserve their bounded purchase replay history while
+        # collapsing only the duplicate environment mirrors.
         payload["version"] = STATE_VERSION
-        payload["completed_purchase_requests"] = []
+        payload.setdefault("completed_purchase_requests", [])
+        _migrate_loadout_payload(payload)
         return GardenState.from_dict(payload)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
@@ -403,6 +450,7 @@ def migrate_modern_state(
     payload["processed_revlog_floor"] = payload.get("last_processed_revlog_id", 0)
     payload["processed_revlog_ids"] = []
     payload["revlog_ledger_migration_pending"] = True
+    _migrate_loadout_payload(payload)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 

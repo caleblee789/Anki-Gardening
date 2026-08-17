@@ -291,7 +291,7 @@ class GardenGameEngine:
             raise
 
     def _repair_environment_state(self) -> None:
-        """Normalize compatibility fields without revoking valid entitlements."""
+        """Normalize the canonical loadout without revoking entitlements."""
 
         inventory = self.state.inventory if isinstance(self.state.inventory, dict) else {}
         weather_owned = list(dict.fromkeys([
@@ -305,11 +305,6 @@ class GardenGameEngine:
         scenery_owned = list(dict.fromkeys([
             DEFAULT_SCENERY_ID,
             *(
-                inventory.get("backgrounds", [])
-                if isinstance(inventory.get("backgrounds"), list)
-                else []
-            ),
-            *(
                 inventory.get("scenery", [])
                 if isinstance(inventory.get("scenery"), list)
                 else []
@@ -321,7 +316,7 @@ class GardenGameEngine:
         valid_scenery = [
             item_id for item_id in scenery_owned if item_id in SCENERY_CATALOG
         ]
-        inventory["backgrounds"] = list(valid_scenery)
+        inventory.pop("backgrounds", None)
         inventory["scenery"] = list(valid_scenery)
         self.state.inventory = inventory
         if (
@@ -334,10 +329,12 @@ class GardenGameEngine:
             or self.state.selected_background not in inventory["scenery"]
         ):
             self.state.selected_background = DEFAULT_SCENERY_ID
-        equipped = self.state.equipped if isinstance(self.state.equipped, dict) else {}
-        equipped["weather"] = self.state.selected_weather
-        equipped["background"] = self.state.selected_background
-        self.state.equipped = equipped
+        decorations = inventory.get("decorations", [])
+        if not isinstance(decorations, list):
+            decorations = []
+            inventory["decorations"] = decorations
+        if self.state.loadout.decoration_id not in decorations:
+            self.state.loadout.decoration_id = None
         visibility = (
             self.state.environment_visibility
             if isinstance(self.state.environment_visibility, dict)
@@ -2438,11 +2435,10 @@ class GardenGameEngine:
                 self.state.inventory.setdefault("weather", []).append(quote.item_id)
             else:
                 self.state.inventory.setdefault("scenery", []).append(quote.item_id)
-                self.state.inventory.setdefault("backgrounds", []).append(quote.item_id)
             self._queue_feedback(
                 event_key,
                 "environment_purchase",
-                f"{message} Open Customize when you want to equip it.",
+                f"{message} Open Collection when you want to preview or equip it.",
                 title=f"{quote.item_name} unlocked",
                 asset_category=quote.artwork_category,
                 asset_key=quote.artwork_key,
@@ -2591,10 +2587,8 @@ class GardenGameEngine:
         snapshot = self._state_snapshot()
         if normalized_kind == "weather":
             self.state.selected_weather = item.item_id
-            self.state.equipped["weather"] = item.item_id
         else:
             self.state.selected_background = item.item_id
-            self.state.equipped["background"] = item.item_id
         try:
             self._persist_or_restore(snapshot)
         except Exception:
@@ -2621,11 +2615,23 @@ class GardenGameEngine:
         scenery_id: str,
         visibility: dict[str, bool] | None = None,
     ) -> tuple[bool, str]:
-        """Atomically persist the visual configurator draft.
+        """Compatibility wrapper for the Collection loadout transaction."""
 
-        Customize Garden previews freely, then commits one validated loadout so
-        Cancel can never leave a partially applied Weather/Scenery combination.
-        """
+        return self.apply_garden_loadout(
+            weather_id,
+            scenery_id,
+            self.state.loadout.decoration_id,
+            visibility,
+        )
+
+    def apply_garden_loadout(
+        self,
+        weather_id: str,
+        scenery_id: str,
+        decoration_id: str | None = None,
+        visibility: dict[str, bool] | None = None,
+    ) -> tuple[bool, str]:
+        """Validate and atomically persist the Collection loadout draft."""
 
         weather = environment_item("weather", str(weather_id))
         scenery = environment_item("scenery", str(scenery_id))
@@ -2635,12 +2641,15 @@ class GardenGameEngine:
             return False, f"Unlock {weather.name} before equipping it."
         if not self.owns_environment("scenery", scenery.item_id):
             return False, f"Unlock {scenery.name} before equipping it."
+        normalized_decoration = None if decoration_id in (None, "", "none") else str(decoration_id)
+        decorations = self.state.inventory.get("decorations", [])
+        if normalized_decoration is not None and normalized_decoration not in decorations:
+            return False, "Unlock that Decoration before equipping it."
         visual_layers = visibility if isinstance(visibility, dict) else {}
         snapshot = self._state_snapshot()
         self.state.selected_weather = weather.item_id
         self.state.selected_background = scenery.item_id
-        self.state.equipped["weather"] = weather.item_id
-        self.state.equipped["background"] = scenery.item_id
+        self.state.loadout.decoration_id = normalized_decoration
         self.state.environment_visibility["weather"] = bool(
             visual_layers.get("weather", True)
         )
@@ -2651,7 +2660,7 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Those appearance changes could not be saved."
-        return True, "Garden appearance saved."
+        return True, "Garden loadout saved."
 
     def purchase_growth_charge(self, charge_id: str) -> tuple[bool, str]:
         outcome = self._compat_purchase(
@@ -3035,6 +3044,38 @@ class GardenGameEngine:
             return False, "The planting change could not be saved."
         return True, f"{plant.name} was planted in space {destination + 1}."
 
+    def move_plant(self, plant_id: str, slot_index: int) -> tuple[bool, str]:
+        """Atomically move a planted Collection item to an empty garden bed."""
+
+        plant = self.plant_story(plant_id)
+        if plant is None or not plant.planted:
+            return False, "That plant is not currently planted."
+        try:
+            destination = int(slot_index)
+        except (TypeError, ValueError):
+            return False, "Choose an empty unlocked garden space."
+        occupied = {
+            item.slot_index for item in self.state.plants
+            if item.plant_id != plant.plant_id and item.slot_index is not None
+        }
+        if (
+            destination < 0
+            or destination >= self.state.unlocked_slots
+            or destination in occupied
+        ):
+            return False, "Choose an empty unlocked garden space."
+        if not self.slot_accepts_plant(plant, destination):
+            return False, self.SOIL_PLANT_MESSAGE
+        if plant.slot_index == destination:
+            return True, f"{plant.name} is already in space {destination + 1}."
+        snapshot = self._state_snapshot()
+        plant.slot_index = destination
+        try:
+            self._persist_or_restore(snapshot)
+        except Exception:
+            return False, "The move could not be saved; the previous bed was restored."
+        return True, f"{plant.name} moved to space {destination + 1}."
+
     def move_to_collection(self, plant_id: str) -> tuple[bool, str]:
         plant = self.plant_story(plant_id)
         if plant is None or not plant.planted:
@@ -3248,7 +3289,6 @@ class GardenGameEngine:
             )
         self.state.inventory["weather"] = list(WEATHER_CATALOG)
         self.state.inventory["scenery"] = list(SCENERY_CATALOG)
-        self.state.inventory["backgrounds"] = list(SCENERY_CATALOG)
         self.state.environment_visibility = {"weather": True, "scenery": True}
         now = utc_now_iso()
         for achievement in self.state.achievements.values():

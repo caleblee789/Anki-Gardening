@@ -320,18 +320,17 @@ def test_starter_save_failure_restores_the_empty_garden():
     assert not storage.state.starter_selection_complete
 
 
-def test_customize_environment_draft_commits_atomically_and_rolls_back_on_save_failure():
+def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_failure():
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
     storage.state.inventory.setdefault("weather", []).append("breeze")
     storage.state.inventory.setdefault("scenery", []).append("spring")
-    storage.state.inventory.setdefault("backgrounds", []).append("spring")
 
     ok, message = engine.apply_environment_loadout(
         "breeze", "spring", {"weather": False, "scenery": True}
     )
 
-    assert ok and message == "Garden appearance saved."
+    assert ok and message == "Garden loadout saved."
     assert storage.state.selected_weather == "breeze"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {

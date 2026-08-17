@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
+from ankigarden.collectibles import collectible_registry, collection_categories
 from ankigarden.environment import (
     DROP_BANDS,
     GROWTH_CHARGES,
@@ -16,6 +17,7 @@ from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import (
     ActivePlantPeriod,
     DailyStats,
+    GardenLoadoutState,
     GardenState,
     Plant,
     STATE_VERSION,
@@ -115,17 +117,14 @@ def own_and_equip(
         if weather not in engine.state.inventory["weather"]:
             engine.state.inventory["weather"].append(weather)
         engine.state.selected_weather = weather
-        engine.state.equipped["weather"] = weather
     if scenery is not None:
-        for key in ("backgrounds", "scenery"):
-            if scenery not in engine.state.inventory[key]:
-                engine.state.inventory[key].append(scenery)
+        if scenery not in engine.state.inventory["scenery"]:
+            engine.state.inventory["scenery"].append(scenery)
         engine.state.selected_background = scenery
-        engine.state.equipped["background"] = scenery
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 18
+    assert STATE_VERSION == 19
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "sunny": None,
         "breeze": 100,
@@ -170,15 +169,32 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
                       95_000, 104_999, 105_000, 114_999, 115_000)
     ] == [100_000, 100_000, 90_000, 90_000, 80_000, 80_000,
           70_000, 70_000, 60_000, 60_000, 50_000]
+    assert [key for key, _label in collection_categories()] == [
+        "plants", "scenery", "weather", "decorations", "garden_beds", "growth_items"
+    ]
+    registry = collectible_registry()
+    assert all(
+        item.mystery == (
+            item.category in {"weather", "scenery"}
+            and item.source_id in {
+                key for catalog in (WEATHER_CATALOG, SCENERY_CATALOG)
+                for key, catalog_item in catalog.items() if catalog_item.drop_only
+            }
+        )
+        for item in registry
+    )
 
 
 def test_environment_state_round_trip_preserves_entitlements_loadout_visibility_and_pity():
     state = GardenState(
-        selected_background="full_moon",
-        selected_weather="fireflies",
+        loadout=GardenLoadoutState(
+            scenery_id="full_moon",
+            weather_id="fireflies",
+            decoration_id="lantern",
+            visibility={"weather": False, "scenery": True},
+        ),
         inventory={
             "pots": ["ceramic_minimal"],
-            "backgrounds": ["default", "full_moon"],
             "scenery": ["default", "full_moon"],
             "decorations": ["lantern"],
             "weather": ["sunny", "fireflies"],
@@ -186,7 +202,6 @@ def test_environment_state_round_trip_preserves_entitlements_loadout_visibility_
         eligible_reward_count=123,
         ultra_pity_misses=45_678,
         daily_environment_claims={"full_moon": "2026-08-08"},
-        environment_visibility={"weather": False, "scenery": True},
         consumables={
             "booster_potion": 2,
             "growth_charge_small": 3,
@@ -204,21 +219,26 @@ def test_environment_state_round_trip_preserves_entitlements_loadout_visibility_
     assert restored.ultra_pity_misses == 45_678
     assert restored.daily_environment_claims == {"full_moon": "2026-08-08"}
     assert restored.environment_visibility == {"weather": False, "scenery": True}
+    assert restored.loadout.decoration_id == "lantern"
+    assert "equipped" not in restored.to_dict()
+    assert "backgrounds" not in restored.inventory
     assert restored.consumables["growth_charge_grand"] == 5
 
 
 def test_schema15_migration_adds_environment_fields_without_losing_existing_state():
     payload = GardenState(
         currency_balance=777,
-        selected_weather="breeze",
+        loadout=GardenLoadoutState(weather_id="breeze"),
         inventory={
             "pots": ["ceramic_minimal"],
-            "backgrounds": ["default"],
+            "scenery": ["default"],
             "decorations": ["lantern"],
             "weather": ["sunny", "breeze"],
         },
     ).to_dict()
     payload["version"] = 15
+    payload.pop("loadout", None)
+    payload["selected_weather"] = "breeze"
     for key in (
         "eligible_reward_count",
         "ultra_pity_misses",
@@ -538,11 +558,12 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
         'addTab(self.environment_scroll, "Weather and Scenery")'
     )
     assert 'addTab(self.supplements_scroll, "Fertilizer and Boosters")' in dashboard
-    assert "self.customize_dialog = CustomizeGardenDialog(" in dashboard
+    assert "self.collectible_detail_dialog = CollectibleDetailDialog(" in dashboard
     assert "self._settings_scene_snapshot," in dashboard
     assert 'self.catalog_tabs.addTab(self.environment_scroll, "Weather and Scenery")' in dashboard
     assert 'self.option_tabs.addTab(self.scenery_page, "Scenery")' in dashboard
     assert 'self.option_tabs.addTab(self.weather_page, "Weather")' in dashboard
+    assert 'self.option_tabs.addTab(self.decoration_page, "Decorations")' in dashboard
     assert 'self.option_tabs.addTab(self.effects_page, "Effects")' in dashboard
     assert "Show Weather" in dashboard
     assert "Show Scenery" in dashboard

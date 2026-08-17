@@ -144,7 +144,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == 18
+    assert migrated.version == 19
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE
@@ -153,6 +153,29 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
     assert migrated.processed_revlog_ids == [101, 105]
     assert migrated.revlog_ledger_migration_pending is False
     assert state_path.with_suffix(".schema-17.legacy.json").exists()
+
+
+def test_schema18_migration_preserves_purchase_replay_history_and_collapses_loadout() -> None:
+    completed = _completed_request(7)
+    payload = GardenState(completed_purchase_requests=[completed]).to_dict()
+    payload["version"] = 18
+    payload["selected_weather"] = "breeze"
+    payload["selected_background"] = "spring"
+    payload["environment_visibility"] = {"weather": False, "scenery": True}
+    payload["equipped"] = {"weather": "breeze", "background": "spring", "decoration": "lantern"}
+    payload["inventory"]["weather"].append("breeze")
+    payload["inventory"]["scenery"].append("spring")
+    payload["inventory"]["backgrounds"] = ["default", "spring"]
+
+    migrated = migrate_modern_state(payload)
+
+    assert migrated.completed_purchase_requests == [completed]
+    assert migrated.selected_weather == "breeze"
+    assert migrated.selected_background == "spring"
+    assert migrated.loadout.decoration_id == "lantern"
+    assert migrated.environment_visibility == {"weather": False, "scenery": True}
+    assert "backgrounds" not in migrated.inventory
+    assert not {"selected_weather", "selected_background", "equipped", "environment_visibility"} & migrated.to_dict().keys()
 
 
 def legacy_state_payload() -> dict:

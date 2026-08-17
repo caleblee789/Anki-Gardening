@@ -17,7 +17,7 @@ from ..environment import (
 )
 from ..purchases import CompletedPurchaseRequest
 
-STATE_VERSION = 18
+STATE_VERSION = 19
 ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
@@ -258,6 +258,30 @@ class OnboardingProgress:
 
 
 @dataclass
+class GardenLoadoutState:
+    """The single persisted authority for garden appearance and passives."""
+
+    weather_id: str = DEFAULT_WEATHER_ID
+    scenery_id: str = DEFAULT_SCENERY_ID
+    decoration_id: Optional[str] = None
+    visibility: Dict[str, bool] = field(default_factory=lambda: {
+        "weather": True,
+        "scenery": True,
+    })
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "weather_id": self.weather_id,
+            "scenery_id": self.scenery_id,
+            "decoration_id": self.decoration_id,
+            "visibility": {
+                "weather": bool(self.visibility.get("weather", True)),
+                "scenery": bool(self.visibility.get("scenery", True)),
+            },
+        }
+
+
+@dataclass
 class GardenState:
     version: int = STATE_VERSION
     garden_name: str = "My Garden"
@@ -270,8 +294,7 @@ class GardenState:
     unlocked_species: List[str] = field(default_factory=list)
     starter_selection_complete: bool = False
     onboarding: OnboardingProgress = field(default_factory=OnboardingProgress)
-    selected_background: str = DEFAULT_SCENERY_ID
-    selected_weather: str = DEFAULT_WEATHER_ID
+    loadout: GardenLoadoutState = field(default_factory=GardenLoadoutState)
     plants: List[Plant] = field(default_factory=list)
     achievements: Dict[str, Achievement] = field(default_factory=dict)
     daily_stats: DailyStats = field(default_factory=DailyStats)
@@ -285,26 +308,15 @@ class GardenState:
     eligible_reward_count: int = 0
     ultra_pity_misses: int = 0
     daily_environment_claims: Dict[str, str] = field(default_factory=dict)
-    environment_visibility: Dict[str, bool] = field(default_factory=lambda: {
-        "weather": True,
-        "scenery": True,
-    })
     consumables: Dict[str, int] = field(default_factory=lambda: {
         "booster_potion": 0,
         **{charge_id: 0 for charge_id in GROWTH_CHARGES},
     })
     inventory: Dict[str, List[str]] = field(default_factory=lambda: {
         "pots": ["ceramic_minimal"],
-        "backgrounds": [DEFAULT_SCENERY_ID],
         "scenery": [DEFAULT_SCENERY_ID],
         "decorations": ["lantern"],
         "weather": [DEFAULT_WEATHER_ID],
-    })
-    equipped: Dict[str, str] = field(default_factory=lambda: {
-        "pot": "ceramic_minimal",
-        "background": DEFAULT_SCENERY_ID,
-        "decoration": "none",
-        "weather": DEFAULT_WEATHER_ID,
     })
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     active_plant_id: Optional[str] = None
@@ -337,6 +349,46 @@ class GardenState:
                     starter_plant_id=self.plants[0].plant_id,
                 )
 
+    @property
+    def selected_weather(self) -> str:
+        """Compatibility alias backed by the canonical loadout."""
+
+        return self.loadout.weather_id
+
+    @selected_weather.setter
+    def selected_weather(self, value: str) -> None:
+        self.loadout.weather_id = str(value)
+
+    @property
+    def selected_background(self) -> str:
+        """Compatibility alias for the canonical Scenery selection."""
+
+        return self.loadout.scenery_id
+
+    @selected_background.setter
+    def selected_background(self, value: str) -> None:
+        self.loadout.scenery_id = str(value)
+
+    @property
+    def environment_visibility(self) -> Dict[str, bool]:
+        """Compatibility alias backed by the canonical loadout visibility."""
+
+        return self.loadout.visibility
+
+    @environment_visibility.setter
+    def environment_visibility(self, value: Dict[str, bool]) -> None:
+        self.loadout.visibility = dict(value)
+
+    @property
+    def equipped(self) -> Dict[str, str]:
+        """Read-only compatibility projection; never persisted as a mirror."""
+
+        return {
+            "weather": self.loadout.weather_id,
+            "background": self.loadout.scenery_id,
+            "decoration": self.loadout.decoration_id or "none",
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return deepcopy({
             "version": STATE_VERSION,
@@ -350,8 +402,7 @@ class GardenState:
             "unlocked_species": list(self.unlocked_species),
             "starter_selection_complete": self.starter_selection_complete,
             "onboarding": self.onboarding.to_dict(),
-            "selected_background": self.selected_background,
-            "selected_weather": self.selected_weather,
+            "loadout": self.loadout.to_dict(),
             "plants": [
                 _plant_to_dict(plant)
                 for plant in sorted(
@@ -383,10 +434,8 @@ class GardenState:
             "eligible_reward_count": self.eligible_reward_count,
             "ultra_pity_misses": self.ultra_pity_misses,
             "daily_environment_claims": dict(self.daily_environment_claims),
-            "environment_visibility": dict(self.environment_visibility),
             "consumables": dict(self.consumables),
             "inventory": self.inventory,
-            "equipped": self.equipped,
             "last_active_day": self.last_active_day,
             "active_plant_id": self.active_plant_id,
             "active_plant_periods": [period.__dict__ for period in self.active_plant_periods[-MAX_ACTIVE_PERIODS:]],
@@ -423,26 +472,7 @@ class GardenState:
             max(0, state.total_reviews - state.total_correct),
             _nonnegative_int(data.get("total_wrong"), 0, "total_wrong", issues),
         )
-        scenery = _string(
-            data.get("selected_background"),
-            DEFAULT_SCENERY_ID,
-            "selected_background",
-            issues,
-        )
-        state.selected_background = (
-            scenery if scenery in SCENERY_CATALOG else DEFAULT_SCENERY_ID
-        )
-        if scenery not in SCENERY_CATALOG:
-            issues.append(f"selected_background: unexpected value {scenery!r}")
-        weather = _string(
-            data.get("selected_weather"),
-            DEFAULT_WEATHER_ID,
-            "selected_weather",
-            issues,
-        )
-        state.selected_weather = weather if weather in WEATHER_TYPES else DEFAULT_WEATHER_ID
-        if weather not in WEATHER_TYPES:
-            issues.append(f"selected_weather: unexpected value {weather!r}")
+        state.loadout = _garden_loadout(data.get("loadout"), issues)
         state.daily_stats = _daily_stats(data.get("daily_stats"), issues)
         state.plants = _plants(data.get("plants"), issues)
         state.unlocked_slots = _bounded_int(
@@ -512,19 +542,13 @@ class GardenState:
         state.daily_environment_claims = _daily_environment_claims(
             data.get("daily_environment_claims"), issues
         )
-        state.environment_visibility = _environment_visibility(
-            data.get("environment_visibility"), issues
-        )
         state.consumables = _consumables(data.get("consumables"), issues)
         state.inventory = _inventory(data.get("inventory"), state.inventory, issues)
-        state.equipped = _equipped(data.get("equipped"), state.equipped, issues)
         scenery_owned = list(dict.fromkeys([
             DEFAULT_SCENERY_ID,
-            *state.inventory.get("backgrounds", []),
             *state.inventory.get("scenery", []),
         ]))
         scenery_owned = [item_id for item_id in scenery_owned if item_id in SCENERY_CATALOG]
-        state.inventory["backgrounds"] = list(scenery_owned)
         state.inventory["scenery"] = list(scenery_owned)
         weather_owned = list(dict.fromkeys([
             DEFAULT_WEATHER_ID,
@@ -539,8 +563,11 @@ class GardenState:
         if state.selected_weather not in state.inventory["weather"]:
             issues.append("selected_weather: repaired to an owned weather")
             state.selected_weather = DEFAULT_WEATHER_ID
-        state.equipped["background"] = state.selected_background
-        state.equipped["weather"] = state.selected_weather
+        decorations = state.inventory.get("decorations", [])
+        if state.loadout.decoration_id not in decorations:
+            if state.loadout.decoration_id is not None:
+                issues.append("loadout.decoration_id: repaired to none")
+            state.loadout.decoration_id = None
         state.last_active_day = _iso_date(
             data.get("last_active_day"), state.daily_stats.day, "last_active_day", issues
         )
@@ -1307,6 +1334,38 @@ def _environment_visibility(value: Any, issues: list[str]) -> dict[str, bool]:
     return result
 
 
+def _garden_loadout(value: Any, issues: list[str]) -> GardenLoadoutState:
+    if value is None:
+        return GardenLoadoutState()
+    if not isinstance(value, dict):
+        issues.append("loadout: expected object")
+        return GardenLoadoutState()
+    weather = _string(
+        value.get("weather_id"), DEFAULT_WEATHER_ID, "loadout.weather_id", issues
+    )
+    scenery = _string(
+        value.get("scenery_id"), DEFAULT_SCENERY_ID, "loadout.scenery_id", issues
+    )
+    if weather not in WEATHER_CATALOG:
+        issues.append(f"loadout.weather_id: unexpected value {weather!r}")
+        weather = DEFAULT_WEATHER_ID
+    if scenery not in SCENERY_CATALOG:
+        issues.append(f"loadout.scenery_id: unexpected value {scenery!r}")
+        scenery = DEFAULT_SCENERY_ID
+    decoration = value.get("decoration_id")
+    if decoration in ("", "none"):
+        decoration = None
+    if decoration is not None and not isinstance(decoration, str):
+        issues.append("loadout.decoration_id: expected string or null")
+        decoration = None
+    return GardenLoadoutState(
+        weather_id=weather,
+        scenery_id=scenery,
+        decoration_id=decoration,
+        visibility=_environment_visibility(value.get("visibility"), issues),
+    )
+
+
 def _active_periods(value: Any, plant_ids: set[str], issues: list[str]) -> list[ActivePlantPeriod]:
     if value is None:
         return []
@@ -1359,10 +1418,22 @@ def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> 
     if not isinstance(value, dict):
         return default
     result = {key: list(items) for key, items in default.items()}
-    for key in result:
-        if key in value and isinstance(value[key], list):
-            result[key] = list(dict.fromkeys(item for item in value[key] if isinstance(item, str) and item))
-        elif key in value:
+    for key, raw in value.items():
+        normalized_key = "scenery" if key == "backgrounds" else str(key)
+        if isinstance(raw, list):
+            parsed = list(dict.fromkeys(
+                item for item in raw if isinstance(item, str) and item
+            ))
+            if normalized_key == "scenery":
+                result["scenery"] = list(dict.fromkeys([
+                    *result.get("scenery", []),
+                    *parsed,
+                ]))
+            else:
+                # Preserve extension-owned and historical inventory lists even
+                # when the current Collection has no renderer for them.
+                result[normalized_key] = parsed
+        else:
             issues.append(f"inventory.{key}: expected list")
     return result
 
