@@ -7,13 +7,13 @@ have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
-visual acceptance. Current source declares capture contract v12 with 157
-ordered surfaces. The v10 macOS Qt run remains the 149-of-149 pre-change
-baseline. The v12 macOS Qt run at
+visual acceptance. Current source declares capture contract v14 with 181
+ordered surfaces. The v12 macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
-157 of 157, complete, warning-free, and independently validator-clean. It
-closes current-source automated capture completeness, but not the
-native-platform, human-accessibility, and full visual-acceptance gates.
+the complete 157-of-157 pre-purchase-overhaul baseline. The v14 current-source
+run at `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
+is validator-clean at 181/181; neither run closes native-platform,
+human-accessibility, or full visual-acceptance gates.
 
 ## Baseline identity and scope
 
@@ -280,7 +280,7 @@ remains readable and operable. This
 closes the previously reported 066/111 defects and targeted resize checks.
 Screenshot inspection is not human assistive-technology acceptance.
 
-## Current v12 capture evidence
+## Pre-purchase-overhaul v12 capture evidence
 
 The frozen source regenerated IDs 001-157, including the historically missing
 019 and 064-069, resilient states 150-156, and the known-not-collected species
@@ -387,8 +387,9 @@ For the historical v9 source, the explicit package, fresh disposable-profile
 run, 146-file completeness gate, and independent manifest/contact-sheet
 validation are complete. The v10 run supplies the corresponding 149-file
 pre-change macOS Qt gate; the v11 run supplies the 156-file frozen-foundation
-gate; and v12 supplies the 157-file current-source macOS Qt gate. The remaining
-performance and platform work is:
+gate; and v12 supplies the 157-file pre-purchase-overhaul macOS Qt gate. V13
+declares 181 surfaces and remains pending its final current-source run. The
+remaining performance and platform work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit
    first-paint boundary.

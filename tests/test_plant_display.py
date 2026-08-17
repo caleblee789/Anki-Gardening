@@ -952,6 +952,10 @@ def test_dashboard_is_garden_first_with_one_progress_architecture():
     assert "self.scroll.setWidgetResizable(True)" in dashboard
     assert "outer.addWidget(self.scroll)" in dashboard
     assert "class ProgressCardGrid(QWidget):" in dashboard
+    assert 'QWidget#progressListContainer { background:#0b1f1b; }' in dashboard
+    assert 'QWidget#progressCardGridContainer { background:#071a15; }' in dashboard
+    assert 'self.container.setStyleSheet("background:#0b1f1b;")' not in dashboard
+    assert 'self.container.setStyleSheet("background:#071a15;")' not in dashboard
     assert 'QLabel("Today’s progress")' not in dashboard
     assert "self._position_plant_card" in dashboard
     assert "self.hero_summary" not in dashboard

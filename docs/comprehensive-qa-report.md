@@ -7,11 +7,13 @@
 
 Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
 remain evidence for the source audited on 2026-08-15, not for current source.
-Current visual coverage is governed by capture contract v12 with 157 ordered
-surfaces. The validator-clean v10 macOS Qt run remains the 149/149 pre-change
-baseline. The frozen schema-17 v12 run at
+Current source is governed by capture contract v14 with 181 ordered surfaces.
+The schema-17 v12 run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
-157/157, warning-free, manifest-complete, and independently validator-clean.
+the 157/157 warning-free, validator-clean pre-purchase-overhaul baseline. The
+v14 current-source capture at
+`build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
+is validator-clean at 181/181 with 23 complete contact sheets.
 See `docs/ui-release-overhaul-contract.md` for the current implementation and
 the remaining native-platform, human-accessibility, and visual-acceptance
 boundaries.
@@ -77,7 +79,7 @@ pass.
 
 | Area | Required result |
 |---|---|
-| State | Schema 17 adds atomic resumable onboarding to the schema-16 environment, Growth Charge, separate Growth-source, passive-claim, and Ultra-pity state. |
+| State | Schema 18 preserves schema-17 atomic resumable onboarding and adds a bounded completed-purchase replay ledger over the schema-16 environment, Growth Charge, separate Growth-source, passive-claim, and Ultra-pity state. |
 | Scene | Verdant Twilight V6 provides six fixed direct-soil spaces, responsive composition, depth/occlusion metadata, and shaped Nursery/cottage landmarks. Eight Scenery reskins preserve those exact masks, placements, and hotspots; seven Weather overlays compose over all nine settings. |
 | Home | Deck Browser and Overview show a compact named, noninteractive preview with relative Growth/streak bars, Garden Coins, and Open Garden. |
 | Garden | A centered named header, three clickable metric cards, and scene share one themed frame; header/cottage Progress opens the separate Today/Achievements/Collection/Weather & Scenery/How it grows window. |

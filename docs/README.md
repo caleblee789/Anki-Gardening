@@ -1,6 +1,6 @@
 # Documentation index
 
-The current schema 17 product has one progression path: card answers create
+The current schema 18 product has one progression path: card answers create
 Growth for the unfinished plant the learner chooses to **Nurture**; Anki streak
 tiers, Fertilizer, Booster Potions, equipped Weather and Scenery, and one-use
 Growth Charges can add Growth; study goals, milestones, and deterministic rare
@@ -20,15 +20,15 @@ full-Garden landmark; the compact home preview remains noninteractive.
 - `display-validation-matrix.md`: prominent visible values and their
   authoritative sources.
 - `e2e_display_assertions.md`: isolated-Anki journeys for the rebuilt archive.
-- `ui/data_contracts.md`: schema 17 persistence, migration, onboarding, environment/drop
+- `ui/data_contracts.md`: schema 18 persistence, migration, onboarding, purchase replay, environment/drop
   catalog, catalog readiness, streak tiers, and all-due definition.
 - `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
-  accessibility, and v12/157 capture requirements; the validator-clean v10
-  run is retained as the pre-change baseline.
-- `ui-surface-inventory.md`: current ordered 157-surface source inventory plus
+  accessibility, and v14/181 capture requirements; the validator-clean v12 run
+  is retained as the pre-purchase-overhaul baseline.
+- `ui-surface-inventory.md`: current ordered 181-surface source inventory plus
   explicitly historical v8/v9 reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
   accessibility, package-static evidence, and frozen-production acceptance

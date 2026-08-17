@@ -242,10 +242,11 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_nine_scroll_surfaces_have_canonical_and_size_evidence() -> None:
+def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
+        "Purchase confirmation",
         "Nursery",
         "Fertilizer selection",
         "Fertilizer replacement",
@@ -298,6 +299,8 @@ def test_all_nine_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         "resize-story-content-541",
         "resize-fertilizer-replacement-content-399",
         "resize-fertilizer-replacement-content-401",
+        "purchase-confirmation-breakpoint-low",
+        "purchase-confirmation-breakpoint-high",
     }
     assert responsive_dialog_edges <= set(flattened)
 

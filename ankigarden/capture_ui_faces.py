@@ -41,6 +41,12 @@ from aqt.qt import (
 logger = logging.getLogger(__name__)
 
 
+def _displayed_button_text(button: QAbstractButton) -> str:
+    """Return learner-visible copy after Qt mnemonic escaping."""
+
+    return str(button.text()).replace("&&", "&")
+
+
 HOME_CAPTURE_BRAND_RGB = (92, 197, 139)
 HOME_CAPTURE_DARK_RGB = (
     (7, 26, 21),
@@ -49,7 +55,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 12
+CAPTURE_CONTRACT_VERSION = 14
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -288,6 +294,35 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "collection-known-not-collected-overview",
         ),
     ),
+    (
+        "Release overhaul — purchase confirmations and outcomes",
+        (
+            "purchase-confirmation-species",
+            "purchase-confirmation-growth-charge",
+            "purchase-confirmation-environment",
+            "purchase-confirmation-fertilizer-application",
+            "purchase-confirmation-fertilizer-extension",
+            "purchase-confirmation-garden-bed",
+            "purchase-confirmation-loading-disabled",
+            "purchase-error-insufficient-coins",
+            "purchase-error-persistence-failure",
+            "purchase-error-item-unavailable",
+            "purchase-error-already-owned",
+            "purchase-error-invalid-target",
+            "purchase-error-stale-price",
+            "purchase-error-stale-balance",
+            "purchase-success-inventory-collection",
+            "purchase-success-fertilizer-applied",
+            "purchase-success-garden-bed-unlocked",
+            "purchase-confirmation-minimum",
+            "purchase-confirmation-breakpoint-low",
+            "purchase-confirmation-breakpoint-high",
+            "purchase-confirmation-default",
+            "purchase-confirmation-large",
+            "nursery-empty-state",
+            "collection-environment-mechanics",
+        ),
+    ),
 )
 CAPTURE_FACE_LABELS = tuple(
     label
@@ -445,6 +480,22 @@ RESIZE_MATRIX_SPECS: tuple[
     ("resize-collection-large", "collection", "default-to-large", 1000, 820, 940, 680),
 )
 
+# The v13 probes remain IDs 158-181; v14 tightens their contextual-copy,
+# terminal-error, and no-scroll acceptance without renumbering. The comparison
+# threshold is
+# derived from two 220 px cards, 10 px spacing, the shared 24 px responsive
+# reserve, and the shell's 44 px outer margins: 518 px. The stability probes
+# are exactly one logical pixel below and above that complete threshold.
+PURCHASE_CONFIRMATION_RESIZE_SPECS: tuple[
+    tuple[str, str, str, int, int, int, int], ...
+] = (
+    ("purchase-confirmation-minimum", "purchase-confirmation", "default-to-minimum", 420, 400, 720, 560),
+    ("purchase-confirmation-breakpoint-low", "purchase-confirmation", "measured-threshold-minus-one", 517, 520, 720, 560),
+    ("purchase-confirmation-breakpoint-high", "purchase-confirmation", "measured-threshold-plus-one", 519, 520, 720, 560),
+    ("purchase-confirmation-default", "purchase-confirmation", "minimum-to-default", 720, 560, 420, 400),
+    ("purchase-confirmation-large", "purchase-confirmation", "default-to-large", 820, 660, 720, 560),
+)
+
 # Each resize face owns a semantic layout state in addition to its requested
 # geometry.  Native window managers may trim a client surface to the available
 # screen, so exact pixels alone are not sufficient to prove that the two sides
@@ -509,6 +560,11 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "resize-collection-minimum": "compact",
     "resize-collection-default": "wide",
     "resize-collection-large": "wide",
+    "purchase-confirmation-minimum": "compact",
+    "purchase-confirmation-breakpoint-low": "compact",
+    "purchase-confirmation-breakpoint-high": "wide",
+    "purchase-confirmation-default": "wide",
+    "purchase-confirmation-large": "wide",
 }
 
 
@@ -518,6 +574,27 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
 # to Overview and use Collection's real canonical/stress fixtures for its
 # surface-specific proof.
 DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
+    "Purchase confirmation": (
+        "purchase-confirmation-species",
+        "purchase-confirmation-growth-charge",
+        "purchase-confirmation-environment",
+        "purchase-confirmation-fertilizer-application",
+        "purchase-confirmation-fertilizer-extension",
+        "purchase-confirmation-garden-bed",
+        "purchase-confirmation-loading-disabled",
+        "purchase-error-insufficient-coins",
+        "purchase-error-persistence-failure",
+        "purchase-error-item-unavailable",
+        "purchase-error-already-owned",
+        "purchase-error-invalid-target",
+        "purchase-error-stale-price",
+        "purchase-error-stale-balance",
+        "purchase-confirmation-minimum",
+        "purchase-confirmation-breakpoint-low",
+        "purchase-confirmation-breakpoint-high",
+        "purchase-confirmation-default",
+        "purchase-confirmation-large",
+    ),
     "Nursery": (
         "nursery-plants",
         "nursery-final-row-above-footer",
@@ -604,6 +681,25 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
 # geometry audit records the independently observed value so a valid Progress
 # shell cannot be misrepresented as Collection (or vice versa).
 DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
+    "purchase-confirmation-species": "PurchaseConfirmationDialog",
+    "purchase-confirmation-growth-charge": "PurchaseConfirmationDialog",
+    "purchase-confirmation-environment": "PurchaseConfirmationDialog",
+    "purchase-confirmation-fertilizer-application": "PurchaseConfirmationDialog",
+    "purchase-confirmation-fertilizer-extension": "PurchaseConfirmationDialog",
+    "purchase-confirmation-garden-bed": "PurchaseConfirmationDialog",
+    "purchase-confirmation-loading-disabled": "PurchaseConfirmationDialog",
+    "purchase-error-insufficient-coins": "PurchaseConfirmationDialog",
+    "purchase-error-persistence-failure": "PurchaseConfirmationDialog",
+    "purchase-error-item-unavailable": "PurchaseConfirmationDialog",
+    "purchase-error-already-owned": "PurchaseConfirmationDialog",
+    "purchase-error-invalid-target": "PurchaseConfirmationDialog",
+    "purchase-error-stale-price": "PurchaseConfirmationDialog",
+    "purchase-error-stale-balance": "PurchaseConfirmationDialog",
+    "purchase-confirmation-minimum": "FertilizerReplacementDialog",
+    "purchase-confirmation-breakpoint-low": "FertilizerReplacementDialog",
+    "purchase-confirmation-breakpoint-high": "FertilizerReplacementDialog",
+    "purchase-confirmation-default": "FertilizerReplacementDialog",
+    "purchase-confirmation-large": "FertilizerReplacementDialog",
     "nursery-plants": "NurseryDialog:plants",
     "nursery-final-row-above-footer": "NurseryDialog:plants",
     "resize-nursery-minimum": "NurseryDialog:plants",
@@ -893,6 +989,7 @@ _PROGRESS_CAPTURE_LABELS = frozenset({
     "streak-at-risk",
     "streak-missed-day",
     "streak-reward-earned-next",
+    "collection-environment-mechanics",
 })
 
 _NURSERY_CAPTURE_LABELS = frozenset({
@@ -907,6 +1004,10 @@ _NURSERY_CAPTURE_LABELS = frozenset({
     "nursery-purchase-success",
     "nursery-final-row-above-footer",
     "missing-artwork-graphical-fallback",
+    "purchase-success-inventory-collection",
+    "purchase-success-fertilizer-applied",
+    "purchase-success-garden-bed-unlocked",
+    "nursery-empty-state",
 })
 
 _SETTINGS_CAPTURE_LABELS = frozenset({
@@ -955,6 +1056,23 @@ def expected_capture_window_family(label: str) -> str:
     }:
         return "StarterConfirmationDialog"
     if label in {
+        "purchase-confirmation-species",
+        "purchase-confirmation-growth-charge",
+        "purchase-confirmation-environment",
+        "purchase-confirmation-fertilizer-application",
+        "purchase-confirmation-fertilizer-extension",
+        "purchase-confirmation-garden-bed",
+        "purchase-confirmation-loading-disabled",
+        "purchase-error-insufficient-coins",
+        "purchase-error-persistence-failure",
+        "purchase-error-item-unavailable",
+        "purchase-error-already-owned",
+        "purchase-error-invalid-target",
+        "purchase-error-stale-price",
+        "purchase-error-stale-balance",
+    }:
+        return "PurchaseConfirmationDialog"
+    if label in {
         "fertilizer-unaffordable",
         "fertilizer-affordable",
         "fertilizer-active",
@@ -979,6 +1097,14 @@ def expected_capture_window_family(label: str) -> str:
     for resize_label, resize_family, *_geometry in RESIZE_MATRIX_SPECS:
         if resize_label == label:
             return _RESIZE_WINDOW_FAMILIES.get(resize_family, "")
+    if label in {
+        "purchase-confirmation-minimum",
+        "purchase-confirmation-breakpoint-low",
+        "purchase-confirmation-breakpoint-high",
+        "purchase-confirmation-default",
+        "purchase-confirmation-large",
+    }:
+        return "FertilizerReplacementDialog"
     return ""
 
 
@@ -1054,6 +1180,24 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
                     "collection" if resize_family == "collection" else "overview"
                 )
             return profile
+    for (
+        resize_label,
+        resize_family,
+        transition,
+        width,
+        height,
+        _start_width,
+        _start_height,
+    ) in PURCHASE_CONFIRMATION_RESIZE_SPECS:
+        if resize_label == label:
+            profile.update({
+                "kind": "resize",
+                "resize_family": resize_family,
+                "transition_path": transition,
+                "declared_client_size": [width, height],
+                "layout_mode": RESIZE_MATRIX_LAYOUT_MODES.get(label, ""),
+            })
+            return profile
     if label in _DASHBOARD_CAPTURE_LABELS:
         profile.update({"kind": "dashboard", "state": label})
         return profile
@@ -1066,8 +1210,9 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "collection" if label in {
                 "progress-collection",
                 "collection-several-discovered",
-                "collection-no-filter-matches",
-                "collection-known-not-collected-overview",
+            "collection-no-filter-matches",
+            "collection-known-not-collected-overview",
+            "collection-environment-mechanics",
             } else
             "achievements"
         )
@@ -1086,6 +1231,10 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "nursery-purchase-success": 3,
             "nursery-final-row-above-footer": 0,
             "missing-artwork-graphical-fallback": 3,
+            "purchase-success-inventory-collection": 0,
+            "purchase-success-fertilizer-applied": 1,
+            "purchase-success-garden-bed-unlocked": 2,
+            "nursery-empty-state": 0,
         }
         profile.update({
             "kind": "nursery",
@@ -1113,6 +1262,29 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         "customize-effects-off",
     }:
         profile.update({"kind": "customize", "state": label})
+        return profile
+    purchase_status_by_label = {
+        "purchase-confirmation-species": "ready",
+        "purchase-confirmation-growth-charge": "ready",
+        "purchase-confirmation-environment": "ready",
+        "purchase-confirmation-fertilizer-application": "ready",
+        "purchase-confirmation-fertilizer-extension": "ready",
+        "purchase-confirmation-garden-bed": "ready",
+        "purchase-confirmation-loading-disabled": "loading",
+        "purchase-error-insufficient-coins": "insufficient_coins",
+        "purchase-error-persistence-failure": "persistence_failure",
+        "purchase-error-item-unavailable": "item_unavailable",
+        "purchase-error-already-owned": "already_owned",
+        "purchase-error-invalid-target": "target_invalid",
+        "purchase-error-stale-price": "stale_price",
+        "purchase-error-stale-balance": "stale_balance",
+    }
+    if label in purchase_status_by_label:
+        profile.update({
+            "kind": "dialog",
+            "state": label,
+            "purchase_status": purchase_status_by_label[label],
+        })
         return profile
     profile.update({"kind": "dialog", "state": label})
     return profile
@@ -1143,7 +1315,10 @@ def resize_geometry_acceptance(
     minimum_width, minimum_height = (int(value) for value in minimum_size)
     maximum_width, maximum_height = (int(value) for value in maximum_size)
     exact = [actual_width, actual_height] == [declared_width, declared_height]
-    breakpoint_fixture = "-content-" in str(label)
+    breakpoint_fixture = (
+        "-content-" in str(label)
+        or "-breakpoint-" in str(label)
+    )
     reasons = {
         token.strip()
         for token in str(normalization_reason or "").split(",")
@@ -1416,6 +1591,29 @@ class _UiFaceCaptureRunner:
             self._capture_onboarding_persistence_error,
             self._capture_move_persistence_error,
             self._capture_known_uncollected_species_overview,
+            self._capture_purchase_confirmation_species,
+            self._capture_purchase_confirmation_growth_charge,
+            self._capture_purchase_confirmation_environment,
+            self._capture_purchase_confirmation_fertilizer_application,
+            self._capture_purchase_confirmation_fertilizer_extension,
+            self._capture_purchase_confirmation_bed,
+            self._capture_purchase_confirmation_loading,
+            self._capture_purchase_error_insufficient,
+            self._capture_purchase_error_persistence,
+            self._capture_purchase_error_unavailable,
+            self._capture_purchase_error_already_owned,
+            self._capture_purchase_error_invalid_target,
+            self._capture_purchase_error_stale_price,
+            self._capture_purchase_error_stale_balance,
+            self._capture_purchase_success_collection,
+            self._capture_purchase_success_fertilizer,
+            self._capture_purchase_success_bed,
+            *(
+                lambda spec=spec: self._capture_purchase_confirmation_resize(spec)
+                for spec in PURCHASE_CONFIRMATION_RESIZE_SPECS
+            ),
+            self._capture_nursery_empty_state,
+            self._capture_collection_environment_mechanics,
         ]
         self._capture_profile = str(
             os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
@@ -3807,6 +4005,18 @@ class _UiFaceCaptureRunner:
                     str(getattr(dashboard, "_collection_filter", "")) == "not_collected",
                     str(getattr(dashboard, "_collection_filter", "")),
                 )
+            elif state_name == "collection-environment-mechanics":
+                require(
+                    "environment_mechanics_and_customize_routing",
+                    bool(annotation.get("passed", False))
+                    and bool(annotation.get("concise_effects_visible", False))
+                    and bool(annotation.get("metadata_noise_absent", False))
+                    and bool(annotation.get("equipment_state_visible", False))
+                    and bool(annotation.get("customize_route_visible", False))
+                    and bool(annotation.get("customize_routes_enabled", False))
+                    and not bool(annotation.get("direct_mutation_controls", True)),
+                    annotation,
+                )
             elif state_name == "achievement-completed":
                 achievements = list(
                     dict(getattr(garden_state, "achievements", {}) or {}).values()
@@ -3868,7 +4078,7 @@ class _UiFaceCaptureRunner:
                 starter_mode,
             )
             visible_buttons = [
-                str(button.text())
+                _displayed_button_text(button)
                 for button in widget.findChildren(QAbstractButton)
                 if button.isVisible()
             ]
@@ -3885,7 +4095,7 @@ class _UiFaceCaptureRunner:
                     len(plants) >= 6
                     and bool(owned_species)
                     and owned_species.issubset(unlocked)
-                    and "Shelve" in visible_buttons,
+                    and "Move to Collection" in visible_buttons,
                     {
                         "buttons": visible_buttons,
                         "owned_species": sorted(owned_species),
@@ -3894,13 +4104,13 @@ class _UiFaceCaptureRunner:
                 )
             elif state_name == "nursery-item-locked":
                 disabled_catalog_actions = [
-                    str(button.text())
+                    _displayed_button_text(button)
                     for button in widget.findChildren(QAbstractButton)
                     if button.isVisible()
                     and not button.isEnabled()
-                    and str(button.text()) in {
-                        "Apply",
-                        "Buy",
+                    and _displayed_button_text(button) in {
+                        "Purchase",
+                        "Replace",
                         "Use potion",
                         "Use on nurtured plant",
                     }
@@ -3940,14 +4150,57 @@ class _UiFaceCaptureRunner:
                     "purchased_item_preview",
                     bool(title)
                     and bool(status is not None and status.isVisible())
-                    and "Owned" in status_text
-                    and "Ready in Customize Garden" in status_text
-                    and "Customize" in visible_buttons,
+                    and "Soft Breeze unlocked." in status_text
+                    and "Equip it in Customize Garden." in status_text
+                    and "Spent: 100 Garden Coins" in status_text
+                    and "Balance:" in status_text
+                    and "Open Customize" in visible_buttons,
                     {
                         "title": title,
                         "status": status_text,
                         "buttons": visible_buttons,
                     },
+                )
+            elif state_name in {
+                "purchase-success-inventory-collection",
+                "purchase-success-fertilizer-applied",
+                "purchase-success-garden-bed-unlocked",
+            }:
+                status = getattr(widget, "status", None)
+                status_text = str(
+                    getattr(status, "text", lambda: "")()
+                    if status is not None else ""
+                )
+                expected_action = {
+                    "purchase-success-inventory-collection": "Plant in garden",
+                    "purchase-success-fertilizer-applied": "View plant",
+                    "purchase-success-garden-bed-unlocked": "View garden",
+                }[state_name]
+                expected_outcome = {
+                    "purchase-success-inventory-collection": "Sunflower added to your collection.",
+                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant for 1 hour.",
+                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked.",
+                }[state_name]
+                require(
+                    "typed_purchase_receipt",
+                    bool(status is not None and status.isVisible())
+                    and expected_outcome in status_text
+                    and "Spent:" in status_text
+                    and "Balance:" in status_text
+                    and expected_action in visible_buttons
+                    and bool(annotation.get("passed", False)),
+                    {
+                        "status": status_text,
+                        "buttons": visible_buttons,
+                        "annotation": annotation,
+                    },
+                )
+            elif state_name == "nursery-empty-state":
+                require(
+                    "intentional_nursery_empty_state",
+                    bool(annotation.get("passed", False))
+                    and bool(annotation.get("empty_state_visible", False)),
+                    annotation,
                 )
             elif state_name in {
                 "starter-action-above-footer",
@@ -4032,7 +4285,7 @@ class _UiFaceCaptureRunner:
                 require(
                     "starter_confirmation",
                     title.startswith("Choose ")
-                    and "Continue to placement" in buttons
+                    and "Choose free starter" in buttons
                     and "Go back" in buttons,
                     {"title": title, "buttons": buttons},
                 )
@@ -4059,12 +4312,67 @@ class _UiFaceCaptureRunner:
                 )
             elif state_name == "fertilizer-replacement-confirmation":
                 buttons = [
-                    str(button.text()) for button in widget.findChildren(QAbstractButton)
+                    _displayed_button_text(button)
+                    for button in widget.findChildren(QAbstractButton)
                 ]
                 require(
                     "fertilizer_replacement",
-                    title == "Replace active Fertilizer?" and "Replace" in buttons,
+                    title.startswith("Replace with ")
+                    and "Keep current" in buttons
+                    and any(
+                        button.startswith("Purchase & Replace · ")
+                        for button in buttons
+                    ),
                     {"title": title, "buttons": buttons},
+                )
+            elif state_name.startswith("purchase-confirmation-") or state_name.startswith("purchase-error-"):
+                buttons = [
+                    _displayed_button_text(button)
+                    for button in widget.findChildren(QAbstractButton)
+                ]
+                expected_status = str(expectation.get("purchase_status", ""))
+                actual_status = str(widget.property("purchaseState") or "")
+                status_widget = getattr(widget, "status", None)
+                status_visible = bool(
+                    status_widget is not None and status_widget.isVisible()
+                )
+                is_error = state_name.startswith("purchase-error-")
+                visible_text = "\n".join(
+                    str(candidate.text())
+                    for candidate in (
+                        list(widget.findChildren(QLabel))
+                        + list(widget.findChildren(QAbstractButton))
+                    )
+                    if candidate.isVisible() and str(candidate.text()).strip()
+                )
+                banned_noise = (
+                    "Not applicable",
+                    "Replaces nothing",
+                    "Quantity: 1",
+                    "Are you sure you want to purchase",
+                    "Balance after purchase",
+                )
+                scroll = getattr(widget, "content_scroll", None)
+                scroll_maximum = (
+                    int(scroll.verticalScrollBar().maximum())
+                    if scroll is not None else 0
+                )
+                require(
+                    "purchase_confirmation_state",
+                    actual_status == expected_status
+                    and (status_visible is is_error)
+                    and bool(annotation.get("passed", False))
+                    and not title.endswith("?")
+                    and not any(value in visible_text for value in banned_noise)
+                    and scroll_maximum == 0,
+                    {
+                        "expected_status": expected_status,
+                        "actual_status": actual_status,
+                        "status_visible": status_visible,
+                        "buttons": buttons,
+                        "scroll_maximum": scroll_maximum,
+                        "annotation": annotation,
+                    },
                 )
             elif state_name in {
                 "fertilizer-unaffordable",
@@ -5283,6 +5591,7 @@ class _UiFaceCaptureRunner:
         widget: Any | None = None,
         *,
         capture_delay_ms: int = 260,
+        before_capture: Callable[[], None] | None = None,
         close_ms: int | None = None,
         close_callback: Callable[[], None] | None = None,
         next_ms: int = 900,
@@ -5295,13 +5604,18 @@ class _UiFaceCaptureRunner:
                 logger.debug(
                     "Anki Garden capture: foreground request is still settling"
                 )
-        QTimer.singleShot(
-            max(20, int(capture_delay_ms)),
-            lambda identity=capture_identity: self._capture_now(
+        def capture_ready(identity: tuple[int, str, str, str]) -> None:
+            if before_capture is not None:
+                before_capture()
+            self._capture_now(
                 identity[1],
                 widget,
                 capture_identity=identity,
-            ),
+            )
+
+        QTimer.singleShot(
+            max(20, int(capture_delay_ms)),
+            lambda identity=capture_identity: capture_ready(identity),
         )
         if close_callback is not None:
             if close_ms is None:
@@ -5840,6 +6154,17 @@ class _UiFaceCaptureRunner:
             dashboard._starter_setup_dismissed = False
             dashboard.refresh_all()
             dashboard._begin_starter_placement()
+
+            def stabilize_placement() -> None:
+                # A queued dashboard refresh may reconcile the transient
+                # ``__starter__`` interaction before the grab. Reassert the
+                # manifest-owned placement state at the capture boundary.
+                if not (
+                    dashboard._starter_placement_active
+                    and dashboard.scene._interaction.placing
+                ):
+                    dashboard._begin_starter_placement()
+
             self._capture_annotations["starter-placement"] = {
                 "passed": bool(
                     fixture.onboarding.step == OnboardingStep.PLACEMENT
@@ -5852,6 +6177,7 @@ class _UiFaceCaptureRunner:
                 "starter-placement",
                 dashboard,
                 capture_delay_ms=420,
+                before_capture=stabilize_placement,
                 close_callback=restore,
                 # High-DPI dashboard grabs can spend more than one second in
                 # screenshot and geometry audits. Keep the placement fixture
@@ -6923,6 +7249,635 @@ class _UiFaceCaptureRunner:
             next_ms=1160,
         )
 
+    def _purchase_capture_snapshot(self, label: str) -> tuple[dict[str, Any], Any] | None:
+        """Return a reversible, canonical purchase fixture and active plant."""
+
+        if not self._ensure_development_stress_state():
+            self._failures.append({
+                "label": label,
+                "reason": "The canonical purchase fixture could not be prepared",
+            })
+            return None
+        snapshot = self.app.engine._state_snapshot()
+        state = self.app.storage.state
+        state.currency_balance = 5_000
+        state.completed_purchase_requests.clear()
+        plant = state.plants[0] if state.plants else None
+        if plant is None:
+            self._failures.append({
+                "label": label,
+                "reason": "The purchase fixture had no target plant",
+            })
+            return None
+        plant.slot_index = 0
+        plant.growth_points = 0
+        plant.fertilizer = None
+        plant.fertilizer_history.clear()
+        state.active_plant_id = plant.plant_id
+        state.starter_selection_complete = True
+        return snapshot, plant
+
+    def _restore_purchase_capture(self, snapshot: dict[str, Any]) -> None:
+        self.app.engine._restore_state(snapshot)
+        try:
+            self.app.storage.save()
+        except Exception:
+            logger.exception("Anki Garden capture: purchase fixture restoration failed")
+        self._refresh_capture_dashboard()
+
+    def _capture_purchase_dialog_fixture(self, label: str, variant: str) -> None:
+        def dashboard_ready() -> None:
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, plant = prepared
+            from dataclasses import replace
+            from .environment import GROWTH_CHARGES
+            from .models.state import Fertilizer
+            from .purchases import PurchaseKind
+            from .ui.dashboard import PurchaseConfirmationDialog
+
+            state = self.app.storage.state
+            engine = self.app.engine
+            kind = PurchaseKind.GROWTH_CHARGE
+            item_id = "growth_charge_small"
+            target_id: str | None = None
+
+            if variant in {"species", "loading"}:
+                kind = PurchaseKind.SPECIES
+                item_id = "sunflower"
+                state.plants = [
+                    item for item in state.plants if item.species != item_id
+                ]
+                state.unlocked_species = [
+                    item for item in state.unlocked_species if item != item_id
+                ]
+            elif variant == "environment":
+                kind = PurchaseKind.WEATHER
+                item_id = "breeze"
+                state.inventory["weather"] = [
+                    value for value in state.inventory.get("weather", [])
+                    if value != item_id
+                ]
+                if state.selected_weather == item_id:
+                    state.selected_weather = "sunny"
+                if state.equipped.get("weather") == item_id:
+                    state.equipped["weather"] = "sunny"
+            elif variant in {"fertilizer-application", "fertilizer-extension", "invalid-target"}:
+                kind = PurchaseKind.FERTILIZER
+                item_id = "basic"
+                target_id = plant.plant_id
+                if variant == "fertilizer-extension":
+                    now = engine._now_seconds()
+                    plant.fertilizer = Fertilizer("basic", 1, now + 2_700, now)
+                elif variant == "invalid-target":
+                    target_id = "missing-plant"
+            elif variant == "bed":
+                kind = PurchaseKind.BED
+                item_id = "next"
+                state.unlocked_slots = 2
+            elif variant == "insufficient":
+                state.currency_balance = 0
+            elif variant == "unavailable":
+                item_id = "missing-growth-charge"
+            elif variant == "already-owned":
+                kind = PurchaseKind.WEATHER
+                item_id = "sunny"
+
+            quote = engine.quote_purchase(
+                kind,
+                item_id,
+                target_id=target_id,
+            )
+            dialog = PurchaseConfirmationDialog(
+                self.app.dashboard,
+                engine,
+                quote,
+            )
+
+            if variant == "loading":
+                dialog._progress_motion_enabled = False
+                dialog._set_submitting(True)
+            elif variant == "persistence":
+                original_save = self.app.storage.save
+
+                def fail_save() -> None:
+                    raise OSError("deterministic capture persistence failure")
+
+                self.app.storage.save = fail_save
+                try:
+                    dialog._set_submitting(True)
+                    dialog._commit()
+                finally:
+                    self.app.storage.save = original_save
+            elif variant == "stale-price":
+                original_spec = GROWTH_CHARGES[item_id]
+                GROWTH_CHARGES[item_id] = replace(
+                    original_spec,
+                    price=int(original_spec.price or 0) + 1,
+                )
+                try:
+                    dialog._set_submitting(True)
+                    dialog._commit()
+                finally:
+                    GROWTH_CHARGES[item_id] = original_spec
+            elif variant == "stale-balance":
+                state.currency_balance += 1
+                dialog._set_submitting(True)
+                dialog._commit()
+
+            expected_status = str(
+                expected_capture_state_profile(label).get("purchase_status", "")
+            )
+            actual_status = str(dialog.property("purchaseState") or "")
+            error_variant = variant in {
+                "insufficient",
+                "persistence",
+                "unavailable",
+                "already-owned",
+                "invalid-target",
+                "stale-price",
+                "stale-balance",
+            }
+            error_banner_visible = bool(
+                dialog.status.text().strip()
+                and not dialog.status.isHidden()
+            )
+            expected_disposition = {
+                "fertilizer-application": "applied",
+                "fertilizer-extension": "extended",
+            }.get(variant, "")
+            actual_disposition = quote.disposition.value
+            visible_copy = "\n".join(
+                (
+                    _displayed_button_text(widget)
+                    if isinstance(widget, QAbstractButton)
+                    else str(widget.text())
+                )
+                for widget in (
+                    list(dialog.findChildren(QLabel))
+                    + list(dialog.findChildren(QAbstractButton))
+                )
+                if not widget.isHidden() and str(widget.text()).strip()
+            )
+            banned_noise = (
+                "Not applicable",
+                "Replaces nothing",
+                "Quantity: 1",
+                "Are you sure you want to purchase",
+                "Balance after purchase",
+            )
+            expected_primary = {
+                "species": "Purchase · 150",
+                "growth-charge": "Purchase · 30",
+                "environment": "Purchase · 100",
+                "fertilizer-application": "Purchase & Apply · 25",
+                "fertilizer-extension": "Extend · 25",
+                "bed": "Unlock · 150",
+                "loading": "Purchasing…",
+                "insufficient": "View Ways to Earn",
+                "persistence": "Try Again",
+                "unavailable": "Return to Nursery",
+                "already-owned": "Open Customize",
+                "invalid-target": "Return to Nursery",
+            }.get(variant, _displayed_button_text(dialog.purchase_action))
+            applicable_copy = bool(
+                dialog.outcome_label.text().strip()
+                and dialog.item_name.text().strip()
+                and dialog.category.text().strip()
+            )
+            unavailable_terminal = variant == "unavailable"
+            self._capture_annotations[label] = {
+                "purchase_kind": kind.value,
+                "item_id": item_id,
+                "expected_status": expected_status,
+                "actual_status": actual_status,
+                "expected_disposition": expected_disposition,
+                "actual_disposition": actual_disposition,
+                "applicable_copy": applicable_copy,
+                "banned_noise_absent": not any(
+                    value in visible_copy for value in banned_noise
+                ),
+                "primary_action": _displayed_button_text(dialog.purchase_action),
+                "expected_primary_action": expected_primary,
+                "cost_summary_visible": not dialog.cost_summary.isHidden(),
+                "unavailable_terminal": bool(
+                    not unavailable_terminal
+                    or (
+                        dialog.cost_summary.isHidden()
+                        and dialog.presentation.terminal
+                        and _displayed_button_text(dialog.purchase_action)
+                        == "Return to Nursery"
+                    )
+                ),
+                "quantity": quote.quantity,
+                "target_id": target_id or "",
+                "error_banner_visible": error_banner_visible,
+                "passed": bool(
+                    actual_status == expected_status
+                    and (
+                        not expected_disposition
+                        or actual_disposition == expected_disposition
+                    )
+                    and applicable_copy
+                    and not any(value in visible_copy for value in banned_noise)
+                    and _displayed_button_text(dialog.purchase_action)
+                    == expected_primary
+                    and (
+                        not unavailable_terminal
+                        or (
+                            dialog.cost_summary.isHidden()
+                            and dialog.presentation.terminal
+                        )
+                    )
+                    and quote.quantity == 1
+                    and (not error_variant or error_banner_visible)
+                ),
+            }
+            if not self._capture_annotations[label]["passed"]:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Purchase confirmation fixture state did not match its declared status",
+                })
+
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+
+            def close_dialog() -> None:
+                if dialog._submitting:
+                    dialog._set_submitting(False)
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=420,
+                close_callback=close_dialog,
+                close_ms=820,
+                next_ms=1160,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
+    def _capture_purchase_confirmation_species(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-confirmation-species", "species")
+
+    def _capture_purchase_confirmation_growth_charge(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-confirmation-growth-charge", "growth-charge")
+
+    def _capture_purchase_confirmation_environment(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-confirmation-environment", "environment")
+
+    def _capture_purchase_confirmation_fertilizer_application(self) -> None:
+        self._capture_purchase_dialog_fixture(
+            "purchase-confirmation-fertilizer-application",
+            "fertilizer-application",
+        )
+
+    def _capture_purchase_confirmation_fertilizer_extension(self) -> None:
+        self._capture_purchase_dialog_fixture(
+            "purchase-confirmation-fertilizer-extension",
+            "fertilizer-extension",
+        )
+
+    def _capture_purchase_confirmation_bed(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-confirmation-garden-bed", "bed")
+
+    def _capture_purchase_confirmation_loading(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-confirmation-loading-disabled", "loading")
+
+    def _capture_purchase_error_insufficient(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-insufficient-coins", "insufficient")
+
+    def _capture_purchase_error_persistence(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-persistence-failure", "persistence")
+
+    def _capture_purchase_error_unavailable(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-item-unavailable", "unavailable")
+
+    def _capture_purchase_error_already_owned(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-already-owned", "already-owned")
+
+    def _capture_purchase_error_invalid_target(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-invalid-target", "invalid-target")
+
+    def _capture_purchase_error_stale_price(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-stale-price", "stale-price")
+
+    def _capture_purchase_error_stale_balance(self) -> None:
+        self._capture_purchase_dialog_fixture("purchase-error-stale-balance", "stale-balance")
+
+    def _capture_purchase_success_fixture(
+        self,
+        label: str,
+        variant: str,
+        tab_index: int,
+    ) -> None:
+        def dashboard_ready() -> None:
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, plant = prepared
+            from .purchases import PurchaseKind, PurchaseRequest
+            from .ui.dashboard import NurseryDialog
+
+            state = self.app.storage.state
+            if variant == "collection":
+                kind = PurchaseKind.SPECIES
+                item_id = "sunflower"
+                target_id = None
+                state.plants = [item for item in state.plants if item.species != item_id]
+                state.unlocked_species = [
+                    item for item in state.unlocked_species if item != item_id
+                ]
+            elif variant == "fertilizer":
+                kind = PurchaseKind.FERTILIZER
+                item_id = "basic"
+                target_id = plant.plant_id
+            else:
+                kind = PurchaseKind.BED
+                item_id = "next"
+                target_id = None
+                state.unlocked_slots = 2
+                for candidate in state.plants:
+                    if candidate.slot_index is not None and candidate.slot_index >= 2:
+                        candidate.slot_index = None
+
+            quote = self.app.engine.quote_purchase(
+                kind,
+                item_id,
+                target_id=target_id,
+            )
+            outcome = self.app.engine.confirm_purchase(
+                PurchaseRequest.from_quote(quote)
+            )
+            dialog = NurseryDialog(
+                self.app.dashboard,
+                self.app.engine,
+                self.app.storage,
+            )
+            dialog.catalog_tabs.setCurrentIndex(tab_index)
+            if variant == "bed" and outcome.success:
+                dialog._recently_unlocked_bed = int(outcome.result_id)
+                dialog.refresh()
+                dialog.catalog_tabs.setCurrentIndex(tab_index)
+            if outcome.success:
+                dialog._show_purchase_receipt(outcome)
+            self._capture_annotations[label] = {
+                "status": outcome.status.value,
+                "disposition": outcome.disposition.value,
+                "amount_spent": outcome.amount_spent,
+                "new_balance": outcome.new_balance,
+                "result_id": outcome.result_id,
+                "passed": bool(outcome.success),
+            }
+            if not outcome.success:
+                self._failures.append({
+                    "label": label,
+                    "reason": f"Success fixture failed with {outcome.status.value}",
+                })
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=520,
+                close_callback=close_dialog,
+                close_ms=920,
+                next_ms=1260,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
+    def _capture_purchase_success_collection(self) -> None:
+        self._capture_purchase_success_fixture(
+            "purchase-success-inventory-collection", "collection", 0
+        )
+
+    def _capture_purchase_success_fertilizer(self) -> None:
+        self._capture_purchase_success_fixture(
+            "purchase-success-fertilizer-applied", "fertilizer", 1
+        )
+
+    def _capture_purchase_success_bed(self) -> None:
+        self._capture_purchase_success_fixture(
+            "purchase-success-garden-bed-unlocked", "bed", 2
+        )
+
+    def _capture_purchase_confirmation_resize(
+        self,
+        spec: tuple[str, str, str, int, int, int, int],
+    ) -> None:
+        label, _family, transition, width, height, start_width, start_height = spec
+
+        def dashboard_ready() -> None:
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, plant = prepared
+            from .models.state import Fertilizer
+            from .purchases import PurchaseKind
+            from .ui.dashboard import FertilizerReplacementDialog
+
+            now = self.app.engine._now_seconds()
+            plant.fertilizer = Fertilizer("basic", 1, now + 3_400, now - 200)
+            quote = self.app.engine.quote_purchase(
+                PurchaseKind.FERTILIZER,
+                "premium",
+                target_id=plant.plant_id,
+            )
+            dialog = FertilizerReplacementDialog(
+                self.app.dashboard,
+                self.app.engine,
+                quote,
+            )
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._capture_annotations[label] = {
+                "purchase_kind": quote.kind.value,
+                "replacement_required": quote.replacement_required,
+                "current_seconds_remaining": quote.current_seconds_remaining,
+                "passed": bool(quote.ready and quote.replacement_required),
+            }
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_requested_size(
+                label,
+                dialog,
+                width=width,
+                height=height,
+                start_width=start_width,
+                start_height=start_height,
+                transition_path=transition,
+                close_callback=close_dialog,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
+    def _capture_nursery_empty_state(self) -> None:
+        label = "nursery-empty-state"
+
+        def dashboard_ready() -> None:
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, _plant = prepared
+            from .ui.dashboard import NurseryDialog
+
+            state = self.app.storage.state
+            state.unlocked_species = list(self.app.engine.release_ready_species())
+            dialog = NurseryDialog(
+                self.app.dashboard,
+                self.app.engine,
+                self.app.storage,
+            )
+            dialog.catalog_tabs.setCurrentIndex(0)
+            empty_visible = any(
+                "collected every plant" in str(label_widget.text()).lower()
+                for label_widget in dialog.findChildren(QLabel)
+            )
+            self._capture_annotations[label] = {
+                "empty_state_visible": empty_visible,
+                "available_count": len(self.app.engine.catalog_summary().get("available_species", [])),
+                "passed": bool(empty_visible),
+            }
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            scrollbar = dialog.scroll.verticalScrollBar()
+            QTimer.singleShot(120, lambda: scrollbar.setValue(scrollbar.maximum()))
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=520,
+                close_callback=close_dialog,
+                close_ms=900,
+                next_ms=1240,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
+    def _capture_collection_environment_mechanics(self) -> None:
+        label = "collection-environment-mechanics"
+
+        def dashboard_ready() -> None:
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, _plant = prepared
+            dashboard = self.app.dashboard
+            state = self.app.storage.state
+            for item_id in ("sunny", "breeze"):
+                if item_id not in state.inventory.setdefault("weather", []):
+                    state.inventory["weather"].append(item_id)
+            for item_id in ("default", "spring"):
+                if item_id not in state.inventory.setdefault("scenery", []):
+                    state.inventory["scenery"].append(item_id)
+                if item_id not in state.inventory.setdefault("backgrounds", []):
+                    state.inventory["backgrounds"].append(item_id)
+            state.selected_weather = "breeze"
+            state.selected_background = "spring"
+            state.equipped["weather"] = "breeze"
+            state.equipped["background"] = "spring"
+            dashboard._collection_filter = "all"
+            dashboard._refresh_collection_list()
+            dialog = dashboard.progress_dialog
+            dialog.refresh()
+            dialog.navigation.set_current("collection")
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+            dialog.show()
+            button_widgets = dashboard.collection_list.findChildren(QAbstractButton)
+            buttons = [str(button.text()) for button in button_widgets]
+            customize_buttons = [
+                button for button in button_widgets
+                if str(button.text()) in {"Open Customize", "Equip", "Equipped"}
+            ]
+            labels = [
+                str(label_widget.text()) for label_widget in dashboard.collection_list.findChildren(QLabel)
+            ]
+            self._capture_annotations[label] = {
+                "concise_effects_visible": any(
+                    "While equipped:" in text for text in labels
+                ),
+                "metadata_noise_absent": not any(
+                    marker in text
+                    for text in labels
+                    for marker in (
+                        "Activation:",
+                        "Replacement:",
+                        "Replaces nothing",
+                        "Not applicable",
+                    )
+                ),
+                "equipment_state_visible": any(
+                    "Equipped" in text for text in labels + buttons
+                ),
+                "customize_route_visible": any(
+                    text in {"Open Customize", "Equip", "Equipped"}
+                    for text in buttons
+                ),
+                "customize_routes_enabled": bool(customize_buttons)
+                and all(button.isEnabled() for button in customize_buttons),
+                "direct_mutation_controls": any(
+                    button.isCheckable()
+                    and str(button.text()) in {"Equip", "Show Weather", "Show Scenery"}
+                    for button in button_widgets
+                ),
+            }
+            self._capture_annotations[label]["passed"] = bool(
+                self._capture_annotations[label]["concise_effects_visible"]
+                and self._capture_annotations[label]["metadata_noise_absent"]
+                and self._capture_annotations[label]["equipment_state_visible"]
+                and self._capture_annotations[label]["customize_route_visible"]
+                and self._capture_annotations[label]["customize_routes_enabled"]
+                and not self._capture_annotations[label]["direct_mutation_controls"]
+            )
+            scrollbar = dashboard.collection_list.scroll.verticalScrollBar()
+            QTimer.singleShot(180, lambda: scrollbar.setValue(scrollbar.maximum()))
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=560,
+                close_callback=close_dialog,
+                close_ms=940,
+                next_ms=1280,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
     def _capture_customize_garden(self) -> None:
         self._with_dashboard(self._capture_customize_garden_after)
 
@@ -7561,7 +8516,8 @@ class _UiFaceCaptureRunner:
                 replace = next(
                     (
                         button for button in dialog.findChildren(QAbstractButton)
-                        if button.text() == "Replace" and button.isEnabled()
+                        if _displayed_button_text(button) == "Purchase & Replace"
+                        and button.isEnabled()
                     ),
                     None,
                 )
@@ -8141,6 +9097,7 @@ class _UiFaceCaptureRunner:
 
     def _capture_nursery_purchase_success(self) -> None:
         from .environment import SCENERY_CATALOG, WEATHER_CATALOG
+        from .purchases import PurchaseKind, PurchaseRequest
 
         state = self.app.storage.state
         state.currency_balance = 100_000
@@ -8158,15 +9115,25 @@ class _UiFaceCaptureRunner:
                 key for key in state.inventory.get("backgrounds", [])
                 if key != item.item_id
             ]
+            if state.selected_background == item.item_id:
+                state.selected_background = "default"
+            if state.equipped.get("background") == item.item_id:
+                state.equipped["background"] = "default"
+        elif state.selected_weather == item.item_id:
+            state.selected_weather = "sunny"
+            state.equipped["weather"] = "sunny"
 
         def ready(dialog: Any) -> None:
-            # Preview and purchase the same catalog object through the normal UI
-            # action, then restore that preview after its successful refresh.
-            # This keeps the receipt, artwork, name, price, and Owned action
-            # product-bound instead of falling back to the first catalog tile.
+            purchase_kind = PurchaseKind(item.kind)
+            quote = self.app.engine.quote_purchase(purchase_kind, item.item_id)
+            outcome = self.app.engine.confirm_purchase(
+                PurchaseRequest.from_quote(quote)
+            )
+            dialog.refresh()
+            dialog.catalog_tabs.setCurrentIndex(3)
             dialog._preview_environment_item(item)
-            dialog._purchase_environment(item.kind, item.item_id)
-            dialog._preview_environment_item(item)
+            if outcome.success:
+                dialog._show_purchase_receipt(outcome)
             if not self.app.engine.owns_environment(item.kind, item.item_id):
                 self._failures.append({
                     "label": "nursery-purchase-success",
@@ -8886,16 +9853,29 @@ class _UiFaceCaptureRunner:
             return
         if family == "fertilizer-replacement":
             from .ui.dashboard import FertilizerReplacementDialog
+            from .models.state import Fertilizer
+            from .purchases import PurchaseKind
+
+            plant = self.app.engine.plant_story(plant_id)
+            if plant is None:
+                capture_widget(None, close=True)
+                return
+            now = self.app.engine._now_seconds()
+            plant.slot_index = 0
+            plant.growth_points = 0
+            self.app.storage.state.active_plant_id = plant.plant_id
+            plant.fertilizer = Fertilizer("basic", 1, now + 3_400, now - 200)
+            quote = self.app.engine.quote_purchase(
+                PurchaseKind.FERTILIZER,
+                "premium",
+                target_id=plant.plant_id,
+            )
 
             capture_widget(
                 FertilizerReplacementDialog(
                     dashboard,
-                    current_name="Basic Fertilizer",
-                    current_effect="+1 Growth per Anki card answer",
-                    remaining_time="45 seconds",
-                    new_name="Premium Fertilizer",
-                    new_effect="+3 Growth per Anki card answer",
-                    cost=120,
+                    self.app.engine,
+                    quote,
                 ),
                 close=True,
             )

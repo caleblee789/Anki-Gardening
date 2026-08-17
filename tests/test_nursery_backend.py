@@ -363,7 +363,7 @@ def test_garden_space_cannot_be_purchased_before_free_starter_selection():
     ok, message = engine.purchase_next_bed()
 
     assert not ok
-    assert message == "Choose a starter before unlocking another garden space."
+    assert message == "Choose a starter before unlocking another garden bed."
     assert storage.state.to_dict() == before
     assert storage.state.currency_transactions == []
     assert storage.save_count == save_count

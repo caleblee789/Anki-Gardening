@@ -1,6 +1,8 @@
 # Progression state contract
 
-The persisted boundary is `user_files/garden_state.json`, currently schema version `16`. Mutable data and cache files never enter the distributable archive.
+The persisted boundary is `user_files/garden_state.json`, currently schema
+version `18`. Mutable data and cache files never enter the distributable
+archive.
 
 ## Authoritative fields
 
@@ -10,13 +12,13 @@ The persisted boundary is `user_files/garden_state.json`, currently schema versi
 - Plants: stable ID, one supported species, generated/editable name, optional garden-space slot, non-negative Growth, a fractional bonus remainder, planted date, semantic story memories, optional current Fertilizer and Booster intervals, and bounded histories of replaced or expired intervals.
 - Nurture routing: `active_plant_id` and timestamped `active_plant_periods` remain the internal compatibility fields. The UI calls this choice **Nurture**. A card answer goes to the nurtured unfinished plant at its answer time, and existing Growth never moves when the learner nurtures another plant.
 - Streak Growth: `streak_days` is the only consistency progression value. The current streak bonus is 0% at day 1, +5% at day 7, +10% at day 14, +15% at day 30, +20% at day 100, and +25% at day 365. It is reconciled from authoritative Anki review history at startup, sync, rollover, and live answers; no seven-day history is stored.
-- Economy: `currency_balance`, an idempotent transaction ledger with a user-facing reason and resulting balance, once-ever claimed streak milestones, a stable reward seed, `eligible_reward_count`, `ultra_pity_misses`, bounded drop history, Booster/Charge inventory, and bounded pending feedback. Learner-facing copy calls the balance **Garden Coins**; the serialized field name does not change.
+- Economy: `currency_balance`, an idempotent transaction ledger with a user-facing reason and resulting balance, a separately bounded completed-purchase request ledger, once-ever claimed streak milestones, a stable reward seed, `eligible_reward_count`, `ultra_pity_misses`, bounded drop history, Booster/Charge inventory, and bounded pending feedback. Learner-facing copy calls the balance **Garden Coins**; the serialized field name does not change.
 - Environment: owned Weather and Scenery entitlements, one equipped ID for each kind, and independent Weather/Scenery visibility switches. Visibility changes rendering only; equipped passives remain active. Default entitlements are Clear Skies and Verdant Twilight.
 - Collection: `starter_selection_complete`, `unlocked_species`, two to six
   unlocked direct-soil spaces in `unlocked_slots`, and at most six planted
   plants. The configured roster currently contains ten species, but the UI never
   presents that number as a collection denominator. A fresh garden chooses one
-  free release-ready starter; shelved plants keep all progress.
+  free release-ready starter; plants moved to Collection keep all progress.
 - Review ingestion: `processed_revlog_floor` and the bounded, sorted
   `processed_revlog_ids` ledger are authoritative for the current scheduler
   day. `last_processed_revlog_id` remains a monotonic compatibility cursor, but
@@ -226,7 +228,7 @@ identity, name, slot, species unlock, story, total-review, appearance, and
 revlog-cursor data is retained. Legacy Growth is translated to the same stage
 and within-stage percentage under the current thresholds, avoiding visual
 regression without preserving a parallel points system. Entitlement-only
-unlocked species materialize as visible, plantable, shelved zero-Growth plants
+unlocked species materialize as visible, plantable, Collection-stored zero-Growth plants
 instead of becoming phantom ownership or requiring another purchase.
 
 Schemas 11, 12, and 13 migrate to schema 14 as established gardens with starter
@@ -249,12 +251,24 @@ Empty gardens resume at introduction, planted starters without nurture evidence
 resume at nurture, and established or completed gardens migrate to `done`. The
 legacy add-on `onboarding_version` is read only as migration evidence; schema-17
 renderers and transitions use the Garden-state record as their authority.
+Schema 17 upgrades to schema 18 after an exact backup. The conversion changes
+only the version and initializes `completed_purchase_requests` as an empty
+list; every existing onboarding, plant, balance, ledger, reward, inventory,
+environment, placement, and interval field is preserved.
+
+Schema 18 stores at most 500 `CompletedPurchaseRequest` records, independently
+of the bounded currency ledger. Each stores a canonical caller-generated UUID,
+canonical request fingerprint, successful `PurchaseOutcome`, and timezone-aware
+completion timestamp. Exact request replay returns the stored outcome without
+another debit or grant. Reusing an ID with different request terms fails
+closed. A failed save restores the full in-memory snapshot and leaves no replay
+record, so the same request may be retried safely.
 
 Migration backup or save failure is fail-closed: the original state is not
 overwritten and a fresh state is not returned as though conversion succeeded.
 
 Removed Quest, Vitality, seven-day-history, daily-goal, history-import,
-milestone-choice, and rare-variant fields are discarded. Schemas 10 through 16
+milestone-choice, and rare-variant fields are discarded. Schemas 10 through 17
 are migrated; any other unsupported schema is copied to a schema-labeled backup
 and starts a fresh recovery garden. Unreadable JSON is copied to
 `garden_state.invalid.json` before recovery.

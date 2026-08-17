@@ -103,7 +103,8 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
-    assert "item_name = seed_title(species_name)" in available_card
+    assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
+    assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
     assert 'ownership = QLabel("Not collected")' in available_card
     assert "COST_FREE" not in available_card
@@ -225,7 +226,8 @@ def test_nursery_tabs_use_available_width_without_cutting_off_labels() -> None:
         "class PlantInfoCard", 1
     )[0]
 
-    assert "self.catalog_tabs.tabBar().setExpanding(True)" in nursery
+    assert "self.catalog_tabs.tabBar().setExpanding(False)" in nursery
+    assert "self.catalog_tabs.tabBar().setUsesScrollButtons(True)" in nursery
     assert "self.catalog_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)" in nursery
     assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in nursery
     assert "navigation = QHBoxLayout()" in nursery
@@ -241,7 +243,8 @@ def test_available_plants_fill_space_with_a_two_column_catalog() -> None:
     )
 
     assert "card_layout = QVBoxLayout(card)" in available_card
-    assert "self._plant_description(species)" in available_card
+    assert "presentation.outcome" in available_card
+    assert '_purchase_fact(presentation, "planting")' in available_card
     assert 'details = QPushButton("Details")' in available_card
     assert "footer = QHBoxLayout()" in available_card
     assert "Qt.AlignmentFlag.AlignHCenter" in available_card
@@ -773,10 +776,10 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'title = QLabel(f"Fertilize {plant.name}")' in fertilizer
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
-    assert 'duration = f"{hours} hour" if hours == 1 else f"{hours} hours"' in fertilizer
+    assert "presentation = purchase_presentation(quote, ignore_status=True)" in fertilizer
     assert "current_status = FertilizerStatusBlock(allow_description=True)" in fertilizer
     assert "fertilizer_status(" in fertilizer
-    assert "_fertilizer_action_label(" in fertilizer
+    assert 'action_label = presentation.primary_label.split(" ·", 1)[0]' in fertilizer
     assert '_affordability_status(spec.price, balance_value)' in fertilizer
 
 
@@ -929,7 +932,6 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
     assert scope["_minute_count"](2) == "2 minutes"
 
     dashboard = _source("ankigarden/ui/dashboard.py")
-    assert dashboard.count("_minute_count(minutes)") == 2
     nursery_refresh = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "refresh"
     )
@@ -954,19 +956,14 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     scope: dict[str, object] = {}
     exec(_function_source("ankigarden/ui/dashboard.py", "_affordability_status"), scope)
     exec(_function_source("ankigarden/ui/dashboard.py", "_compact_affordability_status"), scope)
-    exec(_function_source("ankigarden/ui/dashboard.py", "_fertilizer_action_label"), scope)
     affordability = scope["_affordability_status"]
     compact_affordability = scope["_compact_affordability_status"]
-    fertilizer_action = scope["_fertilizer_action_label"]
 
     assert affordability(25, 25) == (True, "Affordable now.")
     assert affordability(25, 24) == (False, "Need 1 more Garden Coin.")
     assert affordability(150, 25) == (False, "Need 125 more Garden Coins.")
     assert compact_affordability(25, 25, ready_text="Ready to unlock") == "Ready to unlock"
     assert compact_affordability(150, 25, ready_text="Ready to unlock") == "125 more needed"
-    assert fertilizer_action("", "basic", "Basic Fertilizer") == "Use Basic Fertilizer"
-    assert fertilizer_action("basic", "basic", "Basic Fertilizer") == "Extend Basic Fertilizer"
-    assert fertilizer_action("basic", "quality", "Quality Fertilizer") == "Replace with Quality Fertilizer"
 
     nursery = _source("ankigarden/ui/dashboard.py").split(
         "class NurseryDialog", 1
@@ -992,7 +989,7 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert "apply_explanatory_tooltip(" in available_card
     assert "self.bed_affordability" in nursery
     assert "state.currency_balance >= price" in space_card
-    assert 'self.bed_button = QPushButton("Unlock")' in space_card
+    assert 'self.bed_button = QPushButton("Unlock bed")' in space_card
     assert "affordable and not self._bed_purchase_pending" in space_card
     assert "more needed" in space_card
     assert "current_status" in fertilizer
@@ -1000,14 +997,13 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert "set_control_enabled(" in fertilizer
     assert "affordable and active" in fertilizer
     assert "Nurture this plant before purchasing Fertilizer." in fertilizer
-    assert 'action_label = "Apply"' in fertilizer
-    assert 'action_label = "Replace"' in fertilizer
-    assert 'f"{semantic_action} for {spec.price:,} Garden Coins"' in fertilizer
+    assert 'action_label = presentation.primary_label.split(" ·", 1)[0]' in fertilizer
+    assert "presentation.primary_accessible_name" in fertilizer
     assert "shortfall_label = QLabel(" in fertilizer
     assert 'f"Need {shortfall:,} more {' in fertilizer
     assert 'shortfall_label.setProperty("fertilizerShortfall", True)' in fertilizer
     assert 'action_label = f"Need ' not in fertilizer
-    assert "_fertilizer_action_label(" in fertilizer
+    assert "purchase_presentation(quote, ignore_status=True)" in fertilizer
 
 
 def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
@@ -1032,18 +1028,57 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     replacement = _class_source(
         "ankigarden/ui/dashboard.py", "FertilizerReplacementDialog"
     )
+    confirmation = _class_source(
+        "ankigarden/ui/dashboard.py", "PurchaseConfirmationDialog"
+    )
+    collection_environment = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "GardenDashboard",
+        "_environment_collection_card",
+    )
 
-    assert 'QPushButton("Buy")' in available
+    assert 'QPushButton("Purchase")' in available
     assert 'QPushButton("Choose")' in starter
-    assert 'QPushButton("Apply")' in supplement
-    assert 'QPushButton("Buy")' in charge
-    assert '"Customize" if owned else "Buy"' in environment
-    assert 'QPushButton("Unlock")' in spaces
-    assert 'QPushButton("Replace")' in replacement
-    assert "DialogSizeClass.COMPARISON" in replacement
-    assert "self.register_scroll_region(self.content_scroll)" in replacement
-    assert "self.register_pinned_footer(self.action_footer)" in replacement
-    for source in (available, supplement, charge, environment, spaces, replacement):
+    assert 'action_text = presentation.primary_label.split(" ·", 1)[0]' in supplement
+    assert 'QPushButton("Purchase")' in charge
+    assert '"Equipped" if equipped else' in environment
+    assert '"Equip" if owned else' in environment
+    assert 'QPushButton("Unlock bed")' in spaces
+    assert "class FertilizerReplacementDialog(PurchaseConfirmationDialog)" in replacement
+    assert "DialogSizeClass.COMPARISON" in confirmation
+    assert "self.register_scroll_region(self.content_scroll)" in confirmation
+    assert "self.register_pinned_footer(self.action_footer)" in confirmation
+    assert "presentation = purchase_presentation(quote)" in confirmation
+    assert "self.fact_rows" in confirmation
+    assert "self.cost_summary" in confirmation
+    assert "self.price_label" in confirmation
+    assert "self.balance_label" in confirmation
+    assert "self.target_chip" in confirmation
+    assert "self.progress_indicator" in confirmation
+    assert "self.presentation.processing_label" in confirmation
+    assert "self.requested_route" in confirmation
+    assert "self.presentation.primary_route" in confirmation
+    assert "_qt_button_text(presentation.primary_label)" in confirmation
+    assert "Review the updated terms before continuing." not in confirmation
+    button_copy = _function_source(
+        "ankigarden/ui/dashboard.py", "_qt_button_text"
+    )
+    assert '.replace("&", "&&")' in button_copy
+    assert 'AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=324)' in confirmation
+    assert "purchase_presentation(quote, ignore_status=True)" in environment
+    assert "item.descriptor.mechanics_rows()" not in environment
+    assert "purchase_presentation(" in collection_environment
+    assert "item.descriptor.mechanics_rows()" not in collection_environment
+    assert "Current equipment state:" not in collection_environment
+    for noise in (
+        "Not applicable",
+        "Replaces nothing",
+        "Quantity",
+        "Are you sure you want to purchase",
+        "Balance after purchase",
+    ):
+        assert noise not in confirmation
+    for source in (available, supplement, charge, environment, spaces):
         assert "Buy for" not in source
         assert "Apply for" not in source
         assert "Replace for" not in source
@@ -1054,8 +1089,9 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "cost_label(spec.price)" in charge
     assert "cost_label(item.price)" in environment
     assert "price_label = QLabel(cost_label(price))" in spaces
-    assert 'summary("New", new_name, new_effect, cost_label(cost))' in replacement
-    for source in (available, supplement, charge, environment, spaces, replacement):
+    assert 'f"{presentation.price:,} Garden Coins"' in confirmation
+    assert 'f"Balance: {presentation.balance_before:,} → "' in confirmation
+    for source in (available, supplement, charge, environment, spaces, confirmation):
         assert "Garden Coins" in source, "accessible purchase copy must retain the full unit"
 
 

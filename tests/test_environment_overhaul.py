@@ -125,7 +125,7 @@ def own_and_equip(
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 17
+    assert STATE_VERSION == 18
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "sunny": None,
         "breeze": 100,

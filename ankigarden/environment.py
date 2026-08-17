@@ -47,25 +47,12 @@ class CatalogItem:
         kind_name = "Weather" if self.kind == "weather" else "Scenery"
         other_kind = "Scenery" if self.kind == "weather" else "Weather"
         return EffectDescriptor(
-            function=(
-                f"Changes the garden's {kind_name} and provides its listed passive."
-            ),
+            function=f"Changes {kind_name} and applies its passive.",
             buff=self.effect,
-            activation_condition=(
-                f"The passive is active while this {kind_name} is equipped, even "
-                "when its artwork is hidden."
-            ),
-            duration=(
-                f"Owned permanently; active until another {kind_name} is equipped."
-            ),
-            stacking=(
-                f"Only one {kind_name} can be active. Its passive can stack with "
-                f"the equipped {other_kind} passive."
-            ),
-            replacement=(
-                f"Equipping another {kind_name} replaces the active {kind_name}; "
-                "ownership is retained."
-            ),
+            activation_condition="Active while equipped, even if its artwork is hidden.",
+            duration="Owned permanently; active until replaced.",
+            stacking=f"One {kind_name} at a time; stacks with {other_kind} passives.",
+            replacement=f"Another {kind_name} takes its place; ownership stays.",
             unlock_requirement=self.how_to_earn,
         )
 
@@ -86,16 +73,12 @@ class GrowthChargeSpec:
     @property
     def descriptor(self) -> EffectDescriptor:
         return EffectDescriptor(
-            function="Adds one reusable inventory choice that is consumed when used.",
+            function="Adds 1 Growth Charge to inventory.",
             buff=f"+{self.growth:,} Growth when used.",
-            activation_condition=(
-                "Use it on the currently nurtured, unfinished plant in the garden."
-            ),
-            duration="Instant; the Growth is applied once and the Charge is consumed.",
-            stacking=(
-                "Owned quantities stack in inventory; each Charge is applied separately."
-            ),
-            replacement="Does not replace a timed effect.",
+            activation_condition="Use on the nurtured, unfinished garden plant.",
+            duration="Instant; consumed on use.",
+            stacking="Inventory quantities stack; each Charge is used separately.",
+            replacement="Replaces nothing.",
             unlock_requirement=self.how_to_earn,
         )
 
@@ -119,8 +102,8 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "weather",
         "Common",
         "free",
-        "A calm visual choice with no gameplay bonus.",
-        "Included with every garden.",
+        "No gameplay bonus.",
+        "Included.",
     ),
     "breeze": CatalogItem(
         "breeze",
@@ -129,7 +112,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+1 Growth on your first 10 card answers each Anki day.",
-        "Purchase once in the Nursery for 100 Garden Coins.",
+        "Nursery: 100 Garden Coins.",
         100,
     ),
     "cloudy": CatalogItem(
@@ -139,7 +122,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+2 Garden Coins when you finish all due cards that day.",
-        "Purchase once in the Nursery for 175 Garden Coins.",
+        "Nursery: 175 Garden Coins.",
         175,
     ),
     "gentle_rain": CatalogItem(
@@ -149,7 +132,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "+1 Growth on your first 20 card answers each Anki day.",
-        "Purchase once in the Nursery for 250 Garden Coins.",
+        "Nursery: 250 Garden Coins.",
         250,
     ),
     "snow_flurry": CatalogItem(
@@ -159,7 +142,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "Booster Potions last 10% longer while this weather is equipped.",
-        "Purchase once in the Nursery for 350 Garden Coins.",
+        "Nursery: 350 Garden Coins.",
         350,
     ),
     "fireflies": CatalogItem(
@@ -169,7 +152,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "+5 Growth on your first 5 card answers each Anki day.",
-        "A Rare environment drop while reviewing cards (1 in 5,000 Rare band).",
+        "Rare review drop: 1 in 5,000.",
         drop_tier="rare_environment",
     ),
     "rainbow_sunshower": CatalogItem(
@@ -179,7 +162,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Very Rare",
         "drop",
         "+5 Growth when you finish all due cards that day.",
-        "A Very Rare environment drop while reviewing cards (1 in 20,000 band).",
+        "Very Rare review drop: 1 in 20,000.",
         drop_tier="very_rare_environment",
     ),
 }
@@ -192,8 +175,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Common",
         "free",
-        "The original garden scenery, with no gameplay bonus.",
-        "Included with every garden.",
+        "No gameplay bonus.",
+        "Included.",
     ),
     "spring": CatalogItem(
         "spring",
@@ -202,7 +185,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+1 Growth on your first 25 card answers each Anki day.",
-        "Purchase once in the Nursery for 400 Garden Coins.",
+        "Nursery: 400 Garden Coins.",
         400,
     ),
     "summer": CatalogItem(
@@ -212,7 +195,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "+1 Growth on every second card answer.",
-        "Purchase once in the Nursery for 600 Garden Coins.",
+        "Nursery: 600 Garden Coins.",
         600,
     ),
     "autumn": CatalogItem(
@@ -221,8 +204,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Uncommon",
         "purchase",
-        "Plant stage rewards give 25% more Garden Coins, rounded up at half a Coin.",
-        "Purchase once in the Nursery for 800 Garden Coins.",
+        "+25% Garden Coins from plant stage rewards; halves round up.",
+        "Nursery: 800 Garden Coins.",
         800,
     ),
     "snowy": CatalogItem(
@@ -231,8 +214,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Rare",
         "purchase",
-        "Your first card answer each Anki day gives one Small Growth Charge.",
-        "Purchase once in the Nursery for 1,200 Garden Coins.",
+        "First card answer each Anki day gives 1 Small Growth Charge.",
+        "Nursery: 1,200 Garden Coins.",
         1_200,
     ),
     "rainbow_horizon": CatalogItem(
@@ -242,7 +225,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "+1 Growth on every card answer.",
-        "A Rare environment drop while reviewing cards (1 in 5,000 Rare band).",
+        "Rare review drop: 1 in 5,000.",
         drop_tier="rare_environment",
     ),
     "halloween": CatalogItem(
@@ -251,8 +234,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Very Rare",
         "drop",
-        "Your first card answer each Anki day gives a Small Charge (70%), Standard Charge (25%), or Booster Potion (5%).",
-        "A Very Rare environment drop while reviewing cards (1 in 20,000 band).",
+        "First daily answer: Small Charge 70%, Standard Charge 25%, or Booster Potion 5%.",
+        "Very Rare review drop: 1 in 20,000.",
         drop_tier="very_rare_environment",
     ),
     "full_moon": CatalogItem(
@@ -261,8 +244,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Ultra Rare",
         "drop",
-        "Your first card answer each Anki day gives a Booster Potion, and Potions last 25% longer while equipped.",
-        "An Ultra Rare environment drop while reviewing cards (base 1 in 100,000; pity improves the odds after 75,000 misses).",
+        "First daily answer gives 1 Booster Potion; Potions last 25% longer.",
+        "Ultra Rare review drop: base 1 in 100,000; pity after 75,000 misses.",
         drop_tier="ultra_environment",
     ),
     "eclipse": CatalogItem(
@@ -271,8 +254,8 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Ultra Rare",
         "drop",
-        "+10 Scenery Growth on every card answer. This doubles only the normal 10 base Growth; it does not multiply other bonuses.",
-        "An Ultra Rare environment drop while reviewing cards (base 1 in 100,000; pity improves the odds after 75,000 misses).",
+        "+10 Scenery Growth per card answer; doubles base Growth only.",
+        "Ultra Rare review drop: base 1 in 100,000; pity after 75,000 misses.",
         drop_tier="ultra_environment",
     ),
 }
@@ -291,7 +274,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         100,
         30,
         "Common",
-        "Purchase repeatedly in the Nursery for 30 Garden Coins, receive it from daily scenery, or find it in the 1 in 2,000 drop band.",
+        "Nursery: 30 Garden Coins; daily Scenery; or 1 in 2,000 review drop.",
     ),
     "growth_charge_standard": GrowthChargeSpec(
         "growth_charge_standard",
@@ -299,7 +282,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         500,
         125,
         "Rare",
-        "Purchase repeatedly in the Nursery for 125 Garden Coins, receive it from Halloween Garden, or find it in the 1 in 8,000 drop band.",
+        "Nursery: 125 Garden Coins; Halloween Garden; or 1 in 8,000 review drop.",
     ),
     "growth_charge_grand": GrowthChargeSpec(
         "growth_charge_grand",
@@ -307,7 +290,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Earn only while reviewing: its own 1 in 30,000 band, or as the completion reward when a Very Rare or Ultra Rare environment tier is already complete.",
+        "Review reward: 1 in 30,000, or duplicate completed Very/Ultra Rare tier.",
     ),
 }
 

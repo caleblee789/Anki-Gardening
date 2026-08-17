@@ -287,7 +287,7 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
-    assert len(scroll_constructors) == 15
+    assert len(scroll_constructors) == 16
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper
@@ -510,7 +510,10 @@ def test_exec_backed_nursery_story_species_and_fertilizer_share_modal_shell() ->
     assert _class_node("GardenDialog").bases[0].id == "DialogShell"
     assert _class_node("NurseryDialog").bases[0].id == "DialogShell"
     assert _class_node("StarterConfirmationDialog").bases[0].id == "DialogShell"
-    assert _class_node("FertilizerReplacementDialog").bases[0].id == "DialogShell"
+    assert _class_node("PurchaseConfirmationDialog").bases[0].id == "DialogShell"
+    assert _class_node("FertilizerReplacementDialog").bases[0].id == (
+        "PurchaseConfirmationDialog"
+    )
     assert _class_node("PlantStoryDialog").bases[0].id == "GardenDialog"
 
     exec_callers = {
@@ -751,15 +754,10 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     assert "_environment_placeholder_pixmap(" in environment_preview
     assert "_weather_placeholder_overlay(" in environment_preview
 
-    for source in (
-        plant_preview,
-        populated_preview,
-        item_preview,
-        nursery_item,
-        plant_card,
-        story,
-    ):
+    for source in (plant_preview, populated_preview, item_preview, plant_card):
         assert "_botanical_placeholder_pixmap(" in source
+    assert "_item_preview_label(" in nursery_item
+    assert "_populate_asset_preview(" in story
 
     assert "label.setText(stage_name)" not in plant_preview
     assert "target.setText(fallback_text)" not in populated_preview

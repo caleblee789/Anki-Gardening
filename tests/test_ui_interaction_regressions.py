@@ -11,6 +11,7 @@ from typing import Any
 
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, Plant, PlantMemory
+from ankigarden.purchases import PurchaseKind
 from ankigarden.ui.home_widget import HomeWidgetData, HomeWidgetSnapshot, render_home_widget
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
@@ -873,7 +874,11 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
         DASHBOARD_PATH,
         "NurseryDialog",
         "_unlock_bed",
-        {"QTimer": Timer, "set_control_enabled": set_control_enabled},
+        {
+            "QTimer": Timer,
+            "PurchaseKind": PurchaseKind,
+            "set_control_enabled": set_control_enabled,
+        },
     )
     release = _compiled_method(
         DASHBOARD_PATH,
@@ -904,10 +909,6 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
             self.purchases = 0
             self.price: int | None = 150
 
-        def purchase_next_bed(self) -> tuple[bool, str]:
-            self.purchases += 1
-            return True, "Garden space unlocked."
-
         def next_bed_price(self) -> int | None:
             return self.price
 
@@ -924,8 +925,13 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
             )
         ),
         _show_result=lambda ok, message: None,
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
         _refresh_parent=lambda: None,
         refresh=lambda: None,
+    )
+    nursery._execute_purchase = lambda kind, item_id: (
+        setattr(engine, "purchases", engine.purchases + 1)
+        if kind is PurchaseKind.BED and item_id == "next" else None
     )
     nursery._begin_catalog_transaction = lambda: begin_catalog_transaction(nursery)
     nursery._release_catalog_transaction = lambda: release_catalog_transaction(nursery)
@@ -1952,12 +1958,18 @@ def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() ->
     )
 
     assert "choose.setAccessibleDescription(" in fertilizer_menu
-    for required in ("spec.name", "spec.price", "spec.growth_per_answer", "duration"):
+    for required in (
+        "spec.name",
+        "spec.price",
+        "purchase_presentation",
+        "presentation.primary_accessible_name",
+        '"effect"',
+        '"duration"',
+        '"remaining"',
+    ):
         assert required in fertilizer_menu
-    assert 'duration = f"{hours} hour" if hours == 1 else f"{hours} hours"' in fertilizer_menu
     assert "Garden Coins" in fertilizer_menu
-    assert "Growth per Anki card answer" in fertilizer_menu
-    assert "Growth per answer" not in fertilizer_menu
+    assert "presentation.outcome" in fertilizer_menu
 
 
 def test_stage_transition_generation_ignores_stale_timer_and_reannounces_selection() -> None:

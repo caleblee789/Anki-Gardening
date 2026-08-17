@@ -380,6 +380,8 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(amount)",
         "apply_tabular_numerals(resulting)",
         "apply_tabular_numerals(self.duration_label)",
+        "apply_tabular_numerals(self.discard_warning)",
+        "apply_tabular_numerals(duration)",
         "apply_tabular_numerals(balance)",
         "apply_tabular_numerals(self.status_value)",
         "apply_tabular_numerals(affordability_label)",
@@ -392,7 +394,7 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
     assert dashboard.count("apply_tabular_numerals(value)") >= 2
     assert dashboard.count("apply_tabular_numerals(meta)") >= 6
     assert dashboard.count("apply_tabular_numerals(title)") >= 3
-    assert dashboard.count("apply_tabular_numerals(detail)") >= 2
+    assert dashboard.count("apply_tabular_numerals(detail)") >= 1
     assert "apply_tabular_numerals(label)" in dashboard
     assert "font-variant-numeric:tabular-nums" in home
 
@@ -406,5 +408,5 @@ def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() ->
         dashboard.count("set_keyboard_focus_surface(") + 1
     )
     assert "self.garden_name_edit.setFixedHeight(BUTTON_MIN_HEIGHT)" in dashboard
-    assert 'show_weather = QCheckBox("Show Weather")' in dashboard
-    assert 'show_scenery = QCheckBox("Show Scenery")' in dashboard
+    assert 'self.show_weather = ToggleSwitch("Show Weather artwork")' in dashboard
+    assert 'self.show_scenery = ToggleSwitch("Show Scenery artwork")' in dashboard

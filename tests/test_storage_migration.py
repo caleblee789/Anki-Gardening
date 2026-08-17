@@ -14,10 +14,17 @@ from ankigarden.models.state import (
     Fertilizer,
     GardenState,
     HISTORICAL_PLANT_SPECIES_ORDER,
+    MAX_COMPLETED_PURCHASE_REQUESTS,
     OnboardingStep,
     Plant,
     PlantMemory,
     STATE_VERSION,
+)
+from ankigarden.purchases import (
+    CompletedPurchaseRequest,
+    PurchaseDisposition,
+    PurchaseOutcome,
+    PurchaseStatus,
 )
 from ankigarden.storage import (
     DueObligationStatus,
@@ -35,6 +42,117 @@ def storage_at(path):
     storage = object.__new__(GardenStorage)
     storage.data_path = path
     return storage
+
+
+def _completed_request(index: int) -> CompletedPurchaseRequest:
+    return CompletedPurchaseRequest(
+        request_id=f"00000000-0000-4000-8000-{index:012d}",
+        request_fingerprint=f"{index:064x}"[-64:],
+        outcome=PurchaseOutcome(
+            status=PurchaseStatus.SUCCESS,
+            item_id="growth_charge_small",
+            item_name="Small Growth Charge",
+            category="Growth Charge",
+            quantity=1,
+            amount_spent=30,
+            new_balance=max(0, 1_000 - index),
+            disposition=PurchaseDisposition.INVENTORY,
+            message="Small Growth Charge added to Supplements & Boosters.",
+            next_actions=("Use Growth Charge",),
+        ),
+        occurred_at="2026-08-16T12:00:00+00:00",
+    )
+
+
+def test_schema18_purchase_request_history_round_trips_and_is_bounded() -> None:
+    records = [
+        _completed_request(index)
+        for index in range(MAX_COMPLETED_PURCHASE_REQUESTS + 5)
+    ]
+    state = GardenState(completed_purchase_requests=records)
+
+    payload = state.to_dict()
+    restored = GardenState.from_dict(payload)
+
+    assert len(payload["completed_purchase_requests"]) == MAX_COMPLETED_PURCHASE_REQUESTS
+    assert len(restored.completed_purchase_requests) == MAX_COMPLETED_PURCHASE_REQUESTS
+    assert restored.completed_purchase_requests[0].request_id == records[5].request_id
+    assert restored.completed_purchase_requests[-1] == records[-1]
+
+
+def test_schema18_purchase_history_discards_malformed_and_duplicate_records() -> None:
+    valid = _completed_request(1).to_dict()
+    duplicate = _completed_request(1).to_dict()
+    invalid_fingerprint = {
+        **_completed_request(2).to_dict(),
+        "request_fingerprint": "not-a-fingerprint",
+    }
+    invalid_request_id = {
+        **_completed_request(3).to_dict(),
+        "request_id": "not-a-uuid",
+    }
+    noncanonical_request_id = {
+        **_completed_request(4).to_dict(),
+        "request_id": "{aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa}",
+    }
+    noncanonical_fingerprint = {
+        **_completed_request(5).to_dict(),
+        "request_fingerprint": "A" * 64,
+    }
+    invalid_outcome = _completed_request(6).to_dict()
+    invalid_outcome["outcome"]["amount_spent"] = -1
+    invalid_timestamp = {
+        **_completed_request(7).to_dict(),
+        "occurred_at": "2026-08-16T12:00:00",
+    }
+    payload = GardenState().to_dict()
+    payload["completed_purchase_requests"] = [
+        valid,
+        duplicate,
+        invalid_fingerprint,
+        invalid_request_id,
+        noncanonical_request_id,
+        noncanonical_fingerprint,
+        invalid_outcome,
+        invalid_timestamp,
+    ]
+
+    restored = GardenState.from_dict(payload)
+
+    assert restored.completed_purchase_requests == [_completed_request(1)]
+
+
+def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        currency_balance=777,
+        plants=[Plant("starter", "bonsai", "Moss", 0)],
+        active_plant_id="starter",
+    ).to_dict()
+    payload["version"] = 17
+    payload.pop("completed_purchase_requests", None)
+    payload["onboarding"] = {
+        "version": 1,
+        "step": "nurture",
+        "pending_species": None,
+        "starter_plant_id": "starter",
+    }
+    payload["processed_revlog_floor"] = 100
+    payload["processed_revlog_ids"] = [101, 105]
+    payload["revlog_ledger_migration_pending"] = False
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    migrated = storage_at(state_path)._load()
+
+    assert migrated.version == 18
+    assert migrated.currency_balance == 777
+    assert migrated.completed_purchase_requests == []
+    assert migrated.onboarding.step is OnboardingStep.NURTURE
+    assert migrated.onboarding.starter_plant_id == "starter"
+    assert migrated.processed_revlog_floor == 100
+    assert migrated.processed_revlog_ids == [101, 105]
+    assert migrated.revlog_ledger_migration_pending is False
+    assert state_path.with_suffix(".schema-17.legacy.json").exists()
 
 
 def legacy_state_payload() -> dict:

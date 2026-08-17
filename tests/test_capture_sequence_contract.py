@@ -80,6 +80,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
     assignment_names = {
         "CAPTURE_FACE_GROUPS",
         "RESIZE_MATRIX_SPECS",
+        "PURCHASE_CONFIRMATION_RESIZE_SPECS",
         "RESIZE_MATRIX_LAYOUT_MODES",
         "_HOME_CAPTURE_LABELS",
         "_DASHBOARD_CAPTURE_LABELS",
@@ -116,7 +117,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 12
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 14
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -246,9 +247,65 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "move-persistence-error",
         "collection-known-not-collected-overview",
     )
+    assert groups["Release overhaul — purchase confirmations and outcomes"] == (
+        "purchase-confirmation-species",
+        "purchase-confirmation-growth-charge",
+        "purchase-confirmation-environment",
+        "purchase-confirmation-fertilizer-application",
+        "purchase-confirmation-fertilizer-extension",
+        "purchase-confirmation-garden-bed",
+        "purchase-confirmation-loading-disabled",
+        "purchase-error-insufficient-coins",
+        "purchase-error-persistence-failure",
+        "purchase-error-item-unavailable",
+        "purchase-error-already-owned",
+        "purchase-error-invalid-target",
+        "purchase-error-stale-price",
+        "purchase-error-stale-balance",
+        "purchase-success-inventory-collection",
+        "purchase-success-fertilizer-applied",
+        "purchase-success-garden-bed-unlocked",
+        "purchase-confirmation-minimum",
+        "purchase-confirmation-breakpoint-low",
+        "purchase-confirmation-breakpoint-high",
+        "purchase-confirmation-default",
+        "purchase-confirmation-large",
+        "nursery-empty-state",
+        "collection-environment-mechanics",
+    )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 157
+    assert len(labels) == 181
     assert len(labels) == len(set(labels))
+    purchase_fixture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_purchase_dialog_fixture",
+    )
+    collection_fixture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_collection_environment_mechanics",
+    )
+    assert '"error_banner_visible": error_banner_visible' in purchase_fixture
+    assert "not error_variant or error_banner_visible" in purchase_fixture
+    assert '"banned_noise_absent"' in purchase_fixture
+    assert (
+        '"primary_action": _displayed_button_text(dialog.purchase_action)'
+        in purchase_fixture
+    )
+    assert '"unavailable_terminal"' in purchase_fixture
+    assert '"customize_routes_enabled": bool(customize_buttons)' in collection_fixture
+    assert '"concise_effects_visible"' in collection_fixture
+    assert '"metadata_noise_absent"' in collection_fixture
+    assert 'all(button.isEnabled() for button in customize_buttons)' in collection_fixture
+    starter_fixture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_starter_placement",
+    )
+    schedule = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_and_advance",
+    )
+    assert "before_capture=stabilize_placement" in starter_fixture
+    assert "before_capture()" in schedule
 
 
 def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
@@ -264,15 +321,16 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
     assert Counter(families) == {
         "AnkiQt": 15,
         "GardenDashboard": 47,
-        "GardenProgressDialog": 24,
+        "GardenProgressDialog": 25,
         "GardenSettingsDialog": 17,
-        "NurseryDialog": 16,
+        "NurseryDialog": 20,
         "CustomizeGardenDialog": 8,
         "FertilizerDialog": 7,
         "StarterConfirmationDialog": 6,
         "PlantStoryDialog": 6,
-        "FertilizerReplacementDialog": 6,
+        "FertilizerReplacementDialog": 11,
         "SpeciesOverviewDialog": 5,
+        "PurchaseConfirmationDialog": 14,
     }
 
 
@@ -287,7 +345,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 157
+    assert len({profile["profile_id"] for profile in profiles}) == 181
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -358,7 +416,10 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
 
 
 def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -> None:
-    specs = _literal_assignment("RESIZE_MATRIX_SPECS")
+    specs = (
+        *_literal_assignment("RESIZE_MATRIX_SPECS"),
+        *_literal_assignment("PURCHASE_CONFIRMATION_RESIZE_SPECS"),
+    )
     layout_modes = _literal_assignment("RESIZE_MATRIX_LAYOUT_MODES")
     families = {spec[1] for spec in specs}
 
@@ -374,10 +435,19 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         "fertilizer",
         "fertilizer-replacement",
         "species-overview",
+        "purchase-confirmation",
     }
     assert all(spec[3] > 0 and spec[4] > 0 for spec in specs)
     assert sum("historical-edge-low-stability-probe" == spec[2] for spec in specs) == 13
     assert sum("historical-edge-high-stability-probe" == spec[2] for spec in specs) == 13
+    assert sum("measured-threshold-minus-one" == spec[2] for spec in specs) == 1
+    assert sum("measured-threshold-plus-one" == spec[2] for spec in specs) == 1
+    by_label = {spec[0]: spec for spec in specs}
+    assert by_label["purchase-confirmation-breakpoint-low"][3] == 517
+    assert by_label["purchase-confirmation-breakpoint-high"][3] == 519
+    comparison_threshold = 220 + 220 + 10 + 24
+    assert 517 - 44 == comparison_threshold - 1
+    assert 519 - 44 == comparison_threshold + 1
     assert set(layout_modes) == {spec[0] for spec in specs}
     assert all(layout_modes[spec[0]] in {"default", "display", "narrow", "compact", "wide"} for spec in specs)
     paired_ids = (
@@ -505,6 +575,20 @@ def test_resize_geometry_accepts_only_explained_safe_drift() -> None:
     )
     assert unsafe_height["accepted"] is False
     assert unsafe_height["safe_bounded_height"] is False
+
+    measured_breakpoint = classify(
+        label="purchase-confirmation-breakpoint-low",
+        declared_size=[517, 520],
+        actual_size=[517, 520],
+        minimum_size=[420, 400],
+        maximum_size=[820, 660],
+        screen_limited=False,
+        constraint_limited=False,
+        native_normalized=False,
+        normalization_reason="",
+    )
+    assert measured_breakpoint["accepted"] is True
+    assert measured_breakpoint["breakpoint_fixture"] is True
 
 
 def test_capture_timeouts_and_step_exceptions_fail_closed() -> None:
@@ -685,8 +769,11 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "close_ms=2300" in starter_placement
     assert "next_ms=2600" in starter_placement
 
-    assert "dialog._purchase_environment(item.kind, item.item_id)" in purchase
-    assert purchase.count("dialog._preview_environment_item(item)") == 2
+    assert "self.app.engine.quote_purchase(purchase_kind, item.item_id)" in purchase
+    assert "self.app.engine.confirm_purchase(" in purchase
+    assert "PurchaseRequest.from_quote(quote)" in purchase
+    assert "outcome.success" in purchase
+    assert "dialog._preview_environment_item(item)" in purchase
     assert "owns_environment(item.kind, item.item_id)" in purchase
     assert "dialog.environment_feature_title.text()" in purchase
 

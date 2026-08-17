@@ -414,6 +414,21 @@ def _live_engine_fixture() -> tuple[Any, Any, Any]:
     return config, storage, GardenGameEngine(config, storage)
 
 
+def _live_replacement_quote(engine: Any, storage: Any) -> Any:
+    from ankigarden.models.state import Fertilizer
+    from ankigarden.purchases import PurchaseKind
+
+    storage.state.currency_balance = 500
+    plant = storage.state.plants[0]
+    now = engine._now_seconds()
+    plant.fertilizer = Fertilizer("basic", 1, now + 3_400, now - 200)
+    return engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "premium",
+        target_id=plant.plant_id,
+    )
+
+
 def _focus_signature(surface: Any) -> tuple[tuple[str, str, str, str], ...]:
     """Return stable control identity without relying on transient PyQt wrappers."""
 
@@ -462,12 +477,8 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     starter = StarterConfirmationDialog(dashboard, engine, "rose")
     replacement = FertilizerReplacementDialog(
         dashboard,
-        current_name="Basic Fertilizer",
-        current_effect="+1 Growth per answer",
-        remaining_time="59 minutes",
-        new_name="Magical Fertilizer",
-        new_effect="+3 Growth per answer",
-        cost=150,
+        engine,
+        _live_replacement_quote(engine, storage),
     )
     story = PlantStoryDialog(dashboard, engine, "p1")
     nursery = NurseryDialog(dashboard, engine, storage)
@@ -987,12 +998,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
 
     replacement = FertilizerReplacementDialog(
         dashboard,
-        current_name="Basic Fertilizer",
-        current_effect="+1 Growth per answer",
-        remaining_time="59 minutes",
-        new_name="Magical Fertilizer",
-        new_effect="+3 Growth per answer",
-        cost=150,
+        engine,
+        _live_replacement_quote(engine, storage),
     )
     story = PlantStoryDialog(dashboard, engine, "p1")
     nursery = NurseryDialog(dashboard, engine, storage)
@@ -1005,19 +1012,18 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     replacement.show()
     application.processEvents()
     application.processEvents()
-    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 380
+    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 660
     assert replacement.property("comparisonMode") == "wide"
     assert replacement.minimumHeight() == min(
-        360,
         replacement._comparison_policy_minimum_height,
+        400,
     )
-    assert replacement.maximumHeight() < 400
     assert replacement.maximumHeight() == replacement.property(
         "contentBoundedMaximumHeight"
     )
     assert replacement.maximumHeight() == max(
         replacement.minimumHeight(),
-        min(380, replacement.property("contentNaturalHeight") + 10),
+        min(660, replacement.property("contentNaturalHeight") + 10),
     )
     assert species.minimumHeight() <= species.maximumHeight() <= 500
     assert species.maximumHeight() == species.property(
@@ -1041,7 +1047,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         replacement.minimumHeight()
         == replacement._comparison_policy_minimum_height
     )
-    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 440
+    assert replacement.minimumHeight() <= replacement.maximumHeight() <= 660
     assert replacement.maximumHeight() >= wide_bound
     compact_bound = replacement.maximumHeight()
     replacement.resize(820, compact_bound)
@@ -1049,8 +1055,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     application.processEvents()
     assert replacement.property("comparisonMode") == "wide"
     assert replacement.minimumHeight() == min(
-        360,
         replacement._comparison_policy_minimum_height,
+        400,
     )
     assert abs(replacement.maximumHeight() - wide_bound) <= 2
     settings = GardenSettingsDialog(dashboard, engine, config)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import math
 import random
 import time
@@ -66,8 +67,12 @@ from .purchases import (
     PurchaseQuote,
     PurchaseRequest,
     PurchaseStatus,
+    purchase_presentation,
 )
 from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryError
+
+
+logger = logging.getLogger(__name__)
 
 
 def difficulty_from_factor(value: Any) -> float:
@@ -1714,12 +1719,12 @@ class GardenGameEngine:
     @staticmethod
     def _unavailable_descriptor(message: str) -> EffectDescriptor:
         return EffectDescriptor(
-            function="This item is not available for purchase.",
-            buff="No effect will be applied.",
-            activation_condition="Unavailable.",
-            duration="Not applicable.",
-            stacking="Not applicable.",
-            replacement="Nothing will be replaced.",
+            function="Unavailable.",
+            buff="None.",
+            activation_condition="Not available.",
+            duration="None.",
+            stacking="None.",
+            replacement="None.",
             unlock_requirement=message,
         )
 
@@ -1744,6 +1749,11 @@ class GardenGameEngine:
         current_effect: str = "",
         current_duration: str = "",
         current_seconds_remaining: int = 0,
+        duration_seconds: int = 0,
+        resulting_seconds_remaining: int = 0,
+        inventory_before: int = 0,
+        inventory_after: int = 0,
+        current_equipped_name: str = "",
         state_signature: Any = None,
     ) -> PurchaseQuote:
         price = max(0, int(unit_price))
@@ -1791,6 +1801,11 @@ class GardenGameEngine:
             current_effect=current_effect,
             current_duration=current_duration,
             current_seconds_remaining=max(0, int(current_seconds_remaining)),
+            duration_seconds=max(0, int(duration_seconds)),
+            resulting_seconds_remaining=max(0, int(resulting_seconds_remaining)),
+            inventory_before=max(0, int(inventory_before)),
+            inventory_after=max(0, int(inventory_after)),
+            current_equipped_name=str(current_equipped_name or ""),
         )
 
     def quote_purchase(
@@ -1830,19 +1845,15 @@ class GardenGameEngine:
             name = f"{species.replace('_', ' ').title()} Seed" if species else "Plant Seed"
             price = self.SPECIES_PRICES.get(species)
             descriptor = EffectDescriptor(
-                function=(
-                    f"Creates one specific {species.replace('_', ' ').title()} plant "
-                    "instance in Collection."
-                ),
+                function=f"Adds 1 {species.replace('_', ' ').title()} plant to Collection.",
                 buff=(
-                    "No direct buff; after planting and nurturing, Anki card answers "
-                    "can add Growth to this plant."
+                    "No direct buff. A planted, nurtured plant gains Growth from card answers."
                 ),
-                activation_condition="Plant it in an empty unlocked garden bed, then nurture it.",
-                duration="The plant instance and its progress are permanent.",
-                stacking="Each released species can be purchased once.",
-                replacement="Does not replace or remove another plant.",
-                unlock_requirement="Choose a free starter before purchasing another species.",
+                activation_condition="Plant in an unlocked bed; then nurture.",
+                duration="Permanent.",
+                stacking="One purchase per species.",
+                replacement="Replaces nothing.",
+                unlock_requirement="Choose a free starter first.",
             )
             status = PurchaseStatus.READY
             message = ""
@@ -1869,6 +1880,8 @@ class GardenGameEngine:
                 descriptor=descriptor,
                 status=status,
                 message=message,
+                inventory_before=0,
+                inventory_after=1,
                 state_signature={
                     "starter_complete": bool(self.state.starter_selection_complete),
                     "owned": species in self.state.unlocked_species or any(
@@ -1899,6 +1912,9 @@ class GardenGameEngine:
                 )
             status = PurchaseStatus.READY
             message = ""
+            inventory_before = max(
+                0, int(self.state.consumables.get(spec.charge_id, 0))
+            )
             if not spec.purchasable or spec.price is None:
                 status = PurchaseStatus.ITEM_UNAVAILABLE
                 message = f"{spec.name} can only be earned while reviewing cards."
@@ -1914,7 +1930,13 @@ class GardenGameEngine:
                 descriptor=spec.descriptor,
                 status=status,
                 message=message,
-                state_signature={"growth": spec.growth, "purchasable": spec.purchasable},
+                inventory_before=inventory_before,
+                inventory_after=inventory_before + 1,
+                state_signature={
+                    "growth": spec.growth,
+                    "purchasable": spec.purchasable,
+                    "inventory": inventory_before,
+                },
             )
 
         if purchase_kind is PurchaseKind.FERTILIZER:
@@ -1941,21 +1963,13 @@ class GardenGameEngine:
                 )
             duration = self._duration_label(spec.duration_seconds)
             descriptor = EffectDescriptor(
-                function="Purchases and immediately applies this Fertilizer to the target plant.",
+                function="Applies this Fertilizer to the target plant.",
                 buff=f"+{spec.growth_per_answer:,} Growth per eligible Anki card answer.",
-                activation_condition=(
-                    "Active only while the target is the nurtured, unfinished plant "
-                    "in the garden."
-                ),
+                activation_condition="Active while the target is the nurtured, unfinished garden plant.",
                 duration=duration,
-                stacking=(
-                    "Purchasing the same active tier extends its remaining duration."
-                ),
-                replacement=(
-                    "Purchasing a different tier replaces the active Fertilizer and "
-                    "discards its remaining time."
-                ),
-                unlock_requirement=f"Purchase in the Nursery for {spec.price:,} Garden Coins.",
+                stacking="Same tier extends remaining time.",
+                replacement="Different tier replaces it and discards remaining time.",
+                unlock_requirement=f"Nursery: {spec.price:,} Garden Coins.",
             )
             if (
                 plant is None
@@ -2056,6 +2070,12 @@ class GardenGameEngine:
                     else ""
                 ),
                 current_seconds_remaining=seconds_remaining,
+                duration_seconds=spec.duration_seconds,
+                resulting_seconds_remaining=(
+                    seconds_remaining + spec.duration_seconds
+                    if extending
+                    else spec.duration_seconds
+                ),
                 state_signature={
                     "plant_id": plant.plant_id,
                     "planted": plant.planted,
@@ -2112,6 +2132,11 @@ class GardenGameEngine:
             elif not item.purchasable or item.price is None:
                 status = PurchaseStatus.ITEM_UNAVAILABLE
                 message = f"{item.name} can only be earned while reviewing cards."
+            current_equipped = (
+                WEATHER_CATALOG.get(str(self.state.selected_weather))
+                if item.kind == "weather"
+                else SCENERY_CATALOG.get(str(self.state.selected_background))
+            )
             return self._make_purchase_quote(
                 kind=purchase_kind,
                 item_id=item.item_id,
@@ -2124,6 +2149,9 @@ class GardenGameEngine:
                 descriptor=item.descriptor,
                 status=status,
                 message=message,
+                current_equipped_name=(
+                    current_equipped.name if current_equipped is not None else ""
+                ),
                 state_signature={
                     "owned": owned,
                     "acquisition": item.acquisition,
@@ -2139,13 +2167,13 @@ class GardenGameEngine:
         current_item_id = f"bed_{current_index + 1}"
         price = self.BED_PRICES.get(current_index)
         descriptor = EffectDescriptor(
-            function=f"Unlocks garden bed {current_index + 1} for one planted plant.",
-            buff="Adds one available planting location; it does not change Growth.",
-            activation_condition="Available immediately after the purchase is saved.",
+            function=f"Unlocks bed {current_index + 1} for one plant.",
+            buff="Adds 1 planting space; no Growth effect.",
+            activation_condition="Available after saving.",
             duration="Permanent.",
-            stacking="Beds unlock one at a time in sequential order.",
-            replacement="Does not replace an owned bed or move an existing plant.",
-            unlock_requirement="Choose a starter, then unlock each preceding bed.",
+            stacking="Beds unlock sequentially.",
+            replacement="Replaces nothing and moves no plants.",
+            unlock_requirement="Choose a starter; unlock earlier beds first.",
         )
         status = PurchaseStatus.READY
         message = ""
@@ -2161,7 +2189,7 @@ class GardenGameEngine:
         return self._make_purchase_quote(
             kind=purchase_kind,
             item_id=current_item_id,
-            item_name=f"Garden bed {current_index + 1}",
+            item_name=f"Garden Bed {current_index + 1}",
             category="Garden Space",
             artwork_category="ui",
             artwork_key="garden_bed",
@@ -2324,6 +2352,14 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
             return outcome
         except Exception:
+            logger.exception(
+                "Anki Garden: Garden Coin purchase could not be persisted",
+                extra={
+                    "purchase_kind": current.kind.value,
+                    "purchase_item_id": current.item_id,
+                    "purchase_request_id": request.request_id,
+                },
+            )
             self._restore_state(snapshot)
             return self._purchase_failure(
                 current,
@@ -2337,9 +2373,10 @@ class GardenGameEngine:
         quote: PurchaseQuote,
         event_key: str,
     ) -> PurchaseOutcome:
+        presentation = purchase_presentation(quote, ignore_status=True)
         if not self._debit_currency(
             event_key,
-            f"Purchased {quote.item_name}",
+            presentation.activity_label,
             quote.total_price,
         ):
             return self._purchase_failure(
@@ -2350,8 +2387,8 @@ class GardenGameEngine:
             )
 
         result_id = ""
-        message = ""
-        next_actions: tuple[str, ...] = ()
+        message = presentation.success_message
+        next_actions = presentation.next_actions
         applied = False
         equipped = False
 
@@ -2371,8 +2408,6 @@ class GardenGameEngine:
             self.state.unlocked_species.append(species)
             self.state.plants.append(plant)
             result_id = plant.plant_id
-            message = f"{plant.name} joined your Collection."
-            next_actions = ("Plant in garden", "View Collection")
             self._queue_feedback(
                 event_key,
                 "unlock",
@@ -2388,8 +2423,6 @@ class GardenGameEngine:
             self.state.consumables[quote.item_id] = (
                 self.state.consumables.get(quote.item_id, 0) + quote.quantity
             )
-            message = f"{quote.item_name} added to Supplements & Boosters."
-            next_actions = ("Use Growth Charge", "Continue shopping")
             self._queue_feedback(
                 event_key,
                 "charge_purchase",
@@ -2406,11 +2439,6 @@ class GardenGameEngine:
             else:
                 self.state.inventory.setdefault("scenery", []).append(quote.item_id)
                 self.state.inventory.setdefault("backgrounds", []).append(quote.item_id)
-            message = (
-                f"{quote.item_name} joined your Collection. It was not equipped "
-                "automatically."
-            )
-            next_actions = ("Open Customize", "Continue shopping")
             self._queue_feedback(
                 event_key,
                 "environment_purchase",
@@ -2477,12 +2505,6 @@ class GardenGameEngine:
                 if quote.disposition is PurchaseDisposition.REPLACED
                 else "applied"
             )
-            duration = self._duration_label(spec.duration_seconds)
-            message = (
-                f"{spec.name} {action} on {plant.name}: "
-                f"+{spec.growth_per_answer:,} Growth per card for {duration}."
-            )
-            next_actions = ("View plant", "Continue shopping")
             applied = True
             result_id = plant.plant_id
             self._queue_feedback(
@@ -2499,8 +2521,6 @@ class GardenGameEngine:
         else:
             self.state.unlocked_slots += 1
             result_id = str(self.state.unlocked_slots - 1)
-            message = f"Garden bed {self.state.unlocked_slots} unlocked."
-            next_actions = ("View garden", "Continue shopping")
             self._queue_feedback(
                 event_key,
                 "unlock",

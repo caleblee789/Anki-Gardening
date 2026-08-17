@@ -179,7 +179,9 @@ def test_multiword_species_uses_learner_facing_label_in_messages():
     ok, message, _plant = engine.purchase_species("japanese_maple")
 
     assert not ok
-    assert message == "Japanese Maple costs 400 Garden Coins."
+    assert message == (
+        "You need 400 more Garden Coins to purchase Japanese Maple Seed."
+    )
 
 
 @pytest.mark.parametrize("queue", [0, 1, 3, 2], ids=["new", "learning", "relearning", "review"])
@@ -586,10 +588,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
 
     ok, message = engine.purchase_fertilizer("p1", "quality")
     assert ok
-    assert message == (
-        "Quality Fertilizer applied for 2 hours: "
-        "+2 Growth per Anki card answer while active."
-    )
+    assert message == "Quality Fertilizer applied to Moss for 2 hours."
     plant = storage.state.plants[0]
     assert plant.fertilizer.tier == "quality"
     assert plant.fertilizer.started_at == 1_000
@@ -602,7 +601,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
     assert engine.fertilizer_growth(plant, now=9_000) == 0
     assert any(
         event.message
-        == "Quality Fertilizer is active on Moss: +2 Growth per Anki card answer for 2 hours."
+        == "Quality Fertilizer applied to Moss for 2 hours."
         for event in engine.peek_feedback()
     )
 

@@ -228,10 +228,18 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert starter is not None and starter.fertilizer is not None
     assert starter.fertilizer.tier == "quality"
     assert storage.state.currency_balance == fertilizer_balance
+    fertilizer_requests = [
+        record
+        for record in storage.state.completed_purchase_requests
+        if record.outcome.item_id == "quality"
+        and record.outcome.category == "Fertilizer"
+    ]
+    assert len(fertilizer_requests) == 1
     assert len([
         transaction
         for transaction in storage.state.currency_transactions
-        if transaction.event_key.startswith("purchase:fertilizer:")
+        if transaction.event_key
+        == f"purchase-request:{fertilizer_requests[0].request_id}"
     ]) == 1
 
     assert engine.purchase_environment("scenery", "spring")[0]
@@ -240,10 +248,18 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert "spring" in storage.state.inventory["scenery"]
     assert storage.state.selected_background == "default"
     assert storage.state.currency_balance == purchase_balance
+    scenery_requests = [
+        record
+        for record in storage.state.completed_purchase_requests
+        if record.outcome.item_id == "spring"
+        and record.outcome.category == "Scenery"
+    ]
+    assert len(scenery_requests) == 1
     assert len([
         transaction
         for transaction in storage.state.currency_transactions
-        if transaction.event_key == "purchase:environment:scenery:spring"
+        if transaction.event_key
+        == f"purchase-request:{scenery_requests[0].request_id}"
     ]) == 1
 
     assert engine.equip_environment("scenery", "spring")[0]

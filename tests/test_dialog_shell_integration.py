@@ -109,12 +109,12 @@ def test_settings_technical_details_remeasure_after_narrow_rewrap() -> None:
 
 
 def test_fixed_footers_and_scroll_regions_are_registered_on_catalog_dialogs() -> None:
-    replacement = _class_source(DASHBOARD, "FertilizerReplacementDialog")
+    purchase = _class_source(DASHBOARD, "PurchaseConfirmationDialog")
     nursery = _class_source(DASHBOARD, "NurseryDialog")
     dashboard = _class_source(DASHBOARD, "GardenDashboard")
 
-    assert "self.register_scroll_region(self.content_scroll)" in replacement
-    assert "self.register_pinned_footer(self.action_footer)" in replacement
+    assert "self.register_scroll_region(self.content_scroll)" in purchase
+    assert "self.register_pinned_footer(self.action_footer)" in purchase
     assert "self.register_pinned_footer(self.nursery_footer)" in nursery
     assert "self.register_scroll_region(scroll_region)" in nursery
     assert "dialog.register_scroll_region(options_scroll)" in dashboard
@@ -133,7 +133,7 @@ def test_capture_gate_rejects_nested_scroll_and_footer_clearance_failures() -> N
 def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -> None:
     source = DASHBOARD.read_text("utf-8")
     expected = {
-        "FertilizerReplacementDialog": "DialogSizeClass.COMPARISON",
+        "PurchaseConfirmationDialog": "DialogSizeClass.COMPARISON",
         "PlantStoryDialog": "DialogSizeClass.STANDARD_TEXT",
         "StarterConfirmationDialog": "DialogSizeClass.COMPACT_CONFIRMATION",
         "NurseryDialog": "DialogSizeClass.CATALOG",
@@ -143,6 +143,10 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     for class_name, size_class in expected.items():
         assert size_class in _class_source(DASHBOARD, class_name)
     assert "self.setMaximumSize(policy.max_width, policy.max_height)" in source
+    starter = _class_source(DASHBOARD, "StarterConfirmationDialog")
+    assert 'self.setProperty("actionMode", actions.mode)' in starter
+    assert 'self.setProperty("summaryMode", summary.mode)' in starter
+    assert 'self.setProperty("layoutMode", mode)' in starter
 
 
 def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None:
@@ -151,7 +155,7 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
         "DialogShell",
         "set_content_bounded_maximum_height",
     )
-    replacement = _class_source(DASHBOARD, "FertilizerReplacementDialog")
+    purchase = _class_source(DASHBOARD, "PurchaseConfirmationDialog")
     species = _method_source(
         DASHBOARD,
         "GardenDashboard",
@@ -161,11 +165,13 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert "natural_height + max(0, int(breathing_room))" in shell
     assert 'self.setProperty("contentNaturalHeight", natural_height)' in shell
     assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
-    assert "minimum_height=mode_minimum" in replacement
-    assert "else min(policy_minimum, 360)" in replacement
-    assert "breathing_room=10" in replacement
-    assert 'comparison.mode == "compact"' in replacement
-    assert 'mode_ceiling = 440 if comparison.mode == "compact" else 380' in replacement
+    assert "minimum_height=self._comparison_policy_minimum_height" in purchase
+    assert "breathing_room=6" in purchase
+    assert "compact = comparison.mode == COMPACT_MODE" in purchase
+    assert "660 if comparison.mode == COMPACT_MODE else 561" in purchase
+    assert "and int(width) >= 760" in purchase
+    assert "and not self.presentation.terminal" in purchase
+    assert "preferred = max(535, bounded)" in purchase
     assert "dialog.set_content_bounded_maximum_height(540)" in species
 
 

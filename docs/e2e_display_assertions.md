@@ -10,7 +10,7 @@ control the normal profile.
 2. Confirm Deck Browser and Overview show only the noninteractive scene,
    nurtured-plant Growth, Anki streak, Garden Coins, and **Open Garden**. Plant
    and Nursery clicks must do nothing there.
-3. With fresh schema 17 state, choose **Open Garden**, verify the introduction,
+3. With fresh schema 18 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
@@ -31,12 +31,16 @@ control the normal profile.
    stage artwork is clear; Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove,
    Japanese Maple, Wisteria, and Dahlia are stocked by the current complete V6
    lines, while seeded legacy-owned species remain visible and usable.
-8. Buy, shelve, and replant a species; unlock spaces three through six; buy
-   Small/Standard Growth Charges and use all three tiers; buy a Weather and a
-   Scenery and confirm neither auto-equips; exercise
-   insufficient balance, duplicate purchase, full garden, active-plant shelving,
-   and failed-save paths. No rejected operation may spend Garden Coins or lose
-   Growth, Story, Fertilizer, or Booster state.
+8. Purchase, move to Collection, and plant in garden a species; unlock spaces
+   three through six sequentially; purchase Small/Standard Growth Charges and
+   use all three tiers; purchase a Weather and Scenery and confirm neither
+   auto-equips. For every Coin purchase, inspect artwork, item/category/quantity,
+   exact mechanics, target where applicable, price, current/resulting balance,
+   Cancel focus, disabled submission, and receipt. Exercise insufficient
+   balance, persistence failure/retry, unavailable, already-owned, invalid
+   target, stale price/balance, duplicate request, full garden, active-plant
+   storage, and failed-save paths. No rejected operation may spend Garden Coins
+   or lose Growth, Story, Fertilizer, Booster, inventory, or bed state.
 9. Select plants at every scene edge and in intentional overlaps. Confirm one
    compact card, topmost-art hit testing, edge-safe placement, outside/Escape
    dismissal, and Nurture, Fertilize, Move, Story in a stable order.
@@ -47,7 +51,10 @@ control the normal profile.
     last successful move. There is no destination dropdown or Done button.
 11. Open Fertilize and verify Basic, Quality, and Magical cards show exact
     Garden Coin cost, Growth-per-answer effect, duration, and labeled item art. Extend the same tier, reject
-    then confirm replacement by a different tier, force expiry, and repurchase.
+    then confirm replacement by a different tier. The comparison must show both
+    exact effects/durations and the precise active time discarded, stacking at
+    narrow widths and balancing side by side when measured space fits. Force
+    expiry and repurchase.
     Sync answers from before, during, and after each interval; confirm each uses
     the tier active at answer time and that the direct bonus disappears at the
     exclusive expiry without changing earned Growth. Seed a Booster Potion,
@@ -74,10 +81,11 @@ control the normal profile.
     supported rows apply exactly once; excluded rows create no Growth and are
     not consumed. Simulate review-log, scheduler-cutoff, and save failure, then
     retry and confirm no answer is lost or duplicated.
-16. In the cottage's **Weather & Scenery** tab, equip every Weather and Scenery,
-    inspect every revealed passive/how-to-earn entry and locked silhouette, and
-    verify the exact odds/current Ultra pity. Toggle each visual layer off and
-    confirm its passive still applies. Inspect all 4:3, 16:9, and home reskins:
+16. In the cottage's **Weather & Scenery** tab, inspect every shared exact
+    mechanic, textual Equipped state, how-to-earn entry, locked silhouette,
+    ordered odds, and current Ultra pity. Confirm Collection is read-only and
+    routes to Customize; equip every Weather and Scenery and toggle each visual
+    layer there, then confirm its passive still applies. Inspect all 4:3, 16:9, and home reskins:
     plants, path, Nursery, cottage, occlusion, and hotspots must not move.
 17. Open Plant Story and confirm enlarged actual-stage art, distinct editable
     name/species/stage labels, relative Growth bar, inline rename, oldest-to-newest
@@ -93,12 +101,14 @@ control the normal profile.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     4:3, 16:9, home, and wide compositions.
-21. Restart only the disposable Anki process and re-verify schema 17,
+21. Restart only the disposable Anki process and re-verify schema 18,
     `starter_selection_complete`, nurtured plant, Growth, streak, Garden Coin
     processed-ID ledger, reward history, Ultra pity, daily claims, environment
     entitlements/loadout/visibility, Growth Charge and Booster inventory/current/history,
     Fertilizer current/history intervals, collection,
-    placements, stories, display preferences, and home visibility. Re-sync one
+    placements, stories, display preferences, completed-purchase replay history,
+    and home visibility. Re-submit one completed purchase request and confirm
+    its stored outcome returns without another debit or grant. Re-sync one
     already processed row and one late lower-ID row to verify restart
     idempotency.
 

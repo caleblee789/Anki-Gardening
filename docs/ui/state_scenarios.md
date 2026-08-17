@@ -2,7 +2,7 @@
 
 ## Fresh garden and starter
 
-- Schema 17 begins with two unlocked direct-soil spaces, no plants, Clear Skies
+- Schema 18 begins with two unlocked direct-soil spaces, no plants, Clear Skies
   plus Verdant Twilight entitlements, visible environment layers,
   `starter_selection_complete=false`, and onboarding at `introduction`.
 - Anki Home is the unnumbered entry/resume surface. The Garden counts six saved
@@ -75,6 +75,25 @@
   deterministic reward band may grant an environment, Growth Charge, Booster
   Potion, or 50 Garden Coins; it is never replayed from historical reviews.
 
+## Garden Coin purchase confirmation and replay
+
+- Every Coin purchase opens one shared confirmation with artwork/fallback,
+  item/category/quantity, current and resulting balance, exact mechanics, and
+  target where applicable. Cancel owns initial focus and Escape closes safely.
+- Confirmation revalidates item availability, ownership, price, balance,
+  target, Fertilizer state, and next-bed identity. Changed terms are shown as a
+  typed stale state and never silently committed.
+- Debit, grant/application/unlock, feedback, and completed-request record save
+  in one snapshot transaction. Persistence failure restores every in-memory
+  field and leaves the request safely retryable.
+- Repeating a successful UUID with identical canonical terms returns the stored
+  receipt without another debit or grant. Reusing that UUID with different
+  terms fails closed.
+- Receipts show the item, spend, new balance, disposition, and direct next
+  action. Typed errors distinguish insufficient Coins, persistence failure,
+  unavailable/already-owned items, invalid targets, stale price/balance, and
+  request-ID conflict.
+
 ## Anki streak, Fertilizer, and Booster Potions
 
 - Startup, sync, rollover, and live answers reconstruct the current consecutive
@@ -83,8 +102,8 @@
 - Fertilize opens Nursery's Supplements & Boosters tab. Basic, Quality, and
   Magical Fertilizer cards show exact Garden Coin
   cost, +1/+2/+3 Growth per answer, and one/two/four-hour duration.
-- Buying the same tier extends its deadline. Choosing another active tier
-  requires confirmation that the old remaining time will be discarded.
+- Purchasing the same tier extends its deadline. Purchasing another active
+  tier requires confirmation that the exact remaining time will be discarded.
 - Replacement archives the completed portion of the old tier; repurchase after
   expiry retains the old interval. Late same-day answers use the tier active at
   answer time, while pre-activation and expiry-boundary answers receive none.
@@ -114,20 +133,23 @@
   `direct_soil` assets. Incomplete lines remain hidden.
 - An already-owned legacy species remains visible, plantable, and progress-safe
   even when it is not currently stocked.
-- Shelving preserves Growth, memories, Fertilizer, and Booster state. The plant currently being
-  nurtured must be changed before it can be shelved.
-- Space unlocks are contiguous and transactional. All six V6 spaces accept
-  direct-soil plants.
+- Moving to Collection preserves Growth, memories, Fertilizer, and Booster
+  state. The plant currently being nurtured must be changed before it can be
+  moved to Collection.
+- Space unlocks are contiguous and transactional. Only the next bed is priced
+  and enabled; its confirmation revalidates the next index before debit. All
+  six V6 spaces accept direct-soil plants.
 
 ## Weather, Scenery, and reward Collection
 
 - Nursery offers only free/purchasable environment choices. Each one-time
   purchase is transactional and remains unequipped until the learner chooses it
-  in the cottage's Weather & Scenery tab.
-- Collection shows one equipped Weather and one Scenery, independent visual
-  switches, every passive/how-to-earn entry, exact ordered drop odds, and the
-  current Ultra pity denominator. Locked drop-only art is a silhouette; its
-  rules are not hidden.
+  in Customize Garden.
+- Collection shows one equipped Weather and one Scenery, every exact
+  function/buff/activation/duration/stacking/replacement/unlock rule, ordered
+  drop odds, and the current Ultra pity denominator. It is read-only and routes
+  equipment or visibility changes to Customize. Locked drop-only art is a
+  silhouette; its rules are not hidden.
 - Equipped passives stack. Turning off a visual layer does not turn off its
   passive. Weather, Scenery, and Charge Growth remain separate in details.
 - Daily Scenery gifts require that day's first eligible answer, use the answer's
@@ -186,14 +208,16 @@
   Growth-source defaults. Schema 16 then upgrades to schema 17 with resumable
   onboarding: empty gardens start at introduction, planted incomplete starters
   resume at nurture, and established Gardens migrate to done. Older supported
-  schemas continue through the established stage/ledger migration boundary. An
+  schemas continue through the established stage/ledger migration boundary.
+  Schema 17 then upgrades to schema 18 after an exact backup, preserving every
+  existing field and initializing an empty completed-purchase replay ledger. An
   atomic current-day ID-ledger seed prevents duplicate or missed out-of-order
   synced answers across restarts. Cutoff, database, backup, and state-write
   failures preserve the original data and retry without advancing review state.
 - The first transition to scene geometry 6 refreshes incompatible visual
   placement only; it does not change plant progression. The migration notice
   explains any plant returned to Collection.
-- Schema 17 repairs bounded numeric values, duplicate IDs/species/slots, invalid
+- Schema 18 repairs bounded numeric values, duplicate IDs/species/slots, invalid
   `active_plant_id`, and malformed story/economy/reward records.
 - Unreadable state is copied to `garden_state.invalid.json`; other unsupported
   schemas are backed up before recovery.

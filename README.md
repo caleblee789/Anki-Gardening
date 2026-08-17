@@ -13,7 +13,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- The release checks cover all 146 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
+- The release checks cover all 181 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
 
 ## Gameplay terms
 
@@ -128,7 +128,7 @@ drop, and only an Ultra environment resets the pity counter. Completed Rare
 environment tiers fall back to a Standard Charge; completed Very Rare or Ultra
 tiers fall back to a Grand Charge.
 
-The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia—and up to six garden spaces. The Nursery lists a species only after its complete six-stage Verdant Twilight line is release-ready; all ten configured species are ready in the current bundle. Existing owned species remain usable even when they are not currently stocked. Shelving a plant preserves its Growth and story. Species cost 100–600 Garden Coins, and spaces three through six cost 150, 300, 500, and 800 Garden Coins.
+The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia—and up to six garden spaces. The Nursery lists a species only after its complete six-stage Verdant Twilight line is release-ready; all ten configured species are ready in the current bundle. Existing owned species remain usable even when they are not currently stocked. Moving a plant to Collection preserves its Growth and story. Species cost 100–600 Garden Coins, and spaces three through six cost 150, 300, 500, and 800 Garden Coins.
 
 | Species | Garden Coins |
 |---|---:|
@@ -146,13 +146,13 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current state is schema 17. It stores the resumable
-six-step onboarding state alongside Weather and Scenery entitlements, loadout
+add-on upgrades. The current state is schema 18. It stores the resumable
+six-step onboarding state and bounded completed-purchase replay ledger alongside Weather and Scenery entitlements, loadout
 and visibility, Growth Charges, daily passive claims, Ultra pity, separate
 Growth-source totals, the deterministic reward seed/drop history, and the
 existing Garden, Booster Potion, Fertilizer, and bounded scheduler-day review
-state. Schema 16 development state is accepted and upgraded; failed reads or
-writes remain fail-closed.
+state. Schema 17 development state is backed up and upgraded without changing
+existing fields; failed reads or writes remain fail-closed.
 
 ## Interface
 
@@ -163,7 +163,7 @@ writes remain fail-closed.
 - Watering cans use the six-bed geometry authority and row-level opaque planter-and-soil exclusions, so they stay beside the nurtured plant, clear of planter artwork, and behind the correct foreground layer in both Garden and Home renderers.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
-- Weather and Scenery are equipped, changed, shown, and hidden from the Garden Progress cottage's collection window. They are no longer settings controls.
+- Collection describes Weather and Scenery ownership, exact mechanics, and current equipment, then routes changes to Customize Garden. Customize is the sole equipment and visibility writer.
 - Production Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
 
 ## Runtime bundle
@@ -180,15 +180,14 @@ assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
 current-only file set and a ratcheted 78 MiB archive ceiling for the complete
-schema-17 scenery, plant, and planter library.
+schema-18 scenery, plant, and planter library.
 
-The frozen 2.1.0 production build contains 262 files and is 81,702,743 bytes
-(77.92 MiB), SHA-256
-`9d60b0d1b9523ca3f8c2b9e14be186c8b5ca19137f63064d1edfe15c99aa5b79`.
-Deterministic maximum compression reduced the archive by 11,761 bytes from the
-pre-optimization baseline without rewriting or removing any manifest-owned
-image. Repeated builds in the frozen release environment produced the same
-archive hash.
+The current validated 2.1.0 production candidate contains 267 files and is
+81,771,222 bytes (77.98 MiB), SHA-256
+`3253912c4e923f4ccc1c969e4c0e4be7ea62efecd07023a0604a874d83f2931a`.
+The complete package suite and explicit production build passed the
+deterministic-content, source/archive-parity, ZIP-integrity, and 78 MiB gates
+without rewriting or removing manifest-owned artwork.
 
 ## Troubleshooting
 

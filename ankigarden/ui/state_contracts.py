@@ -39,7 +39,8 @@ def onboarding_state_display(
 ) -> OnboardingStateDisplay:
     """Derive the first-plant lifecycle from persisted Garden evidence.
 
-    Schema-17 onboarding progress is authoritative. The separate add-on
+    Schema-18 Garden state preserves authoritative schema-17 onboarding
+    progress. The separate add-on
     preference is consulted only by legacy callers that have no persisted
     progress object, and can never make an empty or merely planted garden look
     nurtured.
