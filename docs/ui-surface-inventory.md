@@ -10,20 +10,21 @@ capture contract v9 reconciled it in
 set only. Capture contract v10 added three Collection resize states; its
 validator-clean macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
-149 of 149 and remains the preserved pre-change baseline. Current source is
-capture contract v11 with 156 ordered surfaces. Its validator-clean macOS Qt
-run at
-`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427` is
-156 of 156 and `complete: true`.
+149 of 149 and remains the preserved pre-change baseline. Capture contract v11
+added resilient states 150-156. Current source is capture contract v12 with 157
+ordered surfaces. Its validator-clean macOS Qt run at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
+157 of 157 and `complete: true`.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
-Current v11 preserves IDs 001-149 and appends resilient-state IDs 150-156.
+Current v12 preserves IDs 001-156 and appends ID 157 for the known-but-not-
+collected species overview.
 Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
-did not change in v9. Viewports for IDs 001-156 are logical Qt client sizes from
-the v11 manifest. A
+did not change in v9. Viewports for IDs 001-157 are logical Qt client sizes from
+the v12 manifest. A
 `declared -> actual` value means a screen, widget, or native-frame constraint
-normalized the request. Responsive modes come from the v11 manifest rather
+normalized the request. Responsive modes come from the v12 manifest rather
 than from stale v9 fixed-edge labels. The formerly missing Home rows use the
 same 667x570 Anki window as their adjacent Home fixtures.
 
@@ -82,6 +83,18 @@ dialog-memory probe. The complete 20-page contact-sheet set at
 and exact manifest passed the independent repository validator for all 156
 surfaces. IDs 019 and 064-069 are present and pass their fixture and geometry
 audits.
+
+The current v12 run regenerated all IDs 001-157 at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`.
+Its manifest and filesystem agree on 157 PNGs with `complete: true`, zero
+failures and text/layout warnings, complete fixture validation, 61 of 61
+dialog-scroll audits, all 13 responsive-stability pairs, and a passing 12-cycle
+dialog-memory probe. The complete 20-page contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-190930`
+and exact manifest passed the independent repository validator for all 157
+surfaces. IDs 019 and 064-069 remain present. ID 157 explicitly proves that a
+known catalog species with zero collected instances keeps its identity and
+ordinary stage previews while Rare remains mysterious.
 
 Manual review of every raw PNG and all 18 partial contact sheets found these
 successful-file exceptions in the v8 baseline:
@@ -144,7 +157,7 @@ its exact fixture, component, viewport, mode, and owner.
 
 | Profile | User-facing surface and entry point | Persistence and source of truth | Primary actions | Required variants, including uncaptured gaps | Fixture implementation |
 |---|---|---|---|---|---|
-| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-16 `GardenState` onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
+| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-17 `GardenState` onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
 | FG | First-run Garden; `AnkiGardenApp.open_dashboard()` | Same `GardenState` plus `select_garden_ui()` and scene payload; onboarding step is transient config/UI projection | Choose first plant, open Nursery | No starter, no release-ready stock, planted-before-Nurture, normal, save error | `_capture_starter_garden()`; native Dashboard/Scene |
 | FN | Starter Nursery; first-run direct Nursery route | Release-ready six-stage asset catalog plus onboarding/species/plants/slots; no mutation until confirmed Choose | Choose, page/filter, back | No stock, locked/missing art, disabled, confirmation, footer reachability, save error | `_capture_starter_nursery_after()`; real catalog in starter mode |
 | FC | Starter confirmation; selected Nursery starter | Selected release-ready species is transient; confirmed `choose_starter()` atomically persists one plant and completion | Confirm Choose, cancel/back | Enabled/disabled, save error, compact/wide | `_capture_starter_confirmation()` or resize matrix |
@@ -154,7 +167,7 @@ its exact fixture, component, viewport, mode, and owner.
 | FR | Fertilizer replacement confirmation | Same fertilizer transaction state; discarded remaining time is transient confirmation data | Replace, cancel | Current/new tier, remaining time, disabled/stale target, save error, compact/wide | `_capture_fertilizer_replacement_confirmation()` or resize matrix |
 | ST | Plant Story; selected plant -> Story | Plant identity/species/stage/Growth/memories/discovery and asset metadata; rename persists atomically | Rename/save, close, Choose another when eligible | No/one/many memories, locked Rare, missing art, success/error, responsive | `_capture_story_after()` or resize matrix |
 | P | Growth/Streak/Coins, Progress, Achievements and Collection; metric/header/cottage routes | Daily source counters, totals, streak, currency ledger, achievements/reward history, plants/species discovery, environment ownership/status | Navigate, filter, inspect species/effects, open Customize for equipment changes, close | Zero/new/nonzero/active, empty/filter-empty, locked, completed, at-risk/missed, earned/next, loading/error/disabled, responsive | `_capture_metric()`, `_capture_progress_page()`, collection fixtures, resize matrix |
-| SO | Species overview; discovered Collection species | Owned plant instances, highest stage/discovery, memories and asset metadata | Inspect/close | Missing/removed instance, locked Rare, missing art, responsive | `_build_species_overview_dialog()` plus capture/resize fixture |
+| SO | Species overview; any known catalog species | Catalog identity plus owned instances, highest reached stage/discovery, shared thumbnail metadata, and per-species Rare unlock | Inspect/close | Collected, known-not-collected, zero instances, locked Rare, missing art, responsive | `_build_species_overview_dialog()` plus capture/resize/known-not-collected fixture |
 | C | Customize Garden; Dashboard header | One local draft over persisted inventory, selected Weather/Scenery and visual-only visibility flags; `apply_environment_loadout()` is the commit | Choose owned effects, toggle artwork, Save changes, cancel | Clean/dirty, on/off, unowned/locked, success/error, responsive | Customize fixtures or resize matrix; native GardenStudio/Scene preview |
 | N | Nursery commerce; Nursery landmark/first-run/related routes | Catalog, Coins/ledger, owned species/instances, consumables, slots, environment inventory and release-ready assets | Choose, Purchase/Buy, Unlock, Use, Plant, browse | Owned, locked/disabled, success/error, empty/no stock, missing-art fallback, footer reachability, responsive | Nursery tab/stress fixtures or resize matrix |
 | SD | Settings and Diagnostics; Anki menu or Dashboard Settings | Staged Anki config plus separately persisted Garden name; runtime diagnostics/build capabilities/telemetry are derived | Save changes, cancel, restore defaults, toggle, expand/refresh/copy diagnostics | Clean/warning, dirty, invalid, rollback/error, production controls absent, reduced motion, responsive | Settings fixture methods or resize matrix; both scroll positions reset |
@@ -172,7 +185,9 @@ The reference v8 set used the primary macOS display. The final v9 set records a
 mixed-display run: six first-run captures used the secondary display at DPR
 1.5 and 140 captures used the primary display at DPR 3.0. The current v10 run
 records six captures on the secondary display at DPR 1.5 and 143 on the primary
-display at DPR 3.0. Both runs used requested `QT_SCALE_FACTOR=1.5`. This is
+display at DPR 3.0. The current v12 run records six captures on the secondary
+display at DPR 1.5 and 151 on the primary display at DPR 3.0. These runs used
+requested `QT_SCALE_FACTOR=1.5`. This is
 useful multi-display provenance, but it is not native mixed-DPI acceptance
 because the suite did not deliberately exercise cross-display transitions.
 There is no current native standard-scale, true OS 200-percent, or Windows
@@ -252,8 +267,8 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 067 | `watering-can-overview-plot-2` | H | AnkiQt / Home HTML | Nurtured marker on Overview plot 2 | 667x570 | default | Home |
 | 068 | `watering-can-overview-plot-4` | H | AnkiQt / Home HTML | Nurtured marker on Overview plot 4 | 667x570 | default | Home |
 | 069 | `watering-can-overview-plot-6` | H | AnkiQt / Home HTML | Nurtured marker on Overview plot 6 | 667x570 | default | Home |
-| 070 | `collection-several-discovered` | P | GardenProgressDialog | Exactly 4 of 10 release species discovered; remainder locked | 1140x630 | wide | Progress + Collection |
-| 071 | `collection-no-filter-matches` | P | GardenProgressDialog | Locked filter after all species temporarily discovered | 1140x630 | wide | Progress + Collection |
+| 070 | `collection-several-discovered` | P | GardenProgressDialog | Exactly 4 of 10 catalog species collected; all identities remain known and Rare stays gated per species | 1140x630 | wide | Progress + Collection |
+| 071 | `collection-no-filter-matches` | P | GardenProgressDialog | All 10 species collected; Not collected filter produces the explicit empty result | 1140x630 | wide | Progress + Collection |
 | 072 | `achievement-completed` | P | GardenProgressDialog | Coherent completed achievement thresholds | 1140x630 | wide | Progress + Collection |
 | 073 | `clear-recall-separate-conditions` | P | GardenProgressDialog | 83% accuracy and 12/20 answers shown separately | 1140x630 | wide | Progress + Collection |
 | 074 | `streak-at-risk` | P | GardenProgressDialog | 7-day streak; no review today; last active yesterday | 1140x630 | wide | Progress + Collection |
@@ -339,6 +354,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 154 | `home-preview-stale` | H | AnkiQt / Home HTML | Last valid scene retained with textual updating status | 667x570 target | default target | Home |
 | 155 | `onboarding-persistence-error` | FG | GardenDashboard / GardenSceneWidget | Failed introduction-to-Nursery save rolls back and announces the error | 1177x630 target | compact target | First run + Garden |
 | 156 | `move-persistence-error` | G | GardenDashboard / GardenSceneWidget | Failed move save restores slots, retains selection, and offers retry | 1177x630 target | compact target | Garden + Scene |
+| 157 | `collection-known-not-collected-overview` | SO | GardenDialog (`SpeciesOverviewDialog`) | Dahlia is catalog-known with zero collected/planted instances; Seed through Flowering preview, Rare mystery | 960x496 | default; wide split | Progress + Collection |
 
 ## Ownership and implementation boundary
 
@@ -353,8 +369,9 @@ with each surface owner rather than owning the whole module.
 The complete 146/146 v9 run closes its historical manifest gap but is stale
 after later source and capture-contract changes. The validator-clean v10 run
 supplies 149/149 pre-change macOS Qt evidence; the v11 run supplies 156/156
-current-source automated macOS Qt evidence, including the appended loading,
-error, stale, and rollback states. No local capture by itself closes the native
+frozen-foundation evidence. The v12 run supplies 157/157 current-source
+automated macOS Qt evidence, including the appended known-not-collected species
+state. No local capture by itself closes the native
 platform, uncaptured variant, or human-accessibility gates identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true

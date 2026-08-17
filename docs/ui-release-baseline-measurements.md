@@ -7,11 +7,11 @@ have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
-visual acceptance. Current source declares capture contract v11 with 156
+visual acceptance. Current source declares capture contract v12 with 157
 ordered surfaces. The v10 macOS Qt run remains the 149-of-149 pre-change
-baseline. The v11 macOS Qt run at
-`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427` is
-156 of 156, complete, warning-free, and independently validator-clean. It
+baseline. The v12 macOS Qt run at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
+157 of 157, complete, warning-free, and independently validator-clean. It
 closes current-source automated capture completeness, but not the
 native-platform, human-accessibility, and full visual-acceptance gates.
 
@@ -280,28 +280,28 @@ remains readable and operable. This
 closes the previously reported 066/111 defects and targeted resize checks.
 Screenshot inspection is not human assistive-technology acceptance.
 
-## Current v11 capture evidence
+## Current v12 capture evidence
 
-The frozen source regenerated IDs 001-156, including the historically missing
-019 and 064-069 plus the appended 150-156 resilient states. The run started at
-`2026-08-16T17:34:27.988`, finished at `2026-08-16T17:38:00.545`, and recorded
-212,557.403 ms of monotonic capture duration. Its manifest reports
+The frozen source regenerated IDs 001-157, including the historically missing
+019 and 064-069, resilient states 150-156, and the known-not-collected species
+overview at 157. The run started at `2026-08-16T19:09:33.985`, finished at
+`2026-08-16T19:13:12.827`, and recorded 218,843.743 ms of monotonic capture
+duration. Its manifest reports
 `complete: true`, zero failures, zero text/layout warnings, complete fixture
-validation and manifest writing, 60 of 60 required dialog-scroll audits, all
+validation and manifest writing, 61 of 61 required dialog-scroll audits, all
 13 responsive-stability pairs, and a passing 12-cycle dialog-memory probe with
 zero watched-class deltas.
 
 The manifest-owned contact-sheet index at
-`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-173425/contact-sheet-set.json`
-reports 156 surfaces, 20 pages, and `complete: true`. A fresh invocation of
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-190930/contact-sheet-set.json`
+reports 157 surfaces, 20 pages, and `complete: true`. A fresh invocation of
 `scripts/validate_ui_capture.py` against the exact manifest and index returned
-status `valid`, capture count 156, surface count 156, and page count 20.
+status `valid`, capture count 157, surface count 157, and page count 20.
 
 | Artifact | File count | Archive size | SHA-256 |
 |---|---:|---:|---|
-| `dist/anki_garden.ankiaddon` | 265 | 81,749,898 bytes | `d0e68201cf65dbdac55c391d7198fd5219901ed151983f0ac1ea561a2dbdec25` |
-| `build/ui-face-captures/capture-sequence-20260816-173425/anki_garden_capture.ankiaddon` | 266 | 81,817,050 bytes | `b4dada22a21891de3deebc022e268d20adef54c3bff6b34b76cdd7c5b370e342` |
-| `build/ui-face-captures/anki-garden-ui-faces-20260816-173425.zip` | — | 151,403,261 bytes | `5ae3687ad46571078528624d021c561fea86bd2bad3e26eb9c9e64617a8232c8` |
+| `build/ui-face-captures/capture-sequence-20260816-190930/anki_garden_capture.ankiaddon` | 267 | 81,825,556 bytes | `5249980b1990bade85a9b19c4c16f178185f632b025ba913d9b8c73d0c66a9a6` |
+| `build/ui-face-captures/anki-garden-ui-faces-20260816-190930.zip` | — | 151,355,144 bytes | `a0d82bb42741dd9c9d72ad2ea53e178c6e99e2e4d29403d2b6ffc55e782802d7` |
 
 The run used the secondary and primary macOS displays at their observed DPRs
 under requested Qt scale factor 1.5. This is display provenance, not native
@@ -386,8 +386,9 @@ startup and exact first paint remain unmeasured.
 For the historical v9 source, the explicit package, fresh disposable-profile
 run, 146-file completeness gate, and independent manifest/contact-sheet
 validation are complete. The v10 run supplies the corresponding 149-file
-pre-change macOS Qt gate; the v11 run supplies the 156-file current-source
-macOS Qt gate. The remaining performance and platform work is:
+pre-change macOS Qt gate; the v11 run supplies the 156-file frozen-foundation
+gate; and v12 supplies the 157-file current-source macOS Qt gate. The remaining
+performance and platform work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit
    first-paint boundary.

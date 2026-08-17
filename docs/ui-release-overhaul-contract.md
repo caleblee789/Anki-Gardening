@@ -1,8 +1,8 @@
 # Anki Garden UI release-overhaul contract
 
 Status: implemented contract for Release 2.1.0. The current source capture
-contract is v11 with 156 ordered surfaces. The frozen-source run at
-`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
+contract is v12 with 157 ordered surfaces. The frozen-source run at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`
 passes every manifest, fixture, layout, and contact-sheet check. The
 validator-clean v10 run remains the preserved pre-change baseline. This
 document records the current implementation boundary and the still-separate
@@ -95,11 +95,11 @@ source only. It does not establish native Windows, true OS 100/150/200-percent,
 deliberate mixed-DPI transition, human assistive-technology, contrast, or full
 product visual acceptance.
 
-The current source appends IDs 150-156 for starter placement, starter
+Capture contract v11 appended IDs 150-156 for starter placement, starter
 completion, Home preview loading/error/stale, onboarding persistence failure,
 and move persistence failure. IDs 001-149 retain their semantic identities.
 
-The final v11 run is:
+The frozen v11 foundation run is:
 
 `build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
 
@@ -114,6 +114,32 @@ is complete. A fresh independent repository-validator invocation reported all
 156 surfaces and all 20 pages valid. The capture report records
 `quality_status: clean`; the capture package SHA-256 is
 `b4dada22a21891de3deebc022e268d20adef54c3bff6b34b76cdd7c5b370e342`.
+
+This closes automated visual completeness for the frozen v11 source. It does
+not establish native Windows, true OS-level
+100/150/200-percent or high-DPI acceptance, human assistive-technology review,
+contrast review, or full product visual acceptance.
+
+Capture contract v12 preserves IDs 001-156 and appends ID 157,
+`collection-known-not-collected-overview`, to pin the Collection mystery rule:
+catalog species identity and Seed-through-Flowering previews remain known even
+before collection; only the matching Rare artwork remains hidden until that
+species reaches Rare.
+
+The final v12 run is:
+
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`
+
+Its manifest, ordered records, and filesystem agree on all 157 PNGs, including
+019, 064-069, and the new 157. It records `complete: true`, zero failures, zero
+text/layout warnings, complete fixture validation and manifest writing, 61 of
+61 required dialog-scroll audits, all 13 responsive-stability pairs, and a
+passing 12-cycle dialog-memory probe with zero watched-class deltas. The
+manifest-owned 20-page contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260816-190930`
+is complete and independently validator-clean. The capture package contains
+267 files, is 81,825,556 bytes, and has SHA-256
+`5249980b1990bade85a9b19c4c16f178185f632b025ba913d9b8c73d0c66a9a6`.
 
 This closes current-source automated visual completeness for the captured
 macOS Qt mixed-display run. It does not establish native Windows, true OS-level
@@ -134,6 +160,9 @@ The following decisions define this implementation:
    dialog. Weather/Scenery mutations remain in their established owner.
 5. Native Windows and true OS-level 100/150/200/high-DPI acceptance remain
    separate release gates. Local logical-scale proxies do not close them.
+6. Collection species identities and ordinary stage artwork are known catalog
+   information everywhere. Only Rare artwork is mysterious, and it unlocks per
+   species when that species reaches Rare.
 
 ## Architecture boundary
 
@@ -171,9 +200,9 @@ surface family.
 | 007-008, 018-019, 064-069, 152-154 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from `GardenPreviewSnapshot`; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
 | 009-012, 016, 042-055, 058-063, 087-103, 156 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and shared `SceneGeometryLayout` | Select, Nurture, Fertilize, Move/swap, Story, Garden Progress, Collection, Settings, Undo; hover/focus, long values, all stages/plots, rollback, narrow/scaling variants |
 | 013-015, 056-057, 136-143 | Fertilizer and replacement confirmation | `DialogShell`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; target plant, active interval/history, nurtured capability, balance, and transaction ledger | Purchase/Extend/Replace, cancel; unaffordable, affordable, active, expiring, history-cap, save-error, and responsive variants |
-| 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
+| 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, shared forecast/fertilizer projections, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
 | 020-025 | Growth, streak, and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; daily source allocation, review totals, streak, currency, and ledger | Navigate/close; zero, new, nonzero, active, history, empty, and error variants |
-| 026-029, 070-076, 144-149 | Garden Progress, Achievements, Collection, species overview | `GardenProgressDialog`, species overview `GardenDialog` | Header Progress, cottage, metric routes, Collection selection | Native Qt; totals, daily stats, achievements/rewards, plants, discovery, environment ownership/status, and assets | Filter, inspect, open Customize for equipment changes, navigate; several/none/filter-empty/locked/completed/at-risk/missed/automatically-earned/next and responsive variants |
+| 026-029, 070-076, 144-149, 157 | Garden Progress, Achievements, Collection, species overview | `GardenProgressDialog`, species overview `GardenDialog` | Header Progress, cottage, metric routes, Collection selection | Native Qt; totals, daily stats, achievements/rewards, plants, catalog-known species, discovery, environment ownership/status, and assets | Filter, inspect, open Customize for equipment changes, navigate; several/none/filter-empty/known-not-collected/Rare-mystery/completed/at-risk/missed/automatically-earned/next and responsive variants |
 | 030-032, 116-120 | Customize Garden | `CustomizeGardenDialog` | Environment management routes from Collection or Settings | Native Qt with `GardenStudioWidget`/`GardenSceneWidget` preview; one transient draft over persisted environment loadout | Select owned Weather/Scenery, toggle visuals, Save changes, cancel; on/off, locked, clean/dirty, save-success/error, and responsive variants |
 | 033-036, 077-081, 121-125 | Nursery catalog and commerce | `NurseryDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalog, balance, ownership, consumables, spaces, environment inventory, release-ready asset records | Choose, Purchase, Use, Plant, browse; owned, locked/disabled, success/error, empty/no-stock, missing-art fallback, final-row/footer, and responsive variants |
 | 037-041, 082-086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, invalid, save rollback/error, production-controls-absent, reduced-motion, and responsive variants |
@@ -200,6 +229,7 @@ webview bridge, not a general routing framework.
 | Metric card | Plant Growth / Anki streak / Garden Coins | Focused `GardenProgressDialog` page | None |
 | Selected plant card | Nurture | Engine `set_active_plant()` | Atomically changes future Growth routing and active periods |
 | Selected plant card | Fertilize | Dedicated Fertilizer dialog | None until Purchase/Extend/Replace commits |
+| Selected plant card | Growth Charge | Existing Garden Progress Growth Charge selector | No duplicated Charge logic; the existing purchase/use owner performs any later commit |
 | Selected plant card | Move | Scene placement mode | Destination commit changes slots atomically; Undo is session-local |
 | Selected plant card | Story | `PlantStoryDialog` | None except a confirmed rename |
 | Collection plant | Plant | Engine `plant_from_collection()` | Atomically assigns an empty unlocked slot |
@@ -379,9 +409,23 @@ validate, are release-preferred, and use compatible V6 direct-soil geometry
 authoritative when a species is temporarily unavailable in the storefront.
 
 All plant artwork consumers must resolve through these types and shared
-placement helpers. Plant Story, Collection, Nursery, Home, Dashboard, Settings
-preview, and fallback thumbnails may not invent per-surface crop offsets. Rare
-art remains hidden until the matching species has been discovered at Rare.
+placement helpers. `AssetPlacement.thumbnail_bounds`,
+`thumbnail_optical_center`, `thumbnail_scale`, and `thumbnail_safe_padding`
+form the normalized thumbnail contract, with alpha bounds as the automatic
+fallback. Plant Story, Collection, Nursery, species overview, Home, Dashboard,
+Settings preview, and fallback thumbnails may not invent per-surface crop
+offsets. Aspect ratio is preserved, meaningful foliage and roots remain inside
+the safe frame, and the same normalized source is reused at each size. Catalog
+species identities and Seed-through-Flowering artwork are known everywhere;
+Rare art alone remains hidden until the matching species reaches Rare.
+
+Cards-left and Fertilizer copy are also renderer-neutral projections.
+`growth_forecast()` consumes the engine's next-card award projection so stage,
+effective Growth-per-card, active buffs, singular/plural grammar, and fully
+grown handling have one source. `fertilizer_status()` owns the structured name,
+exact effect, stable duration, under-one-minute, expired, inactive, and
+accessible-text states. Native surfaces render these projections and never
+recalculate them from visible labels.
 
 The requested `PlantDisplayModel` and `PlantAssetMetadata` concepts are already
 represented by `PlantUiSnapshot` / `GardenUiSnapshot` and
@@ -767,7 +811,9 @@ explicitly approves a contract change:
     asset metadata. Coordinator revision invalidates Home after commits.
 11. A release-ready species requires all six validated local stages. Missing
     art uses a named, stable graphical fallback and never substitutes another
-    fixture. Rare previews remain locked until discovered.
+    fixture. Species identity and ordinary stages remain known throughout the
+    Collection; Rare artwork remains locked per species until that species
+    reaches Rare.
 12. The dark evergreen identity remains shared. Nursery may retain its warmer
     contextual palette while using common controls, focus, spacing, and
     interaction conventions.
@@ -822,15 +868,24 @@ cannot serve as later after-change evidence.
 
 The preserved pre-change run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543`
-regenerated all 149 v10 fixtures. The current after-change v11 run at
+regenerated all 149 v10 fixtures. The subsequent frozen v11 run at
 `build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427`
 regenerated all 156 fixtures. Its exact manifest and 20-page manifest-owned
 contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
 capture count 156, surface count 156, and page count 20. The manifest also
 records all 60 required dialog-scroll audits, all 13 responsive-stability
 pairs, and the 12-cycle dialog-memory probe as passing. This is complete
-current-source automated macOS Qt capture evidence, subject to the visual,
-accessibility, and native-platform boundaries below.
+automated macOS Qt capture evidence for the frozen v11 source.
+
+The current v12 run at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`
+regenerated all 157 fixtures. Its exact manifest and 20-page manifest-owned
+contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
+capture count 157, surface count 157, and page count 20. The manifest records
+all 61 required dialog-scroll audits, all 13 responsive-stability pairs, and
+the 12-cycle dialog-memory probe as passing. This is complete current-source
+automated macOS Qt capture evidence, subject to the visual, accessibility, and
+native-platform boundaries below.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel

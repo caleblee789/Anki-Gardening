@@ -7,11 +7,11 @@
 
 Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
 remain evidence for the source audited on 2026-08-15, not for current source.
-Current visual coverage is governed by capture contract v11 with 156 ordered
+Current visual coverage is governed by capture contract v12 with 157 ordered
 surfaces. The validator-clean v10 macOS Qt run remains the 149/149 pre-change
-baseline. The frozen schema-17 v11 run at
-`build/ui-face-captures/capture-sequence-20260816-173425/20260816-173427` is
-156/156, warning-free, manifest-complete, and independently validator-clean.
+baseline. The frozen schema-17 v12 run at
+`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
+157/157, warning-free, manifest-complete, and independently validator-clean.
 See `docs/ui-release-overhaul-contract.md` for the current implementation and
 the remaining native-platform, human-accessibility, and visual-acceptance
 boundaries.
@@ -77,15 +77,15 @@ pass.
 
 | Area | Required result |
 |---|---|
-| State | Schema 16 adds environment entitlements/loadout/visibility, Growth Charges, separate Growth sources, daily passive claims, and Ultra pity while retaining schema-15 Garden/review/supplement state. |
+| State | Schema 17 adds atomic resumable onboarding to the schema-16 environment, Growth Charge, separate Growth-source, passive-claim, and Ultra-pity state. |
 | Scene | Verdant Twilight V6 provides six fixed direct-soil spaces, responsive composition, depth/occlusion metadata, and shaped Nursery/cottage landmarks. Eight Scenery reskins preserve those exact masks, placements, and hotspots; seven Weather overlays compose over all nine settings. |
 | Home | Deck Browser and Overview show a compact named, noninteractive preview with relative Growth/streak bars, Garden Coins, and Open Garden. |
 | Garden | A centered named header, three clickable metric cards, and scene share one themed frame; header/cottage Progress opens the separate Today/Achievements/Collection/Weather & Scenery/How it grows window. |
 | Nursery | First Open Garden names the Garden and opens one free starter. Later access opens a four-tab catalog adding Weather & Scenery; stock still derives from complete V6 lines and environment purchases never auto-equip. |
-| Plant actions | The compact card uses Nurture, Fertilize, Move, and Story. Move selects scene destinations directly, saves immediately, and offers Undo without a dropdown or Done button. |
+| Plant actions | The compact card uses Nurture, equal-width Fertilize and Growth Charge primary slots, then Move and Story. Cards-left and Fertilizer status come from shared projections; fully grown plants show no meaningless next-stage bar. Move selects scene destinations directly, saves immediately, and offers Undo without a dropdown or Done button. |
 | Supplements | Basic, Quality, and Magical Fertilizer retain exact Coin/effect/interval contracts. Booster Potions add +5 Growth for two hours and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 Growth atomically; Grand remains earn-only. |
 | Rewards | One ordered deterministic roll awards at most one environment, Charge, Booster, or 50-Coin cache. Exact odds, completed-tier Charge fallbacks, daily scenery gifts, and stepped no-guarantee Ultra pity match the catalog. |
-| Story | Timeline is oldest to newest with enlarged stage art, explicit name/species/stage, relative Growth bar, inline rename, early-story state, and Up next. |
+| Story | The one-scroll Story surface aligns normalized art, identity, rename, metadata, distinct stage/Nurtured/Fertilized badges, stage history, memories, and shared Growth/Fertilizer summaries across minimum, 539/541, default, and large layouts. Catalog species and ordinary stages remain known; Rare artwork unlocks only when that species reaches Rare. |
 | Settings | Environment, art-quality/detail/performance, animation, and Fine tune choices are absent. Balanced art and reduced-motion behavior are automatic; display/notification Save/Cancel remain. Backup/populate/restore are capture-build-only and must be absent from the production archive. |
 | Language | Learner-facing surfaces use Nurture and Garden Coins. Internal compatibility fields such as `active_plant_id` and `currency_balance` remain unchanged. |
 

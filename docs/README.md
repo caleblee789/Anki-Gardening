@@ -26,9 +26,9 @@ full-Garden landmark; the compact home preview remains noninteractive.
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
-  accessibility, and v11/156 capture requirements; the validator-clean v10
-  run is retained as the pre-change baseline until the final v11 run completes.
-- `ui-surface-inventory.md`: current ordered 156-surface source inventory plus
+  accessibility, and v12/157 capture requirements; the validator-clean v10
+  run is retained as the pre-change baseline.
+- `ui-surface-inventory.md`: current ordered 157-surface source inventory plus
   explicitly historical v8/v9 reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
   accessibility, package-static evidence, and frozen-production acceptance
