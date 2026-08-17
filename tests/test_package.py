@@ -107,12 +107,12 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
         for name in packaged_assets
     )
     assert "assets/migration_manifest_v2.json" not in packaged_assets
-    # The schema-16 release ships all nine responsive scenery plates, the
+    # The schema-20 release ships all nine responsive scenery plates, the
     # complete six-stage plant library, and the geometry-matched planter set.
-    # Ratchet the complete schema-16 art library to the next 0.25 MiB boundary
+    # Ratchet the complete schema-20 art library to the next 0.25 MiB boundary
     # above the optimized release artifact. This preserves a small deterministic
     # build margin without allowing the former 82 MiB budget to return.
-    assert OUTPUT.stat().st_size < 78 * 1024 * 1024
+    assert OUTPUT.stat().st_size < (78 * 1024 * 1024) + (256 * 1024)
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(

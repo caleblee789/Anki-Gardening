@@ -55,7 +55,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 15
+CAPTURE_CONTRACT_VERSION = 16
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -105,7 +105,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "streak-active",
             "coins-zero",
             "coins-activity",
-            "progress-overview",
+            "progress-overview-redirect-growth",
             "progress-achievements",
             "progress-collection",
             "collection-species-overview",
@@ -330,6 +330,19 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "collection-origin-plant-placement",
         ),
     ),
+    (
+        "Growth overhaul — Charge confirmation states",
+        (
+            "growth-charge-use-ready",
+            "growth-charge-empty-inventory",
+            "growth-charge-loading-disabled",
+            "growth-charge-stale-inventory",
+            "growth-charge-invalid-target",
+            "growth-charge-persistence-failure",
+            "growth-charge-success-stage-reward",
+            "growth-charge-minimum-responsive",
+        ),
+    ),
 )
 CAPTURE_FACE_LABELS = tuple(
     label
@@ -503,6 +516,24 @@ PURCHASE_CONFIRMATION_RESIZE_SPECS: tuple[
     ("purchase-confirmation-large", "purchase-confirmation", "default-to-large", 820, 660, 720, 560),
 )
 
+# ID 191 remains a state-specific Growth Charge dialog while also owning a
+# real default-to-minimum resize transition. Keeping it separate from the
+# contiguous resize matrix prevents duplicate scheduling and lets the strict
+# evidence validator enforce both its dialog state and its geometry contract.
+GROWTH_CHARGE_RESIZE_SPECS: tuple[
+    tuple[str, str, str, int, int, int, int], ...
+] = (
+    (
+        "growth-charge-minimum-responsive",
+        "growth-charge",
+        "default-to-minimum",
+        420,
+        400,
+        680,
+        610,
+    ),
+)
+
 # Each resize face owns a semantic layout state in addition to its requested
 # geometry.  Native window managers may trim a client surface to the available
 # screen, so exact pixels alone are not sufficient to prove that the two sides
@@ -572,13 +603,14 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "purchase-confirmation-breakpoint-high": "wide",
     "purchase-confirmation-default": "wide",
     "purchase-confirmation-large": "wide",
+    "growth-charge-minimum-responsive": "default",
 }
 
 
 # Canonical and resize evidence that exercises the shared one-scroll/footer
-# contract. Collection is a page inside Garden Progress, but the Progress
-# resize family intentionally selects Overview. Keep those records attributed
-# to Overview and use Collection's real canonical/stress fixtures for its
+# contract. Collection is a page inside Garden Progress, and the Progress
+# resize family intentionally selects Plant Growth. Keep those records attributed
+# to Plant Growth and use Collection's real canonical/stress fixtures for its
 # surface-specific proof.
 DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
     "Purchase confirmation": (
@@ -655,13 +687,23 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "resize-settings-large",
     ),
     "Garden Progress": (
-        "progress-overview",
+        "progress-overview-redirect-growth",
         "progress-achievements",
         "resize-progress-minimum",
         "resize-progress-content-819",
         "resize-progress-content-821",
         "resize-progress-default",
         "resize-progress-large",
+    ),
+    "Growth Charge confirmation": (
+        "growth-charge-use-ready",
+        "growth-charge-empty-inventory",
+        "growth-charge-loading-disabled",
+        "growth-charge-stale-inventory",
+        "growth-charge-invalid-target",
+        "growth-charge-persistence-failure",
+        "growth-charge-success-stage-reward",
+        "growth-charge-minimum-responsive",
     ),
     "Collection": (
         "progress-collection",
@@ -747,13 +789,13 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-settings-content-761": "GardenSettingsDialog:display",
     "resize-settings-default": "GardenSettingsDialog:display",
     "resize-settings-large": "GardenSettingsDialog:display",
-    "progress-overview": "GardenProgressDialog:overview",
+    "progress-overview-redirect-growth": "GardenProgressDialog:growth",
     "progress-achievements": "GardenProgressDialog:achievements",
-    "resize-progress-minimum": "GardenProgressDialog:overview",
-    "resize-progress-content-819": "GardenProgressDialog:overview",
-    "resize-progress-content-821": "GardenProgressDialog:overview",
-    "resize-progress-default": "GardenProgressDialog:overview",
-    "resize-progress-large": "GardenProgressDialog:overview",
+    "resize-progress-minimum": "GardenProgressDialog:growth",
+    "resize-progress-content-819": "GardenProgressDialog:growth",
+    "resize-progress-content-821": "GardenProgressDialog:growth",
+    "resize-progress-default": "GardenProgressDialog:growth",
+    "resize-progress-large": "GardenProgressDialog:growth",
     "progress-collection": "GardenProgressDialog:collection",
     "collection-several-discovered": "GardenProgressDialog:collection",
     "collection-no-filter-matches": "GardenProgressDialog:collection",
@@ -768,6 +810,14 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-collectible-detail-content-821": "CollectibleDetailDialog:loadout",
     "resize-collectible-detail-default": "CollectibleDetailDialog:loadout",
     "resize-collectible-detail-large": "CollectibleDetailDialog:loadout",
+    "growth-charge-use-ready": "GrowthChargeConfirmationDialog",
+    "growth-charge-empty-inventory": "GrowthChargeConfirmationDialog",
+    "growth-charge-loading-disabled": "GrowthChargeConfirmationDialog",
+    "growth-charge-stale-inventory": "GrowthChargeConfirmationDialog",
+    "growth-charge-invalid-target": "GrowthChargeConfirmationDialog",
+    "growth-charge-persistence-failure": "GrowthChargeConfirmationDialog",
+    "growth-charge-success-stage-reward": "GrowthChargeConfirmationDialog",
+    "growth-charge-minimum-responsive": "GrowthChargeConfirmationDialog",
 }
 
 
@@ -987,7 +1037,7 @@ _PROGRESS_CAPTURE_LABELS = frozenset({
     "streak-active",
     "coins-zero",
     "coins-activity",
-    "progress-overview",
+    "progress-overview-redirect-growth",
     "progress-achievements",
     "progress-collection",
     "collection-several-discovered",
@@ -998,6 +1048,17 @@ _PROGRESS_CAPTURE_LABELS = frozenset({
     "streak-missed-day",
     "streak-reward-earned-next",
     "collection-environment-mechanics",
+})
+
+_GROWTH_CHARGE_CAPTURE_LABELS = frozenset({
+    "growth-charge-use-ready",
+    "growth-charge-empty-inventory",
+    "growth-charge-loading-disabled",
+    "growth-charge-stale-inventory",
+    "growth-charge-invalid-target",
+    "growth-charge-persistence-failure",
+    "growth-charge-success-stage-reward",
+    "growth-charge-minimum-responsive",
 })
 
 _NURSERY_CAPTURE_LABELS = frozenset({
@@ -1059,6 +1120,8 @@ def expected_capture_window_family(label: str) -> str:
         return "NurseryDialog"
     if label in _SETTINGS_CAPTURE_LABELS:
         return "GardenSettingsDialog"
+    if label in _GROWTH_CHARGE_CAPTURE_LABELS:
+        return "GrowthChargeConfirmationDialog"
     if label in {
         "starter-selection-confirmation",
     }:
@@ -1186,7 +1249,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             })
             if resize_family in {"progress", "collection"}:
                 profile["canonical_page"] = (
-                    "collection" if resize_family == "collection" else "overview"
+                    "collection" if resize_family == "collection" else "growth"
                 )
             return profile
     for (
@@ -1215,7 +1278,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "growth" if label.startswith("growth-") else
             "streak" if label.startswith("streak-") else
             "currency" if label.startswith("coins-") else
-            "overview" if label == "progress-overview" else
+            "growth" if label == "progress-overview-redirect-growth" else
             "collection" if label in {
                 "progress-collection",
                 "collection-several-discovered",
@@ -1226,6 +1289,27 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "achievements"
         )
         profile.update({"kind": "progress", "page": page, "state": label})
+        return profile
+    growth_charge_status_by_label = {
+        "growth-charge-use-ready": "ready",
+        "growth-charge-empty-inventory": "empty_inventory",
+        "growth-charge-loading-disabled": "loading",
+        "growth-charge-stale-inventory": "stale_inventory",
+        "growth-charge-invalid-target": "target_invalid",
+        "growth-charge-persistence-failure": "persistence_failure",
+        "growth-charge-success-stage-reward": "success",
+        "growth-charge-minimum-responsive": "ready",
+    }
+    if label in growth_charge_status_by_label:
+        profile.update({
+            "kind": "dialog",
+            "state": label,
+            "growth_charge_status": growth_charge_status_by_label[label],
+        })
+        if label == "growth-charge-minimum-responsive":
+            profile["declared_client_size"] = [420, 400]
+            profile["transition_path"] = "default-to-minimum"
+            profile["layout_mode"] = "default"
         return profile
     if label in _NURSERY_CAPTURE_LABELS:
         tab_by_label = {
@@ -1626,6 +1710,14 @@ class _UiFaceCaptureRunner:
             self._capture_collection_environment_mechanics,
             self._capture_collection_loadout_persistence_error,
             self._capture_collection_origin_plant_placement,
+            self._capture_growth_charge_ready,
+            self._capture_growth_charge_empty_inventory,
+            self._capture_growth_charge_loading,
+            self._capture_growth_charge_stale_inventory,
+            self._capture_growth_charge_invalid_target,
+            self._capture_growth_charge_persistence_failure,
+            self._capture_growth_charge_success_reward,
+            self._capture_growth_charge_minimum_responsive,
         ]
         self._capture_profile = str(
             os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
@@ -3968,20 +4060,53 @@ class _UiFaceCaptureRunner:
                     "zero_growth",
                     active_plant is not None
                     and int(getattr(active_plant, "growth_points", -1) or 0) == 0
-                    and int(getattr(stats, "growth_earned", -1) or 0) == 0,
+                    and int(getattr(stats, "growth_earned", -1) or 0) == 0
+                    and len([plant for plant in plants if getattr(plant, "planted", False)]) == 3
+                    and not dict(getattr(stats, "plant_nurtured_growth", {}) or {})
+                    and not dict(getattr(stats, "plant_passive_growth_fifths", {}) or {}),
                     {
                         "plant": int(getattr(active_plant, "growth_points", -1) or 0),
                         "today": int(getattr(stats, "growth_earned", -1) or 0),
+                        "planted_count": len([
+                            plant for plant in plants
+                            if getattr(plant, "planted", False)
+                        ]),
                     },
                 )
             elif state_name == "growth-nonzero":
+                source_values = [
+                    int(getattr(stats, field, 0) or 0)
+                    for field in (
+                        "base_growth",
+                        "streak_bonus_growth",
+                        "fertilizer_growth",
+                        "weather_growth",
+                        "scenery_growth",
+                        "booster_growth",
+                    )
+                ]
+                passive_fifths = dict(
+                    getattr(stats, "plant_passive_growth_fifths", {}) or {}
+                )
                 require(
                     "nonzero_growth",
                     int(getattr(active_plant, "growth_points", 0) or 0) == 1_250
-                    and int(getattr(stats, "growth_earned", 0) or 0) == 37,
+                    and int(getattr(stats, "study_growth_generated", 0) or 0) == 53
+                    and int(getattr(stats, "growth_earned", 0) or 0) == 105
+                    and source_values == [31, 5, 4, 3, 6, 4]
+                    and sorted(passive_fifths.values()) == [17, 36, 53]
+                    and sorted(
+                        int(getattr(plant, "passive_growth_remainder_fifths", 0) or 0)
+                        for plant in plants
+                    ) == [1, 2, 3],
                     {
                         "plant": int(getattr(active_plant, "growth_points", 0) or 0),
                         "today": int(getattr(stats, "growth_earned", 0) or 0),
+                        "study": int(
+                            getattr(stats, "study_growth_generated", 0) or 0
+                        ),
+                        "sources": source_values,
+                        "passive_fifths": passive_fifths,
                     },
                 )
             elif state_name == "streak-new":
@@ -4009,6 +4134,15 @@ class _UiFaceCaptureRunner:
             elif state_name == "coins-activity":
                 transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
                 require("coin_activity", len(transactions) >= 2, len(transactions))
+            elif state_name == "progress-overview-redirect-growth":
+                require(
+                    "overview_redirected_to_growth",
+                    bool(annotation.get("passed", False))
+                    and annotation.get("requested_route") == "overview"
+                    and annotation.get("normalized_page") == "growth"
+                    and not bool(annotation.get("overview_registered", True)),
+                    annotation,
+                )
             elif state_name == "collection-several-discovered":
                 require(
                     "several_collected_audit",
@@ -4345,6 +4479,100 @@ class _UiFaceCaptureRunner:
                     ),
                     {"title": title, "buttons": buttons},
                 )
+            elif state_name in _GROWTH_CHARGE_CAPTURE_LABELS:
+                expected_status = str(
+                    expectation.get("growth_charge_status", "")
+                )
+                actual_status = str(widget.property("growthChargeState") or "")
+                buttons = [
+                    _displayed_button_text(button)
+                    for button in widget.findChildren(QAbstractButton)
+                    if not button.isHidden()
+                ]
+                active_scrolls = tuple(widget.active_vertical_scroll_regions())
+                required_fact_keys = {
+                    "stage",
+                    "current",
+                    "type",
+                    "quantity",
+                    "inventory_before",
+                    "granted",
+                    "projected",
+                    "completion",
+                    "reward",
+                    "remaining",
+                }
+                facts_complete = required_fact_keys == set(widget.fact_values) and all(
+                    str(widget.fact_values[key].text()).strip()
+                    and str(widget.fact_values[key].text()).strip() != "—"
+                    for key in required_fact_keys
+                )
+                state_visible = True
+                if state_name == "growth-charge-empty-inventory":
+                    state_visible = (
+                        not widget.empty_inventory.isHidden()
+                        and not widget.nursery_action.isHidden()
+                        and widget.nursery_action.parentWidget()
+                        is widget.empty_inventory
+                        and widget.use_action.isHidden()
+                    )
+                elif state_name == "growth-charge-loading-disabled":
+                    state_visible = (
+                        not widget.use_action.isEnabled()
+                        and not widget.cancel_action.isEnabled()
+                        and not widget.charge_selector.isEnabled()
+                        and _displayed_button_text(widget.use_action)
+                        == "Using Growth Charge…"
+                    )
+                elif state_name in {
+                    "growth-charge-stale-inventory",
+                    "growth-charge-invalid-target",
+                    "growth-charge-persistence-failure",
+                }:
+                    state_visible = (
+                        not widget.alert.isHidden()
+                        and bool(widget.alert.text().strip())
+                    )
+                elif state_name == "growth-charge-success-stage-reward":
+                    state_visible = (
+                        not widget.receipt.isHidden()
+                        and "earned 5 Garden Coins" in widget.receipt_copy.text()
+                        and _displayed_button_text(widget.use_action) == "Close"
+                    )
+                declared_size = list(
+                    expectation.get("declared_client_size", ()) or ()
+                )
+                geometry_matches = (
+                    not declared_size
+                    or [int(widget.width()), int(widget.height())] == declared_size
+                )
+                require(
+                    "growth_charge_confirmation_state",
+                    title == "Use Growth Charge"
+                    and actual_status == expected_status
+                    and bool(annotation.get("passed", False))
+                    and len(active_scrolls) == 1
+                    and state_visible
+                    and geometry_matches
+                    and (
+                        state_name in {
+                            "growth-charge-empty-inventory",
+                            "growth-charge-success-stage-reward",
+                        }
+                        or facts_complete
+                    ),
+                    {
+                        "expected_status": expected_status,
+                        "actual_status": actual_status,
+                        "buttons": buttons,
+                        "active_scroll_count": len(active_scrolls),
+                        "facts_complete": facts_complete,
+                        "state_visible": state_visible,
+                        "declared_size": declared_size,
+                        "actual_size": [int(widget.width()), int(widget.height())],
+                        "annotation": annotation,
+                    },
+                )
             elif state_name.startswith("purchase-confirmation-") or state_name.startswith("purchase-error-"):
                 buttons = [
                     _displayed_button_text(button)
@@ -4418,6 +4646,52 @@ class _UiFaceCaptureRunner:
                         - time.time()
                     )
                     require("expiring_fertilizer", active and 0 < remaining < 60, remaining)
+
+        if state_name == "growth-charge-minimum-responsive":
+            request = dict(geometry_request or {})
+            declared_size = list(
+                expectation.get("declared_client_size", ())
+                or request.get("declared_client_size", ())
+                or ()
+            )
+            geometry = resize_geometry_acceptance(
+                label=label,
+                declared_size=(
+                    declared_size if len(declared_size) == 2 else [0, 0]
+                ),
+                actual_size=[int(widget.width()), int(widget.height())],
+                minimum_size=[
+                    int(widget.minimumWidth()),
+                    int(widget.minimumHeight()),
+                ],
+                maximum_size=[
+                    int(widget.maximumWidth()),
+                    int(widget.maximumHeight()),
+                ],
+                screen_limited=bool(request.get("screen_limited", False)),
+                constraint_limited=bool(
+                    request.get("constraint_limited", False)
+                ),
+                native_normalized=bool(
+                    request.get("native_normalized", False)
+                ),
+                normalization_reason=str(
+                    request.get("normalization_reason", "")
+                ),
+            )
+            require(
+                "geometry_acceptance",
+                len(declared_size) == 2 and bool(geometry.get("accepted", False)),
+                geometry,
+            )
+            actual_layout_mode = str(widget.property("layoutMode") or "default")
+            expected_layout_mode = str(expectation.get("layout_mode", ""))
+            require(
+                "layout_mode",
+                bool(expected_layout_mode)
+                and actual_layout_mode == expected_layout_mode,
+                actual_layout_mode,
+            )
 
         return {
             "profile_id": str(expectation.get("profile_id", "")),
@@ -5624,29 +5898,81 @@ class _UiFaceCaptureRunner:
         capture_identity = self._reserve_capture_identity(label)
         scheduled_label = capture_identity[1]
         self._capture_requested_monotonic[scheduled_label] = time.perf_counter()
+        capture_delay = max(20, int(capture_delay_ms))
+        requested_next = max(80, int(next_ms))
+        requested_close = (
+            max(60, int(close_ms))
+            if close_callback is not None and close_ms is not None
+            else capture_delay + 180
+        )
         if widget is mw:
             if not self._activate_current_process_window(widget):
                 logger.debug(
                     "Anki Garden capture: foreground request is still settling"
                 )
-        def capture_ready(identity: tuple[int, str, str, str]) -> None:
-            if before_capture is not None:
-                before_capture()
-            self._capture_now(
-                identity[1],
-                widget,
-                capture_identity=identity,
+
+        def advance_after_capture() -> None:
+            if close_callback is None:
+                self._next_after(max(80, requested_next - capture_delay))
+                return
+
+            def close_then_advance() -> None:
+                try:
+                    close_callback()
+                except Exception as exc:
+                    self._failures.append({
+                        "label": scheduled_label,
+                        "reason": (
+                            "Capture cleanup callback raised "
+                            f"{type(exc).__name__}"
+                        ),
+                    })
+                    logger.exception(
+                        "Anki Garden capture: cleanup failed for %s",
+                        scheduled_label,
+                    )
+                finally:
+                    self._next_after(
+                        max(80, requested_next - requested_close)
+                    )
+
+            QTimer.singleShot(
+                max(20, requested_close - capture_delay),
+                close_then_advance,
             )
 
+        def capture_ready(identity: tuple[int, str, str, str]) -> None:
+            try:
+                if before_capture is not None:
+                    before_capture()
+                self._capture_now(
+                    identity[1],
+                    widget,
+                    capture_identity=identity,
+                )
+            except Exception as exc:
+                self._failures.append({
+                    "label": identity[1],
+                    "reason": (
+                        "Scheduled capture callback raised "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+                logger.exception(
+                    "Anki Garden capture: scheduled capture failed for %s",
+                    identity[1],
+                )
+            finally:
+                # Capture, cleanup, and fixture advancement must be strictly
+                # ordered. Independent timers can all become due while Qt is
+                # busy; _capture_now() pumps events and would otherwise close
+                # the surface or replace resize provenance before grabbing it.
+                advance_after_capture()
+
         QTimer.singleShot(
-            max(20, int(capture_delay_ms)),
+            capture_delay,
             lambda identity=capture_identity: capture_ready(identity),
         )
-        if close_callback is not None:
-            if close_ms is None:
-                close_ms = max(220, int(capture_delay_ms) + 180)
-            QTimer.singleShot(max(60, int(close_ms)), close_callback)
-        self._next_after(next_ms)
 
     def _close_widget(self, widget: Any | None) -> None:
         if widget is None:
@@ -6889,41 +7215,122 @@ class _UiFaceCaptureRunner:
         if callable(refresh):
             refresh()
 
+    def _prepare_growth_capture_fixture(
+        self,
+        *,
+        populated: bool,
+    ) -> tuple[dict[str, Any], str]:
+        """Install one reversible, exact multi-plant Growth accounting fixture."""
+
+        from .models.state import Plant, PlantMemory
+
+        snapshot = self.app.engine._state_snapshot()
+        state = self.app.storage.state
+        today = str(state.daily_stats.day)
+        points = (1_250, 2_450, 7_950) if populated else (0, 700, 2_700)
+        species = ("bonsai", "rose", "sunflower")
+        plants = [
+            Plant(
+                plant_id=f"capture_growth_{plant_species}",
+                species=plant_species,
+                name=self.app.engine._generated_name(plant_species),
+                slot_index=index,
+                growth_points=points[index],
+                planted_on=today,
+                memories=[PlantMemory(
+                    memory_id=f"capture-growth-planted-{index}",
+                    kind="planted",
+                    occurred_on=today,
+                )],
+                passive_growth_remainder_fifths=(
+                    (2, 1, 3)[index] if populated else 0
+                ),
+            )
+            for index, plant_species in enumerate(species)
+        ]
+        state.plants = plants
+        state.unlocked_species = list(dict.fromkeys([
+            *state.unlocked_species,
+            *species,
+        ]))
+        state.unlocked_slots = max(3, int(state.unlocked_slots))
+        state.active_plant_id = plants[0].plant_id
+        state.starter_selection_complete = True
+        stats = state.daily_stats
+        stats.reviewed = 8 if populated else 0
+        stats.correct = 7 if populated else 0
+        stats.wrong = 1 if populated else 0
+        stats.base_growth = 31 if populated else 0
+        stats.streak_bonus_growth = 5 if populated else 0
+        stats.fertilizer_growth = 4 if populated else 0
+        stats.weather_growth = 3 if populated else 0
+        stats.scenery_growth = 6 if populated else 0
+        stats.booster_growth = 4 if populated else 0
+        stats.plant_nurtured_growth = (
+            {plants[0].plant_id: 36, plants[1].plant_id: 17}
+            if populated else {}
+        )
+        stats.plant_passive_growth_fifths = (
+            {
+                plants[0].plant_id: 17,
+                plants[1].plant_id: 36,
+                plants[2].plant_id: 53,
+            }
+            if populated else {}
+        )
+        stats.plant_passive_growth_credited = (
+            {
+                plants[0].plant_id: 3,
+                plants[1].plant_id: 7,
+                plants[2].plant_id: 10,
+            }
+            if populated else {}
+        )
+        stats.plant_charge_growth = (
+            {plants[1].plant_id: 25} if populated else {}
+        )
+        stats.plant_direct_reward_growth = (
+            {plants[2].plant_id: 7} if populated else {}
+        )
+        stats.legacy_unattributed_growth = 0
+        stats.legacy_plant_growth = {}
+        stats.growth_accounting_stale = False
+        stats.reconcile_growth_totals()
+        return snapshot, plants[0].plant_id
+
+    def _restore_growth_capture_fixture(self, snapshot: dict[str, Any]) -> None:
+        self.app.engine._restore_state(snapshot)
+        try:
+            self.app.storage.save()
+        except Exception:
+            logger.exception("Anki Garden capture: Growth fixture restoration failed")
+        self._refresh_capture_dashboard()
+
     def _capture_growth_zero(self) -> None:
         def ready() -> None:
-            state = self.app.storage.state
-            plant = self.app.engine.active_plant()
-            if plant is not None:
-                plant.growth_points = 0
-            stats = state.daily_stats
-            for field in (
-                "growth_earned", "base_growth", "streak_bonus_growth",
-                "fertilizer_growth", "booster_growth", "weather_growth",
-                "scenery_growth", "charge_growth",
-            ):
-                setattr(stats, field, 0)
+            snapshot, _plant_id = self._prepare_growth_capture_fixture(
+                populated=False,
+            )
             self._refresh_capture_dashboard()
-            self._capture_metric("growth", "growth-zero")
+            self._capture_progress_page_after(
+                "growth",
+                "growth-zero",
+                restore_callback=lambda: self._restore_growth_capture_fixture(snapshot),
+            )
 
         self._with_dashboard(ready)
 
     def _capture_growth_nonzero(self) -> None:
         def ready() -> None:
-            state = self.app.storage.state
-            plant = self.app.engine.active_plant()
-            if plant is not None:
-                plant.growth_points = 1_250
-            stats = state.daily_stats
-            stats.growth_earned = 37
-            stats.base_growth = 30
-            stats.streak_bonus_growth = 3
-            stats.fertilizer_growth = 4
-            stats.booster_growth = 0
-            stats.weather_growth = 0
-            stats.scenery_growth = 0
-            stats.charge_growth = 0
+            snapshot, _plant_id = self._prepare_growth_capture_fixture(
+                populated=True,
+            )
             self._refresh_capture_dashboard()
-            self._capture_metric("growth", "growth-nonzero")
+            self._capture_progress_page_after(
+                "growth",
+                "growth-nonzero",
+                restore_callback=lambda: self._restore_growth_capture_fixture(snapshot),
+            )
 
         self._with_dashboard(ready)
 
@@ -7154,7 +7561,64 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_progress_today(self) -> None:
-        self._capture_progress_page("overview", "progress-overview")
+        label = "progress-overview-redirect-growth"
+
+        def after() -> None:
+            dashboard = getattr(self.app, "dashboard", None)
+            dialog = getattr(dashboard, "progress_dialog", None)
+            navigation = getattr(dialog, "navigation", None)
+            if dialog is None or navigation is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Garden Progress was unavailable for the stale Overview redirect",
+                })
+                self._next_after(200)
+                return
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            dialog.open_page("overview")
+
+            def ready() -> None:
+                keys = list(getattr(navigation, "keys", ()) or ())
+                current_index = int(navigation.stack.currentIndex())
+                current_page = (
+                    keys[current_index]
+                    if 0 <= current_index < len(keys) else ""
+                )
+                passed = current_page == "growth" and "overview" not in keys
+                self._capture_annotations[label] = {
+                    "requested_route": "overview",
+                    "normalized_page": current_page,
+                    "overview_registered": "overview" in keys,
+                    "passed": passed,
+                }
+                if not passed:
+                    self._failures.append({
+                        "label": label,
+                        "reason": "The stale Overview route did not normalize to Plant Growth",
+                    })
+                self._capture_and_advance(
+                    label,
+                    dialog,
+                    capture_delay_ms=360,
+                    close_callback=lambda: self._close_widget(dialog),
+                    close_ms=760,
+                    next_ms=1100,
+                )
+
+            self._wait_for(
+                lambda: bool(
+                    dialog.isVisible()
+                    and navigation.stack.currentIndex()
+                    == navigation.keys.index("growth")
+                ),
+                ready,
+                tries=80,
+                failure_label=label,
+                failure_reason="The stale Overview route did not render Plant Growth",
+            )
+
+        self._with_dashboard(after, failure_label=label)
 
     def _capture_progress_achievements(self) -> None:
         self._capture_progress_page("achievements", "progress-achievements")
@@ -7699,6 +8163,328 @@ class _UiFaceCaptureRunner:
     def _capture_purchase_success_bed(self) -> None:
         self._capture_purchase_success_fixture(
             "purchase-success-garden-bed-unlocked", "bed", 2
+        )
+
+    def _prepare_growth_charge_capture(
+        self,
+        label: str,
+        *,
+        inventory: int = 2,
+        growth_points: int = 1_250,
+        planted: bool = True,
+    ) -> tuple[dict[str, Any], list[Any], Any]:
+        """Install one exact, reversible target for a Charge dialog fixture."""
+
+        from .environment import GROWTH_CHARGES
+        from .models.state import Plant, PlantMemory
+
+        snapshot = self.app.engine._state_snapshot()
+        transition_snapshot = list(self.app.engine._pending_stage_transitions)
+        state = self.app.storage.state
+        today = str(state.daily_stats.day)
+        plant = Plant(
+            plant_id="capture_growth_charge_bonsai",
+            species="bonsai",
+            name="Bonsai Plant",
+            slot_index=0 if planted else None,
+            growth_points=max(0, int(growth_points)),
+            planted_on=today,
+            memories=[PlantMemory(
+                memory_id="capture-growth-charge-planted",
+                kind="planted",
+                occurred_on=today,
+            )],
+        )
+        state.plants = [plant]
+        state.unlocked_species = list(dict.fromkeys([
+            *state.unlocked_species,
+            "bonsai",
+        ]))
+        state.unlocked_slots = max(1, int(state.unlocked_slots))
+        state.active_plant_id = plant.plant_id if planted else None
+        state.starter_selection_complete = True
+        state.completed_growth_charge_requests.clear()
+        for charge_id in GROWTH_CHARGES:
+            state.consumables[charge_id] = 0
+        state.consumables["growth_charge_small"] = max(0, int(inventory))
+        state.selected_background = "default"
+        stats = state.daily_stats
+        stats.plant_charge_growth = {}
+        stats.plant_direct_reward_growth = {}
+        stats.reconcile_growth_totals()
+        self._capture_annotations[label] = {
+            "target_id": plant.plant_id,
+            "initial_growth": plant.growth_points,
+            "initial_inventory": max(0, int(inventory)),
+            "passed": True,
+        }
+        return snapshot, transition_snapshot, plant
+
+    def _restore_growth_charge_capture(
+        self,
+        snapshot: dict[str, Any],
+        transition_snapshot: list[Any],
+    ) -> None:
+        self.app.engine._pending_stage_transitions = list(transition_snapshot)
+        self.app.engine._restore_state(snapshot)
+        try:
+            self.app.storage.save()
+        except Exception:
+            logger.exception(
+                "Anki Garden capture: Growth Charge fixture restoration failed"
+            )
+        self._refresh_capture_dashboard()
+
+    def _growth_charge_capture_annotation(
+        self,
+        label: str,
+        variant: str,
+        dialog: Any,
+        plant: Any,
+    ) -> None:
+        expected_status = str(
+            expected_capture_state_profile(label).get("growth_charge_status", "")
+        )
+        actual_status = str(dialog.property("growthChargeState") or "")
+        state = self.app.storage.state
+        target = self.app.engine.plant_story(
+            str(getattr(plant, "plant_id", "") or "")
+        )
+        inventory = max(
+            0,
+            int(state.consumables.get("growth_charge_small", 0) or 0),
+        )
+        ledger_count = len(state.completed_growth_charge_requests)
+        alert_visible = not dialog.alert.isHidden()
+        receipt_visible = not dialog.receipt.isHidden()
+        conditions = [actual_status == expected_status]
+        if variant == "ready":
+            conditions.extend([
+                bool(dialog.quote is not None and dialog.quote.ready),
+                dialog.use_action.isEnabled(),
+                inventory == 2,
+            ])
+        elif variant == "empty":
+            conditions.extend([
+                not dialog.empty_inventory.isHidden(),
+                not dialog.nursery_action.isHidden(),
+                dialog.use_action.isHidden(),
+                inventory == 0,
+            ])
+        elif variant == "loading":
+            conditions.extend([
+                dialog._submitting,
+                not dialog.use_action.isEnabled(),
+                not dialog.cancel_action.isEnabled(),
+                not dialog.charge_selector.isEnabled(),
+                dialog.use_action.text() == "Using Growth Charge…",
+                inventory == 2,
+            ])
+        elif variant == "stale":
+            conditions.extend([
+                alert_visible,
+                "inventory changed" in dialog.alert.text(),
+                inventory == 1,
+                int(getattr(target, "growth_points", -1)) == 1_250,
+                ledger_count == 0,
+            ])
+        elif variant == "invalid":
+            conditions.extend([
+                alert_visible,
+                not dialog.use_action.isEnabled(),
+                not bool(getattr(target, "planted", False)),
+                ledger_count == 0,
+            ])
+        elif variant == "persistence":
+            conditions.extend([
+                alert_visible,
+                "could not be saved" in dialog.alert.text(),
+                inventory == 2,
+                int(getattr(target, "growth_points", -1)) == 1_250,
+                ledger_count == 0,
+            ])
+        elif variant == "success":
+            outcome = dialog.outcome
+            conditions.extend([
+                receipt_visible,
+                bool(outcome is not None and outcome.success),
+                tuple(getattr(outcome, "completed_stages", ())) == ("sprout",),
+                sum(
+                    int(reward.garden_coins)
+                    for reward in getattr(outcome, "rewards", ())
+                ) == 5,
+                inventory == 1,
+                int(getattr(target, "growth_points", -1)) == 550,
+                ledger_count == 1,
+                dialog.use_action.text() == "Close",
+            ])
+        elif variant == "minimum":
+            conditions.extend([
+                bool(dialog.quote is not None and dialog.quote.ready),
+                dialog.use_action.isEnabled(),
+            ])
+        single_scroll_region = len(dialog.active_vertical_scroll_regions()) == 1
+        conditions.append(single_scroll_region)
+        passed = all(conditions)
+        self._capture_annotations[label].update({
+            "variant": variant,
+            "expected_status": expected_status,
+            "actual_status": actual_status,
+            "inventory": inventory,
+            "target_growth": int(getattr(target, "growth_points", -1)),
+            "request_ledger_count": ledger_count,
+            "alert_visible": alert_visible,
+            "receipt_visible": receipt_visible,
+            "single_scroll_region": single_scroll_region,
+            "passed": passed,
+        })
+        if not passed:
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Growth Charge fixture did not match its declared state "
+                    f"({actual_status!r} != {expected_status!r})"
+                ),
+            })
+
+    def _capture_growth_charge_dialog_fixture(
+        self,
+        label: str,
+        variant: str,
+    ) -> None:
+        def dashboard_ready() -> None:
+            inventory = 0 if variant == "empty" else 2
+            growth_points = 450 if variant == "success" else 1_250
+            planted = variant != "invalid"
+            snapshot, transition_snapshot, plant = self._prepare_growth_charge_capture(
+                label,
+                inventory=inventory,
+                growth_points=growth_points,
+                planted=planted,
+            )
+            from .ui.dashboard import GrowthChargeConfirmationDialog
+
+            dialog = GrowthChargeConfirmationDialog(
+                self.app.dashboard,
+                self.app.engine,
+                plant.plant_id,
+                open_nursery=lambda: None,
+            )
+            if variant == "loading":
+                dialog._commit = lambda: None
+                dialog._activate_primary()
+            elif variant == "stale":
+                self.app.storage.state.consumables["growth_charge_small"] = 1
+                dialog._submitting = True
+                dialog._commit()
+            elif variant == "persistence":
+                original_save = self.app.storage.save
+
+                def fail_save() -> None:
+                    raise OSError("deterministic Growth Charge persistence failure")
+
+                self.app.storage.save = fail_save
+                try:
+                    dialog._submitting = True
+                    dialog._commit()
+                finally:
+                    self.app.storage.save = original_save
+            elif variant == "success":
+                dialog._submitting = True
+                dialog._commit()
+
+            dialog.setWindowModality(Qt.WindowModality.NonModal)
+            dialog.setModal(False)
+            self._move_to_capture_display(dialog)
+
+            def close_dialog() -> None:
+                dialog._submitting = False
+                self._close_widget(dialog)
+                self._restore_growth_charge_capture(snapshot, transition_snapshot)
+
+            if variant == "minimum":
+                dialog.show()
+                QApplication.processEvents()
+                self._growth_charge_capture_annotation(
+                    label,
+                    variant,
+                    dialog,
+                    plant,
+                )
+                self._capture_requested_size(
+                    label,
+                    dialog,
+                    width=420,
+                    height=400,
+                    start_width=680,
+                    start_height=610,
+                    transition_path="default-to-minimum",
+                    close_callback=close_dialog,
+                )
+                return
+
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            QApplication.processEvents()
+            self._growth_charge_capture_annotation(label, variant, dialog, plant)
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=440,
+                close_callback=close_dialog,
+                close_ms=840,
+                next_ms=1180,
+            )
+
+        self._with_dashboard(dashboard_ready, failure_label=label)
+
+    def _capture_growth_charge_ready(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-use-ready",
+            "ready",
+        )
+
+    def _capture_growth_charge_empty_inventory(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-empty-inventory",
+            "empty",
+        )
+
+    def _capture_growth_charge_loading(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-loading-disabled",
+            "loading",
+        )
+
+    def _capture_growth_charge_stale_inventory(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-stale-inventory",
+            "stale",
+        )
+
+    def _capture_growth_charge_invalid_target(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-invalid-target",
+            "invalid",
+        )
+
+    def _capture_growth_charge_persistence_failure(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-persistence-failure",
+            "persistence",
+        )
+
+    def _capture_growth_charge_success_reward(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-success-stage-reward",
+            "success",
+        )
+
+    def _capture_growth_charge_minimum_responsive(self) -> None:
+        self._capture_growth_charge_dialog_fixture(
+            "growth-charge-minimum-responsive",
+            "minimum",
         )
 
     def _capture_purchase_confirmation_resize(
@@ -9422,7 +10208,6 @@ class _UiFaceCaptureRunner:
                 close_ms=850,
                 next_ms=1200,
             )
-            QTimer.singleShot(1000, restore_resolver)
 
         self._capture_custom_nursery(3, label, ready)
 
@@ -9709,17 +10494,41 @@ class _UiFaceCaptureRunner:
 
         def ready() -> None:
             dashboard = self.app.dashboard
-            activate = getattr(self, "_activate_current_process_window", None)
-            if callable(activate):
-                activate(dashboard)
-            dashboard.progress_btn.setFocus(Qt.FocusReason.TabFocusReason)
-            app = QApplication.instance()
-            if app is not None:
-                app.processEvents()
+
+            def focus_before_capture() -> None:
+                activate = getattr(self, "_activate_current_process_window", None)
+                if callable(activate):
+                    activate(dashboard)
+                raise_window = getattr(dashboard, "raise_", None)
+                if callable(raise_window):
+                    raise_window()
+                activate_window = getattr(dashboard, "activateWindow", None)
+                if callable(activate_window):
+                    activate_window()
+                app = QApplication.instance()
+                set_active_window = (
+                    getattr(app, "setActiveWindow", None)
+                    if app is not None else None
+                )
+                if callable(set_active_window):
+                    top_level = getattr(dashboard, "window", lambda: dashboard)()
+                    set_active_window(top_level)
+                if app is not None:
+                    app.processEvents()
+                dashboard.progress_btn.setFocus(Qt.FocusReason.TabFocusReason)
+                if app is not None:
+                    app.processEvents()
+                # A native activation event can briefly retarget focus while
+                # Qt settles. Reassert the same real keyboard target after the
+                # event pump; the capture postcondition still verifies both
+                # hasFocus() and QApplication.focusWidget().
+                dashboard.progress_btn.setFocus(Qt.FocusReason.TabFocusReason)
+
             self._capture_and_advance(
                 label,
                 dashboard,
                 capture_delay_ms=420,
+                before_capture=focus_before_capture,
                 close_callback=clear_focus_once,
                 close_ms=620,
                 next_ms=900,
@@ -9877,7 +10686,7 @@ class _UiFaceCaptureRunner:
             progress = getattr(dashboard, "progress_dialog", None)
             navigation = getattr(progress, "navigation", None)
             keys = list(getattr(navigation, "keys", ()) or ())
-            target_page = "collection" if family == "collection" else "overview"
+            target_page = "collection" if family == "collection" else "growth"
             if progress is None or navigation is None or target_page not in keys:
                 self._failures.append({
                     "label": label,

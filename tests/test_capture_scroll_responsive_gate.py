@@ -242,7 +242,7 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
+def test_all_eleven_scroll_surfaces_have_canonical_and_size_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
@@ -254,6 +254,7 @@ def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         "Species overview",
         "Settings",
         "Garden Progress",
+        "Growth Charge confirmation",
         "Collection",
         "Collection loadout details",
     }
@@ -270,6 +271,10 @@ def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         assert labels
         assert set(labels) <= contract
         assert any(not label.startswith("resize-") for label in labels)
+        if surface == "Growth Charge confirmation":
+            assert "growth-charge-use-ready" in labels
+            assert "growth-charge-minimum-responsive" in labels
+            continue
         assert any(label.endswith("-minimum") for label in labels)
         assert any(label.endswith("-default") for label in labels)
         assert any(label.endswith("-large") for label in labels)
@@ -487,7 +492,7 @@ def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> No
         expected_page_semantic="GardenProgressDialog:collection",
     ) == ()
 
-    wrong_page = {**audit, "actual_page_semantic": "GardenProgressDialog:overview"}
+    wrong_page = {**audit, "actual_page_semantic": "GardenProgressDialog:growth"}
     assert "actual-scroll-page-semantic-mismatch" in dialog_scroll_audit_issue_codes(
         wrong_page,
         expected_surface="Collection",

@@ -185,8 +185,10 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             )
             postcondition_facts["layout_mode"] = layout_mode
             postcondition_facts["geometry_acceptance"] = geometry_acceptance
-            postcondition_facts["declared_client_size"] = list(logical_size)
-            postcondition_facts["requested_client_size"] = list(logical_size)
+            if "declared_client_size" in state_contract["required_facts"]:
+                postcondition_facts["declared_client_size"] = list(logical_size)
+            if "requested_client_size" in state_contract["required_facts"]:
+                postcondition_facts["requested_client_size"] = list(logical_size)
         fixture_validation = {
             "capture_id": capture_id,
             "fixture_id": label,
@@ -537,11 +539,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 183
+    assert capture_result["capture_count"] == 191
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
         "page_count": 24,
-        "surface_count": 183,
+        "surface_count": 191,
         "status": "valid",
     }
 
@@ -552,7 +554,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
 
     assert [sum(count for _name, count in page) for page in pages] == [
         8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10,
-        9, 8, 10, 10, 4, 2,
+        9, 8, 10, 10, 4, 10,
     ]
     assert pages[6:10] == (
         (("Release stress — Garden", 10),),
@@ -563,11 +565,11 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
         4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
         4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 5078, 4148,
-        5078, 5078, 2288, 1358,
+        5078, 5078, 2288, 5192,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_183_faces() -> None:
+def test_renderer_families_are_derived_from_source_for_all_191_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
@@ -585,18 +587,19 @@ def test_renderer_families_are_derived_from_source_for_all_183_faces() -> None:
         "FertilizerReplacementDialog": 11,
         "SpeciesOverviewDialog": 5,
         "PurchaseConfirmationDialog": 14,
+        "GrowthChargeConfirmationDialog": 8,
     })
     assert families["popover-plot-6"] == "GardenDashboard"
     assert families["watering-can-garden-plot-6"] == "GardenDashboard"
     assert families["resize-species-overview-large"] == "SpeciesOverviewDialog"
     resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
-    assert len(resize_modes) == 64
+    assert len(resize_modes) == 65
     assert resize_modes["resize-dashboard-content-819"] == "compact"
     assert resize_modes["resize-dashboard-content-821"] == "compact"
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_183_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_all_191_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -611,7 +614,7 @@ def test_state_evidence_contracts_are_derived_for_all_183_faces() -> None:
         "home": 15,
         "nursery": 15,
         "settings": 10,
-        "dialog": 23,
+        "dialog": 31,
         "collectible-detail": 4,
     })
     assert states["watering-can-overview-plot-6"]["profile"] == {
@@ -633,8 +636,11 @@ def test_state_evidence_contracts_are_derived_for_all_183_faces() -> None:
         "transition_path": "minimum-to-default",
         "declared_client_size": [940, 680],
         "layout_mode": "wide",
-        "canonical_page": "overview",
+        "canonical_page": "growth",
     }
+    assert states["growth-charge-success-stage-reward"]["profile"][
+        "growth_charge_status"
+    ] == "success"
 
 
 def test_accessibility_fixture_ownership_and_cleanup_are_source_bound() -> None:
@@ -1213,8 +1219,8 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 183" in message
-    assert "pages account for 182 surfaces" in message
+    assert "surface_count must be 191" in message
+    assert "pages account for 190 surfaces" in message
     assert "PNG dimensions must be 3000x4262px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message
@@ -1410,7 +1416,7 @@ def test_manifest_rejects_scroll_geometry_and_collection_page_drift(
     scroll_audit = record["dialog_scroll_audit"]
     assert isinstance(scroll_audit, dict)
     scroll_audit.update({
-        "actual_page_semantic": "GardenProgressDialog:overview",
+        "actual_page_semantic": "GardenProgressDialog:growth",
         "declared_clearance": 63,
         "content_height": 301,
         "required_content_height": 301,

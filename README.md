@@ -13,7 +13,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- The release checks cover all 183 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
+- The release checks cover all 191 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
 
 ## Gameplay terms
 
@@ -26,14 +26,14 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 | **Garden Coins** | A separate spendable reward earned from study goals, milestones, and rare study gifts. | Buys Fertilizer, Growth Charges, release-ready species, garden spaces, Weather, and Scenery. |
 | **Fertilizer** | A timed direct Growth boost for the plant you nurture. | Adds `+1`, `+2`, or `+3` Growth per answer while active. |
 | **Booster Potion** | A rare, non-purchasable study gift kept in your collection. | Adds `+5` Growth per answer for two hours and stacks with Fertilizer. |
-| **Growth Charge** | A stored one-use supplement applied to the unfinished plant you nurture. | Adds `+100`, `+500`, or `+2,000` Growth immediately, capped at Rare. |
+| **Growth Charge** | A stored one-use supplement applied to any owned, planted, unfinished plant. | Adds `+100`, `+500`, or `+2,000` Growth immediately, capped at Rare, without study buffs or passive fan-out. |
 | **Weather** | One equipped sky effect and its minor passive. | Can be shown or hidden without turning its passive off. |
 | **Scenery** | One equipped reskin of the world around the fixed V6 garden. | Changes the setting and adds a passive without moving plants, Nursery, cottage, or path. |
 
 ## Progression details
 
-- Every eligible card answer gives the unfinished plant you nurture **10 base Growth** immediately.
-- Growth is never split. Choosing **Nurture** changes which plant receives future Growth; it never moves Growth already earned.
+- Every eligible card answer calculates the nurtured plant’s base Growth and all active modifiers exactly once. The nurtured plant receives the full post-buff result.
+- Every other planted, unfinished plant receives an additional exact 20 percent of that same result. Fractions accumulate in persisted fifths instead of being discarded, and the nurtured plant never receives its own passive allocation.
 - The current Anki streak adds a transparent Growth bonus: day 1 gives 0%; days 7, 14, 30, 100, and 365 unlock +5%, +10%, +15%, +20%, and +25% respectively. Missing an Anki day resets the next streak to day 1.
 - Plants keep the existing Seed, Sprout, Young, Mature, Flowering, and Rare stages. The current thresholds are `0`, `500`, `2,500`, `8,000`, `20,000`, and `50,000` Growth.
 - Stage-local feedback appears at 25%, 50%, 75%, and 100%. A plant that reaches Rare pauses; the learner chooses another unfinished plant to continue growing.
@@ -63,12 +63,12 @@ retries later.
 ## Garden interaction
 
 - Hover gives visible artwork a restrained highlight and pointer cursor without opening details or moving the art.
-- Click selects one plant and opens a compact native card near it with stage-local Growth, answers remaining, Fertilizer and Booster Potion status, and four stable actions: Nurture, Fertilize, Move, and Story.
+- Click selects one plant and opens a compact native card near it with stage-local Growth, today’s allocation, Fertilizer and Booster Potion status, and stable actions including Nurture, Fertilize, Growth Charge, Move, and Story.
 - Click outside or press Escape to dismiss. The card repositions at scene edges and is replaced immediately when another plant is selected.
 - Move highlights valid garden spaces. Click or keyboard-select one to save immediately, then use the inline Undo action if needed; Escape cancels before placement.
 - Overlap hit testing follows depth order, and geometry-v2 `interaction_bounds` keep transparent artwork margins from stealing clicks.
 
-The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Garden Progress** opens the broader Today, Achievements, Collection, and progression guide window; the cottage opens that existing window directly on **Collection**. Plant-specific information lives in the clicked-plant card or Plant Story.
+The named Garden header, metric strip, and scene share one themed frame. Plant Growth, Anki streak, and Garden Coins are real buttons that open focused explanations with relative progress. **Garden Progress** reopens the last valid session page and defaults to **Plant Growth**; the cottage always opens **Collection**. Navigation is Plant Growth, Anki Streak, Garden Coins, Achievements, and Collection. Plant-specific information lives in the clicked-plant card, Plant Growth, or Plant Story.
 
 Verdant Twilight V6 uses six direct-soil beds across three staggered perspective
 bands. The nursery entrance is a keyboard-accessible landmark that opens the
@@ -104,9 +104,12 @@ Booster Potion rather than discarding its remaining time.
 
 Small and Standard Growth Charges can be bought repeatedly for 30 and 125
 Garden Coins. They add 100 and 500 Growth immediately. The 2,000-Growth Grand
-Charge is earn-only. Applying a Charge follows normal stage transitions and
-stage Coin rewards, never grows beyond Rare, consumes nothing if saving fails,
-and is tracked separately from answer-time Growth.
+Charge is earn-only. A Charge can target any owned, planted, unfinished plant
+from its selected-plant panel or Plant Growth card. Confirmation revalidates
+the target, inventory, Growth, reward terms, and request identity; it applies
+only to that plant without passive fan-out or study buffs. Normal stage and
+Coin rewards still apply. A failed save restores Growth, inventory, rewards,
+feedback, and the replay ledger.
 
 ## Weather, Scenery, and rare rewards
 
@@ -146,13 +149,15 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current state is schema 19. It stores the resumable
-six-step onboarding state and bounded completed-purchase replay ledger alongside collectible entitlements, one canonical Garden loadout
-and visibility record, Growth Charges, daily passive claims, Ultra pity, separate
-Growth-source totals, the deterministic reward seed/drop history, and the
-existing Garden, Booster Potion, Fertilizer, and bounded scheduler-day review
-state. Supported schema 11–18 state is backed up and upgraded while collapsing
-legacy equipment mirrors into the canonical loadout; failed reads or writes remain fail-closed.
+add-on upgrades. The current state is schema 20. It stores exact per-plant
+passive fifths, canonical daily study-source and target-allocation ledgers, and
+bounded completed Growth Charge requests alongside the resumable six-step
+onboarding state, purchase replay ledger, collectible entitlements, canonical
+Garden loadout, Growth Charges, daily passive claims, Ultra pity, deterministic
+reward seed/drop history, and bounded scheduler-day review state. Schema 19 is
+backed up before migration; current-day Growth that cannot be safely split is
+kept in an explicit stale legacy bucket until scheduler rollover. Failed reads
+or writes remain fail-closed.
 
 ## Interface
 
@@ -179,14 +184,14 @@ V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
-current-only file set and a ratcheted 78 MiB archive ceiling for the complete
-schema-19 scenery, plant, and planter library.
+current-only file set and a ratcheted 78.25 MiB archive ceiling for the complete
+schema-20 scenery, plant, and planter library.
 
-The current validated 2.1.0 production candidate contains 268 files and is
-81,784,149 bytes (78.00 MiB), SHA-256
-`5f944c75c60b64278b9ea738680870d4a0eb5c94998c54602069a3b9eead84d5`.
+The current 2.1.0 production candidate contains 269 files and is 81,794,074
+bytes (78.00 MiB), SHA-256
+`285d5314a5901ee0d55f0701dd8460af874aa08f4644434bd674a614b77c348b`.
 The complete package suite and explicit production build passed the
-deterministic-content, source/archive-parity, ZIP-integrity, and 78 MiB gates
+deterministic-content, source/archive-parity, ZIP-integrity, and 78.25 MiB gates
 without rewriting or removing manifest-owned artwork.
 
 ## Troubleshooting

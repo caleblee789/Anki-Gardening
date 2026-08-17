@@ -1,16 +1,15 @@
 # Anki Garden UI release-overhaul contract
 
-Status: implementation contract for Release 2.1.0. Capture contract v15 requires
-183 ordered surfaces for the Collection consolidation. The clean v15 run at
-`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
-is the current visual baseline. The preceding v14 run at
-`build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
-records all 181 pre-consolidation surfaces and passes the independent manifest and
-contact-sheet validator. The v12 run at
-`build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`
-remains the complete 157-surface pre-purchase-overhaul baseline. This document
-records the current implementation boundary and the still-separate native-
-platform and human-acceptance gates.
+Status: implementation contract for Release 2.1.0. Current source declares
+capture contract v16 with 191 ordered surfaces for the authoritative Growth
+distribution and targetable Growth Charge overhaul. The requested v8 reference
+remains the primary visual baseline but is incomplete at 139/146. The current
+v16 run at
+`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
+is complete and independently validator-clean at 191/191; it reconciles the
+formerly missing IDs 019 and 064-069 without replacing the requested v8 visual
+authority. This document records the current implementation boundary and the
+still-separate native-platform and human-acceptance gates.
 
 The source code and persisted-state behavior are authoritative. Existing UI
 documents remain useful context, but any conflict called out in
@@ -20,9 +19,11 @@ the contract.
 
 ## Authority and current baseline
 
-The current mutable product boundary is schema 19 in
+The current mutable product boundary is schema 20 in
 `user_files/garden_state.json`. It includes the authoritative resumable
-`OnboardingProgress` state, canonical `GardenLoadoutState`, and the bounded completed-purchase replay ledger.
+`OnboardingProgress` state, canonical `GardenLoadoutState`, exact per-plant
+passive-Growth residuals, canonical daily source/allocation ledgers, and bounded
+completed purchase and Growth Charge replay ledgers.
 `GardenStorage` loads, migrates, repairs, backs up, and atomically replaces that
 file. Anki add-on configuration is a separate persistence domain managed by
 `ConfigManager` (`ankigarden/config.py:11-29,133-180`).
@@ -188,17 +189,47 @@ package contains 269 files, is 81,859,371 bytes, and has SHA-256
 The evidence ZIP is 160,899,994 bytes with SHA-256
 `9a082c0dab1fc788a20c51b244d290a29448650675198d0a69d83671cbd11f54`.
 The run records requested Qt scale 1.5 and mixed primary/secondary macOS display
-provenance. This closes current-source automated visual completeness, not the
+provenance. This closes predecessor-source automated visual completeness, not the
 native Windows, true OS-level 100/150/200-percent, high-DPI, mixed-DPI
 transition, human assistive-technology, or full product visual-acceptance gates.
+
+Capture contract v16 preserves IDs 001-183, renames ID 026 to
+`progress-overview-redirect-growth`, and requires IDs 111-115 to render Plant
+Growth instead of the retired Overview page. It appends IDs 184-191 for Growth
+Charge ready, empty-inventory, loading/disabled, stale-inventory, invalid-target,
+persistence-failure, success-with-stage-reward, and minimum-responsive states.
+
+The final current-source v16 run is:
+
+`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
+
+Its manifest, ordered records, and filesystem agree on all 191 PNGs, including
+019, 064-069, and 184-191. It records `complete: true`, zero failures, zero
+text/layout warnings, complete fixture validation and manifest writing, all 88
+required dialog-scroll audits passing, all 13 responsive-stability pairs
+passing, and a passing 12-cycle dialog-memory probe. All captures used the
+primary macOS display at DPR 3.0 under requested Qt scale 1.5. The manifest-
+owned 24-page contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260817-134654`
+and exact manifest independently validate as `valid` for 191 surfaces.
+
+The immutable capture package contains 270 files, is 81,874,326 bytes, and has
+SHA-256 `eafd92e9b2dc560fbca215456b61fc0e2bd74f0d3c0233c0c269071bc0cc3c78`.
+The evidence ZIP is 159,349,727 bytes with SHA-256
+`d994dcd8a7cdd90ffe0a196c96b3cd7b8cbd67c7185df691dd85a5da4e89b4a3`.
+This closes current-source automated manifest and contact-sheet completeness,
+not the native Windows, true OS-level 100/150/200-percent, high/mixed-DPI,
+keyboard-walkthrough, contrast, screen-reader, or human visual-acceptance gates.
 
 ## Approved downstream decisions
 
 The following decisions define this implementation:
 
-1. Schema 19 preserves the six-step, atomic, resumable onboarding state machine
-   and bounded purchase replay ledger, and collapses legacy equipment mirrors
-   into one canonical `GardenLoadoutState`.
+1. Schema 20 preserves the six-step, atomic, resumable onboarding state machine,
+   exact passive fifths, canonical Growth source/allocation maps, and bounded
+   purchase and Growth Charge replay ledgers. It collapses legacy equipment
+   mirrors into one canonical `GardenLoadoutState`; schema-19 migration preserves
+   undisaggregated current-day Growth in an explicit stale bucket.
    Add-on `onboarding_version` is migration input only, never renderer authority.
 2. One renderer-neutral `GardenPreviewSnapshot` owns compact preview phase,
    scene data, title, summary, weather/scenery identity, motion, and scene fade.
@@ -248,15 +279,17 @@ surface family.
 | Capture IDs | User-facing surface | Component or dialog | Entry point | Renderer and authoritative state | Primary actions and required variants |
 |---|---|---|---|---|---|
 | 001-002 | First-run Deck Browser and Overview | Anki Home card | Anki Deck Browser/Overview hooks | `render_home_widget()` HTML/CSS from `GardenUiSnapshot`; onboarding, garden, metrics, currency, environment, and manifest asset metadata | Open Garden, starter route, Retry; loading, starter-empty, partial, recoverable error, and stale-response rejection |
-| 003, 150-151, 155 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-19 state with resumable onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
+| 003, 150-151, 155 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-20 state with resumable onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
 | 004-006 | Starter Nursery and confirmation | `NurseryDialog`, `StarterConfirmationDialog` | First-run route from Dashboard | Native Qt; release-ready asset catalog plus onboarding and ownership state | Choose, confirm, cancel/back; locked/no-stock, missing artwork, disabled, and action-above-footer variants |
 | 007-008, 018-019, 064-069, 152-154 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from `GardenPreviewSnapshot`; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
 | 009-012, 016, 042-055, 058-063, 087-103, 156 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and shared `SceneGeometryLayout` | Select, Nurture, Fertilize, Move/swap, Story, Garden Progress, Collection, Settings, Undo; hover/focus, long values, all stages/plots, rollback, narrow/scaling variants |
 | 013-015, 056-057, 136-143, 161-162, 173, 175-179 | Fertilizer and replacement confirmation | `PurchaseConfirmationDialog`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; current state from `fertilizer_status()`, new terms from the engine quote, target, active interval/history, balance, and replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current; unaffordable, active, expiring, persistence error, exact discarded time, and measured responsive variants |
 | 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, shared forecast/fertilizer projections, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
-| 020-025 | Growth, streak, and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; daily source allocation, review totals, streak, currency, and ledger | Navigate/close; zero, new, nonzero, active, history, empty, and error variants |
-| 026-032, 070-076, 116-120, 144-149, 157, 181-183 | Garden Progress, Collection, loadout details, species overview | `GardenProgressDialog`, `CollectibleDetailDialog`, species overview `GardenDialog` | Header Collection, cottage, metric routes, Nursery/Settings compatibility routes | Native Qt; registry-derived categories, plant instances, canonical loadout, shared descriptors, ownership/equipment/mystery metadata, and assets | Search/filter/sort, inspect, preview/apply/cancel/unequip, plant/place/move/remove/nurture, navigate; empty, locked, mystery, rollback, placement, mechanics, and responsive variants |
-| 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-19 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
+| 020-021, 026, 111-115 | Plant Growth and stale Overview redirect | Plant Growth page in `GardenProgressDialog` | Plant Growth metric, General Progress, stale `overview` alias | Native Qt from `GardenUiSnapshot`; schema-20 daily study sources, per-plant nurtured/passive/direct allocations, residual fifths, stage projection, and planted-slot order | Inspect exact reconciling totals, expand/collapse Growth Breakdown, target a Charge; zero/nonzero, stale alias, and responsive variants |
+| 022-025 | Streak and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; review totals, streak, currency, and canonical reward ledger | Navigate/close; new, active, history, empty, and error variants |
+| 027-032, 070-076, 116-120, 144-149, 157, 181-183 | Achievements, Collection, loadout details, species overview | `GardenProgressDialog`, `CollectibleDetailDialog`, species overview `GardenDialog` | Header Collection, cottage, metric routes, Nursery/Settings compatibility routes | Native Qt; registry-derived categories, plant instances, canonical loadout, shared descriptors, ownership/equipment/mystery metadata, and assets | Search/filter/sort, inspect, preview/apply/cancel/unequip, plant/place/move/remove/nurture, navigate; empty, locked, mystery, rollback, placement, mechanics, and responsive variants |
+| 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-20 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
+| 184-191 | Growth Charge confirmation and receipt | `GrowthChargeConfirmationDialog` | Selected plant action or per-plant Plant Growth action | Native Qt over renderer-neutral quote/request/outcome contracts; target, inventory, Growth, scenery reward terms, and bounded replay ledger are revalidated at commit | Select Charge type, cancel, use, open Nursery, close receipt; ready, empty, loading, stale, invalid, rollback, rewarded success, and minimum-responsive variants |
 | 037-041, 082-086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, invalid, save rollback/error, production-controls-absent, reduced-motion, and responsive variants |
 
 Window opening, selection, open tabs, filters, Nursery pages, Move drafts, hover,
@@ -273,7 +306,7 @@ webview bridge, not a general routing framework.
 | Add-on menu | Anki Garden settings | `GardenSettingsDialog` | None until Save settings |
 | Deck Browser or Overview Home card | Open Garden | Cached/constructed `GardenDashboard` | None; a fresh garden queues starter flow |
 | Fresh Garden | Choose first plant | `NurseryDialog` in starter mode, then `StarterConfirmationDialog` and scene placement | Species choice and confirmation persist without creating a plant; placement creates it atomically; Nurture remains separate |
-| Dashboard header | Progress | `GardenProgressDialog` overview | None |
+| Dashboard header | Progress | Last valid session page in `GardenProgressDialog`, defaulting to Plant Growth | None; stale `overview` and unknown page keys normalize to Plant Growth |
 | Dashboard header | Collection | Existing `GardenProgressDialog` Collection page | None |
 | Dashboard header | Settings | `GardenSettingsDialog` | None until Save settings |
 | Nursery landmark | Activate | `NurseryDialog` | None until a product action commits |
@@ -281,7 +314,7 @@ webview bridge, not a general routing framework.
 | Metric card | Plant Growth / Anki streak / Garden Coins | Focused `GardenProgressDialog` page | None |
 | Selected plant card | Nurture | Engine `set_active_plant()` | Atomically changes future Growth routing and active periods |
 | Selected plant card | Fertilize | Dedicated Fertilizer dialog | None until Purchase/Extend/Replace commits |
-| Selected plant card | Growth Charge | Existing Garden Progress Growth Charge selector | No duplicated Charge logic; the existing purchase/use owner performs any later commit |
+| Selected plant card or Plant Growth row | Growth Charge | Target-specific `GrowthChargeConfirmationDialog` | Atomic commit consumes one Charge and applies direct Growth only to the selected owned, planted, unfinished plant; no study buffs or passive fan-out |
 | Selected plant card | Move | Scene placement mode | Destination commit changes slots atomically; Undo is session-local |
 | Selected plant card | Story | `PlantStoryDialog` | None except a confirmed rename |
 | Collection plant | Plant in garden | Engine `plant_from_collection()` | Atomically assigns an empty unlocked slot |
@@ -294,32 +327,17 @@ Unknown Home bridge messages and unknown landmark action IDs must pass through
 or fail closed without mutating Garden state. Move mode disables interactive
 landmarks. Home and Settings previews never expose scene landmarks as actions.
 
-### Proposed route contract
-
-`DialogRoute` does not exist as a central model. Before multiple agents add new
-entry paths, introduce a small, UI-only `DialogTarget` enum/dataclass rather
-than a router framework. Proposed fields are:
-
-```python
-@dataclass(frozen=True)
-class DialogTarget:  # proposed, not implemented
-    surface: Literal[
-        "dashboard", "settings", "nursery", "progress", "customize",
-        "plant_story", "fertilizer", "species_overview"
-    ]
-    page: str | None = None
-    plant_id: str | None = None
-    starter_mode: bool = False
-```
-
-It is transient, contains no business state, and must be validated by the
-destination before use.
+Garden Progress keeps its last valid page only for the open application
+session. `overview` is a compatibility input normalized to `growth`; it is not
+a registered page, persisted route, or renderer. Unknown page keys also fall
+back to Plant Growth. Target IDs passed to the Charge dialog remain transient
+and are revalidated by the engine before any mutation.
 
 ## Persistence map
 
 | State domain | Authority and path | Writers | Atomicity and idempotency contract |
 |---|---|---|---|
-| Garden progression, onboarding, economy, and loadout | `GardenState`, `user_files/garden_state.json`, schema 19 | `GardenGameEngine` through `GardenStorage.save()` | Same-directory temporary file and replace; guarded engine transitions snapshot/restore on failure; one persisted `GardenLoadoutState`; event/revlog keys deduplicate delivery; the bounded completed-purchase ledger replays successful request IDs |
+| Garden progression, onboarding, economy, and loadout | `GardenState`, `user_files/garden_state.json`, schema 20 | `GardenGameEngine` through `GardenStorage.save()` | Same-directory temporary file and replace; guarded engine transitions restore state and pending stage transitions on failure; one persisted `GardenLoadoutState`; positive revlog IDs deduplicate study events; bounded purchase and Growth Charge ledgers replay successful request IDs; passive residuals persist as integer fifths |
 | Garden configuration | Anki add-on config through `ConfigManager` | Settings Save | Anki configuration write; staged UI values are not authoritative before success |
 | Garden name | `GardenState.garden_name` | Engine rename from Settings | Atomic Garden state transaction; Settings performs best-effort config rollback if the separate name save fails |
 | Plant identity and story | Plant records inside `GardenState` | Plant Story rename and engine-authored semantic memories | Atomic Garden state transaction; card/deck/note content is never persisted |
@@ -347,26 +365,48 @@ The authoritative flow is:
    scheduler-day window (`ankigarden/hooks/reviewer.py:100-219`).
 2. The engine rejects already processed rows using the floor plus bounded,
    sorted revlog-ID ledger.
-3. Answer-time `active_plant_periods` resolves the unfinished plant being
-   nurtured when the answer occurred (`ankigarden/game.py:757-877`).
-4. The engine allocates 10 base Growth, deterministic fractional streak Growth,
-   Fertilizer, Booster, Weather, and Scenery contributions in that order, with
-   each source retained separately (`ankigarden/game.py:920-998`).
-5. Total Growth caps at Rare. Stage crossings, semantic memories, DailyStats,
-   processed IDs, feedback, and any reward are part of the same saved state
-   transaction.
-6. After commit, the coordinator refreshes Dashboard/Home projections. A failed
-   read, cutoff, or save advances no cursor and grants no partial Growth.
+3. Answer-time `active_plant_periods` resolves the owned, planted, unfinished
+   plant being nurtured when the answer occurred.
+4. The engine projects 10 base Growth plus percentage and flat Streak,
+   Fertilizer, Booster, Weather, Scenery, and other contributions exactly once.
+   `DailyStats` records those study sources; their sum is the final nurtured
+   allocation, not total Garden Growth.
+5. The nurtured plant receives the complete capped result. Every other eligible
+   planted unfinished plant, ordered by slot and plant ID, adds that result to
+   its persisted fifth accumulator, credits the whole `divmod(..., 5)` result,
+   and retains the remainder. No passive plant reruns the modifier projection.
+6. Each plant caps independently at Rare. The shared crossing path records one
+   memory, notification, and `stage:{plant}:{stage}` Coin reward per crossing;
+   only a plant that becomes fully grown discards its unusable residual.
+7. Growth, residuals, daily source/allocation maps, processed revlog identity,
+   feedback, rewards, and stage transitions save as one transaction. Failure
+   restores both state and pending transitions.
+8. After commit, Dashboard, Home, Plant Story, notifications, rewards, and
+   diagnostics project the same canonical snapshot. A failed read, cutoff, or
+   save advances no cursor and grants no partial Growth.
 
-Current repository models already cover most of the requested interface:
+`ReviewAward.allocations` is the immutable per-plant result and
+`ReviewAward.total_garden_growth` is a projection. `StageTransition` carries
+plant name and source (`study_nurtured`, `study_passive`, `growth_charge`, or
+`direct_reward`). Compatibility totals on `DailyStats` are computed properties,
+not independently writable state.
 
-- `ReviewAward` is the current per-review Growth allocation/result.
-- `StageTransition` records a stage crossing.
-- `DailyStats` persists per-source allocation totals.
-- `FeedbackEvent` is the queued user-facing notification.
+## Growth Charge transaction flow
 
-These should be extended if needed; a parallel persisted `GrowthEvent` or
-`GrowthAllocation` model must not be introduced.
+`ankigarden/growth.py` defines frozen `GrowthChargeQuote`,
+`GrowthChargeRequest`, `GrowthChargeOutcome`, reward projection, status, and
+completed-request records. A quote covers target identity/artwork, slot and
+eligibility, current and projected Growth/stage, capped grant, exact stage Coin
+rewards, Charge inventory before/after, and an opaque token over every
+reward-affecting term including Scenery.
+
+Confirmation checks the bounded replay ledger, validates the canonical request
+UUID, then re-quotes current target, inventory, Growth, slot, completion state,
+and reward terms. Identical retries return the stored outcome; conflicting UUID
+reuse fails closed. Success decrements one Charge, applies direct Growth without
+study modifiers or passive fan-out, runs the shared stage/reward path, queues
+feedback, writes the replay record, and saves once. Failure restores inventory,
+Growth, residuals, rewards, feedback, ledger, and pending transitions.
 
 ## Reward-event flow
 
@@ -419,12 +459,11 @@ canonical fingerprint returns its saved `PurchaseOutcome` without another
 debit or grant; conflicting reuse fails closed. A failed save records no
 completed request, so the original request can be retried safely.
 
-Schema 18 stores at most 500 completed purchase requests separately from the
-500-entry currency ledger. Schema-17 migration creates the required backup,
-changes only the schema version, initializes an empty replay ledger, and
-preserves onboarding, review-ledger, ownership, balance, placement, and effect
-state. Legacy `purchase_*` engine methods are compatibility adapters over the
-same quote/confirmation mutation path.
+Schema 20 stores at most 500 completed purchase requests and 500 completed
+Growth Charge requests separately from the 500-entry currency ledger. Earlier
+migrations preserve onboarding, review-ledger, ownership, balance, placement,
+and effect state. Legacy `purchase_*` engine methods are compatibility adapters
+over the same quote/confirmation mutation path.
 
 ### Renderer contract
 
@@ -694,7 +733,7 @@ same action rather than overloading a generic verb.
 |---|---|---|
 | Choose | Select one option and, when confirmed, commit the explicitly described free or owned choice. Starter Choose means acquire and plant the free starter; it does not Nurture it. | Only confirmation commits. A navigation-only “Choose plant” needs a different action ID. |
 | Purchase | Exchange Garden Coins for an entitlement, consumable, timed effect, species, or space. | Debit and acquisition/activation are one atomic, idempotent engine transaction. Purchase never implies Equip or Use except the explicitly combined Fertilizer purchase-and-activation transaction. |
-| Use | Consume an already-owned Growth Charge or Booster on the current eligible nurtured plant. | Consumption and effect are saved together; failure consumes nothing. |
+| Use | Consume an already-owned Growth Charge on any owned, planted, unfinished target, or a Booster on the current eligible nurtured plant. | Consumption and effect are saved together; failure consumes nothing. |
 | Equip | Select one owned Weather or Scenery passive. | No Coin debit. Re-equipping the current item is an idempotent no-op. |
 | Unequip | No supported action in Release 2.1.0. | Exactly one Weather and one Scenery remain selected. Hiding artwork is not Unequip and does not disable its passive. |
 | Plant in garden | Assign one owned stored plant instance to an empty unlocked garden space. | Preserves all plant identity and progression. |
@@ -870,8 +909,9 @@ verified defects in the reference v8 harness, not acceptable release behavior:
   (`ankigarden/capture_ui_faces.py:670-687`).
 - Generic waits can invoke `on_ready()` after timeout if no failure label was
   supplied (`ankigarden/capture_ui_faces.py:769-803`).
-- Capture and next-step scheduling are independent
-  (`ankigarden/capture_ui_faces.py:2147-2170`).
+- Capture and next-step scheduling were independent in v8, allowing a window to
+  close or the next fixture to begin before the current pixmap was secured. The
+  v16 harness chains capture, cleanup, and advancement in that order.
 
 The foundation implementation adds repository-owned manifest and contact-sheet
 validation in `scripts/validate_ui_capture.py`, with automated tests for the
@@ -922,13 +962,24 @@ all 80 required dialog-scroll audits, all 13 responsive-stability pairs, and
 the 12-cycle dialog-memory probe as passing, with zero failures or text-layout
 warnings.
 
-The current-source v15 run at
+The predecessor-source v15 run at
 `build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
 regenerated all 183 fixtures. Its exact manifest and 24-page manifest-owned
 contact-sheet index passed `scripts/validate_ui_capture.py`; the manifest is
 complete with zero failures and zero text/layout warnings. It includes the
 renamed Collection loadout/detail states at 030-032 and 116-120, retained IDs
 019 and 064-069, and new rollback/placement states 182-183.
+
+The final current-source v16 run at
+`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
+regenerated all 191 fixtures. Its exact manifest and 24-page manifest-owned
+contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
+capture count 191, surface count 191, and page count 24. The manifest records
+all 88 required dialog-scroll audits, all 13 responsive-stability pairs, and
+the 12-cycle dialog-memory probe as passing, with zero capture failures or
+text/layout warnings. IDs 019 and 064-069 are present; IDs 184-191 prove the
+target-specific Growth Charge confirmation states, including an exact 420x400
+minimum-responsive fixture.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel
@@ -946,7 +997,9 @@ provides native standard-scale, true OS 200%, Windows, Windows-high-DPI, or
 deliberate mixed-DPI transition acceptance. In historical v9, 100 was 1383x699
 compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Current v10 keeps
 100, 101, and 103 top-level compact; the available screen still caps several
-requested resize heights.
+requested resize heights. The v16 run captured all 191 surfaces on the primary
+macOS display at DPR 3.0 under requested Qt scale 1.5; that cleaner provenance
+still does not substitute for native OS scale or cross-platform acceptance.
 
 The complete count must not be confused with unrestricted product visual
 acceptance. Targeted inspection of the final raw PNGs confirms that 039 is the
@@ -985,7 +1038,7 @@ The following existing statements do not match current source behavior:
   opens a Nursery supplements tab. The current selected-plant action opens a
   dedicated Fertilizer dialog (`ankigarden/ui/dashboard.py:10093-10350`).
 - Older entry-point documents assign environment mutations to a separate
-  Customize dialog. Schema 19 and capture contract v15 make Collection the
+  Customize dialog. Schema 20 and capture contract v16 keep Collection as the
   canonical browser, preview surface, and atomic loadout owner; old callers are
   compatibility routes into Collection.
 - Existing docs call Nursery tabs **Supplements & Boosters** and **Permanent

@@ -81,10 +81,12 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
         "CAPTURE_FACE_GROUPS",
         "RESIZE_MATRIX_SPECS",
         "PURCHASE_CONFIRMATION_RESIZE_SPECS",
+        "GROWTH_CHARGE_RESIZE_SPECS",
         "RESIZE_MATRIX_LAYOUT_MODES",
         "_HOME_CAPTURE_LABELS",
         "_DASHBOARD_CAPTURE_LABELS",
         "_PROGRESS_CAPTURE_LABELS",
+        "_GROWTH_CHARGE_CAPTURE_LABELS",
         "_NURSERY_CAPTURE_LABELS",
         "_SETTINGS_CAPTURE_LABELS",
         "_RESIZE_WINDOW_FAMILIES",
@@ -117,7 +119,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 15
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 16
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -150,7 +152,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
             "streak-active",
             "coins-zero",
             "coins-activity",
-            "progress-overview",
+            "progress-overview-redirect-growth",
             "progress-achievements",
             "progress-collection",
             "collection-species-overview",
@@ -277,8 +279,18 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "collection-loadout-persistence-error",
         "collection-origin-plant-placement",
     )
+    assert groups["Growth overhaul — Charge confirmation states"] == (
+        "growth-charge-use-ready",
+        "growth-charge-empty-inventory",
+        "growth-charge-loading-disabled",
+        "growth-charge-stale-inventory",
+        "growth-charge-invalid-target",
+        "growth-charge-persistence-failure",
+        "growth-charge-success-stage-reward",
+        "growth-charge-minimum-responsive",
+    )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 183
+    assert len(labels) == 191
     assert len(labels) == len(set(labels))
     purchase_fixture = _method_source(
         "_UiFaceCaptureRunner",
@@ -335,6 +347,7 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
         "FertilizerReplacementDialog": 11,
         "SpeciesOverviewDialog": 5,
         "PurchaseConfirmationDialog": 14,
+        "GrowthChargeConfirmationDialog": 8,
     }
 
 
@@ -349,7 +362,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 183
+    assert len({profile["profile_id"] for profile in profiles}) == 191
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -366,8 +379,16 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
     ]
     assert resolver("resize-dashboard-content-1359")["layout_mode"] == "compact"
     assert resolver("resize-dashboard-content-1361")["layout_mode"] == "compact"
-    assert resolver("resize-progress-minimum")["canonical_page"] == "overview"
+    assert resolver("resize-progress-minimum")["canonical_page"] == "growth"
     assert resolver("resize-collection-minimum")["canonical_page"] == "collection"
+    assert resolver("growth-charge-minimum-responsive")["declared_client_size"] == [
+        420,
+        400,
+    ]
+    assert resolver("growth-charge-minimum-responsive")["transition_path"] == (
+        "default-to-minimum"
+    )
+    assert resolver("growth-charge-minimum-responsive")["layout_mode"] == "default"
 
 
 def test_collection_preview_capture_tracks_the_registry_derived_effects_tab() -> None:
@@ -386,11 +407,14 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     source = CAPTURE_PATH.read_text("utf-8")
 
     for key, label in (
-        ("overview", "progress-overview"),
         ("achievements", "progress-achievements"),
         ("collection", "progress-collection"),
     ):
         assert f'self._capture_progress_page("{key}", "{label}")' in source
+    redirect = _method_source("_UiFaceCaptureRunner", "_capture_progress_today")
+    assert 'label = "progress-overview-redirect-growth"' in redirect
+    assert 'dialog.open_page("overview")' in redirect
+    assert 'current_page == "growth"' in redirect
     for label in (
         "fertilizer-unaffordable",
         "fertilizer-affordable",
@@ -437,6 +461,7 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
     specs = (
         *_literal_assignment("RESIZE_MATRIX_SPECS"),
         *_literal_assignment("PURCHASE_CONFIRMATION_RESIZE_SPECS"),
+        *_literal_assignment("GROWTH_CHARGE_RESIZE_SPECS"),
     )
     layout_modes = _literal_assignment("RESIZE_MATRIX_LAYOUT_MODES")
     families = {spec[1] for spec in specs}
@@ -454,6 +479,7 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         "fertilizer-replacement",
         "species-overview",
         "purchase-confirmation",
+        "growth-charge",
     }
     assert all(spec[3] > 0 and spec[4] > 0 for spec in specs)
     assert sum("historical-edge-low-stability-probe" == spec[2] for spec in specs) == 13
@@ -645,10 +671,18 @@ def test_capture_readiness_callbacks_are_one_shot_and_fail_closed() -> None:
 def test_capture_state_variants_use_writable_sources_and_clear_stale_toasts() -> None:
     growth_zero = _method_source("_UiFaceCaptureRunner", "_capture_growth_zero")
     growth_nonzero = _method_source("_UiFaceCaptureRunner", "_capture_growth_nonzero")
+    growth_fixture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_growth_capture_fixture",
+    )
     with_dashboard = _method_source("_UiFaceCaptureRunner", "_with_dashboard")
 
-    assert "plant.growth_points = 0" in growth_zero
-    assert "plant.growth_points = 1_250" in growth_nonzero
+    assert "populated=False" in growth_zero
+    assert "populated=True" in growth_nonzero
+    assert "points = (1_250, 2_450, 7_950)" in growth_fixture
+    assert "stats.plant_nurtured_growth" in growth_fixture
+    assert "stats.plant_passive_growth_fifths" in growth_fixture
+    assert "stats.plant_charge_growth" in growth_fixture
     assert "plant.growth_stage =" not in growth_zero
     assert "plant.growth_stage =" not in growth_nonzero
     assert 'getattr(dashboard, "toast_region", None)' in with_dashboard
@@ -1684,6 +1718,9 @@ def test_keyboard_focus_fixture_clears_its_focus_before_advancing() -> None:
     ) -> None:
         assert label == "keyboard-focus-state"
         assert widget is dashboard
+        before_capture = kwargs.get("before_capture")
+        assert callable(before_capture)
+        before_capture()
         assert button.hasFocus() is True
         events.append("capture")
         callback = kwargs.get("close_callback")
@@ -1696,7 +1733,15 @@ def test_keyboard_focus_fixture_clears_its_focus_before_advancing() -> None:
 
     capture_focus(runner)
 
-    assert events == ["focus", "events", "capture", "clear", "events"]
+    assert events == [
+        "events",
+        "focus",
+        "events",
+        "focus",
+        "capture",
+        "clear",
+        "events",
+    ]
     assert button.hasFocus() is False
     assert runner._failures == []
 
@@ -1717,6 +1762,7 @@ def test_accessibility_fixture_postconditions_prove_isolation() -> None:
     assert "focus_owner is button" in postcondition
     assert "focus_owner is not progress_button" in postcondition
     assert "close_callback=clear_focus_once" in keyboard
+    assert "before_capture=focus_before_capture" in keyboard
     assert "on_error=clear_focus_once" in keyboard
     assert "cleanup_complete" in keyboard
     assert '"Keyboard-focus fixture cleanup failed: "' in keyboard
@@ -1815,7 +1861,13 @@ def test_delayed_capture_keeps_reserved_identity_after_global_provenance_advance
             return True
 
         runner._activate_current_process_window = activate
-        runner._next_after = lambda _delay: advance_global_provenance()
+        advances: list[int] = []
+
+        def advance(delay: int) -> None:
+            advances.append(delay)
+            advance_global_provenance()
+
+        runner._next_after = advance
         runner._capture_now = lambda label, captured_widget, **kwargs: saved.append(
             (label, captured_widget, kwargs["capture_identity"])
         )
@@ -1829,12 +1881,17 @@ def test_delayed_capture_keeps_reserved_identity_after_global_provenance_advance
         )
 
         assert runner._capture_index == 8
-        assert runner._active_fixture_source == "ordered-step-002:_capture_overview"
+        if widget is home_widget:
+            assert runner._active_fixture_source == "ordered-step-002:_capture_overview"
+        else:
+            assert runner._active_fixture_source == "ordered-step-001:_capture_deck_browser"
+        assert advances == []
         assert len(timer_callbacks) == 1
         callback = timer_callbacks.pop()
         assert callable(callback)
         callback()
         assert len(saved) == 1
+        assert advances == [80]
         return saved[0]
 
     generic = exercise(object())
@@ -1848,6 +1905,55 @@ def test_delayed_capture_keeps_reserved_identity_after_global_provenance_advance
 
     assert generic[0] == home[0] == "deck-browser-home"
     assert generic[2] == home[2] == expected_identity
+
+
+def test_capture_cleanup_and_advance_are_chained_after_the_screenshot() -> None:
+    events: list[str] = []
+    timer_callbacks: list[tuple[int, object]] = []
+    qtimer = SimpleNamespace(
+        singleShot=lambda delay, callback: timer_callbacks.append((delay, callback)),
+    )
+    schedule = _compiled_method(
+        "_UiFaceCaptureRunner",
+        "_capture_and_advance",
+        QTimer=qtimer,
+        logger=SimpleNamespace(
+            debug=lambda *_args, **_kwargs: None,
+            exception=lambda *_args, **_kwargs: None,
+        ),
+        mw=object(),
+        time=SimpleNamespace(perf_counter=lambda: 123.0),
+    )
+    runner = SimpleNamespace(
+        _capture_requested_monotonic={},
+        _failures=[],
+        _reserve_capture_identity=lambda label: (
+            81,
+            label,
+            "ordered-step-075:_capture_missing_artwork_fallback",
+            label,
+        ),
+        _capture_now=lambda *_args, **_kwargs: events.append("capture"),
+        _next_after=lambda delay: events.append(f"advance:{delay}"),
+    )
+
+    schedule(
+        runner,
+        "missing-artwork-graphical-fallback",
+        object(),
+        capture_delay_ms=520,
+        close_callback=lambda: events.append("close"),
+        close_ms=850,
+        next_ms=1200,
+    )
+
+    assert events == []
+    assert [delay for delay, _callback in timer_callbacks] == [520]
+    timer_callbacks.pop(0)[1]()
+    assert events == ["capture"]
+    assert [delay for delay, _callback in timer_callbacks] == [330]
+    timer_callbacks.pop(0)[1]()
+    assert events == ["capture", "close", "advance:350"]
 
 
 def test_capture_identity_mismatches_fail_before_reading_qt_or_saving() -> None:
@@ -1991,7 +2097,7 @@ def test_progress_resize_faces_route_to_their_declared_page() -> None:
     capture_position = resize.index("capture_widget(progress, close=True)")
 
     assert route_position < refresh_position < capture_position
-    assert 'target_page = "collection" if family == "collection" else "overview"' in resize
+    assert 'target_page = "collection" if family == "collection" else "growth"' in resize
     assert "target_page not in keys" in resize
     assert "Garden Progress {target_page} was unavailable" in resize
 

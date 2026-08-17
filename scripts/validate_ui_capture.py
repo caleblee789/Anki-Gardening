@@ -497,6 +497,9 @@ def load_expected_resize_layout_modes(
         purchase_specs = ast.literal_eval(
             _assignment_value(module, "PURCHASE_CONFIRMATION_RESIZE_SPECS")
         )
+        growth_charge_specs = ast.literal_eval(
+            _assignment_value(module, "GROWTH_CHARGE_RESIZE_SPECS")
+        )
         modes = ast.literal_eval(
             _assignment_value(module, "RESIZE_MATRIX_LAYOUT_MODES")
         )
@@ -507,10 +510,11 @@ def load_expected_resize_layout_modes(
     if (
         not isinstance(specs, (tuple, list))
         or not isinstance(purchase_specs, (tuple, list))
+        or not isinstance(growth_charge_specs, (tuple, list))
         or not isinstance(modes, dict)
     ):
         raise CaptureValidationError(("resize layout-mode declarations are malformed",))
-    specs = (*specs, *purchase_specs)
+    specs = (*specs, *purchase_specs, *growth_charge_specs)
     labels = tuple(
         spec[0]
         for spec in specs
@@ -909,6 +913,7 @@ def load_expected_state_evidence_contracts(
         "_HOME_CAPTURE_LABELS",
         "_DASHBOARD_CAPTURE_LABELS",
         "_PROGRESS_CAPTURE_LABELS",
+        "_GROWTH_CHARGE_CAPTURE_LABELS",
         "_NURSERY_CAPTURE_LABELS",
         "_SETTINGS_CAPTURE_LABELS",
     ):
@@ -921,11 +926,15 @@ def load_expected_state_evidence_contracts(
         purchase_resize_specs = ast.literal_eval(
             _assignment_value(module, "PURCHASE_CONFIRMATION_RESIZE_SPECS")
         )
+        growth_charge_resize_specs = ast.literal_eval(
+            _assignment_value(module, "GROWTH_CHARGE_RESIZE_SPECS")
+        )
     except (ValueError, SyntaxError) as error:
         raise CaptureValidationError(("resize state profiles must be literal",)) from error
     resize_modes = load_expected_resize_layout_modes(source_path)
     source_values["RESIZE_MATRIX_SPECS"] = resize_specs
     source_values["PURCHASE_CONFIRMATION_RESIZE_SPECS"] = purchase_resize_specs
+    source_values["GROWTH_CHARGE_RESIZE_SPECS"] = growth_charge_resize_specs
     source_values["RESIZE_MATRIX_LAYOUT_MODES"] = resize_modes
 
     result: dict[str, dict[str, Any]] = {}
@@ -991,6 +1000,7 @@ def load_expected_state_evidence_contracts(
         required_facts = _required_postcondition_facts(
             postcondition_function,
             environment={
+                **source_values,
                 "label": label,
                 "expectation": profile,
                 "kind": kind,
@@ -2268,9 +2278,11 @@ def validate_capture_manifest(
                             "Progress button does not own focus"
                         )
             if label in resize_layout_modes:
-                if kind != "resize":
+                expected_kind = str(expected_state_profile.get("kind", ""))
+                if kind != expected_kind:
                     issues.append(
-                        f"capture {index:03d} {label}: resize postcondition kind must be resize"
+                        f"capture {index:03d} {label}: resize postcondition kind must be "
+                        f"{expected_kind}"
                     )
                 if (
                     not isinstance(facts, dict)

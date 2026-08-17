@@ -12,19 +12,27 @@ validator-clean macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543` is
 149 of 149. Capture contract v11 added resilient states 150-156. The v12 run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
-the complete 157-of-157 pre-purchase-overhaul baseline. Current source declares
-capture contract v14 with 181 ordered surfaces. Its validator-clean final run
-at `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
-records all 181 surfaces.
+the complete 157-of-157 pre-purchase-overhaul baseline. Capture contract v14
+added purchase states through 181, and v15 added Collection transaction states
+182-183. Its validator-clean predecessor run at
+`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
+records all 183 surfaces. Current source declares capture contract v16 with 191
+ordered surfaces. It preserves IDs 001-183, changes ID 026 to the stale Overview
+redirect proof, points progress resize IDs 111-115 at Plant Growth, and appends
+the Growth Charge states 184-191. The final current-source run at
+`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
+is independently validator-clean at 191/191, including the formerly missing
+IDs 019 and 064-069.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
-Current v14 preserves IDs 001-157 and the purchase IDs 158-181 for confirmations,
-typed errors, receipts, purchase responsiveness, Nursery empty, and Collection
-environment mechanics.
+Current v16 preserves IDs 001-183 and appends Charge confirmation states
+184-191. IDs 158-181 remain the purchase confirmations, typed errors, receipts,
+purchase responsiveness, Nursery empty state, and Collection environment
+mechanics; IDs 182-183 remain Collection rollback and placement states.
 Capture contract v9 source-faithfully renamed ID 076 from
 `streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
-did not change in v9. Viewports for IDs 001-181 are logical Qt client sizes from
-the final v14 manifest. A
+did not change in v9. Viewports for IDs 001-183 are retained logical Qt client
+sizes; IDs 184-191 use their realized v16 logical sizes. A
 `declared -> actual` value means a screen, widget, or native-frame constraint
 normalized the request. Responsive modes come from the v14 manifest rather
 than from stale v9 fixed-edge labels. The formerly missing Home rows use the
@@ -107,6 +115,27 @@ capture failures or text/layout warnings, 80 passing dialog-scroll audits, all
 contact-sheet pages. The exact manifest and contact-sheet index pass the
 independent repository validator.
 
+Contract v15 replaced the retired Customize identities at 030-032 and 116-120
+with Collection loadout-detail and preview identities, then appended 182-183.
+The run at
+`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
+has exact ordered 183/183 agreement, zero failures or text/layout warnings, and
+a complete validator-clean 24-page contact-sheet set. It is predecessor-source
+evidence only after the v16 Growth overhaul.
+
+Contract v16 requires all 191 surfaces. The requested v8 visual baseline remains
+139/146 and incomplete; no later complete run replaces its visual authority.
+The final run at
+`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
+has exact ordered 191/191 agreement, including 019, 064-069, and 184-191, with
+zero capture failures or text/layout warnings. All 88 dialog-scroll audits, all
+13 responsive-stability pairs, and the 12-cycle dialog-memory probe pass. The
+24-page manifest-owned contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260817-134654`
+and the exact manifest pass the independent repository validator. This closes
+current-source automated manifest and contact-sheet completeness; partial runs
+remain diagnostic evidence only.
+
 Manual review of every raw PNG and all 18 partial contact sheets found these
 successful-file exceptions in the v8 baseline:
 
@@ -168,7 +197,7 @@ its exact fixture, component, viewport, mode, and owner.
 
 | Profile | User-facing surface and entry point | Persistence and source of truth | Primary actions | Required variants, including uncaptured gaps | Fixture implementation |
 |---|---|---|---|---|---|
-| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-18 `GardenState` onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
+| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-20 `GardenState` onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
 | FG | First-run Garden; `AnkiGardenApp.open_dashboard()` | Same `GardenState` plus `select_garden_ui()` and scene payload; persisted onboarding owns the resumable step | Choose first plant, open Nursery | No starter, no release-ready stock, planted-before-Nurture, normal, save error | `_capture_starter_garden()`; native Dashboard/Scene |
 | FN | Starter Nursery; first-run direct Nursery route | Release-ready six-stage asset catalog plus onboarding/species/plants/slots; no mutation until confirmed Choose | Choose, page/filter, back | No stock, locked/missing art, disabled, confirmation, footer reachability, save error | `_capture_starter_nursery_after()`; real catalog in starter mode |
 | FC | Starter confirmation; selected Nursery starter | Selected release-ready species is transient; confirmation persists the species choice, while placement atomically creates one specific plant instance in the chosen bed | Confirm Choose, cancel/back | Enabled/disabled, save error, compact/wide | `_capture_starter_confirmation()` or resize matrix |
@@ -177,17 +206,19 @@ its exact fixture, component, viewport, mode, and owner.
 | F | Fertilizer dialog; selected plant -> Fertilize | Current effect from `fertilizer_status()`, new effect/target/price/balance/disposition from `PurchaseQuote`, and completed-request replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current | Unaffordable, active, expiring/stale countdown, invalid target, persistence error, success receipt, responsive | `_capture_fertilize_after()`, expiring fixture, purchase fixtures, resize matrix |
 | FR | Fertilizer replacement confirmation | Current name/effect/seconds remaining from `fertilizer_status()`; new name/effect/full duration, price, target, and replacement requirement from the engine quote | Keep current, Purchase & Replace | Exact discarded time, current/new cards, disabled/stale target, save error, compact/wide | `_capture_fertilizer_replacement_confirmation()`, v14 confirmation, or resize matrix |
 | ST | Plant Story; selected plant -> Story | Plant identity/species/stage/Growth/memories/discovery and asset metadata; rename persists atomically | Rename/save, close, Choose another when eligible | No/one/many memories, locked Rare, missing art, success/error, responsive | `_capture_story_after()` or resize matrix |
-| P | Growth/Streak/Coins, Progress, Achievements and Collection; metric/header/cottage routes | Daily source counters, totals, streak, currency ledger, achievements/reward history, plants/species discovery, environment ownership/status | Navigate, filter, inspect species/effects, open Customize for equipment changes, close | Zero/new/nonzero/active, empty/filter-empty, locked, completed, at-risk/missed, earned/next, loading/error/disabled, responsive | `_capture_metric()`, `_capture_progress_page()`, collection fixtures, resize matrix |
+| P | Plant Growth/Streak/Coins, Progress, Achievements and Collection; metric/header/cottage routes | Canonical study sources, per-plant nurtured/passive/direct allocations, residual fifths, streak, currency ledger, achievements/reward history, plants/species discovery, and environment ownership/status | Navigate, disclose Growth breakdown, target a Charge, filter, inspect species/effects, manage loadout, close | Zero/new/nonzero/fractional/active, empty/filter-empty, stale migration, locked, completed, at-risk/missed, earned/next, loading/error/disabled, responsive | Growth fixture, `_capture_metric()`, `_capture_progress_page()`, collection fixtures, resize matrix |
 | SO | Species overview; any known catalog species | Catalog identity plus owned instances, highest reached stage/discovery, shared thumbnail metadata, and per-species Rare unlock | Inspect/close | Collected, known-not-collected, zero instances, locked Rare, missing art, responsive | `_build_species_overview_dialog()` plus capture/resize/known-not-collected fixture |
-| C | Customize Garden; Dashboard header | One local draft over persisted inventory, selected Weather/Scenery and visual-only visibility flags; `apply_environment_loadout()` is the commit | Choose owned effects, toggle artwork, Save changes, cancel | Clean/dirty, on/off, unowned/locked, success/error, responsive | Customize fixtures or resize matrix; native GardenStudio/Scene preview |
-| N | Nursery commerce; Nursery landmark/first-run/related routes | Catalogs and engine projections over schema-18 state, shared effect descriptors, normalized artwork, purchase quotes, Coins/ledgers, ownership/inventory, slots, and release-ready assets | Choose, Purchase, Use, Unlock bed, Plant in garden, Move, Move to Collection, open Customize, browse | Owned/equipped/locked/disabled, ready/loading/typed error/success, empty/no stock, missing-art fallback, footer reachability, responsive | Nursery tab/stress/purchase fixtures or resize matrix |
+| C | Collection loadout detail and preview | One local draft over persisted inventory, selected Weather/Scenery and visual-only visibility flags; `apply_garden_loadout()` is the atomic commit | Choose owned effects, toggle artwork, apply, cancel preview | Clean/dirty, on/off, unowned/locked, success/error/rollback, responsive | Collection loadout/detail fixtures or resize matrix; native preview |
+| N | Nursery commerce; Nursery landmark/first-run/related routes | Catalogs and engine projections over schema-20 state, shared effect descriptors, normalized artwork, purchase quotes, Coins/ledgers, ownership/inventory, slots, and release-ready assets | Choose, Purchase, Use, Unlock bed, Plant in garden, Move, Move to Collection, open Collection, browse | Owned/equipped/locked/disabled, ready/loading/typed error/success, empty/no stock, missing-art fallback, footer reachability, responsive | Nursery tab/stress/purchase fixtures or resize matrix |
+| GC | Growth Charge confirmation; selected plant or Plant Growth row | Frozen quote/request/outcome contracts over target eligibility, Growth, selected Scenery reward terms, Charge inventory, and bounded completed-request ledger | Select Charge type, Use Growth Charge, Cancel, Open Nursery, Close receipt | Ready, empty, loading/disabled, stale inventory, invalid target, persistence rollback, rewarded success, minimum responsive | `_capture_growth_charge_dialog_fixture()`; native target-specific modal |
 | SD | Settings and Diagnostics; Anki menu or Dashboard Settings | Staged Anki config plus separately persisted Garden name; runtime diagnostics/build capabilities/telemetry are derived | Save changes, cancel, restore defaults, toggle, expand/refresh/copy diagnostics | Clean/warning, dirty, invalid, rollback/error, production controls absent, reduced motion, responsive | Settings fixture methods or resize matrix; both scroll positions reset |
 
 All product mutations in these profiles must remain engine-authoritative,
 rollback-safe, and atomically saved. Capture-only viewport, route, hover, focus,
 filter, and draft state must never enter `garden_state.json`. Review/reward
-events retain stable event keys; every Coin purchase uses the separate bounded
-completed-request replay ledger and one engine-owned atomic mutation path.
+events retain stable event keys; every Coin purchase and Growth Charge use has a
+separate bounded completed-request replay ledger and one engine-owned atomic
+mutation path.
 
 ## Display and viewport interpretation
 
@@ -197,10 +228,12 @@ mixed-display run: six first-run captures used the secondary display at DPR
 records six captures on the secondary display at DPR 1.5 and 143 on the primary
 display at DPR 3.0. The v12 run records six captures on the secondary
 display at DPR 1.5 and 151 on the primary display at DPR 3.0. These runs used
-requested `QT_SCALE_FACTOR=1.5`. The v14 run likewise records mixed secondary
-and primary display provenance under requested scale factor 1.5. This is
-useful multi-display provenance, but it is not native mixed-DPI acceptance
-because the suite did not deliberately exercise cross-display transitions.
+requested `QT_SCALE_FACTOR=1.5`. The v14 and v15 runs likewise record mixed
+secondary and primary display provenance under requested scale factor 1.5. The
+v16 run records all 191 surfaces on the primary display at DPR 3.0 under the
+same requested scale. This is useful display provenance, but it is not native
+mixed-DPI acceptance because the suite did not deliberately exercise cross-
+display transitions.
 There is no current native standard-scale, true OS 200-percent, or Windows
 acceptance run. Capture 090 remains a logical Qt proxy, not true OS 200-percent
 evidence. Responsive mode is transient capture metadata and is never persisted.
@@ -209,8 +242,8 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 
 | ID | Capture state | Profile | Component / renderer | Fixture data and preparation | Viewport (logical px) | Responsive mode | Owning agent |
 |---:|---|:---:|---|---|---:|---|---|
-| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-18 starter state on Deck Browser | 667x570 | default | Home + First run |
-| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-18 starter state on Overview | 667x570 | default | Home + First run |
+| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-20 starter state on Deck Browser | 667x570 | default | Home + First run |
+| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-20 starter state on Overview | 667x570 | default | Home + First run |
 | 003 | `starter-garden-onboarding` | FG | GardenDashboard / GardenSceneWidget | Untouched state; onboarding step 1 visible | 1177x630 | compact | First run + Garden |
 | 004 | `starter-nursery-plants` | FN | NurseryDialog | Release-ready starter catalog; no owned plant | 1177x630 | wide | Nursery + First run |
 | 005 | `starter-selection-confirmation` | FC | StarterConfirmationDialog | First release-ready species awaiting confirmation | 480x300 | wide | First run |
@@ -228,19 +261,19 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 017 | `plant-story` | ST | PlantStoryDialog | Selected plant identity, stage, Growth, and memories | 960x629 | wide | Story + Collection |
 | 018 | `active-deck-browser-home-after-nurture` | H | AnkiQt / Home HTML | Persisted first-Nurture state on Deck Browser | 667x570 | default | Home |
 | 019 | `active-overview-home-after-nurture` | H | AnkiQt / Home HTML | Persisted first-Nurture state on Overview | 667x570 | default | Home |
-| 020 | `growth-zero` | P | GardenProgressDialog | Daily Growth and source counters zeroed | 1140x630 | wide | Progress + Collection |
-| 021 | `growth-nonzero` | P | GardenProgressDialog | 1,250 Growth with nonzero source allocation | 1140x630 | wide | Progress + Collection |
+| 020 | `growth-zero` | P | GardenProgressDialog | Three planted plants; canonical study sources and target allocations all zero | 1140x630 | wide | Progress + Growth |
+| 021 | `growth-nonzero` | P | GardenProgressDialog | Three planted plants; all modifier rows, 53 study Growth, exact fractional passive allocations, Charge/direct Growth, and reconciling totals | 1140x630 | wide | Progress + Growth |
 | 022 | `streak-new` | P | GardenProgressDialog | New 0-day streak presentation | 1140x630 | wide | Progress + Collection |
 | 023 | `streak-active` | P | GardenProgressDialog | Active current-day streak presentation | 1140x630 | wide | Progress + Collection |
 | 024 | `coins-zero` | P | GardenProgressDialog | 0 Coins and empty ledger | 1140x630 | wide | Progress + Collection |
 | 025 | `coins-activity` | P | GardenProgressDialog | 0 start plus real stage/streak credits in ledger | 1140x630 | wide | Progress + Collection |
-| 026 | `progress-overview` | P | GardenProgressDialog | Progress route: overview | 1140x630 | wide | Progress + Collection |
+| 026 | `progress-overview-redirect-growth` | P | GardenProgressDialog | Stale `overview` route normalized to registered Plant Growth page | 1140x630 | wide | Progress + Growth |
 | 027 | `progress-achievements` | P | GardenProgressDialog | Progress route: achievements | 1140x630 | wide | Progress + Collection |
 | 028 | `progress-collection` | P | GardenProgressDialog | Progress route: collection | 1140x630 | wide | Progress + Collection |
 | 029 | `collection-species-overview` | SO | GardenDialog (`SpeciesOverviewDialog`) | Owned species selected from Collection | 960x400 | default | Progress + Collection |
-| 030 | `customize-garden` | C | CustomizeGardenDialog / GardenStudioWidget | Persisted loadout copied into clean Customize draft | 1139x644 | wide | Customize + Environment |
-| 031 | `customize-effects-on` | C | CustomizeGardenDialog / GardenStudioWidget | Local Customize draft with Weather/Scenery visible | 1139x644 | wide | Customize + Environment |
-| 032 | `customize-effects-off` | C | CustomizeGardenDialog / GardenStudioWidget | Local Customize draft with both visuals hidden | 1139x644 | wide | Customize + Environment |
+| 030 | `collection-loadout-detail` | C | CollectibleDetailDialog | Canonical saved Weather/Scenery loadout and ownership details | 1139x644 | wide | Collection + Environment |
+| 031 | `collection-preview-active` | C | CollectibleDetailDialog | Reversible local preview with Weather/Scenery effects visible | 1139x644 | wide | Collection + Environment |
+| 032 | `collection-preview-restored` | C | CollectibleDetailDialog | Preview cancelled and persisted appearance restored | 1139x644 | wide | Collection + Environment |
 | 033 | `nursery-plants` | N | NurseryDialog | Nursery tab 1 catalog projection | 1048x643 | wide | Nursery + Economy |
 | 034 | `nursery-fertilizer-booster` | N | NurseryDialog | Nursery tab 2 catalog projection | 1048x643 | wide | Nursery + Economy |
 | 035 | `nursery-garden-spaces` | N | NurseryDialog | Nursery tab 3 catalog projection | 1048x643 | wide | Nursery + Economy |
@@ -319,16 +352,16 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 108 | `resize-settings-content-761` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-content-761` | 809x650 | display | Settings + Diagnostics |
 | 109 | `resize-settings-default` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-default` | 980x680 | display | Settings + Diagnostics |
 | 110 | `resize-settings-large` | SD | GardenSettingsDialog / GardenStudioWidget | Declared resize-matrix transition `settings-large` | 1000x820 -> 1000x699 | display | Settings + Diagnostics |
-| 111 | `resize-progress-minimum` | P | GardenProgressDialog | Declared resize-matrix transition `progress-minimum` | 720x500 | compact | Progress + Collection |
-| 112 | `resize-progress-content-819` | P | GardenProgressDialog | Declared resize-matrix transition `progress-content-819` | 867x620 | wide | Progress + Collection |
-| 113 | `resize-progress-content-821` | P | GardenProgressDialog | Declared resize-matrix transition `progress-content-821` | 869x620 | wide | Progress + Collection |
-| 114 | `resize-progress-default` | P | GardenProgressDialog | Declared resize-matrix transition `progress-default` | 940x680 | wide | Progress + Collection |
-| 115 | `resize-progress-large` | P | GardenProgressDialog | Declared resize-matrix transition `progress-large` | 1000x820 -> 1000x699 | wide | Progress + Collection |
-| 116 | `resize-customize-minimum` | C | CustomizeGardenDialog / GardenStudioWidget | Declared resize-matrix transition `customize-minimum` | 680x480 | compact | Customize + Environment |
-| 117 | `resize-customize-content-819` | C | CustomizeGardenDialog / GardenStudioWidget | Declared resize-matrix transition `customize-content-819` | 867x620 | compact | Customize + Environment |
-| 118 | `resize-customize-content-821` | C | CustomizeGardenDialog / GardenStudioWidget | Declared resize-matrix transition `customize-content-821` | 869x620 | compact | Customize + Environment |
-| 119 | `resize-customize-default` | C | CustomizeGardenDialog / GardenStudioWidget | Declared resize-matrix transition `customize-default` | 1040x700 -> 1040x699 | wide | Customize + Environment |
-| 120 | `resize-customize-large` | C | CustomizeGardenDialog / GardenStudioWidget | Declared resize-matrix transition `customize-large` | 1120x860 -> 1120x699 | wide | Customize + Environment |
+| 111 | `resize-progress-minimum` | P | GardenProgressDialog | Plant Growth page; declared transition `default-to-minimum` | 720x500 | compact | Progress + Growth |
+| 112 | `resize-progress-content-819` | P | GardenProgressDialog | Plant Growth historical low-edge stability probe | 867x620 | wide | Progress + Growth |
+| 113 | `resize-progress-content-821` | P | GardenProgressDialog | Plant Growth historical high-edge stability probe | 869x620 | wide | Progress + Growth |
+| 114 | `resize-progress-default` | P | GardenProgressDialog | Plant Growth transition `minimum-to-default` | 940x680 | wide | Progress + Growth |
+| 115 | `resize-progress-large` | P | GardenProgressDialog | Plant Growth transition `default-to-large` | 1000x820 -> 1000x699 | wide | Progress + Growth |
+| 116 | `resize-collectible-detail-minimum` | C | CollectibleDetailDialog | Collection loadout detail at declared minimum | 680x480 | compact | Collection + Environment |
+| 117 | `resize-collectible-detail-content-819` | C | CollectibleDetailDialog | Loadout detail historical low-edge stability probe | 867x620 | compact | Collection + Environment |
+| 118 | `resize-collectible-detail-content-821` | C | CollectibleDetailDialog | Loadout detail historical high-edge stability probe | 869x620 | compact | Collection + Environment |
+| 119 | `resize-collectible-detail-default` | C | CollectibleDetailDialog | Loadout detail transition `minimum-to-default` | 1040x700 -> 1040x699 | wide | Collection + Environment |
+| 120 | `resize-collectible-detail-large` | C | CollectibleDetailDialog | Loadout detail transition `default-to-large` | 1120x860 -> 1120x699 | wide | Collection + Environment |
 | 121 | `resize-nursery-minimum` | N | NurseryDialog | Declared resize-matrix transition `nursery-minimum` | 640x460 | compact | Nursery + Economy |
 | 122 | `resize-nursery-content-759` | N | NurseryDialog | Declared resize-matrix transition `nursery-content-759` | 795x600 | wide | Nursery + Economy |
 | 123 | `resize-nursery-content-761` | N | NurseryDialog | Declared resize-matrix transition `nursery-content-761` | 797x600 | wide | Nursery + Economy |
@@ -390,6 +423,16 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 179 | `purchase-confirmation-large` | FR | FertilizerReplacementDialog | Default-to-large comparison transition | 820x553 | wide | Nursery + Economy |
 | 180 | `nursery-empty-state` | N | NurseryDialog | Explicit all-species-collected empty state with footer clearance | 1048x643 | wide | Nursery + Economy |
 | 181 | `collection-environment-mechanics` | P | GardenProgressDialog | Shared Weather/Scenery mechanics, ownership, textual Equipped state, and Customize route | 1000x699 | wide | Progress + Collection + Customize |
+| 182 | `collection-loadout-persistence-error` | C | CollectibleDetailDialog | Atomic loadout save failure restores the prior persisted draft | 1120x699 | wide | Collection + Environment |
+| 183 | `collection-origin-plant-placement` | G | GardenDashboard / GardenSceneWidget | Collection-origin plant placement into an unlocked Garden slot | 1140x699 | compact | Collection + Garden |
+| 184 | `growth-charge-use-ready` | GC | GrowthChargeConfirmationDialog | Owned Small Charge and valid planted target; complete current/projected/reward terms | 820x614 | default | Growth + Economy |
+| 185 | `growth-charge-empty-inventory` | GC | GrowthChargeConfirmationDialog | Valid target, zero Charge inventory, and in-empty-state Open Nursery action | 820x614 | default | Growth + Nursery |
+| 186 | `growth-charge-loading-disabled` | GC | GrowthChargeConfirmationDialog | Submission in flight with selector, Cancel, and Use paths disabled | 820x614 | default | Growth + Economy |
+| 187 | `growth-charge-stale-inventory` | GC | GrowthChargeConfirmationDialog | Inventory changes after quote; refreshed terms and inline stale alert, no mutation | 820x614 | default | Growth + Economy |
+| 188 | `growth-charge-invalid-target` | GC | GrowthChargeConfirmationDialog | Owned but unplanted target rejected with visible non-color status | 820x614 | default | Growth + Collection |
+| 189 | `growth-charge-persistence-failure` | GC | GrowthChargeConfirmationDialog | Deterministic save failure restores Growth, inventory, rewards, feedback, ledger, and transitions | 820x614 | default | Growth + Economy |
+| 190 | `growth-charge-success-stage-reward` | GC | GrowthChargeConfirmationDialog | Small Charge crosses Seed to Sprout, grants one 5-Coin reward, and shows non-reusable receipt | 820x614 | default | Growth + Rewards |
+| 191 | `growth-charge-minimum-responsive` | GC | GrowthChargeConfirmationDialog | Ready terms at exact minimum with one reachable body scroll and clear footer | 420x400 | default | Growth + Accessibility |
 
 ## Ownership and implementation boundary
 
@@ -405,10 +448,11 @@ The complete 146/146 v9 run closes its historical manifest gap but is stale
 after later source and capture-contract changes. The validator-clean v10 run
 supplies 149/149 evidence; the v11 run supplies 156/156 frozen-foundation
 evidence. The v12 run supplies 157/157 pre-purchase-overhaul evidence, including
-the known-not-collected species state. The v14 run supplies complete 181/181
-current-source automated capture evidence. No local capture by itself closes
-the native-platform, uncaptured variant, or human-accessibility gates identified
-above.
+the known-not-collected species state. The v14 and v15 runs supply complete
+181/181 and 183/183 predecessor-source evidence respectively. The final v16 run
+supplies independently validator-clean 191/191 current-source evidence. No
+local capture by itself closes the native-platform, uncaptured variant, or
+human-accessibility gates identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true
 OS 100/150/200-percent scaling, and high/mixed-DPI evidence are required before
