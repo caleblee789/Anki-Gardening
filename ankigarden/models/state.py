@@ -15,8 +15,9 @@ from ..environment import (
     SCENERY_CATALOG,
     WEATHER_CATALOG,
 )
+from ..purchases import CompletedPurchaseRequest
 
-STATE_VERSION = 17
+STATE_VERSION = 18
 ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
@@ -55,6 +56,7 @@ PLANT_MEMORY_KINDS = {"planted", "first_nurture", "stage", "streak", "reviews"}
 MAX_PLANT_NAME_LENGTH = 40
 MAX_GARDEN_NAME_LENGTH = 40
 MAX_TRANSACTION_HISTORY = 500
+MAX_COMPLETED_PURCHASE_REQUESTS = 500
 MAX_FEEDBACK_EVENTS = 100
 MAX_REWARD_DROP_HISTORY = 500
 MAX_ACTIVE_PERIODS = 64
@@ -275,6 +277,7 @@ class GardenState:
     daily_stats: DailyStats = field(default_factory=DailyStats)
     currency_balance: int = 0
     currency_transactions: List[CurrencyTransaction] = field(default_factory=list)
+    completed_purchase_requests: List[CompletedPurchaseRequest] = field(default_factory=list)
     claimed_streak_rewards: List[int] = field(default_factory=list)
     pending_feedback: List[FeedbackEvent] = field(default_factory=list)
     reward_seed: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -367,6 +370,10 @@ class GardenState:
             },
             "currency_balance": self.currency_balance,
             "currency_transactions": [tx.__dict__ for tx in self.currency_transactions[-MAX_TRANSACTION_HISTORY:]],
+            "completed_purchase_requests": [
+                request.to_dict()
+                for request in self.completed_purchase_requests[-MAX_COMPLETED_PURCHASE_REQUESTS:]
+            ],
             "claimed_streak_rewards": sorted(set(self.claimed_streak_rewards)),
             "pending_feedback": [event.__dict__ for event in self.pending_feedback[-MAX_FEEDBACK_EVENTS:]],
             "reward_seed": self.reward_seed,
@@ -466,6 +473,9 @@ class GardenState:
         state.achievements = _achievements(data.get("achievements"), issues)
         state.currency_balance = _nonnegative_int(data.get("currency_balance"), 0, "currency_balance", issues)
         state.currency_transactions = _transactions(data.get("currency_transactions"), state.currency_balance, issues)
+        state.completed_purchase_requests = _completed_purchase_requests(
+            data.get("completed_purchase_requests"), issues
+        )
         claimed_streaks = data.get("claimed_streak_rewards", [])
         if isinstance(claimed_streaks, list):
             claimed_values = {
@@ -1133,6 +1143,32 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
                 item.occurred_at,
             ))
         result = repaired
+    return result
+
+
+def _completed_purchase_requests(
+    value: Any,
+    issues: list[str],
+) -> list[CompletedPurchaseRequest]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("completed_purchase_requests: expected list")
+        return []
+    result: list[CompletedPurchaseRequest] = []
+    request_ids: set[str] = set()
+    for index, raw in enumerate(value[-MAX_COMPLETED_PURCHASE_REQUESTS:]):
+        record = CompletedPurchaseRequest.from_dict(raw)
+        if record is None:
+            issues.append(f"completed_purchase_requests[{index}]: invalid record")
+            continue
+        if record.request_id in request_ids:
+            issues.append(
+                f"completed_purchase_requests[{index}]: duplicate request identity"
+            )
+            continue
+        request_ids.add(record.request_id)
+        result.append(record)
     return result
 
 

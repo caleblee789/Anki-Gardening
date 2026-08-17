@@ -30,7 +30,7 @@ from .models.state import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 
 
@@ -314,7 +314,7 @@ def migrate_modern_state(
     migrated_at: float | None = None,
     onboarding_version: Any = 0,
 ) -> GardenState:
-    """Add current preservation boundaries to a schema 11-16 state.
+    """Add current preservation boundaries to a schema 11-17 state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -324,9 +324,17 @@ def migrate_modern_state(
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11 through 16 can use the modern migration")
+        raise ValueError("only schema 11 through 17 can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    if source_version == 17:
+        # Schema 17 already owns every current progression, onboarding, and
+        # revlog field. The purchase overhaul adds only the bounded replay
+        # ledger, so do not run older compatibility repairs that could rewrite
+        # otherwise valid in-progress state.
+        payload["version"] = STATE_VERSION
+        payload["completed_purchase_requests"] = []
+        return GardenState.from_dict(payload)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
         time.time() if migrated_at is None else migrated_at,
@@ -337,6 +345,7 @@ def migrate_modern_state(
     payload.setdefault("daily_environment_claims", {})
     payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
     payload.setdefault("garden_name", "My Garden")
+    payload.setdefault("completed_purchase_requests", [])
     if source_version < 16:
         payload["garden_setup_version"] = 1
     plants = payload.get("plants")

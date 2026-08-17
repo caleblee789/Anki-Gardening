@@ -42,6 +42,7 @@ from .models.state import (
     CURRENT_CATALOG_SPECIES_ORDER,
     MAX_FERTILIZER_HISTORY,
     MAX_BOOSTER_HISTORY,
+    MAX_COMPLETED_PURCHASE_REQUESTS,
     MAX_GARDEN_SLOTS,
     MAX_GARDEN_NAME_LENGTH,
     MAX_PLANT_NAME_LENGTH,
@@ -55,6 +56,16 @@ from .models.state import (
     RewardDrop,
     STREAK_BONUS_TIERS,
     utc_now_iso,
+)
+from .purchases import (
+    CompletedPurchaseRequest,
+    EffectDescriptor,
+    PurchaseDisposition,
+    PurchaseKind,
+    PurchaseOutcome,
+    PurchaseQuote,
+    PurchaseRequest,
+    PurchaseStatus,
 )
 from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryError
 
@@ -1679,48 +1690,869 @@ class GardenGameEngine:
             "bands": rows,
         }
 
-    def purchase_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
-        normalized_kind = str(kind)
-        item = environment_item(normalized_kind, str(item_id))
-        if item is None:
-            return False, "That Weather or Scenery item is not in the current collection."
-        if self.owns_environment(normalized_kind, item.item_id):
-            return False, f"You already own {item.name}."
-        if not item.purchasable or item.price is None:
-            return False, f"{item.name} can only be earned while reviewing cards."
-        snapshot = self._state_snapshot()
-        event_key = f"purchase:environment:{normalized_kind}:{item.item_id}"
-        if not self._debit_currency(
-            event_key,
-            f"Purchased {item.name}",
-            item.price,
-        ):
-            return False, f"{item.name} costs {item.price:,} Garden Coins."
-        if normalized_kind == "weather":
-            self.state.inventory.setdefault("weather", []).append(item.item_id)
-        else:
-            self.state.inventory.setdefault("scenery", []).append(item.item_id)
-            self.state.inventory.setdefault("backgrounds", []).append(item.item_id)
-        self._queue_feedback(
-            event_key,
-            "environment_purchase",
-            (
-                f"{item.name} joined your collection. Visit Customize Garden "
-                "when you want to equip it."
-            ),
-            title=f"{item.name} unlocked",
-            asset_category="weather" if item.kind == "weather" else "backgrounds",
-            asset_key=item.item_id,
-            amount=1,
+    @staticmethod
+    def _purchase_quote_token(payload: dict[str, Any]) -> str:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _duration_label(seconds: int) -> str:
+        total_minutes = max(1, int(math.ceil(max(0, seconds) / 60)))
+        hours, minutes = divmod(total_minutes, 60)
+        if not hours:
+            return f"{minutes} {'minute' if minutes == 1 else 'minutes'}"
+        hour_text = f"{hours} {'hour' if hours == 1 else 'hours'}"
+        if not minutes:
+            return hour_text
+        return f"{hour_text} {minutes} minutes"
+
+    @staticmethod
+    def _unavailable_descriptor(message: str) -> EffectDescriptor:
+        return EffectDescriptor(
+            function="This item is not available for purchase.",
+            buff="No effect will be applied.",
+            activation_condition="Unavailable.",
+            duration="Not applicable.",
+            stacking="Not applicable.",
+            replacement="Nothing will be replaced.",
+            unlock_requirement=message,
+        )
+
+    def _make_purchase_quote(
+        self,
+        *,
+        kind: PurchaseKind,
+        item_id: str,
+        item_name: str,
+        category: str,
+        artwork_category: str,
+        artwork_key: str,
+        unit_price: int,
+        disposition: PurchaseDisposition,
+        descriptor: EffectDescriptor,
+        target_id: str | None = None,
+        target_name: str = "",
+        status: PurchaseStatus = PurchaseStatus.READY,
+        message: str = "",
+        replacement_required: bool = False,
+        current_item_name: str = "",
+        current_effect: str = "",
+        current_duration: str = "",
+        current_seconds_remaining: int = 0,
+        state_signature: Any = None,
+    ) -> PurchaseQuote:
+        price = max(0, int(unit_price))
+        balance = max(0, int(self.state.currency_balance))
+        effective_status = status
+        effective_message = str(message)
+        if effective_status is PurchaseStatus.READY and balance < price:
+            effective_status = PurchaseStatus.INSUFFICIENT_COINS
+            shortfall = price - balance
+            effective_message = (
+                f"You need {shortfall:,} more Garden Coins to purchase {item_name}."
+            )
+        token = self._purchase_quote_token({
+            "schema": 1,
+            "kind": kind.value,
+            "item_id": item_id,
+            "price": price,
+            "balance": balance,
+            "target_id": target_id,
+            "disposition": disposition.value,
+            "status": effective_status.value,
+            "replacement_required": bool(replacement_required),
+            "state": state_signature,
+        })
+        return PurchaseQuote(
+            kind=kind,
+            item_id=item_id,
+            item_name=item_name,
+            category=category,
+            artwork_category=artwork_category,
+            artwork_key=artwork_key,
+            quantity=1,
+            unit_price=price,
+            balance_before=balance,
+            balance_after=balance - price,
+            target_id=target_id,
+            target_name=target_name,
+            disposition=disposition,
+            descriptor=descriptor,
+            quote_token=token,
+            status=effective_status,
+            message=effective_message,
+            replacement_required=bool(replacement_required),
+            current_item_name=current_item_name,
+            current_effect=current_effect,
+            current_duration=current_duration,
+            current_seconds_remaining=max(0, int(current_seconds_remaining)),
+        )
+
+    def quote_purchase(
+        self,
+        kind: PurchaseKind | str,
+        item_id: str,
+        *,
+        quantity: int = 1,
+        target_id: str | None = None,
+    ) -> PurchaseQuote:
+        """Build one current, renderer-neutral Garden Coin purchase quote."""
+
+        purchase_kind = (
+            kind if isinstance(kind, PurchaseKind) else PurchaseKind(str(kind))
+        )
+        normalized_item = str(item_id or "")
+        if int(quantity) != 1:
+            return self._make_purchase_quote(
+                kind=purchase_kind,
+                item_id=normalized_item,
+                item_name="Unavailable item",
+                category="Garden item",
+                artwork_category="ui",
+                artwork_key="missing",
+                unit_price=0,
+                disposition=PurchaseDisposition.INVENTORY,
+                descriptor=self._unavailable_descriptor(
+                    "Garden purchases currently use a quantity of one."
+                ),
+                status=PurchaseStatus.ITEM_UNAVAILABLE,
+                message="Garden purchases currently use a quantity of one.",
+                state_signature={"quantity": quantity},
+            )
+
+        if purchase_kind is PurchaseKind.SPECIES:
+            species = normalized_item.lower()
+            name = f"{species.replace('_', ' ').title()} Seed" if species else "Plant Seed"
+            price = self.SPECIES_PRICES.get(species)
+            descriptor = EffectDescriptor(
+                function=(
+                    f"Creates one specific {species.replace('_', ' ').title()} plant "
+                    "instance in Collection."
+                ),
+                buff=(
+                    "No direct buff; after planting and nurturing, Anki card answers "
+                    "can add Growth to this plant."
+                ),
+                activation_condition="Plant it in an empty unlocked garden bed, then nurture it.",
+                duration="The plant instance and its progress are permanent.",
+                stacking="Each released species can be purchased once.",
+                replacement="Does not replace or remove another plant.",
+                unlock_requirement="Choose a free starter before purchasing another species.",
+            )
+            status = PurchaseStatus.READY
+            message = ""
+            if price is None or species not in self.release_ready_species():
+                status = PurchaseStatus.ITEM_UNAVAILABLE
+                message = "That species is no longer available in the Nursery."
+            elif not self.state.starter_selection_complete:
+                status = PurchaseStatus.TARGET_INVALID
+                message = "Choose your free starter before purchasing another plant."
+            elif species in self.state.unlocked_species or any(
+                plant.species == species for plant in self.state.plants
+            ):
+                status = PurchaseStatus.ALREADY_OWNED
+                message = f"{name} is already in your collection."
+            return self._make_purchase_quote(
+                kind=purchase_kind,
+                item_id=species,
+                item_name=name,
+                category="Plant",
+                artwork_category="plant",
+                artwork_key=species,
+                unit_price=int(price or 0),
+                disposition=PurchaseDisposition.COLLECTION,
+                descriptor=descriptor,
+                status=status,
+                message=message,
+                state_signature={
+                    "starter_complete": bool(self.state.starter_selection_complete),
+                    "owned": species in self.state.unlocked_species or any(
+                        plant.species == species for plant in self.state.plants
+                    ),
+                    "release_ready": species in self.release_ready_species(),
+                },
+            )
+
+        if purchase_kind is PurchaseKind.GROWTH_CHARGE:
+            spec = GROWTH_CHARGES.get(normalized_item)
+            if spec is None:
+                return self._make_purchase_quote(
+                    kind=purchase_kind,
+                    item_id=normalized_item,
+                    item_name="Growth Charge",
+                    category="Growth Charge",
+                    artwork_category="ui",
+                    artwork_key=normalized_item or "growth_charge_small",
+                    unit_price=0,
+                    disposition=PurchaseDisposition.INVENTORY,
+                    descriptor=self._unavailable_descriptor(
+                        "That Growth Charge is no longer available."
+                    ),
+                    status=PurchaseStatus.ITEM_UNAVAILABLE,
+                    message="That Growth Charge is no longer available.",
+                    state_signature={"available": False},
+                )
+            status = PurchaseStatus.READY
+            message = ""
+            if not spec.purchasable or spec.price is None:
+                status = PurchaseStatus.ITEM_UNAVAILABLE
+                message = f"{spec.name} can only be earned while reviewing cards."
+            return self._make_purchase_quote(
+                kind=purchase_kind,
+                item_id=spec.charge_id,
+                item_name=spec.name,
+                category="Growth Charge",
+                artwork_category="ui",
+                artwork_key=spec.charge_id,
+                unit_price=int(spec.price or 0),
+                disposition=PurchaseDisposition.INVENTORY,
+                descriptor=spec.descriptor,
+                status=status,
+                message=message,
+                state_signature={"growth": spec.growth, "purchasable": spec.purchasable},
+            )
+
+        if purchase_kind is PurchaseKind.FERTILIZER:
+            tier = normalized_item.lower()
+            spec = self.FERTILIZERS.get(tier)
+            plant = self.plant_story(str(target_id or ""))
+            if spec is None:
+                return self._make_purchase_quote(
+                    kind=purchase_kind,
+                    item_id=tier,
+                    item_name="Fertilizer",
+                    category="Fertilizer",
+                    artwork_category="ui",
+                    artwork_key=f"fertilizer_{tier or 'basic'}",
+                    unit_price=0,
+                    disposition=PurchaseDisposition.APPLIED,
+                    descriptor=self._unavailable_descriptor(
+                        "That Fertilizer is no longer available."
+                    ),
+                    target_id=target_id,
+                    status=PurchaseStatus.ITEM_UNAVAILABLE,
+                    message="That Fertilizer is no longer available.",
+                    state_signature={"available": False},
+                )
+            duration = self._duration_label(spec.duration_seconds)
+            descriptor = EffectDescriptor(
+                function="Purchases and immediately applies this Fertilizer to the target plant.",
+                buff=f"+{spec.growth_per_answer:,} Growth per eligible Anki card answer.",
+                activation_condition=(
+                    "Active only while the target is the nurtured, unfinished plant "
+                    "in the garden."
+                ),
+                duration=duration,
+                stacking=(
+                    "Purchasing the same active tier extends its remaining duration."
+                ),
+                replacement=(
+                    "Purchasing a different tier replaces the active Fertilizer and "
+                    "discards its remaining time."
+                ),
+                unlock_requirement=f"Purchase in the Nursery for {spec.price:,} Garden Coins.",
+            )
+            if (
+                plant is None
+                or self.state.active_plant_id != plant.plant_id
+                or not plant.planted
+                or plant.fully_grown
+            ):
+                return self._make_purchase_quote(
+                    kind=purchase_kind,
+                    item_id=tier,
+                    item_name=spec.name,
+                    category="Fertilizer",
+                    artwork_category="ui",
+                    artwork_key=f"fertilizer_{tier}",
+                    unit_price=spec.price,
+                    disposition=PurchaseDisposition.APPLIED,
+                    descriptor=descriptor,
+                    target_id=target_id,
+                    target_name=getattr(plant, "name", ""),
+                    status=PurchaseStatus.TARGET_INVALID,
+                    message="The target plant is no longer valid for Fertilizer.",
+                    state_signature={
+                        "target_exists": plant is not None,
+                        "active_plant_id": self.state.active_plant_id,
+                    },
+                )
+            now = self._now_seconds()
+            existing = plant.fertilizer
+            current = existing if existing and existing.active(now) else None
+            extending = bool(current is not None and current.tier == tier)
+            replacing = bool(current is not None and current.tier != tier)
+            archived = (
+                None
+                if extending
+                else self._historical_fertilizer_period(existing, ended_at=now)
+            )
+            identities = {
+                self._fertilizer_period_identity(period)
+                for period in plant.fertilizer_history
+            }
+            needs_archive = bool(
+                archived is not None
+                and self._fertilizer_period_identity(archived) not in identities
+            )
+            status = PurchaseStatus.READY
+            message = ""
+            if needs_archive and len(plant.fertilizer_history) >= MAX_FERTILIZER_HISTORY:
+                status = PurchaseStatus.TARGET_INVALID
+                message = (
+                    "This plant's current-day Fertilizer history is full. "
+                    "Try again after Anki's next-day cutoff."
+                )
+            seconds_remaining = (
+                max(0, int(math.ceil(float(current.expires_at) - now)))
+                if current is not None
+                else 0
+            )
+            current_spec = (
+                self.FERTILIZERS.get(str(current.tier).lower())
+                if current is not None
+                else None
+            )
+            disposition = (
+                PurchaseDisposition.EXTENDED
+                if extending
+                else PurchaseDisposition.REPLACED
+                if replacing
+                else PurchaseDisposition.APPLIED
+            )
+            return self._make_purchase_quote(
+                kind=purchase_kind,
+                item_id=tier,
+                item_name=spec.name,
+                category="Fertilizer",
+                artwork_category="ui",
+                artwork_key=f"fertilizer_{tier}",
+                unit_price=spec.price,
+                disposition=disposition,
+                descriptor=descriptor,
+                target_id=plant.plant_id,
+                target_name=plant.name,
+                status=status,
+                message=message,
+                replacement_required=replacing,
+                current_item_name=(
+                    str(getattr(current_spec, "name", current.tier))
+                    if current is not None
+                    else ""
+                ),
+                current_effect=(
+                    f"+{int(current.growth_per_answer):,} Growth per card"
+                    if current is not None
+                    else ""
+                ),
+                current_duration=(
+                    f"{self._duration_label(seconds_remaining)} remaining"
+                    if current is not None
+                    else ""
+                ),
+                current_seconds_remaining=seconds_remaining,
+                state_signature={
+                    "plant_id": plant.plant_id,
+                    "planted": plant.planted,
+                    "fully_grown": plant.fully_grown,
+                    "active_plant_id": self.state.active_plant_id,
+                    "fertilizer": (
+                        {
+                            "tier": current.tier,
+                            "growth": current.growth_per_answer,
+                            "started_at": current.started_at,
+                            "expires_at": current.expires_at,
+                            "active": True,
+                        }
+                        if current is not None
+                        else {
+                            "tier": getattr(existing, "tier", None),
+                            "started_at": getattr(existing, "started_at", None),
+                            "expires_at": getattr(existing, "expires_at", None),
+                            "active": False,
+                        }
+                    ),
+                    "history_count": len(plant.fertilizer_history),
+                },
+            )
+
+        if purchase_kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
+            environment_kind = purchase_kind.value
+            item = environment_item(environment_kind, normalized_item)
+            if item is None:
+                return self._make_purchase_quote(
+                    kind=purchase_kind,
+                    item_id=normalized_item,
+                    item_name="Weather or Scenery",
+                    category="Weather" if purchase_kind is PurchaseKind.WEATHER else "Scenery",
+                    artwork_category=(
+                        "weather" if purchase_kind is PurchaseKind.WEATHER else "backgrounds"
+                    ),
+                    artwork_key=normalized_item or "missing",
+                    unit_price=0,
+                    disposition=PurchaseDisposition.OWNED_NOT_EQUIPPED,
+                    descriptor=self._unavailable_descriptor(
+                        "That Nursery item is no longer available."
+                    ),
+                    status=PurchaseStatus.ITEM_UNAVAILABLE,
+                    message="That Nursery item is no longer available.",
+                    state_signature={"available": False},
+                )
+            owned = self.owns_environment(environment_kind, item.item_id)
+            status = PurchaseStatus.READY
+            message = ""
+            if owned:
+                status = PurchaseStatus.ALREADY_OWNED
+                message = f"You already own {item.name}."
+            elif not item.purchasable or item.price is None:
+                status = PurchaseStatus.ITEM_UNAVAILABLE
+                message = f"{item.name} can only be earned while reviewing cards."
+            return self._make_purchase_quote(
+                kind=purchase_kind,
+                item_id=item.item_id,
+                item_name=item.name,
+                category="Weather" if item.kind == "weather" else "Scenery",
+                artwork_category="weather" if item.kind == "weather" else "backgrounds",
+                artwork_key=item.item_id,
+                unit_price=int(item.price or 0),
+                disposition=PurchaseDisposition.OWNED_NOT_EQUIPPED,
+                descriptor=item.descriptor,
+                status=status,
+                message=message,
+                state_signature={
+                    "owned": owned,
+                    "acquisition": item.acquisition,
+                    "selected": (
+                        self.state.selected_weather == item.item_id
+                        if item.kind == "weather"
+                        else self.state.selected_background == item.item_id
+                    ),
+                },
+            )
+
+        current_index = int(self.state.unlocked_slots)
+        current_item_id = f"bed_{current_index + 1}"
+        price = self.BED_PRICES.get(current_index)
+        descriptor = EffectDescriptor(
+            function=f"Unlocks garden bed {current_index + 1} for one planted plant.",
+            buff="Adds one available planting location; it does not change Growth.",
+            activation_condition="Available immediately after the purchase is saved.",
+            duration="Permanent.",
+            stacking="Beds unlock one at a time in sequential order.",
+            replacement="Does not replace an owned bed or move an existing plant.",
+            unlock_requirement="Choose a starter, then unlock each preceding bed.",
+        )
+        status = PurchaseStatus.READY
+        message = ""
+        if normalized_item not in {"", "next", current_item_id}:
+            status = PurchaseStatus.STALE_TARGET
+            message = "The next garden bed changed. Review the current bed before purchasing."
+        elif not self.state.starter_selection_complete:
+            status = PurchaseStatus.TARGET_INVALID
+            message = "Choose a starter before unlocking another garden bed."
+        elif price is None or current_index >= MAX_GARDEN_SLOTS:
+            status = PurchaseStatus.ALREADY_OWNED
+            message = "All six garden beds are already unlocked."
+        return self._make_purchase_quote(
+            kind=purchase_kind,
+            item_id=current_item_id,
+            item_name=f"Garden bed {current_index + 1}",
+            category="Garden Space",
+            artwork_category="ui",
+            artwork_key="garden_bed",
+            unit_price=int(price or 0),
+            disposition=PurchaseDisposition.UNLOCKED,
+            descriptor=descriptor,
+            status=status,
+            message=message,
+            state_signature={
+                "unlocked_slots": current_index,
+                "starter_complete": bool(self.state.starter_selection_complete),
+            },
+        )
+
+    @staticmethod
+    def _purchase_failure(
+        quote: PurchaseQuote,
+        status: PurchaseStatus,
+        message: str,
+        *,
+        balance: int | None = None,
+    ) -> PurchaseOutcome:
+        return PurchaseOutcome(
+            status=status,
+            item_id=quote.item_id,
+            item_name=quote.item_name,
+            category=quote.category,
+            quantity=quote.quantity,
+            amount_spent=0,
+            new_balance=(quote.balance_before if balance is None else max(0, int(balance))),
+            disposition=quote.disposition,
+            message=message,
+        )
+
+    def confirm_purchase(self, request: PurchaseRequest) -> PurchaseOutcome:
+        """Revalidate and atomically persist one idempotent purchase request."""
+
+        request_fingerprint = request.fingerprint()
+        completed = next((
+            record
+            for record in self.state.completed_purchase_requests
+            if record.request_id == request.request_id
+        ), None)
+        if completed is not None:
+            if completed.request_fingerprint == request_fingerprint:
+                return completed.outcome
+            replay_quote = self.quote_purchase(
+                request.kind,
+                request.item_id,
+                quantity=request.quantity,
+                target_id=request.target_id,
+            )
+            return self._purchase_failure(
+                replay_quote,
+                PurchaseStatus.REQUEST_ID_CONFLICT,
+                "This purchase request conflicts with an earlier completed purchase. Start again.",
+                balance=self.state.currency_balance,
+            )
+
+        current = self.quote_purchase(
+            request.kind,
+            request.item_id,
+            quantity=request.quantity,
+            target_id=request.target_id,
         )
         try:
+            canonical_request_id = str(uuid.UUID(str(request.request_id)))
+        except (ValueError, TypeError, AttributeError):
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.REQUEST_ID_CONFLICT,
+                "This purchase request is invalid. Start again.",
+                balance=self.state.currency_balance,
+            )
+        if not isinstance(request.request_id, str) or request.request_id != canonical_request_id:
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.REQUEST_ID_CONFLICT,
+                "This purchase request is invalid. Start again.",
+                balance=self.state.currency_balance,
+            )
+        if current.item_id != request.item_id:
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.STALE_TARGET,
+                "The purchase target changed. Review the current details and try again.",
+                balance=self.state.currency_balance,
+            )
+        if current.status in {
+            PurchaseStatus.ITEM_UNAVAILABLE,
+            PurchaseStatus.ALREADY_OWNED,
+            PurchaseStatus.TARGET_INVALID,
+            PurchaseStatus.STALE_TARGET,
+        }:
+            return self._purchase_failure(
+                current,
+                current.status,
+                current.message,
+                balance=self.state.currency_balance,
+            )
+        if current.total_price != int(request.expected_price):
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.STALE_PRICE,
+                (
+                    f"The price changed from {int(request.expected_price):,} to "
+                    f"{current.total_price:,} Garden Coins. Review the new price."
+                ),
+                balance=self.state.currency_balance,
+            )
+        if current.balance_before != int(request.expected_balance):
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.STALE_BALANCE,
+                (
+                    f"Your Garden Coin balance changed from "
+                    f"{int(request.expected_balance):,} to {current.balance_before:,}. "
+                    "Review the updated balance."
+                ),
+                balance=self.state.currency_balance,
+            )
+        if current.status is PurchaseStatus.INSUFFICIENT_COINS:
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.INSUFFICIENT_COINS,
+                current.message,
+                balance=self.state.currency_balance,
+            )
+        if current.quote_token != request.quote_token:
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.STALE_TARGET,
+                "The purchase details changed. Review the refreshed details before purchasing.",
+                balance=self.state.currency_balance,
+            )
+        if current.replacement_required and not request.authorize_replacement:
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.REPLACEMENT_REQUIRED,
+                "Confirm that the active Fertilizer and its remaining time may be replaced.",
+                balance=self.state.currency_balance,
+            )
+
+        snapshot = self._state_snapshot()
+        event_key = f"purchase-request:{request.request_id}"
+        try:
+            outcome = self._apply_confirmed_purchase(current, event_key)
+            if not outcome.success:
+                self._restore_state(snapshot)
+                return outcome
+            self.state.completed_purchase_requests.append(CompletedPurchaseRequest(
+                request_id=request.request_id,
+                request_fingerprint=request_fingerprint,
+                outcome=outcome,
+                occurred_at=utc_now_iso(),
+            ))
+            self.state.completed_purchase_requests = (
+                self.state.completed_purchase_requests[-MAX_COMPLETED_PURCHASE_REQUESTS:]
+            )
             self._persist_or_restore(snapshot)
+            return outcome
         except Exception:
-            return False, "The purchase could not be saved; no Garden Coins were spent."
-        return True, (
-            f"{item.name} unlocked. It was not equipped automatically; "
-            "choose it in Customize Garden."
+            self._restore_state(snapshot)
+            return self._purchase_failure(
+                current,
+                PurchaseStatus.PERSISTENCE_FAILURE,
+                "The purchase could not be saved; no Garden Coins were spent. Try again.",
+                balance=self.state.currency_balance,
+            )
+
+    def _apply_confirmed_purchase(
+        self,
+        quote: PurchaseQuote,
+        event_key: str,
+    ) -> PurchaseOutcome:
+        if not self._debit_currency(
+            event_key,
+            f"Purchased {quote.item_name}",
+            quote.total_price,
+        ):
+            return self._purchase_failure(
+                quote,
+                PurchaseStatus.INSUFFICIENT_COINS,
+                f"{quote.item_name} costs {quote.total_price:,} Garden Coins.",
+                balance=self.state.currency_balance,
+            )
+
+        result_id = ""
+        message = ""
+        next_actions: tuple[str, ...] = ()
+        applied = False
+        equipped = False
+
+        if quote.kind is PurchaseKind.SPECIES:
+            species = quote.item_id
+            plant = Plant(
+                plant_id=f"plant_{uuid.uuid4().hex[:12]}",
+                species=species,
+                name=self._generated_name(species),
+                slot_index=None,
+                personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
+                planted_on=self.state.daily_stats.day,
+                memories=[
+                    PlantMemory("planted", "planted", self.state.daily_stats.day)
+                ],
+            )
+            self.state.unlocked_species.append(species)
+            self.state.plants.append(plant)
+            result_id = plant.plant_id
+            message = f"{plant.name} joined your Collection."
+            next_actions = ("Plant in garden", "View Collection")
+            self._queue_feedback(
+                event_key,
+                "unlock",
+                f"{plant.name} joined your plant collection.",
+                plant.plant_id,
+                title=f"{quote.item_name} purchased",
+                asset_category="plant",
+                asset_key=species,
+                amount=1,
+            )
+
+        elif quote.kind is PurchaseKind.GROWTH_CHARGE:
+            self.state.consumables[quote.item_id] = (
+                self.state.consumables.get(quote.item_id, 0) + quote.quantity
+            )
+            message = f"{quote.item_name} added to Supplements & Boosters."
+            next_actions = ("Use Growth Charge", "Continue shopping")
+            self._queue_feedback(
+                event_key,
+                "charge_purchase",
+                message,
+                title=f"{quote.item_name} purchased",
+                asset_category="ui",
+                asset_key=quote.item_id,
+                amount=quote.quantity,
+            )
+
+        elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
+            if quote.kind is PurchaseKind.WEATHER:
+                self.state.inventory.setdefault("weather", []).append(quote.item_id)
+            else:
+                self.state.inventory.setdefault("scenery", []).append(quote.item_id)
+                self.state.inventory.setdefault("backgrounds", []).append(quote.item_id)
+            message = (
+                f"{quote.item_name} joined your Collection. It was not equipped "
+                "automatically."
+            )
+            next_actions = ("Open Customize", "Continue shopping")
+            self._queue_feedback(
+                event_key,
+                "environment_purchase",
+                f"{message} Open Customize when you want to equip it.",
+                title=f"{quote.item_name} unlocked",
+                asset_category=quote.artwork_category,
+                asset_key=quote.artwork_key,
+                amount=1,
+            )
+
+        elif quote.kind is PurchaseKind.FERTILIZER:
+            plant = self.plant_story(str(quote.target_id or ""))
+            spec = self.FERTILIZERS[quote.item_id]
+            if plant is None:
+                return self._purchase_failure(
+                    quote,
+                    PurchaseStatus.TARGET_INVALID,
+                    "The target plant is no longer valid for Fertilizer.",
+                    balance=self.state.currency_balance,
+                )
+            now = self._now_seconds()
+            existing = plant.fertilizer
+            current = existing if existing and existing.active(now) else None
+            extending = current is not None and current.tier == spec.tier
+            archived = (
+                None
+                if extending
+                else self._historical_fertilizer_period(existing, ended_at=now)
+            )
+            history_identities = {
+                self._fertilizer_period_identity(period)
+                for period in plant.fertilizer_history
+            }
+            if (
+                archived is not None
+                and self._fertilizer_period_identity(archived) not in history_identities
+            ):
+                plant.fertilizer_history.append(archived)
+                plant.fertilizer_history.sort(key=lambda period: (
+                    float(
+                        period.started_at
+                        if period.started_at is not None
+                        else period.expires_at
+                    ),
+                    float(period.expires_at),
+                    str(period.tier),
+                ))
+            expiration_base = current.expires_at if extending else now
+            activation_start = (
+                current.started_at
+                if extending and current.started_at is not None
+                else now
+            )
+            plant.fertilizer = Fertilizer(
+                spec.tier,
+                spec.growth_per_answer,
+                expiration_base + spec.duration_seconds,
+                activation_start,
+            )
+            action = (
+                "extended"
+                if quote.disposition is PurchaseDisposition.EXTENDED
+                else "replaced"
+                if quote.disposition is PurchaseDisposition.REPLACED
+                else "applied"
+            )
+            duration = self._duration_label(spec.duration_seconds)
+            message = (
+                f"{spec.name} {action} on {plant.name}: "
+                f"+{spec.growth_per_answer:,} Growth per card for {duration}."
+            )
+            next_actions = ("View plant", "Continue shopping")
+            applied = True
+            result_id = plant.plant_id
+            self._queue_feedback(
+                event_key,
+                "fertilizer",
+                message,
+                plant.plant_id,
+                title=f"{spec.name} {action}",
+                asset_category="ui",
+                asset_key=f"fertilizer_{spec.tier}",
+                amount=1,
+            )
+
+        else:
+            self.state.unlocked_slots += 1
+            result_id = str(self.state.unlocked_slots - 1)
+            message = f"Garden bed {self.state.unlocked_slots} unlocked."
+            next_actions = ("View garden", "Continue shopping")
+            self._queue_feedback(
+                event_key,
+                "unlock",
+                message,
+                title="Garden bed unlocked",
+                asset_category="ui",
+                asset_key="garden_bed",
+                amount=1,
+            )
+
+        return PurchaseOutcome(
+            status=PurchaseStatus.SUCCESS,
+            item_id=quote.item_id,
+            item_name=quote.item_name,
+            category=quote.category,
+            quantity=quote.quantity,
+            amount_spent=quote.total_price,
+            new_balance=max(0, int(self.state.currency_balance)),
+            disposition=quote.disposition,
+            message=message,
+            next_actions=next_actions,
+            result_id=result_id,
+            applied=applied,
+            equipped=equipped,
         )
+
+    def _compat_purchase(
+        self,
+        kind: PurchaseKind,
+        item_id: str,
+        *,
+        target_id: str | None = None,
+        authorize_replacement: bool = False,
+    ) -> PurchaseOutcome:
+        """Keep legacy engine callers on the canonical transaction path."""
+
+        quote = self.quote_purchase(kind, item_id, target_id=target_id)
+        request = PurchaseRequest.from_quote(
+            quote,
+            authorize_replacement=authorize_replacement,
+        )
+        return self.confirm_purchase(request)
+
+    def purchase_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
+        try:
+            purchase_kind = PurchaseKind(str(kind))
+        except ValueError:
+            return False, "Choose Weather or Scenery."
+        if purchase_kind not in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
+            return False, "Choose Weather or Scenery."
+        outcome = self._compat_purchase(purchase_kind, str(item_id))
+        return outcome.success, outcome.message
 
     def equip_environment(self, kind: str, item_id: str) -> tuple[bool, str]:
         normalized_kind = str(kind)
@@ -1802,25 +2634,11 @@ class GardenGameEngine:
         return True, "Garden appearance saved."
 
     def purchase_growth_charge(self, charge_id: str) -> tuple[bool, str]:
-        spec = GROWTH_CHARGES.get(str(charge_id))
-        if spec is None:
-            return False, "Choose a valid Growth Charge."
-        if not spec.purchasable or spec.price is None:
-            return False, f"{spec.name} can only be earned while reviewing cards."
-        snapshot = self._state_snapshot()
-        event_key = f"purchase:charge:{spec.charge_id}:{uuid.uuid4().hex}"
-        if not self._debit_currency(
-            event_key, f"Purchased {spec.name}", spec.price
-        ):
-            return False, f"{spec.name} costs {spec.price:,} Garden Coins."
-        self.state.consumables[spec.charge_id] = (
-            self.state.consumables.get(spec.charge_id, 0) + 1
+        outcome = self._compat_purchase(
+            PurchaseKind.GROWTH_CHARGE,
+            str(charge_id),
         )
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "The Growth Charge purchase could not be saved; no Garden Coins were spent."
-        return True, f"{spec.name} added to Supplements & Boosters."
+        return outcome.success, outcome.message
 
     def use_growth_charge(
         self,
@@ -2062,79 +2880,13 @@ class GardenGameEngine:
         return True, "Garden setup is complete."
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
-        spec = self.FERTILIZERS.get(str(tier).lower())
-        plant = self.plant_story(plant_id)
-        if spec is None:
-            return False, "Choose a valid Fertilizer tier."
-        if plant is None:
-            return False, "That plant is no longer in your collection."
-        if self.state.active_plant_id != plant.plant_id or not plant.planted or plant.fully_grown:
-            return False, "Nurture this unfinished planted plant before applying Fertilizer."
-        now = self._now_seconds()
-        existing = plant.fertilizer
-        current = existing if existing and existing.active(now) else None
-        if current is not None and current.tier != spec.tier and not replace_active:
-            return False, "Replacing the active Fertilizer will discard its remaining time. Confirm replacement first."
-        extending = current is not None and current.tier == spec.tier
-        archived = None if extending else self._historical_fertilizer_period(existing, ended_at=now)
-        history_identities = {
-            self._fertilizer_period_identity(period)
-            for period in plant.fertilizer_history
-        }
-        needs_archive = (
-            archived is not None
-            and self._fertilizer_period_identity(archived) not in history_identities
+        outcome = self._compat_purchase(
+            PurchaseKind.FERTILIZER,
+            str(tier).lower(),
+            target_id=str(plant_id),
+            authorize_replacement=bool(replace_active),
         )
-        if needs_archive and len(plant.fertilizer_history) >= MAX_FERTILIZER_HISTORY:
-            return False, (
-                "This plant's current-day Fertilizer history is full. "
-                "Try again after Anki's next-day cutoff."
-            )
-        snapshot = self._state_snapshot()
-        event_key = f"purchase:fertilizer:{plant.plant_id}:{spec.tier}:{uuid.uuid4().hex}"
-        if not self._debit_currency(event_key, f"Purchased {spec.name} for {plant.name}", spec.price):
-            return False, f"{spec.name} costs {spec.price} Garden Coins."
-        if needs_archive and archived is not None:
-            plant.fertilizer_history.append(archived)
-            plant.fertilizer_history.sort(key=lambda period: (
-                float(period.started_at if period.started_at is not None else period.expires_at),
-                float(period.expires_at),
-                str(period.tier),
-            ))
-        expiration_base = current.expires_at if extending else now
-        activation_start = (
-            current.started_at
-            if extending
-            and current.started_at is not None
-            else now
-        )
-        plant.fertilizer = Fertilizer(
-            spec.tier,
-            spec.growth_per_answer,
-            expiration_base + spec.duration_seconds,
-            activation_start,
-        )
-        hours = spec.duration_seconds // 3600
-        hour_unit = "hour" if hours == 1 else "hours"
-        self._queue_feedback(
-            event_key,
-            "fertilizer",
-            (
-                f"{spec.name} is active on {plant.name}: "
-                f"+{spec.growth_per_answer} Growth per Anki card answer "
-                f"for {hours} {hour_unit}."
-            ),
-            plant.plant_id,
-        )
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "The Fertilizer purchase could not be saved; no Garden Coins were spent."
-        action = "extended" if extending else "applied"
-        return True, (
-            f"{spec.name} {action} for {hours} {hour_unit}: "
-            f"+{spec.growth_per_answer} Growth per Anki card answer while active."
-        )
+        return outcome.success, outcome.message
 
     def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
         plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
@@ -2220,60 +2972,19 @@ class GardenGameEngine:
         )
 
     def purchase_species(self, species: str) -> tuple[bool, str, Plant | None]:
-        species = str(species).lower()
-        if not self.state.starter_selection_complete:
-            return False, "Choose a starter before purchasing another plant.", None
-        if species not in self.release_ready_species():
-            return False, "That species is not currently stocked in the Nursery.", None
-        price = self.SPECIES_PRICES.get(species)
-        if price is None:
-            return False, "That species is not available for purchase.", None
-        if species in self.state.unlocked_species or any(plant.species == species for plant in self.state.plants):
-            return False, "That species is already in your collection.", None
-        snapshot = self._state_snapshot()
-        event_key = f"purchase:species:{species}"
-        species_label = species.replace("_", " ").title()
-        if not self._debit_currency(event_key, f"Unlocked {species_label}", price):
-            return False, f"{species_label} costs {price} Garden Coins.", None
-        plant = Plant(
-            plant_id=f"plant_{uuid.uuid4().hex[:12]}",
-            species=species,
-            name=self._generated_name(species),
-            slot_index=None,
-            personality=self.SPECIES_PERSONALITY.get(species, "balanced"),
-            planted_on=self.state.daily_stats.day,
-            memories=[PlantMemory("planted", "planted", self.state.daily_stats.day)],
+        outcome = self._compat_purchase(
+            PurchaseKind.SPECIES,
+            str(species).lower(),
         )
-        self.state.unlocked_species.append(species)
-        self.state.plants.append(plant)
-        self._queue_feedback(event_key, "unlock", f"{plant.name} joined your plant collection.", plant.plant_id)
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "The species purchase could not be saved; no Garden Coins were spent.", None
-        return True, f"{plant.name} joined your collection.", plant
+        plant = self.plant_story(outcome.result_id) if outcome.success else None
+        return outcome.success, outcome.message, plant
 
     def next_bed_price(self) -> int | None:
         return self.BED_PRICES.get(int(self.state.unlocked_slots))
 
     def purchase_next_bed(self) -> tuple[bool, str]:
-        if not self.state.starter_selection_complete:
-            return False, "Choose a starter before unlocking another garden space."
-        index = int(self.state.unlocked_slots)
-        price = self.BED_PRICES.get(index)
-        if price is None or index >= MAX_GARDEN_SLOTS:
-            return False, "All six garden spaces are already unlocked."
-        snapshot = self._state_snapshot()
-        event_key = f"purchase:bed:{index + 1}"
-        if not self._debit_currency(event_key, f"Unlocked garden space {index + 1}", price):
-            return False, f"Garden space {index + 1} costs {price} Garden Coins."
-        self.state.unlocked_slots += 1
-        self._queue_feedback(event_key, "unlock", f"Garden space {index + 1} unlocked.")
-        try:
-            self._persist_or_restore(snapshot)
-        except Exception:
-            return False, "The garden-space purchase could not be saved; no Garden Coins were spent."
-        return True, f"Garden space {index + 1} unlocked."
+        outcome = self._compat_purchase(PurchaseKind.BED, "next")
+        return outcome.success, outcome.message
 
     def plant_from_collection(self, plant_id: str, slot_index: int | None = None) -> tuple[bool, str]:
         plant = self.plant_story(plant_id)

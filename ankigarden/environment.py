@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Literal
 
+from .purchases import EffectDescriptor
+
 
 EnvironmentKind = Literal["weather", "scenery"]
 AcquisitionKind = Literal["free", "purchase", "drop"]
@@ -40,6 +42,33 @@ class CatalogItem:
     def drop_only(self) -> bool:
         return self.acquisition == "drop"
 
+    @property
+    def descriptor(self) -> EffectDescriptor:
+        kind_name = "Weather" if self.kind == "weather" else "Scenery"
+        other_kind = "Scenery" if self.kind == "weather" else "Weather"
+        return EffectDescriptor(
+            function=(
+                f"Changes the garden's {kind_name} and provides its listed passive."
+            ),
+            buff=self.effect,
+            activation_condition=(
+                f"The passive is active while this {kind_name} is equipped, even "
+                "when its artwork is hidden."
+            ),
+            duration=(
+                f"Owned permanently; active until another {kind_name} is equipped."
+            ),
+            stacking=(
+                f"Only one {kind_name} can be active. Its passive can stack with "
+                f"the equipped {other_kind} passive."
+            ),
+            replacement=(
+                f"Equipping another {kind_name} replaces the active {kind_name}; "
+                "ownership is retained."
+            ),
+            unlock_requirement=self.how_to_earn,
+        )
+
 
 @dataclass(frozen=True)
 class GrowthChargeSpec:
@@ -53,6 +82,22 @@ class GrowthChargeSpec:
     @property
     def purchasable(self) -> bool:
         return self.price is not None
+
+    @property
+    def descriptor(self) -> EffectDescriptor:
+        return EffectDescriptor(
+            function="Adds one reusable inventory choice that is consumed when used.",
+            buff=f"+{self.growth:,} Growth when used.",
+            activation_condition=(
+                "Use it on the currently nurtured, unfinished plant in the garden."
+            ),
+            duration="Instant; the Growth is applied once and the Charge is consumed.",
+            stacking=(
+                "Owned quantities stack in inventory; each Charge is applied separately."
+            ),
+            replacement="Does not replace a timed effect.",
+            unlock_requirement=self.how_to_earn,
+        )
 
 
 @dataclass(frozen=True)
@@ -84,7 +129,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+1 Growth on your first 10 card answers each Anki day.",
-        "Buy once in the Nursery for 100 Garden Coins.",
+        "Purchase once in the Nursery for 100 Garden Coins.",
         100,
     ),
     "cloudy": CatalogItem(
@@ -94,7 +139,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+2 Garden Coins when you finish all due cards that day.",
-        "Buy once in the Nursery for 175 Garden Coins.",
+        "Purchase once in the Nursery for 175 Garden Coins.",
         175,
     ),
     "gentle_rain": CatalogItem(
@@ -104,7 +149,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "+1 Growth on your first 20 card answers each Anki day.",
-        "Buy once in the Nursery for 250 Garden Coins.",
+        "Purchase once in the Nursery for 250 Garden Coins.",
         250,
     ),
     "snow_flurry": CatalogItem(
@@ -114,7 +159,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "Booster Potions last 10% longer while this weather is equipped.",
-        "Buy once in the Nursery for 350 Garden Coins.",
+        "Purchase once in the Nursery for 350 Garden Coins.",
         350,
     ),
     "fireflies": CatalogItem(
@@ -157,7 +202,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Common",
         "purchase",
         "+1 Growth on your first 25 card answers each Anki day.",
-        "Buy once in the Nursery for 400 Garden Coins.",
+        "Purchase once in the Nursery for 400 Garden Coins.",
         400,
     ),
     "summer": CatalogItem(
@@ -167,7 +212,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "+1 Growth on every second card answer.",
-        "Buy once in the Nursery for 600 Garden Coins.",
+        "Purchase once in the Nursery for 600 Garden Coins.",
         600,
     ),
     "autumn": CatalogItem(
@@ -177,7 +222,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Uncommon",
         "purchase",
         "Plant stage rewards give 25% more Garden Coins, rounded up at half a Coin.",
-        "Buy once in the Nursery for 800 Garden Coins.",
+        "Purchase once in the Nursery for 800 Garden Coins.",
         800,
     ),
     "snowy": CatalogItem(
@@ -187,7 +232,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "purchase",
         "Your first card answer each Anki day gives one Small Growth Charge.",
-        "Buy once in the Nursery for 1,200 Garden Coins.",
+        "Purchase once in the Nursery for 1,200 Garden Coins.",
         1_200,
     ),
     "rainbow_horizon": CatalogItem(
@@ -246,7 +291,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         100,
         30,
         "Common",
-        "Buy repeatedly in the Nursery for 30 Garden Coins, receive it from daily scenery, or find it in the 1 in 2,000 drop band.",
+        "Purchase repeatedly in the Nursery for 30 Garden Coins, receive it from daily scenery, or find it in the 1 in 2,000 drop band.",
     ),
     "growth_charge_standard": GrowthChargeSpec(
         "growth_charge_standard",
@@ -254,7 +299,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         500,
         125,
         "Rare",
-        "Buy repeatedly in the Nursery for 125 Garden Coins, receive it from Halloween Garden, or find it in the 1 in 8,000 drop band.",
+        "Purchase repeatedly in the Nursery for 125 Garden Coins, receive it from Halloween Garden, or find it in the 1 in 8,000 drop band.",
     ),
     "growth_charge_grand": GrowthChargeSpec(
         "growth_charge_grand",
