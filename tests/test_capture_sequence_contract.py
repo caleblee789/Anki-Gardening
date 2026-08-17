@@ -650,6 +650,9 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     known_species = _method_source(
         "_UiFaceCaptureRunner", "_capture_known_uncollected_species_overview"
     )
+    starter_placement = _method_source(
+        "_UiFaceCaptureRunner", "_capture_starter_placement"
+    )
     purchase = _method_source("_UiFaceCaptureRunner", "_capture_nursery_purchase_success")
 
     assert "stats.reviewed = 100" in achievement
@@ -676,6 +679,9 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert '"not-collected"' in known_species
     assert '"Rare stage undiscovered"' in known_species
     assert 'close_callback=lambda: (self._close_widget(dialog), restore())' in known_species
+
+    assert 'dashboard.scene.finish_move("Preparing starter placement capture.")' in starter_placement
+    assert "dashboard._placement_draft = None" in starter_placement
 
     assert "dialog._purchase_environment(item.kind, item.item_id)" in purchase
     assert purchase.count("dialog._preview_environment_item(item)") == 2

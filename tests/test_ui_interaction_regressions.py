@@ -1192,6 +1192,8 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
     assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
     assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
+    constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
+    assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
     assert "self.growth_summary.setText(" in source

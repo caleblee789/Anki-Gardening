@@ -5833,6 +5833,10 @@ class _UiFaceCaptureRunner:
                 pending_species="rose",
             )
             restore = self._replace_capture_state(fixture)
+            dashboard._starter_placement_active = False
+            dashboard._placement_draft = None
+            dashboard.scene.finish_move("Preparing starter placement capture.")
+            dashboard.rearrange_bar.hide()
             dashboard._starter_setup_dismissed = False
             dashboard.refresh_all()
             dashboard._begin_starter_placement()
@@ -8633,6 +8637,9 @@ class _UiFaceCaptureRunner:
 
         def ready() -> None:
             dashboard = self.app.dashboard
+            activate = getattr(self, "_activate_current_process_window", None)
+            if callable(activate):
+                activate(dashboard)
             dashboard.progress_btn.setFocus(Qt.FocusReason.TabFocusReason)
             app = QApplication.instance()
             if app is not None:

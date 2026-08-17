@@ -6614,7 +6614,10 @@ class PlantInfoCard(QFrame):
         self.stage_progress.value_label.setProperty("plantGrowthValue", True)
         self.growth_summary = QLabel("")
         self.growth_remaining = QLabel("")
-        self.fertilizer_summary = FertilizerStatusBlock(allow_description=True)
+        # The selected-plant card owns a compact action panel. Keep the full
+        # explanation in the block tooltip while reserving disclosure rows for
+        # the roomier Story, Progress, and Fertilizer dialogs.
+        self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)
         self.booster_summary = QLabel("")
         for label in (
             self.growth_summary,
