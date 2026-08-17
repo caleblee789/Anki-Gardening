@@ -10,6 +10,7 @@ import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.game import GardenGameEngine, difficulty_from_factor, queue_and_lapse_from_revlog_type
+from ankigarden.growth import GrowthChargeRequest, GrowthChargeStatus
 from ankigarden.models.state import (
     ActivePlantPeriod,
     CURRENT_CATALOG_SPECIES_ORDER,
@@ -375,6 +376,266 @@ def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
     assert storage.state.plants[0].growth_points == before + 2
     assert storage.state.plants[1].growth_points > 0
     assert storage.state.daily_stats.plant_growth.keys() == {"p1", "p2"}
+
+
+def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
+    modifier_bits = ("streak", "fertilizer", "booster", "weather", "scenery")
+    expected_values = {
+        "streak": 1,
+        "fertilizer": 2,
+        "booster": 5,
+        "weather": 1,
+        "scenery": 1,
+    }
+    for mask in range(1 << len(modifier_bits)):
+        enabled = {
+            name for index, name in enumerate(modifier_bits)
+            if mask & (1 << index)
+        }
+        engine, storage = make_engine()
+        nurtured, passive_one = storage.state.plants
+        passive_two = Plant("p3", "lavender", "Violet", 2)
+        storage.state.plants.append(passive_two)
+        storage.state.daily_stats.reviewed = 1
+        storage.state.streak_days = 7 if "streak" in enabled else 0
+        nurtured.bonus_remainder = 50 if "streak" in enabled else 0
+        event_seconds = (storage.now_ms + 1_000) / 1_000
+        if "fertilizer" in enabled:
+            nurtured.fertilizer = Fertilizer(
+                "quality", 2, event_seconds + 60, event_seconds - 60
+            )
+        if "booster" in enabled:
+            nurtured.booster = Booster(5, event_seconds + 60, event_seconds - 60)
+        storage.state.selected_weather = "breeze" if "weather" in enabled else "sunny"
+        storage.state.selected_background = "spring" if "scenery" in enabled else "default"
+
+        award = answer(engine, storage)
+        final_growth = 10 + sum(expected_values[name] for name in enabled)
+        passive_whole, passive_remainder = divmod(final_growth, 5)
+
+        assert award.total_growth == final_growth
+        assert award.total_garden_growth == final_growth + passive_whole * 2
+        assert nurtured.growth_points == final_growth
+        assert passive_one.growth_points == passive_two.growth_points == passive_whole
+        assert passive_one.passive_growth_remainder_fifths == passive_remainder
+        assert passive_two.passive_growth_remainder_fifths == passive_remainder
+        assert [allocation.role for allocation in award.allocations] == [
+            "nurtured", "passive", "passive",
+        ]
+        assert [allocation.exact_fifths for allocation in award.allocations] == [
+            final_growth * 5, final_growth, final_growth,
+        ]
+        stats = storage.state.daily_stats
+        assert stats.study_growth_generated == final_growth
+        assert stats.plant_nurtured_growth == {"p1": final_growth}
+        assert stats.plant_passive_growth_fifths == {
+            "p2": final_growth,
+            "p3": final_growth,
+        }
+        assert stats.plant_passive_growth_credited == {
+            "p2": passive_whole,
+            "p3": passive_whole,
+        }
+
+
+def test_passive_fifths_survive_batch_restart_switch_and_duplicate_replay():
+    engine, storage = make_engine()
+    storage.state.daily_stats.reviewed = 1
+    storage.state.selected_weather = "breeze"
+    storage.state.inventory["weather"].append("breeze")
+    first_id = storage.now_ms + 1_000
+
+    first = answer(engine, storage, revlog_id=first_id)
+    assert first.total_growth == 11
+    assert storage.state.plants[1].growth_points == 2
+    assert storage.state.plants[1].passive_growth_remainder_fifths == 1
+
+    restarted_storage = FakeStorage()
+    restarted_storage.now_ms = storage.now_ms
+    restarted_storage.state = GardenState.from_dict(storage.state.to_dict())
+    restarted = GardenGameEngine(FakeConfig(), restarted_storage)
+    second_id = first_id + 1_000
+    third_id = first_id + 2_000
+    gained = restarted.apply_same_day_reviews(
+        [
+            {"queue": 2, "ease": 3, "revlog_id": second_id, "answered_at_ms": second_id},
+            {"queue": 2, "ease": 3, "revlog_id": third_id, "answered_at_ms": third_id},
+        ],
+        latest_revlog_id=third_id,
+    )
+    assert gained == 22
+    assert restarted_storage.state.plants[1].growth_points == 6
+    assert restarted_storage.state.plants[1].passive_growth_remainder_fifths == 3
+
+    restarted_storage.now_ms = third_id + 1_000
+    assert restarted.set_active_plant("p2")[0]
+    switched_id = restarted_storage.now_ms + 1_000
+    answer(restarted, restarted_storage, revlog_id=switched_id)
+    p1, p2 = restarted_storage.state.plants
+    assert p1.passive_growth_remainder_fifths == 1
+    assert p2.passive_growth_remainder_fifths == 3
+    snapshot = restarted_storage.state.to_dict()
+    duplicate = answer(restarted, restarted_storage, revlog_id=switched_id)
+    assert duplicate.total_growth == 0
+    assert restarted_storage.state.to_dict() == snapshot
+
+
+def test_passive_eligibility_and_independent_rare_caps_are_exact():
+    engine, storage = make_engine()
+    nurtured, passive = storage.state.plants
+    passive.growth_points = GROWTH_THRESHOLDS[-1] - 1
+    passive.passive_growth_remainder_fifths = 4
+    unplanted = Plant("collection", "sunflower", "Sol", None)
+    finished = Plant(
+        "finished", "lavender", "Violet", 2,
+        growth_points=GROWTH_THRESHOLDS[-1],
+        passive_growth_remainder_fifths=3,
+    )
+    storage.state.plants.extend((unplanted, finished))
+    storage.state.daily_stats.reviewed = 1
+    storage.state.selected_weather = "breeze"
+
+    award = answer(engine, storage)
+
+    assert award.total_growth == 11
+    assert passive.growth_points == GROWTH_THRESHOLDS[-1]
+    assert passive.passive_growth_remainder_fifths == 0
+    assert unplanted.growth_points == 0
+    assert finished.growth_points == GROWTH_THRESHOLDS[-1]
+    assert finished.passive_growth_remainder_fifths == 3
+    assert {allocation.plant_id for allocation in award.allocations} == {"p1", "p2"}
+
+    capped_engine, capped_storage = make_engine()
+    capped_storage.state.plants[0].growth_points = GROWTH_THRESHOLDS[-1] - 5
+    capped = answer(capped_engine, capped_storage)
+    assert capped.total_growth == 5
+    assert capped_storage.state.plants[1].growth_points == 1
+    assert capped_storage.state.plants[1].passive_growth_remainder_fifths == 0
+
+
+def test_simultaneous_nurtured_and_passive_stage_rewards_are_once_per_plant():
+    engine, storage = make_engine()
+    nurtured, passive = storage.state.plants
+    nurtured.growth_points = 490
+    passive.growth_points = 498
+    revlog_id = storage.now_ms + 1_000
+
+    answer(engine, storage, revlog_id=revlog_id)
+
+    transitions = engine.peek_stage_transitions()
+    assert [(item.plant_id, item.source, item.new_stage) for item in transitions] == [
+        ("p1", "nurtured", "sprout"),
+        ("p2", "passive", "sprout"),
+    ]
+    assert [transaction.event_key for transaction in storage.state.currency_transactions] == [
+        "stage:p1:sprout",
+        "stage:p2:sprout",
+    ]
+    assert [
+        memory.memory_id
+        for plant in storage.state.plants
+        for memory in plant.memories
+        if memory.kind == "stage"
+    ] == ["stage:sprout", "stage:sprout"]
+    state_after = storage.state.to_dict()
+    answer(engine, storage, revlog_id=revlog_id)
+    assert storage.state.to_dict() == state_after
+
+
+@pytest.mark.parametrize("target_id", ["p1", "p2"], ids=["active", "non-active"])
+@pytest.mark.parametrize(
+    "charge_id",
+    ["growth_charge_small", "growth_charge_standard", "growth_charge_grand"],
+)
+def test_growth_charge_quote_confirm_targets_one_plant_without_fanout_or_buffs(
+    target_id,
+    charge_id,
+):
+    engine, storage = make_engine()
+    target = engine.plant_story(target_id)
+    other = next(plant for plant in storage.state.plants if plant.plant_id != target_id)
+    target.growth_points = 490
+    target.fertilizer = Fertilizer("premium", 3, 9_999_999_999.0, 0.0)
+    storage.state.streak_days = 365
+    storage.state.selected_weather = "fireflies"
+    storage.state.selected_background = "eclipse"
+    storage.state.consumables[charge_id] = 1
+    other_before = other.growth_points
+
+    quote = engine.quote_growth_charge(charge_id, target_id)
+    request = GrowthChargeRequest.from_quote(quote)
+    outcome = engine.confirm_growth_charge(request)
+    replay = engine.confirm_growth_charge(request)
+    conflicting_reuse = engine.confirm_growth_charge(
+        GrowthChargeRequest.from_quote(
+            engine.quote_growth_charge(charge_id, other.plant_id),
+            request_id=request.request_id,
+        )
+    )
+
+    assert quote.status is GrowthChargeStatus.READY
+    assert outcome.success and replay == outcome
+    assert conflicting_reuse.status is GrowthChargeStatus.REQUEST_ID_CONFLICT
+    assert outcome.growth_granted == quote.granted_growth
+    assert target.growth_points == quote.projected_growth
+    assert other.growth_points == other_before
+    assert [transition.source for transition in engine.peek_stage_transitions()] == [
+        "charge"
+    ]
+    assert storage.state.consumables[charge_id] == 0
+    assert storage.state.daily_stats.plant_charge_growth == {
+        target_id: quote.granted_growth,
+    }
+    assert storage.state.daily_stats.study_growth_generated == 0
+    assert len(storage.state.completed_growth_charge_requests) == 1
+
+
+def test_growth_charge_rejects_stale_invalid_and_rolls_back_failed_save():
+    engine, storage = make_engine()
+    storage.state.consumables["growth_charge_small"] = 2
+    quote = engine.quote_growth_charge("growth_charge_small", "p2")
+    invalid_request = GrowthChargeRequest.from_quote(
+        quote,
+        request_id="not-a-valid-request-id",
+    )
+    assert (
+        engine.confirm_growth_charge(invalid_request).status
+        is GrowthChargeStatus.REQUEST_ID_CONFLICT
+    )
+    assert storage.state.plants[1].growth_points == 0
+    assert storage.state.consumables["growth_charge_small"] == 2
+    stale_inventory_request = GrowthChargeRequest.from_quote(quote)
+    storage.state.consumables["growth_charge_small"] = 1
+    stale_inventory = engine.confirm_growth_charge(stale_inventory_request)
+    assert stale_inventory.status is GrowthChargeStatus.STALE_INVENTORY
+    assert storage.state.plants[1].growth_points == 0
+
+    target_quote = engine.quote_growth_charge("growth_charge_small", "p2")
+    target_request = GrowthChargeRequest.from_quote(target_quote)
+    storage.state.plants[1].slot_index = None
+    invalid_target = engine.confirm_growth_charge(target_request)
+    assert invalid_target.status is GrowthChargeStatus.TARGET_INVALID
+    storage.state.plants[1].slot_index = 1
+
+    growth_quote = engine.quote_growth_charge("growth_charge_small", "p2")
+    growth_request = GrowthChargeRequest.from_quote(growth_quote)
+    storage.state.plants[1].growth_points += 1
+    stale_target = engine.confirm_growth_charge(growth_request)
+    assert stale_target.status is GrowthChargeStatus.STALE_TARGET
+
+    assert engine.quote_growth_charge(
+        "growth_charge_small", "not-owned"
+    ).status is GrowthChargeStatus.TARGET_INVALID
+
+    rollback_quote = engine.quote_growth_charge("growth_charge_small", "p2")
+    rollback_request = GrowthChargeRequest.from_quote(rollback_quote)
+    state_before = storage.state.to_dict()
+    transitions_before = engine.peek_stage_transitions()
+    storage.fail_save = True
+    failed = engine.confirm_growth_charge(rollback_request)
+    assert failed.status is GrowthChargeStatus.PERSISTENCE_FAILURE
+    assert storage.state.to_dict() == state_before
+    assert engine.peek_stage_transitions() == transitions_before
 
 
 def test_same_day_events_route_by_active_period_timestamp():

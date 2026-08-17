@@ -237,7 +237,13 @@ def test_free_starter_is_atomic_requires_nurture_and_does_not_backfill_earlier_r
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
 
-    before_choice = engine.register_review({"queue": 2, "ease": 3})
+    first_revlog = storage.now_ms - 2_000
+    before_choice = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": first_revlog,
+        "answered_at_ms": first_revlog,
+    })
     assert before_choice.total_growth == 0
     assert storage.state.total_reviews == 1
 

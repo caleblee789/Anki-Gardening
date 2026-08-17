@@ -2867,52 +2867,297 @@ class GardenGameEngine:
         )
         return outcome.success, outcome.message
 
+    @staticmethod
+    def _growth_stage_for_points(points: int) -> str:
+        stage = GROWTH_STAGES[0]
+        for index, threshold in enumerate(GROWTH_THRESHOLDS):
+            if int(points) >= threshold:
+                stage = GROWTH_STAGES[index]
+        return stage
+
+    def quote_growth_charge(
+        self,
+        charge_id: str,
+        plant_id: str,
+    ) -> GrowthChargeQuote:
+        """Return an immutable, non-mutating Growth Charge projection."""
+
+        normalized_charge = str(charge_id)
+        normalized_target = str(plant_id)
+        spec = GROWTH_CHARGES.get(normalized_charge)
+        plant = self.plant_story(normalized_target)
+        inventory = max(
+            0,
+            int(self.state.consumables.get(normalized_charge, 0) or 0),
+        )
+        valid_target = bool(
+            plant is not None
+            and plant in self.state.plants
+            and plant.planted
+            and not plant.fully_grown
+        )
+        current_growth = max(0, int(getattr(plant, "growth_points", 0) or 0))
+        requested = max(0, int(getattr(spec, "growth", 0) or 0))
+        granted = (
+            min(requested, max(0, GROWTH_THRESHOLDS[-1] - current_growth))
+            if valid_target and spec is not None
+            else 0
+        )
+        projected = current_growth + granted
+        stage_rewards = (
+            self._project_stage_rewards(current_growth, projected)
+            if valid_target
+            else ()
+        )
+        rewards = tuple(item[2] for item in stage_rewards)
+        completed_stages = tuple(item[1] for item in stage_rewards)
+        if spec is None:
+            status = GrowthChargeStatus.TARGET_INVALID
+            message = "Choose a valid Growth Charge."
+        elif not valid_target:
+            status = GrowthChargeStatus.TARGET_INVALID
+            message = "Choose an owned, planted, unfinished plant."
+        elif inventory <= 0:
+            status = GrowthChargeStatus.EMPTY_INVENTORY
+            message = f"You do not have a {spec.name}."
+        else:
+            status = GrowthChargeStatus.READY
+            message = "Review the projected Growth before using this Charge."
+        token_payload = {
+            "charge_id": normalized_charge,
+            "target_id": normalized_target,
+            "inventory": inventory,
+            "current_growth": current_growth,
+            "slot_index": getattr(plant, "slot_index", None),
+            "species": str(getattr(plant, "species", "") or ""),
+            "owned": bool(plant is not None and plant in self.state.plants),
+            "planted": bool(getattr(plant, "planted", False)),
+            "fully_grown": bool(getattr(plant, "fully_grown", False)),
+            "eligible": valid_target,
+            "scenery": self.state.selected_background,
+            "granted": granted,
+            "rewards": [reward.to_dict() for reward in rewards],
+        }
+        quote_token = hashlib.sha256(json.dumps(
+            token_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")).hexdigest()
+        return GrowthChargeQuote(
+            status=status,
+            charge_id=normalized_charge,
+            charge_name=str(getattr(spec, "name", "Growth Charge") or "Growth Charge"),
+            target_id=normalized_target,
+            target_name=str(getattr(plant, "name", "Plant") or "Plant"),
+            target_species=str(getattr(plant, "species", "") or ""),
+            target_stage=self._growth_stage_for_points(current_growth),
+            current_growth=current_growth,
+            requested_growth=requested,
+            granted_growth=granted,
+            projected_growth=projected,
+            projected_stage=self._growth_stage_for_points(projected),
+            completed_stages=completed_stages,
+            rewards=rewards,
+            inventory_before=inventory,
+            inventory_after=max(0, inventory - (1 if inventory else 0)),
+            quote_token=quote_token,
+            message=message,
+        )
+
+    @staticmethod
+    def _growth_charge_failure(
+        quote: GrowthChargeQuote,
+        status: GrowthChargeStatus,
+        message: str,
+    ) -> GrowthChargeOutcome:
+        return GrowthChargeOutcome(
+            status=status,
+            charge_id=quote.charge_id,
+            charge_name=quote.charge_name,
+            target_id=quote.target_id,
+            target_name=quote.target_name,
+            previous_growth=quote.current_growth,
+            resulting_growth=quote.current_growth,
+            growth_granted=0,
+            previous_stage=quote.target_stage,
+            resulting_stage=quote.target_stage,
+            completed_stages=(),
+            rewards=(),
+            inventory_remaining=quote.inventory_before,
+            message=message,
+        )
+
+    def confirm_growth_charge(
+        self,
+        request: GrowthChargeRequest,
+    ) -> GrowthChargeOutcome:
+        """Revalidate and atomically persist one idempotent Charge use."""
+
+        if not isinstance(request, GrowthChargeRequest):
+            quote = self.quote_growth_charge(
+                str(getattr(request, "charge_id", "") or ""),
+                str(getattr(request, "target_id", "") or ""),
+            )
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.REQUEST_ID_CONFLICT,
+                "This Growth Charge request is invalid. Start again.",
+            )
+        quote = self.quote_growth_charge(request.charge_id, request.target_id)
+        try:
+            canonical_request_id = str(uuid.UUID(str(request.request_id)))
+        except (ValueError, TypeError, AttributeError):
+            canonical_request_id = ""
+        request_fields_valid = bool(
+            isinstance(request.request_id, str)
+            and request.request_id == canonical_request_id
+            and isinstance(request.charge_id, str)
+            and bool(request.charge_id)
+            and isinstance(request.target_id, str)
+            and bool(request.target_id)
+            and isinstance(request.quote_token, str)
+            and bool(request.quote_token)
+            and isinstance(request.expected_inventory, int)
+            and not isinstance(request.expected_inventory, bool)
+            and request.expected_inventory >= 0
+            and isinstance(request.expected_growth, int)
+            and not isinstance(request.expected_growth, bool)
+            and request.expected_growth >= 0
+        )
+        if not request_fields_valid:
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.REQUEST_ID_CONFLICT,
+                "This Growth Charge request is invalid. Start again.",
+            )
+        request_fingerprint = request.fingerprint()
+        completed = next((
+            record
+            for record in self.state.completed_growth_charge_requests
+            if record.request_id == request.request_id
+        ), None)
+        if completed is not None:
+            if completed.request_fingerprint == request_fingerprint:
+                return completed.outcome
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.REQUEST_ID_CONFLICT,
+                "This Growth Charge request conflicts with an earlier use. Start again.",
+            )
+        if quote.status is GrowthChargeStatus.TARGET_INVALID:
+            return self._growth_charge_failure(quote, quote.status, quote.message)
+        if quote.inventory_before != int(request.expected_inventory):
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.STALE_INVENTORY,
+                "Your Growth Charge inventory changed. Review the refreshed quantity.",
+            )
+        if quote.current_growth != int(request.expected_growth):
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.STALE_TARGET,
+                "This plant’s Growth changed. Review the refreshed projection.",
+            )
+        if quote.status is GrowthChargeStatus.EMPTY_INVENTORY:
+            return self._growth_charge_failure(quote, quote.status, quote.message)
+        if quote.quote_token != request.quote_token:
+            return self._growth_charge_failure(
+                quote,
+                GrowthChargeStatus.STALE_TARGET,
+                "The target or projected reward changed. Review the refreshed details.",
+            )
+
+        plant = self.plant_story(request.target_id)
+        snapshot = self._state_snapshot()
+        transition_snapshot = list(self._pending_stage_transitions)
+        try:
+            self.state.consumables[quote.charge_id] -= 1
+            awarded = self._apply_direct_growth(
+                plant,
+                quote.granted_growth,
+                stats_field="charge_growth",
+                transition_source="charge",
+            )
+            if awarded != quote.granted_growth or plant is None:
+                raise RuntimeError("Growth Charge projection changed during commit")
+            outcome = GrowthChargeOutcome(
+                status=GrowthChargeStatus.SUCCESS,
+                charge_id=quote.charge_id,
+                charge_name=quote.charge_name,
+                target_id=quote.target_id,
+                target_name=quote.target_name,
+                previous_growth=quote.current_growth,
+                resulting_growth=int(plant.growth_points),
+                growth_granted=awarded,
+                previous_stage=quote.target_stage,
+                resulting_stage=plant.growth_stage,
+                completed_stages=quote.completed_stages,
+                rewards=quote.rewards,
+                inventory_remaining=max(
+                    0,
+                    int(self.state.consumables.get(quote.charge_id, 0) or 0),
+                ),
+                message=(
+                    f"{quote.charge_name} gave {quote.target_name} "
+                    f"{awarded:,} Growth."
+                ),
+            )
+            self._queue_feedback(
+                f"growth-charge-use:{request.request_id}",
+                "growth_charge",
+                outcome.message,
+                plant.plant_id,
+                title=f"{quote.charge_name} used",
+                asset_category="ui",
+                asset_key=quote.charge_id,
+                amount=awarded,
+            )
+            self.state.completed_growth_charge_requests.append(
+                CompletedGrowthChargeRequest(
+                    request_id=request.request_id,
+                    request_fingerprint=request_fingerprint,
+                    outcome=outcome,
+                    occurred_at=utc_now_iso(),
+                )
+            )
+            self.state.completed_growth_charge_requests = (
+                self.state.completed_growth_charge_requests[
+                    -MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:
+                ]
+            )
+            self._update_achievements()
+            self._persist_or_restore(snapshot)
+            return outcome
+        except Exception:
+            logger.exception(
+                "Anki Garden: Growth Charge use could not be persisted",
+                extra={
+                    "growth_charge_id": quote.charge_id,
+                    "growth_charge_target_id": quote.target_id,
+                    "growth_charge_request_id": request.request_id,
+                },
+            )
+            self._pending_stage_transitions = transition_snapshot
+            self._restore_state(snapshot)
+            refreshed = self.quote_growth_charge(request.charge_id, request.target_id)
+            return self._growth_charge_failure(
+                refreshed,
+                GrowthChargeStatus.PERSISTENCE_FAILURE,
+                "The Growth Charge could not be saved, so it was not used.",
+            )
+
     def use_growth_charge(
         self,
         charge_id: str,
         plant_id: str | None = None,
     ) -> tuple[bool, str]:
-        spec = GROWTH_CHARGES.get(str(charge_id))
-        if spec is None:
-            return False, "Choose a valid Growth Charge."
-        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
-        if (
-            plant is None
-            or self.state.active_plant_id != plant.plant_id
-            or not plant.planted
-            or plant.fully_grown
-        ):
-            return False, "Nurture an unfinished planted plant before using a Growth Charge."
-        if self.state.consumables.get(spec.charge_id, 0) <= 0:
-            return False, f"You do not have a {spec.name}."
-        snapshot = self._state_snapshot()
-        transition_snapshot = list(self._pending_stage_transitions)
-        self.state.consumables[spec.charge_id] -= 1
-        awarded = self._apply_direct_growth(
-            plant, spec.growth, stats_field="charge_growth"
-        )
-        if awarded <= 0:
-            self._pending_stage_transitions = transition_snapshot
-            self._restore_state(snapshot)
-            return False, "That plant cannot receive more Growth. The charge was not used."
-        event_key = f"charge:{spec.charge_id}:{plant.plant_id}:{uuid.uuid4().hex}"
-        self._queue_feedback(
-            event_key,
-            "growth_charge",
-            f"{spec.name} gave {plant.name} {awarded:,} Growth.",
-            plant.plant_id,
-            title=f"{spec.name} used",
-            asset_category="ui",
-            asset_key=spec.charge_id,
-            amount=awarded,
-        )
-        try:
-            self._update_achievements()
-            self._persist_or_restore(snapshot)
-        except Exception:
-            self._pending_stage_transitions = transition_snapshot
-            return False, "The Growth Charge could not be saved, so it was not used."
-        return True, f"{spec.name} gave {plant.name} {awarded:,} Growth."
+        target_id = str(plant_id or self.state.active_plant_id or "")
+        quote = self.quote_growth_charge(str(charge_id), target_id)
+        if not quote.ready:
+            return False, quote.message
+        outcome = self.confirm_growth_charge(GrowthChargeRequest.from_quote(quote))
+        return outcome.success, outcome.message
 
     def enter_starter_nursery(self) -> tuple[bool, str]:
         progress = self.state.onboarding

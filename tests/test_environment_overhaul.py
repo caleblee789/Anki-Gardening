@@ -99,11 +99,12 @@ def answer(
     revlog_id: int = 0,
 ):
     storage.now_ms += 1_000
+    stable_id = revlog_id or storage.now_ms
     return engine.register_review({
         "queue": 2,
         "ease": 3,
-        "revlog_id": revlog_id,
-        "answered_at_ms": revlog_id or storage.now_ms,
+        "revlog_id": stable_id,
+        "answered_at_ms": stable_id,
     })
 
 
@@ -124,7 +125,7 @@ def own_and_equip(
 
 
 def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract():
-    assert STATE_VERSION == 19
+    assert STATE_VERSION == 20
     assert {item_id: item.price for item_id, item in WEATHER_CATALOG.items()} == {
         "sunny": None,
         "breeze": 100,
@@ -340,12 +341,14 @@ def test_all_due_weather_rewards_are_small_and_use_normal_growth_accounting():
     rainbow, rainbow_storage = make_engine()
     own_and_equip(rainbow, weather="rainbow_sunshower")
     answer(rainbow, rainbow_storage)
+    rainbow_storage.state.plants[0].growth_points = 499
     before = rainbow_storage.state.plants[0].growth_points
     ok, message = rainbow.evaluate_all_due(DueObligationStatus())
     assert ok
     assert rainbow_storage.state.plants[0].growth_points == before + 5
-    assert rainbow_storage.state.daily_stats.weather_growth == 5
-    assert rainbow_storage.state.currency_balance == 10
+    assert rainbow_storage.state.daily_stats.direct_reward_growth == 5
+    assert rainbow_storage.state.currency_balance == 15
+    assert rainbow.peek_stage_transitions()[0].source == "direct_reward"
     assert "5 Growth" in message
 
 

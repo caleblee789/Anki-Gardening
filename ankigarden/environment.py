@@ -75,7 +75,7 @@ class GrowthChargeSpec:
         return EffectDescriptor(
             function="Adds 1 Growth Charge to inventory.",
             buff=f"+{self.growth:,} Growth when used.",
-            activation_condition="Use on the nurtured, unfinished garden plant.",
+            activation_condition="Use on any owned, planted, unfinished garden plant.",
             duration="Instant; consumed on use.",
             stacking="Inventory quantities stack; each Charge is used separately.",
             replacement="Replaces nothing.",
