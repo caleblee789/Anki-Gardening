@@ -287,7 +287,9 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
-    assert len(scroll_constructors) == 17
+    # Overview and its nested stage strip were removed; the Growth Charge
+    # confirmation contributes the one new intentional scroll owner.
+    assert len(scroll_constructors) == 16
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper

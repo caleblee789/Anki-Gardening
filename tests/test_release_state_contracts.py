@@ -15,11 +15,9 @@ from ankigarden.models.state import (
 from ankigarden.terminology import FERTILIZER_EXPLANATION
 from ankigarden.ui.state_contracts import (
     CURRENT_ONBOARDING_VERSION,
-    DailyProgressState,
     OnboardingState,
     StreakPresentationState,
     achievement_progress_display,
-    daily_progress_display,
     onboarding_state_display,
     streak_presentation,
 )
@@ -212,49 +210,6 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
     assert ended.message == "Answer an Anki card to begin a new streak."
     assert ended.previous_days == 3
     assert ended.missed_day == date(2026, 8, 11)
-
-
-def test_daily_progress_state_machine_never_offers_a_contradictory_action() -> None:
-    remaining = daily_progress_display(4, reward_complete=False, reviewed_today=2)
-    completed = daily_progress_display(
-        0,
-        reward_complete=True,
-        reviewed_today=12,
-        reward_outcome="15 Garden Coins rewarded.",
-    )
-    activation = daily_progress_display(0, reward_complete=False, reviewed_today=0)
-    supported_activation = daily_progress_display(
-        0,
-        reward_complete=False,
-        reviewed_today=0,
-        custom_study_supported=True,
-    )
-    no_due = daily_progress_display(0, reward_complete=False, reviewed_today=12)
-
-    assert remaining.state is DailyProgressState.IN_PROGRESS
-    assert remaining.summary == "4 cards remaining"
-    assert remaining.action_label == "Continue studying"
-    assert remaining.action_enabled is True
-
-    assert completed.state is DailyProgressState.COMPLETE
-    assert completed.summary == "Today’s study goal is complete"
-    assert completed.reward_outcome == "15 Garden Coins rewarded."
-    assert completed.action_label is None
-
-    assert activation.state is DailyProgressState.ACTIVATION_REQUIRED
-    assert activation.summary == "No cards are due today"
-    assert activation.detail == (
-        "Answer one Anki card through custom study to activate today’s reward."
-    )
-    assert activation.action_label is None
-    assert activation.action_enabled is False
-    assert supported_activation.action_label == "Open custom study"
-    assert supported_activation.action_kind == "customStudy"
-    assert supported_activation.action_enabled is True
-
-    assert no_due.state is DailyProgressState.NO_DUE
-    assert no_due.action_label is None
-    assert no_due.action_enabled is False
 
 
 def test_fertilizer_explanation_uses_eligible_answer_semantics() -> None:

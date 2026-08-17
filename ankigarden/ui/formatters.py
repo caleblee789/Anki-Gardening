@@ -23,6 +23,23 @@ def format_integer(value: Any) -> str:
         return "N/A"
 
 
+def format_growth_fifths(value: Any) -> str:
+    """Format exact fifths of one Growth point without using floating point."""
+    try:
+        numerator = max(0, int(_to_decimal(value)))
+        whole, remainder = divmod(numerator, 5)
+        if remainder == 0:
+            return f"{whole:,}"
+        return f"{whole:,}.{remainder * 2}"
+    except Exception as exc:
+        DISPLAY_TELEMETRY.track_parsing_exception(
+            route="shared.formatters",
+            field="growth_fifths",
+            exc=exc,
+        )
+        return "N/A"
+
+
 def format_decimal(value: Any, places: int = 2) -> str:
     try:
         quantizer = Decimal("1") if places <= 0 else Decimal("1").scaleb(-places)

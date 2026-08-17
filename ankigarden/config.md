@@ -27,9 +27,12 @@ there is no manual quality, Weather animation, or Fine tune control.
 defaults without saving them. The separate **Troubleshooting** tab retains its
 diagnostic report and copy action.
 
-Each eligible card answer gives the unfinished plant you **Nurture** 10 base
-Growth. Anki streak, Fertilizer, an active Booster Potion, and equipped
-environment passives can add more. Growth Charges add one immediate amount.
+Each card answer Garden can count starts with 10 base Growth for the unfinished
+plant you **Nurture**. Anki streak, Fertilizer, an active Booster Potion, and
+equipped environment passives contribute once. The nurtured plant receives the
+full post-buff result; every other planted, unfinished plant receives an
+additional exact 20 percent. Growth Charges add one immediate amount only to
+the selected owned, planted, unfinished plant.
 Study goals, milestones, and rare study gifts award the spendable balance shown
 to learners as **Garden Coins**; the persisted API field remains
 `currency_balance`.

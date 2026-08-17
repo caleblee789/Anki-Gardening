@@ -15,7 +15,7 @@ from .copy import (
     HOME_NO_STARTER_BODY,
     HOME_NO_STARTER_TITLE,
 )
-from .formatters import format_integer, format_status_label
+from .formatters import format_growth_fifths, format_integer, format_status_label
 from .state import (
     GardenPreviewSnapshot,
     garden_preview_from_values,
@@ -78,6 +78,13 @@ class HomeWidgetData:
     # snapshots as established Gardens; the state builder sets it explicitly.
     starter_selected: bool = True
     preview_snapshot: GardenPreviewSnapshot | None = None
+    study_growth_generated: int = 0
+    nurtured_growth_today: int = 0
+    passive_growth_fifths_today: int = 0
+    passive_growth_credited_today: int = 0
+    charge_growth_today: int = 0
+    direct_reward_growth_today: int = 0
+    growth_accounting_stale: bool = False
 
 
 @dataclass(frozen=True)
@@ -1228,7 +1235,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     metrics_accessible_label = escape(
         f"{active_accessible_text}; {streak_text}; "
-        f"{format_integer(data.garden_currency)} Garden Coins",
+        f"{format_integer(data.garden_currency)} Garden Coins; "
+        f"Study Growth generated {format_integer(data.study_growth_generated)}; "
+        f"nurtured allocation {format_integer(data.nurtured_growth_today)}; "
+        f"other planted plants credited "
+        f"{format_integer(data.passive_growth_credited_today)} passive Growth from "
+        f"{format_growth_fifths(data.passive_growth_fifths_today)} exact Growth"
+        + (
+            "; today’s allocation detail is partially stale until scheduler rollover"
+            if data.growth_accounting_stale else ""
+        ),
         quote=True,
     )
 
@@ -1259,7 +1275,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         quote=True,
     ) if marker_plant is not None else ""
     marker_accessible = (
-        f". Watering can: {marker_plant_name} is nurtured and receives Growth from future Anki card answers"
+        f". Watering can: {marker_plant_name} is nurtured and receives full Growth from "
+        "future Anki card answers; other eligible planted plants receive 20 percent of "
+        "that post-buff Growth"
         if marker_visible else
         ""
     )
@@ -1411,6 +1429,28 @@ def build_home_widget_success_data(
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
         starter_selected=bool(starter_complete),
         preview_snapshot=preview_snapshot,
+        study_growth_generated=max(
+            0, int(getattr(stats, "study_growth_generated", 0) or 0)
+        ),
+        nurtured_growth_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_nurtured_growth", {}).values()
+        ),
+        passive_growth_fifths_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_passive_growth_fifths", {}).values()
+        ),
+        passive_growth_credited_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_passive_growth_credited", {}).values()
+        ),
+        charge_growth_today=max(0, int(getattr(stats, "charge_growth", 0) or 0)),
+        direct_reward_growth_today=max(
+            0, int(getattr(stats, "direct_reward_growth", 0) or 0)
+        ),
+        growth_accounting_stale=bool(
+            getattr(stats, "growth_accounting_stale", False)
+        ),
     )
 
 

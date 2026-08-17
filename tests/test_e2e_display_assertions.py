@@ -109,8 +109,7 @@ def _seed_state(_unused: int = 50) -> GardenState:
             reviewed=12,
             base_growth=30,
             streak_bonus_growth=6,
-            bonus_growth=6,
-            growth_earned=36,
+            plant_nurtured_growth={"p-1": 36},
         ),
         active_plant_id="p-1",
         currency_balance=35,
@@ -160,8 +159,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     app.storage.state.daily_stats.base_growth = 54
     app.storage.state.daily_stats.streak_bonus_growth = 6
-    app.storage.state.daily_stats.bonus_growth = 6
-    app.storage.state.daily_stats.growth_earned = 60
+    app.storage.state.daily_stats.plant_nurtured_growth = {"p-1": 60}
     app.storage.state.plants[0].growth_points = 310
     app.storage.state.streak_days = 9
     app.storage.state.selected_weather = "cloudy"

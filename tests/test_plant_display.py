@@ -932,7 +932,7 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
 
 def test_dashboard_is_garden_first_with_one_progress_architecture():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    assert "from .formatters import format_status_label" in dashboard
+    assert "format_growth_fifths, format_status_label" in dashboard
     assert "root.addWidget(hero_card, 1)" in dashboard
     assert 'self.garden_stats_bar = GardenStatsStrip(self.engine)' in dashboard
     assert '("growth", "Plant Growth"' in dashboard
@@ -940,19 +940,20 @@ def test_dashboard_is_garden_first_with_one_progress_architecture():
     assert "self.streak_ticks = QLabel" not in dashboard
     assert "class GardenProgressDialog(GardenDetailsDialog):" in dashboard
     assert 'self.navigation = GardenSideNavigation()' in dashboard
-    assert '("overview", "Overview")' in dashboard
+    assert '("overview", "Overview")' not in dashboard
+    assert 'if requested == "overview":' in dashboard
+    assert 'return "growth"' in dashboard
     assert '("achievements", "Achievements")' in dashboard
     assert '("collection", "Collection")' in dashboard
-    assert 'self.today_list = ProgressList("Today progress")' in dashboard
-    assert 'recent_title = QLabel("Recent rewards")' in dashboard
+    assert 'self.today_list = ProgressList("Today progress")' not in dashboard
+    assert 'recent_title = QLabel("Recent rewards")' not in dashboard
     assert "transaction.reason" in dashboard
     assert "transaction.balance" in dashboard
-    assert "class ProgressList(QWidget):" in dashboard
-    assert "class ProgressList(QScrollArea):" not in dashboard
+    assert "class ProgressList(" not in dashboard
     assert "self.scroll.setWidgetResizable(True)" in dashboard
     assert "outer.addWidget(self.scroll)" in dashboard
     assert "class ProgressCardGrid(QWidget):" in dashboard
-    assert 'QWidget#progressListContainer { background:#0b1f1b; }' in dashboard
+    assert 'QWidget#progressListContainer { background:#0b1f1b; }' not in dashboard
     assert 'QWidget#progressCardGridContainer { background:#071a15; }' in dashboard
     assert 'self.container.setStyleSheet("background:#0b1f1b;")' not in dashboard
     assert 'self.container.setStyleSheet("background:#071a15;")' not in dashboard
@@ -1186,7 +1187,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "self._position_scene_overlays()" in dashboard
-    assert "self.today_summary = StatSummary" in dashboard
+    assert "self.today_summary = StatSummary" not in dashboard
     assert "QMessageBox.information(\n            self,\n            \"How to use the garden\"" not in dashboard
     assert "def card_geometry" in scene
     assert "self.selectionChanged.emit(\"\")" in scene
@@ -1238,7 +1239,8 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     assert 'QLabel("Available now")' not in nursery
     assert '"Botanical catalog"' in nursery
     assert "self._currently_growing_strip(active)" in nursery
-    assert "QComboBox" not in dashboard
+    assert "QComboBox" not in nursery
+    assert "class GrowthChargeConfirmationDialog" in dashboard
     assert "QMenu" not in dashboard
     assert "self._open_starter_nursery" in dashboard
     assert "CHOOSE_STARTER_ACTION" in dashboard

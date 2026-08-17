@@ -369,8 +369,7 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(self.value_label)",
         "apply_tabular_numerals(self.status)",
         "apply_tabular_numerals(self.coins)",
-        "apply_tabular_numerals(growth_support)",
-        "apply_tabular_numerals(charge_quantity)",
+        "apply_tabular_numerals(support)",
         "apply_tabular_numerals(metric)",
         "apply_tabular_numerals(bonus_value)",
         "apply_tabular_numerals(cutoff_value)",
@@ -386,8 +385,6 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(self.status_value)",
         "apply_tabular_numerals(affordability_label)",
         "apply_tabular_numerals(helper)",
-        "apply_tabular_numerals(stage_reward_label)",
-        "apply_tabular_numerals(streak_reward)",
         "apply_tabular_numerals(shortfall_label)",
     ):
         assert call in dashboard

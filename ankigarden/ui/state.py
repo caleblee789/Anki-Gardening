@@ -16,6 +16,16 @@ class PlantUiSnapshot:
     growth_points: int
     slot_index: int | None
     is_active: bool
+    planted: bool = False
+    fully_grown: bool = False
+    growth_today: int = 0
+    nurtured_growth_today: int = 0
+    passive_growth_fifths_today: int = 0
+    passive_growth_credited_today: int = 0
+    charge_growth_today: int = 0
+    direct_reward_growth_today: int = 0
+    passive_remainder_fifths: int = 0
+    allocation_type: str = "No Growth today"
 
 
 @dataclass(frozen=True)
@@ -41,11 +51,57 @@ class GardenUiSnapshot:
     selected_background: str
     unlocked_slots: int
     plants: tuple[PlantUiSnapshot, ...]
+    study_growth_generated: int = 0
+    nurtured_growth_today: int = 0
+    passive_growth_fifths_today: int = 0
+    passive_growth_credited_today: int = 0
+    charge_growth_today: int = 0
+    direct_reward_growth_today: int = 0
+    legacy_unattributed_growth: int = 0
+    growth_accounting_stale: bool = False
+    base_growth_today: int = 0
+    streak_growth_today: int = 0
+    fertilizer_growth_today: int = 0
+    weather_growth_today: int = 0
+    scenery_growth_today: int = 0
+    other_modifier_growth_today: int = 0
 
 
 def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
     state = storage.state
     active_id = str(getattr(state, "active_plant_id", "") or "")
+    stats = state.daily_stats
+
+    def plant_growth_map(name: str) -> dict[str, int]:
+        value = getattr(stats, name, {})
+        return value if isinstance(value, dict) else {}
+
+    nurtured_map = plant_growth_map("plant_nurtured_growth")
+    passive_fifths_map = plant_growth_map("plant_passive_growth_fifths")
+    passive_credited_map = plant_growth_map("plant_passive_growth_credited")
+    charge_map = plant_growth_map("plant_charge_growth")
+    reward_map = plant_growth_map("plant_direct_reward_growth")
+    legacy_map = plant_growth_map("legacy_plant_growth")
+
+    def allocation_type(plant: Any) -> str:
+        plant_id = str(getattr(plant, "plant_id", "") or "")
+        if bool(getattr(plant, "fully_grown", False)):
+            return "Fully grown"
+        nurtured = max(0, int(nurtured_map.get(plant_id, 0) or 0))
+        passive = max(0, int(passive_fifths_map.get(plant_id, 0) or 0))
+        direct = max(0, int(charge_map.get(plant_id, 0) or 0)) + max(
+            0, int(reward_map.get(plant_id, 0) or 0)
+        )
+        if nurtured and passive:
+            return "Nurtured + passive"
+        if nurtured:
+            return "Nurtured"
+        if passive:
+            return "Passive"
+        if direct:
+            return "Direct only"
+        return "No Growth today"
+
     plants = tuple(
         PlantUiSnapshot(
             plant_id=str(getattr(plant, "plant_id", "") or ""),
@@ -55,12 +111,42 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
             growth_points=max(0, int(getattr(plant, "growth_points", 0) or 0)),
             slot_index=getattr(plant, "slot_index", None),
             is_active=str(getattr(plant, "plant_id", "") or "") == active_id,
+            planted=bool(getattr(plant, "planted", False)),
+            fully_grown=bool(getattr(plant, "fully_grown", False)),
+            growth_today=(
+                max(0, int(nurtured_map.get(str(getattr(plant, "plant_id", "")), 0) or 0))
+                + max(0, int(passive_credited_map.get(str(getattr(plant, "plant_id", "")), 0) or 0))
+                + max(0, int(charge_map.get(str(getattr(plant, "plant_id", "")), 0) or 0))
+                + max(0, int(reward_map.get(str(getattr(plant, "plant_id", "")), 0) or 0))
+                + max(0, int(legacy_map.get(str(getattr(plant, "plant_id", "")), 0) or 0))
+            ),
+            nurtured_growth_today=max(
+                0, int(nurtured_map.get(str(getattr(plant, "plant_id", "")), 0) or 0)
+            ),
+            passive_growth_fifths_today=max(
+                0,
+                int(passive_fifths_map.get(str(getattr(plant, "plant_id", "")), 0) or 0),
+            ),
+            passive_growth_credited_today=max(
+                0,
+                int(passive_credited_map.get(str(getattr(plant, "plant_id", "")), 0) or 0),
+            ),
+            charge_growth_today=max(
+                0, int(charge_map.get(str(getattr(plant, "plant_id", "")), 0) or 0)
+            ),
+            direct_reward_growth_today=max(
+                0, int(reward_map.get(str(getattr(plant, "plant_id", "")), 0) or 0)
+            ),
+            passive_remainder_fifths=max(
+                0,
+                min(4, int(getattr(plant, "passive_growth_remainder_fifths", 0) or 0)),
+            ),
+            allocation_type=allocation_type(plant),
         )
         for plant in list(getattr(state, "plants", []) or [])
     )
     active = next((plant for plant in plants if plant.is_active), None)
     active_growth = growth_display(active.growth_points if active is not None else 0)
-    stats = state.daily_stats
     return GardenUiSnapshot(
         garden_name=str(getattr(state, "garden_name", "My Garden") or "My Garden"),
         active_plant_id=active_id,
@@ -84,6 +170,40 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
         ),
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
         plants=plants,
+        study_growth_generated=max(
+            0, int(getattr(stats, "study_growth_generated", 0) or 0)
+        ),
+        nurtured_growth_today=sum(max(0, int(value)) for value in nurtured_map.values()),
+        passive_growth_fifths_today=sum(
+            max(0, int(value)) for value in passive_fifths_map.values()
+        ),
+        passive_growth_credited_today=sum(
+            max(0, int(value)) for value in passive_credited_map.values()
+        ),
+        charge_growth_today=sum(max(0, int(value)) for value in charge_map.values()),
+        direct_reward_growth_today=sum(max(0, int(value)) for value in reward_map.values()),
+        legacy_unattributed_growth=max(
+            0, int(getattr(stats, "legacy_unattributed_growth", 0) or 0)
+        ),
+        growth_accounting_stale=bool(
+            getattr(stats, "growth_accounting_stale", False)
+        ),
+        base_growth_today=max(0, int(getattr(stats, "base_growth", 0) or 0)),
+        streak_growth_today=max(
+            0, int(getattr(stats, "streak_bonus_growth", 0) or 0)
+        ),
+        fertilizer_growth_today=max(
+            0, int(getattr(stats, "fertilizer_growth", 0) or 0)
+        ),
+        weather_growth_today=max(
+            0, int(getattr(stats, "weather_growth", 0) or 0)
+        ),
+        scenery_growth_today=max(
+            0, int(getattr(stats, "scenery_growth", 0) or 0)
+        ),
+        other_modifier_growth_today=max(
+            0, int(getattr(stats, "booster_growth", 0) or 0)
+        ),
     )
 
 

@@ -680,7 +680,8 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert "if(f){f.style.display='block';}" in html
     assert "display:none" in html
     assert (
-        "Watering can: Rose is nurtured and receives Growth from future Anki card answers"
+        "Watering can: Rose is nurtured and receives full Growth from future Anki card "
+        "answers; other eligible planted plants receive 20 percent of that post-buff Growth"
         in html
     )
 

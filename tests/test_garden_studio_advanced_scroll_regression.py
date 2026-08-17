@@ -1196,8 +1196,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     application.processEvents()
     assert_surface(settings, "Settings")
 
-    progress.navigation.set_current("overview")
-    assert_surface(progress, "Garden Progress overview")
+    progress.navigation.set_current("growth")
+    assert_surface(progress, "Garden Progress Plant Growth")
     progress.navigation.set_current("collection")
     assert_surface(progress, "Collection")
 
@@ -1211,7 +1211,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         "Plant Story",
         "Species overview",
         "Settings",
-        "Garden Progress overview",
+        "Garden Progress Plant Growth",
         "Collection",
         "Collection loadout details",
     }

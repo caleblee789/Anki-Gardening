@@ -1209,7 +1209,9 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     assert "self.growth_remaining.setText(" not in source
     assert "self.growth_summary.setAccessibleDescription(" in source
     assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in source
-    assert 'self.status_row.hide()' in source
+    assert 'self.status_row.show()' in source
+    assert 'allocation_type = str(plant.get("allocation_type")' in source
+    assert 'Growth today' in source
     assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
 
@@ -1288,11 +1290,12 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
-    assert '"Growth breakdown"' in refresh
-    assert 'StatSummary([' in refresh
-    assert '("Total Growth",' in refresh
-    assert 'if int(stats.growth_earned) == 0:' in refresh
-    assert 'today_layout.addWidget(StatSummary([' in refresh
+    assert '"Growth Breakdown"' in refresh
+    assert '"Study Growth generated"' in refresh
+    assert '"Nurtured allocation"' in refresh
+    assert '"Passive Growth credited"' in refresh
+    assert 'compact=True' in refresh
+    assert '("Total Growth",' not in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:

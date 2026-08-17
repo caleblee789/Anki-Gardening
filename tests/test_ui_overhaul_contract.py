@@ -334,7 +334,10 @@ def test_garden_chrome_uses_one_unified_progress_dialog() -> None:
     assert "self.set_body_widget(self.navigation)" in dashboard
     assert "self.details_dialog = self.progress_dialog" in dashboard
     assert "self.metric_dialogs" not in dashboard
-    assert 'self.progress_dialog.open_page("overview")' in open_progress
+    assert "self.progress_dialog.open_page()" in open_progress
+    assert 'if requested == "overview":' in progress_source
+    assert 'return "growth"' in progress_source
+    assert '("overview", "Overview")' not in progress_source
     assert "self.garden_stats_bar.metricActivated.connect(self._open_metric_details)" in dashboard
     assert "self.progress_dialog.open_page(key)" in open_details
     assert "self.details_dialog.isVisible()" in open_nursery
@@ -381,27 +384,29 @@ def test_garden_details_growth_is_nonzero_first_and_uses_engine_stage_sources() 
         "ankigarden/ui/dashboard.py", "GardenDetailsDialog", "_refresh_growth"
     )
 
-    assert "growth_display(plant.growth_points)" in growth
+    assert "snapshot = select_garden_ui(self.engine, self.storage)" in growth
     stage_path = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDetailsDialog", "_add_growth_stage_path"
     )
     assert "GROWTH_STAGES" in stage_path
     assert "GROWTH_THRESHOLDS[index]" not in stage_path
-    assert "ScrollBarAsNeeded" in stage_path
+    assert "ResponsiveTileGrid(" in stage_path
+    assert "maximum_columns=6" in stage_path
     assert '"✓ Completed"' in stage_path
     assert "display.stage_index" in stage_path
     assert '"completed" if index < display.stage_index' in stage_path
     assert '"current" if index == display.stage_index' in stage_path
-    assert "active_rows" in growth
-    assert '"Growth breakdown"' in growth
-    assert "recorded != answer_growth" in growth
-    assert '("Total Growth",' in growth
-    assert 'if int(stats.growth_earned) == 0:' in growth
-    assert '[(label, f"{value:,}") for label, value in active_rows]' in growth
-    assert 'self._label("Growth Charges", "detailSection")' in growth
-    assert 'f"{int(stats.growth_earned):,}"' in growth
+    assert '"Growth Breakdown"' in growth
+    assert '"Study Growth generated"' in growth
+    assert '"Nurtured allocation"' in growth
+    assert '"Passive Growth credited"' in growth
+    assert '"Exact passive Growth earned"' in growth
+    assert '"Growth Charges and direct rewards"' in growth
+    assert '"The nurtured plant receives full Growth.' in growth
+    assert '"20 percent of the nurtured plant’s post-buff Growth."' in growth
+    assert 'self._label("Growth Charges", "detailSection")' not in growth
     assert "stage_scroll" not in growth
-    assert "stage_card.setMinimumWidth(98)" in stage_path
+    assert "minimum_tile_width=92" in stage_path
     assert " base + " not in growth
 
 
@@ -774,10 +779,7 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert plant_card.count("self.growth_remaining.hide()") == 2
     assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in plant_card
     assert "% to {next_stage}" not in plant_card
-    overview = _method_source(
-        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
-    )
-    assert '("Growth", f"{int(stats.growth_earned):,}")' in overview
+    assert "_refresh_progress_overview" not in dashboard
     assert "total Growth · {completed_events}" not in refresh
     assert 'title = QLabel(f"Fertilize {plant.name}")' in fertilizer
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
@@ -831,29 +833,15 @@ def test_compact_identity_copy_uses_middle_dots_but_runtime_notices_are_normaliz
 
 def test_progress_rows_use_text_and_state_borders_without_an_emoji_column() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
-    progress = dashboard.split("class ProgressRow", 1)[1].split("class ProgressList", 1)[0]
-    overview = _method_source(
-        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
-    )
+    progress = dashboard.split("class ProgressRow", 1)[1].split("class ProgressCardGrid", 1)[0]
 
     assert "self.marker" not in progress
     assert "achievementState" in progress
     assert "icons =" not in progress
-    assert "progress_state = daily_progress_display(" in overview
-    assert "reward_complete=bool(stats.completed_due_cards)" in overview
-    assert "reviewed_today=int(stats.reviewed)" in overview
-    assert "custom_study_supported=False" in overview
-    assert "DailyProgressState.IN_PROGRESS" in overview
-    assert "DailyProgressState.COMPLETE" in overview
-    assert "DailyProgressState.NO_DUE" in overview
-    assert '"Finish today’s due cards"' in overview
-    assert 'reward_text = f"Earned automatically: {progress_state.reward_outcome}"' in overview
-    assert '"No Daily Progress reward action is available."' not in overview
-    assert "daily_layout.addWidget(explanation)" in overview
-    assert 'progress_state.action_enabled and progress_state.action_kind == "review"' in overview
-    assert 'QPushButton(progress_state.action_label or "Continue studying")' in overview
-    assert 'daily_explanation = due_error or "Refresh after Anki finishes loading the scheduler."' in overview
-    assert "due_available" in overview
+    assert "DailyProgressState" not in dashboard
+    assert "daily_progress_display" not in dashboard
+    assert "class ProgressList" not in dashboard
+    assert "_refresh_progress_overview" not in dashboard
 
 
 def test_settings_fine_tune_controls_share_one_visible_control_style() -> None:
@@ -1108,20 +1096,16 @@ def test_progress_surfaces_show_one_growth_value_plus_a_card_answer_forecast() -
     story = _method_source(
         "ankigarden/ui/dashboard.py", "PlantStoryDialog", "refresh"
     )
-    overview = _method_source(
-        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
-    )
-
-    assert 'progress.set_progress(\n                "Growth",' in growth
-    assert 'value_text=f"{display.stage_points:,} / {display.stage_goal:,} Growth"' in growth
-    assert "forecast = growth_forecast(self.engine, plant)" in growth
+    assert 'progress.set_progress(\n                    "Progress to next stage",' in growth
+    assert 'f"{display.stage_points:,} / {display.stage_goal:,} Growth"' in growth
+    assert '"Current Growth"' in growth
+    assert '"Growth today"' in growth
     assert 'f"About {answers:,} Anki card' not in growth
     assert 'f"{display.points_remaining:,} Growth remaining' not in growth
     assert 'self.stage_progress.set_progress(\n                "Growth",' in story
     assert "forecast = growth_forecast(self.engine, plant)" in story
     assert 'f"About {answers:,} Anki card' not in story
-    assert 'f"Fully grown · {active_plant.growth_points:,} total Growth"' in overview
-    assert "1 if display.fully_grown" not in overview
+    assert "_refresh_progress_overview" not in _source("ankigarden/ui/dashboard.py")
 
 
 def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time() -> None:
@@ -1242,16 +1226,6 @@ def test_shared_ui_snapshot_and_post_commit_event_are_the_refresh_boundary() -> 
     assert 'self.state_changed("Card answer counted")' in reviewer
 
 
-def test_progress_rebuild_detaches_old_rows_before_nested_dialog_paints() -> None:
-    clear = _method_source(
-        "ankigarden/ui/dashboard.py", "ProgressList", "clear"
-    )
-
-    assert clear.index("widget.hide()") < clear.index("widget.setParent(None)")
-    assert clear.index("widget.setParent(None)") < clear.index("widget.deleteLater()")
-    assert "self.container.updateGeometry()" in clear
-
-
 def test_capture_harness_requires_painted_surfaces_and_exact_dialog_instances() -> None:
     capture = _source("ankigarden/capture_ui_faces.py")
     capture_now = _method_source(
@@ -1292,9 +1266,7 @@ def test_capture_harness_requires_painted_surfaces_and_exact_dialog_instances() 
 
 
 def test_progress_reward_badges_and_fertilizer_countdown_are_runtime_safe() -> None:
-    overview = _method_source(
-        "ankigarden/ui/dashboard.py", "GardenDashboard", "_refresh_progress_overview"
-    )
+    dashboard_source = _source("ankigarden/ui/dashboard.py")
     fertilizer = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDashboard", "_open_fertilizer_menu"
     )
@@ -1302,7 +1274,7 @@ def test_progress_reward_badges_and_fertilizer_countdown_are_runtime_safe() -> N
         "ankigarden/ui/dashboard.py", "GardenDashboard", "_fertilizer_text"
     )
 
-    assert '"detailPositive" if int(transaction.delta) >= 0 else "detailNegative",\n                True,' in overview
+    assert "_refresh_progress_overview" not in dashboard_source
     assert "countdown_timer.setInterval(1_000)" in fertilizer
     assert "countdown_timer.timeout.connect(refresh_fertilizer_countdown)" in fertilizer
     assert "fertilizer_status(" in fertilizer_text

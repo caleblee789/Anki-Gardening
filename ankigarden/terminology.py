@@ -1,13 +1,16 @@
 """Shared learner-facing explanations for Anki Garden gameplay terms."""
 
 GROWTH_EXPLANATION = (
-    "Growth is plant progress: each counted card answer adds 10 base Growth to the plant you "
-    "nurture. Anki streaks, Fertilizer, Booster Potions, equipped Weather and Scenery, and "
-    "Growth Charges can add separate bonuses."
+    "Growth is plant progress. Each card answer Garden can count starts with 10 base Growth. The "
+    "nurtured plant receives full Growth. Other planted plants receive 20 percent of the "
+    "nurtured plant's post-buff Growth. Anki streaks, Fertilizer, Booster Potions, equipped "
+    "Weather, and Scenery contribute to study Growth once; Growth Charges apply only to "
+    "their selected plant."
 )
 
 ACTIVE_PLANT_EXPLANATION = (
-    "The plant you nurture receives Growth from future card answers. Growth already earned stays put."
+    "The plant you nurture receives full Growth from future card answers. Other eligible planted "
+    "plants receive 20 percent of that final value. Growth already earned stays put."
 )
 
 ANKI_STREAK_EXPLANATION = (
