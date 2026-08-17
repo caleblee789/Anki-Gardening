@@ -55,7 +55,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 14
+CAPTURE_CONTRACT_VERSION = 15
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -112,11 +112,11 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Customize",
+        "Collection loadout details",
         (
-            "customize-garden",
-            "customize-effects-on",
-            "customize-effects-off",
+            "collection-loadout-detail",
+            "collection-preview-active",
+            "collection-preview-restored",
         ),
     ),
     (
@@ -245,11 +245,11 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "resize-progress-content-821",
             "resize-progress-default",
             "resize-progress-large",
-            "resize-customize-minimum",
-            "resize-customize-content-819",
-            "resize-customize-content-821",
-            "resize-customize-default",
-            "resize-customize-large",
+            "resize-collectible-detail-minimum",
+            "resize-collectible-detail-content-819",
+            "resize-collectible-detail-content-821",
+            "resize-collectible-detail-default",
+            "resize-collectible-detail-large",
             "resize-nursery-minimum",
             "resize-nursery-content-759",
             "resize-nursery-content-761",
@@ -323,6 +323,13 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "collection-environment-mechanics",
         ),
     ),
+    (
+        "Collection consolidation — transactional states",
+        (
+            "collection-loadout-persistence-error",
+            "collection-origin-plant-placement",
+        ),
+    ),
 )
 CAPTURE_FACE_LABELS = tuple(
     label
@@ -335,7 +342,7 @@ WATERING_CAN_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "Watering can — marker-critical interfaces",
         (
             "selected-plant-nurtured",
-            "customize-garden",
+            "collection-loadout-detail",
             "settings-display",
             "all-six-beds-occupied",
             "watering-can-garden-plot-1",
@@ -376,7 +383,7 @@ NURTURED_MARKER_GEOMETRY_CAPTURE_LABELS = frozenset({
     "selected-plant-nurtured",
     "active-deck-browser-home-after-nurture",
     "active-overview-home-after-nurture",
-    "customize-garden",
+    "collection-loadout-detail",
     "settings-display",
     "all-six-beds-occupied",
     "reduced-motion-enabled",
@@ -444,11 +451,11 @@ RESIZE_MATRIX_SPECS: tuple[
     ("resize-progress-content-821", "progress", "historical-edge-high-stability-probe", 869, 620, 940, 680),
     ("resize-progress-default", "progress", "minimum-to-default", 940, 680, 720, 500),
     ("resize-progress-large", "progress", "default-to-large", 1000, 820, 940, 680),
-    ("resize-customize-minimum", "customize", "default-to-minimum", 680, 480, 1040, 700),
-    ("resize-customize-content-819", "customize", "historical-edge-low-stability-probe", 867, 620, 1040, 700),
-    ("resize-customize-content-821", "customize", "historical-edge-high-stability-probe", 869, 620, 1040, 700),
-    ("resize-customize-default", "customize", "minimum-to-default", 1040, 700, 680, 480),
-    ("resize-customize-large", "customize", "default-to-large", 1120, 860, 1040, 700),
+    ("resize-collectible-detail-minimum", "collectible-detail", "default-to-minimum", 680, 480, 1040, 700),
+    ("resize-collectible-detail-content-819", "collectible-detail", "historical-edge-low-stability-probe", 867, 620, 1040, 700),
+    ("resize-collectible-detail-content-821", "collectible-detail", "historical-edge-high-stability-probe", 869, 620, 1040, 700),
+    ("resize-collectible-detail-default", "collectible-detail", "minimum-to-default", 1040, 700, 680, 480),
+    ("resize-collectible-detail-large", "collectible-detail", "default-to-large", 1120, 860, 1040, 700),
     ("resize-nursery-minimum", "nursery", "default-to-minimum", 640, 460, 840, 640),
     ("resize-nursery-content-759", "nursery", "historical-edge-low-stability-probe", 795, 600, 840, 640),
     ("resize-nursery-content-761", "nursery", "historical-edge-high-stability-probe", 797, 600, 840, 640),
@@ -526,11 +533,11 @@ RESIZE_MATRIX_LAYOUT_MODES: dict[str, str] = {
     "resize-progress-content-821": "wide",
     "resize-progress-default": "wide",
     "resize-progress-large": "wide",
-    "resize-customize-minimum": "compact",
-    "resize-customize-content-819": "compact",
-    "resize-customize-content-821": "compact",
-    "resize-customize-default": "wide",
-    "resize-customize-large": "wide",
+    "resize-collectible-detail-minimum": "compact",
+    "resize-collectible-detail-content-819": "compact",
+    "resize-collectible-detail-content-821": "compact",
+    "resize-collectible-detail-default": "wide",
+    "resize-collectible-detail-large": "wide",
     "resize-nursery-minimum": "compact",
     "resize-nursery-content-759": "wide",
     "resize-nursery-content-761": "wide",
@@ -664,15 +671,15 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "resize-collection-default",
         "resize-collection-large",
     ),
-    "Customize Garden": (
-        "customize-garden",
-        "customize-effects-on",
-        "customize-effects-off",
-        "resize-customize-minimum",
-        "resize-customize-content-819",
-        "resize-customize-content-821",
-        "resize-customize-default",
-        "resize-customize-large",
+    "Collection loadout details": (
+        "collection-loadout-detail",
+        "collection-preview-active",
+        "collection-preview-restored",
+        "resize-collectible-detail-minimum",
+        "resize-collectible-detail-content-819",
+        "resize-collectible-detail-content-821",
+        "resize-collectible-detail-default",
+        "resize-collectible-detail-large",
     ),
 }
 
@@ -753,14 +760,14 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-collection-minimum": "GardenProgressDialog:collection",
     "resize-collection-default": "GardenProgressDialog:collection",
     "resize-collection-large": "GardenProgressDialog:collection",
-    "customize-garden": "CustomizeGardenDialog:garden",
-    "customize-effects-on": "CustomizeGardenDialog:effects",
-    "customize-effects-off": "CustomizeGardenDialog:effects",
-    "resize-customize-minimum": "CustomizeGardenDialog:garden",
-    "resize-customize-content-819": "CustomizeGardenDialog:garden",
-    "resize-customize-content-821": "CustomizeGardenDialog:garden",
-    "resize-customize-default": "CustomizeGardenDialog:garden",
-    "resize-customize-large": "CustomizeGardenDialog:garden",
+    "collection-loadout-detail": "CollectibleDetailDialog:loadout",
+    "collection-preview-active": "CollectibleDetailDialog:preview",
+    "collection-preview-restored": "CollectibleDetailDialog:preview",
+    "resize-collectible-detail-minimum": "CollectibleDetailDialog:loadout",
+    "resize-collectible-detail-content-819": "CollectibleDetailDialog:loadout",
+    "resize-collectible-detail-content-821": "CollectibleDetailDialog:loadout",
+    "resize-collectible-detail-default": "CollectibleDetailDialog:loadout",
+    "resize-collectible-detail-large": "CollectibleDetailDialog:loadout",
 }
 
 
@@ -773,7 +780,7 @@ RESPONSIVE_STABILITY_PAIRS: tuple[tuple[str, str], ...] = (
     ("resize-settings-content-699", "resize-settings-content-701"),
     ("resize-settings-content-759", "resize-settings-content-761"),
     ("resize-progress-content-819", "resize-progress-content-821"),
-    ("resize-customize-content-819", "resize-customize-content-821"),
+    ("resize-collectible-detail-content-819", "resize-collectible-detail-content-821"),
     ("resize-nursery-content-759", "resize-nursery-content-761"),
     ("resize-story-content-539", "resize-story-content-541"),
     (
@@ -970,6 +977,7 @@ _DASHBOARD_CAPTURE_LABELS = frozenset({
     "starter-completion",
     "onboarding-persistence-error",
     "move-persistence-error",
+    "collection-origin-plant-placement",
 })
 
 _PROGRESS_CAPTURE_LABELS = frozenset({
@@ -1028,7 +1036,7 @@ _RESIZE_WINDOW_FAMILIES = {
     "settings": "GardenSettingsDialog",
     "progress": "GardenProgressDialog",
     "collection": "GardenProgressDialog",
-    "customize": "CustomizeGardenDialog",
+    "collectible-detail": "CollectibleDetailDialog",
     "nursery": "NurseryDialog",
     "story": "PlantStoryDialog",
     "starter-confirmation": "StarterConfirmationDialog",
@@ -1089,11 +1097,12 @@ def expected_capture_window_family(label: str) -> str:
     }:
         return "SpeciesOverviewDialog"
     if label in {
-        "customize-garden",
-        "customize-effects-on",
-        "customize-effects-off",
+        "collection-loadout-detail",
+        "collection-preview-active",
+        "collection-preview-restored",
+        "collection-loadout-persistence-error",
     }:
-        return "CustomizeGardenDialog"
+        return "CollectibleDetailDialog"
     for resize_label, resize_family, *_geometry in RESIZE_MATRIX_SPECS:
         if resize_label == label:
             return _RESIZE_WINDOW_FAMILIES.get(resize_family, "")
@@ -1257,11 +1266,12 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         })
         return profile
     if label in {
-        "customize-garden",
-        "customize-effects-on",
-        "customize-effects-off",
+        "collection-loadout-detail",
+        "collection-preview-active",
+        "collection-preview-restored",
+        "collection-loadout-persistence-error",
     }:
-        profile.update({"kind": "customize", "state": label})
+        profile.update({"kind": "collectible-detail", "state": label})
         return profile
     purchase_status_by_label = {
         "purchase-confirmation-species": "ready",
@@ -1511,9 +1521,9 @@ class _UiFaceCaptureRunner:
             self._capture_progress_achievements,
             self._capture_progress_collection,
             self._capture_species_overview,
-            self._capture_customize_garden,
-            self._capture_customize_effects_on,
-            self._capture_customize_effects_off,
+            self._capture_collection_loadout_detail,
+            self._capture_collection_preview_active,
+            self._capture_collection_preview_restored,
             self._capture_nursery_plants,
             self._capture_nursery_fertilizer_booster,
             self._capture_nursery_garden_spaces,
@@ -1614,6 +1624,8 @@ class _UiFaceCaptureRunner:
             ),
             self._capture_nursery_empty_state,
             self._capture_collection_environment_mechanics,
+            self._capture_collection_loadout_persistence_error,
+            self._capture_collection_origin_plant_placement,
         ]
         self._capture_profile = str(
             os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
@@ -1628,7 +1640,7 @@ class _UiFaceCaptureRunner:
             self._starter_steps = []
             self._release_steps = [
                 self._capture_nurture,
-                self._capture_customize_garden,
+                self._capture_collection_loadout_detail,
                 self._capture_settings_display,
                 self._capture_all_six_beds,
                 *(
@@ -3474,6 +3486,12 @@ class _UiFaceCaptureRunner:
                         step_value == "introduction",
                         step_value,
                     )
+                if state_name == "collection-origin-plant-placement":
+                    require(
+                        "collection_placement_active",
+                        bool(annotation.get("placement_active", False)),
+                        annotation,
+                    )
                 require(
                     "rollback_fixture_audit",
                     bool(annotation.get("passed", False)),
@@ -4007,13 +4025,13 @@ class _UiFaceCaptureRunner:
                 )
             elif state_name == "collection-environment-mechanics":
                 require(
-                    "environment_mechanics_and_customize_routing",
+                    "environment_mechanics_and_collection_loadout",
                     bool(annotation.get("passed", False))
-                    and bool(annotation.get("concise_effects_visible", False))
-                    and bool(annotation.get("metadata_noise_absent", False))
+                    and bool(annotation.get("complete_effects_visible", False))
+                    and bool(annotation.get("loadout_summary_visible", False))
                     and bool(annotation.get("equipment_state_visible", False))
-                    and bool(annotation.get("customize_route_visible", False))
-                    and bool(annotation.get("customize_routes_enabled", False))
+                    and bool(annotation.get("loadout_route_visible", False))
+                    and bool(annotation.get("loadout_routes_enabled", False))
                     and not bool(annotation.get("direct_mutation_controls", True)),
                     annotation,
                 )
@@ -4151,10 +4169,10 @@ class _UiFaceCaptureRunner:
                     bool(title)
                     and bool(status is not None and status.isVisible())
                     and "Soft Breeze unlocked." in status_text
-                    and "Equip it in Customize Garden." in status_text
+                    and "Preview or equip it in Collection." in status_text
                     and "Spent: 100 Garden Coins" in status_text
                     and "Balance:" in status_text
-                    and "Open Customize" in visible_buttons,
+                    and "Open Collection" in visible_buttons,
                     {
                         "title": title,
                         "status": status_text,
@@ -4261,14 +4279,16 @@ class _UiFaceCaptureRunner:
                     reduced_motion is True,
                     reduced_motion,
                 )
-        elif kind == "customize":
+        elif kind == "collectible-detail":
             tabs = getattr(widget, "option_tabs", None)
             tab = int(tabs.currentIndex()) if tabs is not None else -1
-            if state_name == "customize-garden":
-                require("customize_garden_tab", tab == 0, tab)
+            if state_name == "collection-loadout-detail":
+                require("collection_loadout_tab", tab == 0, tab)
+            elif state_name == "collection-loadout-persistence-error":
+                require("loadout_rollback", bool(annotation.get("passed", False)), annotation)
             else:
-                enabled = state_name.endswith("-on")
-                require("customize_effects_tab", tab == 2, tab)
+                enabled = state_name == "collection-preview-restored"
+                require("collection_effects_tab", tab == 3, tab)
                 require(
                     "effect_visibility",
                     bool(widget.show_weather.isChecked()) is enabled
@@ -4909,10 +4929,10 @@ class _UiFaceCaptureRunner:
                 3: "weather-scenery",
             }.get(index, f"tab-{index}")
             return f"{family}:{page}"
-        if family == "CustomizeGardenDialog":
+        if family == "CollectibleDetailDialog":
             tabs = getattr(root, "option_tabs", None)
             index = int(tabs.currentIndex()) if tabs is not None else -1
-            page = {0: "garden", 1: "style", 2: "effects"}.get(
+            page = {0: "loadout", 1: "loadout", 2: "loadout", 3: "preview"}.get(
                 index,
                 f"tab-{index}",
             )
@@ -5416,6 +5436,11 @@ class _UiFaceCaptureRunner:
             if not isinstance(candidate, (QLabel, QAbstractButton)):
                 continue
             try:
+                # A child-owned dialog can remain in QObject ancestry while
+                # painting in a separate native window. It is not part of a
+                # grab of ``root`` and must be audited with its own surface.
+                if candidate.window() is not root.window():
+                    continue
                 if not candidate.isVisibleTo(root):
                     continue
                 if int(candidate.width()) <= 0 or int(candidate.height()) <= 0:
@@ -7217,7 +7242,7 @@ class _UiFaceCaptureRunner:
             self._next_after(200)
             return
         rare_hidden = any(
-            "Rare stage undiscovered" in str(widget.accessibleName())
+            "Undiscovered Rare stage silhouette" in str(widget.accessibleName())
             for widget in dialog.findChildren(QLabel)
         )
         passed = bool(
@@ -7322,8 +7347,6 @@ class _UiFaceCaptureRunner:
                 ]
                 if state.selected_weather == item_id:
                     state.selected_weather = "sunny"
-                if state.equipped.get("weather") == item_id:
-                    state.equipped["weather"] = "sunny"
             elif variant in {"fertilizer-application", "fertilizer-extension", "invalid-target"}:
                 kind = PurchaseKind.FERTILIZER
                 item_id = "basic"
@@ -7439,7 +7462,7 @@ class _UiFaceCaptureRunner:
                 "insufficient": "View Ways to Earn",
                 "persistence": "Try Again",
                 "unavailable": "Return to Nursery",
-                "already-owned": "Open Customize",
+                "already-owned": "Open Collection",
                 "invalid-target": "Return to Nursery",
             }.get(variant, _displayed_button_text(dialog.purchase_action))
             applicable_copy = bool(
@@ -7799,12 +7822,8 @@ class _UiFaceCaptureRunner:
             for item_id in ("default", "spring"):
                 if item_id not in state.inventory.setdefault("scenery", []):
                     state.inventory["scenery"].append(item_id)
-                if item_id not in state.inventory.setdefault("backgrounds", []):
-                    state.inventory["backgrounds"].append(item_id)
             state.selected_weather = "breeze"
             state.selected_background = "spring"
-            state.equipped["weather"] = "breeze"
-            state.equipped["background"] = "spring"
             dashboard._collection_filter = "all"
             dashboard._refresh_collection_list()
             dialog = dashboard.progress_dialog
@@ -7816,48 +7835,43 @@ class _UiFaceCaptureRunner:
             dialog.show()
             button_widgets = dashboard.collection_list.findChildren(QAbstractButton)
             buttons = [str(button.text()) for button in button_widgets]
-            customize_buttons = [
+            loadout_buttons = [
                 button for button in button_widgets
-                if str(button.text()) in {"Open Customize", "Equip", "Equipped"}
+                if str(button.text()) in {"Manage loadout", "Preview", "Inspect", "Unequip"}
             ]
             labels = [
                 str(label_widget.text()) for label_widget in dashboard.collection_list.findChildren(QLabel)
             ]
             self._capture_annotations[label] = {
-                "concise_effects_visible": any(
-                    "While equipped:" in text for text in labels
-                ),
-                "metadata_noise_absent": not any(
-                    marker in text
+                "complete_effects_visible": any(
+                    "Buff:" in text and "Stacking:" in text and "Replacement:" in text
                     for text in labels
-                    for marker in (
-                        "Activation:",
-                        "Replacement:",
-                        "Replaces nothing",
-                        "Not applicable",
-                    )
+                ),
+                "loadout_summary_visible": any(
+                    "Current garden loadout" in text and "Weather:" in text and "Scenery:" in text
+                    for text in labels
                 ),
                 "equipment_state_visible": any(
                     "Equipped" in text for text in labels + buttons
                 ),
-                "customize_route_visible": any(
-                    text in {"Open Customize", "Equip", "Equipped"}
+                "loadout_route_visible": any(
+                    text in {"Manage loadout", "Preview", "Inspect", "Unequip"}
                     for text in buttons
                 ),
-                "customize_routes_enabled": bool(customize_buttons)
-                and all(button.isEnabled() for button in customize_buttons),
+                "loadout_routes_enabled": bool(loadout_buttons)
+                and all(button.isEnabled() for button in loadout_buttons),
                 "direct_mutation_controls": any(
                     button.isCheckable()
-                    and str(button.text()) in {"Equip", "Show Weather", "Show Scenery"}
+                    and str(button.text()) in {"Show Weather", "Show Scenery"}
                     for button in button_widgets
                 ),
             }
             self._capture_annotations[label]["passed"] = bool(
-                self._capture_annotations[label]["concise_effects_visible"]
-                and self._capture_annotations[label]["metadata_noise_absent"]
+                self._capture_annotations[label]["complete_effects_visible"]
+                and self._capture_annotations[label]["loadout_summary_visible"]
                 and self._capture_annotations[label]["equipment_state_visible"]
-                and self._capture_annotations[label]["customize_route_visible"]
-                and self._capture_annotations[label]["customize_routes_enabled"]
+                and self._capture_annotations[label]["loadout_route_visible"]
+                and self._capture_annotations[label]["loadout_routes_enabled"]
                 and not self._capture_annotations[label]["direct_mutation_controls"]
             )
             scrollbar = dashboard.collection_list.scroll.verticalScrollBar()
@@ -7878,25 +7892,118 @@ class _UiFaceCaptureRunner:
 
         self._with_dashboard(dashboard_ready, failure_label=label)
 
-    def _capture_customize_garden(self) -> None:
-        self._with_dashboard(self._capture_customize_garden_after)
+    def _capture_collection_loadout_persistence_error(self) -> None:
+        label = "collection-loadout-persistence-error"
 
-    def _capture_customize_garden_after(self) -> None:
+        def ready() -> None:
+            dashboard = self.app.dashboard
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, _plant = prepared
+            state = self.app.storage.state
+            if "breeze" not in state.inventory.setdefault("weather", []):
+                state.inventory["weather"].append("breeze")
+            state.selected_weather = "sunny"
+            dialog = dashboard.collectible_detail_dialog
+            dialog.prepare_to_show()
+            dialog._select_option("weather", "breeze")
+            before = deepcopy(self.app.engine.state.loadout.to_dict())
+            original_save = self.app.storage.save
+
+            def fail_save() -> None:
+                raise OSError("deterministic Collection loadout persistence failure")
+
+            self.app.storage.save = fail_save
+            try:
+                dialog._apply_draft()
+            finally:
+                self.app.storage.save = original_save
+            after = self.app.engine.state.loadout.to_dict()
+            self._capture_annotations[label] = {
+                "passed": before == after and bool(dialog.unsaved.text()),
+                "state_restored": before == after,
+                "error_visible": bool(dialog.unsaved.text()),
+            }
+            self._move_to_capture_display(dialog)
+            dialog.show()
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dialog,
+                capture_delay_ms=460,
+                close_callback=close_dialog,
+                close_ms=800,
+                next_ms=1120,
+            )
+
+        self._with_dashboard(ready, failure_label=label)
+
+    def _capture_collection_origin_plant_placement(self) -> None:
+        label = "collection-origin-plant-placement"
+
+        def ready() -> None:
+            dashboard = self.app.dashboard
+            prepared = self._purchase_capture_snapshot(label)
+            if prepared is None:
+                self._next_after(200)
+                return
+            snapshot, plant = prepared
+            plant.slot_index = None
+            dashboard.refresh_all()
+            dashboard._begin_collection_placement(plant.plant_id)
+            active = bool(
+                dashboard._collection_placement_plant_id == plant.plant_id
+                and dashboard.scene._interaction.placing
+            )
+            self._capture_annotations[label] = {
+                "passed": active,
+                "plant_id": plant.plant_id,
+                "placement_active": active,
+            }
+
+            def cleanup() -> None:
+                if dashboard.scene._interaction.placing:
+                    dashboard.scene.finish_move("Capture complete.")
+                dashboard._collection_placement_plant_id = ""
+                dashboard.rearrange_bar.hide()
+                self._restore_purchase_capture(snapshot)
+
+            self._capture_and_advance(
+                label,
+                dashboard,
+                capture_delay_ms=460,
+                close_callback=cleanup,
+                close_ms=800,
+                next_ms=1120,
+            )
+
+        self._with_dashboard(ready, failure_label=label)
+
+    def _capture_collection_loadout_detail(self) -> None:
+        self._with_dashboard(self._capture_collection_loadout_detail_after)
+
+    def _capture_collection_loadout_detail_after(self) -> None:
         dashboard = getattr(self.app, "dashboard", None)
-        opener = getattr(dashboard, "_open_customize", None)
+        opener = getattr(dashboard, "_open_loadout_detail", None)
         if dashboard is None or not callable(opener):
             self._failures.append({
-                "label": "customize-garden",
-                "reason": "Customize Garden opener was unavailable",
+                "label": "collection-loadout-detail",
+                "reason": "Collection loadout detail opener was unavailable",
             })
             self._next_after(250)
             return
         opener()
-        dialog = getattr(dashboard, "customize_dialog", None)
+        dialog = getattr(dashboard, "collectible_detail_dialog", None)
         self._wait_for(
             lambda: bool(dialog is not None and dialog.isVisible()),
             lambda: self._capture_and_advance(
-                "customize-garden",
+                "collection-loadout-detail",
                 dialog,
                 capture_delay_ms=420,
                 close_callback=lambda: self._close_widget(dialog),
@@ -7904,43 +8011,44 @@ class _UiFaceCaptureRunner:
                 next_ms=1200,
             ),
             tries=80,
-            failure_label="customize-garden",
-            failure_reason="Customize Garden did not become ready",
+            failure_label="collection-loadout-detail",
+            failure_reason="Collection loadout detail did not become ready",
         )
 
-    def _capture_customize_effects_on(self) -> None:
-        self._capture_customize_effects("customize-effects-on", True)
+    def _capture_collection_preview_active(self) -> None:
+        self._capture_collection_preview("collection-preview-active", False)
 
-    def _capture_customize_effects_off(self) -> None:
-        self._capture_customize_effects("customize-effects-off", False)
+    def _capture_collection_preview_restored(self) -> None:
+        self._capture_collection_preview("collection-preview-restored", True)
 
-    def _capture_customize_effects(self, label: str, enabled: bool) -> None:
+    def _capture_collection_preview(self, label: str, enabled: bool) -> None:
         self._with_dashboard(
-            lambda: self._capture_customize_effects_after(label, enabled)
+            lambda: self._capture_collection_preview_after(label, enabled)
         )
 
-    def _capture_customize_effects_after(self, label: str, enabled: bool) -> None:
+    def _capture_collection_preview_after(self, label: str, enabled: bool) -> None:
         dashboard = getattr(self.app, "dashboard", None)
-        opener = getattr(dashboard, "_open_customize", None)
+        opener = getattr(dashboard, "_open_loadout_detail", None)
         if dashboard is None or not callable(opener):
             self._failures.append({
                 "label": label,
-                "reason": "Customize Garden opener was unavailable",
+                "reason": "Collection loadout detail opener was unavailable",
             })
             self._next_after(250)
             return
         opener()
-        dialog = getattr(dashboard, "customize_dialog", None)
+        dialog = getattr(dashboard, "collectible_detail_dialog", None)
 
         def ready() -> None:
-            dialog.option_tabs.setCurrentIndex(2)
+            dialog.option_tabs.setCurrentWidget(dialog.effects_page)
             dialog.show_weather.setChecked(enabled)
             dialog.show_scenery.setChecked(enabled)
 
             def state_ready() -> bool:
                 return bool(
                     dialog.isVisible()
-                    and dialog.option_tabs.currentIndex() == 2
+                    and dialog.option_tabs.currentIndex()
+                    == dialog.option_tabs.indexOf(dialog.effects_page)
                     and dialog.show_weather.isChecked() is enabled
                     and dialog.show_scenery.isChecked() is enabled
                 )
@@ -7957,7 +8065,7 @@ class _UiFaceCaptureRunner:
                 ),
                 tries=80,
                 failure_label=label,
-                failure_reason=f"Customize Effects {label!r} did not become ready",
+                failure_reason=f"Collection preview {label!r} did not become ready",
             )
 
         self._wait_for(
@@ -7965,7 +8073,7 @@ class _UiFaceCaptureRunner:
             ready,
             tries=80,
             failure_label=label,
-            failure_reason="Customize Garden did not become ready",
+            failure_reason="Collection loadout detail did not become ready",
         )
 
     def _capture_nursery_tab(self, index: int, label: str) -> None:
@@ -9111,17 +9219,10 @@ class _UiFaceCaptureRunner:
             if key != item.item_id
         ]
         if item.kind == "scenery":
-            state.inventory["backgrounds"] = [
-                key for key in state.inventory.get("backgrounds", [])
-                if key != item.item_id
-            ]
             if state.selected_background == item.item_id:
                 state.selected_background = "default"
-            if state.equipped.get("background") == item.item_id:
-                state.equipped["background"] = "default"
         elif state.selected_weather == item.item_id:
             state.selected_weather = "sunny"
-            state.equipped["weather"] = "sunny"
 
         def ready(dialog: Any) -> None:
             purchase_kind = PurchaseKind(item.kind)
@@ -9795,15 +9896,15 @@ class _UiFaceCaptureRunner:
                 refresh()
             capture_widget(progress, close=True)
             return
-        if family == "customize":
-            customize = getattr(dashboard, "customize_dialog", None)
-            prepare = getattr(customize, "prepare_to_show", None)
+        if family == "collectible-detail":
+            detail = getattr(dashboard, "collectible_detail_dialog", None)
+            prepare = getattr(detail, "prepare_to_show", None)
             if callable(prepare):
                 prepare()
-            option_tabs = getattr(customize, "option_tabs", None)
+            option_tabs = getattr(detail, "option_tabs", None)
             if option_tabs is not None:
                 option_tabs.setCurrentIndex(0)
-            capture_widget(customize, close=True)
+            capture_widget(detail, close=True)
             return
         if family == "nursery":
             from .ui.dashboard import NurseryDialog

@@ -67,10 +67,10 @@ def test_shared_dialog_state_supports_ready_loading_error_and_retry() -> None:
     assert "setMaximumWidth(readable_header_width)" in dialog
 
 
-def test_settings_and_customize_have_one_active_vertical_scroll_owner() -> None:
+def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() -> None:
     studio = _class_source(STUDIO, "GardenStudioWidget")
-    customize = _class_source(DASHBOARD, "CustomizeGardenDialog")
-    option_page = _method_source(DASHBOARD, "CustomizeGardenDialog", "_option_page")
+    customize = _class_source(DASHBOARD, "CollectibleDetailDialog")
+    option_page = _method_source(DASHBOARD, "CollectibleDetailDialog", "_option_page")
     studio_scroll = _method_source(STUDIO, "GardenStudioWidget", "_scroll_controls_to")
 
     assert "self.controls_scroll.setVerticalScrollBarPolicy(" in studio
@@ -138,7 +138,7 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
         "StarterConfirmationDialog": "DialogSizeClass.COMPACT_CONFIRMATION",
         "NurseryDialog": "DialogSizeClass.CATALOG",
         "GardenProgressDialog": "DialogSizeClass.CATALOG",
-        "CustomizeGardenDialog": "DialogSizeClass.PREVIEW",
+            "CollectibleDetailDialog": "DialogSizeClass.PREVIEW",
     }
     for class_name, size_class in expected.items():
         assert size_class in _class_source(DASHBOARD, class_name)

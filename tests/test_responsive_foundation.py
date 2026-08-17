@@ -112,7 +112,7 @@ def test_threshold_minus_two_through_plus_two_has_one_stable_boundary() -> None:
         ("nursery.hero", (400, 200), 14),
         ("nursery.receipt-actions", (140, 140), 8),
         ("garden-progress.navigation", (168, 560), 16),
-        ("customize-garden.workspace", (420, 460), 16),
+        ("collection-loadout.workspace", (420, 460), 16),
         ("settings.display-studio", (280, 360), 20),
         ("settings.footer-actions", (96, 112), 8),
         ("dashboard.header-full", (230, 944, 373), 12),

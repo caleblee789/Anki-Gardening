@@ -759,7 +759,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 def test_watering_can_is_shared_by_full_garden_and_native_previews() -> None:
     customize_preview = _method_source(
         DASHBOARD_PATH,
-        "CustomizeGardenDialog",
+            "CollectibleDetailDialog",
         "_refresh_preview",
     )
     full_garden_refresh = _method_source(

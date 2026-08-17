@@ -435,9 +435,9 @@ class GardenStudioWidget(QWidget):
         theme_layout.addLayout(theme_copy, 1)
         controls_layout.addWidget(self.theme_card)
         self.manage_environment = QToolButton()
-        self.manage_environment.setText("Customize Garden")
+        self.manage_environment.setText("Open Collection")
         self.manage_environment.setAccessibleDescription(
-            "Open the separate Customize Garden surface for Weather and Scenery."
+            "Open Collection to manage Weather, Scenery, and the garden loadout."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         controls_layout.addWidget(self.manage_environment)

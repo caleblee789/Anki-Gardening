@@ -1,8 +1,11 @@
 # Anki Garden UI release-overhaul contract
 
-Status: implemented contract for Release 2.1.0. The current-source v14 run at
+Status: implementation contract for Release 2.1.0. Capture contract v15 requires
+183 ordered surfaces for the Collection consolidation. The clean v15 run at
+`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
+is the current visual baseline. The preceding v14 run at
 `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
-records all 181 ordered surfaces and passes the independent manifest and
+records all 181 pre-consolidation surfaces and passes the independent manifest and
 contact-sheet validator. The v12 run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933`
 remains the complete 157-surface pre-purchase-overhaul baseline. This document
@@ -17,9 +20,9 @@ the contract.
 
 ## Authority and current baseline
 
-The current mutable product boundary is schema 18 in
+The current mutable product boundary is schema 19 in
 `user_files/garden_state.json`. It includes the authoritative resumable
-`OnboardingProgress` state and the bounded completed-purchase replay ledger.
+`OnboardingProgress` state, canonical `GardenLoadoutState`, and the bounded completed-purchase replay ledger.
 `GardenStorage` loads, migrates, repairs, backs up, and atomically replaces that
 file. Anki add-on configuration is a separate persistence domain managed by
 `ConfigManager` (`ankigarden/config.py:11-29,133-180`).
@@ -164,23 +167,46 @@ The immutable capture package contains 268 files, is 81,851,719 bytes, and has
 SHA-256 `02ea6c23cd9b658b9e2829ead54e172e5d9ab5f16c0082e248c38f852e9f2fa9`.
 The complete capture archive is 157,147,399 bytes with SHA-256
 `8851d0b99a1da03cbec40f75ec6f5c5edab7fb225ec6184659629e4db576fd65`.
-This closes current-source automated visual completeness on the captured macOS
-Qt mixed-display run; it does not close the native-platform or human-
+This closes pre-consolidation automated visual completeness on the captured
+macOS Qt mixed-display run; it does not close the native-platform or human-
 acceptance gates below.
+
+Capture contract v15 preserves the 181 established IDs, replaces the retired
+Customize labels at 030-032 and 116-120 with Collection loadout-detail and
+preview semantics, and appends 182-183 for persistence rollback and
+Collection-origin plant placement. The clean v15 run is:
+
+`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
+
+Its manifest, ordered records, and filesystem agree on all 183 PNGs. It is
+`complete: true` with zero failures and zero text/layout warnings; IDs 019,
+064-069, 182, and 183 are present. The manifest-owned contact-sheet set at
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260817-054742`
+contains 24 complete pages and independently validates. The immutable capture
+package contains 269 files, is 81,859,371 bytes, and has SHA-256
+`7cbd24edf3a8832ede3e83c4c8da74d690c264e76b1fa2b8ff66a6f4c47cd8c9`.
+The evidence ZIP is 160,899,994 bytes with SHA-256
+`9a082c0dab1fc788a20c51b244d290a29448650675198d0a69d83671cbd11f54`.
+The run records requested Qt scale 1.5 and mixed primary/secondary macOS display
+provenance. This closes current-source automated visual completeness, not the
+native Windows, true OS-level 100/150/200-percent, high-DPI, mixed-DPI
+transition, human assistive-technology, or full product visual-acceptance gates.
 
 ## Approved downstream decisions
 
 The following decisions define this implementation:
 
-1. Schema 18 preserves the six-step, atomic, resumable onboarding state machine
-   introduced in schema 17 and adds only the bounded purchase replay ledger.
+1. Schema 19 preserves the six-step, atomic, resumable onboarding state machine
+   and bounded purchase replay ledger, and collapses legacy equipment mirrors
+   into one canonical `GardenLoadoutState`.
    Add-on `onboarding_version` is migration input only, never renderer authority.
 2. One renderer-neutral `GardenPreviewSnapshot` owns compact preview phase,
    scene data, title, summary, weather/scenery identity, motion, and scene fade.
 3. One logical-coordinate `SceneGeometryLayout` owns bed, plant, selection,
    watering-can, move, hotspot, occlusion, safe-bound, and popover geometry.
 4. The cottage opens Collection directly in the existing Garden Progress
-   dialog. Weather/Scenery mutations remain in their established owner.
+   dialog. Collection owns collectible inspection, plant placement, reversible
+   previews, and atomic Weather/Scenery/Decoration loadout mutations.
 5. Native Windows and true OS-level 100/150/200/high-DPI acceptance remain
    separate release gates. Local logical-scale proxies do not close them.
 6. Collection species identities and ordinary stage artwork are known catalog
@@ -222,16 +248,15 @@ surface family.
 | Capture IDs | User-facing surface | Component or dialog | Entry point | Renderer and authoritative state | Primary actions and required variants |
 |---|---|---|---|---|---|
 | 001-002 | First-run Deck Browser and Overview | Anki Home card | Anki Deck Browser/Overview hooks | `render_home_widget()` HTML/CSS from `GardenUiSnapshot`; onboarding, garden, metrics, currency, environment, and manifest asset metadata | Open Garden, starter route, Retry; loading, starter-empty, partial, recoverable error, and stale-response rejection |
-| 003, 150-151, 155 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-18 state with schema-17 onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
+| 003, 150-151, 155 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-19 state with resumable onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
 | 004-006 | Starter Nursery and confirmation | `NurseryDialog`, `StarterConfirmationDialog` | First-run route from Dashboard | Native Qt; release-ready asset catalog plus onboarding and ownership state | Choose, confirm, cancel/back; locked/no-stock, missing artwork, disabled, and action-above-footer variants |
 | 007-008, 018-019, 064-069, 152-154 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from `GardenPreviewSnapshot`; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
 | 009-012, 016, 042-055, 058-063, 087-103, 156 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and shared `SceneGeometryLayout` | Select, Nurture, Fertilize, Move/swap, Story, Garden Progress, Collection, Settings, Undo; hover/focus, long values, all stages/plots, rollback, narrow/scaling variants |
 | 013-015, 056-057, 136-143, 161-162, 173, 175-179 | Fertilizer and replacement confirmation | `PurchaseConfirmationDialog`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; current state from `fertilizer_status()`, new terms from the engine quote, target, active interval/history, balance, and replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current; unaffordable, active, expiring, persistence error, exact discarded time, and measured responsive variants |
 | 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, shared forecast/fertilizer projections, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
 | 020-025 | Growth, streak, and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; daily source allocation, review totals, streak, currency, and ledger | Navigate/close; zero, new, nonzero, active, history, empty, and error variants |
-| 026-029, 070-076, 144-149, 157, 181 | Garden Progress, Achievements, Collection, species overview | `GardenProgressDialog`, species overview `GardenDialog` | Header Progress, cottage, metric routes, Collection selection | Native Qt; totals, daily stats, achievements/rewards, plants, catalog-known species, discovery, shared environment descriptors, ownership/equipment status, and assets | Filter, inspect, open Customize for equipment changes, navigate; several/none/filter-empty/known-not-collected/Rare-mystery/environment-mechanics/completed/at-risk/missed/automatically-earned/next and responsive variants |
-| 030-032, 116-120 | Customize Garden | `CustomizeGardenDialog` | Environment management routes from Collection or Settings | Native Qt with `GardenStudioWidget`/`GardenSceneWidget` preview; one transient draft over persisted environment loadout | Select owned Weather/Scenery, toggle visuals, Save changes, cancel; on/off, locked, clean/dirty, save-success/error, and responsive variants |
-| 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-18 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, Equip through Customize, Unlock bed, Plant in garden, Move, Move to Collection; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
+| 026-032, 070-076, 116-120, 144-149, 157, 181-183 | Garden Progress, Collection, loadout details, species overview | `GardenProgressDialog`, `CollectibleDetailDialog`, species overview `GardenDialog` | Header Collection, cottage, metric routes, Nursery/Settings compatibility routes | Native Qt; registry-derived categories, plant instances, canonical loadout, shared descriptors, ownership/equipment/mystery metadata, and assets | Search/filter/sort, inspect, preview/apply/cancel/unequip, plant/place/move/remove/nurture, navigate; empty, locked, mystery, rollback, placement, mechanics, and responsive variants |
+| 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-19 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
 | 037-041, 082-086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, invalid, save rollback/error, production-controls-absent, reduced-motion, and responsive variants |
 
 Window opening, selection, open tabs, filters, Nursery pages, Move drafts, hover,
@@ -262,8 +287,8 @@ webview bridge, not a general routing framework.
 | Collection plant | Plant in garden | Engine `plant_from_collection()` | Atomically assigns an empty unlocked slot |
 | Garden plant | Move to Collection | Engine `move_to_collection()` | Atomically clears its slot; prohibited for the nurtured plant |
 | Collection species | Inspect | Species overview dialog | None |
-| Progress Collection | Inspect environment ownership/status | Species/effect details or route to Customize | No direct equipment or visibility mutation |
-| Customize | Save changes | Engine `apply_environment_loadout()` | Atomically commits both selected effects and both visibility switches |
+| Collection collectible | Inspect or Preview | `CollectibleDetailDialog` | Preview is transient and restores the persisted appearance on cancel |
+| Collection loadout detail | Apply changes | Engine `apply_garden_loadout()` | Atomically commits Weather, Scenery, Decoration, and visibility; failure restores the previous loadout |
 
 Unknown Home bridge messages and unknown landmark action IDs must pass through
 or fail closed without mutating Garden state. Move mode disables interactive
@@ -294,7 +319,7 @@ destination before use.
 
 | State domain | Authority and path | Writers | Atomicity and idempotency contract |
 |---|---|---|---|
-| Garden progression, onboarding, and economy | `GardenState`, `user_files/garden_state.json`, schema 18 | `GardenGameEngine` through `GardenStorage.save()` | Same-directory temporary file and replace; guarded engine transitions snapshot/restore on failure; event and revlog keys deduplicate repeatable delivery; a separately bounded 500-record completed-purchase ledger replays successful request IDs |
+| Garden progression, onboarding, economy, and loadout | `GardenState`, `user_files/garden_state.json`, schema 19 | `GardenGameEngine` through `GardenStorage.save()` | Same-directory temporary file and replace; guarded engine transitions snapshot/restore on failure; one persisted `GardenLoadoutState`; event/revlog keys deduplicate delivery; the bounded completed-purchase ledger replays successful request IDs |
 | Garden configuration | Anki add-on config through `ConfigManager` | Settings Save | Anki configuration write; staged UI values are not authoritative before success |
 | Garden name | `GardenState.garden_name` | Engine rename from Settings | Atomic Garden state transaction; Settings performs best-effort config rollback if the separate name save fails |
 | Plant identity and story | Plant records inside `GardenState` | Plant Story rename and engine-authored semantic memories | Atomic Garden state transaction; card/deck/note content is never persisted |
@@ -516,28 +541,19 @@ rarity, acquisition, effect copy, earning guidance, price, and drop tier
 (`ankigarden/environment.py:23-41`). `GrowthChargeSpec` and Fertilizer specs are
 the corresponding current product descriptors.
 
-Garden state owns:
-
-- environment inventory/entitlements;
-- exactly one selected Weather ID and one selected Scenery ID;
-- a compatibility `equipped` mirror;
-- independent `weather_visible` and `scenery_visible` switches.
-
-Validation repairs selection to an owned item and mirrors compatibility state
-(`ankigarden/models/state.py:465-487`). Visibility affects rendering only.
+Garden state owns collectible inventory/entitlements and exactly one canonical
+`GardenLoadoutState`: selected Weather, Scenery, optional Decoration, and the
+independent artwork-visibility switches. Legacy selected/equipped fields are
+load-time migration input and compatibility projections, not persisted mirrors.
+Validation repairs selections to owned items. Visibility affects rendering only.
 Passive effects use selected IDs even when artwork is hidden
 (`ankigarden/game.py:896-918`).
 
-`equip_environment()` is owned-only and idempotent when already selected.
-`set_environment_visibility()` changes only visibility.
-`apply_environment_loadout()` validates and atomically saves both selected
-items and both switches (`ankigarden/game.py:1657-1734`).
-
-Customize stages and commits the whole loadout and is the approved sole owner
-of Weather/Scenery Equip and artwork-visibility changes. Progress Collection's
-current direct equipment and visibility controls are legacy behavior to remove
-downstream. Collection must remain read-only for environment ownership, status,
-and details, with an optional route to Customize for changes.
+`apply_garden_loadout()` validates ownership and atomically saves the complete
+loadout. The compatibility `apply_environment_loadout()` route delegates to it.
+Collection stages the complete draft, previews without persistence, restores
+the current appearance on cancel, and is the sole UI owner of Equip and
+artwork-visibility changes.
 
 ## Collection and equipment state
 
@@ -579,9 +595,8 @@ Every dialog must have:
   data or transaction can enter that condition;
 - stable space for timers, balances, validation, and long translated values.
 
-Known current exceptions are nested scrolling in Customize (outer body plus
-per-option scrolls, `ankigarden/ui/dashboard.py:7015-7058`) and Settings Display
-(behavior scroll plus GardenStudio controls scroll,
+Known current exceptions are nested scrolling in Settings Display (behavior
+scroll plus GardenStudio controls scroll,
 `ankigarden/ui/dashboard.py:2261-2273`). These are downstream layout risks, not
 permission for a foundation rewrite.
 
@@ -604,7 +619,7 @@ two-pixel probe must retain the same semantic mode on both sides.
 | Settings Display studio | 684 px | Controls and preview become two columns |
 | Settings footer | 240 px; 250 px observed | Persistent actions share one row |
 | Garden Progress | 768 px | Navigation rail and page become two columns |
-| Customize Garden | 920 px | Library and preview become two columns |
+| Collection loadout detail | 920 px | Library and preview become two columns |
 | Nursery hero | 638 px | Context and Garden Coins share one row |
 | Plant Story hero | 480 px | Artwork and identity share one row |
 | Starter actions | 272 px | Actions share one row |
@@ -692,8 +707,8 @@ same action rather than overloading a generic verb.
 Purchase actions now use **Purchase**; Garden Spaces use the product-specific
 **Unlock** label while still invoking the purchase transaction. Fertilizer uses
 **Purchase & Apply**, **Extend**, or **Purchase & Replace** according to the
-quoted disposition. **Apply changes** remains limited to saving a
-Customize draft and is not currency language. Placement and storage controls
+quoted disposition. **Apply changes** remains limited to saving a Collection
+loadout draft and is not currency language. Placement and storage controls
 use **Plant in garden**, **Move**, and **Move to Collection**; the former
 **Buy**, **Apply**, **Shelve**, and ambiguous **Plant** purchase/placement labels
 are not part of the current commerce UI.
@@ -743,9 +758,8 @@ concept. Rows explicitly marked proposed remain non-persisted unless stated.
 | Shared state and transactions | `ankigarden/models/state.py`, `ankigarden/storage.py`, `ankigarden/game.py`, `ankigarden/ui/state.py`, any new small shared-contract module | Economy, Progress, Home, migrations |
 | Home | Home hook/bridge ranges in `ankigarden/addon.py`, `ankigarden/ui/home_widget.py` | Shared state, assets, capture |
 | Garden and scene | `GardenDashboard`/`PlantInfoCard` ranges in `ankigarden/ui/dashboard.py`, `ankigarden/ui/scene.py`, `ankigarden/ui/plant_display.py` | Progress, accessibility, assets |
-| Progress and Collection | `GardenProgressDialog` and Collection builders in `ankigarden/ui/dashboard.py`; environment ownership/status/details are read-only here | Customize routing, shared state |
-| Nursery and economy | `NurseryDialog`/Fertilizer ranges in `ankigarden/ui/dashboard.py`, purchase methods in `ankigarden/game.py`, `ankigarden/environment.py` | Transactions, assets, Customize |
-| Customize and environment | `CustomizeGardenDialog` ranges and environment preview/loadout; sole owner of Equip and visibility mutations | Progress Collection routing, scene, Settings preview |
+| Progress and Collection | `GardenProgressDialog`, Collection builders, and `CollectibleDetailDialog` in `ankigarden/ui/dashboard.py`; sole UI owner of collectible browsing, previews, Equip, and visibility mutations | Shared state, scene, Nursery, assets |
+| Nursery and economy | `NurseryDialog`/Fertilizer ranges in `ankigarden/ui/dashboard.py`, purchase methods in `ankigarden/game.py`, `ankigarden/environment.py` | Transactions, assets, Collection |
 | Settings and Diagnostics | `GardenSettingsDialog` ranges, `ankigarden/ui/garden_studio.py`, `ankigarden/config.py` | Shared dialog/accessibility code |
 | Asset pipeline | `ankigarden/asset_manager.py`, asset manifest, asset validation tests | Home, Scene, Nursery, Story |
 | Accessibility and responsive | `ankigarden/ui/theme.py`, shared dialog helpers, cross-surface tests | All surface owners; coordinate rather than edit every surface concurrently |
@@ -899,7 +913,7 @@ all 61 required dialog-scroll audits, all 13 responsive-stability pairs, and
 the 12-cycle dialog-memory probe as passing. This is complete automated macOS
 Qt evidence for v12.
 
-The current-source v14 run at
+The pre-consolidation v14 run at
 `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
 regenerated all 181 fixtures. Its exact manifest and 23-page manifest-owned
 contact-sheet index passed `scripts/validate_ui_capture.py`: status `valid`,
@@ -907,6 +921,14 @@ capture count 181, surface count 181, and page count 23. The manifest records
 all 80 required dialog-scroll audits, all 13 responsive-stability pairs, and
 the 12-cycle dialog-memory probe as passing, with zero failures or text-layout
 warnings.
+
+The current-source v15 run at
+`build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
+regenerated all 183 fixtures. Its exact manifest and 24-page manifest-owned
+contact-sheet index passed `scripts/validate_ui_capture.py`; the manifest is
+complete with zero failures and zero text/layout warnings. It includes the
+renamed Collection loadout/detail states at 030-032 and 116-120, retained IDs
+019 and 064-069, and new rollback/placement states 182-183.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel
@@ -962,11 +984,10 @@ The following existing statements do not match current source behavior:
 - `docs/ui/state_scenarios.md` and `docs/ui/entrypoint_matrix.md` say Fertilize
   opens a Nursery supplements tab. The current selected-plant action opens a
   dedicated Fertilizer dialog (`ankigarden/ui/dashboard.py:10093-10350`).
-- `docs/ui/entrypoint_matrix.md` assigns environment loadout and visibility to
-  Progress/Collection alone. Current source exposes both the Dashboard
-  Customize route and direct Progress Collection controls
-  (`ankigarden/ui/dashboard.py:7635-7648,7884-7894,9900-10079`). The approved
-  target makes Customize canonical and removes the direct Progress mutations.
+- Older entry-point documents assign environment mutations to a separate
+  Customize dialog. Schema 19 and capture contract v15 make Collection the
+  canonical browser, preview surface, and atomic loadout owner; old callers are
+  compatibility routes into Collection.
 - Existing docs call Nursery tabs **Supplements & Boosters** and **Permanent
   Upgrades**. Current source labels them **Fertilizer and Boosters** and
   **Garden Spaces** (`ankigarden/ui/dashboard.py:3461-3530`).

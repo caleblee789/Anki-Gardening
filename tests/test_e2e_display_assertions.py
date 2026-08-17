@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ankigarden.models.state import DailyStats, GardenState, Plant
+from ankigarden.models.state import DailyStats, GardenLoadoutState, GardenState, Plant
 
 
 class _Signal:
@@ -104,7 +104,7 @@ def _install_fake_aqt(monkeypatch, *, review_count: int):
 def _seed_state(_unused: int = 50) -> GardenState:
     return GardenState(
         streak_days=8,
-        selected_weather="gentle_rain",
+        loadout=GardenLoadoutState(weather_id="gentle_rain"),
         daily_stats=DailyStats(
             reviewed=12,
             base_growth=30,

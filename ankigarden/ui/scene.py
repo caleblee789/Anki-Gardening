@@ -412,6 +412,34 @@ class GardenSceneWidget(QWidget):
         self.update()
         return True
 
+    def begin_collection_placement(
+        self,
+        plant_id: str,
+        valid_slots: list[int],
+    ) -> bool:
+        """Select an empty bed for an owned plant without mutating its state."""
+
+        if not self.interactive:
+            return False
+        valid = sorted({int(slot) for slot in valid_slots if int(slot) >= 0})
+        self._allowed_move_slots = set(valid)
+        self._hovered_move_slot = None
+        started = self._interaction.begin_unplaced(str(plant_id), valid)
+        if not started:
+            return False
+        self._starter_placement = False
+        self._inline_message = "Choose a highlighted garden bed for this plant."
+        self.setAccessibleName("Plant from Collection")
+        self.setAccessibleDescription(
+            "Use the arrow keys to choose an empty unlocked garden bed, then press Enter. "
+            "Press Escape to return to Collection."
+        )
+        self.placementStateChanged.emit(True)
+        self._sync_landmark_hotspot()
+        self.setFocus()
+        self.update()
+        return True
+
     def finish_move(self, message: str = "Move finished. Plant selection remains available.") -> None:
         """Reset every scene-owned move affordance without requesting a cancel.
 

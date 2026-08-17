@@ -13,7 +13,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- The release checks cover all 181 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
+- The release checks cover all 183 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
 
 ## Gameplay terms
 
@@ -146,13 +146,13 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current state is schema 18. It stores the resumable
-six-step onboarding state and bounded completed-purchase replay ledger alongside Weather and Scenery entitlements, loadout
-and visibility, Growth Charges, daily passive claims, Ultra pity, separate
+add-on upgrades. The current state is schema 19. It stores the resumable
+six-step onboarding state and bounded completed-purchase replay ledger alongside collectible entitlements, one canonical Garden loadout
+and visibility record, Growth Charges, daily passive claims, Ultra pity, separate
 Growth-source totals, the deterministic reward seed/drop history, and the
 existing Garden, Booster Potion, Fertilizer, and bounded scheduler-day review
-state. Schema 17 development state is backed up and upgraded without changing
-existing fields; failed reads or writes remain fail-closed.
+state. Supported schema 11–18 state is backed up and upgraded while collapsing
+legacy equipment mirrors into the canonical loadout; failed reads or writes remain fail-closed.
 
 ## Interface
 
@@ -163,7 +163,7 @@ existing fields; failed reads or writes remain fail-closed.
 - Watering cans use the six-bed geometry authority and row-level opaque planter-and-soil exclusions, so they stay beside the nurtured plant, clear of planter artwork, and behind the correct foreground layer in both Garden and Home renderers.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
-- Collection describes Weather and Scenery ownership, exact mechanics, and current equipment, then routes changes to Customize Garden. Customize is the sole equipment and visibility writer.
+- Collection is the collectible browser and Garden loadout manager. It derives categories from the registry, distinguishes explicit mysteries from ordinary locked items, manages plant placement, and owns reversible previews plus atomic equipment and visibility changes.
 - Production Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
 
 ## Runtime bundle
@@ -180,11 +180,11 @@ assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
 current-only file set and a ratcheted 78 MiB archive ceiling for the complete
-schema-18 scenery, plant, and planter library.
+schema-19 scenery, plant, and planter library.
 
-The current validated 2.1.0 production candidate contains 267 files and is
-81,771,222 bytes (77.98 MiB), SHA-256
-`3253912c4e923f4ccc1c969e4c0e4be7ea62efecd07023a0604a874d83f2931a`.
+The current validated 2.1.0 production candidate contains 268 files and is
+81,784,149 bytes (78.00 MiB), SHA-256
+`5f944c75c60b64278b9ea738680870d4a0eb5c94998c54602069a3b9eead84d5`.
 The complete package suite and explicit production build passed the
 deterministic-content, source/archive-parity, ZIP-integrity, and 78 MiB gates
 without rewriting or removing manifest-owned artwork.

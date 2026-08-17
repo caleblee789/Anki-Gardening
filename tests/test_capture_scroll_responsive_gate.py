@@ -255,7 +255,7 @@ def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         "Settings",
         "Garden Progress",
         "Collection",
-        "Customize Garden",
+        "Collection loadout details",
     }
     groups = _literal_assignment("CAPTURE_FACE_GROUPS")
     contract = {
@@ -291,8 +291,8 @@ def test_all_ten_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         "resize-settings-content-761",
         "resize-progress-content-819",
         "resize-progress-content-821",
-        "resize-customize-content-819",
-        "resize-customize-content-821",
+        "resize-collectible-detail-content-819",
+        "resize-collectible-detail-content-821",
         "resize-nursery-content-759",
         "resize-nursery-content-761",
         "resize-story-content-539",
@@ -340,7 +340,7 @@ def test_resize_and_footer_stress_fixtures_reset_deferred_ui_state() -> None:
 
     prepare_position = resize.index("prepare()")
     tab_position = resize.index("option_tabs.setCurrentIndex(0)", prepare_position)
-    capture_position = resize.index("capture_widget(customize, close=True)", tab_position)
+    capture_position = resize.index("capture_widget(detail, close=True)", tab_position)
     assert prepare_position < tab_position < capture_position
 
     capture_ready = final_row.split("def capture_ready()", 1)[1]

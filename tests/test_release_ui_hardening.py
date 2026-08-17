@@ -287,7 +287,7 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
-    assert len(scroll_constructors) == 16
+    assert len(scroll_constructors) == 17
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper
@@ -611,10 +611,10 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
         _method_node("GardenDashboard", "_update_scene_height")
     )
     customize = _segment(
-        _method_node("CustomizeGardenDialog", "resizeEvent")
+            _method_node("CollectibleDetailDialog", "resizeEvent")
     )
     customize_mode = _segment(
-        _method_node("CustomizeGardenDialog", "_apply_customize_layout_mode")
+            _method_node("CollectibleDetailDialog", "_apply_detail_layout_mode")
     )
     nursery = _segment(_method_node("NurseryDialog", "resizeEvent"))
 
@@ -625,7 +625,7 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
     assert "self.scene.setMaximumHeight(16777215)" in dashboard_scene
     assert "self.scene.setMaximumHeight(target)" not in dashboard_scene
     assert "margins = self._shell_layout.contentsMargins()" in customize
-    assert "self.customize_responsive.evaluate(content_width)" in customize
+    assert "self.collection_detail_responsive.evaluate(content_width)" in customize
     assert "self.main_grid.setColumnStretch(column, 0)" in customize_mode
     assert "self.main_grid.setRowStretch(row, 0)" in customize_mode
     assert "margins = self.layout().contentsMargins()" in nursery
@@ -661,9 +661,9 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 
 
-def test_customize_effects_advanced_action_has_readable_copy_at_compact_widths() -> None:
-    constructor = _segment(_method_node("CustomizeGardenDialog", "__init__"))
-    responsive = _segment(_method_node("CustomizeGardenDialog", "resizeEvent"))
+def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths() -> None:
+    constructor = _segment(_method_node("CollectibleDetailDialog", "__init__"))
+    responsive = _segment(_method_node("CollectibleDetailDialog", "resizeEvent"))
 
     assert "self.effects_advanced_layout = QVBoxLayout(self.effects_advanced)" in constructor
     assert 'QLabel("Included appearance")' in constructor

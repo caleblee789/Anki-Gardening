@@ -181,8 +181,14 @@ def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> 
     assert "title = QLabel(format_status_label(species))" in collection
     assert '"Not collected · Available in the Nursery"' in collection
     assert 'dialog.setProperty("collectionState", "collected" if collected else "not-collected")' in overview
-    assert '"Mystery until Rare"' in overview
+    assert '"Mystery · Reach 50,000 Growth to discover"' in overview
     assert '"No collected plants yet"' in overview
+    assert "fertilizer_status(self.engine, plant, now=time.time())" in overview
+    assert "stages = ResponsiveTileGrid(" in overview
+    assert "minimum_tile_width=230" in overview
+    assert "maximum_columns=2" in overview
+    assert "minimum_tile_width=170" in overview
+    assert "actions.add_tile(action)" in overview
 
 
 def test_nursery_stage_carousel_uses_clear_bounded_navigation() -> None:
@@ -944,8 +950,8 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
     assert "owned_count + available_count" in nursery_refresh
     assert "'plant' if max(owned_count, owned_count + available_count) == 1 else 'plants'" in nursery_refresh
     assert "self.intro.setAccessibleDescription(intro_text)" in nursery_refresh
-    assert 'f"{collected} of {len(species_catalog)} species collected"' in collection_refresh
-    assert '("not_collected", "Not collected")' in collection_refresh
+    assert 'f"{collected} of {len(registry_views)} collectibles owned"' in collection_refresh
+    assert '("not_collected", "Locked")' in collection_refresh
     assert '"Not collected · Available in the Nursery"' in collection_refresh
     assert "_card_answer_count(review_count)" in catchup
     assert "growth_forecast(self.engine, plant)" in dashboard
@@ -1042,7 +1048,7 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert 'action_text = presentation.primary_label.split(" ·", 1)[0]' in supplement
     assert 'QPushButton("Purchase")' in charge
     assert '"Equipped" if equipped else' in environment
-    assert '"Equip" if owned else' in environment
+    assert '"Open Collection" if owned else' in environment
     assert 'QPushButton("Unlock bed")' in spaces
     assert "class FertilizerReplacementDialog(PurchaseConfirmationDialog)" in replacement
     assert "DialogSizeClass.COMPARISON" in confirmation

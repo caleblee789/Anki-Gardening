@@ -562,7 +562,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         (
             "customize",
             customize,
-            ((customize.customize_responsive, "customize-workspace"),),
+            ((customize.collection_detail_responsive, "collection-detail-workspace"),),
             (867, 869),
             "workspaceMode",
             "compact",
@@ -1202,7 +1202,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     assert_surface(progress, "Collection")
 
     customize.prepare_to_show()
-    assert_surface(customize, "Customize Garden")
+    assert_surface(customize, "Collection loadout details")
 
     assert set(natural_ranges) == {
         "Nursery",
@@ -1213,7 +1213,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         "Settings",
         "Garden Progress overview",
         "Collection",
-        "Customize Garden",
+        "Collection loadout details",
     }
     # On a normal logical desktop the matrix includes naturally short and
     # naturally overflowing bodies. A 200%-scale offscreen desktop exposes

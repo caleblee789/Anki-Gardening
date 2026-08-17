@@ -117,7 +117,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 14
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 15
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -155,10 +155,10 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
             "progress-collection",
             "collection-species-overview",
         )
-    assert groups["Customize"] == (
-        "customize-garden",
-        "customize-effects-on",
-        "customize-effects-off",
+    assert groups["Collection loadout details"] == (
+        "collection-loadout-detail",
+        "collection-preview-active",
+        "collection-preview-restored",
     )
     assert groups["Nursery"] == (
             "nursery-plants",
@@ -273,8 +273,12 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "nursery-empty-state",
         "collection-environment-mechanics",
     )
+    assert groups["Collection consolidation — transactional states"] == (
+        "collection-loadout-persistence-error",
+        "collection-origin-plant-placement",
+    )
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 181
+    assert len(labels) == 183
     assert len(labels) == len(set(labels))
     purchase_fixture = _method_source(
         "_UiFaceCaptureRunner",
@@ -292,10 +296,10 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         in purchase_fixture
     )
     assert '"unavailable_terminal"' in purchase_fixture
-    assert '"customize_routes_enabled": bool(customize_buttons)' in collection_fixture
-    assert '"concise_effects_visible"' in collection_fixture
-    assert '"metadata_noise_absent"' in collection_fixture
-    assert 'all(button.isEnabled() for button in customize_buttons)' in collection_fixture
+    assert '"loadout_routes_enabled": bool(loadout_buttons)' in collection_fixture
+    assert '"complete_effects_visible"' in collection_fixture
+    assert '"loadout_summary_visible"' in collection_fixture
+    assert 'all(button.isEnabled() for button in loadout_buttons)' in collection_fixture
     starter_fixture = _method_source(
         "_UiFaceCaptureRunner",
         "_capture_starter_placement",
@@ -320,11 +324,11 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
     assert all(families)
     assert Counter(families) == {
         "AnkiQt": 15,
-        "GardenDashboard": 47,
+        "GardenDashboard": 48,
         "GardenProgressDialog": 25,
         "GardenSettingsDialog": 17,
         "NurseryDialog": 20,
-        "CustomizeGardenDialog": 8,
+        "CollectibleDetailDialog": 9,
         "FertilizerDialog": 7,
         "StarterConfirmationDialog": 6,
         "PlantStoryDialog": 6,
@@ -345,7 +349,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 181
+    assert len({profile["profile_id"] for profile in profiles}) == 183
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -364,6 +368,18 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
     assert resolver("resize-dashboard-content-1361")["layout_mode"] == "compact"
     assert resolver("resize-progress-minimum")["canonical_page"] == "overview"
     assert resolver("resize-collection-minimum")["canonical_page"] == "collection"
+
+
+def test_collection_preview_capture_tracks_the_registry_derived_effects_tab() -> None:
+    preview = _method_source(
+        "_UiFaceCaptureRunner", "_capture_collection_preview_after"
+    )
+    semantic = _method_source(
+        "_UiFaceCaptureRunner", "_dialog_surface_page_semantic"
+    )
+
+    assert "dialog.option_tabs.indexOf(dialog.effects_page)" in preview
+    assert '0: "loadout", 1: "loadout", 2: "loadout", 3: "preview"' in semantic
 
 
 def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
@@ -387,8 +403,8 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
         "coins-activity",
         "diagnostics-clean",
         "diagnostics-warning",
-        "customize-effects-on",
-        "customize-effects-off",
+        "collection-preview-active",
+        "collection-preview-restored",
         "settings-display-advanced-open",
         "starter-placement",
         "starter-completion",
@@ -397,6 +413,8 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
         "home-preview-stale",
         "onboarding-persistence-error",
         "move-persistence-error",
+        "collection-loadout-persistence-error",
+        "collection-origin-plant-placement",
     ):
         assert f'"{label}"' in source
     for index, label in enumerate(
@@ -428,7 +446,7 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         "settings",
         "progress",
         "collection",
-        "customize",
+        "collectible-detail",
         "nursery",
         "story",
         "starter-confirmation",
@@ -459,7 +477,7 @@ def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -
         ("resize-settings-content-699", "resize-settings-content-701"),
         ("resize-settings-content-759", "resize-settings-content-761"),
         ("resize-progress-content-819", "resize-progress-content-821"),
-        ("resize-customize-content-819", "resize-customize-content-821"),
+        ("resize-collectible-detail-content-819", "resize-collectible-detail-content-821"),
         ("resize-nursery-content-759", "resize-nursery-content-761"),
         ("resize-story-content-539", "resize-story-content-541"),
         (
@@ -738,6 +756,9 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
         "_UiFaceCaptureRunner", "_capture_starter_placement"
     )
     purchase = _method_source("_UiFaceCaptureRunner", "_capture_nursery_purchase_success")
+    loadout_error = _method_source(
+        "_UiFaceCaptureRunner", "_capture_collection_loadout_persistence_error"
+    )
 
     assert "stats.reviewed = 100" in achievement
     assert "stats.correct = 100" in achievement
@@ -761,8 +782,10 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert 'label = "collection-known-not-collected-overview"' in known_species
     assert 'dialog.property("collectionState")' in known_species
     assert '"not-collected"' in known_species
-    assert '"Rare stage undiscovered"' in known_species
+    assert '"Undiscovered Rare stage silhouette"' in known_species
     assert 'close_callback=lambda: (self._close_widget(dialog), restore())' in known_species
+    assert "engine.state.loadout.to_dict()" in loadout_error
+    assert "before == after" in loadout_error
 
     assert 'dashboard.scene.finish_move("Preparing starter placement capture.")' in starter_placement
     assert "dashboard._placement_draft = None" in starter_placement
@@ -866,7 +889,7 @@ def test_watering_can_capture_profile_skips_unrelated_release_interfaces() -> No
     assert groups == {
         "Watering can — marker-critical interfaces": (
             "selected-plant-nurtured",
-            "customize-garden",
+            "collection-loadout-detail",
             "settings-display",
             "all-six-beds-occupied",
             "watering-can-garden-plot-1",
@@ -2070,6 +2093,7 @@ def test_text_layout_audit_only_exempts_intentionally_scrolled_out_content() -> 
 
     assert "int(candidate.width()) <= 0" in audit
     assert "int(candidate.height()) <= 0" in audit
+    assert "candidate.window() is not root.window()" in audit
     assert "visible_region = candidate.visibleRegion()" in audit
     assert "visible_region.isEmpty()" in audit
     assert "_text_candidate_is_intentionally_scrolled_out" in audit
