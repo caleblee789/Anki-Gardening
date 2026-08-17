@@ -682,6 +682,8 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
 
     assert 'dashboard.scene.finish_move("Preparing starter placement capture.")' in starter_placement
     assert "dashboard._placement_draft = None" in starter_placement
+    assert "close_ms=2300" in starter_placement
+    assert "next_ms=2600" in starter_placement
 
     assert "dialog._purchase_environment(item.kind, item.item_id)" in purchase
     assert purchase.count("dialog._preview_environment_item(item)") == 2

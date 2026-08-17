@@ -5853,8 +5853,12 @@ class _UiFaceCaptureRunner:
                 dashboard,
                 capture_delay_ms=420,
                 close_callback=restore,
-                close_ms=700,
-                next_ms=980,
+                # High-DPI dashboard grabs can spend more than one second in
+                # screenshot and geometry audits. Keep the placement fixture
+                # authoritative until those synchronous checks finish; an
+                # early restore makes the manifest disagree with the pixels.
+                close_ms=2300,
+                next_ms=2600,
             )
 
         self._with_dashboard(ready, failure_label="starter-placement")
