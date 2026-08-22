@@ -33,11 +33,155 @@ class InitialFocusPolicy(str, Enum):
 
 
 class DialogViewState(str, Enum):
-    """Shared asynchronous body states."""
+    """Shared dialog presentation states.
+
+    ``LOADING`` and ``ERROR`` remain as compatibility states for existing
+    non-transaction dialogs. New transaction surfaces should use the more
+    precise validating, committing, stale, blocked, and failure states.
+    """
 
     READY = "ready"
+    VALIDATING = "validating"
+    COMMITTING = "committing"
     LOADING = "loading"
+    STALE_PROPOSAL = "stale-proposal"
+    BUSINESS_RULE_BLOCKED = "business-rule-blocked"
+    RECOVERABLE_FAILURE = "recoverable-failure"
+    PERSISTENCE_FAILURE = "persistence-failure"
+    SUCCESS = "success"
     ERROR = "error"
+
+
+@dataclass(frozen=True)
+class DialogViewPolicy:
+    """Presentation metadata shared by generic and specialized dialogs."""
+
+    fallback_message: str
+    feedback_tone: str
+    busy: bool = False
+    retryable: bool = False
+    assertive: bool = False
+
+
+DIALOG_VIEW_POLICIES: dict[DialogViewState, DialogViewPolicy] = {
+    DialogViewState.READY: DialogViewPolicy("", "neutral"),
+    DialogViewState.VALIDATING: DialogViewPolicy(
+        "Checking the latest details…",
+        "loading",
+        busy=True,
+    ),
+    DialogViewState.COMMITTING: DialogViewPolicy(
+        "Saving changes…",
+        "loading",
+        busy=True,
+    ),
+    DialogViewState.LOADING: DialogViewPolicy(
+        "Loading…",
+        "loading",
+        busy=True,
+    ),
+    DialogViewState.STALE_PROPOSAL: DialogViewPolicy(
+        "The proposal changed. Review the latest details before continuing.",
+        "warning",
+        retryable=True,
+    ),
+    DialogViewState.BUSINESS_RULE_BLOCKED: DialogViewPolicy(
+        "This action is not available.",
+        "warning",
+    ),
+    DialogViewState.RECOVERABLE_FAILURE: DialogViewPolicy(
+        "This action could not be completed. Try again.",
+        "error",
+        retryable=True,
+        assertive=True,
+    ),
+    DialogViewState.PERSISTENCE_FAILURE: DialogViewPolicy(
+        "Changes could not be saved. The committed state is unchanged.",
+        "error",
+        retryable=True,
+        assertive=True,
+    ),
+    DialogViewState.SUCCESS: DialogViewPolicy(
+        "Saved successfully.",
+        "success",
+    ),
+    DialogViewState.ERROR: DialogViewPolicy(
+        "This view could not be loaded.",
+        "error",
+        retryable=True,
+        assertive=True,
+    ),
+}
+
+
+def dialog_view_policy(state: DialogViewState | str) -> DialogViewPolicy:
+    """Return semantic presentation metadata for a dialog state."""
+
+    return DIALOG_VIEW_POLICIES[DialogViewState(state)]
+
+
+class DialogCloseReason(str, Enum):
+    """Stable origins for a dismiss request."""
+
+    PROGRAMMATIC = "programmatic"
+    CLOSE_BUTTON = "close-button"
+    ESCAPE = "escape"
+    WINDOW_CLOSE = "window-close"
+    CANCEL_ACTION = "cancel-action"
+
+
+class DialogCloseBlocker(str, Enum):
+    """Conditions that can prevent a dialog from being dismissed."""
+
+    DIRTY = "dirty"
+    IN_FLIGHT = "in-flight"
+
+
+@dataclass(frozen=True)
+class DialogClosePolicy:
+    """Opt-in safeguards for dismissing a dialog."""
+
+    protect_dirty: bool = False
+    protect_in_flight: bool = False
+
+
+@dataclass(frozen=True)
+class DialogCloseDecision:
+    """Resolved outcome of one close request."""
+
+    reason: DialogCloseReason
+    allowed: bool
+    blocked_by: DialogCloseBlocker | None = None
+
+
+def resolve_dialog_close(
+    policy: DialogClosePolicy,
+    reason: DialogCloseReason | str,
+    *,
+    dirty: bool = False,
+    in_flight: bool = False,
+    dirty_confirmed: bool = False,
+) -> DialogCloseDecision:
+    """Resolve close safety without importing Qt or performing UI work.
+
+    In-flight work takes precedence over dirty-state confirmation because a
+    confirmed discard must not make an unsafe commit cancellable.
+    """
+
+    reason = DialogCloseReason(reason)
+    if policy.protect_in_flight and in_flight:
+        return DialogCloseDecision(
+            reason,
+            allowed=False,
+            blocked_by=DialogCloseBlocker.IN_FLIGHT,
+        )
+    if policy.protect_dirty and dirty and not dirty_confirmed:
+        return DialogCloseDecision(
+            reason,
+            allowed=False,
+            blocked_by=DialogCloseBlocker.DIRTY,
+        )
+    return DialogCloseDecision(reason, allowed=True)
 
 
 @dataclass(frozen=True)

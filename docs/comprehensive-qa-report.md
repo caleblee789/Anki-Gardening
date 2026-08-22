@@ -7,11 +7,12 @@
 
 Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
 remain evidence for the source audited on 2026-08-15, not for current source.
-Current source is governed by capture contract v14 with 181 ordered surfaces.
+Current source is governed by capture contract v18 with 191 ordered surfaces;
+its required 24-sheet final capture remains pending.
 The schema-17 v12 run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
 the 157/157 warning-free, validator-clean pre-purchase-overhaul baseline. The
-v14 current-source capture at
+historical v14 capture at
 `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
 is validator-clean at 181/181 with 23 complete contact sheets.
 See `docs/ui-release-overhaul-contract.md` for the current implementation and

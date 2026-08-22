@@ -113,6 +113,7 @@ def test_addon_motion_preferences_are_preserved_across_request_states(
 
 
 def test_os_and_addon_reduced_motion_form_one_effective_css_policy() -> None:
+    assert ".ag-home__weather-layer { z-index:5; }" in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"] { transition:none; }' in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"]:hover { transform:none; }' in HOME_WIDGET_STYLE
     assert (

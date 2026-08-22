@@ -10,24 +10,26 @@ control the normal profile.
 2. Confirm Deck Browser and Overview show only the noninteractive scene,
    nurtured-plant Growth, Anki streak, Garden Coins, and **Open Garden**. Plant
    and Nursery clicks must do nothing there.
-3. With fresh schema 18 state, choose **Open Garden**, verify the introduction,
+3. With fresh schema-21 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
    direct-soil space remains empty.
 4. Before choosing a starter, answer a real card and verify study totals and the
-   Anki streak advance while plant Growth stays at zero. Choose a starter and
-   confirm the earlier answer is never backfilled.
+   Anki streak advance while plant Growth and recurring rewards stay at zero.
+   Choose and nurture a starter; confirm that earlier Growth and recurring
+   rewards are not backfilled, while any reliably reconstructable one-time
+   achievement is projected from authoritative history only once.
 5. Confirm the Garden name is centered inside the themed frame. Activate Plant
    Growth, Anki streak, and Garden Coins by mouse and keyboard; verify each
-   focused detail and its relative bar/rules. Header **Progress** must open
-   Today, Achievements, Collection, Weather & Scenery, and How it grows in a
-   separate window.
+   focused detail and its relative bar/rules. Header **Garden Progress** must
+   open the five-page Plant Growth, Anki Streak, Garden Coins, Achievements, and
+   Collection window, defaulting to Plant Growth.
 6. Hover and keyboard-focus Nursery and cottage. Confirm silhouette-following
    outlines, anchored labels, click/Enter/Space activation, and no empty-air
    rectangle. Confirm both targets are disabled while moving a plant.
-7. In Nursery, verify **Plants**, **Supplements & Boosters**, **Permanent
-   Upgrades**, and **Weather & Scenery** tabs. Plant counts are data-driven;
+7. In Nursery, verify **Plants**, **Fertilizer and Boosters**, **Garden Spaces**,
+   and **Weather and Scenery** tabs. Plant counts are data-driven;
    stage artwork is clear; Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove,
    Japanese Maple, Wisteria, and Dahlia are stocked by the current complete V6
    lines, while seeded legacy-owned species remain visible and usable.
@@ -43,7 +45,8 @@ control the normal profile.
    or lose Growth, Story, Fertilizer, Booster, inventory, or bed state.
 9. Select plants at every scene edge and in intentional overlaps. Confirm one
    compact card, topmost-art hit testing, edge-safe placement, outside/Escape
-   dismissal, and Nurture, Fertilize, Move, Story in a stable order.
+    dismissal, and Nurture, Fertilize, Growth Charge, Move, Story in a stable
+    order.
 10. Select **Move** and choose a highlighted direct-soil space by mouse and
     keyboard. Confirm empty moves and occupied swaps save immediately, locked
     spaces reject, Escape/Cancel exits before placement, save failure restores
@@ -61,18 +64,23 @@ control the normal profile.
    use and extend it, and verify +5 stacks with Fertilizer for exactly two hours.
    Equip Snow Flurry plus Full Moon and verify newly used Potions last 35%
    longer.
-12. Answer real Again and Good ratings. Each answer gives 10 base Growth only to
-    the answer-time nurtured unfinished plant, plus the displayed streak and
-    Fertilizer, Booster, Weather, and Scenery bonuses. Switch with **Nurture**
-    and verify old Growth never moves. Confirm Growth details separate Weather,
-    Scenery, and Charge totals.
+12. Answer real Again and Good ratings. Each eligible answer gives the full 10
+    base Growth plus displayed streak, Fertilizer, Booster, Weather, and Scenery
+    bonuses to the answer-time nurtured unfinished plant. Every other planted,
+    unfinished plant receives an exact 20% allocation carried in fifths. Switch
+    with **Nurture** and verify old Growth never moves. Confirm Growth details
+    reconcile nurtured, passive, residual, Weather, Scenery, Charge, and direct
+    Garden Find totals; Garden Find Growth itself has no streak multiplier or
+    passive fan-out.
 13. Cross 25/50/75/100 stage-local milestones and one stage threshold. Confirm
-    concise image-led feedback, artwork transition, Garden Coin reason, and no disruptive
-    modal. Seed every deterministic reward band in priority order, tier-complete
-    Charge fallbacks, Ultra pity boundaries/reset, and all three scenery daily
-    gifts; verify one reward slot per answer and no replay. At Rare, confirm
-    routing pauses until another unfinished plant is
-    nurtured.
+    concise image-led feedback, artwork transition, Garden Coin reason, and no
+    disruptive modal. Exercise the Standard Find registry, 1%/2.5%/5% drought
+    bands, answer-75 guarantee, three-per-day cap and pause/resume behavior.
+    Independently exercise environment odds and Ultra pity, plus all three
+    scenery daily gifts. Confirm Standard and environment Finds can stack with
+    each other and predictable rewards, yet each stable answer/pool identity is
+    consumed once with no reroll. At Rare, confirm routing pauses until another
+    unfinished plant is nurtured.
 14. Exercise all due with due review, intraday learning/relearning, unseen new,
     active filtered, suspended, and buried cards. Confirm exact inclusion,
     exclusions, at-least-one-answer guard, one award, and no revocation.
@@ -81,11 +89,11 @@ control the normal profile.
     supported rows apply exactly once; excluded rows create no Growth and are
     not consumed. Simulate review-log, scheduler-cutoff, and save failure, then
     retry and confirm no answer is lost or duplicated.
-16. In the cottage's **Weather & Scenery** tab, inspect every shared exact
-    mechanic, textual Equipped state, how-to-earn entry, locked silhouette,
-    ordered odds, and current Ultra pity. Confirm Collection is read-only and
-    routes to Customize; equip every Weather and Scenery and toggle each visual
-    layer there, then confirm its passive still applies. Inspect all 4:3, 16:9, and home reskins:
+16. In the cottage's **Collection** page, inspect every shared exact mechanic,
+    textual Equipped state, how-to-earn entry, locked silhouette, ordered odds,
+    and current Ultra pity. Open the reversible loadout detail; preview, cancel,
+    apply, and unequip Weather and Scenery choices, toggle each visual layer,
+    and confirm its passive still applies. Inspect all 4:3, 16:9, and home reskins:
     plants, path, Nursery, cottage, occlusion, and hotspots must not move.
 17. Open Plant Story and confirm enlarged actual-stage art, distinct editable
     name/species/stage labels, relative Growth bar, inline rename, oldest-to-newest
@@ -101,10 +109,12 @@ control the normal profile.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     4:3, 16:9, home, and wide compositions.
-21. Restart only the disposable Anki process and re-verify schema 18,
-    `starter_selection_complete`, nurtured plant, Growth, streak, Garden Coin
-    processed-ID ledger, reward history, Ultra pity, daily claims, environment
-    entitlements/loadout/visibility, Growth Charge and Booster inventory/current/history,
+21. Restart only the disposable Anki process and re-verify the schema-21 SQLite
+    reward authority, `starter_selection_complete`, nurtured plant, exact-fifths
+    Growth, streak, Garden Coin transactions, reward events, stable answer
+    lineages, achievement finalization, Garden Find outcomes/drought/daily cap,
+    environment Ultra pity, daily claims, environment entitlements/loadout/
+    visibility, Growth Charge and Booster inventory/current/history,
     Fertilizer current/history intervals, collection,
     placements, stories, display preferences, completed-purchase replay history,
     and home visibility. Re-submit one completed purchase request and confirm

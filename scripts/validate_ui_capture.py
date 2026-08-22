@@ -913,6 +913,7 @@ def load_expected_state_evidence_contracts(
         "_HOME_CAPTURE_LABELS",
         "_DASHBOARD_CAPTURE_LABELS",
         "_PROGRESS_CAPTURE_LABELS",
+        "_REVIEWER_CAPTURE_LABELS",
         "_GROWTH_CHARGE_CAPTURE_LABELS",
         "_NURSERY_CAPTURE_LABELS",
         "_SETTINGS_CAPTURE_LABELS",
@@ -951,7 +952,8 @@ def load_expected_state_evidence_contracts(
             or profile.get("window_family") != family
             or profile.get("kind") not in {
                 "home", "resize", "dashboard", "progress",
-                    "nursery", "settings", "collectible-detail", "dialog",
+                "nursery", "settings", "collectible-detail", "dialog",
+                "reviewer",
             }
         ):
             raise CaptureValidationError(

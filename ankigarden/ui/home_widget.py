@@ -7,6 +7,7 @@ from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..models.state import STREAK_BONUS_TIERS
+from ..reward_presentation import achievement_presentations
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
@@ -85,6 +86,9 @@ class HomeWidgetData:
     charge_growth_today: int = 0
     direct_reward_growth_today: int = 0
     growth_accounting_stale: bool = False
+    nearest_achievement_name: str = ""
+    nearest_achievement_progress: str = ""
+    nearest_achievement_reward: str = ""
 
 
 @dataclass(frozen=True)
@@ -152,7 +156,7 @@ class HomeWidgetStateController:
             phase="stale" if self._last_valid_data is not None else "loading",
             data=self._last_valid_data,
             error_message=(
-                "Updating garden preview…"
+                "Showing the last available garden preview. Updating..."
                 if self._last_valid_data is not None else None
             ),
         )
@@ -192,7 +196,11 @@ class HomeWidgetStateController:
         )
         return True
 
-    def resolve_stale(self, request_id: int, error_message: str = "Updating garden preview…") -> bool:
+    def resolve_stale(
+        self,
+        request_id: int,
+        error_message: str = "Showing the last available garden preview. Updating...",
+    ) -> bool:
         if request_id != self.snapshot.request_id or self._last_valid_data is None:
             return False
         self.snapshot = self._snapshot(
@@ -296,7 +304,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__art { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__scenery-layer,.ag-home__weather-layer { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; }
 .ag-home__scenery-layer { z-index:2; }
-.ag-home__weather-layer { z-index:86; }
+.ag-home__weather-layer { z-index:5; }
 .ag-home__marker-layer { position:absolute; z-index:84; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
 .ag-home__nurtured-marker { position:absolute; object-fit:contain; pointer-events:none; }
@@ -432,7 +440,7 @@ HOME_WIDGET_STYLE = """
   cursor: pointer;
   box-shadow:inset 0 1px 0 rgba(242,250,240,.08),0 3px 9px rgba(1,14,10,.12);
 }
-#ag-home-root button.ag-home__open::after { content:"→"; margin-left:6px; font-size:12px; line-height:1; }
+#ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root button.ag-home__open:disabled::after { content:""; margin:0; }
 #ag-home-root button:hover { background: #357f5b; }
 #ag-home-root button:active { background:#225e42; transform:translateY(1px); }
@@ -442,6 +450,15 @@ HOME_WIDGET_STYLE = """
   outline-offset: 2px;
 }
 .ag-home__open { flex:none; min-width:108px !important; min-height:36px !important; padding:0 14px !important; border-radius:8px !important; font-size:13px !important; }
+.ag-home__state-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+#ag-home-root button.ag-home__secondary {
+  border-color:#4F806E;
+  background:#123228;
+  color:#F4F7F5;
+  box-shadow:none;
+}
+#ag-home-root button.ag-home__secondary:hover { background:#173B30; }
+#ag-home-root button.ag-home__secondary:active { background:#0C261F; }
 .nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
 
 /* Release redesign: one artwork-first, full-bleed preview with a bottom scrim. */
@@ -509,6 +526,18 @@ HOME_WIDGET_STYLE = """
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.ag-home__reward-progress {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  gap:2px;
+  margin-top:5px;
+  color:#D3DDD8;
+  font-size:12px;
+  line-height:1.25;
+}
+.ag-home__reward-progress > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__reward-progress strong { color:#F0D57C; font-weight:700; }
 .ag-home__metrics,.ag-home__garden-context,.ag-home__status-notice { display:none; }
 .ag-home__partial-message,.ag-home__stage-up {
   position:absolute;
@@ -537,7 +566,7 @@ HOME_WIDGET_STYLE = """
 }
 #ag-home-root button:hover { background:#71D39C; }
 #ag-home-root button:active { background:#49AA75; }
-#ag-home-root button.ag-home__open::after { display:none; }
+#ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root[data-motion="reduced"] { transition:none; }
 #ag-home-root[data-motion="reduced"]:hover { transform:none; }
 #ag-home-root[data-motion="reduced"] button:active { transform:none; }
@@ -595,11 +624,21 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            f'<div id="ag-home-root" data-state="loading"{motion_attribute} role="region" aria-label="Anki Garden">'
-            '<div class="ag-home__state" data-testid="home-loading" role="status" aria-live="polite">'
+            f'<div id="ag-home-root" data-state="loading"{motion_attribute} role="region" '
+            'aria-label="Anki Garden" aria-busy="true">'
+            '<div class="ag-home__state" data-testid="home-loading">'
             '<div class="ag-home__state-title">Anki Garden</div>'
-            '<div class="ag-home__state-message">Loading overview…</div>'
-            '<div class="ag-home__loading-track" aria-hidden="true"></div></div>'
+            '<div class="ag-home__state-message" role="status" aria-live="polite">'
+            'Loading garden preview…</div>'
+            '<div class="ag-home__loading-track" role="progressbar" aria-label="Loading garden preview"></div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden while the preview loads" '
+            'onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
     if phase == "empty":
@@ -616,16 +655,23 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             "</div>"
         )
     if phase == "error":
-        message = escape(snapshot.error_message or DEFAULT_ERROR_MESSAGE)
+        detail = escape(snapshot.error_message or DEFAULT_ERROR_MESSAGE)
         return (
             HOME_WIDGET_STYLE
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Overview unavailable</div>'
-            f'<div class="ag-home__state-message" data-testid="home-error" role="alert">{message}</div>'
-            '<button data-testid="home-retry" type="button" aria-label="Retry loading overview" '
-            'onclick="pycmd(\'anki-garden:refresh\')">Retry</button></div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
+            'The preview could not be generated, but your garden is still available. '
+            f'<span class="ag-home__sr-only">{detail}</span></div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
 
@@ -642,8 +688,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Overview unavailable</div>'
-            '<div class="ag-home__state-message" data-testid="home-error" role="alert">The summary could not be displayed.</div></div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
+            'The preview could not be generated, but your garden is still available.</div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
     if not data.weather:
@@ -1155,6 +1209,51 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     garden_name = escape(garden_name_value)
     preview_title = preview.title
     preview_support = preview.summary
+    answer_unit = "answer" if data.reviews_today == 1 else "answers"
+    today_answers_text = f"{format_integer(data.reviews_today)} {answer_unit} today"
+    streak_text = f"{format_integer(data.streak_days)}-day streak"
+    coin_unit = "coin" if data.garden_currency == 1 else "coins"
+    coin_text = f"{format_integer(data.garden_currency)} {coin_unit}"
+    nearest_achievement_text = ""
+    nearest_achievement_accessible = ""
+    if data.nearest_achievement_name and data.nearest_achievement_progress:
+        nearest_achievement_text = (
+            f"{data.nearest_achievement_name} · {data.nearest_achievement_progress}"
+        )
+        nearest_achievement_accessible = (
+            f". Closest achievement: {nearest_achievement_text}"
+            + (
+                f". Reward: {data.nearest_achievement_reward}"
+                if data.nearest_achievement_reward else ""
+            )
+        )
+    reward_progress_html = (
+        '<div class="ag-home__reward-progress" data-testid="home-reward-progress">'
+        '<span>'
+        f'<span data-testid="home-today-answers">{escape(today_answers_text)}</span> · '
+        f'<span data-testid="home-streak">{escape(streak_text)}</span> · '
+        f'<span data-testid="home-currency">{escape(coin_text)}</span>'
+        '</span>'
+        + (
+            f'<span data-testid="home-nearest-achievement" '
+            f'aria-label="Closest achievement: {escape(nearest_achievement_text, quote=True)}'
+            + (
+                f'. Reward: {escape(data.nearest_achievement_reward, quote=True)}'
+                if data.nearest_achievement_reward else ""
+            )
+            + f'" title="{escape(data.nearest_achievement_reward, quote=True)}">'
+            f'<strong>Closest</strong> · {escape(nearest_achievement_text)}</span>'
+            if nearest_achievement_text else ""
+        )
+        + '</div>'
+    )
+    home_progress_accessible = (
+        f". {today_answers_text}. {streak_text}. {coin_text}"
+        f"{nearest_achievement_accessible}"
+        if starter_selected else ""
+    )
+    if not starter_selected:
+        reward_progress_html = ""
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
@@ -1166,9 +1265,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         '</div>'
     )
     streak_progress = _streak_milestone_progress(data.streak_days)
-    streak_text = f"{format_integer(data.streak_days)}-day streak"
-    coin_unit = "coin" if data.garden_currency == 1 else "coins"
-    coin_text = f"{format_integer(data.garden_currency)} {coin_unit}"
     active_name = str(data.active_plant_name or "").strip()
     if active_name:
         active_stage = format_status_label(data.active_plant_stage or "seed")
@@ -1277,7 +1373,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     marker_accessible = (
         f". Watering can: {marker_plant_name} is nurtured and receives full Growth from "
         "future Anki card answers; other eligible planted plants receive 20 percent of "
-        "that post-buff Growth"
+        "that Growth after bonuses"
         if marker_visible else
         ""
     )
@@ -1285,7 +1381,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
 <div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"button\" tabindex=\"0\"
-  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{marker_accessible}\"
+  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{escape(home_progress_accessible, quote=True)}{marker_accessible}\"
   data-anki-garden-command=\"anki-garden:{action_command}\"
   onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"
   onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('anki-garden:{action_command}')}}\">
@@ -1306,6 +1402,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
           title=\"{escape(HOME_NO_STARTER_ACCESSIBLE if not starter_selected else action_label, quote=True)}\"
           onclick=\"event.stopPropagation();if(this.disabled)return;this.disabled=true;this.textContent='Opening…';pycmd('anki-garden:{action_command}');setTimeout(()=>{{this.disabled=false;this.textContent='{action_reset}';}},1500)\">{action_text}</button>
       </header>
+      {reward_progress_html}
       {f'<p class="ag-home__status-notice" role="status">{escape(data.status_notice)}</p>' if data.status_notice else ''}
       {no_starter_body}
       {metrics_html}
@@ -1352,6 +1449,11 @@ def build_home_widget_success_data(
         starter_complete and active_plant is None and planted_starter is not None
     )
     active_growth = growth_display(getattr(active_plant, "growth_points", 0))
+    (
+        nearest_achievement_name,
+        nearest_achievement_progress,
+        nearest_achievement_reward,
+    ) = _nearest_locked_achievement(state)
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
             route="home_widget",
@@ -1451,7 +1553,45 @@ def build_home_widget_success_data(
         growth_accounting_stale=bool(
             getattr(stats, "growth_accounting_stale", False)
         ),
+        nearest_achievement_name=nearest_achievement_name,
+        nearest_achievement_progress=nearest_achievement_progress,
+        nearest_achievement_reward=nearest_achievement_reward,
     )
+
+
+def _nearest_locked_achievement(state: Any) -> tuple[str, str, str]:
+    """Return one useful locked milestone from the canonical presentation layer."""
+
+    try:
+        presentations = achievement_presentations(state)
+    except (AttributeError, TypeError, ValueError):
+        return "", "", ""
+    relevant_metrics = {
+        "streak_days",
+        "daily_answers",
+        "lifetime_answers",
+        "consecutive_non_again",
+    }
+    locked = [
+        item
+        for item in presentations
+        if not item.unlocked and item.progress_metric in relevant_metrics
+    ]
+    if not locked:
+        return "", "", ""
+    underway = [item for item in locked if item.current > 0]
+    candidates = underway or [
+        item for item in locked if item.progress_metric == "streak_days"
+    ] or locked
+    nearest = max(
+        candidates,
+        key=lambda item: (
+            item.progress,
+            -max(0, item.progress_target - item.current),
+            -item.progress_target,
+        ),
+    )
+    return nearest.name, nearest.value_text, nearest.reward_summary
 
 
 def _streak_bonus_percent(streak_days: int) -> int:

@@ -30,12 +30,13 @@ diagnostic report and copy action.
 Each card answer Garden can count starts with 10 base Growth for the unfinished
 plant you **Nurture**. Anki streak, Fertilizer, an active Booster Potion, and
 equipped environment passives contribute once. The nurtured plant receives the
-full post-buff result; every other planted, unfinished plant receives an
+full result after bonuses; every other planted, unfinished plant receives an
 additional exact 20 percent. Growth Charges add one immediate amount only to
 the selected owned, planted, unfinished plant.
-Study goals, milestones, and rare study gifts award the spendable balance shown
-to learners as **Garden Coins**; the persisted API field remains
-`currency_balance`.
+The first eligible answer each Anki day, every seventh consecutive eligible day,
+valid all-due completion, plant stages, one-time achievements, and some Garden
+Finds award the spendable balance shown to learners as **Garden Coins**; the
+persisted API field remains `currency_balance`.
 
 Open settings from **Caleb M. Add-ons Settings → Anki Garden settings** or from
 the full Garden's **Settings** action. The Garden name can be changed at the top

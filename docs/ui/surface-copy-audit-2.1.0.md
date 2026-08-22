@@ -5,7 +5,8 @@ itself superseded for current visual coverage by
 `docs/ui-release-overhaul-contract.md`. This file preserves the original
 v7/134 baseline ledger and its then-pending After cells; a later pre-freeze v8
 run covered all 146 then-current surfaces cleanly, but it is not
-exact-frozen-package release acceptance or current v10/149 evidence.
+exact-frozen-package release acceptance or current v18/191 evidence. The
+required v18 24-sheet final run remains pending.
 
 ## Evidence baseline
 

@@ -923,7 +923,9 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
     assert "self._complete_first_nurture_guidance()" in focused_branch
     assert "_onboarding_confirmation_generation" in dashboard
     assert "generation != self._onboarding_confirmation_generation" in dashboard
-    assert "message = self._onboarding_save_error or body" in dashboard
+    assert "self._onboarding_failure_receipt(step)" in dashboard
+    assert 'action_text = "Try again"' in dashboard
+    assert 'secondary_text = "Return to setup"' in dashboard
     assert 'GARDEN_SETUP_BODY' in dashboard
     assert 'CHOOSE_STARTER_ACTION' in dashboard
     assert "cardOpened.connect" not in dashboard
@@ -1006,7 +1008,15 @@ def test_phase2_copy_states_and_single_scroll_contract_are_explicit():
     assert '"streak_bonus_percent": streak_bonus' in dashboard
     assert "Garden daily goal" not in dashboard
     assert '"locked" if display.current' not in dashboard
-    assert '"in_progress" if display.current > 0 else' in dashboard
+    assert 'def _achievement_view_state(projection: Any) -> str:' in dashboard
+    assert '"locked"' in dashboard.split(
+        "def _achievement_view_state", 1
+    )[1].split("def _set_achievement_filter", 1)[0]
+    assert "achievement_views = achievement_presentations(state)" in dashboard
+    assert 'reward = QLabel(f"Reward: {projection.reward_summary}")' in dashboard
+    assert "_achievement_condition_rows" not in dashboard
+    assert "projection.condition_lines" in dashboard
+    assert "projection.category" in dashboard
     assert '"locked"' in dashboard
     # Avoid the platform-specific ``%-d`` directive (unsupported on Windows)
     # while keeping the learner-facing long month/day/year format.
@@ -1087,6 +1097,9 @@ def test_plants_have_no_idle_or_drag_lift_transforms():
 
 def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
+    story = dashboard.split("class PlantStoryDialog", 1)[1].split(
+        "class StarterConfirmationDialog", 1
+    )[0]
     assert "class PlantStoryDialog(GardenDialog):" in dashboard
     assert "self.story_dialog = PlantStoryDialog" in dashboard
     assert 'setAccessibleName("Plant memory timeline")' in dashboard
@@ -1098,6 +1111,28 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert "event.key() == Qt.Key.Key_Escape" in dashboard
     assert "self.engine.rename_plant" in dashboard
     assert "self.plant_card.story.clicked.connect" in dashboard
+    for label in (
+        "Species",
+        "Current stage",
+        "Planted date",
+        "Growth today",
+        "Total Growth",
+        "Nurtured status",
+        "Nurtured Growth today",
+        "Passive Growth today",
+        "Passive remainder",
+    ):
+        assert f'"{label}"' in story
+    assert '"Allocation"' not in story
+    assert '"Stored passive fraction"' not in story
+    assert "plant_snapshot.passive_growth_fifths_today" in story
+    assert "plant_snapshot.passive_remainder_fifths" in story
+    assert "self.fertilizer_status.setVisible(fertilizer_projection.active)" in story
+    assert "self.booster_status.setVisible(bool(booster_text))" in story
+    assert "configure_close_policy(" in story
+    assert "size = 84 if mode == COMPACT_MODE else 104" in story
+    for stage_state in ("reached", "current", "preview", "undiscovered"):
+        assert f'"{stage_state}"' in story
 
 
 def test_dialog_class_boundaries_keep_appearance_ui_out_of_story_refresh():
@@ -1119,6 +1154,14 @@ def test_placement_rejects_invalid_targets_and_reconciles_removed_plants():
     state.reconcile(["bonsai"])
     assert not state.placing
     assert state.pinned_id is None
+
+    # Starter and Collection plants are absent from the scene payload until
+    # placement commits, so a normal scene refresh preserves that session.
+    assert state.begin_unplaced("collection-rose", [0, 1])
+    state.reconcile(["bonsai"])
+    assert state.placing
+    assert state.dragged_id == "collection-rose"
+    assert state.drag_origin_slot == -1
 
 
 def test_settings_expose_home_visibility_and_transaction_errors():
@@ -1146,7 +1189,9 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert "create_development_backup" in settings_block
     assert "restore_development_backup" in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
-    assert '"Unsaved changes" if valid else "Fix 1 error before saving."' in dashboard
+    assert 'self.cancel_settings.setText("Discard changes" if dirty else "Cancel")' in dashboard
+    assert 'else f"{modified_count} unsaved changes"' in dashboard
+    assert 'f"{count} / {MAX_GARDEN_NAME_LENGTH}"' in dashboard
     assert 'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in dashboard
     assert 'self.garden_name_error.setProperty("fieldError", True)' in dashboard
     assert "self.garden_name_error.setVisible(not valid)" in dashboard

@@ -106,5 +106,6 @@ def test_automatic_reward_sources_never_present_a_pending_state() -> None:
 
     assert "Reward pending" not in dashboard_source
     assert "Reward pending" not in capture_fixture_source
-    assert '"Earned automatically" if reached and reward_milestone else' in dashboard_source
-    assert "claimed=[7, 14]" in capture_fixture_source
+    assert '"One-time streak achievements"' in dashboard_source
+    assert "achievement_presentations(state)" in dashboard_source
+    assert "STREAK_REWARD_MILESTONES" not in dashboard_source

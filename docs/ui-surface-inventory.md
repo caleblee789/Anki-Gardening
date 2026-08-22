@@ -16,23 +16,27 @@ the complete 157-of-157 pre-purchase-overhaul baseline. Capture contract v14
 added purchase states through 181, and v15 added Collection transaction states
 182-183. Its validator-clean predecessor run at
 `build/ui-face-captures/capture-sequence-20260817-054742/20260817-054745`
-records all 183 surfaces. Current source declares capture contract v16 with 191
-ordered surfaces. It preserves IDs 001-183, changes ID 026 to the stale Overview
-redirect proof, points progress resize IDs 111-115 at Plant Growth, and appends
-the Growth Charge states 184-191. The final current-source run at
-`build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
-is independently validator-clean at 191/191, including the formerly missing
-IDs 019 and 064-069.
+records all 183 surfaces. Current source declares capture contract v18 with 191
+ordered surfaces. It retains the v16 Growth/Charge topology while replacing
+ID 037 with the disabled-Home-preview Settings state, ID 073 with the canonical
+Clear Recall projection, ID 076 with the canonical earned/next streak-
+achievement projection, and IDs 083-085 with real Reviewer Garden Find
+notification states. The older complete v16 run is predecessor-source evidence
+only. The required current-source v18 capture and its exact 24-sheet contact-
+sheet set are pending until implementation and all non-GUI, asset, and package
+gates pass.
 
 The table below uses the stable capture ID order from `CAPTURE_FACE_GROUPS`.
-Current v16 preserves IDs 001-183 and appends Charge confirmation states
+Current v18 preserves the 191-ID order and the Charge confirmation states at
 184-191. IDs 158-181 remain the purchase confirmations, typed errors, receipts,
 purchase responsiveness, Nursery empty state, and Collection environment
 mechanics; IDs 182-183 remain Collection rollback and placement states.
 Capture contract v9 source-faithfully renamed ID 076 from
-`streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; the numeric ID
-did not change in v9. Viewports for IDs 001-183 are retained logical Qt client
-sizes; IDs 184-191 use their realized v16 logical sizes. A
+`streak-reward-claimed-unclaimed` to `streak-reward-earned-next`; v18 retains the
+numeric ID but replaces that label with `streak-achievement-earned-next`.
+Viewports for retained IDs use their declared logical Qt client sizes; final
+realized dimensions for the three new Reviewer faces will come from the pending
+v18 manifest. A
 `declared -> actual` value means a screen, widget, or native-frame constraint
 normalized the request. Responsive modes come from the v14 manifest rather
 than from stale v9 fixed-edge labels. The formerly missing Home rows use the
@@ -123,9 +127,9 @@ has exact ordered 183/183 agreement, zero failures or text/layout warnings, and
 a complete validator-clean 24-page contact-sheet set. It is predecessor-source
 evidence only after the v16 Growth overhaul.
 
-Contract v16 requires all 191 surfaces. The requested v8 visual baseline remains
+Contract v16 required all 191 surfaces. The requested v8 visual baseline remains
 139/146 and incomplete; no later complete run replaces its visual authority.
-The final run at
+The v16 run at
 `build/ui-face-captures/capture-sequence-20260817-134654/20260817-140427`
 has exact ordered 191/191 agreement, including 019, 064-069, and 184-191, with
 zero capture failures or text/layout warnings. All 88 dialog-scroll audits, all
@@ -133,8 +137,12 @@ zero capture failures or text/layout warnings. All 88 dialog-scroll audits, all
 24-page manifest-owned contact-sheet set at
 `build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260817-134654`
 and the exact manifest pass the independent repository validator. This closes
-current-source automated manifest and contact-sheet completeness; partial runs
-remain diagnostic evidence only.
+v16 predecessor-source automated completeness only.
+
+Contract v18 keeps 191 surfaces and therefore still requires exactly 24 contact
+sheets. Its final current-source run is intentionally pending. No earlier run,
+partial run, or complete-looking v16 set is acceptance for the v18 reward,
+achievement, and Reviewer Find fixtures.
 
 Manual review of every raw PNG and all 18 partial contact sheets found these
 successful-file exceptions in the v8 baseline:
@@ -197,21 +205,22 @@ its exact fixture, component, viewport, mode, and owner.
 
 | Profile | User-facing surface and entry point | Persistence and source of truth | Primary actions | Required variants, including uncaptured gaps | Fixture implementation |
 |---|---|---|---|---|---|
-| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-20 `GardenState` onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
+| FH | First-run Anki Home; Deck Browser/Overview render hooks and Home bridge | Schema-21 `GardenState` projection: onboarding, plants, Garden name, daily metrics, Coins, selected environment, shared asset metadata; transient request ID rejects stale responses | Choose first plant, Open Garden, Retry | Loading, no-starter/empty, success, partial, error, disabled opening, stale response | `_capture_starter_deck_browser()` / `_capture_starter_overview()`; real Home HTML |
 | FG | First-run Garden; `AnkiGardenApp.open_dashboard()` | Same `GardenState` plus `select_garden_ui()` and scene payload; persisted onboarding owns the resumable step | Choose first plant, open Nursery | No starter, no release-ready stock, planted-before-Nurture, normal, save error | `_capture_starter_garden()`; native Dashboard/Scene |
 | FN | Starter Nursery; first-run direct Nursery route | Release-ready six-stage asset catalog plus onboarding/species/plants/slots; no mutation until confirmed Choose | Choose, page/filter, back | No stock, locked/missing art, disabled, confirmation, footer reachability, save error | `_capture_starter_nursery_after()`; real catalog in starter mode |
 | FC | Starter confirmation; selected Nursery starter | Selected release-ready species is transient; confirmation persists the species choice, while placement atomically creates one specific plant instance in the chosen bed | Confirm Choose, cancel/back | Enabled/disabled, save error, compact/wide | `_capture_starter_confirmation()` or resize matrix |
 | H | Normal/active Home; Deck Browser/Overview hooks | Authoritative Garden state, active periods/plant, slots, Growth/streak/Coins, environment visibility, asset metadata; coordinator revision invalidates cache | Open Garden, Retry | Planted not nurtured, active, six marker slots, loading, partial, error, stale response | Home fixture methods plus source-backed DOM identity check |
-| G | Dashboard, Garden, popovers, Move, focus, scaling and responsive states; Open Garden/scene/header/landmarks | Garden state plants/slots/active periods/name/Coins/effects/scene geometry; Move/selection/hover/focus/viewport are transient | Select, Nurture, Fertilize, Move, Move to Collection, Plant in garden, Story, Progress, Customize, Settings, Undo | Empty/loading/error, no selection, locked/disabled, success toast, save failure, long/dynamic values, all stages/plots, focus, narrow/high-DPI | Named `_capture_*` fixture or `_capture_resize_matrix_face()`; native Scene |
+| G | Dashboard, Garden, popovers, Move, focus, scaling and responsive states; Open Garden/scene/header/landmarks | Garden state plants/slots/active periods/name/Coins/effects/scene geometry; Move/selection/hover/focus/viewport are transient | Select, Nurture, Fertilize, Growth Charge, Move, Move to Collection, Plant in garden, Story, Garden Progress, Collection, Settings, Undo | Empty/loading/error, no selection, locked/disabled, success toast, save failure, long/dynamic values, all stages/plots, focus, narrow/high-DPI | Named `_capture_*` fixture or `_capture_resize_matrix_face()`; native Scene |
 | F | Fertilizer dialog; selected plant -> Fertilize | Current effect from `fertilizer_status()`, new effect/target/price/balance/disposition from `PurchaseQuote`, and completed-request replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current | Unaffordable, active, expiring/stale countdown, invalid target, persistence error, success receipt, responsive | `_capture_fertilize_after()`, expiring fixture, purchase fixtures, resize matrix |
 | FR | Fertilizer replacement confirmation | Current name/effect/seconds remaining from `fertilizer_status()`; new name/effect/full duration, price, target, and replacement requirement from the engine quote | Keep current, Purchase & Replace | Exact discarded time, current/new cards, disabled/stale target, save error, compact/wide | `_capture_fertilizer_replacement_confirmation()`, v14 confirmation, or resize matrix |
 | ST | Plant Story; selected plant -> Story | Plant identity/species/stage/Growth/memories/discovery and asset metadata; rename persists atomically | Rename/save, close, Choose another when eligible | No/one/many memories, locked Rare, missing art, success/error, responsive | `_capture_story_after()` or resize matrix |
 | P | Plant Growth/Streak/Coins, Progress, Achievements and Collection; metric/header/cottage routes | Canonical study sources, per-plant nurtured/passive/direct allocations, residual fifths, streak, currency ledger, achievements/reward history, plants/species discovery, and environment ownership/status | Navigate, disclose Growth breakdown, target a Charge, filter, inspect species/effects, manage loadout, close | Zero/new/nonzero/fractional/active, empty/filter-empty, stale migration, locked, completed, at-risk/missed, earned/next, loading/error/disabled, responsive | Growth fixture, `_capture_metric()`, `_capture_progress_page()`, collection fixtures, resize matrix |
 | SO | Species overview; any known catalog species | Catalog identity plus owned instances, highest reached stage/discovery, shared thumbnail metadata, and per-species Rare unlock | Inspect/close | Collected, known-not-collected, zero instances, locked Rare, missing art, responsive | `_build_species_overview_dialog()` plus capture/resize/known-not-collected fixture |
 | C | Collection loadout detail and preview | One local draft over persisted inventory, selected Weather/Scenery and visual-only visibility flags; `apply_garden_loadout()` is the atomic commit | Choose owned effects, toggle artwork, apply, cancel preview | Clean/dirty, on/off, unowned/locked, success/error/rollback, responsive | Collection loadout/detail fixtures or resize matrix; native preview |
-| N | Nursery commerce; Nursery landmark/first-run/related routes | Catalogs and engine projections over schema-20 state, shared effect descriptors, normalized artwork, purchase quotes, Coins/ledgers, ownership/inventory, slots, and release-ready assets | Choose, Purchase, Use, Unlock bed, Plant in garden, Move, Move to Collection, open Collection, browse | Owned/equipped/locked/disabled, ready/loading/typed error/success, empty/no stock, missing-art fallback, footer reachability, responsive | Nursery tab/stress/purchase fixtures or resize matrix |
+| N | Nursery commerce; Nursery landmark/first-run/related routes | Catalogs and engine projections over schema-21 state, shared effect descriptors, normalized artwork, purchase quotes, Coins/ledgers, ownership/inventory, slots, and release-ready assets | Choose, Purchase, Use, Unlock bed, Plant in garden, Move, Move to Collection, open Collection, browse | Owned/equipped/locked/disabled, ready/loading/typed error/success, empty/no stock, missing-art fallback, footer reachability, responsive | Nursery tab/stress/purchase fixtures or resize matrix |
 | GC | Growth Charge confirmation; selected plant or Plant Growth row | Frozen quote/request/outcome contracts over target eligibility, Growth, selected Scenery reward terms, Charge inventory, and bounded completed-request ledger | Select Charge type, Use Growth Charge, Cancel, Open Nursery, Close receipt | Ready, empty, loading/disabled, stale inventory, invalid target, persistence rollback, rewarded success, minimum responsive | `_capture_growth_charge_dialog_fixture()`; native target-specific modal |
-| SD | Settings and Diagnostics; Anki menu or Dashboard Settings | Staged Anki config plus separately persisted Garden name; runtime diagnostics/build capabilities/telemetry are derived | Save changes, cancel, restore defaults, toggle, expand/refresh/copy diagnostics | Clean/warning, dirty, invalid, rollback/error, production controls absent, reduced motion, responsive | Settings fixture methods or resize matrix; both scroll positions reset |
+| SD | Settings and Diagnostics; Anki menu or Dashboard Settings | Staged Anki config plus separately persisted Garden name; runtime diagnostics/build capabilities/telemetry are derived | Save changes, cancel, restore defaults, toggle, expand/refresh/copy diagnostics | Clean/warning, dirty, rollback/error, reduced motion, responsive | Settings fixture methods or resize matrix; both scroll positions reset |
+| R | Real Anki Reviewer plus nonmodal reward notification | Persisted reward/find outcomes joined through canonical presentation registries; the Reviewer adapter renders one consolidated focus-safe result and acknowledges every rendered event ID | Continue reviewing; no dismissal required | Common under reduced motion, Exceptional treatment, stacked synchronized Finds and achievement/reward summary, keyboard-focus preservation | `_capture_reviewer_find_*()` through the real Reviewer state and `ReviewerRewardFeedback` |
 
 All product mutations in these profiles must remain engine-authoritative,
 rollback-safe, and atomically saved. Capture-only viewport, route, hover, focus,
@@ -230,8 +239,9 @@ display at DPR 3.0. The v12 run records six captures on the secondary
 display at DPR 1.5 and 151 on the primary display at DPR 3.0. These runs used
 requested `QT_SCALE_FACTOR=1.5`. The v14 and v15 runs likewise record mixed
 secondary and primary display provenance under requested scale factor 1.5. The
-v16 run records all 191 surfaces on the primary display at DPR 3.0 under the
-same requested scale. This is useful display provenance, but it is not native
+v16 predecessor run records all 191 surfaces on the primary display at DPR 3.0
+under the same requested scale. No v18 display provenance exists until the
+pending final run. Historical provenance is useful, but it is not native
 mixed-DPI acceptance because the suite did not deliberately exercise cross-
 display transitions.
 There is no current native standard-scale, true OS 200-percent, or Windows
@@ -242,8 +252,8 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 
 | ID | Capture state | Profile | Component / renderer | Fixture data and preparation | Viewport (logical px) | Responsive mode | Owning agent |
 |---:|---|:---:|---|---|---:|---|---|
-| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-20 starter state on Deck Browser | 667x570 | default | Home + First run |
-| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-20 starter state on Overview | 667x570 | default | Home + First run |
+| 001 | `starter-deck-browser-home` | FH | AnkiQt / Home HTML | Untouched schema-21 starter state on Deck Browser | 667x570 | default | Home + First run |
+| 002 | `starter-overview-home` | FH | AnkiQt / Home HTML | Untouched schema-21 starter state on Overview | 667x570 | default | Home + First run |
 | 003 | `starter-garden-onboarding` | FG | GardenDashboard / GardenSceneWidget | Untouched state; onboarding step 1 visible | 1177x630 | compact | First run + Garden |
 | 004 | `starter-nursery-plants` | FN | NurseryDialog | Release-ready starter catalog; no owned plant | 1177x630 | wide | Nursery + First run |
 | 005 | `starter-selection-confirmation` | FC | StarterConfirmationDialog | First release-ready species awaiting confirmation | 480x300 | wide | First run |
@@ -278,7 +288,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 034 | `nursery-fertilizer-booster` | N | NurseryDialog | Nursery tab 2 catalog projection | 1048x643 | wide | Nursery + Economy |
 | 035 | `nursery-garden-spaces` | N | NurseryDialog | Nursery tab 3 catalog projection | 1048x643 | wide | Nursery + Economy |
 | 036 | `nursery-weather-scenery` | N | NurseryDialog | Nursery tab 4 catalog projection | 1048x643 | wide | Nursery + Economy |
-| 037 | `settings-menu-display` | SD | GardenSettingsDialog / GardenStudioWidget | Settings opened through registered Anki menu action | 1048x643 | display | Settings + Diagnostics |
+| 037 | `settings-home-preview-disabled` | SD | GardenSettingsDialog / GardenStudioWidget | Settings opened through the registered Anki menu with the unsaved Home preview toggle disabled | 1048x643 | display | Settings + Diagnostics |
 | 038 | `settings-display` | SD | GardenSettingsDialog / GardenStudioWidget | Display tab reset to top | 1048x643 | display | Settings + Diagnostics |
 | 039 | `settings-display-advanced-open` | SD | GardenSettingsDialog / GardenStudioWidget | Display tab with Advanced controls expanded | 1048x643 | display | Settings + Diagnostics |
 | 040 | `diagnostics-clean` | SD | GardenSettingsDialog / GardenStudioWidget | Troubleshooting with clean runtime telemetry | 1048x643 | troubleshooting | Settings + Diagnostics |
@@ -314,19 +324,19 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 070 | `collection-several-discovered` | P | GardenProgressDialog | Exactly 4 of 10 catalog species collected; all identities remain known and Rare stays gated per species | 1140x630 | wide | Progress + Collection |
 | 071 | `collection-no-filter-matches` | P | GardenProgressDialog | All 10 species collected; Not collected filter produces the explicit empty result | 1140x630 | wide | Progress + Collection |
 | 072 | `achievement-completed` | P | GardenProgressDialog | Coherent completed achievement thresholds | 1140x630 | wide | Progress + Collection |
-| 073 | `clear-recall-separate-conditions` | P | GardenProgressDialog | 83% accuracy and 12/20 answers shown separately | 1140x630 | wide | Progress + Collection |
+| 073 | `clear-recall-canonical-projection` | P | GardenProgressDialog | Canonical Clear Recall projection: 12/20 answers, 83% non-Again, exact +10-Coin reward | 1140x630 | wide | Progress + Collection |
 | 074 | `streak-at-risk` | P | GardenProgressDialog | 7-day streak; no review today; last active yesterday | 1140x630 | wide | Progress + Collection |
 | 075 | `streak-missed-day` | P | GardenProgressDialog | Ended streak: current 0, previous 3 days | 1140x630 | wide | Progress + Collection |
-| 076 | `streak-reward-earned-next` | P | GardenProgressDialog | 14-day streak; 7/14 earned automatically; 30 next | 1140x630 | wide | Progress + Collection |
+| 076 | `streak-achievement-earned-next` | P | GardenProgressDialog | 14-day streak; 7-Day achievement earned once; day-30 Growth tier and 30-Day achievement next | 1140x630 | wide | Progress + Collection |
 | 077 | `nursery-item-owned` | N | NurseryDialog | Owned Nursery plant card | 1048x643 | wide | Nursery + Economy |
 | 078 | `nursery-item-locked` | N | NurseryDialog | 0 Coins/consumables; locked item disabled | 1048x643 | wide | Nursery + Economy |
 | 079 | `nursery-purchase-success` | N | NurseryDialog | Real environment purchase and owned receipt state | 1048x643 | wide | Nursery + Economy |
 | 080 | `nursery-final-row-above-footer` | N | NurseryDialog | Final Nursery row scrolled above fixed footer | 1048x643 | wide | Nursery + Economy |
 | 081 | `missing-artwork-graphical-fallback` | N | NurseryDialog | All artwork resolvers forced missing; graphical fallbacks | 1048x643 | wide | Nursery + Economy |
 | 082 | `settings-unsaved-changes` | SD | GardenSettingsDialog / GardenStudioWidget | Dirty Garden-name draft; Display scroll reset | 1048x643 | display | Settings + Diagnostics |
-| 083 | `settings-validation-error` | SD | GardenSettingsDialog / GardenStudioWidget | Whitespace Garden name; inline validation error | 1048x643 | display | Settings + Diagnostics |
-| 084 | `diagnostics-expanded` | SD | GardenSettingsDialog / GardenStudioWidget | Diagnostics details expanded | 1048x643 | troubleshooting-expanded | Settings + Diagnostics |
-| 085 | `production-build-controls-absent` | SD | GardenSettingsDialog / GardenStudioWidget | Production capability branch; dev controls absent | 1048x643 | troubleshooting | Settings + Diagnostics |
+| 083 | `reviewer-find-common-reduced-motion` | R | AnkiQt / ReviewerRewardFeedback | Canonical Morning Dew Find joined with the active-day reward; Common treatment under reduced motion; focus preserved | Pending v18 manifest | reviewer | Reviewer + Rewards |
+| 084 | `reviewer-find-exceptional` | R | AnkiQt / ReviewerRewardFeedback | Canonical Root Core Find; exact Standard Growth Charge artwork/reward and restrained Exceptional treatment | Pending v18 manifest | reviewer | Reviewer + Rewards |
+| 085 | `reviewer-find-stacked-sync` | R | AnkiQt / ReviewerRewardFeedback | Canonical stacked synchronized Finds plus active-day and Perfect Canopy results in one focus-safe summary | Pending v18 manifest | reviewer | Reviewer + Rewards |
 | 086 | `reduced-motion-enabled` | SD | GardenSettingsDialog / GardenStudioWidget | Reduced Motion checked and scrolled into view | 1048x643 | display | Settings + Diagnostics |
 | 087 | `keyboard-focus-state` | G | GardenDashboard / GardenSceneWidget | Progress action focused by keyboard | 1140x630 | compact | Garden + Scene |
 | 088 | `narrow-window-responsive` | G | GardenDashboard / GardenSceneWidget | Dashboard resized to 760x620 | 760x620 | compact; metrics compact | Garden + Scene |
@@ -401,7 +411,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 157 | `collection-known-not-collected-overview` | SO | GardenDialog (`SpeciesOverviewDialog`) | Dahlia is catalog-known with zero collected/planted instances; Seed through Flowering preview, Rare mystery | 960x496 | default; wide split | Progress + Collection |
 | 158 | `purchase-confirmation-species` | PC | PurchaseConfirmationDialog | Ready species quote; one purchased instance will be added to Collection | 820x535 | wide | Nursery + Economy |
 | 159 | `purchase-confirmation-growth-charge` | PC | PurchaseConfirmationDialog | Ready Growth Charge quote; one owned consumable will be added to inventory | 820x535 | wide | Nursery + Economy |
-| 160 | `purchase-confirmation-environment` | PC | PurchaseConfirmationDialog | Ready Weather quote with exact mechanics and owned-not-equipped disposition | 820x535 | wide | Nursery + Collection + Customize |
+| 160 | `purchase-confirmation-environment` | PC | PurchaseConfirmationDialog | Ready Weather quote with exact mechanics and owned-not-equipped disposition | 820x535 | wide | Nursery + Collection |
 | 161 | `purchase-confirmation-fertilizer-application` | PC | PurchaseConfirmationDialog | Ready Basic Fertilizer quote for a named target with no active tier | 820x535 | wide | Nursery + Economy |
 | 162 | `purchase-confirmation-fertilizer-extension` | PC | PurchaseConfirmationDialog | Same-tier Fertilizer quote describes extension without discarding active time | 820x535 | wide | Nursery + Economy |
 | 163 | `purchase-confirmation-garden-bed` | PC | PurchaseConfirmationDialog | Ready quote for the next sequential bed with exact cost and resulting balance | 820x535 | wide | Nursery + Garden Spaces |
@@ -422,7 +432,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 | 178 | `purchase-confirmation-default` | FR | FertilizerReplacementDialog | Minimum-to-default comparison transition | 720x553 | wide | Nursery + Economy |
 | 179 | `purchase-confirmation-large` | FR | FertilizerReplacementDialog | Default-to-large comparison transition | 820x553 | wide | Nursery + Economy |
 | 180 | `nursery-empty-state` | N | NurseryDialog | Explicit all-species-collected empty state with footer clearance | 1048x643 | wide | Nursery + Economy |
-| 181 | `collection-environment-mechanics` | P | GardenProgressDialog | Shared Weather/Scenery mechanics, ownership, textual Equipped state, and Customize route | 1000x699 | wide | Progress + Collection + Customize |
+| 181 | `collection-environment-mechanics` | P | GardenProgressDialog | Shared Weather/Scenery mechanics, ownership, textual Equipped state, and Collection-owned Manage loadout route | 1000x699 | wide | Progress + Collection |
 | 182 | `collection-loadout-persistence-error` | C | CollectibleDetailDialog | Atomic loadout save failure restores the prior persisted draft | 1120x699 | wide | Collection + Environment |
 | 183 | `collection-origin-plant-placement` | G | GardenDashboard / GardenSceneWidget | Collection-origin plant placement into an unlocked Garden slot | 1140x699 | compact | Collection + Garden |
 | 184 | `growth-charge-use-ready` | GC | GrowthChargeConfirmationDialog | Owned Small Charge and valid planted target; complete current/projected/reward terms | 820x614 | default | Growth + Economy |
@@ -438,7 +448,7 @@ evidence. Responsive mode is transient capture metadata and is never persisted.
 
 “Owner” in the inventory is the downstream implementation role, not permission
 to change shared files independently. `ankigarden/ui/dashboard.py` is the main
-merge-conflict hotspot: First run, Garden, Progress, Customize, Nursery,
+merge-conflict hotspot: First run, Garden, Progress, Collection loadout, Nursery,
 Settings, Story, and Economy all touch classes in that module. Shared state and
 transaction owners must freeze any new projection/purchase/action interfaces
 before surface agents depend on them. Accessibility/responsive work coordinates
@@ -449,13 +459,15 @@ after later source and capture-contract changes. The validator-clean v10 run
 supplies 149/149 evidence; the v11 run supplies 156/156 frozen-foundation
 evidence. The v12 run supplies 157/157 pre-purchase-overhaul evidence, including
 the known-not-collected species state. The v14 and v15 runs supply complete
-181/181 and 183/183 predecessor-source evidence respectively. The final v16 run
-supplies independently validator-clean 191/191 current-source evidence. No
-local capture by itself closes the native-platform, uncaptured variant, or
-human-accessibility gates identified above.
+181/181 and 183/183 predecessor-source evidence respectively. The complete v16
+run supplies independently validator-clean 191/191 predecessor-source evidence.
+The current v18 run and exact 24-sheet set remain pending; only that validated
+run can close current-source automated capture completeness. No local capture by
+itself closes the native-platform, uncaptured variant, or human-accessibility
+gates identified above.
 
 Downstream implementation may start from this inventory. Native Windows, true
 OS 100/150/200-percent scaling, and high/mixed-DPI evidence are required before
 release acceptance, not before implementation begins. For environment state,
-Progress Collection owns read-only ownership/status/details and may route to
-Customize; Customize is the sole owner of Equip and visibility mutations.
+Garden Progress Collection owns ownership/status/details and routes to its
+loadout detail; that detail owns preview, equipment, and visibility mutations.

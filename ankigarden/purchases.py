@@ -228,6 +228,22 @@ def _compact_effect(value: str) -> str:
     return effect
 
 
+def _bed_unlock_counts(quote: PurchaseQuote) -> tuple[int, int]:
+    """Derive display-only sequential bed counts from the quoted bed identity."""
+
+    resulting = 1
+    for identity in (quote.item_id, quote.item_name):
+        try:
+            resulting = max(
+                1,
+                int(str(identity).replace("_", " ").rsplit(" ", 1)[-1]),
+            )
+            break
+        except (TypeError, ValueError):
+            continue
+    return max(0, resulting - 1), resulting
+
+
 def _priced_action(
     action: PurchaseAction,
     price: int,
@@ -391,11 +407,18 @@ def purchase_presentation(
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Garden Bed")
+        unlocked_before, unlocked_after = _bed_unlock_counts(quote)
         title = f"Unlock {bed_name}"
         outcome = "Permanently adds one planting space to your garden."
         facts.extend((
+            PurchaseFact(
+                "unlocked_beds",
+                "Unlocked beds",
+                f"{unlocked_before:,} → {unlocked_after:,}",
+                True,
+            ),
+            PurchaseFact("available_bed", "Becomes available", bed_name),
             PurchaseFact("plants", "", "Existing plants stay where they are"),
-            PurchaseFact("sequence", "", "Beds unlock in order"),
         ))
         badges.append("Permanent")
         preview_style = PurchasePreviewStyle.GARDEN_BED
@@ -419,7 +442,80 @@ def purchase_presentation(
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
         display_title = "Purchase failed"
-        display_outcome = "Purchase failed. No Garden Coins were spent."
+        display_outcome = (
+            "Purchase could not be saved. No Garden Coins were spent and no item was added."
+        )
+        badges = ["Retry preview"]
+        if quote.kind is PurchaseKind.SPECIES:
+            visible_facts = (
+                PurchaseFact(
+                    "collection",
+                    "Current collection",
+                    f"{max(0, quote.inventory_before):,} (unchanged)",
+                    True,
+                ),
+                PurchaseFact(
+                    "retry_preview",
+                    "Retry preview",
+                    f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
+                ),
+            )
+        elif quote.kind is PurchaseKind.GROWTH_CHARGE:
+            visible_facts = (
+                PurchaseFact(
+                    "inventory",
+                    "Current inventory",
+                    f"{max(0, quote.inventory_before):,} (unchanged)",
+                    True,
+                ),
+                PurchaseFact(
+                    "retry_preview",
+                    "Retry preview",
+                    f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
+                ),
+                PurchaseFact("effect", "Effect on retry", _compact_effect(quote.descriptor.buff)),
+            )
+        elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
+            visible_facts = (
+                PurchaseFact("ownership", "Current ownership", "Not owned (unchanged)", True),
+                PurchaseFact(
+                    "retry_preview",
+                    "Retry preview",
+                    f"Would permanently unlock {item_name}",
+                ),
+            )
+        elif quote.kind is PurchaseKind.FERTILIZER:
+            visible_facts = (
+                PurchaseFact(
+                    "fertilizer",
+                    "Current Fertilizer",
+                    (
+                        f"{quote.current_item_name} (unchanged)"
+                        if quote.current_item_name
+                        else "No active Fertilizer (unchanged)"
+                    ),
+                    True,
+                ),
+                PurchaseFact("retry_preview", "Retry preview", outcome),
+                PurchaseFact("effect", "Effect on retry", _compact_effect(quote.descriptor.buff)),
+            )
+        else:
+            unlocked_before, unlocked_after = _bed_unlock_counts(quote)
+            visible_facts = (
+                PurchaseFact(
+                    "unlocked_beds",
+                    "Current unlocked beds",
+                    f"{unlocked_before:,} (unchanged)",
+                    True,
+                ),
+                PurchaseFact(
+                    "retry_preview",
+                    "Retry preview",
+                    f"{unlocked_before:,} → {unlocked_after:,}; {item_name} becomes available",
+                ),
+            )
+        balance_after = quote.balance_before
+        secondary_label = "Cancel"
         primary_label = "Try Again"
         primary_accessible = f"Try purchasing {item_name} again"
         processing_label = _priced_action(action, quote.total_price)[2]
@@ -473,7 +569,19 @@ def purchase_presentation(
             PurchaseStatus.REQUEST_ID_CONFLICT: "Purchase could not be verified",
             PurchaseStatus.REPLACEMENT_REQUIRED: "Replacement confirmation required",
         }[effective_status]
-        display_outcome = str(message or quote.message or "This purchase can no longer be completed.")
+        invalid_message = str(
+            message or quote.message or "This purchase can no longer be completed."
+        )
+        if (
+            effective_status is PurchaseStatus.TARGET_INVALID
+            and quote.kind is PurchaseKind.FERTILIZER
+            and "no longer valid" in invalid_message.lower()
+        ):
+            invalid_message = (
+                "Fertilizer requires a planted, unfinished nurtured plant. "
+                "Choose another plant in the Garden."
+            )
+        display_outcome = invalid_message
         visible_facts = ()
         badges = []
         show_cost = False
@@ -489,8 +597,8 @@ def purchase_presentation(
         PurchaseStatus.STALE_TARGET,
     }:
         display_title = {
-            PurchaseStatus.STALE_PRICE: "Price changed",
-            PurchaseStatus.STALE_BALANCE: "Balance changed",
+            PurchaseStatus.STALE_PRICE: "Price updated",
+            PurchaseStatus.STALE_BALANCE: "Balance refreshed",
             PurchaseStatus.STALE_TARGET: "Purchase details changed",
         }[effective_status]
         display_outcome = str(

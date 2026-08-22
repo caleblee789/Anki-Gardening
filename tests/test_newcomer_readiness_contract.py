@@ -149,12 +149,14 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
         "NURSERY_STARTER_COUNT",
     ):
         assert name in _source("ankigarden/ui/copy.py")
-    assert "NURSERY_STARTER_TITLE if starter_mode" in nursery
+    assert "NURSERY_STARTER_TITLE" in nursery
+    assert "if starter_mode" in nursery
     assert "NURSERY_STARTER_RATIONALE" in nursery
     assert "NURSERY_STARTER_COUNT" in nursery
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
+    assert "self.catalog_tabs.tabBar().setVisible(not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Not now" if starter_mode else "Close")' in nursery
+    assert 'self.close_button.setText("Choose later" if starter_mode else "Close")' in nursery
     assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
     assert "self.catalog_tabs.setAccessibleDescription" in nursery
@@ -188,6 +190,21 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     stats = _method_source(
         "ankigarden/ui/dashboard.py", "GardenStatsStrip", "set_growth_details"
     )
+    completion = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "GardenDashboard",
+        "_onboarding_completion_receipt",
+    )
+    failure = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "GardenDashboard",
+        "_onboarding_failure_receipt",
+    )
+    open_starter = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "GardenDashboard",
+        "_open_starter_nursery",
+    )
 
     assert 'HOME_NO_STARTER_BODY = "Reviews completed before setup do not earn Growth."' in copy
     assert '"Choose a plant before studying. Reviews completed before setup do not earn Growth."' in copy
@@ -200,6 +217,18 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert refresh_onboarding.count('"Not now"') == 3
     assert refresh_onboarding.count('"Back"') == 2
     assert "self._set_onboarding_shield(visible)" in refresh_onboarding
+    assert '"Return to Anki"' in refresh_onboarding
+    assert '"Explore garden"' in refresh_onboarding
+    assert '"Try again"' in refresh_onboarding
+    assert '"Return to setup"' in refresh_onboarding
+    assert 'f"Starter selected: {species}\\n"' in completion
+    assert 'f"Garden bed selected: {bed}\\n"' in completion
+    assert 'f"Plant nurtured: {plant_name}\\n"' in completion
+    assert '"Earlier Growth and repeatable rewards are not backfilled. "' in completion
+    assert '"Reliably reconstructable one-time achievements may be."' in completion
+    assert '"The last committed setup state is unchanged."' in failure
+    assert "self._onboarding_save_error = message" in open_starter
+    assert "self.toast_region.show_message" not in open_starter
 
 
 def test_nursery_tab_intros_do_not_repeat_section_details() -> None:
@@ -241,6 +270,15 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
         "ankigarden/addon.py", "AnkiGardenApp", "_open_dashboard_when_ready"
     )
     assert "self.engine.select_starter_species(species)" in choose_starter
+    assert "self._starter_choice_pending" in choose_starter
+    assert "Starter setup could not be saved." in choose_starter
+    assert "the last committed Garden setup is unchanged" in choose_starter
+    assert "Choose the plant " in choose_starter
+    assert "again to retry, or select Choose later." in choose_starter
+    assert "except Exception:" in choose_starter
+    assert "starter choice save failed unexpectedly" in choose_starter
+    assert "if not ok:" in choose_starter
+    assert "return" in choose_starter
     assert "self.accept()" in choose_starter
     assert "StarterConfirmationDialog" not in choose_starter
     assert "QTimer.singleShot(0, open_starter)" in open_dashboard

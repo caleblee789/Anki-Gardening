@@ -405,5 +405,5 @@ def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() ->
         dashboard.count("set_keyboard_focus_surface(") + 1
     )
     assert "self.garden_name_edit.setFixedHeight(BUTTON_MIN_HEIGHT)" in dashboard
-    assert 'self.show_weather = ToggleSwitch("Show Weather artwork")' in dashboard
-    assert 'self.show_scenery = ToggleSwitch("Show Scenery artwork")' in dashboard
+    assert 'self.show_weather = ToggleSwitch("Preview weather artwork")' in dashboard
+    assert 'self.show_scenery = ToggleSwitch("Preview scenery artwork")' in dashboard

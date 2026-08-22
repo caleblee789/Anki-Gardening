@@ -2381,7 +2381,13 @@ class PlantInteractionState:
         valid = set(plant_ids)
         if self.hovered_id not in valid: self.hovered_id = None
         if self.pinned_id not in valid: self.pinned_id = None
-        if self.dragged_id not in valid: self.cancel_placement()
+        # Starter and Collection placement intentionally begin before the
+        # selected plant exists in the scene payload.  A scene refresh must not
+        # silently retire that explicit unplaced session; its placement token
+        # remains the authority until finish_move() or cancellation invalidates
+        # it.  Persisted-plant moves still fail closed when their plant vanishes.
+        if self.dragged_id not in valid and self.drag_origin_slot != -1:
+            self.cancel_placement()
         self.focused_index = -1 if not plant_ids else min(self.focused_index, len(plant_ids) - 1)
     def hover(self, plant_id: str | None) -> None: self.hovered_id = plant_id
     def toggle_pin(self, plant_id: str | None) -> None:

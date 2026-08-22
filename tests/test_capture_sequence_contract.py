@@ -86,6 +86,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
         "_HOME_CAPTURE_LABELS",
         "_DASHBOARD_CAPTURE_LABELS",
         "_PROGRESS_CAPTURE_LABELS",
+        "_REVIEWER_CAPTURE_LABELS",
         "_GROWTH_CHARGE_CAPTURE_LABELS",
         "_NURSERY_CAPTURE_LABELS",
         "_SETTINGS_CAPTURE_LABELS",
@@ -119,7 +120,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 16
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 18
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -169,7 +170,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
             "nursery-weather-scenery",
         )
     assert groups["Settings"] == (
-            "settings-menu-display",
+            "settings-home-preview-disabled",
             "settings-display",
             "settings-display-advanced-open",
             "diagnostics-clean",
@@ -211,10 +212,10 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "collection-several-discovered",
         "collection-no-filter-matches",
         "achievement-completed",
-        "clear-recall-separate-conditions",
+        "clear-recall-canonical-projection",
         "streak-at-risk",
         "streak-missed-day",
-        "streak-reward-earned-next",
+        "streak-achievement-earned-next",
     )
     assert groups["Release stress — Nursery"] == (
         "nursery-item-owned",
@@ -223,11 +224,11 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "nursery-final-row-above-footer",
         "missing-artwork-graphical-fallback",
     )
-    assert groups["Release stress — Settings"] == (
+    assert groups["Release stress — Settings and reviewer rewards"] == (
         "settings-unsaved-changes",
-        "settings-validation-error",
-        "diagnostics-expanded",
-        "production-build-controls-absent",
+        "reviewer-find-common-reduced-motion",
+        "reviewer-find-exceptional",
+        "reviewer-find-stacked-sync",
     )
     assert groups["Accessibility and responsive"] == (
         "reduced-motion-enabled",
@@ -335,10 +336,10 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
 
     assert all(families)
     assert Counter(families) == {
-        "AnkiQt": 15,
+        "AnkiQt": 18,
         "GardenDashboard": 48,
         "GardenProgressDialog": 25,
-        "GardenSettingsDialog": 17,
+        "GardenSettingsDialog": 14,
         "NurseryDialog": 20,
         "CollectibleDetailDialog": 9,
         "FertilizerDialog": 7,
@@ -779,9 +780,37 @@ def test_capture_uses_the_real_starter_then_nurture_state_boundary() -> None:
 
 
 def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
+    capture_source = CAPTURE_PATH.read_text("utf-8")
     achievement = _method_source("_UiFaceCaptureRunner", "_capture_achievement_completed")
+    streak_active = _method_source("_UiFaceCaptureRunner", "_capture_streak_active")
+    streak_state = _method_source("_UiFaceCaptureRunner", "_set_streak_capture_state")
+    streak_receipts = _method_source(
+        "_UiFaceCaptureRunner",
+        "_append_canonical_streak_reward_receipts",
+    )
     missed_streak = _method_source("_UiFaceCaptureRunner", "_capture_streak_missed_day")
-    streak_rewards = _method_source("_UiFaceCaptureRunner", "_capture_streak_reward_states")
+    streak_achievement = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_streak_achievement_states",
+    )
+    reward_history = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_reward_history_capture_fixture",
+    )
+    reviewer_feedback = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_canonical_reviewer_feedback_fixture",
+    )
+    reviewer_capture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_reviewer_find_feedback",
+    )
+    reviewer_wait = _method_source(
+        "_UiFaceCaptureRunner",
+        "_with_capture_reviewer",
+    )
+    capture_home = _method_source("_UiFaceCaptureRunner", "_capture_home_pixmap")
+    capture_now = _method_source("_UiFaceCaptureRunner", "_capture_now")
     collection = _method_source("_UiFaceCaptureRunner", "_capture_collection_several")
     known_species = _method_source(
         "_UiFaceCaptureRunner", "_capture_known_uncollected_species_overview"
@@ -794,20 +823,80 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
         "_UiFaceCaptureRunner", "_capture_collection_loadout_persistence_error"
     )
 
-    assert "stats.reviewed = 100" in achievement
-    assert "stats.correct = 100" in achievement
-    assert "stats.wrong = 0" in achievement
-    assert "stats.completed_due_cards = True" in achievement
-    assert "state.total_reviews = max(1_000" in achievement
-    assert "state.streak_days = max(30" in achievement
-    assert "{7, 14, 30}" in achievement
+    assert "ACHIEVEMENT_DEFINITIONS" in achievement
+    assert "_prepare_canonical_achievement_capture_fixture" in achievement
+    assert "completed_ids=completed_ids" in achievement
+    assert '"reward_summaries"' in achievement
+    assert "claimed_streak_rewards" not in achievement
 
     assert "StreakPresentationState.ENDED" in missed_streak
     assert "presentation.current_days == 0" in missed_streak
     assert "presentation.previous_days == 3" in missed_streak
-    assert "claimed=[7, 14]" in streak_rewards
-    assert '"streak-reward-earned-next"' in streak_rewards
-    assert '"manual_claim_action_supported": False' in streak_rewards
+    assert 'completed_ids=("streak_7",)' in streak_achievement
+    assert 'item.achievement_id == "streak_30"' in streak_achievement
+    assert '"streak-achievement-earned-next"' in streak_achievement
+    assert '"next_growth_bonus_days"' in streak_achievement
+    assert "claimed_streak_rewards" not in streak_achievement
+    assert "RewardReceipt(" in streak_receipts
+    assert 'source="daily_activity"' in streak_receipts
+    assert 'source="achievement" if first_cycle else "weekly_streak"' in streak_receipts
+    assert "_append_canonical_streak_reward_receipts(" in streak_active
+    assert "streak_days=7" in streak_active
+    assert "reward_rules[\"daily_activity\"].awarded_today" in streak_active
+    assert "if reviewed > 0:" in streak_state
+    assert "_append_canonical_streak_reward_receipts(streak_days=days)" in streak_state
+
+    assert "STANDARD_FIND_REGISTRY" in reward_history
+    assert "RewardReceipt(" in reward_history
+    assert "GardenFindOutcome(" in reward_history
+    assert 'stacked_correlation = "capture-review:stacked-achievement"' in reward_history
+    assert "receipt.correlation_id == stacked_correlation" in reward_history
+    assert '"find_morning_dew"' in reward_history
+    assert '"find_fertilizer"' in reward_history
+    assert '"fertilizer_basic"' in reward_history
+    assert '"direct_growth_has_passive_wording"' in reward_history
+    assert "STANDARD_FIND_REGISTRY" in reviewer_feedback
+    assert "GardenFindOutcome(" in reviewer_feedback
+    assert "RewardReceipt(" in reviewer_feedback
+    assert "self.app.engine._queue_reward_feedback(" in reviewer_feedback
+    assert reviewer_feedback.count("self.app.engine._queue_reward_feedback(") == 1
+    assert 'sync_correlation = f"sync:capture-reviewer:{day_value}"' in reviewer_feedback
+    assert 'title="Synced review rewards"' in reviewer_feedback
+    assert 'feedback.message == expected_message' in reviewer_feedback
+    assert 'feedback.amount == expected_total' in reviewer_feedback
+    assert "handler._consolidated_reward_feedback(" in reviewer_feedback
+    assert "all_receipt_groups_share_correlation" in reviewer_feedback
+    assert 'cleanup_holder["callback"] = cleanup' in reviewer_capture
+    assert "on_error=registered_cleanup" in reviewer_capture
+    assert "on_error=on_error" in reviewer_wait
+    assert reviewer_capture.index('cleanup_holder["callback"] = cleanup') < reviewer_capture.index(
+        'config = getattr(self.app, "config", None)'
+    )
+    assert "required_overlays" in capture_home
+    assert "self._pixmap_contains_overlay" in capture_home
+    assert 'method += "-with-overlays"' in capture_home
+    assert 'annotation["required_overlay_pixels_present"]' in capture_now
+    assert "Reviewer reward toast was not present in the captured pixels" in capture_now
+    assert capture_source.count('"Answers: 12 of 20"') == 2
+    assert capture_source.count(
+        '"Non-Again accuracy: 83% of 90% required"'
+    ) == 2
+    assert "At least 20 eligible answers" not in capture_source
+    assert "+80 Growth; +6 Garden Coins; +1 Growth Charge Small; " in capture_source
+    assert "Unlocked Perfect Canopy" in capture_source
+    assert "ReviewerRewardFeedback(" not in capture_source
+    for retired_contract in (
+        "claimed_streak_rewards",
+        "STREAK_REWARD_MILESTONES",
+        "achievement_progress_display",
+        "_credit_currency",
+        "growth_charge_grand",
+        "COIN_DROP_AMOUNT",
+        "1 in 800",
+        "1-in-800",
+        "Streak XP",
+    ):
+        assert retired_contract not in capture_source
 
     assert "][:4]" in collection.replace(" ", "")
     assert "discovered_count == 4" in collection
@@ -1084,7 +1173,8 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert '"qt-shell-with-webview"' in capture_home
     assert '"foreground-screen-region"' in capture_home
     assert '"native-window"' in capture_home
-    assert 'if row[2]["passed"]' in capture_home
+    assert 'bool(row[2]["required_overlays_present"])' in capture_home
+    assert 'row[2]["passed"] or (' in capture_home
     assert "self._audit_home_pixmap(" in capture_now
     assert "expected_width=int(widget.width())" in capture_now
     assert "expected_height=int(widget.height())" in capture_now
@@ -1444,12 +1534,13 @@ def test_secondary_home_capture_retries_on_primary_instead_of_selecting_desktop(
         "generic": True,
         "semantic": False,
         "brand_ratio": 0.0,
+        "required_overlays_present": True,
     }
 
 
 def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> None:
     clear_recall = _method_source(
-        "_UiFaceCaptureRunner", "_capture_clear_recall_conditions"
+        "_UiFaceCaptureRunner", "_capture_clear_recall_projection"
     )
     starter = _method_source(
         "_UiFaceCaptureRunner", "_capture_starter_nursery_after"
@@ -1470,11 +1561,12 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
         "_UiFaceCaptureRunner", "_capture_production_controls_absent"
     )
 
-    assert "stats.reviewed = 12" in clear_recall
-    assert "stats.correct = 10" in clear_recall
-    assert "stats.wrong = 2" in clear_recall
-    assert '("Accuracy", "83% / 90%")' in clear_recall
-    assert '("Anki card answers", "12 / 20")' in clear_recall
+    assert "achievement_presentation" in clear_recall
+    assert "daily_answers=12" in clear_recall
+    assert "again_answers=2" in clear_recall
+    assert 'projection.value_text == "12 of 20"' in clear_recall
+    assert 'projection.reward_summary == "+10 Garden Coins"' in clear_recall
+    assert "achievement_progress_display" not in clear_recall
 
     assert 'button_prefix="Choose"' in starter
     assert 'row="first"' in starter
@@ -2025,7 +2117,7 @@ def test_saved_capture_provenance_never_reads_mutable_next_step_globals() -> Non
     assert "self._active_fixture_expected_label" not in postcondition
 
 
-def test_collection_and_clear_recall_fixtures_restore_on_failure_and_close() -> None:
+def test_collection_and_canonical_achievement_fixtures_restore_on_close() -> None:
     collection_filter = _method_source(
         "_UiFaceCaptureRunner",
         "_capture_collection_filter",
@@ -2036,7 +2128,11 @@ def test_collection_and_clear_recall_fixtures_restore_on_failure_and_close() -> 
     )
     clear_recall = _method_source(
         "_UiFaceCaptureRunner",
-        "_capture_clear_recall_conditions",
+        "_capture_clear_recall_projection",
+    )
+    achievement_fixture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_canonical_achievement_capture_fixture",
     )
     progress_page = _method_source(
         "_UiFaceCaptureRunner",
@@ -2054,11 +2150,15 @@ def test_collection_and_clear_recall_fixtures_restore_on_failure_and_close() -> 
         "if not self._ensure_development_stress_state():"
     )
 
-    assert "achievement_snapshots" in clear_recall
-    assert "for item in state.achievements.values():" in clear_recall
-    assert "item.unlocked = False" in clear_recall
-    assert '"achievement_state_isolated": True' in clear_recall
-    assert "restore_callback=restore" in clear_recall
+    assert "self.app.engine._state_snapshot()" in achievement_fixture
+    assert "self.app.engine._ensure_achievements()" in achievement_fixture
+    assert "self.app.engine._refresh_achievement_progress()" in achievement_fixture
+    assert "achievement_presentations(state)" in achievement_fixture
+    assert "achievement_progress_display" not in achievement_fixture
+    assert "achievement_presentation" in clear_recall
+    assert '"canonical_projection": True' in clear_recall
+    assert "restore_callback=lambda:" in clear_recall
+    assert "_restore_reward_capture_fixture(snapshot)" in clear_recall
     assert "finally:\n                    if restore_callback is not None:" in progress_page
     assert "on_error=restore_callback" in progress_page
 

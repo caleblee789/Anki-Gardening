@@ -56,15 +56,47 @@ def test_dialog_shell_owns_focus_escape_restoration_and_scroll_contracts() -> No
     assert shell.count("scroll.window()") >= 3
 
 
-def test_shared_dialog_state_supports_ready_loading_error_and_retry() -> None:
+def test_shared_dialog_state_supports_transaction_states_and_retry() -> None:
     dialog = _class_source(DASHBOARD, "GardenDialog")
     assert "DialogViewState.READY" in dialog
-    assert "DialogViewState.LOADING" in dialog
-    assert "DialogViewState.ERROR" in dialog
+    assert "dialog_view_policy(state)" in dialog
+    assert 'self.setProperty("dialogBusy", policy.busy)' in dialog
+    assert 'self.setProperty("dialogFeedbackTone", policy.feedback_tone)' in dialog
+    assert "policy.retryable and retry is not None" in dialog
+    assert "if policy.assertive" in dialog
+    assert 'retry_label: str = "Try again"' in dialog
     assert 'self.state_retry = QPushButton("Try again")' in dialog
     assert "AnnouncementPriority.ASSERTIVE" in dialog
     assert "text_column_width(" in dialog
     assert "setMaximumWidth(readable_header_width)" in dialog
+
+
+def test_dialog_close_policy_is_opt_in_and_preserves_reject_overrides() -> None:
+    shell = _class_source(DASHBOARD, "DialogShell")
+    dialog = _class_source(DASHBOARD, "GardenDialog")
+
+    assert "self._close_policy = DialogClosePolicy()" in shell
+    assert "def configure_close_policy" in shell
+    assert "def set_dialog_dirty" in shell
+    assert "def set_dialog_in_flight" in shell
+    assert "def evaluate_close_request" in shell
+    assert "def confirm_dirty_close" in shell
+    assert "def close_request_blocked" in shell
+    assert "def request_close" in shell
+    assert "self.reject()" in _method_source(DASHBOARD, "DialogShell", "request_close")
+    assert "DialogCloseReason.WINDOW_CLOSE" in _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "closeEvent",
+    )
+    assert "DialogCloseReason.ESCAPE" in _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "keyPressEvent",
+    )
+    assert "DialogCloseReason.CLOSE_BUTTON" in dialog
+    assert 'top_close.setProperty("closeBlockedInFlight", protected)' in dialog
+    assert "self.register_pinned_footer(self.footer)" in dialog
 
 
 def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() -> None:
@@ -147,6 +179,12 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     assert 'self.setProperty("actionMode", actions.mode)' in starter
     assert 'self.setProperty("summaryMode", summary.mode)' in starter
     assert 'self.setProperty("layoutMode", mode)' in starter
+    assert "size=64" in starter
+    assert 'floor=64' in starter
+    assert 'floor=240' in starter
+    assert "compact_direction=QBoxLayout.Direction.LeftToRight" in starter
+    assert 'f"Species: {species_name}\\n"' in starter
+    assert '"Species choice is permanent.\\n"' in starter
 
 
 def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None:

@@ -4,11 +4,14 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 
 > Card answers → Growth → plant stages
 >
-> Due-card completion, Anki streak milestones, plant stages, and rare study gifts → Garden Coins → Nursery plants, spaces, supplements, Weather, and Scenery
+> Daily study, seven-day streak rewards, achievements, All Clear, plant stages, and Garden Finds → rewards → Nursery plants, spaces, supplements, Weather, and Scenery
 
 ## Current release highlights
 
-- A clearer first-run path explains that Growth starts after the learner chooses and nurtures a starter; earlier reviews are never backfilled.
+- A clearer first-run path explains that plant Growth and repeatable rewards begin
+  after the learner chooses and nurtures a starter and are not backfilled;
+  reliably reconstructable one-time achievements are handled separately from
+  authoritative review history.
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
@@ -22,8 +25,9 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 | **Card answer** | Choosing an answer button on a card that Anki Garden can count, including learning and relearning steps. | Gives the unfinished plant you nurture **10 base Growth**. |
 | **Nurture** | Choose which unfinished plant receives future Growth. | Switching plants never moves Growth already earned. |
 | **Growth** | A plant's progress toward its next visual stage. | Unlocks Seed, Sprout, Young, Mature, Flowering, and Rare stages. |
-| **Anki streak** | Anki days in a row with at least one card answered. | Gives 0% Growth at day 1, then +5%, +10%, +15%, +20%, and +25% at days 7, 14, 30, 100, and 365. Milestones at 7, 14, 30, and 100 days also award Garden Coins. |
-| **Garden Coins** | A separate spendable reward earned from study goals, milestones, and rare study gifts. | Buys Fertilizer, Growth Charges, release-ready species, garden spaces, Weather, and Scenery. |
+| **Anki streak** | Anki days in a row with at least one eligible answer. | Gives 0% Growth at day 1, then +5%, +10%, +15%, +20%, and +25% at days 7, 14, 30, 100, and 365. Every active day grants 2 Garden Coins; every seventh day grants a 10-Coin reward, with the first cycle integrated into the 7-Day Anki Streak achievement. |
+| **Garden Coins** | A separate spendable reward recorded in the reward and transaction ledgers. | Earned from daily study, seven-day streak rewards, achievements, All Clear, plant stages, environment effects, and Garden Finds; spent in the Nursery. |
+| **Garden Find** | A deterministic chance after an eligible, newly processed answer, with drought protection and a daily limit. | Can grant Garden Coins, direct Growth to the nurtured plant, a consumable, or an unowned Weather or Scenery item. |
 | **Fertilizer** | A timed direct Growth boost for the plant you nurture. | Adds `+1`, `+2`, or `+3` Growth per answer while active. |
 | **Booster Potion** | A rare, non-purchasable study gift kept in your collection. | Adds `+5` Growth per answer for two hours and stacks with Fertilizer. |
 | **Growth Charge** | A stored one-use supplement applied to any owned, planted, unfinished plant. | Adds `+100`, `+500`, or `+2,000` Growth immediately, capped at Rare, without study buffs or passive fan-out. |
@@ -37,12 +41,21 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - The current Anki streak adds a transparent Growth bonus: day 1 gives 0%; days 7, 14, 30, 100, and 365 unlock +5%, +10%, +15%, +20%, and +25% respectively. Missing an Anki day resets the next streak to day 1.
 - Plants keep the existing Seed, Sprout, Young, Mature, Flowering, and Rare stages. The current thresholds are `0`, `500`, `2,500`, `8,000`, `20,000`, and `50,000` Growth.
 - Stage-local feedback appears at 25%, 50%, 75%, and 100%. A plant that reaches Rare pauses; the learner chooses another unfinished plant to continue growing.
-- The current streak is reconstructed from Anki's review history at startup and after sync, so an existing consecutive run is reflected immediately. Previously reached streak Coin milestones are granted once.
-- Each eligible, previously unseen answer runs one deterministic, ordered reward check. At most one reward band wins: Ultra Rare environment `1 in 100,000` before pity, Grand Charge `1 in 30,000`, Very Rare environment `1 in 20,000`, Standard Charge `1 in 8,000`, Rare environment `1 in 5,000`, Booster Potion `1 in 5,000`, Small Charge `1 in 2,000`, then 50 Garden Coins `1 in 800`. Historical reviews are never replayed for drops.
+- The current streak and derivable one-time achievements are reconstructed from authoritative Anki history at startup and after sync. Recurring rewards, Growth, Garden Finds, and the live-only All Clear achievement are never backfilled.
+- After activation, each eligible newly processed answer independently checks the Standard and unowned-environment Garden Find pools. Standard Finds start at `1 in 100`, improve after 40 and 60 misses, and are guaranteed on answer 75 of a drought; at most three Standard Finds may be earned per Anki day. Environment Finds keep their tier odds and Ultra pity, and may stack with a Standard Find and other rewards from the same answer.
+- Standard Find Growth is direct Growth to the answer-time nurtured unfinished plant. It does not receive the streak modifier and does not fan out passively. Normal answer Growth keeps the separate nurtured plus exact-fifths passive allocation described above.
 
 ## Anki-day reward rules
 
 An Anki day follows Anki's configured next-day cutoff. The first card answer on a new Anki day starts or continues the streak.
+
+The first eligible answer of an active Anki day grants 2 Garden Coins. Every
+seventh active-streak day grants 10 Garden Coins. One-time achievements use the
+shared achievement registry and may stack with those recurring rewards. The
+first valid all-due day also unlocks **All Clear** for 5 Garden Coins; the
+ordinary all-due reward remains a separate 10 Garden Coins, plus any equipped
+environment bonus. A single learner-facing result groups every receipt sharing
+the same correlation identity.
 
 “All due” uses a live collection-wide check at the moment of award, not a beginning-of-day snapshot. It includes:
 
@@ -78,9 +91,9 @@ opens the Nursery when the learner chooses that action. It offers one
 release-ready starter for free and begins with a second empty unlocked space.
 Garden naming is optional personalization in Settings; unnamed Gardens display
 **My Garden**. New plants begin with an unambiguous generated name such as
-**Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Supplements &
-Booster Potions**, **Permanent Upgrades**, and **Weather and Scenery** tabs, stage
-artwork previews, and item art.
+**Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Fertilizer and
+Boosters**, **Garden Spaces**, and **Weather and Scenery** tabs, stage artwork
+previews, and item art.
 
 ## Fertilizer and collection
 
@@ -97,7 +110,7 @@ sync still receives the tier active when answered. An expired interval is also
 retained when Fertilizer is purchased again; answers before activation or at or
 after expiry receive no Fertilizer Growth.
 
-Booster Potions are not sold. A rare drop adds one to the collection; using it
+Booster Potions are not sold. A Garden Find can add one to the collection; using it
 on the nurtured unfinished plant grants `+5` Growth per eligible answer for two
 hours. It stacks with Fertilizer, and using another Potion extends the active
 Booster Potion rather than discarding its remaining time.
@@ -111,25 +124,29 @@ only to that plant without passive fan-out or study buffs. Normal stage and
 Coin rewards still apply. A failed save restores Growth, inventory, rewards,
 feedback, and the replay ledger.
 
-## Weather, Scenery, and rare rewards
+## Weather, Scenery, and Garden Finds
 
 Exactly one Weather and one Scenery may be equipped, and their passives stack.
 The Nursery sells one-time Common and Uncommon choices but never auto-equips a
 purchase. The Garden Progress cottage's **Weather and Scenery** collection tab shows the active
 loadout, every effect, how each item is earned, exact drop odds, and Ultra pity.
-Drop-only art remains a silhouette until unlocked while its rules stay visible.
+Find-only art remains a silhouette until unlocked while its rules stay visible.
 Separate visibility switches hide either visual layer without disabling its
 equipped passive.
 
 Weather passives remain deliberately small: limited daily Growth, a small
-all-due bonus, or a modest Booster Potion duration extension. Scenery can be stronger,
-with the most powerful effects reserved for Very Rare and Ultra Rare review
-drops. Daily scenery gifts require a card answer that Anki day, consume that
-answer's one reward slot, and never backfill missed days. Ultra odds improve in
-steps after 75,000 misses to a maximum `1 in 50,000`; there is no guaranteed
-drop, and only an Ultra environment resets the pity counter. Completed Rare
-environment tiers fall back to a Standard Charge; completed Very Rare or Ultra
-tiers fall back to a Grand Charge.
+all-due bonus, or a modest Booster Potion duration extension. Scenery can be
+stronger, including one daily gift after an eligible answer. That gift has its
+own durable reward identity and does not suppress either Garden Find pool.
+
+The Standard Find pool contains Garden Coin awards, 40/60/100 direct Growth,
+Small and Standard Growth Charges, Basic Fertilizer (shown as **Rich Compost**),
+a Booster Potion, and the exceptional 40-Coin Garden Treasury. Selection is
+registry-driven after the current drought chance succeeds. The independent
+environment pool tests unowned items rarest-first at `1 in 100,000`,
+`1 in 20,000`, and `1 in 5,000`. Ultra odds improve in steps after 75,000
+misses to a maximum `1 in 50,000`; there is no guarantee, and only an Ultra
+environment resets that pity counter.
 
 The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia—and up to six garden spaces. The Nursery lists a species only after its complete six-stage Verdant Twilight line is release-ready; all ten configured species are ready in the current bundle. Existing owned species remain usable even when they are not currently stocked. Moving a plant to Collection preserves its Growth and story. Species cost 100–600 Garden Coins, and spaces three through six cost 150, 300, 500, and 800 Garden Coins.
 
@@ -149,15 +166,14 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. The current state is schema 20. It stores exact per-plant
-passive fifths, canonical daily study-source and target-allocation ledgers, and
-bounded completed Growth Charge requests alongside the resumable six-step
-onboarding state, purchase replay ledger, collectible entitlements, canonical
-Garden loadout, Growth Charges, daily passive claims, Ultra pity, deterministic
-reward seed/drop history, and bounded scheduler-day review state. Schema 19 is
-backed up before migration; current-day Growth that cannot be safely split is
-kept in an explicit stale legacy bucket until scheduler rollover. Failed reads
-or writes remain fail-closed.
+add-on upgrades. The current state is schema 21. It retains exact per-plant
+passive fifths and daily source/allocation accounting, and adds the canonical
+reward event ledger, grouped receipts, stable processed-answer identities,
+achievement reconstruction/finalization markers, Garden Find drought and daily
+counts, bounded visible Find outcomes, and the Basic Fertilizer consumable.
+Purchase and Growth Charge replay ledgers, onboarding, loadout, entitlements,
+and scheduler-day review state remain intact. Schema 20 is backed up before its
+reward-state migration. Failed reads or writes remain fail-closed.
 
 ## Interface
 
@@ -184,15 +200,11 @@ V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
-current-only file set and a ratcheted 78.25 MiB archive ceiling for the complete
-schema-20 scenery, plant, and planter library.
+current-only file set and the release archive size ceiling for the complete
+schema-21 scenery, plant, and planter library.
 
-The current 2.1.0 production candidate contains 269 files and is 81,794,074
-bytes (78.00 MiB), SHA-256
-`285d5314a5901ee0d55f0701dd8460af874aa08f4644434bd674a614b77c348b`.
-The complete package suite and explicit production build passed the
-deterministic-content, source/archive-parity, ZIP-integrity, and 78.25 MiB gates
-without rewriting or removing manifest-owned artwork.
+The accepted file count, byte size, and SHA-256 are recorded from the final
+rebuilt archive only after the exact-package tests and complete UI capture pass.
 
 ## Troubleshooting
 

@@ -279,7 +279,7 @@ def test_purchase_quotes_share_exact_current_terms(
             None,
             "Unlock Garden Bed 3",
             PurchaseAction.UNLOCK,
-            {"plants", "sequence"},
+            {"unlocked_beds", "available_bed", "plants"},
         ),
     ),
 )
@@ -359,6 +359,17 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     assert replacement.secondary_label == "Keep current"
     assert replacement_quote.current_seconds_remaining == 2_700
 
+    failed_replacement = purchase_presentation(
+        replacement_quote,
+        status=PurchaseStatus.PERSISTENCE_FAILURE,
+    )
+    assert failed_replacement.secondary_label == "Cancel"
+    assert failed_replacement.balance_after == replacement_quote.balance_before
+    assert next(
+        fact.value for fact in failed_replacement.facts
+        if fact.key == "fertilizer"
+    ) == "Basic Fertilizer (unchanged)"
+
     extended = engine.confirm_purchase(PurchaseRequest.from_quote(extension_quote))
     assert extended.success
     assert extended.message == (
@@ -384,7 +395,7 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
             "Purchase failed",
             "Try Again",
             True,
-            4_970,
+            5_000,
         ),
         (
             PurchaseStatus.ITEM_UNAVAILABLE,
@@ -418,6 +429,14 @@ def test_purchase_error_presentations_have_distinct_recovery_actions(
     assert presentation.show_cost is show_cost
     assert presentation.balance_after == balance_after
     assert presentation.terminal is (status is not PurchaseStatus.PERSISTENCE_FAILURE)
+    if status is PurchaseStatus.PERSISTENCE_FAILURE:
+        assert presentation.outcome == (
+            "Purchase could not be saved. No Garden Coins were spent and no item was added."
+        )
+        facts = {fact.key: fact.value for fact in presentation.facts}
+        assert facts["inventory"] == "0 (unchanged)"
+        assert facts["retry_preview"] == "0 → 1"
+        assert presentation.badges == ("Retry preview",)
     if presentation.terminal:
         assert presentation.badges == ()
 
@@ -770,6 +789,8 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "except Exception:" in commit
     assert "PurchaseStatus.PERSISTENCE_FAILURE" in commit
     assert "no Garden Coins were spent" in commit
+    assert "self.presentation = purchase_presentation(" in commit
+    assert "ignore_status=True" in commit
     assert constructor.index("root.addWidget(self.status)") < constructor.index(
         "root.addWidget(self.content_scroll, 1)"
     )
@@ -846,6 +867,9 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
         def setToolTip(self, text: str) -> None:
             self.tooltip = text
 
+        def setProperty(self, name: str, value: str) -> None:
+            setattr(self, name, value)
+
     status = _Status()
     receipt_actions = SimpleNamespace(show=lambda: setattr(receipt_actions, "visible", True))
     receipt_action = SimpleNamespace(
@@ -860,8 +884,12 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             "PurchaseDisposition": PurchaseDisposition,
             "PurchaseKind": PurchaseKind,
             "PurchaseOutcome": PurchaseOutcome,
+            "PurchasePresentation": object,
             "_learner_text": lambda text: text,
             "format_status_label": lambda text: str(text).replace("_", " ").title(),
+            "set_semantic_role": lambda *_args, **_kwargs: None,
+            "SemanticRole": SimpleNamespace(BANNER="banner"),
+            "FeedbackTone": SimpleNamespace(SUCCESS="success"),
         },
     )
     announcements: list[str] = []
@@ -877,10 +905,13 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             ),
         ),
         outcome,
+        SimpleNamespace(facts=(), target_name=""),
     )
 
     assert status.text == (
+        "Purchase complete\n"
         "Soft Breeze unlocked. Preview or equip it in Collection.\n"
+        "Ownership: Owned · Not equipped\n"
         "Spent: 100 Garden Coins · Balance: 400 Garden Coins"
     )
     assert "Purchase complete" in status.accessible_description
@@ -1123,8 +1154,12 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
             )
         },
     )
+    properties: dict[str, str] = {}
     nursery = SimpleNamespace(
-        _show_result=lambda ok, message: results.append((ok, message))
+        _show_result=lambda ok, message: results.append((ok, message)),
+        status=SimpleNamespace(
+            setProperty=lambda name, value: properties.__setitem__(name, value)
+        ),
     )
 
     try:
@@ -1136,6 +1171,10 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
     assert results and results[0][0] is False
     assert message_fragment in results[0][1]
     assert "reopen the Nursery" in results[0][1]
+    assert properties == (
+        {"transactionPresentation": "committed-result-with-refresh-failure"}
+        if committed else {}
+    )
 
 
 def test_production_addon_ignores_capture_environment_without_build_capability(

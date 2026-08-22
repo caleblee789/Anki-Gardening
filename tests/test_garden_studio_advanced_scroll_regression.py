@@ -790,7 +790,7 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     application.processEvents()
 
 
-def test_live_qt_settings_details_rewrap_to_full_height_when_available(
+def test_live_qt_settings_details_stay_bounded_and_scroll_when_needed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
@@ -817,6 +817,8 @@ def test_live_qt_settings_details_rewrap_to_full_height_when_available(
         )
     )
     settings.show()
+    assert settings.footer.isVisible()
+    assert settings.settings_footer_actions.isVisible()
 
     settings.resize(720, 620)
     application.processEvents()
@@ -835,11 +837,12 @@ def test_live_qt_settings_details_rewrap_to_full_height_when_available(
         + 16
     )
 
-    assert narrow_height > wide_height
-    assert narrow_height >= required_height
+    assert 96 <= wide_height <= 240
+    assert 96 <= narrow_height <= 240
+    assert narrow_height <= required_height
     assert (
         settings.debug_report.verticalScrollBarPolicy()
-        == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
     regions = settings.active_vertical_scroll_regions()
     assert len(regions) == 1

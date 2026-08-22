@@ -7,10 +7,11 @@ have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
-visual acceptance. Current source declares capture contract v14 with 181
-ordered surfaces. The v12 macOS Qt run at
+visual acceptance. Current source declares capture contract v18 with 191
+ordered surfaces; its required 24-sheet final capture remains pending. The v12
+macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
-the complete 157-of-157 pre-purchase-overhaul baseline. The v14 current-source
+the complete 157-of-157 pre-purchase-overhaul baseline. The historical v14
 run at `build/ui-face-captures/capture-sequence-20260817-003223/20260817-003226`
 is validator-clean at 181/181; neither run closes native-platform,
 human-accessibility, or full visual-acceptance gates.

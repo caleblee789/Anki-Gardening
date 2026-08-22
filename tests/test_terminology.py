@@ -20,11 +20,15 @@ def test_gameplay_terms_explain_source_and_progression_effect() -> None:
     assert "Growth already earned stays put" in ACTIVE_PLANT_EXPLANATION
     assert "study days in a row" in ANKI_STREAK_EXPLANATION
     assert "up to 25% Growth" in ANKI_STREAK_EXPLANATION
+    assert "Garden Coins" not in ANKI_STREAK_EXPLANATION
+    assert "first Anki card answer Garden can count each Anki day" in GARDEN_CURRENCY_EXPLANATION
+    assert "one-time achievements" in GARDEN_CURRENCY_EXPLANATION
+    assert "Garden Finds" in GARDEN_CURRENCY_EXPLANATION
     assert "Spend them in the Nursery" in GARDEN_CURRENCY_EXPLANATION
     assert "Basic adds 1" in FERTILIZER_EXPLANATION
 
 
-def test_current_user_copy_uses_anki_streak_instead_of_vague_consistency() -> None:
+def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
     paths = [
         ROOT / "README.md",
         ROOT / "ankigarden" / "config.md",
@@ -36,12 +40,14 @@ def test_current_user_copy_uses_anki_streak_instead_of_vague_consistency() -> No
         ROOT / "ankigarden" / "ui" / "scene.py",
     ]
     combined = "\n".join(path.read_text("utf-8") for path in paths)
+    dashboard = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text("utf-8")
 
-    assert "consistency" not in combined.casefold()
     assert "Anki streak" in combined
     assert "Nurture" in combined
     assert "All due cards" in combined
     assert "Vitality" not in combined
+    for category in ("Consistency", "Study Volume", "Recall", "Completion"):
+        assert f'"{category}"' in dashboard
 
 
 def test_readme_has_a_term_to_effect_reference_table() -> None:

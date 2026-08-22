@@ -161,7 +161,9 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                 duration="Timed; the exact remaining duration appears on the plant.",
                 stacking="Inventory quantities stack; active duration extends.",
                 replacement="Replaces nothing.",
-                unlock_requirement="Purchase in the Nursery or earn from review drops.",
+                unlock_requirement=(
+                    "Purchase in the Nursery or receive as a Garden Find."
+                ),
             ),
             source_kind="growth_item",
             source_id="booster_potion",

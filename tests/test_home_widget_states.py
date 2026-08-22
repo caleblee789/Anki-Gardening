@@ -16,6 +16,7 @@ from ankigarden.ui.home_widget import (
     build_home_widget_success_data,
     render_home_widget,
 )
+from ankigarden.models.state import Achievement
 from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
@@ -62,8 +63,14 @@ def test_loading_state_renders_spinner_placeholder() -> None:
     assert 'data-state="loading"' in html
     assert 'data-testid="home-loading"' in html
     assert 'role="status" aria-live="polite"' in html
+    assert 'aria-busy="true"' in html
+    assert 'role="progressbar" aria-label="Loading garden preview"' in html
     assert 'class="ag-home__state"' in html
-    assert "Loading overview…" in html
+    assert "Loading garden preview…" in html
+    assert 'data-testid="home-open"' in html
+    assert 'data-testid="home-retry"' in html
+    assert "Open Garden" in html
+    assert "Retry preview" in html
 
 
 def test_empty_state_renders_empty_message() -> None:
@@ -85,9 +92,23 @@ def test_recoverable_error_renders_retry_action() -> None:
 
     assert 'data-state="error"' in html
     assert "Network timeout" in html
+    assert "Garden preview unavailable" in html
+    assert "The preview could not be generated, but your garden is still available." in html
+    assert 'data-testid="home-open"' in html
     assert 'data-testid="home-retry"' in html
     assert 'role="alert"' in html
-    assert 'aria-label="Retry loading overview"' in html
+    assert 'aria-label="Retry garden preview"' in html
+    assert 'class="ag-home__secondary"' in html
+
+
+def test_missing_preview_payload_keeps_open_and_retry_recovery_paths() -> None:
+    html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success"))
+
+    assert 'data-state="error"' in html
+    assert "Garden preview unavailable" in html
+    assert html.count('data-testid="home-open"') == 1
+    assert html.count('data-testid="home-retry"') == 1
+    assert "The preview could not be generated, but your garden is still available." in html
 
 
 def test_partial_state_renders_available_data_and_error_banner() -> None:
@@ -118,14 +139,18 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
     assert 'data-testid="home-active-name"' not in html
     assert 'data-testid="home-growth"' not in html
-    assert 'data-testid="home-currency"' not in html
-    assert 'data-testid="home-streak"' not in html
+    assert 'data-testid="home-currency">35 coins</span>' in html
+    assert 'data-testid="home-streak">7-day streak</span>' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
     assert 'data-testid="home-accessible-summary"' in html
     assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
     assert 'role="button" tabindex="0"' in html
-    assert 'aria-label="Open My Garden. Moss, Seed — 30 / 500 Growth"' in html
+    assert (
+        'aria-label="Open My Garden. Moss, Seed — 30 / 500 Growth. 12 answers today. '
+        '7-day streak. 35 coins"'
+        in html
+    )
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "max-width:720px" in html
@@ -402,11 +427,11 @@ def test_success_state_is_garden_wide_and_does_not_duplicate_selected_plant_deta
     assert "white-space:nowrap" in html
 
 
-def test_streak_is_available_to_accessibility_without_visual_metric_chrome() -> None:
+def test_streak_is_visible_and_available_to_accessibility() -> None:
     base = _sample_data()
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=base))
     assert "7-day streak" in html
-    assert 'data-testid="home-streak"' not in html
+    assert 'data-testid="home-streak">7-day streak</span>' in html
     assert "data-tooltip" not in html
     assert html.count('data-testid="home-open"') == 1
 
@@ -538,10 +563,18 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
         )],
         active_plant_id="plant-1",
         selected_weather="breeze",
-        streak_days=7,
+        streak_days=6,
         currency_balance=25,
         total_reviews=50,
         unlocked_slots=2,
+        achievements={
+            "streak_7": Achievement(
+                achievement_id="streak_7",
+                name="7-Day Anki Streak",
+                description="Reach a 7-day active Anki streak.",
+                progress=6 / 7,
+            ),
+        },
     )
 
     data = build_home_widget_success_data(state=state, reviews_today=3, scene_items=[])
@@ -553,6 +586,10 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert data.active_next_stage == "young"
     assert 'data-testid="home-support" title="Briar, Sprout — 100 / 2,000 Growth"' in html
     assert "Briar, Sprout stage, 100 of 2000 Growth" in html
+    assert 'data-testid="home-today-answers">3 answers today</span>' in html
+    assert html.count('data-testid="home-nearest-achievement"') == 1
+    assert "7-Day Anki Streak · 6 of 7" in html
+    assert "Reward: +10 Garden Coins" in html
 
 
 def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured() -> None:
@@ -681,7 +718,7 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert "display:none" in html
     assert (
         "Watering can: Rose is nurtured and receives full Growth from future Anki card "
-        "answers; other eligible planted plants receive 20 percent of that post-buff Growth"
+        "answers; other eligible planted plants receive 20 percent of that Growth after bonuses"
         in html
     )
 

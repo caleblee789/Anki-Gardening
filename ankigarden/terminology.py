@@ -3,7 +3,7 @@
 GROWTH_EXPLANATION = (
     "Growth is plant progress. Each card answer Garden can count starts with 10 base Growth. The "
     "nurtured plant receives full Growth. Other planted plants receive 20 percent of the "
-    "nurtured plant's post-buff Growth. Anki streaks, Fertilizer, Booster Potions, equipped "
+    "nurtured plant's Growth after bonuses. Anki streaks, Fertilizer, Booster Potions, equipped "
     "Weather, and Scenery contribute to study Growth once; Growth Charges apply only to "
     "their selected plant."
 )
@@ -23,8 +23,9 @@ ALL_DUE_EXPLANATION = (
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
-    "Garden Coins come from plant stages, Anki streak milestones, finishing all due cards, "
-    "and rare review gifts. Spend them in the Nursery on plants, supplements, permanent "
+    "Garden Coins come from the first Anki card answer Garden can count each Anki day, every "
+    "seventh consecutive counted day, finishing all due cards, plant stages, one-time achievements, "
+    "and some Garden Finds. Spend them in the Nursery on plants, supplements, permanent "
     "upgrades, Weather, and Scenery."
 )
 
@@ -35,6 +36,6 @@ FERTILIZER_EXPLANATION = (
 
 PROGRESSION_SUMMARY = (
     "Card answers add Growth to the plant you nurture. Streaks, supplements, Weather, and "
-    "Scenery can add bonus Growth, while stages, streak milestones, all-due completion, and "
-    "rare gifts earn Garden Coins."
+    "Scenery can add bonus Growth, while daily activity, seven-day streak cycles, all-due "
+    "completion, stages, one-time achievements, and Garden Finds can earn rewards."
 )

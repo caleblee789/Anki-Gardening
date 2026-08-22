@@ -97,7 +97,7 @@ def onboarding_state_display(
             OnboardingStep.COMPLETION: (
                 OnboardingState.NURTURED_PLANT_ASSIGNED,
                 "Nurtured plant",
-                "Explore Garden",
+                "Return to Anki",
                 True,
                 False,
                 6,

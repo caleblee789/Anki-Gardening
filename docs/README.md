@@ -1,10 +1,13 @@
 # Documentation index
 
-The current schema 18 product has one progression path: card answers create
-Growth for the unfinished plant the learner chooses to **Nurture**; Anki streak
-tiers, Fertilizer, Booster Potions, equipped Weather and Scenery, and one-use
-Growth Charges can add Growth; study goals, milestones, and deterministic rare
-study gifts award **Garden Coins** or collectible items.
+The current schema-21 product has one normal-answer progression path: the plant
+the learner chooses to **Nurture** receives the full committed Growth award and
+every other planted unfinished plant receives an exact 20% allocation carried
+in fifths. Streak tiers, Fertilizer, Booster Potions, equipped Weather and
+Scenery, and one-use Growth Charges can add Growth. Daily and seventh-day
+rewards, one-time achievements, All Clear, stages, environment gifts, and
+Garden Finds grant **Garden Coins** or consumables through one reward ledger.
+Garden Find Growth is the direct-to-nurtured exception and never fans out.
 
 The full Garden is scene-first. Its integrated named header contains Garden
 Progress, Collection, and Settings; its three metric buttons open focused
@@ -15,24 +18,25 @@ full-Garden landmark; the compact home preview remains noninteractive.
 
 - `feature-evidence-matrix.md`: current feature contracts and automated/live
   release gates.
-- `comprehensive-qa-report.md`: the current candidate's release status and
-  exact-package acceptance requirements.
+- `comprehensive-qa-report.md`: historical frozen-candidate status and its
+  then-current exact-package acceptance boundary.
 - `display-validation-matrix.md`: prominent visible values and their
   authoritative sources.
 - `e2e_display_assertions.md`: isolated-Anki journeys for the rebuilt archive.
-- `ui/data_contracts.md`: schema 18 persistence, migration, onboarding, purchase replay, environment/drop
-  catalog, catalog readiness, streak tiers, and all-due definition.
+- `ui/data_contracts.md`: schema-21 persistence and SQLite migration, reward
+  identity/stacking, achievements, Garden Finds, Growth accounting, purchase
+  replay, catalog readiness, streak tiers, and the all-due definition.
 - `ui/state_scenarios.md`: fresh starter, Nursery, Growth, Fertilizer, movement,
   Story, Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
-  accessibility, and v14/181 capture requirements; the validator-clean v12 run
-  is retained as the pre-purchase-overhaul baseline.
-- `ui-surface-inventory.md`: current ordered 181-surface source inventory plus
+  accessibility, and the release capture requirements; older validator runs
+  are retained only as pre-overhaul baselines.
+- `ui-surface-inventory.md`: current ordered 191-surface source inventory plus
   explicitly historical v8/v9 reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
   accessibility, package-static evidence, and frozen-production acceptance
-  boundary; it is not current v10 evidence.
+  boundary; it is not current v18 evidence.
 - `ui/surface-copy-audit-2.1.0.md`: historical v7 copy/polish ledger and its
   relationship to the historical v8 capture contract.
 - `planter-family-geometry-baseline.md`: canonical six-space planter and plant

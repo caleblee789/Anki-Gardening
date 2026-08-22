@@ -577,9 +577,9 @@ def test_renderer_families_are_derived_from_source_for_all_191_faces() -> None:
     assert Counter(families.values()) == Counter({
         "GardenDashboard": 48,
         "GardenProgressDialog": 25,
-        "GardenSettingsDialog": 17,
+        "GardenSettingsDialog": 14,
         "NurseryDialog": 20,
-        "AnkiQt": 15,
+        "AnkiQt": 18,
         "CollectibleDetailDialog": 9,
         "FertilizerDialog": 7,
         "StarterConfirmationDialog": 6,
@@ -613,7 +613,8 @@ def test_state_evidence_contracts_are_derived_for_all_191_faces() -> None:
         "progress": 17,
         "home": 15,
         "nursery": 15,
-        "settings": 10,
+        "settings": 7,
+        "reviewer": 3,
         "dialog": 31,
         "collectible-detail": 4,
     })
@@ -912,7 +913,7 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
     assert isinstance(records, list)
 
     substitutions = (
-        ("reduced-motion-enabled", "settings-menu-display"),
+        ("reduced-motion-enabled", "settings-home-preview-disabled"),
         ("keyboard-focus-state", "narrow-window-responsive"),
     )
     for target_label, source_label in substitutions:
@@ -1337,7 +1338,7 @@ def test_manifest_rejects_solid_or_near_blank_decoded_pixels(tmp_path: Path) -> 
 def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
-    streak_index = contract.labels.index("streak-reward-earned-next")
+    streak_index = contract.labels.index("streak-achievement-earned-next")
     resize_index = contract.labels.index("resize-progress-default")
     screenshots = payload["screenshots"]
     assert isinstance(screenshots, list)

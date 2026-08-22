@@ -287,9 +287,9 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
-    # Overview and its nested stage strip were removed; the Growth Charge
-    # confirmation contributes the one new intentional scroll owner.
-    assert len(scroll_constructors) == 16
+    # The Collection category-chip scroller is gone; its narrow layout uses
+    # native dropdowns, so every remaining scroll owner is vertical content.
+    assert len(scroll_constructors) == 15
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper
@@ -666,17 +666,56 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
 def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths() -> None:
     constructor = _segment(_method_node("CollectibleDetailDialog", "__init__"))
     responsive = _segment(_method_node("CollectibleDetailDialog", "resizeEvent"))
+    sync_dirty = _segment(_method_node("CollectibleDetailDialog", "_sync_dirty_state"))
+    apply_draft = _segment(_method_node("CollectibleDetailDialog", "_apply_draft"))
+    cancel_preview = _segment(_method_node("CollectibleDetailDialog", "_cancel_preview"))
+    unavailable_tile = _segment(
+        _method_node("CollectibleDetailDialog", "_unavailable_option_tile")
+    )
+    rebuild_options = _segment(
+        _method_node("CollectibleDetailDialog", "_rebuild_options")
+    )
+    refresh_preview = _segment(
+        _method_node("CollectibleDetailDialog", "_refresh_preview")
+    )
 
     assert "self.effects_advanced_layout = QVBoxLayout(self.effects_advanced)" in constructor
-    assert 'QLabel("Included appearance")' in constructor
-    assert (
-        '"Preview Clear Skies with Verdant Twilight. Apply changes to save."'
-        in constructor
-    )
-    assert 'QPushButton("Preview included appearance")' in constructor
-    assert "The appearance is not saved until Apply changes is selected." in constructor
+    assert 'QLabel("Preview controls")' in constructor
+    assert "Reset the live preview to your currently equipped appearance." in constructor
+    assert 'QPushButton("Reset preview")' in constructor
+    assert "Discard the local preview and restore the currently equipped appearance." in constructor
     assert "_set_button_variant(restore, BUTTON_VARIANT_SECONDARY)" in constructor
+    assert "self.unsaved.setWordWrap(True)" in constructor
+    assert '"collection-loadout.actions"' in constructor
+    assert "compact_direction=QBoxLayout.Direction.TopToBottom" in constructor
     assert "effects_advanced_layout.setDirection" not in responsive
+    assert "self.loadout_footer_responsive.evaluate(content_width)" in responsive
+    assert "Appearance changes could not be saved. No equipped items changed." in sync_dirty
+    assert '"Saving appearance changes…"' in sync_dirty
+    assert '"Saving…"' in sync_dirty
+    assert '"preview" if dirty else "committed-state"' in sync_dirty
+    assert 'else "Try again"' in sync_dirty
+    assert "if self._loadout_failure" in sync_dirty
+    assert '"Discard preview" if self._loadout_failure' in sync_dirty
+    assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
+    assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
+    assert "The live preview is still available to retry or discard." in apply_draft
+    assert "if self._loadout_failure:" in cancel_preview
+    assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
+        "self.request_close(DialogCloseReason.CANCEL_BUTTON)"
+    )
+    assert 'tile.setProperty("collectionState", "unavailable")' in unavailable_tile
+    assert "no longer offered" in unavailable_tile
+    assert "_environment_placeholder_pixmap(164, 92)" in unavailable_tile
+    assert "SemanticRole.MISSING_ART" in unavailable_tile
+    assert "unavailable_decorations" in rebuild_options
+    assert 'self._unavailable_option_tile("decoration", str(item_id))' in rebuild_options
+    assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
+    assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview
+    assert 'f"{format_status_label(self._draft_decoration)} (Unavailable)"' in refresh_preview
+    assert '"resolve_decoration_asset"' in refresh_preview
+    assert '"decoration": self._asset_payload(decoration)' in refresh_preview
+    assert "def resolve_preview_asset(" in refresh_preview
 
 
 def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_field() -> None:
@@ -741,6 +780,13 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     plant_preview = _segment(_function_node("_asset_preview_label"))
     populated_preview = _segment(_function_node("_populate_asset_preview"))
     item_preview = _segment(_function_node("_item_preview_label"))
+    purchase_artwork = _segment(
+        _method_node("PurchaseConfirmationDialog", "_populate_artwork")
+    )
+    purchase_target = _segment(
+        _method_node("PurchaseConfirmationDialog", "_populate_target")
+    )
+    nursery_refresh = _segment(_method_node("NurseryDialog", "refresh"))
     nursery_item = _segment(_method_node("NurseryDialog", "_item_artwork"))
     plant_card = _segment(_method_node("PlantInfoCard", "set_selected"))
     story = _segment(_method_node("PlantStoryDialog", "refresh"))
@@ -758,12 +804,21 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
 
     for source in (plant_preview, populated_preview, item_preview, plant_card):
         assert "_botanical_placeholder_pixmap(" in source
+    assert "_purchase_placeholder_pixmap(" in item_preview
+    assert "placeholder_kind=placeholder_kind" in nursery_item
+    assert "PurchaseKind.FERTILIZER" in nursery_item
+    assert "PurchaseKind.GROWTH_CHARGE" in nursery_item
     assert "_item_preview_label(" in nursery_item
     assert "_populate_asset_preview(" in story
+    assert "if missing_art:" in purchase_artwork
+    assert "if not artwork_available:" in purchase_artwork
+    assert "SemanticRole.MISSING_ART" in purchase_target
+    assert "_environment_placeholder_pixmap(350, 192)" in nursery_refresh
 
     assert "label.setText(stage_name)" not in plant_preview
     assert "target.setText(fallback_text)" not in populated_preview
     assert 'label.setText("◇")' not in item_preview
+    assert 'self.environment_feature_art = QLabel("◇")' not in nursery_refresh
     assert "label.setText(accessible_name)" not in nursery_item
     assert 'self.artwork.setText("◇")' not in plant_card
     assert 'stage_preview.setText("?")' not in story

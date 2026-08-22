@@ -470,24 +470,55 @@ def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears
     assert notices.current.message == ""
 
 
-def test_reviewer_reward_feedback_prioritizes_one_event_and_consumes_exactly_that_id(
+def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata(
     monkeypatch,
 ):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
     reviewer_module.mw = aqt_mod.mw
+    GardenFindOutcome = importlib.import_module(
+        "ankigarden.models.state"
+    ).GardenFindOutcome
+    standard_pool_version = importlib.import_module(
+        "ankigarden.garden_finds"
+    ).STANDARD_POOL_VERSION
     events = [
         SimpleNamespace(
-            event_id="growth:1", kind="growth_milestone", occurred_at="2026-08-10T10:00:00"
+            event_id="reward-summary:answer:base",
+            kind="reward_summary",
+            title="Review rewards",
+            message="+10 Growth; +2 Garden Coins",
+            occurred_at="2026-08-10T10:00:00",
+            amount=12,
         ),
         SimpleNamespace(
-            event_id="coins:1", kind="coin_drop", occurred_at="2026-08-10T10:01:00"
-        ),
-        SimpleNamespace(
-            event_id="booster:1", kind="booster_drop", occurred_at="2026-08-10T09:59:00"
+            event_id="reward-summary:answer:abc",
+            kind="garden_find",
+            title="Garden Find: Morning Dew",
+            message="+40 Growth; +4 Garden Coins; Unlocked All Clear",
+            occurred_at="2026-08-10T10:01:00",
+            amount=44,
+            correlation_id="answer:abc",
+            asset_category="ui",
+            asset_key="growth",
         ),
     ]
-    shown: list[str] = []
+    outcome = GardenFindOutcome(
+        answer_key="abc",
+        scheduler_day="2026-08-10",
+        status="hit",
+        pool_id="standard",
+        pool_version=standard_pool_version,
+        occurred_at="2026-08-10T10:01:00",
+        reward_id="find_morning_dew",
+        reward_type="growth",
+        amount=40,
+        display_name="Morning Dew",
+        description="+40 Growth",
+        tier="Common",
+        artwork_ref="growth",
+    )
+    shown: list[object] = []
     consumed: list[tuple[str, ...]] = []
     engine = SimpleNamespace(
         config=SimpleNamespace(
@@ -496,14 +527,25 @@ def test_reviewer_reward_feedback_prioritizes_one_event_and_consumes_exactly_tha
         peek_feedback=lambda: list(events),
         consume_feedback=lambda *, event_ids: consumed.append(tuple(event_ids)),
     )
-    handler = reviewer_module.ReviewerHookHandler(engine, SimpleNamespace())
-    handler._show_reward_toast = lambda event: shown.append(event.event_id) or True
+    storage = SimpleNamespace(
+        state=SimpleNamespace(recent_reward_receipts=[], garden_find_outcomes={}),
+        recent_garden_find_outcomes=lambda *, limit: (outcome,),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    handler._show_reward_toast = lambda event: shown.append(event) or True
 
     handler._show_optional_progress_feedback()
 
-    assert shown == ["booster:1"]
-    assert consumed == [("booster:1",)]
-    assert handler._last_notified_event == "booster:1"
+    assert len(shown) == 1
+    feedback = shown[0]
+    assert feedback.event_ids == tuple(event.event_id for event in events)
+    assert feedback.title == "Garden Find: Morning Dew"
+    assert feedback.message == "+50 Growth; +6 Garden Coins; Unlocked All Clear"
+    assert feedback.reward_detail == "+40 Growth"
+    assert feedback.tier == "Common"
+    assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
+    assert consumed == [tuple(event.event_id for event in events)]
+    assert handler._last_notified_event == feedback.event_id
 
 
 def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatch):
@@ -526,6 +568,66 @@ def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatc
 
     assert consumed == []
     assert handler._last_notified_event == ""
+
+
+def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    first = SimpleNamespace(
+        event_id="reward:first",
+        kind="reward_summary",
+        message="+2 Garden Coins",
+        occurred_at="2026-08-10T10:00:00",
+        amount=2,
+    )
+    second = SimpleNamespace(
+        event_id="reward:second",
+        kind="reward_summary",
+        message="+40 Growth",
+        occurred_at="2026-08-10T10:01:00",
+        amount=40,
+    )
+    pending = [first]
+    consume_attempts: list[tuple[str, ...]] = []
+
+    def fail_consume(*, event_ids):
+        consume_attempts.append(tuple(event_ids))
+        raise RuntimeError("temporary persistence failure")
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(value=lambda _key, _default=None: True),
+        peek_feedback=lambda: list(pending),
+        consume_feedback=fail_consume,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(recent_reward_receipts=[], garden_find_outcomes={}),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    shown: list[object] = []
+    handler._show_reward_toast = lambda event: shown.append(event) or True
+
+    handler._show_optional_progress_feedback()
+    pending.append(second)
+    handler._show_optional_progress_feedback()
+    handler._show_optional_progress_feedback()
+
+    assert [event.event_ids for event in shown] == [
+        ("reward:first",),
+        ("reward:second",),
+    ]
+    assert [event.message for event in shown] == [
+        "+2 Garden Coins",
+        "+40 Growth",
+    ]
+    assert consume_attempts == [
+        ("reward:first",),
+        ("reward:first", "reward:second"),
+        ("reward:first", "reward:second"),
+    ]
+    assert pending == [first, second]
 
 
 def test_successful_maintenance_clears_notice_before_live_dashboard_refresh_without_reentry(

@@ -97,7 +97,7 @@ def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence()
     assert display.state is OnboardingState.NURTURED_PLANT_ASSIGNED
     assert display.header_label == "Nurtured plant"
     assert display.nurtured_marker_visible is True
-    assert display.primary_action == "Explore Garden"
+    assert display.primary_action == "Return to Anki"
     assert display.step is OnboardingStep.COMPLETION
     assert display.counted_step == 6
 

@@ -9,8 +9,9 @@ capture archive produced 139/146 uniform-primary screenshots and safely omitted
 seven Home frames after macOS refused exact-window pixels; the owner authorized
 proceeding without them. The frozen production archive passed every
 repository-local package gate. Windows and Linux remained a static portability
-review, not live GUI acceptance. Current source uses capture contract v10 with
-149 ordered surfaces, and this audit is not evidence for it.
+review, not live GUI acceptance. Current source uses capture contract v18 with
+191 ordered surfaces and a pending 24-sheet final run; this audit is not
+evidence for it.
 
 ## Outcome
 

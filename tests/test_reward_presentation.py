@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from ankigarden.models.state import Achievement, GardenFindOutcome, GardenState, RewardReceipt
 from ankigarden.reward_presentation import (
     achievement_presentations,
     lookup,
     recent_reward_summaries,
+    recurring_reward_presentations,
 )
 
 
@@ -66,6 +69,17 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
     assert preserved.description == "+2 Garden Coins"
     assert preserved.amount == 7
 
+    environment_hit = GardenFindOutcome(
+        "answer:6", "2026-08-20", "hit", "environment", "environment-v1",
+        "2026-08-20T12:02:00+00:00", reward_id="fireflies",
+        reward_type="environment_item", amount=1, item_id="fireflies",
+    )
+    environment_presentation = lookup(environment_hit)
+    assert environment_presentation is not None
+    assert environment_presentation.description == (
+        "Added to the Weather and Scenery collection"
+    )
+
 
 def test_achievement_presentations_join_definition_identity_to_persisted_progress_metadata() -> None:
     state = GardenState(achievements={
@@ -86,3 +100,48 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     assert projection.unlocked is True
     assert projection.reward_event_key == "achievement:streak_7"
     assert projection.reward_coins == 10
+
+    state.daily_stats.reviewed = 12
+    state.daily_stats.correct = 10
+    state.daily_stats.wrong = 2
+    clear_recall = next(
+        item for item in achievement_presentations(state)
+        if item.achievement_id == "retention_90"
+    )
+    assert clear_recall.category == "recall"
+    assert clear_recall.condition_lines == (
+        "Answers: 12 of 20",
+        "Non-Again accuracy: 83% of 90% required",
+    )
+
+
+def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_state() -> None:
+    state = GardenState(streak_days=6)
+    state.daily_stats.day = "2026-08-20"
+    state.recent_reward_receipts = [RewardReceipt(
+        "daily_activity:2026-08-20",
+        "coins",
+        "daily_activity",
+        "2026-08-20",
+        "2026-08-20",
+        "answer:1",
+        "2026-08-20T12:00:00+00:00",
+        amount=2,
+    )]
+    engine = SimpleNamespace(
+        DAILY_ACTIVITY_COINS=2,
+        WEEKLY_STREAK_COINS=10,
+        ALL_DUE_BASE_COINS=10,
+    )
+
+    rules = {
+        item.rule_id: item
+        for item in recurring_reward_presentations(state, engine)
+    }
+
+    assert rules["daily_activity"].reward_summary == "+2 Garden Coins"
+    assert rules["daily_activity"].status == "Earned today"
+    assert rules["all_due"].reward_summary == "+10 Garden Coins"
+    assert rules["weekly_streak"].reward_summary == "+10 Garden Coins"
+    assert rules["weekly_streak"].next_streak_day == 7
+    assert rules["weekly_streak"].streak_days_remaining == 1

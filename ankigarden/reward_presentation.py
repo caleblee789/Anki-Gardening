@@ -133,7 +133,6 @@ class RewardSummary:
             if receipt.source in {"achievement", "achievement_backfill"}
             and receipt.source_id
         ))
-
     @property
     def amounts(self) -> Mapping[str, int]:
         totals: dict[str, int] = {}
@@ -150,6 +149,32 @@ class RewardSummary:
     @property
     def items(self) -> tuple[RewardLine, ...]:
         return self.lines
+
+
+@dataclass(frozen=True)
+class RecurringRewardPresentation:
+    """One canonical recurring rule plus its current-day presentation state."""
+
+    rule_id: str
+    source: str
+    title: str
+    trigger: str
+    reward_coins: int
+    reward_growth: int
+    awarded_today: bool
+    status: str
+    next_streak_day: int = 0
+    streak_days_remaining: int = 0
+
+    @property
+    def reward_summary(self) -> str:
+        parts: list[str] = []
+        if self.reward_coins:
+            label = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
+            parts.append(f"+{self.reward_coins:,} {label}")
+        if self.reward_growth:
+            parts.append(f"+{self.reward_growth:,} Growth")
+        return " and ".join(parts) if parts else "No reward"
 
 
 def _receipt_group_key(receipt: RewardReceipt) -> str:
@@ -217,6 +242,92 @@ def recent_reward_summaries(
             raise ValueError("limit must be a nonnegative integer")
         order = order[-int(limit):] if limit else []
     return tuple(reward_summary(groups[identity]) for identity in order)
+
+
+def recurring_reward_presentations(
+    state: GardenState,
+    engine: Any,
+) -> tuple[RecurringRewardPresentation, ...]:
+    """Project exact recurring rules and today's committed receipt state."""
+
+    scheduler_day = str(getattr(state.daily_stats, "day", "") or "")
+    today_receipts = tuple(
+        receipt
+        for receipt in state.recent_reward_receipts
+        if receipt.scheduler_day == scheduler_day
+    )
+    today_sources = {receipt.source for receipt in today_receipts}
+    first_weekly_achievement = any(
+        receipt.source in {"achievement", "achievement_backfill"}
+        and receipt.source_id == "streak_7"
+        and not bool(
+            getattr(state.achievements.get("streak_7"), "historical_backfill", False)
+        )
+        for receipt in today_receipts
+    )
+
+    daily_coins = max(0, int(engine.DAILY_ACTIVITY_COINS))
+    weekly_coins = max(0, int(engine.WEEKLY_STREAK_COINS))
+    all_due_coins = max(0, int(engine.ALL_DUE_BASE_COINS))
+
+    streak_days = max(0, int(getattr(state, "streak_days", 0) or 0))
+    next_streak_day = ((streak_days // 7) + 1) * 7
+    streak_days_remaining = max(1, next_streak_day - streak_days)
+    weekly_awarded = (
+        "weekly_streak" in today_sources or first_weekly_achievement
+    )
+    day_label = "day" if streak_days_remaining == 1 else "days"
+
+    return (
+        RecurringRewardPresentation(
+            rule_id="daily_activity",
+            source="daily_activity",
+            title="Daily activity",
+            trigger="First Anki card answer Garden can count each Anki day",
+            reward_coins=daily_coins,
+            reward_growth=0,
+            awarded_today="daily_activity" in today_sources,
+            status=(
+                "Earned today"
+                if "daily_activity" in today_sources else
+                "Available on the first Anki card answer Garden can count"
+            ),
+        ),
+        RecurringRewardPresentation(
+            rule_id="all_due",
+            source="all_due",
+            title="All due cards",
+            trigger=(
+                "Finish a due queue that started with at least one due card, "
+                "after at least one Anki card answer Garden can count"
+            ),
+            reward_coins=all_due_coins,
+            reward_growth=0,
+            awarded_today="all_due" in today_sources,
+            status=(
+                "Earned today"
+                if "all_due" in today_sources else
+                "Available after a valid all-due completion"
+            ),
+        ),
+        RecurringRewardPresentation(
+            rule_id="weekly_streak",
+            source="weekly_streak",
+            title="Seven-day streak cycle",
+            trigger="Every seventh consecutive counted Anki day",
+            reward_coins=weekly_coins,
+            reward_growth=0,
+            awarded_today=weekly_awarded,
+            status=(
+                "Earned today"
+                if weekly_awarded else
+                f"Next on Day {next_streak_day:,}, "
+                f"{streak_days_remaining:,} streak {day_label} to go"
+            ),
+            next_streak_day=next_streak_day,
+            streak_days_remaining=streak_days_remaining,
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -325,7 +436,7 @@ def lookup(
             amount=max(0, int(outcome.amount)),
             item_id=outcome.item_id or environment.item_id,
             display_name=environment.display_name,
-            description=f"Added to {environment.environment_kind.title()} and Scenery",
+            description="Added to the Weather and Scenery collection",
             tier=environment.tier,
             artwork_ref=environment.item_id,
             localization_key=f"garden_find.environment.{environment.item_id}",
@@ -440,6 +551,7 @@ class AchievementPresentation:
     reward_standard_growth_charges: int
     persisted_requirement: str = ""
     persisted_reward_summary: str = ""
+    condition_lines: tuple[str, ...] = ()
 
     @property
     def completed(self) -> bool:
@@ -492,6 +604,48 @@ def _definition_map(
     if isinstance(definitions, Mapping):
         return definitions
     return {definition.achievement_id: definition for definition in definitions}
+
+
+def _achievement_condition_lines(
+    definition: AchievementDefinition,
+    persisted_requirement: str,
+    *,
+    state: GardenState | None,
+    unlocked: bool,
+) -> tuple[str, ...]:
+    """Keep compound achievement requirements structured outside the UI."""
+
+    if definition.minimum_non_again_percent:
+        if state is not None and not unlocked:
+            daily_stats = getattr(state, "daily_stats", None)
+            answers = max(
+                0,
+                int(getattr(daily_stats, "reviewed", 0) or 0),
+            )
+            again_answers = min(
+                answers,
+                max(0, int(getattr(daily_stats, "wrong", 0) or 0)),
+            )
+            non_again_percent = (
+                round((answers - again_answers) * 100 / answers)
+                if answers else 0
+            )
+            return (
+                f"Answers: {answers:,} of {definition.minimum_answers:,}",
+                "Non-Again accuracy: "
+                f"{non_again_percent}% of "
+                f"{definition.minimum_non_again_percent}% required",
+            )
+        accuracy = (
+            "No Again answers"
+            if definition.minimum_non_again_percent >= 100 else
+            f"At least {definition.minimum_non_again_percent}% non-Again accuracy"
+        )
+        return (
+            f"At least {definition.minimum_answers:,} Anki card answers Garden can count",
+            accuracy,
+        )
+    return (persisted_requirement or definition.description,)
 
 
 def achievement_presentation(
@@ -549,6 +703,12 @@ def achievement_presentation(
         reward_standard_growth_charges=definition.reward.standard_growth_charges,
         persisted_requirement=persisted_requirement,
         persisted_reward_summary=persisted_reward_summary,
+        condition_lines=_achievement_condition_lines(
+            definition,
+            persisted_requirement,
+            state=state,
+            unlocked=unlocked,
+        ),
     )
 
 
@@ -581,6 +741,7 @@ project_achievements = achievement_presentations
 __all__ = [
     "AchievementPresentation",
     "GardenFindPresentation",
+    "RecurringRewardPresentation",
     "RewardLine",
     "RewardSummary",
     "achievement_presentation",
@@ -589,5 +750,6 @@ __all__ = [
     "project_achievements",
     "recent_garden_finds",
     "recent_reward_summaries",
+    "recurring_reward_presentations",
     "reward_summary",
 ]

@@ -55,7 +55,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 16
+CAPTURE_CONTRACT_VERSION = 18
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -131,7 +131,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Settings",
         (
-            "settings-menu-display",
+            "settings-home-preview-disabled",
             "settings-display",
             "settings-display-advanced-open",
             "diagnostics-clean",
@@ -182,10 +182,10 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "collection-several-discovered",
             "collection-no-filter-matches",
             "achievement-completed",
-            "clear-recall-separate-conditions",
+            "clear-recall-canonical-projection",
             "streak-at-risk",
             "streak-missed-day",
-            "streak-reward-earned-next",
+            "streak-achievement-earned-next",
         ),
     ),
     (
@@ -199,12 +199,12 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     (
-        "Release stress — Settings",
+        "Release stress — Settings and reviewer rewards",
         (
             "settings-unsaved-changes",
-            "settings-validation-error",
-            "diagnostics-expanded",
-            "production-build-controls-absent",
+            "reviewer-find-common-reduced-motion",
+            "reviewer-find-exceptional",
+            "reviewer-find-stacked-sync",
         ),
     ),
     (
@@ -677,7 +677,6 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
     "Settings": (
         "settings-display",
         "settings-display-advanced-open",
-        "diagnostics-expanded",
         "resize-settings-minimum",
         "resize-settings-content-699",
         "resize-settings-content-701",
@@ -781,7 +780,6 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "resize-species-overview-large": "SpeciesOverviewDialog",
     "settings-display": "GardenSettingsDialog:display",
     "settings-display-advanced-open": "GardenSettingsDialog:display",
-    "diagnostics-expanded": "GardenSettingsDialog:diagnostics",
     "resize-settings-minimum": "GardenSettingsDialog:display",
     "resize-settings-content-699": "GardenSettingsDialog:display",
     "resize-settings-content-701": "GardenSettingsDialog:display",
@@ -1043,10 +1041,10 @@ _PROGRESS_CAPTURE_LABELS = frozenset({
     "collection-several-discovered",
     "collection-no-filter-matches",
     "achievement-completed",
-    "clear-recall-separate-conditions",
+    "clear-recall-canonical-projection",
     "streak-at-risk",
     "streak-missed-day",
-    "streak-reward-earned-next",
+    "streak-achievement-earned-next",
     "collection-environment-mechanics",
 })
 
@@ -1080,16 +1078,19 @@ _NURSERY_CAPTURE_LABELS = frozenset({
 })
 
 _SETTINGS_CAPTURE_LABELS = frozenset({
-    "settings-menu-display",
+    "settings-home-preview-disabled",
     "settings-display",
     "settings-display-advanced-open",
     "diagnostics-clean",
     "diagnostics-warning",
     "settings-unsaved-changes",
-    "settings-validation-error",
-    "diagnostics-expanded",
-    "production-build-controls-absent",
     "reduced-motion-enabled",
+})
+
+_REVIEWER_CAPTURE_LABELS = frozenset({
+    "reviewer-find-common-reduced-motion",
+    "reviewer-find-exceptional",
+    "reviewer-find-stacked-sync",
 })
 
 _RESIZE_WINDOW_FAMILIES = {
@@ -1120,6 +1121,8 @@ def expected_capture_window_family(label: str) -> str:
         return "NurseryDialog"
     if label in _SETTINGS_CAPTURE_LABELS:
         return "GardenSettingsDialog"
+    if label in _REVIEWER_CAPTURE_LABELS:
+        return "AnkiQt"
     if label in _GROWTH_CHARGE_CAPTURE_LABELS:
         return "GrowthChargeConfirmationDialog"
     if label in {
@@ -1228,6 +1231,19 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         profile.update({
             "kind": "dialog",
             "state": "known-not-collected-rare-mystery",
+        })
+        return profile
+    if label in _REVIEWER_CAPTURE_LABELS:
+        profile.update({
+            "kind": "reviewer",
+            "state": label,
+            "toast_tier": (
+                "Common" if label == "reviewer-find-common-reduced-motion" else
+                "Exceptional" if label == "reviewer-find-exceptional" else
+                ""
+            ),
+            "stacked_sync": label == "reviewer-find-stacked-sync",
+            "reduced_motion": label == "reviewer-find-common-reduced-motion",
         })
         return profile
     for (
@@ -1612,7 +1628,7 @@ class _UiFaceCaptureRunner:
             self._capture_nursery_fertilizer_booster,
             self._capture_nursery_garden_spaces,
             self._capture_nursery_weather_scenery,
-            self._capture_addon_settings_menu,
+            self._capture_settings_home_preview_disabled,
             self._capture_settings_display,
             self._capture_settings_display_advanced,
             self._capture_settings_troubleshooting,
@@ -1649,19 +1665,19 @@ class _UiFaceCaptureRunner:
             self._capture_collection_several,
             self._capture_collection_no_matches,
             self._capture_achievement_completed,
-            self._capture_clear_recall_conditions,
+            self._capture_clear_recall_projection,
             self._capture_streak_at_risk,
             self._capture_streak_missed_day,
-            self._capture_streak_reward_states,
+            self._capture_streak_achievement_states,
             self._capture_nursery_owned_item,
             self._capture_nursery_locked_item,
             self._capture_nursery_purchase_success,
             self._capture_nursery_final_row,
             self._capture_missing_artwork_fallback,
             self._capture_settings_unsaved,
-            self._capture_settings_validation_error,
-            self._capture_diagnostics_expanded,
-            self._capture_production_controls_absent,
+            self._capture_reviewer_find_common,
+            self._capture_reviewer_find_exceptional,
+            self._capture_reviewer_find_stacked_sync,
             self._capture_reduced_motion,
             self._capture_keyboard_focus,
             self._capture_narrow_window,
@@ -3120,11 +3136,75 @@ class _UiFaceCaptureRunner:
             "passed": generic_passed and semantic_passed,
         }
 
+    @staticmethod
+    def _pixmap_contains_overlay(
+        pixmap: Any,
+        root: QWidget,
+        overlay: QWidget,
+    ) -> bool:
+        """Confirm sampled overlay pixels survived the selected capture path."""
+
+        try:
+            if not overlay.isVisibleTo(root):
+                return False
+            overlay_pixmap = overlay.grab()
+            if overlay_pixmap is None or overlay_pixmap.isNull():
+                return False
+            target_image = pixmap.toImage()
+            overlay_image = overlay_pixmap.toImage()
+            if target_image.isNull() or overlay_image.isNull():
+                return False
+            origin = overlay.mapTo(root, overlay.rect().topLeft())
+            scale_x = target_image.width() / max(1, int(root.width()))
+            scale_y = target_image.height() / max(1, int(root.height()))
+            matches = 0
+            compared = 0
+            for x_fraction in (0.08, 0.23, 0.41, 0.59, 0.77, 0.92):
+                for y_fraction in (0.12, 0.31, 0.50, 0.69, 0.88):
+                    source_x = min(
+                        overlay_image.width() - 1,
+                        max(0, round(x_fraction * (overlay_image.width() - 1))),
+                    )
+                    source_y = min(
+                        overlay_image.height() - 1,
+                        max(0, round(y_fraction * (overlay_image.height() - 1))),
+                    )
+                    source_color = overlay_image.pixelColor(source_x, source_y)
+                    if source_color.alpha() < 192:
+                        continue
+                    target_x = round(
+                        (int(origin.x()) + x_fraction * int(overlay.width()))
+                        * scale_x
+                    )
+                    target_y = round(
+                        (int(origin.y()) + y_fraction * int(overlay.height()))
+                        * scale_y
+                    )
+                    if not (
+                        0 <= target_x < target_image.width()
+                        and 0 <= target_y < target_image.height()
+                    ):
+                        continue
+                    target_color = target_image.pixelColor(target_x, target_y)
+                    compared += 1
+                    if max(
+                        abs(source_color.red() - target_color.red()),
+                        abs(source_color.green() - target_color.green()),
+                        abs(source_color.blue() - target_color.blue()),
+                    ) <= 48:
+                        matches += 1
+            return compared >= 8 and matches / compared >= 0.45
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+
     def _capture_home_pixmap(
         self,
         widget: QWidget,
+        *,
+        require_garden_identity: bool = True,
+        required_overlays: tuple[QWidget, ...] = (),
     ) -> tuple[Any | None, str, bool]:
-        """Capture the exact Home widget without trusting an obscured desktop."""
+        """Capture the real Anki main window without trusting an obscured desktop."""
 
         foreground_confirmed = bool(self._activate_current_process_window(widget))
         if not foreground_confirmed:
@@ -3179,6 +3259,7 @@ class _UiFaceCaptureRunner:
             try:
                 shell_pixmap = widget.grab()
                 web = getattr(mw, "web", None)
+                method = "qt-widget"
                 if (
                     shell_pixmap is not None
                     and not shell_pixmap.isNull()
@@ -3192,12 +3273,22 @@ class _UiFaceCaptureRunner:
                             web.mapTo(widget, web.rect().topLeft()),
                             web_pixmap,
                         )
+                        for overlay in required_overlays:
+                            if overlay is None or not overlay.isVisibleTo(widget):
+                                continue
+                            overlay_pixmap = overlay.grab()
+                            if overlay_pixmap is None or overlay_pixmap.isNull():
+                                continue
+                            painter.drawPixmap(
+                                overlay.mapTo(widget, overlay.rect().topLeft()),
+                                overlay_pixmap,
+                            )
                         painter.end()
-                        candidates.append(("qt-shell-with-webview", shell_pixmap))
-                    else:
-                        candidates.append(("qt-widget", shell_pixmap))
-                elif shell_pixmap is not None:
-                    candidates.append(("qt-widget", shell_pixmap))
+                        method = "qt-shell-with-webview"
+                if shell_pixmap is not None:
+                    if required_overlays:
+                        method += "-with-overlays"
+                    candidates.append((method, shell_pixmap))
             except Exception:
                 logger.debug(
                     "Anki Garden capture: Qt Home fallback capture failed",
@@ -3231,6 +3322,10 @@ class _UiFaceCaptureRunner:
                     expected_width=int(widget.width()),
                     expected_height=int(widget.height()),
                 )
+                metrics["required_overlays_present"] = all(
+                    self._pixmap_contains_overlay(candidate, widget, overlay)
+                    for overlay in required_overlays
+                )
                 viable.append((method, candidate, metrics))
             return viable
 
@@ -3252,15 +3347,31 @@ class _UiFaceCaptureRunner:
             )
             ready = [
                 row for row in viable
-                if row[2]["passed"]
+                if bool(row[2]["required_overlays_present"])
+                and (
+                    row[2]["passed"] or (
+                        not require_garden_identity
+                        and row[2]["generic_content_passed"]
+                    )
+                )
             ]
             if ready:
                 method, pixmap, _metrics = max(
                     ready,
-                    key=lambda row: (
-                        float(row[2]["brand_sample_ratio"]),
-                        float(row[2]["dark_shell_sample_ratio"]),
+                    key=(
+                        lambda row: (
+                            float(row[2]["brand_sample_ratio"]),
+                            float(row[2]["dark_shell_sample_ratio"]),
+                        )
+                    ) if require_garden_identity else (
+                        lambda row: (
+                            float(row[2]["saturated_sample_ratio"]),
+                            int(row[2]["unique_sampled_colors"]),
+                        )
                     ),
+                )
+                self._last_required_overlay_pixels_present = bool(
+                    _metrics["required_overlays_present"]
                 )
                 return pixmap, method, foreground_confirmed
 
@@ -3274,12 +3385,15 @@ class _UiFaceCaptureRunner:
                     "generic": bool(metrics["generic_content_passed"]),
                     "semantic": bool(metrics["semantic_identity_passed"]),
                     "brand_ratio": float(metrics["brand_sample_ratio"]),
+                    "required_overlays_present": bool(
+                        metrics["required_overlays_present"]
+                    ),
                 }
                 for method, candidate, metrics in viable
             ]
             logger.warning(
-                "Anki Garden capture: Home candidates on %s display were not "
-                "Garden-ready: %s",
+                "Anki Garden capture: main-window candidates on %s display were not "
+                "ready: %s",
                 self._capture_display,
                 diagnostic,
             )
@@ -3306,6 +3420,7 @@ class _UiFaceCaptureRunner:
             if foreground_confirmed else
             "app-owned-home-surface-not-ready"
         )
+        self._last_required_overlay_pixels_present = not bool(required_overlays)
         return None, failure_kind, foreground_confirmed
 
     def _activate_current_process_window(self, widget: QWidget) -> bool:
@@ -3655,10 +3770,10 @@ class _UiFaceCaptureRunner:
                 "fertilizer-replacement-confirmation",
                 "collection-no-filter-matches",
                 "achievement-completed",
-                "clear-recall-separate-conditions",
+                "clear-recall-canonical-projection",
                 "streak-at-risk",
                 "streak-missed-day",
-                "streak-reward-earned-next",
+                "streak-achievement-earned-next",
                 "nursery-item-owned",
                 "nursery-item-locked",
                 "nursery-purchase-success",
@@ -3759,7 +3874,120 @@ class _UiFaceCaptureRunner:
                 ],
             )
 
-        if kind == "home":
+        if kind == "reviewer":
+            handler = getattr(self.app, "reviewer_hooks", None)
+            toast = getattr(handler, "_reward_toast", None)
+            labels = {
+                str(label_widget.objectName()): str(label_widget.text())
+                for label_widget in (
+                    toast.findChildren(QLabel) if toast is not None else ()
+                )
+                if str(label_widget.objectName())
+            }
+            expected_titles = {
+                "reviewer-find-common-reduced-motion": "Garden Find: Morning Dew",
+                "reviewer-find-exceptional": "Garden Find: Root Core",
+                "reviewer-find-stacked-sync": "Garden Finds and review rewards",
+            }
+            expected_details = {
+                "reviewer-find-common-reduced-motion": "+40 Growth",
+                "reviewer-find-exceptional": "+1 Standard Growth Charge",
+                "reviewer-find-stacked-sync": (
+                    "Morning Dew — +40 Growth ×2; Garden Pouch — +4 Garden Coins"
+                ),
+            }
+            require(
+                "reviewer_surface",
+                str(getattr(mw, "state", "")) == "review",
+                str(getattr(mw, "state", "")),
+            )
+            require(
+                "reward_toast_visible",
+                bool(toast is not None and toast.isVisible()),
+                bool(toast is not None and toast.isVisible()),
+            )
+            require(
+                "reward_toast_title",
+                labels.get("ankiGardenRewardTitle") == expected_titles[state_name],
+                labels.get("ankiGardenRewardTitle", ""),
+            )
+            require(
+                "reward_toast_detail",
+                labels.get("ankiGardenRewardDetail") == expected_details[state_name],
+                labels.get("ankiGardenRewardDetail", ""),
+            )
+            require(
+                "canonical_reviewer_reward_projection",
+                bool(annotation.get("canonical_projection_passed", False))
+                and bool(
+                    annotation.get(
+                        "all_receipt_groups_share_correlation",
+                        False,
+                    )
+                ),
+                annotation,
+            )
+            expected_tier = str(expectation.get("toast_tier", ""))
+            require(
+                "reward_toast_tier",
+                labels.get("ankiGardenRewardTier", "") == expected_tier,
+                labels.get("ankiGardenRewardTier", ""),
+            )
+            require(
+                "reward_toast_focus_safe",
+                bool(
+                    toast is not None
+                    and toast.focusPolicy() == Qt.FocusPolicy.NoFocus
+                    and toast.testAttribute(
+                        Qt.WidgetAttribute.WA_ShowWithoutActivating
+                    )
+                    and toast.testAttribute(
+                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
+                    )
+                    and annotation.get("focus_preserved", False)
+                ),
+                {
+                    "focus_preserved": bool(annotation.get("focus_preserved", False)),
+                    "no_focus": bool(
+                        toast is not None
+                        and toast.focusPolicy() == Qt.FocusPolicy.NoFocus
+                    ),
+                    "show_without_activating": bool(
+                        toast is not None
+                        and toast.testAttribute(
+                            Qt.WidgetAttribute.WA_ShowWithoutActivating
+                        )
+                    ),
+                },
+            )
+            if state_name == "reviewer-find-stacked-sync":
+                expected_message = (
+                    "+80 Growth; +6 Garden Coins; +1 Growth Charge Small; "
+                    "Unlocked Perfect Canopy"
+                )
+                require(
+                    "stacked_sync_summary",
+                    bool(
+                        annotation.get("stacked_find_count") == 3
+                        and annotation.get("sync_correlation")
+                        == "sync:capture-reviewer:2026-08-21"
+                        and annotation.get("canonical_feedback_message")
+                        == expected_message
+                        and labels.get("ankiGardenRewardMessage", "")
+                        == f"Review total: {expected_message}"
+                    ),
+                    {
+                        "stacked_find_count": annotation.get("stacked_find_count"),
+                        "message": labels.get("ankiGardenRewardMessage", ""),
+                    },
+                )
+            if state_name == "reviewer-find-common-reduced-motion":
+                require(
+                    "reviewer_reduced_motion",
+                    bool(annotation.get("reduced_motion_config_enabled", False)),
+                    bool(annotation.get("reduced_motion_config_enabled", False)),
+                )
+        elif kind == "home":
             dom = dict(getattr(self, "_active_home_dom_audit", {}) or {})
             expected_fixture = str(expectation.get("fixture_state", ""))
             require(
@@ -4055,6 +4283,11 @@ class _UiFaceCaptureRunner:
                 current_page,
             )
             stats = getattr(garden_state, "daily_stats", None)
+            visible_label_texts = [
+                str(label_widget.text())
+                for label_widget in widget.findChildren(QLabel)
+                if label_widget.isVisible()
+            ]
             if state_name == "growth-zero":
                 require(
                     "zero_growth",
@@ -4117,23 +4350,114 @@ class _UiFaceCaptureRunner:
                     [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
                 )
             elif state_name == "streak-active":
+                from .reward_presentation import achievement_presentation
+
+                streak_projection = achievement_presentation(
+                    "streak_7",
+                    garden_state,
+                )
                 require(
                     "active_streak",
                     int(getattr(garden_state, "streak_days", 0) or 0) == 7
                     and int(getattr(stats, "reviewed", 0) or 0) == 12,
                     [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
                 )
+                require(
+                    "canonical_active_streak_achievement",
+                    streak_projection is not None
+                    and streak_projection.completed
+                    and streak_projection.reward_summary == "+10 Garden Coins"
+                    and bool(annotation.get("passed", False)),
+                    annotation,
+                )
             elif state_name == "coins-zero":
                 transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
+                receipts = list(
+                    getattr(garden_state, "recent_reward_receipts", ()) or ()
+                )
+                outcomes = dict(
+                    getattr(garden_state, "garden_find_outcomes", {}) or {}
+                )
                 require(
                     "zero_coins",
                     int(getattr(garden_state, "currency_balance", -1) or 0) == 0
                     and not transactions,
                     [getattr(garden_state, "currency_balance", None), len(transactions)],
                 )
+                require(
+                    "empty_reward_and_find_history",
+                    not receipts
+                    and not outcomes
+                    and bool(annotation.get("passed", False))
+                    and "No rewards recorded yet" in visible_label_texts
+                    and "No Garden Finds yet" in visible_label_texts,
+                    {
+                        "receipt_count": len(receipts),
+                        "find_count": len(outcomes),
+                        "labels": visible_label_texts,
+                    },
+                )
             elif state_name == "coins-activity":
+                from .reward_presentation import (
+                    recent_garden_finds,
+                    recent_reward_summaries,
+                )
+
                 transactions = list(getattr(garden_state, "currency_transactions", ()) or ())
-                require("coin_activity", len(transactions) >= 2, len(transactions))
+                summaries = recent_reward_summaries(garden_state)
+                findings = recent_garden_finds(garden_state)
+                stacked_correlation = str(
+                    annotation.get("stacked_correlation_id", "")
+                )
+                stacked = next(
+                    (
+                        summary for summary in summaries
+                        if summary.correlation_id == stacked_correlation
+                    ),
+                    None,
+                )
+                direct_growth = next(
+                    (
+                        item for item in findings
+                        if item.reward_id == "find_morning_dew"
+                    ),
+                    None,
+                )
+                compost = next(
+                    (
+                        item for item in findings
+                        if item.reward_id == "find_fertilizer"
+                    ),
+                    None,
+                )
+                require(
+                    "canonical_reward_activity",
+                    len(transactions) >= 2
+                    and stacked is not None
+                    and len(stacked.receipts) == 2
+                    and all(
+                        receipt.correlation_id == stacked_correlation
+                        for receipt in stacked.receipts
+                    )
+                    and direct_growth is not None
+                    and direct_growth.reward_type == "growth"
+                    and compost is not None
+                    and compost.display_name == "Rich Compost"
+                    and compost.item_id == "fertilizer_basic"
+                    and bool(annotation.get("passed", False)),
+                    annotation,
+                )
+                require(
+                    "reward_and_find_copy",
+                    "Recent rewards" in visible_label_texts
+                    and "Recent coin activity" in visible_label_texts
+                    and "Recent Finds" in visible_label_texts
+                    and "+40 direct Growth to the nurtured plant"
+                    in visible_label_texts
+                    and "Rich Compost · Rare" in visible_label_texts
+                    and "+1 Basic Fertilizer" in visible_label_texts,
+                    visible_label_texts,
+                )
             elif state_name == "progress-overview-redirect-growth":
                 require(
                     "overview_redirected_to_growth",
@@ -4170,31 +4494,52 @@ class _UiFaceCaptureRunner:
                     annotation,
                 )
             elif state_name == "achievement-completed":
-                achievements = list(
-                    dict(getattr(garden_state, "achievements", {}) or {}).values()
-                )
+                from .achievements import ACHIEVEMENT_DEFINITIONS
+                from .reward_presentation import achievement_presentations
+
+                projections = achievement_presentations(garden_state)
                 require(
-                    "completed_achievements",
+                    "completed_canonical_achievements",
                     int(getattr(stats, "reviewed", 0) or 0) == 100
-                    and bool(achievements)
-                    and all(bool(getattr(item, "unlocked", False)) for item in achievements),
+                    and len(projections) == len(ACHIEVEMENT_DEFINITIONS)
+                    and all(item.completed for item in projections)
+                    and all(bool(item.reward_summary) for item in projections)
+                    and bool(annotation.get("passed", False))
+                    and any(
+                        text.startswith("Reward: ")
+                        for text in visible_label_texts
+                    ),
                     {
                         "reviewed": getattr(stats, "reviewed", None),
-                        "unlocked": sum(
-                            bool(getattr(item, "unlocked", False)) for item in achievements
-                        ),
+                        "projection_count": len(projections),
+                        "completed": sum(item.completed for item in projections),
+                        "annotation": annotation,
                     },
                 )
-            elif state_name == "clear-recall-separate-conditions":
-                achievements = dict(getattr(garden_state, "achievements", {}) or {})
+            elif state_name == "clear-recall-canonical-projection":
+                from .reward_presentation import achievement_presentation
+
+                projection = achievement_presentation(
+                    "retention_90",
+                    garden_state,
+                )
                 require(
-                    "isolated_clear_recall",
+                    "canonical_clear_recall",
                     bool(annotation.get("passed", False))
-                    and achievements
-                    and not any(
-                        bool(getattr(item, "unlocked", False))
-                        for item in achievements.values()
-                    ),
+                    and projection is not None
+                    and projection.condition_lines
+                    == (
+                        "Answers: 12 of 20",
+                        "Non-Again accuracy: 83% of 90% required",
+                    )
+                    and projection.value_text == "12 of 20"
+                    and projection.reward_summary == "+10 Garden Coins"
+                    and not projection.completed
+                    and all(
+                        f"• {condition}" in visible_label_texts
+                        for condition in projection.condition_lines
+                    )
+                    and "Reward: +10 Garden Coins" in visible_label_texts,
                     annotation,
                 )
             elif state_name == "streak-at-risk":
@@ -4211,13 +4556,37 @@ class _UiFaceCaptureRunner:
                     and int(getattr(stats, "reviewed", -1) or 0) == 0,
                     [getattr(garden_state, "streak_days", None), getattr(stats, "reviewed", None)],
                 )
-            elif state_name == "streak-reward-earned-next":
+            elif state_name == "streak-achievement-earned-next":
+                from .reward_presentation import achievement_presentation
+
+                completed = achievement_presentation(
+                    "streak_7",
+                    garden_state,
+                )
+                next_achievement = achievement_presentation(
+                    "streak_30",
+                    garden_state,
+                )
                 require(
-                    "earned_streak_rewards",
+                    "earned_streak_achievement_and_next_growth_bonus",
                     int(getattr(garden_state, "streak_days", 0) or 0) == 14
-                    and list(getattr(garden_state, "claimed_streak_rewards", ()) or ()) == [7, 14]
+                    and completed is not None
+                    and completed.completed
+                    and completed.reward_summary == "+10 Garden Coins"
+                    and next_achievement is not None
+                    and not next_achievement.completed
+                    and next_achievement.value_text == "14 of 30"
                     and bool(annotation.get("passed", False)),
                     annotation,
+                )
+                require(
+                    "streak_achievement_and_growth_bonus_copy",
+                    "Next Growth bonus: Day 30" in visible_label_texts
+                    and "Growth bonus thresholds" in visible_label_texts
+                    and "One-time streak achievements" in visible_label_texts
+                    and "7-Day Anki Streak" in visible_label_texts
+                    and "+10 Garden Coins" in visible_label_texts,
+                    visible_label_texts,
                 )
         elif kind == "nursery":
             tabs = getattr(widget, "catalog_tabs", None)
@@ -4364,7 +4733,15 @@ class _UiFaceCaptureRunner:
             tabs = getattr(widget, "tabs", None)
             tab = int(tabs.currentIndex()) if tabs is not None else -1
             require("settings_tab", tab == int(expectation.get("tab", -1)), tab)
-            if state_name == "settings-display-advanced-open":
+            if state_name == "settings-home-preview-disabled":
+                enabled = bool(widget.behavior.show_home_widget.isChecked())
+                dirty = bool(widget._draft_is_dirty())
+                require(
+                    "home_preview_disabled_draft",
+                    not enabled and dirty,
+                    {"home_preview_enabled": enabled, "draft_dirty": dirty},
+                )
+            elif state_name == "settings-display-advanced-open":
                 require(
                     "advanced_display_open",
                     bool(widget.behavior.advanced_toggle.isChecked())
@@ -4919,12 +5296,39 @@ class _UiFaceCaptureRunner:
             geometry_layout_warnings.extend(responsive_warnings)
             self._audit_nurtured_marker_capture(label, widget)
             if widget is mw:
-                pixmap, capture_method, foreground_confirmed = (
-                    self._capture_home_pixmap(widget)
-                )
+                reward_toast = None
+                if label in _REVIEWER_CAPTURE_LABELS:
+                    reviewer_handler = getattr(self.app, "reviewer_hooks", None)
+                    reward_toast = getattr(reviewer_handler, "_reward_toast", None)
+                    pixmap, capture_method, foreground_confirmed = (
+                        self._capture_home_pixmap(
+                            widget,
+                            require_garden_identity=False,
+                            required_overlays=(
+                                (reward_toast,)
+                                if reward_toast is not None else
+                                ()
+                            ),
+                        )
+                    )
+                else:
+                    pixmap, capture_method, foreground_confirmed = (
+                        self._capture_home_pixmap(widget)
+                    )
                 annotation = self._capture_annotations.setdefault(label, {})
                 annotation["home_capture_method"] = capture_method
                 annotation["home_foreground_confirmed"] = foreground_confirmed
+                annotation["required_overlay_pixels_present"] = bool(
+                    (
+                        label not in _REVIEWER_CAPTURE_LABELS
+                        or reward_toast is not None
+                    )
+                    and getattr(
+                        self,
+                        "_last_required_overlay_pixels_present",
+                        label not in _REVIEWER_CAPTURE_LABELS,
+                    )
+                )
                 annotation["home_fixture_state"] = self._active_home_fixture_state
                 annotation["home_capture_scope"] = (
                     "foreground-window"
@@ -4934,6 +5338,17 @@ class _UiFaceCaptureRunner:
                     } else
                     "app-owned-qt-surface"
                 )
+                if (
+                    label in _REVIEWER_CAPTURE_LABELS
+                    and not annotation["required_overlay_pixels_present"]
+                ):
+                    annotation["passed"] = False
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Reviewer reward toast was not present in the captured pixels"
+                        ),
+                    })
             else:
                 pixmap = widget.grab()
             if pixmap is None:
@@ -4959,7 +5374,7 @@ class _UiFaceCaptureRunner:
                 if pixmap.isNull():
                     self._failures.append({"label": label, "reason": "Captured pixmap was null"})
                     return
-            if widget is mw:
+            if widget is mw and label in _HOME_CAPTURE_LABELS:
                 self._audit_home_pixmap(
                     label,
                     pixmap,
@@ -6187,9 +6602,17 @@ class _UiFaceCaptureRunner:
                 scroll.ensureWidgetVisible(control, 0, 20)
                 break
 
-    def _capture_metric(self, metric: str, label: str) -> None:
+    def _capture_metric(
+        self,
+        metric: str,
+        label: str,
+        *,
+        restore_callback: Callable[[], None] | None = None,
+    ) -> None:
         dashboard = getattr(self.app, "dashboard", None)
         if dashboard is None:
+            if restore_callback is not None:
+                restore_callback()
             self._next_after(200)
             return
         dialog = getattr(dashboard, "progress_dialog", None)
@@ -6198,6 +6621,8 @@ class _UiFaceCaptureRunner:
                 "label": label,
                 "reason": "Garden metric dialog was unavailable",
             })
+            if restore_callback is not None:
+                restore_callback()
             self._next_after(200)
             return
         refresh = getattr(dialog, "refresh", None)
@@ -6209,6 +6634,8 @@ class _UiFaceCaptureRunner:
                 "label": label,
                 "reason": f"Garden Progress page {metric!r} was unavailable",
             })
+            if restore_callback is not None:
+                restore_callback()
             self._next_after(200)
             return
         navigation.set_current(metric)
@@ -6219,11 +6646,18 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def _dialog_ready() -> None:
+            def close_metric() -> None:
+                try:
+                    self._close_widget(dialog)
+                finally:
+                    if restore_callback is not None:
+                        restore_callback()
+
             self._capture_and_advance(
                 label,
                 dialog,
                 capture_delay_ms=260,
-                close_callback=lambda: self._close_widget(dialog),
+                close_callback=close_metric,
                 close_ms=620,
                 next_ms=1000,
             )
@@ -6242,6 +6676,7 @@ class _UiFaceCaptureRunner:
             tries=50,
             failure_label=label,
             failure_reason=f"{metric} metric dialog did not become ready",
+            on_error=restore_callback,
         )
 
     def _capture_starter_deck_browser(self) -> None:
@@ -6581,8 +7016,18 @@ class _UiFaceCaptureRunner:
                     fixture.onboarding.step == OnboardingStep.COMPLETION
                     and fixture.active_plant_id == plant.plant_id
                     and fixture.garden_setup_version == 0
+                    and dashboard.onboarding_action.text() == "Return to Anki"
+                    and dashboard.dismiss_onboarding.text() == "Explore garden"
+                    and "Starter selected: Rose" in dashboard.onboarding_message.text()
+                    and "Garden bed selected: Bed 1" in dashboard.onboarding_message.text()
+                    and "Plant nurtured: Briar" in dashboard.onboarding_message.text()
+                    and "Earlier Growth and repeatable rewards are not backfilled."
+                    in dashboard.onboarding_message.text()
+                    and "Reliably reconstructable one-time achievements may be."
+                    in dashboard.onboarding_message.text()
                 ),
                 "starter_plant_id": plant.plant_id,
+                "garden_bed": 1,
             }
             self._capture_and_advance(
                 "starter-completion",
@@ -6668,7 +7113,14 @@ class _UiFaceCaptureRunner:
                 self._next_after(200)
                 return
             fixture = GardenState()
-            restore = self._replace_capture_state(fixture)
+            restore_state = self._replace_capture_state(fixture)
+
+            def restore() -> None:
+                dashboard._onboarding_save_error = ""
+                dashboard._last_onboarding_error_announcement = ""
+                dashboard.toast_region.clear()
+                restore_state()
+
             dashboard._starter_setup_dismissed = False
             dashboard.refresh_all()
             original_save = self.app.storage.save
@@ -6686,10 +7138,15 @@ class _UiFaceCaptureRunner:
                 "passed": bool(
                     current.onboarding.step == OnboardingStep.INTRODUCTION
                     and not current.plants
-                    and dashboard.toast_region.isVisible()
-                    and bool(dashboard.toast_region.property("error"))
+                    and dashboard.onboarding_panel.isVisible()
+                    and dashboard.onboarding_panel.property("statusTone") == "error"
+                    and dashboard.onboarding_action.text() == "Try again"
+                    and dashboard.dismiss_onboarding.text() == "Return to setup"
+                    and bool(dashboard._onboarding_save_error)
+                    and not dashboard.toast_region.isVisible()
                 ),
                 "onboarding_step": current.onboarding.step.value,
+                "committed_plants": len(current.plants),
             }
             self._capture_and_advance(
                 "onboarding-persistence-error",
@@ -6752,7 +7209,11 @@ class _UiFaceCaptureRunner:
 
             self.app.storage.save = fail_save
             try:
-                dashboard._place_plant(plant_id, int(destination))
+                dashboard._place_plant(
+                    plant_id,
+                    int(destination),
+                    dashboard._active_placement_token,
+                )
             finally:
                 self.app.storage.save = original_save
             after = self.app.storage.state.to_dict()
@@ -6835,7 +7296,9 @@ class _UiFaceCaptureRunner:
             ),
         )
 
-    def _capture_addon_settings_menu(self) -> None:
+    def _capture_settings_home_preview_disabled(self) -> None:
+        """Exercise the menu route with a visibly distinct, unsaved display state."""
+
         action = getattr(self.app, "_settings_action", None)
         if action is not None and hasattr(action, "trigger"):
             action.trigger()
@@ -6844,13 +7307,39 @@ class _UiFaceCaptureRunner:
 
         def _ready() -> None:
             dialog = self._find_settings_dialog()
-            self._capture_and_advance(
-                "settings-menu-display",
-                dialog,
-                capture_delay_ms=400,
-                close_callback=lambda: self._close_widget(dialog),
-                close_ms=700,
-                next_ms=1200,
+            toggle = getattr(getattr(dialog, "behavior", None), "show_home_widget", None)
+            if dialog is None or toggle is None:
+                self._failures.append({
+                    "label": "settings-home-preview-disabled",
+                    "reason": "Settings Home preview control was unavailable",
+                })
+                self._close_widget(dialog)
+                self._next_after(300)
+                return
+            original = bool(toggle.isChecked())
+            toggle.setChecked(False)
+
+            def close_and_restore() -> None:
+                toggle.setChecked(original)
+                self._close_widget(dialog)
+
+            self._wait_for(
+                lambda: bool(
+                    dialog.isVisible()
+                    and not toggle.isChecked()
+                    and dialog._draft_is_dirty()
+                ),
+                lambda: self._capture_and_advance(
+                    "settings-home-preview-disabled",
+                    dialog,
+                    capture_delay_ms=400,
+                    close_callback=close_and_restore,
+                    close_ms=700,
+                    next_ms=1200,
+                ),
+                tries=40,
+                failure_label="settings-home-preview-disabled",
+                failure_reason="Settings Home preview disabled draft did not become ready",
             )
         self._wait_for(
             lambda: bool(
@@ -6859,7 +7348,7 @@ class _UiFaceCaptureRunner:
             ),
             _ready,
             tries=80,
-            failure_label="settings-menu-display",
+            failure_label="settings-home-preview-disabled",
             failure_reason="Settings dialog did not open from the Anki menu action",
         )
 
@@ -7306,6 +7795,366 @@ class _UiFaceCaptureRunner:
             logger.exception("Anki Garden capture: Growth fixture restoration failed")
         self._refresh_capture_dashboard()
 
+    def _restore_reward_capture_fixture(self, snapshot: dict[str, Any]) -> None:
+        """Restore reward fixtures without leaving presentation history behind."""
+
+        self.app.engine._restore_state(snapshot)
+        try:
+            self.app.storage.save()
+        except Exception:
+            logger.exception("Anki Garden capture: reward fixture restoration failed")
+        self._refresh_capture_dashboard()
+
+    def _prepare_canonical_achievement_capture_fixture(
+        self,
+        *,
+        streak_days: int = 0,
+        daily_answers: int = 0,
+        again_answers: int = 0,
+        lifetime_answers: int = 0,
+        non_again_run: int = 0,
+        completed_ids: tuple[str, ...] = (),
+    ) -> tuple[dict[str, Any], tuple[Any, ...]]:
+        """Build saved achievement rows, then read only canonical projections."""
+
+        from .achievements import ACHIEVEMENTS_BY_ID
+        from .reward_presentation import achievement_presentations
+
+        snapshot = self.app.engine._state_snapshot()
+        state = self.app.storage.state
+        stats = state.daily_stats
+        day_value = str(stats.day)
+        completed_at = f"{day_value}T12:00:00+00:00"
+        state.streak_days = max(0, int(streak_days))
+        state.last_active_day = day_value if state.streak_days else ""
+        state.lifetime_eligible_answers = max(0, int(lifetime_answers))
+        state.total_reviews = state.lifetime_eligible_answers
+        state.current_non_again_run = max(0, int(non_again_run))
+        stats.reviewed = max(0, int(daily_answers))
+        stats.wrong = min(stats.reviewed, max(0, int(again_answers)))
+        stats.correct = max(0, stats.reviewed - stats.wrong)
+        stats.completed_due_cards = False
+
+        self.app.engine._ensure_achievements()
+        for achievement in state.achievements.values():
+            achievement.unlocked = False
+            achievement.progress = 0.0
+            achievement.unlocked_at = None
+            achievement.rewarded_at = None
+            achievement.reward_event_key = ""
+            achievement.historical_backfill = False
+        self.app.engine._refresh_achievement_progress()
+        for achievement_id in completed_ids:
+            if achievement_id not in ACHIEVEMENTS_BY_ID:
+                raise ValueError(
+                    f"unknown canonical capture achievement: {achievement_id}"
+                )
+            achievement = state.achievements[achievement_id]
+            achievement.unlocked = True
+            achievement.progress = 1.0
+            achievement.unlocked_at = completed_at
+            achievement.rewarded_at = completed_at
+            achievement.reward_event_key = f"achievement:{achievement_id}"
+
+        projections = achievement_presentations(state)
+        if {item.achievement_id for item in projections} != set(ACHIEVEMENTS_BY_ID):
+            raise RuntimeError(
+                "canonical achievement registry did not project every capture row"
+            )
+        return snapshot, projections
+
+    def _append_canonical_streak_reward_receipts(
+        self,
+        *,
+        streak_days: int,
+    ) -> tuple[str, ...]:
+        """Record the exact current-day receipts shown by streak captures."""
+
+        from .models.state import RewardReceipt
+
+        state = self.app.storage.state
+        day_value = str(state.daily_stats.day)
+        correlation_id = f"answer:capture-streak-day-{max(0, int(streak_days))}"
+        occurred_at = f"{day_value}T12:00:00+00:00"
+        state.recent_reward_receipts = [
+            receipt
+            for receipt in state.recent_reward_receipts
+            if not (
+                receipt.scheduler_day == day_value
+                and (
+                    receipt.source in {"daily_activity", "weekly_streak"}
+                    or (
+                        receipt.source in {"achievement", "achievement_backfill"}
+                        and receipt.source_id == "streak_7"
+                    )
+                )
+            )
+        ]
+        receipts = [RewardReceipt(
+            event_key=f"daily_activity:{day_value}",
+            reward_type="coins",
+            source="daily_activity",
+            source_id=day_value,
+            scheduler_day=day_value,
+            correlation_id=correlation_id,
+            occurred_at=occurred_at,
+            amount=int(self.app.engine.DAILY_ACTIVITY_COINS),
+            title="Daily activity reward",
+        )]
+        days = max(0, int(streak_days))
+        if days > 0 and days % 7 == 0:
+            first_cycle = bool(
+                days == 7
+                and state.achievements.get("streak_7") is not None
+                and state.achievements["streak_7"].unlocked
+            )
+            receipts.append(RewardReceipt(
+                event_key=(
+                    "achievement:streak_7"
+                    if first_cycle else
+                    f"weekly_streak:{day_value}"
+                ),
+                reward_type="coins",
+                source="achievement" if first_cycle else "weekly_streak",
+                source_id="streak_7" if first_cycle else f"day_{days}",
+                scheduler_day=day_value,
+                correlation_id=correlation_id,
+                occurred_at=occurred_at,
+                amount=int(self.app.engine.WEEKLY_STREAK_COINS),
+                title=(
+                    "7-Day Anki Streak"
+                    if first_cycle else
+                    "Seven-day streak reward"
+                ),
+            ))
+        state.recent_reward_receipts.extend(receipts)
+        return tuple(receipt.source for receipt in receipts)
+
+    def _prepare_reward_history_capture_fixture(
+        self,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Create one canonical stacked reward plus three persisted Finds."""
+
+        from .achievements import ACHIEVEMENTS_BY_ID
+        from .garden_finds import (
+            STANDARD_FIND_REGISTRY,
+            STANDARD_POOL_ID,
+            STANDARD_POOL_VERSION,
+        )
+        from .models.state import CurrencyTransaction, GardenFindOutcome, RewardReceipt
+        from .reward_presentation import recent_garden_finds, recent_reward_summaries
+
+        snapshot = self.app.engine._state_snapshot()
+        state = self.app.storage.state
+        active = self.app.engine.active_plant() or next(
+            (
+                plant for plant in state.plants
+                if bool(getattr(plant, "planted", False))
+                and not bool(getattr(plant, "fully_grown", False))
+            ),
+            None,
+        )
+        if active is None:
+            raise RuntimeError("reward capture requires one unfinished nurtured plant")
+
+        day_value = "2026-08-21"
+        state.recent_reward_receipts = []
+        state.garden_find_outcomes = {}
+        state.garden_find_daily_counts = {day_value: 3}
+        state.garden_find_reward_daily_counts = {day_value: {}}
+        state.currency_transactions = []
+        state.currency_balance = 0
+
+        self.app.engine._ensure_achievements()
+        achievement_definition = ACHIEVEMENTS_BY_ID["streak_30"]
+        achievement = state.achievements[achievement_definition.achievement_id]
+        achievement.unlocked = True
+        achievement.progress = 1.0
+        achievement.unlocked_at = f"{day_value}T09:00:00+00:00"
+        achievement.rewarded_at = achievement.unlocked_at
+        achievement.reward_event_key = "achievement:streak_30"
+        achievement.historical_backfill = False
+
+        stacked_correlation = "capture-review:stacked-achievement"
+        stacked_event_key = "achievement:streak_30"
+        stacked_at = f"{day_value}T09:00:00+00:00"
+        stack_receipts = [
+            RewardReceipt(
+                event_key=stacked_event_key,
+                reward_type="coins",
+                source="achievement",
+                source_id=achievement_definition.achievement_id,
+                scheduler_day=day_value,
+                correlation_id=stacked_correlation,
+                occurred_at=stacked_at,
+                amount=achievement_definition.reward.coins,
+                title=achievement_definition.name,
+                description=achievement_definition.description,
+            ),
+            RewardReceipt(
+                event_key=stacked_event_key,
+                reward_type="inventory_item",
+                source="achievement",
+                source_id=achievement_definition.achievement_id,
+                scheduler_day=day_value,
+                correlation_id=stacked_correlation,
+                occurred_at=stacked_at,
+                amount=achievement_definition.reward.small_growth_charges,
+                item_id="growth_charge_small",
+                title=achievement_definition.name,
+                description=achievement_definition.description,
+            ),
+        ]
+        state.recent_reward_receipts.extend(stack_receipts)
+        state.currency_balance = achievement_definition.reward.coins
+        state.consumables["growth_charge_small"] = max(
+            1,
+            int(state.consumables.get("growth_charge_small", 0) or 0),
+        )
+        state.currency_transactions.append(CurrencyTransaction(
+            transaction_id="capture-tx-achievement",
+            event_key=stacked_event_key,
+            reason=achievement_definition.name,
+            delta=achievement_definition.reward.coins,
+            balance=state.currency_balance,
+            occurred_at=stacked_at,
+            transaction_type="credit",
+            source="achievement",
+            source_id=achievement_definition.achievement_id,
+            scheduler_day=day_value,
+            correlation_id=stacked_correlation,
+        ))
+
+        reward_by_id = {
+            reward.reward_id: reward for reward in STANDARD_FIND_REGISTRY
+        }
+        find_specs = (
+            ("capture-find-growth", "find_morning_dew", "10:00:00"),
+            ("capture-find-compost", "find_fertilizer", "10:05:00"),
+            ("capture-find-coins", "find_coin_sprout", "10:10:00"),
+        )
+        for answer_key, reward_id, clock in find_specs:
+            reward = reward_by_id[reward_id]
+            occurred_at = f"{day_value}T{clock}+00:00"
+            event_key = f"garden_find:{answer_key}:{STANDARD_POOL_ID}"
+            correlation_id = f"capture-review:{answer_key}"
+            item_id = reward.inventory_item_id or ""
+            outcome = GardenFindOutcome(
+                answer_key=answer_key,
+                scheduler_day=day_value,
+                status="hit",
+                pool_id=STANDARD_POOL_ID,
+                pool_version=STANDARD_POOL_VERSION,
+                occurred_at=occurred_at,
+                reward_id=reward.reward_id,
+                reward_type=reward.reward_kind,
+                amount=reward.amount,
+                item_id=item_id,
+                display_name=reward.display_name,
+                description=reward.description,
+                tier=reward.tier,
+                artwork_ref=reward.artwork_ref,
+                localization_key=reward.localization_key,
+            )
+            state.garden_find_outcomes[outcome.outcome_key] = outcome
+            state.recent_reward_receipts.append(RewardReceipt(
+                event_key=event_key,
+                reward_type=reward.reward_kind,
+                source="garden_find",
+                source_id=reward.reward_id,
+                scheduler_day=day_value,
+                correlation_id=correlation_id,
+                occurred_at=occurred_at,
+                amount=reward.amount,
+                item_id=item_id,
+                plant_id=(active.plant_id if reward.reward_kind == "growth" else ""),
+                title=reward.display_name,
+                description=reward.description,
+            ))
+            state.garden_find_reward_daily_counts[day_value][reward.reward_id] = 1
+            if event_key not in state.applied_reward_event_keys:
+                state.applied_reward_event_keys.append(event_key)
+            if answer_key not in state.processed_answer_keys:
+                state.processed_answer_keys.append(answer_key)
+            if reward.reward_kind == "coins":
+                state.currency_balance += reward.amount
+                state.currency_transactions.append(CurrencyTransaction(
+                    transaction_id=f"capture-tx-{reward.reward_id}",
+                    event_key=event_key,
+                    reason=f"Garden Find: {reward.display_name}",
+                    delta=reward.amount,
+                    balance=state.currency_balance,
+                    occurred_at=occurred_at,
+                    transaction_type="credit",
+                    source="garden_find",
+                    source_id=reward.reward_id,
+                    scheduler_day=day_value,
+                    correlation_id=correlation_id,
+                ))
+            elif reward.reward_kind == "growth":
+                active.growth_points += reward.amount
+                state.daily_stats.plant_direct_reward_growth[active.plant_id] = (
+                    int(state.daily_stats.plant_direct_reward_growth.get(
+                        active.plant_id,
+                        0,
+                    ) or 0)
+                    + reward.amount
+                )
+            elif reward.reward_kind == "inventory_item" and item_id:
+                state.consumables[item_id] = max(
+                    reward.amount,
+                    int(state.consumables.get(item_id, 0) or 0),
+                )
+
+        if stacked_event_key not in state.applied_reward_event_keys:
+            state.applied_reward_event_keys.append(stacked_event_key)
+        summaries = recent_reward_summaries(state)
+        findings = recent_garden_finds(state)
+        stacked = next(
+            summary for summary in summaries
+            if summary.correlation_id == stacked_correlation
+        )
+        direct_growth = next(
+            item for item in findings if item.reward_id == "find_morning_dew"
+        )
+        compost = next(
+            item for item in findings if item.reward_id == "find_fertilizer"
+        )
+        annotation = {
+            "stacked_correlation_id": stacked_correlation,
+            "stacked_reward_types": [line.reward_type for line in stacked.lines],
+            "stacked_receipt_count": len(stacked.receipts),
+            "all_stacked_receipts_share_correlation": all(
+                receipt.correlation_id == stacked_correlation
+                for receipt in stacked.receipts
+            ),
+            "recent_find_ids": [item.reward_id for item in findings],
+            "direct_growth_result": (
+                f"+{direct_growth.amount:,} direct Growth to the nurtured plant"
+            ),
+            "direct_growth_has_passive_wording": (
+                "passive" in direct_growth.description.lower()
+            ),
+            "rich_compost_item_id": compost.item_id,
+            "rich_compost_result": "+1 Basic Fertilizer",
+        }
+        annotation["passed"] = bool(
+            annotation["stacked_receipt_count"] == 2
+            and annotation["all_stacked_receipts_share_correlation"]
+            and annotation["stacked_reward_types"] == [
+                "coins",
+                "inventory_item",
+            ]
+            and annotation["recent_find_ids"] == [
+                "find_morning_dew",
+                "find_fertilizer",
+                "find_coin_sprout",
+            ]
+            and not annotation["direct_growth_has_passive_wording"]
+            and annotation["rich_compost_item_id"] == "fertilizer_basic"
+        )
+        return snapshot, annotation
+
     def _capture_growth_zero(self) -> None:
         def ready() -> None:
             snapshot, _plant_id = self._prepare_growth_capture_fixture(
@@ -7336,53 +8185,110 @@ class _UiFaceCaptureRunner:
 
     def _capture_streak_new(self) -> None:
         def ready() -> None:
-            state = self.app.storage.state
-            state.streak_days = 0
-            state.daily_stats.reviewed = 0
+            snapshot, _projections = (
+                self._prepare_canonical_achievement_capture_fixture()
+            )
             self._refresh_capture_dashboard()
-            self._capture_metric("streak", "streak-new")
+            self._capture_metric(
+                "streak",
+                "streak-new",
+                restore_callback=lambda: self._restore_reward_capture_fixture(
+                    snapshot
+                ),
+            )
 
         self._with_dashboard(ready)
 
     def _capture_streak_active(self) -> None:
         def ready() -> None:
-            state = self.app.storage.state
-            state.streak_days = 7
-            state.daily_stats.reviewed = 12
-            state.daily_stats.correct = 10
-            state.daily_stats.wrong = 2
-            state.last_active_day = str(state.daily_stats.day)
-            streak_achievement = state.achievements.get("streak_7")
-            if streak_achievement is not None:
-                streak_achievement.unlocked = True
-                streak_achievement.progress = 1.0
-                streak_achievement.unlocked_at = str(state.daily_stats.day)
+            snapshot, projections = (
+                self._prepare_canonical_achievement_capture_fixture(
+                    streak_days=7,
+                    daily_answers=12,
+                    again_answers=2,
+                    completed_ids=("streak_7",),
+                )
+            )
+            receipt_sources = self._append_canonical_streak_reward_receipts(
+                streak_days=7,
+            )
+            from .reward_presentation import recurring_reward_presentations
+
+            reward_rules = {
+                rule.rule_id: rule
+                for rule in recurring_reward_presentations(
+                    self.app.storage.state,
+                    self.app.engine,
+                )
+            }
+            streak_projection = next(
+                item for item in projections
+                if item.achievement_id == "streak_7"
+            )
+            self._capture_annotations["streak-active"] = {
+                "achievement_id": streak_projection.achievement_id,
+                "achievement_name": streak_projection.name,
+                "achievement_reward": streak_projection.reward_summary,
+                "achievement_completed": streak_projection.completed,
+                "recurring_receipt_sources": list(receipt_sources),
+                "daily_reward_earned": reward_rules["daily_activity"].awarded_today,
+                "weekly_reward_earned": reward_rules["weekly_streak"].awarded_today,
+                "passed": bool(
+                    streak_projection.completed
+                    and streak_projection.reward_summary == "+10 Garden Coins"
+                    and reward_rules["daily_activity"].awarded_today
+                    and reward_rules["weekly_streak"].awarded_today
+                ),
+            }
             self._refresh_capture_dashboard()
-            self._capture_metric("streak", "streak-active")
+            self._capture_metric(
+                "streak",
+                "streak-active",
+                restore_callback=lambda: self._restore_reward_capture_fixture(
+                    snapshot
+                ),
+            )
 
         self._with_dashboard(ready)
 
     def _capture_coins_zero(self) -> None:
         def ready() -> None:
+            snapshot = self.app.engine._state_snapshot()
             state = self.app.storage.state
             state.currency_balance = 0
             state.currency_transactions.clear()
+            state.recent_reward_receipts.clear()
+            state.garden_find_outcomes.clear()
+            state.garden_find_daily_counts.clear()
+            state.garden_find_reward_daily_counts.clear()
+            self._capture_annotations["coins-zero"] = {
+                "recent_reward_count": 0,
+                "recent_find_count": 0,
+                "passed": True,
+            }
             self._refresh_capture_dashboard()
-            self._capture_metric("currency", "coins-zero")
+            self._capture_metric(
+                "currency",
+                "coins-zero",
+                restore_callback=lambda: self._restore_reward_capture_fixture(
+                    snapshot
+                ),
+            )
 
         self._with_dashboard(ready)
 
     def _capture_coins_activity(self) -> None:
         def ready() -> None:
-            state = self.app.storage.state
-            state.currency_balance = 0
-            state.currency_transactions.clear()
-            credit = getattr(self.app.engine, "_credit_currency", None)
-            if callable(credit):
-                credit("capture:stage", "Reached Sprout", 5)
-                credit("capture:streak", "7-day Anki streak", 25)
+            snapshot, annotation = self._prepare_reward_history_capture_fixture()
+            self._capture_annotations["coins-activity"] = annotation
             self._refresh_capture_dashboard()
-            self._capture_metric("currency", "coins-activity")
+            self._capture_metric(
+                "currency",
+                "coins-activity",
+                restore_callback=lambda: self._restore_reward_capture_fixture(
+                    snapshot
+                ),
+            )
 
         self._with_dashboard(ready)
 
@@ -9742,135 +10648,105 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_achievement_completed(self) -> None:
+        from .achievements import ACHIEVEMENT_DEFINITIONS
+
         if not self._ensure_development_stress_state():
             self._next_after(200)
             return
-        state = self.app.storage.state
-        stats = state.daily_stats
-        # Keep every completed card coherent even if a renderer still consults
-        # today's counters. The product projection treats completion thresholds
-        # as immutable, but a release fixture should never depend on stale,
-        # contradictory values to demonstrate that behavior.
-        stats.reviewed = 100
-        stats.correct = 100
-        stats.wrong = 0
-        stats.new_count = 0
-        stats.learning_count = 0
-        stats.review_count = 100
-        stats.completed_due_cards = True
-        state.total_reviews = max(1_000, int(getattr(state, "total_reviews", 0) or 0))
-        state.streak_days = max(30, int(getattr(state, "streak_days", 0) or 0))
-        state.last_active_day = str(stats.day)
-        state.claimed_streak_rewards = sorted(
-            set(getattr(state, "claimed_streak_rewards", []) or []) | {7, 14, 30}
+        completed_ids = tuple(
+            definition.achievement_id
+            for definition in ACHIEVEMENT_DEFINITIONS
         )
+        snapshot, projections = self._prepare_canonical_achievement_capture_fixture(
+            streak_days=365,
+            daily_answers=100,
+            lifetime_answers=1_000,
+            non_again_run=30,
+            completed_ids=completed_ids,
+        )
+        self._capture_annotations["achievement-completed"] = {
+            "projection_ids": [item.achievement_id for item in projections],
+            "completed_projection_ids": [
+                item.achievement_id for item in projections if item.completed
+            ],
+            "reward_summaries": {
+                item.achievement_id: item.reward_summary
+                for item in projections
+            },
+            "canonical_projection_count": len(projections),
+            "passed": bool(
+                len(projections) == len(ACHIEVEMENT_DEFINITIONS)
+                and all(item.completed for item in projections)
+                and all(bool(item.reward_summary) for item in projections)
+            ),
+        }
         self._refresh_capture_dashboard()
-        self._capture_progress_page("achievements", "achievement-completed")
+        self._capture_progress_page(
+            "achievements",
+            "achievement-completed",
+            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+        )
 
-    def _capture_clear_recall_conditions(self) -> None:
-        from .ui.state_contracts import achievement_progress_display
+    def _capture_clear_recall_projection(self) -> None:
+        from .reward_presentation import achievement_presentation
 
         if not self._ensure_development_stress_state():
             self._next_after(200)
             return
-        state = self.app.storage.state
-        stats = state.daily_stats
-        original_stats = {
-            "reviewed": stats.reviewed,
-            "correct": stats.correct,
-            "wrong": stats.wrong,
-            "completed_due_cards": stats.completed_due_cards,
-        }
-        original_state_values = {
-            "streak_days": state.streak_days,
-            "total_reviews": state.total_reviews,
-            "last_active_day": state.last_active_day,
-        }
-        achievement_snapshots = {
-            key: (
-                bool(getattr(item, "unlocked", False)),
-                getattr(item, "unlocked_at", None),
-                float(getattr(item, "progress", 0.0) or 0.0),
-            )
-            for key, item in dict(state.achievements).items()
-        }
-        restored = False
-
-        def restore() -> None:
-            nonlocal restored
-            if restored:
-                return
-            restored = True
-            stats.reviewed = original_stats["reviewed"]
-            stats.correct = original_stats["correct"]
-            stats.wrong = original_stats["wrong"]
-            stats.completed_due_cards = original_stats["completed_due_cards"]
-            state.streak_days = original_state_values["streak_days"]
-            state.total_reviews = original_state_values["total_reviews"]
-            state.last_active_day = original_state_values["last_active_day"]
-            for key, values in achievement_snapshots.items():
-                item = state.achievements.get(key)
-                if item is None:
-                    continue
-                item.unlocked, item.unlocked_at, item.progress = values
-            self._refresh_capture_dashboard()
-
-        # The preceding development fixture deliberately unlocks everything.
-        # Reset every achievement and every backing condition so this face
-        # demonstrates only Clear Recall's two independent requirements.
-        for item in state.achievements.values():
-            item.unlocked = False
-            item.unlocked_at = None
-            item.progress = 0.0
-        state.streak_days = 0
-        state.total_reviews = 0
-        state.last_active_day = ""
-        stats.reviewed = 12
-        stats.correct = 10
-        stats.wrong = 2
-        stats.completed_due_cards = False
-        achievement = state.achievements.get("retention_90")
-        if achievement is None:
+        snapshot, projections = self._prepare_canonical_achievement_capture_fixture(
+            daily_answers=12,
+            again_answers=2,
+            non_again_run=10,
+        )
+        projection = achievement_presentation(
+            "retention_90",
+            self.app.storage.state,
+        )
+        if projection is None:
             self._failures.append({
-                "label": "clear-recall-separate-conditions",
-                "reason": "Clear Recall achievement was unavailable",
+                "label": "clear-recall-canonical-projection",
+                "reason": "Clear Recall canonical projection was unavailable",
             })
-            restore()
+            self._restore_reward_capture_fixture(snapshot)
             self._next_after(200)
             return
-        achievement.unlocked = False
-        achievement.unlocked_at = None
-        achievement.progress = 0.0
-        display = achievement_progress_display(achievement, state)
-        condition_rows = tuple(
-            (condition.label, condition.value_text)
-            for condition in display.conditions
+        expected_conditions = (
+            "Answers: 12 of 20",
+            "Non-Again accuracy: 83% of 90% required",
         )
-        expected_rows = (
-            ("Accuracy", "83% / 90%"),
-            ("Anki card answers", "12 / 20"),
+        unlocked_ids = [
+            item.achievement_id for item in projections if item.unlocked
+        ]
+        passed = bool(
+            projection.condition_lines == expected_conditions
+            and projection.value_text == "12 of 20"
+            and projection.reward_summary == "+10 Garden Coins"
+            and projection.current == 12
+            and projection.progress_target == 20
+            and not projection.completed
+            and not unlocked_ids
         )
-        other_unlocked = sorted(
-            key for key, item in state.achievements.items()
-            if key != "retention_90" and bool(getattr(item, "unlocked", False))
-        )
-        passed = condition_rows == expected_rows and not other_unlocked
         if not passed:
             self._failures.append({
-                "label": "clear-recall-separate-conditions",
-                "reason": f"Clear Recall conditions were not separate and coherent: {condition_rows!r}",
+                "label": "clear-recall-canonical-projection",
+                "reason": "Clear Recall did not match its canonical projection",
             })
-        self._capture_annotations["clear-recall-separate-conditions"] = {
-            "condition_rows": [list(row) for row in condition_rows],
-            "achievement_state_isolated": True,
-            "other_unlocked_achievements": other_unlocked,
+        self._capture_annotations["clear-recall-canonical-projection"] = {
+            "achievement_id": projection.achievement_id,
+            "condition_lines": list(projection.condition_lines),
+            "value_text": projection.value_text,
+            "reward_summary": projection.reward_summary,
+            "current": projection.current,
+            "target": projection.progress_target,
+            "unlocked_achievement_ids": unlocked_ids,
+            "canonical_projection": True,
             "passed": passed,
         }
         self._refresh_capture_dashboard()
         self._capture_progress_page(
             "achievements",
-            "clear-recall-separate-conditions",
-            restore_callback=restore,
+            "clear-recall-canonical-projection",
+            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
         )
 
     def _set_streak_capture_state(
@@ -9879,29 +10755,46 @@ class _UiFaceCaptureRunner:
         days: int,
         reviewed: int,
         last_active_offset: int,
-        claimed: list[int] | None = None,
-    ) -> None:
+        completed_ids: tuple[str, ...] = (),
+    ) -> tuple[dict[str, Any], tuple[Any, ...]]:
+        snapshot, projections = self._prepare_canonical_achievement_capture_fixture(
+            streak_days=days,
+            daily_answers=reviewed,
+            completed_ids=completed_ids,
+        )
         state = self.app.storage.state
         try:
             current_day = date.fromisoformat(str(state.daily_stats.day)[:10])
         except (TypeError, ValueError):
             current_day = date.today()
             state.daily_stats.day = current_day.isoformat()
-        state.streak_days = days
-        state.daily_stats.reviewed = reviewed
         state.last_active_day = (current_day + timedelta(days=last_active_offset)).isoformat()
-        if claimed is not None:
-            state.claimed_streak_rewards = list(claimed)
+        if reviewed > 0:
+            self._append_canonical_streak_reward_receipts(streak_days=days)
         self._refresh_capture_dashboard()
+        return snapshot, projections
 
     def _capture_streak_at_risk(self) -> None:
-        self._set_streak_capture_state(days=7, reviewed=0, last_active_offset=-1)
-        self._capture_metric("streak", "streak-at-risk")
+        snapshot, _projections = self._set_streak_capture_state(
+            days=7,
+            reviewed=0,
+            last_active_offset=-1,
+            completed_ids=("streak_7",),
+        )
+        self._capture_metric(
+            "streak",
+            "streak-at-risk",
+            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+        )
 
     def _capture_streak_missed_day(self) -> None:
         from .ui.state_contracts import StreakPresentationState, streak_presentation
 
-        self._set_streak_capture_state(days=3, reviewed=0, last_active_offset=-2)
+        snapshot, _projections = self._set_streak_capture_state(
+            days=3,
+            reviewed=0,
+            last_active_offset=-2,
+        )
         state = self.app.storage.state
         presentation = streak_presentation(
             state.streak_days,
@@ -9918,23 +10811,63 @@ class _UiFaceCaptureRunner:
                 "label": "streak-missed-day",
                 "reason": "Missed-day fixture did not project an ended 0-day streak with its previous context",
             })
-        self._capture_metric("streak", "streak-missed-day")
+        self._capture_metric(
+            "streak",
+            "streak-missed-day",
+            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+        )
 
-    def _capture_streak_reward_states(self) -> None:
-        self._set_streak_capture_state(
+    def _capture_streak_achievement_states(self) -> None:
+        from .models.state import STREAK_BONUS_TIERS
+        from .reward_presentation import recurring_reward_presentations
+
+        snapshot, projections = self._set_streak_capture_state(
             days=14,
             reviewed=12,
             last_active_offset=0,
-            claimed=[7, 14],
+            completed_ids=("streak_7",),
         )
-        self._capture_annotations["streak-reward-earned-next"] = {
-            "current_streak_days": 14,
-            "automatically_earned_milestones": [7, 14],
-            "next_milestone_days": 30,
-            "manual_claim_action_supported": False,
-            "passed": True,
+        completed = next(
+            item for item in projections if item.achievement_id == "streak_7"
+        )
+        next_achievement = next(
+            item for item in projections if item.achievement_id == "streak_30"
+        )
+        next_bonus_day = next(
+            day for day, _percent in STREAK_BONUS_TIERS if day > 14
+        )
+        reward_rules = {
+            rule.rule_id: rule
+            for rule in recurring_reward_presentations(
+                self.app.storage.state,
+                self.app.engine,
+            )
         }
-        self._capture_metric("streak", "streak-reward-earned-next")
+        self._capture_annotations["streak-achievement-earned-next"] = {
+            "current_streak_days": 14,
+            "completed_achievement_id": completed.achievement_id,
+            "completed_achievement_reward": completed.reward_summary,
+            "next_achievement_id": next_achievement.achievement_id,
+            "next_achievement_value": next_achievement.value_text,
+            "next_growth_bonus_days": next_bonus_day,
+            "daily_reward_earned": reward_rules["daily_activity"].awarded_today,
+            "weekly_reward_earned": reward_rules["weekly_streak"].awarded_today,
+            "canonical_projection": True,
+            "passed": bool(
+                completed.completed
+                and completed.reward_summary == "+10 Garden Coins"
+                and not next_achievement.completed
+                and next_achievement.value_text == "14 of 30"
+                and next_bonus_day == 30
+                and reward_rules["daily_activity"].awarded_today
+                and reward_rules["weekly_streak"].awarded_today
+            ),
+        }
+        self._capture_metric(
+            "streak",
+            "streak-achievement-earned-next",
+            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+        )
 
     def _capture_nursery_owned_item(self) -> None:
         self._ensure_development_stress_state()
@@ -10313,6 +11246,600 @@ class _UiFaceCaptureRunner:
             "settings-unsaved-changes",
             0,
             lambda dialog: dialog.garden_name_edit.setText("Unsaved Moonlit Garden"),
+        )
+
+    def _prepare_reviewer_capture_card(self) -> bool:
+        """Create one disposable Basic note so reward captures use real Reviewer UI."""
+
+        if bool(getattr(self, "_reviewer_capture_card_ready", False)):
+            return True
+        collection = getattr(mw, "col", None)
+        if collection is None:
+            return False
+        try:
+            decks = collection.decks
+            deck_id_reader = getattr(decks, "id_for_name", None)
+            if callable(deck_id_reader):
+                deck_id = deck_id_reader("Anki Garden Capture")
+            else:
+                deck_id = decks.id("Anki Garden Capture")
+            if deck_id is None:
+                return False
+            note = collection.new_note()
+            field_names = list(note.keys())
+            if not field_names:
+                return False
+            note[field_names[0]] = "What did this review uncover?"
+            if len(field_names) > 1:
+                note[field_names[1]] = "A Garden Find."
+            add_note = getattr(collection, "add_note", None)
+            if callable(add_note):
+                add_note(note, int(deck_id))
+            else:
+                note_type = note.note_type()
+                note_type["did"] = int(deck_id)
+                collection.addNote(note)
+            select_deck = getattr(decks, "select", None)
+            if callable(select_deck):
+                select_deck(int(deck_id))
+            reset = getattr(collection, "reset", None)
+            if callable(reset):
+                reset()
+            self._reviewer_capture_card_ready = True
+            return True
+        except Exception:
+            logger.exception("Anki Garden capture: could not prepare Reviewer card")
+            return False
+
+    def _prepare_canonical_reviewer_feedback_fixture(
+        self,
+        *,
+        find_reward_ids: tuple[str, ...],
+        include_daily_activity: bool = False,
+        achievement_ids: tuple[str, ...] = (),
+    ) -> tuple[dict[str, Any], Any, dict[str, Any]]:
+        """Project a real Reviewer event from committed, registry-owned facts."""
+
+        from .achievements import ACHIEVEMENTS_BY_ID
+        from .garden_finds import (
+            STANDARD_FIND_REGISTRY,
+            STANDARD_POOL_ID,
+            STANDARD_POOL_VERSION,
+        )
+        from .models.state import (
+            CurrencyTransaction,
+            GardenFindOutcome,
+            RewardReceipt,
+        )
+        from .reward_presentation import recent_garden_finds
+
+        snapshot = self.app.engine._state_snapshot()
+        try:
+            handler = getattr(self.app, "reviewer_hooks", None)
+            if handler is None:
+                raise RuntimeError("Reviewer reward handler was unavailable")
+            state = self.app.storage.state
+            active = self.app.engine.active_plant() or next(
+                (
+                    plant for plant in state.plants
+                    if bool(getattr(plant, "planted", False))
+                    and not bool(getattr(plant, "fully_grown", False))
+                ),
+                None,
+            )
+            if active is None:
+                raise RuntimeError(
+                    "canonical Reviewer reward capture requires an unfinished plant"
+                )
+
+            reward_by_id = {
+                reward.reward_id: reward for reward in STANDARD_FIND_REGISTRY
+            }
+            unknown_find_ids = set(find_reward_ids) - set(reward_by_id)
+            if unknown_find_ids:
+                raise ValueError(
+                    "unknown canonical Reviewer Find IDs: "
+                    + ", ".join(sorted(unknown_find_ids))
+                )
+            unknown_achievement_ids = set(achievement_ids) - set(
+                ACHIEVEMENTS_BY_ID
+            )
+            if unknown_achievement_ids:
+                raise ValueError(
+                    "unknown canonical Reviewer achievement IDs: "
+                    + ", ".join(sorted(unknown_achievement_ids))
+                )
+
+            day_value = "2026-08-21"
+            state.daily_stats.day = day_value
+            state.recent_reward_receipts = []
+            state.garden_find_outcomes = {}
+            state.garden_find_daily_counts = {day_value: len(find_reward_ids)}
+            state.garden_find_reward_daily_counts = {day_value: {}}
+            state.currency_transactions = []
+            state.pending_feedback = []
+            state.applied_reward_event_keys = []
+            state.processed_answer_keys = []
+            self.app.engine._ensure_achievements()
+
+            sync_correlation = f"sync:capture-reviewer:{day_value}"
+            all_receipt_groups: list[tuple[RewardReceipt, ...]] = []
+            for index, reward_id in enumerate(find_reward_ids, start=1):
+                reward = reward_by_id[reward_id]
+                answer_key = f"capture-reviewer-{index}"
+                correlation_id = sync_correlation
+                occurred_at = f"{day_value}T09:{index:02d}:00+00:00"
+                find_event_key = (
+                    f"garden_find:{answer_key}:{STANDARD_POOL_ID}"
+                )
+                item_id = reward.inventory_item_id or ""
+                outcome = GardenFindOutcome(
+                    answer_key=answer_key,
+                    scheduler_day=day_value,
+                    status="hit",
+                    pool_id=STANDARD_POOL_ID,
+                    pool_version=STANDARD_POOL_VERSION,
+                    occurred_at=occurred_at,
+                    reward_id=reward.reward_id,
+                    reward_type=reward.reward_kind,
+                    amount=reward.amount,
+                    item_id=item_id,
+                    display_name=reward.display_name,
+                    description=reward.description,
+                    tier=reward.tier,
+                    artwork_ref=reward.artwork_ref,
+                    localization_key=reward.localization_key,
+                )
+                state.garden_find_outcomes[outcome.outcome_key] = outcome
+                receipts: list[RewardReceipt] = []
+                if include_daily_activity and index == 1:
+                    receipts.append(RewardReceipt(
+                        event_key=f"daily_activity:{day_value}",
+                        reward_type="coins",
+                        source="daily_activity",
+                        source_id=day_value,
+                        scheduler_day=day_value,
+                        correlation_id=correlation_id,
+                        occurred_at=occurred_at,
+                        amount=int(self.app.engine.DAILY_ACTIVITY_COINS),
+                        title="Daily activity reward",
+                    ))
+                receipts.append(RewardReceipt(
+                    event_key=find_event_key,
+                    reward_type=reward.reward_kind,
+                    source="garden_find",
+                    source_id=reward.reward_id,
+                    scheduler_day=day_value,
+                    correlation_id=correlation_id,
+                    occurred_at=occurred_at,
+                    amount=reward.amount,
+                    item_id=item_id,
+                    plant_id=(
+                        active.plant_id if reward.reward_kind == "growth" else ""
+                    ),
+                    title=reward.display_name,
+                    description=reward.description,
+                ))
+
+                if index == len(find_reward_ids):
+                    for achievement_id in achievement_ids:
+                        definition = ACHIEVEMENTS_BY_ID[achievement_id]
+                        event_key = f"achievement:{achievement_id}"
+                        if definition.reward.coins:
+                            receipts.append(RewardReceipt(
+                                event_key=event_key,
+                                reward_type="coins",
+                                source="achievement",
+                                source_id=achievement_id,
+                                scheduler_day=day_value,
+                                correlation_id=correlation_id,
+                                occurred_at=occurred_at,
+                                amount=definition.reward.coins,
+                                title=definition.name,
+                                description=definition.description,
+                            ))
+                        for charge_id, amount in (
+                            (
+                                "growth_charge_small",
+                                definition.reward.small_growth_charges,
+                            ),
+                            (
+                                "growth_charge_standard",
+                                definition.reward.standard_growth_charges,
+                            ),
+                        ):
+                            if amount:
+                                receipts.append(RewardReceipt(
+                                    event_key=event_key,
+                                    reward_type="inventory_item",
+                                    source="achievement",
+                                    source_id=achievement_id,
+                                    scheduler_day=day_value,
+                                    correlation_id=correlation_id,
+                                    occurred_at=occurred_at,
+                                    amount=amount,
+                                    item_id=charge_id,
+                                    title=definition.name,
+                                    description=definition.description,
+                                ))
+                        achievement = state.achievements[achievement_id]
+                        achievement.unlocked = True
+                        achievement.progress = 1.0
+                        achievement.unlocked_at = occurred_at
+                        achievement.rewarded_at = occurred_at
+                        achievement.reward_event_key = event_key
+                        achievement.historical_backfill = False
+
+                for receipt_index, receipt in enumerate(receipts, start=1):
+                    state.recent_reward_receipts.append(receipt)
+                    if receipt.event_key not in state.applied_reward_event_keys:
+                        state.applied_reward_event_keys.append(receipt.event_key)
+                    if receipt.reward_type == "coins":
+                        state.currency_balance += receipt.amount
+                        state.currency_transactions.append(CurrencyTransaction(
+                            transaction_id=(
+                                f"capture-reviewer-tx-{index}-{receipt_index}"
+                            ),
+                            event_key=receipt.event_key,
+                            reason=receipt.title,
+                            delta=receipt.amount,
+                            balance=state.currency_balance,
+                            occurred_at=receipt.occurred_at,
+                            transaction_type="credit",
+                            source=receipt.source,
+                            source_id=receipt.source_id,
+                            scheduler_day=receipt.scheduler_day,
+                            correlation_id=receipt.correlation_id,
+                        ))
+                    elif receipt.reward_type == "growth":
+                        active.growth_points += receipt.amount
+                        direct_growth = (
+                            state.daily_stats.plant_direct_reward_growth
+                        )
+                        direct_growth[active.plant_id] = (
+                            int(direct_growth.get(active.plant_id, 0) or 0)
+                            + receipt.amount
+                        )
+                    elif receipt.reward_type == "inventory_item" and receipt.item_id:
+                        state.consumables[receipt.item_id] = (
+                            int(state.consumables.get(receipt.item_id, 0) or 0)
+                            + receipt.amount
+                        )
+                state.processed_answer_keys.append(answer_key)
+                state.garden_find_reward_daily_counts[day_value][reward_id] = (
+                    int(state.garden_find_reward_daily_counts[day_value].get(
+                        reward_id,
+                        0,
+                    ) or 0)
+                    + 1
+                )
+                receipt_group = tuple(receipts)
+                all_receipt_groups.append(receipt_group)
+
+            all_receipts = tuple(
+                receipt
+                for group in all_receipt_groups
+                for receipt in group
+            )
+            if not self.app.engine._queue_reward_feedback(
+                sync_correlation,
+                all_receipts,
+                achievement_ids=achievement_ids,
+                plant_id=active.plant_id,
+                title="Synced review rewards",
+            ):
+                raise RuntimeError(
+                    "canonical Reviewer sync reward feedback was not queued"
+                )
+            state.pending_feedback[-1].occurred_at = (
+                all_receipts[-1].occurred_at if all_receipts else f"{day_value}T09:00:00+00:00"
+            )
+
+            presentations = recent_garden_finds(state, limit=8)
+            feedback = handler._consolidated_reward_feedback(
+                list(state.pending_feedback)
+            )
+            if feedback is None:
+                raise RuntimeError(
+                    "canonical Reviewer reward feedback could not be projected"
+                )
+            expected_detail = (
+                presentations[0].description
+                if len(presentations) == 1
+                else handler._aggregate_find_details(presentations)
+            )
+            expected_title = (
+                f"Garden Find: {presentations[0].display_name}"
+                if len(presentations) == 1
+                else "Garden Finds and review rewards"
+            )
+            receipt_correlations = {
+                receipt.correlation_id for receipt in all_receipts
+            }
+            all_groups_share_correlation = bool(
+                all_receipt_groups
+                and all(all_receipt_groups)
+                and receipt_correlations == {sync_correlation}
+            )
+            expected_parts: list[str] = []
+            expected_growth = sum(
+                receipt.amount
+                for receipt in all_receipts
+                if receipt.reward_type == "growth"
+            )
+            expected_coins = sum(
+                receipt.amount
+                for receipt in all_receipts
+                if receipt.reward_type == "coins"
+            )
+            if expected_growth:
+                expected_parts.append(f"+{expected_growth:,} Growth")
+            if expected_coins:
+                expected_parts.append(f"+{expected_coins:,} Garden Coins")
+            item_totals: dict[str, int] = {}
+            for receipt in all_receipts:
+                if receipt.reward_type in {"inventory_item", "environment_item"}:
+                    item_totals[receipt.item_id] = (
+                        item_totals.get(receipt.item_id, 0) + receipt.amount
+                    )
+            expected_parts.extend(
+                f"+{amount} {item_id.replace('_', ' ').title()}"
+                for item_id, amount in sorted(item_totals.items())
+                if item_id
+            )
+            achievement_names = [
+                ACHIEVEMENTS_BY_ID[achievement_id].name
+                for achievement_id in achievement_ids
+            ]
+            if achievement_names:
+                expected_parts.append("Unlocked " + ", ".join(achievement_names))
+            expected_message = (
+                "; ".join(expected_parts)
+                or "Your Garden rewards were recorded."
+            )
+            expected_total = sum(receipt.amount for receipt in all_receipts)
+            annotation = {
+                "canonical_find_ids": [
+                    presentation.reward_id for presentation in presentations
+                ],
+                "canonical_feedback_title": feedback.title,
+                "canonical_feedback_detail": feedback.reward_detail,
+                "canonical_feedback_message": feedback.message,
+                "expected_feedback_message": expected_message,
+                "expected_feedback_amount": expected_total,
+                "stacked_find_count": len(presentations),
+                "sync_correlation": sync_correlation,
+                "all_receipt_groups_share_correlation": (
+                    all_groups_share_correlation
+                ),
+                "canonical_projection_passed": bool(
+                    feedback.title == expected_title
+                    and feedback.reward_detail == expected_detail
+                    and feedback.message == expected_message
+                    and feedback.amount == expected_total
+                    and all_groups_share_correlation
+                    and len(presentations) == len(find_reward_ids)
+                ),
+            }
+            return snapshot, feedback, annotation
+        except Exception:
+            self._restore_reward_capture_fixture(snapshot)
+            raise
+
+    def _with_capture_reviewer(
+        self,
+        label: str,
+        ready: Callable[[], None],
+        *,
+        on_error: Callable[[], None] | None = None,
+    ) -> None:
+        if not self._prepare_reviewer_capture_card():
+            self._failures.append({
+                "label": label,
+                "reason": "A disposable Reviewer card could not be prepared",
+            })
+            self._next_after(180)
+            return
+        try:
+            mw.moveToState("review")
+        except Exception as exc:
+            self._failures.append({
+                "label": label,
+                "reason": f"Reviewer state could not open: {type(exc).__name__}",
+            })
+            self._next_after(180)
+            return
+        self._wait_for(
+            lambda: bool(
+                str(getattr(mw, "state", "")) == "review"
+                and getattr(mw, "web", None) is not None
+                and mw.web.isVisible()
+            ),
+            ready,
+            tries=100,
+            failure_label=label,
+            failure_reason="The real Anki Reviewer did not become ready",
+            on_error=on_error,
+        )
+
+    def _capture_reviewer_find_feedback(
+        self,
+        label: str,
+        prepare_feedback: Callable[
+            [],
+            tuple[dict[str, Any], Any, dict[str, Any]],
+        ],
+        *,
+        reduced_motion: bool = False,
+    ) -> None:
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def registered_cleanup() -> None:
+            cleanup_holder["callback"]()
+
+        def ready() -> None:
+            handler = getattr(self.app, "reviewer_hooks", None)
+            if handler is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Reviewer reward handler was unavailable",
+                })
+                self._next_after(180)
+                return
+            try:
+                snapshot, event, fixture_annotation = prepare_feedback()
+            except Exception as exc:
+                logger.exception(
+                    "Anki Garden capture: canonical Reviewer fixture failed"
+                )
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Canonical Reviewer reward fixture failed: "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+                self._next_after(180)
+                return
+            cleaned_up = False
+            config_value: Callable[..., Any] | None = None
+            config_update: Callable[..., Any] | None = None
+            baseline_reduced_motion = False
+
+            def cleanup() -> None:
+                nonlocal cleaned_up
+                if cleaned_up:
+                    return
+                cleaned_up = True
+                current = getattr(handler, "_reward_toast", None)
+                if current is not None:
+                    try:
+                        current.hide()
+                    except RuntimeError:
+                        pass
+                    finally:
+                        handler._reward_toast = None
+                if reduced_motion and callable(config_update):
+                    try:
+                        config_update({"reduced_motion": baseline_reduced_motion})
+                    except Exception:
+                        logger.exception(
+                            "Anki Garden capture: reduced-motion fixture restoration failed"
+                        )
+                self._restore_reward_capture_fixture(snapshot)
+
+            # Install cleanup immediately after the fixture mutates state. The
+            # outer readiness guard can now restore it for every later failure.
+            cleanup_holder["callback"] = cleanup
+
+            try:
+                config = getattr(self.app, "config", None)
+                config_value = getattr(config, "value", None)
+                config_update = getattr(config, "update", None)
+                baseline_reduced_motion = (
+                    bool(config_value("reduced_motion", False))
+                    if callable(config_value) else False
+                )
+                if reduced_motion and callable(config_update):
+                    config_update({"reduced_motion": True})
+                app = QApplication.instance()
+                focus_target = getattr(mw, "web", None)
+                if focus_target is not None:
+                    focus_target.setFocus(Qt.FocusReason.TabFocusReason)
+                if app is not None:
+                    app.processEvents()
+                focus_before = QApplication.focusWidget()
+                rendered = bool(handler._show_reward_toast(event))
+                if app is not None:
+                    app.processEvents()
+                focus_after = QApplication.focusWidget()
+                toast = getattr(handler, "_reward_toast", None)
+            except Exception:
+                cleanup()
+                raise
+            passed = bool(
+                rendered
+                and toast is not None
+                and toast.isVisible()
+                and focus_before is not None
+                and focus_after is focus_before
+                and focus_after is not toast
+                and fixture_annotation.get(
+                    "canonical_projection_passed",
+                    False,
+                )
+            )
+            self._capture_annotations[label] = {
+                **fixture_annotation,
+                "focus_preserved": focus_after is focus_before,
+                "focus_owner": (
+                    type(focus_after).__name__ if focus_after is not None else ""
+                ),
+                "reduced_motion_config_enabled": bool(
+                    reduced_motion
+                    and callable(config_value)
+                    and config_value("reduced_motion", False)
+                ),
+                "toast_visible": bool(toast is not None and toast.isVisible()),
+                "passed": passed,
+            }
+            if not passed:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Reviewer Find notification did not preserve keyboard focus",
+                })
+
+            try:
+                self._capture_and_advance(
+                    label,
+                    mw,
+                    capture_delay_ms=520,
+                    close_callback=cleanup,
+                    close_ms=760,
+                    next_ms=1120,
+                )
+            except Exception:
+                cleanup()
+                raise
+
+        self._with_capture_reviewer(
+            label,
+            ready,
+            on_error=registered_cleanup,
+        )
+
+    def _capture_reviewer_find_common(self) -> None:
+        self._capture_reviewer_find_feedback(
+            "reviewer-find-common-reduced-motion",
+            lambda: self._prepare_canonical_reviewer_feedback_fixture(
+                find_reward_ids=("find_morning_dew",),
+                include_daily_activity=True,
+            ),
+            reduced_motion=True,
+        )
+
+    def _capture_reviewer_find_exceptional(self) -> None:
+        self._capture_reviewer_find_feedback(
+            "reviewer-find-exceptional",
+            lambda: self._prepare_canonical_reviewer_feedback_fixture(
+                find_reward_ids=("find_standard_charge",),
+            ),
+        )
+
+    def _capture_reviewer_find_stacked_sync(self) -> None:
+        self._capture_reviewer_find_feedback(
+            "reviewer-find-stacked-sync",
+            lambda: self._prepare_canonical_reviewer_feedback_fixture(
+                find_reward_ids=(
+                    "find_morning_dew",
+                    "find_morning_dew",
+                    "find_coin_pouch",
+                ),
+                include_daily_activity=True,
+                achievement_ids=("retention_100",),
+            ),
         )
 
     def _capture_settings_validation_error(self) -> None:

@@ -35,7 +35,8 @@ STARTER_CONFIRMATION_TEMPLATE = (
 )
 REVIEWER_NO_STARTER_NOTICE = (
     "Choose a starter before studying to earn Growth. "
-    "Answers completed before setup are not backfilled."
+    "Earlier Growth and repeatable rewards are not backfilled; reliably "
+    "reconstructable one-time achievements may be."
 )
 STARTER_READY_TEMPLATE = "{plant_name} is ready. Answer an Anki card to give it Growth."
 ACTIVE_GROWTH_TITLE = "Growth is underway"
