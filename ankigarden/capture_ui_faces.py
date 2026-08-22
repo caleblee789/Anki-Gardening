@@ -1561,6 +1561,7 @@ class _UiFaceCaptureRunner:
         }
         self._dialog_memory_probe_attempted = False
         self._finished = False
+        self._fatal_fixture_restore_failure = False
         self._active_fixture_source = "capture-runner-initialization"
         self._active_fixture_expected_label = ""
         self.capture_root = Path(
@@ -1952,6 +1953,9 @@ class _UiFaceCaptureRunner:
         return False
 
     def _next_step(self) -> None:
+        if self._fatal_fixture_restore_failure:
+            self._finish()
+            return
         if self._step_index >= len(self._steps):
             if self._phase == "starter":
                 self._phase = "seeding"
@@ -7498,36 +7502,61 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_fertilize_after(self, label: str, state_variant: str) -> None:
+        from .models.state import Fertilizer
+
         plant_id = self._select_plant()
         dashboard = getattr(self.app, "dashboard", None)
         if not plant_id or dashboard is None:
             self._close_dashboard()
             self._next_after(250)
             return
+        snapshot = self._capture_fixture_state_snapshot(label)
+
+        def cleanup() -> None:
+            self._restore_capture_fixture_state(snapshot)
+
         state = self.app.storage.state
         plant = self.app.engine.plant_story(plant_id)
-        if plant is not None and state_variant in {"unaffordable", "affordable", "active"}:
-            plant.fertilizer = None
-        state.currency_balance = 0 if state_variant == "unaffordable" else 500
-        if state_variant == "active":
-            purchase = getattr(self.app.engine, "purchase_fertilizer", None)
-            if callable(purchase):
-                purchase(plant_id, "basic")
-        refresh = getattr(dashboard, "refresh_all", None)
-        if callable(refresh):
-            refresh()
-        fertilize = getattr(dashboard, "_open_fertilizer_menu", None)
-        if not callable(fertilize):
-            self._close_dashboard()
-            self._next_after(250)
-            return
+        try:
+            if plant is not None:
+                plant.fertilizer = None
+            state.currency_balance = (
+                0 if state_variant == "unaffordable" else 500
+            )
+            state.currency_transactions.clear()
+            if state_variant == "active" and plant is not None:
+                now = self.app.engine._now_seconds()
+                plant.fertilizer = Fertilizer(
+                    "basic",
+                    1,
+                    now + 3_600,
+                    now,
+                )
+            refresh = getattr(dashboard, "refresh_all", None)
+            if callable(refresh):
+                refresh()
+            fertilize = getattr(dashboard, "_open_fertilizer_menu", None)
+            if not callable(fertilize):
+                cleanup()
+                self._close_dashboard()
+                self._next_after(250)
+                return
+        except Exception:
+            cleanup()
+            raise
+
         def ready() -> None:
             dialog = getattr(dashboard, "fertilizer_dialog", None)
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                cleanup()
+
             self._capture_and_advance(
                 label,
                 dialog,
                 capture_delay_ms=220,
-                close_callback=lambda: self._close_widget(dialog),
+                close_callback=close_dialog,
                 close_ms=620,
                 next_ms=1000,
             )
@@ -7543,6 +7572,7 @@ class _UiFaceCaptureRunner:
                 tries=80,
                 failure_label=label,
                 failure_reason="Fertilizer dialog did not become ready",
+                on_error=cleanup,
             ),
         )
         fertilize(plant_id)
@@ -7704,6 +7734,118 @@ class _UiFaceCaptureRunner:
         if callable(refresh):
             refresh()
 
+    def _capture_fixture_state_snapshot(
+        self,
+        label: str,
+        *,
+        exact_ledger_restore: bool = False,
+    ) -> dict[str, Any]:
+        """Take a capture-owned state boundary before a reversible fixture.
+
+        A normal engine snapshot can roll back only within the current staged
+        reward-ledger generation. Committing fixtures use a verified full
+        SQLite backup instead, so cleanup restores both bounded state and all
+        exact idempotency rows without relaxing production checkpoint rules.
+        """
+
+        engine = self.app.engine
+        storage = self.app.storage
+        if not exact_ledger_restore:
+            snapshot = engine._state_snapshot()
+            setattr(snapshot, "capture_fixture_label", str(label))
+            return snapshot
+        if os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1":
+            raise RuntimeError(
+                "Exact fixture backup is available only in capture mode"
+            )
+        if getattr(storage, "_reward_ledger", None) is None:
+            raise RuntimeError(
+                f"Capture fixture {label!r} requires an exact SQLite ledger"
+            )
+        has_staged = getattr(storage, "reward_ledger_has_staged_writes", None)
+        if not callable(has_staged):
+            raise RuntimeError("The capture ledger staging guard was unavailable")
+        if has_staged():
+            raise RuntimeError(
+                f"Capture fixture {label!r} started with staged reward-ledger writes"
+            )
+        backup_path = Path(storage.create_development_backup())
+        if backup_path.suffix != ".sqlite3":
+            backup_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Capture fixture {label!r} could not create an exact ledger backup"
+            )
+        try:
+            snapshot = engine._state_snapshot()
+            setattr(snapshot, "capture_fixture_label", str(label))
+            setattr(snapshot, "capture_ledger_backup", backup_path)
+            setattr(snapshot, "capture_restore_complete", False)
+            return snapshot
+        except Exception:
+            backup_path.unlink(missing_ok=True)
+            raise
+
+    def _restore_capture_fixture_state(self, snapshot: dict[str, Any]) -> None:
+        """Restore one capture boundary, including committed exact ledger rows."""
+
+        if bool(getattr(snapshot, "capture_restore_complete", False)):
+            return
+        label = str(getattr(snapshot, "capture_fixture_label", "capture-fixture"))
+        backup_value = getattr(snapshot, "capture_ledger_backup", None)
+        try:
+            if backup_value is None:
+                self.app.engine._restore_state(snapshot)
+                self.app.storage.save()
+            else:
+                if os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1":
+                    raise RuntimeError(
+                        "Exact fixture restore is available only in capture mode"
+                    )
+                storage = self.app.storage
+                ledger = getattr(storage, "_reward_ledger", None)
+                if ledger is None:
+                    raise RuntimeError("The capture reward ledger was unavailable")
+                # The boundary required a clean ledger. Any staged rows now
+                # belong to this disposable fixture and must not cross into
+                # the restored database.
+                if bool(getattr(ledger, "has_staged_writes", False)):
+                    ledger.rollback_all()
+                restored = storage.restore_development_backup(Path(backup_value))
+                # Preserve the engine's long-lived state identity so existing
+                # dialogs and controllers cannot retain a detached fixture.
+                self.app.engine.state.__dict__.clear()
+                self.app.engine.state.__dict__.update(restored.__dict__)
+                storage.state = self.app.engine.state
+                # The exact database and in-memory state are authoritative at
+                # this point. Mark completion before fallible UI refresh or
+                # temporary-file cleanup so the consumed backup is never used
+                # for a second restore attempt.
+                setattr(snapshot, "capture_restore_complete", True)
+                try:
+                    Path(backup_value).unlink(missing_ok=True)
+                except OSError:
+                    logger.debug(
+                        "Anki Garden capture: exact fixture backup cleanup deferred",
+                        exc_info=True,
+                    )
+            if backup_value is None:
+                setattr(snapshot, "capture_restore_complete", True)
+            self._refresh_capture_dashboard()
+        except Exception as exc:
+            self._fatal_fixture_restore_failure = True
+            self._failures.append({
+                "label": label,
+                "reason": (
+                    "Capture fixture state restoration raised "
+                    f"{type(exc).__name__}"
+                ),
+            })
+            logger.exception(
+                "Anki Garden capture: exact state restoration failed for %s",
+                label,
+            )
+            raise
+
     def _prepare_growth_capture_fixture(
         self,
         *,
@@ -7745,6 +7887,7 @@ class _UiFaceCaptureRunner:
         state.unlocked_slots = max(3, int(state.unlocked_slots))
         state.active_plant_id = plants[0].plant_id
         state.starter_selection_complete = True
+        state.onboarding.starter_plant_id = plants[0].plant_id
         stats = state.daily_stats
         stats.reviewed = 8 if populated else 0
         stats.correct = 7 if populated else 0
@@ -7788,22 +7931,12 @@ class _UiFaceCaptureRunner:
         return snapshot, plants[0].plant_id
 
     def _restore_growth_capture_fixture(self, snapshot: dict[str, Any]) -> None:
-        self.app.engine._restore_state(snapshot)
-        try:
-            self.app.storage.save()
-        except Exception:
-            logger.exception("Anki Garden capture: Growth fixture restoration failed")
-        self._refresh_capture_dashboard()
+        self._restore_capture_fixture_state(snapshot)
 
     def _restore_reward_capture_fixture(self, snapshot: dict[str, Any]) -> None:
         """Restore reward fixtures without leaving presentation history behind."""
 
-        self.app.engine._restore_state(snapshot)
-        try:
-            self.app.storage.save()
-        except Exception:
-            logger.exception("Anki Garden capture: reward fixture restoration failed")
-        self._refresh_capture_dashboard()
+        self._restore_capture_fixture_state(snapshot)
 
     def _prepare_canonical_achievement_capture_fixture(
         self,
@@ -8644,7 +8777,12 @@ class _UiFaceCaptureRunner:
             next_ms=1160,
         )
 
-    def _purchase_capture_snapshot(self, label: str) -> tuple[dict[str, Any], Any] | None:
+    def _purchase_capture_snapshot(
+        self,
+        label: str,
+        *,
+        exact_ledger_restore: bool = False,
+    ) -> tuple[dict[str, Any], Any] | None:
         """Return a reversible, canonical purchase fixture and active plant."""
 
         if not self._ensure_development_stress_state():
@@ -8653,10 +8791,7 @@ class _UiFaceCaptureRunner:
                 "reason": "The canonical purchase fixture could not be prepared",
             })
             return None
-        snapshot = self.app.engine._state_snapshot()
         state = self.app.storage.state
-        state.currency_balance = 5_000
-        state.completed_purchase_requests.clear()
         plant = state.plants[0] if state.plants else None
         if plant is None:
             self._failures.append({
@@ -8664,6 +8799,13 @@ class _UiFaceCaptureRunner:
                 "reason": "The purchase fixture had no target plant",
             })
             return None
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=exact_ledger_restore,
+        )
+        state.currency_balance = 5_000
+        state.currency_transactions.clear()
+        state.completed_purchase_requests.clear()
         plant.slot_index = 0
         plant.growth_points = 0
         plant.fertilizer = None
@@ -8673,12 +8815,7 @@ class _UiFaceCaptureRunner:
         return snapshot, plant
 
     def _restore_purchase_capture(self, snapshot: dict[str, Any]) -> None:
-        self.app.engine._restore_state(snapshot)
-        try:
-            self.app.storage.save()
-        except Exception:
-            logger.exception("Anki Garden capture: purchase fixture restoration failed")
-        self._refresh_capture_dashboard()
+        self._restore_capture_fixture_state(snapshot)
 
     def _capture_purchase_dialog_fixture(self, label: str, variant: str) -> None:
         def dashboard_ready() -> None:
@@ -8972,12 +9109,27 @@ class _UiFaceCaptureRunner:
         variant: str,
         tab_index: int,
     ) -> None:
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def registered_cleanup() -> None:
+            cleanup_holder["callback"]()
+
         def dashboard_ready() -> None:
-            prepared = self._purchase_capture_snapshot(label)
+            prepared = self._purchase_capture_snapshot(
+                label,
+                exact_ledger_restore=True,
+            )
             if prepared is None:
                 self._next_after(200)
                 return
             snapshot, plant = prepared
+            def cleanup() -> None:
+                self._restore_purchase_capture(snapshot)
+
+            # Register exact restoration before any purchase can commit.
+            cleanup_holder["callback"] = cleanup
             from .purchases import PurchaseKind, PurchaseRequest
             from .ui.dashboard import NurseryDialog
 
@@ -9043,7 +9195,7 @@ class _UiFaceCaptureRunner:
 
             def close_dialog() -> None:
                 self._close_widget(dialog)
-                self._restore_purchase_capture(snapshot)
+                cleanup()
 
             self._capture_and_advance(
                 label,
@@ -9054,7 +9206,11 @@ class _UiFaceCaptureRunner:
                 next_ms=1260,
             )
 
-        self._with_dashboard(dashboard_ready, failure_label=label)
+        self._with_dashboard(
+            dashboard_ready,
+            failure_label=label,
+            on_error=registered_cleanup,
+        )
 
     def _capture_purchase_success_collection(self) -> None:
         self._capture_purchase_success_fixture(
@@ -9078,13 +9234,17 @@ class _UiFaceCaptureRunner:
         inventory: int = 2,
         growth_points: int = 1_250,
         planted: bool = True,
+        exact_ledger_restore: bool = False,
     ) -> tuple[dict[str, Any], list[Any], Any]:
         """Install one exact, reversible target for a Charge dialog fixture."""
 
         from .environment import GROWTH_CHARGES
         from .models.state import Plant, PlantMemory
 
-        snapshot = self.app.engine._state_snapshot()
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=exact_ledger_restore,
+        )
         transition_snapshot = list(self.app.engine._pending_stage_transitions)
         state = self.app.storage.state
         today = str(state.daily_stats.day)
@@ -9109,6 +9269,7 @@ class _UiFaceCaptureRunner:
         state.unlocked_slots = max(1, int(state.unlocked_slots))
         state.active_plant_id = plant.plant_id if planted else None
         state.starter_selection_complete = True
+        state.onboarding.starter_plant_id = plant.plant_id
         state.completed_growth_charge_requests.clear()
         for charge_id in GROWTH_CHARGES:
             state.consumables[charge_id] = 0
@@ -9132,14 +9293,7 @@ class _UiFaceCaptureRunner:
         transition_snapshot: list[Any],
     ) -> None:
         self.app.engine._pending_stage_transitions = list(transition_snapshot)
-        self.app.engine._restore_state(snapshot)
-        try:
-            self.app.storage.save()
-        except Exception:
-            logger.exception(
-                "Anki Garden capture: Growth Charge fixture restoration failed"
-            )
-        self._refresh_capture_dashboard()
+        self._restore_capture_fixture_state(snapshot)
 
     def _growth_charge_capture_annotation(
         self,
@@ -9258,6 +9412,13 @@ class _UiFaceCaptureRunner:
         label: str,
         variant: str,
     ) -> None:
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def registered_cleanup() -> None:
+            cleanup_holder["callback"]()
+
         def dashboard_ready() -> None:
             inventory = 0 if variant == "empty" else 2
             growth_points = 450 if variant == "success" else 1_250
@@ -9267,7 +9428,16 @@ class _UiFaceCaptureRunner:
                 inventory=inventory,
                 growth_points=growth_points,
                 planted=planted,
+                exact_ledger_restore=variant == "success",
             )
+            def cleanup() -> None:
+                self._restore_growth_charge_capture(
+                    snapshot,
+                    transition_snapshot,
+                )
+
+            # Register cleanup before the dialog's synchronous commit path.
+            cleanup_holder["callback"] = cleanup
             from .ui.dashboard import GrowthChargeConfirmationDialog
 
             dialog = GrowthChargeConfirmationDialog(
@@ -9306,7 +9476,7 @@ class _UiFaceCaptureRunner:
             def close_dialog() -> None:
                 dialog._submitting = False
                 self._close_widget(dialog)
-                self._restore_growth_charge_capture(snapshot, transition_snapshot)
+                cleanup()
 
             if variant == "minimum":
                 dialog.show()
@@ -9343,7 +9513,11 @@ class _UiFaceCaptureRunner:
                 next_ms=1180,
             )
 
-        self._with_dashboard(dashboard_ready, failure_label=label)
+        self._with_dashboard(
+            dashboard_ready,
+            failure_label=label,
+            on_error=registered_cleanup,
+        )
 
     def _capture_growth_charge_ready(self) -> None:
         self._capture_growth_charge_dialog_fixture(
@@ -10128,7 +10302,23 @@ class _UiFaceCaptureRunner:
         state.unlocked_species = list(declared_order)
         state.unlocked_slots = MAX_GARDEN_SLOTS
         state.currency_balance = 9_999
+        state.currency_transactions.clear()
         state.active_plant_id = plants[0].plant_id
+        state.onboarding.starter_plant_id = plants[0].plant_id
+        try:
+            # development_populate() commits its shuffled seed. Persist the
+            # canonical capture ordering and its matching bounded ledgers
+            # before later fixtures take rollback checkpoints.
+            self.app.storage.save()
+        except Exception as exc:
+            self._failures.append({
+                "label": "development-stress-state",
+                "reason": (
+                    "Canonical development capture state could not be saved: "
+                    f"{type(exc).__name__}"
+                ),
+            })
+            return False
         self._development_stress_ready = True
         self._refresh_capture_dashboard()
         return True
@@ -10235,39 +10425,56 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(ready)
 
     def _prepare_expiring_fertilizer(self) -> str:
+        from .models.state import Fertilizer
+
         if not self._ensure_development_stress_state():
             return ""
         plant = self.app.storage.state.plants[0]
         plant.slot_index = 0
         self.app.storage.state.active_plant_id = plant.plant_id
-        current = getattr(plant, "fertilizer", None)
-        if current is None or not current.active(time.time()) or current.tier != "basic":
-            self.app.engine.purchase_fertilizer(
-                plant.plant_id,
-                "basic",
-                replace_active=bool(current and current.active(time.time())),
-            )
-            current = plant.fertilizer
-        if current is not None:
-            current.expires_at = time.time() + 45
+        now = self.app.engine._now_seconds()
+        plant.fertilizer = Fertilizer("basic", 1, now + 45, now)
         self._refresh_capture_dashboard()
         return plant.plant_id
 
     def _capture_fertilizer_expiring(self) -> None:
+        label = "fertilizer-expiring-under-minute"
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def registered_cleanup() -> None:
+            cleanup_holder["callback"]()
+
         def ready() -> None:
+            if not self._ensure_development_stress_state():
+                self._next_after(200)
+                return
+            snapshot = self._capture_fixture_state_snapshot(label)
+
+            def cleanup() -> None:
+                self._restore_capture_fixture_state(snapshot)
+
+            cleanup_holder["callback"] = cleanup
             plant_id = self._prepare_expiring_fertilizer()
             dashboard = self.app.dashboard
             if not plant_id:
+                cleanup()
                 self._next_after(200)
                 return
 
             def dialog_ready() -> None:
                 dialog = getattr(dashboard, "fertilizer_dialog", None)
+
+                def close_dialog() -> None:
+                    self._close_widget(dialog)
+                    cleanup()
+
                 self._capture_and_advance(
-                    "fertilizer-expiring-under-minute",
+                    label,
                     dialog,
                     capture_delay_ms=420,
-                    close_callback=lambda: self._close_widget(dialog),
+                    close_callback=close_dialog,
                     close_ms=760,
                     next_ms=1100,
                 )
@@ -10280,13 +10487,18 @@ class _UiFaceCaptureRunner:
                         and dashboard.fertilizer_dialog.isVisible()
                     ),
                     dialog_ready,
-                    failure_label="fertilizer-expiring-under-minute",
+                    failure_label=label,
                     failure_reason="Expiring Fertilizer dialog did not become ready",
+                    on_error=cleanup,
                 ),
             )
             dashboard._open_fertilizer_menu(plant_id)
 
-        self._with_dashboard(ready)
+        self._with_dashboard(
+            ready,
+            failure_label=label,
+            on_error=registered_cleanup,
+        )
 
     def _visible_fertilizer_replacement_dialog(self) -> QWidget | None:
         from .ui.dashboard import FertilizerReplacementDialog
@@ -10304,10 +10516,28 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_fertilizer_replacement_confirmation(self) -> None:
+        label = "fertilizer-replacement-confirmation"
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def registered_cleanup() -> None:
+            cleanup_holder["callback"]()
+
         def ready() -> None:
+            if not self._ensure_development_stress_state():
+                self._next_after(200)
+                return
+            snapshot = self._capture_fixture_state_snapshot(label)
+
+            def cleanup() -> None:
+                self._restore_capture_fixture_state(snapshot)
+
+            cleanup_holder["callback"] = cleanup
             plant_id = self._prepare_expiring_fertilizer()
             dashboard = self.app.dashboard
             if not plant_id:
+                cleanup()
                 self._next_after(200)
                 return
 
@@ -10323,10 +10553,11 @@ class _UiFaceCaptureRunner:
                 )
                 if replace is None:
                     self._failures.append({
-                        "label": "fertilizer-replacement-confirmation",
+                        "label": label,
                         "reason": "No enabled replacement action was available",
                     })
                     self._close_widget(dialog)
+                    cleanup()
                     self._next_after(200)
                     return
 
@@ -10336,9 +10567,10 @@ class _UiFaceCaptureRunner:
                     def close_confirmation() -> None:
                         self._close_widget(replacement_dialog)
                         self._close_widget(dialog)
+                        cleanup()
 
                     self._capture_and_advance(
-                        "fertilizer-replacement-confirmation",
+                        label,
                         replacement_dialog,
                         capture_delay_ms=320,
                         close_callback=close_confirmation,
@@ -10350,8 +10582,9 @@ class _UiFaceCaptureRunner:
                     lambda: self._visible_fertilizer_replacement_dialog() is not None,
                     confirmation_ready,
                     tries=80,
-                    failure_label="fertilizer-replacement-confirmation",
+                    failure_label=label,
                     failure_reason="Replacement confirmation did not become visible",
+                    on_error=cleanup,
                 )
                 QTimer.singleShot(80, replace.click)
 
@@ -10363,13 +10596,18 @@ class _UiFaceCaptureRunner:
                         and dashboard.fertilizer_dialog.isVisible()
                     ),
                     fertilizer_ready,
-                    failure_label="fertilizer-replacement-confirmation",
+                    failure_label=label,
                     failure_reason="Fertilizer dialog did not become ready",
+                    on_error=cleanup,
                 ),
             )
             dashboard._open_fertilizer_menu(plant_id)
 
-        self._with_dashboard(ready)
+        self._with_dashboard(
+            ready,
+            failure_label=label,
+            on_error=registered_cleanup,
+        )
 
     def _set_nurtured_capture_slot(self, slot: int, label: str) -> bool:
         """Commit a valid nurtured plant in one of the six disposable plots."""
@@ -10878,6 +11116,8 @@ class _UiFaceCaptureRunner:
         index: int,
         label: str,
         on_ready: Callable[[Any], None],
+        *,
+        on_error: Callable[[], None] | None = None,
     ) -> None:
         def dashboard_ready() -> None:
             dashboard = self.app.dashboard
@@ -10897,13 +11137,24 @@ class _UiFaceCaptureRunner:
                     dialog_ready,
                     failure_label=label,
                     failure_reason=f"Nursery stress state {label!r} did not become ready",
+                    on_error=on_error,
                 ),
             )
             dashboard._open_nursery(index)
 
-        self._with_dashboard(dashboard_ready)
+        self._with_dashboard(
+            dashboard_ready,
+            failure_label=label,
+            on_error=on_error,
+        )
 
     def _capture_nursery_locked_item(self) -> None:
+        label = "nursery-item-locked"
+        snapshot = self._capture_fixture_state_snapshot(label)
+
+        def cleanup() -> None:
+            self._restore_capture_fixture_state(snapshot)
+
         self.app.storage.state.currency_balance = 0
         for key in list(self.app.storage.state.consumables):
             self.app.storage.state.consumables[key] = 0
@@ -10911,23 +11162,48 @@ class _UiFaceCaptureRunner:
         def ready(dialog: Any) -> None:
             scrollbar = dialog.supplements_scroll.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                cleanup()
+
             self._capture_and_advance(
-                "nursery-item-locked",
+                label,
                 dialog,
                 capture_delay_ms=520,
-                close_callback=lambda: self._close_widget(dialog),
+                close_callback=close_dialog,
                 close_ms=850,
                 next_ms=1200,
             )
 
-        self._capture_custom_nursery(1, "nursery-item-locked", ready)
+        try:
+            self._capture_custom_nursery(
+                1,
+                label,
+                ready,
+                on_error=cleanup,
+            )
+        except Exception:
+            cleanup()
+            raise
 
     def _capture_nursery_purchase_success(self) -> None:
         from .environment import SCENERY_CATALOG, WEATHER_CATALOG
         from .purchases import PurchaseKind, PurchaseRequest
 
+        label = "nursery-purchase-success"
+        snapshot = self._capture_fixture_state_snapshot(
+            label,
+            exact_ledger_restore=True,
+        )
+
+        def cleanup() -> None:
+            self._restore_capture_fixture_state(snapshot)
+
         state = self.app.storage.state
         state.currency_balance = 100_000
+        state.currency_transactions.clear()
+        state.completed_purchase_requests.clear()
         item = next(
             entry for entry in [*WEATHER_CATALOG.values(), *SCENERY_CATALOG.values()]
             if entry.acquisition == "purchase"
@@ -10956,24 +11232,38 @@ class _UiFaceCaptureRunner:
                 dialog._show_purchase_receipt(outcome)
             if not self.app.engine.owns_environment(item.kind, item.item_id):
                 self._failures.append({
-                    "label": "nursery-purchase-success",
+                    "label": label,
                     "reason": f"Purchase fixture did not own {item.name} after the transaction",
                 })
             if str(dialog.environment_feature_title.text()) != item.name:
                 self._failures.append({
-                    "label": "nursery-purchase-success",
+                    "label": label,
                     "reason": "Purchase success preview no longer matched the purchased catalog item",
                 })
+
+            def close_dialog() -> None:
+                self._close_widget(dialog)
+                cleanup()
+
             self._capture_and_advance(
-                "nursery-purchase-success",
+                label,
                 dialog,
                 capture_delay_ms=520,
-                close_callback=lambda: self._close_widget(dialog),
+                close_callback=close_dialog,
                 close_ms=900,
                 next_ms=1250,
             )
 
-        self._capture_custom_nursery(3, "nursery-purchase-success", ready)
+        try:
+            self._capture_custom_nursery(
+                3,
+                label,
+                ready,
+                on_error=cleanup,
+            )
+        except Exception:
+            cleanup()
+            raise
 
     def _capture_nursery_final_row(self) -> None:
         label = "nursery-final-row-above-footer"
@@ -12175,18 +12465,34 @@ class _UiFaceCaptureRunner:
             self._next_after(200)
             return
 
-        def capture_widget(widget: QWidget | None, *, close: bool) -> None:
+        def capture_widget(
+            widget: QWidget | None,
+            *,
+            close: bool,
+            cleanup_callback: Callable[[], None] | None = None,
+        ) -> None:
             if widget is None:
                 self._failures.append({
                     "label": label,
                     "reason": f"{family} window was unavailable for the resize matrix",
                 })
+                if cleanup_callback is not None:
+                    cleanup_callback()
                 self._next_after(200)
                 return
             widget.setWindowModality(Qt.WindowModality.NonModal)
             set_modal = getattr(widget, "setModal", None)
             if callable(set_modal):
                 set_modal(False)
+
+            def close_and_cleanup() -> None:
+                try:
+                    if close:
+                        self._close_widget(widget)
+                finally:
+                    if cleanup_callback is not None:
+                        cleanup_callback()
+
             self._capture_requested_size(
                 label,
                 widget,
@@ -12195,7 +12501,11 @@ class _UiFaceCaptureRunner:
                 start_width=start_width,
                 start_height=start_height,
                 transition_path=transition,
-                close_callback=(lambda: self._close_widget(widget)) if close else None,
+                close_callback=(
+                    close_and_cleanup
+                    if close or cleanup_callback is not None
+                    else None
+                ),
             )
 
         if family == "dashboard":
@@ -12293,29 +12603,55 @@ class _UiFaceCaptureRunner:
             from .models.state import Fertilizer
             from .purchases import PurchaseKind
 
-            plant = self.app.engine.plant_story(plant_id)
+            # Exercise the replacement surface with the plant that already
+            # owns slot zero. Moving the active plant into that occupied slot
+            # creates duplicate placement data and contaminates every later
+            # resize probe.
+            plant = next(
+                (
+                    candidate
+                    for candidate in self.app.storage.state.plants
+                    if candidate.slot_index == 0
+                ),
+                None,
+            )
             if plant is None:
                 capture_widget(None, close=True)
                 return
-            now = self.app.engine._now_seconds()
-            plant.slot_index = 0
-            plant.growth_points = 0
-            self.app.storage.state.active_plant_id = plant.plant_id
-            plant.fertilizer = Fertilizer("basic", 1, now + 3_400, now - 200)
-            quote = self.app.engine.quote_purchase(
-                PurchaseKind.FERTILIZER,
-                "premium",
-                target_id=plant.plant_id,
-            )
+            snapshot = self._capture_fixture_state_snapshot(label)
 
-            capture_widget(
-                FertilizerReplacementDialog(
+            def cleanup() -> None:
+                self._restore_capture_fixture_state(snapshot)
+
+            try:
+                now = self.app.engine._now_seconds()
+                plant.growth_points = 0
+                self.app.storage.state.active_plant_id = plant.plant_id
+                plant.fertilizer = Fertilizer(
+                    "basic",
+                    1,
+                    now + 3_400,
+                    now - 200,
+                )
+                quote = self.app.engine.quote_purchase(
+                    PurchaseKind.FERTILIZER,
+                    "premium",
+                    target_id=plant.plant_id,
+                )
+                dialog = FertilizerReplacementDialog(
                     dashboard,
                     self.app.engine,
                     quote,
-                ),
-                close=True,
-            )
+                )
+                capture_widget(
+                    dialog,
+                    close=True,
+                    cleanup_callback=cleanup,
+                )
+            except Exception:
+                cleanup()
+                raise
+
             return
         if family == "species-overview":
             plant = self.app.engine.plant_story(plant_id)
@@ -12710,6 +13046,7 @@ class _UiFaceCaptureRunner:
             and memory_probe_complete
             and dialog_scroll_audits_complete
             and responsive_stability_complete
+            and not self._fatal_fixture_restore_failure
             and not self._failures
             and not self._text_layout_warnings
         )

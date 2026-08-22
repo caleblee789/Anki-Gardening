@@ -638,6 +638,7 @@ def test_resize_geometry_accepts_only_explained_safe_drift() -> None:
 
 def test_capture_timeouts_and_step_exceptions_fail_closed() -> None:
     next_step = _method_source("_UiFaceCaptureRunner", "_next_step")
+    finish = _method_source("_UiFaceCaptureRunner", "_finish")
     wait = _method_source("_UiFaceCaptureRunner", "_wait_for")
     collection = _method_source("_UiFaceCaptureRunner", "_wait_for_collection")
     dashboard = _method_source("_UiFaceCaptureRunner", "_wait_for_dashboard")
@@ -645,6 +646,8 @@ def test_capture_timeouts_and_step_exceptions_fail_closed() -> None:
 
     assert "Capture step" in next_step
     assert "type(exc).__name__" in next_step
+    assert "if self._fatal_fixture_restore_failure:" in next_step
+    assert "and not self._fatal_fixture_restore_failure" in finish
     assert "on_ready()" not in wait.split("if tries <= 0:", 1)[1]
     assert '"Timed out waiting for the requested UI surface"' in wait
     assert '"Anki collection did not become ready before capture"' in collection
@@ -676,6 +679,14 @@ def test_capture_state_variants_use_writable_sources_and_clear_stale_toasts() ->
         "_UiFaceCaptureRunner",
         "_prepare_growth_capture_fixture",
     )
+    growth_restore = _method_source(
+        "_UiFaceCaptureRunner",
+        "_restore_growth_capture_fixture",
+    )
+    reward_restore = _method_source(
+        "_UiFaceCaptureRunner",
+        "_restore_reward_capture_fixture",
+    )
     with_dashboard = _method_source("_UiFaceCaptureRunner", "_with_dashboard")
 
     assert "populated=False" in growth_zero
@@ -684,6 +695,11 @@ def test_capture_state_variants_use_writable_sources_and_clear_stale_toasts() ->
     assert "stats.plant_nurtured_growth" in growth_fixture
     assert "stats.plant_passive_growth_fifths" in growth_fixture
     assert "stats.plant_charge_growth" in growth_fixture
+    assert "state.onboarding.starter_plant_id = plants[0].plant_id" in growth_fixture
+    assert "self._restore_capture_fixture_state(snapshot)" in growth_restore
+    assert "self._restore_capture_fixture_state(snapshot)" in reward_restore
+    assert "except Exception" not in growth_restore
+    assert "except Exception" not in reward_restore
     assert "plant.growth_stage =" not in growth_zero
     assert "plant.growth_stage =" not in growth_nonzero
     assert 'getattr(dashboard, "toast_region", None)' in with_dashboard
@@ -749,11 +765,30 @@ def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() 
         "_UiFaceCaptureRunner",
         "_capture_fertilizer_replacement_confirmation",
     )
+    fertilize = _method_source("_UiFaceCaptureRunner", "_capture_fertilize_after")
+    prepare_expiring = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_expiring_fertilizer",
+    )
+    expiring = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fertilizer_expiring",
+    )
     popover = _method_source("_UiFaceCaptureRunner", "_capture_popover_slot")
 
     assert "FertilizerReplacementDialog" in finder
     assert "QMessageBox" not in finder
     assert "_visible_fertilizer_replacement_dialog" in replacement
+    assert "purchase_fertilizer" not in fertilize
+    assert "purchase_fertilizer" not in prepare_expiring
+    assert "Fertilizer(" in fertilize
+    assert "Fertilizer(" in prepare_expiring
+    assert "_capture_fixture_state_snapshot(label)" in fertilize
+    assert "_capture_fixture_state_snapshot(label)" in expiring
+    assert "_capture_fixture_state_snapshot(label)" in replacement
+    assert "on_error=cleanup" in fertilize
+    assert "on_error=registered_cleanup" in expiring
+    assert "on_error=registered_cleanup" in replacement
     assert "dashboard.plant_card.isVisible()" in popover
 
 
@@ -781,6 +816,14 @@ def test_capture_uses_the_real_starter_then_nurture_state_boundary() -> None:
 
 def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     capture_source = CAPTURE_PATH.read_text("utf-8")
+    fixture_snapshot = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_state_snapshot",
+    )
+    fixture_restore = _method_source(
+        "_UiFaceCaptureRunner",
+        "_restore_capture_fixture_state",
+    )
     achievement = _method_source("_UiFaceCaptureRunner", "_capture_achievement_completed")
     streak_active = _method_source("_UiFaceCaptureRunner", "_capture_streak_active")
     streak_state = _method_source("_UiFaceCaptureRunner", "_set_streak_capture_state")
@@ -819,9 +862,82 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
         "_UiFaceCaptureRunner", "_capture_starter_placement"
     )
     purchase = _method_source("_UiFaceCaptureRunner", "_capture_nursery_purchase_success")
+    purchase_snapshot = _method_source(
+        "_UiFaceCaptureRunner",
+        "_purchase_capture_snapshot",
+    )
+    purchase_success = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_purchase_success_fixture",
+    )
+    growth_charge_prepare = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_growth_charge_capture",
+    )
+    growth_charge_restore = _method_source(
+        "_UiFaceCaptureRunner",
+        "_restore_growth_charge_capture",
+    )
+    growth_charge_capture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_growth_charge_dialog_fixture",
+    )
+    nursery_locked = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_nursery_locked_item",
+    )
     loadout_error = _method_source(
         "_UiFaceCaptureRunner", "_capture_collection_loadout_persistence_error"
     )
+
+    assert "exact_ledger_restore: bool = False" in fixture_snapshot
+    assert 'os.environ.get("ANKI_GARDEN_CAPTURE_UI_FACES") != "1"' in fixture_snapshot
+    assert 'getattr(storage, "_reward_ledger", None) is None' in fixture_snapshot
+    assert "if not callable(has_staged):" in fixture_snapshot
+    assert "if has_staged():" in fixture_snapshot
+    assert "storage.create_development_backup()" in fixture_snapshot
+    assert 'backup_path.suffix != ".sqlite3"' in fixture_snapshot
+    assert fixture_snapshot.index("backup_path =") < fixture_snapshot.rindex(
+        "snapshot = engine._state_snapshot()"
+    )
+    assert "ledger.rollback_all()" in fixture_restore
+    assert "storage.restore_development_backup(Path(backup_value))" in fixture_restore
+    assert "self.app.engine.state.__dict__.clear()" in fixture_restore
+    assert "self.app.engine.state.__dict__.update(restored.__dict__)" in fixture_restore
+    assert "storage.state = self.app.engine.state" in fixture_restore
+    authoritative_restore = fixture_restore.index(
+        "storage.restore_development_backup(Path(backup_value))"
+    )
+    completion_latch = fixture_restore.index(
+        'setattr(snapshot, "capture_restore_complete", True)',
+        authoritative_restore,
+    )
+    assert authoritative_restore < completion_latch < fixture_restore.index(
+        "self._refresh_capture_dashboard()"
+    )
+    assert "self._fatal_fixture_restore_failure = True" in fixture_restore
+    assert '"Capture fixture state restoration raised "' in fixture_restore
+
+    assert "state.currency_transactions.clear()" in purchase_snapshot
+    assert "state.completed_purchase_requests.clear()" in purchase_snapshot
+    assert "exact_ledger_restore=True" in purchase_success
+    assert purchase_success.index(
+        'cleanup_holder["callback"] = cleanup'
+    ) < purchase_success.index("self.app.engine.confirm_purchase(")
+    assert "on_error=registered_cleanup" in purchase_success
+
+    assert "state.onboarding.starter_plant_id = plant.plant_id" in growth_charge_prepare
+    assert "self.app.engine._pending_stage_transitions" in growth_charge_restore
+    assert "self._restore_capture_fixture_state(snapshot)" in growth_charge_restore
+    assert 'exact_ledger_restore=variant == "success"' in growth_charge_capture
+    assert growth_charge_capture.index(
+        'cleanup_holder["callback"] = cleanup'
+    ) < growth_charge_capture.index("dialog._commit()")
+    assert "on_error=registered_cleanup" in growth_charge_capture
+
+    assert "_capture_fixture_state_snapshot(label)" in nursery_locked
+    assert "_restore_capture_fixture_state(snapshot)" in nursery_locked
+    assert "on_error=cleanup" in nursery_locked
 
     assert "ACHIEVEMENT_DEFINITIONS" in achievement
     assert "_prepare_canonical_achievement_capture_fixture" in achievement
@@ -922,6 +1038,10 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "dialog._preview_environment_item(item)" in purchase
     assert "owns_environment(item.kind, item.item_id)" in purchase
     assert "dialog.environment_feature_title.text()" in purchase
+    assert "exact_ledger_restore=True" in purchase
+    assert "state.currency_transactions.clear()" in purchase
+    assert "state.completed_purchase_requests.clear()" in purchase
+    assert "on_error=cleanup" in purchase
 
 
 def test_active_home_faces_run_only_after_the_real_nurture_transaction() -> None:
@@ -2200,6 +2320,12 @@ def test_progress_resize_faces_route_to_their_declared_page() -> None:
     assert 'target_page = "collection" if family == "collection" else "growth"' in resize
     assert "target_page not in keys" in resize
     assert "Garden Progress {target_page} was unavailable" in resize
+    fertilizer_branch = resize.split('if family == "fertilizer-replacement":', 1)[1]
+    assert "candidate.slot_index == 0" in fertilizer_branch
+    assert "plant.slot_index = 0" not in fertilizer_branch
+    assert "snapshot = self._capture_fixture_state_snapshot(label)" in fertilizer_branch
+    assert "cleanup_callback=cleanup" in fertilizer_branch
+    assert "except Exception:\n                cleanup()" in fertilizer_branch
 
 
 def test_watering_faces_clear_unrelated_stress_state_and_audit_the_name() -> None:
@@ -2284,6 +2410,12 @@ def test_development_stress_state_binds_catalog_assets_and_live_order_fact() -> 
     assert "len(set(canonical_ids)) != len(declared_order)" in setup
     assert "GROWTH_THRESHOLDS[index % len(GROWTH_THRESHOLDS)]" in setup
     assert "state.active_plant_id = plants[0].plant_id" in setup
+    assert "state.onboarding.starter_plant_id = plants[0].plant_id" in setup
+    assert "state.currency_transactions.clear()" in setup
+    assert "self.app.storage.save()" in setup
+    assert setup.index("self.app.storage.save()") < setup.index(
+        "self._development_stress_ready = True"
+    )
     assert '"canonical_development_species_order"' in postcondition
     assert '"canonical_development_plant_ids"' in postcondition
     assert '"canonical_development_generated_names"' in postcondition
@@ -2386,6 +2518,7 @@ def test_manifest_write_failure_forces_a_nonzero_exit(tmp_path: Path) -> None:
         _close_dashboard=lambda: None,
         _close_top_level_dialogs=lambda: None,
         _dialog_memory_probe={"status": "not-run"},
+        _fatal_fixture_restore_failure=False,
         _failures=[],
         _performance_samples={},
         _requested_scale_factor="1.5",
