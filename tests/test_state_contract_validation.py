@@ -71,7 +71,7 @@ def test_numeric_fields_are_clamped_and_growth_total_is_recomputed():
     assert state.daily_stats.growth_earned == 23
 
 
-def test_schema20_growth_allocations_residual_and_charge_replay_round_trip():
+def test_schema21_growth_allocations_residual_and_charge_replay_round_trip():
     outcome = GrowthChargeOutcome(
         status=GrowthChargeStatus.SUCCESS,
         charge_id="growth_charge_small",
@@ -122,7 +122,7 @@ def test_schema20_growth_allocations_residual_and_charge_replay_round_trip():
     assert restored.completed_growth_charge_requests == [record]
 
 
-def test_schema20_malformed_passive_residual_and_charge_ledger_fail_closed():
+def test_schema21_malformed_passive_residual_and_charge_ledger_fail_closed():
     payload = base_payload()
     payload["plants"] = [{
         "plant_id": "p",
@@ -203,7 +203,7 @@ def test_invalid_or_expired_shape_fertilizer_is_safe():
     assert GardenState.from_dict(payload).plants[0].fertilizer is None
 
 
-def test_fertilizer_history_is_validated_derived_deduplicated_and_bounded():
+def test_fertilizer_history_is_validated_derived_deduplicated_and_durable():
     payload = base_payload()
     payload["plants"] = [{
         "plant_id": "p", "species": "hydrangea", "name": "Misty", "slot_index": 0,
@@ -224,8 +224,8 @@ def test_fertilizer_history_is_validated_derived_deduplicated_and_bounded():
     plant = GardenState.from_dict(payload).plants[0]
     restored = GardenState.from_dict(GardenState.from_dict(payload).to_dict()).plants[0]
 
-    assert len(plant.fertilizer_history) == MAX_FERTILIZER_HISTORY
-    assert plant.fertilizer_history[0] == Fertilizer("basic", 1, 6.0, 5.0)
+    assert len(plant.fertilizer_history) == MAX_FERTILIZER_HISTORY + 2
+    assert plant.fertilizer_history[0] == Fertilizer("basic", 1, 2.0, 1.0)
     assert plant.fertilizer_history[-1] == Fertilizer(
         "basic", 1, float((MAX_FERTILIZER_HISTORY + 1) * 2 + 2),
         float((MAX_FERTILIZER_HISTORY + 1) * 2 + 1),
@@ -346,7 +346,7 @@ def test_impossible_transaction_ledger_is_discarded_without_changing_balance():
     assert state.currency_transactions == []
 
 
-def test_bounded_histories_remain_bounded_after_repeated_round_trips():
+def test_bounded_feedback_and_coalesced_timelines_survive_round_trips():
     state = GardenState(
         pending_feedback=[
             FeedbackEvent(f"e{index}", "test", f"Message {index}", "2026-08-08T12:00:00+00:00")
@@ -359,7 +359,9 @@ def test_bounded_histories_remain_bounded_after_repeated_round_trips():
         state = GardenState.from_dict(state.to_dict())
 
     assert len(state.pending_feedback) == 100
-    assert len(state.active_plant_periods) == 64
+    assert state.active_plant_periods == [
+        ActivePlantPeriod("2026-08-08", None, 0)
+    ]
     assert state.pending_feedback[0].event_id == "e30"
 
 
@@ -418,6 +420,7 @@ def test_booster_reward_and_rich_feedback_metadata_round_trip_safely():
     assert restored.plants[0].booster_history == [Booster(5, 900.0, 100.0)]
     assert restored.consumables == {
         "booster_potion": 3,
+        "fertilizer_basic": 0,
         "growth_charge_small": 0,
         "growth_charge_standard": 0,
         "growth_charge_grand": 0,
@@ -427,7 +430,7 @@ def test_booster_reward_and_rich_feedback_metadata_round_trip_safely():
     assert restored.pending_feedback[0].amount == 1
 
 
-def test_booster_history_is_deduplicated_and_bounded():
+def test_booster_history_is_deduplicated_and_durable():
     payload = base_payload()
     history = [
         {"growth_per_answer": 5, "started_at": index * 2 + 1, "expires_at": index * 2 + 2}
@@ -441,11 +444,11 @@ def test_booster_history_is_deduplicated_and_bounded():
 
     restored = GardenState.from_dict(payload)
 
-    assert len(restored.plants[0].booster_history) == MAX_BOOSTER_HISTORY
+    assert len(restored.plants[0].booster_history) == MAX_BOOSTER_HISTORY + 5
     assert len({
         (item.started_at, item.expires_at)
         for item in restored.plants[0].booster_history
-    }) == MAX_BOOSTER_HISTORY
+    }) == MAX_BOOSTER_HISTORY + 5
 
 
 def test_current_and_historical_species_are_retained_while_unknown_rows_are_skipped():

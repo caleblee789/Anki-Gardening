@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Any, Callable
 
 from aqt import mw
@@ -8,7 +9,7 @@ from aqt import mw
 from ..config import DEFAULT_CONFIG
 from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
 from ..notices import USER_NOTICES
-from ..storage import unprocessed_revlog_entries
+from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 
 
@@ -33,6 +34,16 @@ class ReviewerHookHandler:
 
     def on_question(self, *_args: Any, **_kwargs: Any) -> None:
         """Show one non-modal eligibility reminder before a reviewer answer."""
+
+        try:
+            observe = getattr(self.engine, "observe_due_start", None)
+            if callable(observe):
+                observe(self.storage.due_obligations())
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to record the pre-answer due baseline",
+                exc_info=True,
+            )
 
         if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
             self._hide_no_starter_notice()
@@ -98,7 +109,13 @@ class ReviewerHookHandler:
             logger.debug("Anki Garden: reviewer starter notice could not be hidden", exc_info=True)
 
     @staticmethod
-    def review_payload_from_row(row: tuple[Any, ...], collection: Any) -> dict[str, Any] | None:
+    def review_payload_from_row(
+        row: tuple[Any, ...],
+        collection: Any,
+        *,
+        answer_identity: str = "",
+        scheduler_day: str = "",
+    ) -> dict[str, Any] | None:
         """Convert one authoritative revlog row into Garden answer semantics."""
         rid, cid, ease, ivl, last_ivl, factor, _answer_ms, review_type = row
         semantics = queue_and_lapse_from_revlog_type(review_type, ease)
@@ -121,8 +138,48 @@ class ReviewerHookHandler:
             "queue": queue,
             "interval_delta": max(0, int(ivl) - max(0, int(last_ivl))),
             "revlog_id": int(rid),
+            "card_id": int(cid),
             "answered_at_ms": int(rid),
+            "answer_identity": str(answer_identity or f"revlog:{int(rid)}"),
+            "scheduler_day": str(scheduler_day),
         }
+
+    @staticmethod
+    def scheduler_day(storage: Any) -> str:
+        """Use Anki's day authority, with a test-adapter compatibility fallback."""
+
+        resolver = getattr(storage, "current_scheduler_day", None)
+        if callable(resolver):
+            return str(resolver())
+        saved_day = getattr(
+            getattr(getattr(storage, "state", None), "daily_stats", None),
+            "day",
+            "",
+        )
+        return str(saved_day or date.today().isoformat())
+
+    @staticmethod
+    def stable_answer_identities(
+        rows: list[tuple[Any, ...]],
+        *,
+        scheduler_day: str,
+        existing_bindings: dict[str, str] | None = None,
+        reanswer_hints: dict[str, int] | None = None,
+    ) -> dict[int, str]:
+        """Prepare lineages without mutating live state before its transaction."""
+
+        eligible = [
+            (int(row[0]), int(row[1]), str(scheduler_day))
+            for row in rows
+            if len(row) >= 8
+            and queue_and_lapse_from_revlog_type(row[7], row[2]) is not None
+        ]
+        identities, _updated = assign_stable_answer_identities(
+            eligible,
+            existing_bindings,
+            reanswer_hints,
+        )
+        return identities
 
     @staticmethod
     def unseen_revlog_rows(rows: list[tuple[Any, ...]], state: Any) -> list[tuple[Any, ...]]:
@@ -172,10 +229,32 @@ class ReviewerHookHandler:
         if collection is None:
             collection = getattr(mw, "col", None)
         latest_read_id = max(int(row[0]) for row in rows)
+        scheduler_day = self.scheduler_day(self.storage)
+        binding_resolver = getattr(
+            self.storage, "answer_lineage_bindings_for_cards", None
+        )
+        existing_bindings = (
+            binding_resolver({int(row[1]) for row in day_rows})
+            if callable(binding_resolver)
+            else getattr(self.storage.state, "answer_lineage_bindings", {})
+        )
+        identities = self.stable_answer_identities(
+            day_rows,
+            scheduler_day=scheduler_day,
+            existing_bindings=existing_bindings,
+            reanswer_hints=getattr(
+                self.storage.state, "pending_reanswer_lineages", {}
+            ),
+        )
         payloads = [
             payload
             for payload in (
-                self.review_payload_from_row(row, collection)
+                self.review_payload_from_row(
+                    row,
+                    collection,
+                    answer_identity=identities.get(int(row[0]), ""),
+                    scheduler_day=scheduler_day,
+                )
                 for row in rows
             )
             if payload is not None

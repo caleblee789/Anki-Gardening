@@ -9,17 +9,15 @@ import time
 import uuid
 from bisect import bisect_left, insort
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from . import build_capabilities
 from .asset_manager import AssetManager, ResolvedAsset
 from .environment import (
     DEFAULT_SCENERY_ID,
     DEFAULT_WEATHER_ID,
-    DROP_BANDS,
-    DROP_TIER_ITEMS,
     ENVIRONMENT_CATALOG,
     GROWTH_CHARGES,
     SCENERY_CATALOG,
@@ -27,6 +25,30 @@ from .environment import (
     CatalogItem,
     catalog_items,
     environment_item,
+)
+from .achievements import (
+    ACHIEVEMENT_DEFINITIONS,
+    ACHIEVEMENTS_BY_ID,
+    HistoricalReview,
+    RewardBundle,
+    STREAK_ACHIEVEMENTS,
+    analyze_history,
+)
+from .garden_finds import (
+    ENVIRONMENT_POOL_ID,
+    ENVIRONMENT_POOL_VERSION,
+    ENVIRONMENT_TIER_DENOMINATORS,
+    KNOWN_ARTWORK_REFS,
+    STANDARD_POOL_ID,
+    STANDARD_POOL_VERSION,
+    STANDARD_DAILY_CAP,
+    STANDARD_DROUGHT_SCHEDULE,
+    GardenFindReward,
+    consumption_id,
+    prepare_reward_registry,
+    resolve_environment_find,
+    resolve_standard_find,
+    stable_answer_event_identity,
     ultra_denominator,
 )
 from .growth import (
@@ -44,29 +66,30 @@ from .models.state import (
     CurrencyTransaction,
     DailyStats,
     FeedbackEvent,
+    GardenFindOutcome,
     Fertilizer,
     Booster,
     GardenState,
     GROWTH_STAGES,
     GROWTH_THRESHOLDS,
     CURRENT_CATALOG_SPECIES_ORDER,
-    MAX_FERTILIZER_HISTORY,
-    MAX_BOOSTER_HISTORY,
     MAX_COMPLETED_PURCHASE_REQUESTS,
     MAX_COMPLETED_GROWTH_CHARGE_REQUESTS,
     MAX_GARDEN_SLOTS,
     MAX_GARDEN_NAME_LENGTH,
     MAX_PLANT_NAME_LENGTH,
     MAX_PROCESSED_REVLOG_IDS,
+    MAX_REWARD_RECEIPTS,
     OnboardingProgress,
     OnboardingStep,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
     PlantMemory,
-    RewardDrop,
+    RewardReceipt,
     STATE_VERSION,
     STREAK_BONUS_TIERS,
+    bounded_reward_receipts,
     utc_now_iso,
 )
 from .purchases import (
@@ -84,6 +107,14 @@ from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryErro
 
 
 logger = logging.getLogger(__name__)
+
+
+class _StateSnapshot(dict[str, Any]):
+    """Bounded state copy paired with its staged-ledger rollback point."""
+
+    def __init__(self, payload: Mapping[str, Any], ledger_checkpoint: Any = None) -> None:
+        super().__init__(payload)
+        self.ledger_checkpoint = ledger_checkpoint
 
 
 def difficulty_from_factor(value: Any) -> float:
@@ -143,6 +174,10 @@ class ReviewAward:
     weather_growth: int = 0
     scenery_growth: int = 0
     allocations: tuple[GrowthAllocation, ...] = ()
+    correlation_id: str = field(default="", compare=False)
+    reward_event_keys: tuple[str, ...] = field(default=(), compare=False)
+    garden_find_ids: tuple[str, ...] = field(default=(), compare=False)
+    achievement_ids: tuple[str, ...] = field(default=(), compare=False)
 
     @property
     def bonus_growth(self) -> int:
@@ -195,14 +230,12 @@ class FertilizerSpec:
 class GardenGameEngine:
     BASE_GROWTH_PER_REVIEW = 10
     STREAK_MEMORY_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
-    STREAK_CURRENCY = {7: 25, 14: 50, 30: 100, 100: 300}
     STAGE_CURRENCY = {"sprout": 5, "young": 10, "mature": 20, "flowering": 35, "rare": 50}
-    COIN_DROP_CHANCE = 800
-    COIN_DROP_AMOUNT = 50
-    BOOSTER_DROP_CHANCE = 5_000
     BOOSTER_GROWTH_PER_ANSWER = 5
     BOOSTER_DURATION_SECONDS = 2 * 60 * 60
     ALL_DUE_BASE_COINS = 10
+    DAILY_ACTIVITY_COINS = 2
+    WEEKLY_STREAK_COINS = 10
     CLOUDY_ALL_DUE_BONUS_COINS = 2
     RAINBOW_ALL_DUE_GROWTH = 5
     BED_PRICES = {2: 150, 3: 300, 4: 500, 5: 800}
@@ -265,7 +298,23 @@ class GardenGameEngine:
         self.config = config
         self.storage = storage
         self.state: GardenState = storage.state
+        self._pending_reward_activation_ms: int | None = None
         self._pending_stage_transitions: list[StageTransition] = []
+        self._current_correlation_id = ""
+        try:
+            manifest_payload = json.loads(
+                (self.storage.addon_dir / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self._addon_version = str(
+                manifest_payload.get("human_version") or "0"
+            )
+        except Exception:
+            self._addon_version = "0"
+        self.garden_find_registry = prepare_reward_registry(
+            known_artwork_refs=KNOWN_ARTWORK_REFS
+        )
         snapshot = self._state_snapshot()
         self.assets = AssetManager(config, storage)
         self._repair_environment_state()
@@ -284,9 +333,14 @@ class GardenGameEngine:
         self._repair_surface_placements()
         self._ensure_achievements()
         self._repair_active_plant()
+        if (
+            self.state.reward_state_initialized
+            and self.state.progression_activation_ms <= 0
+        ):
+            self._activate_progression_if_ready(self._now_ms())
         try:
             self.rollover_if_needed(persist=False)
-        except SchedulerBoundaryError:
+        except (RevlogReadError, SchedulerBoundaryError):
             # Add-ons can be imported before Anki has finished attaching the
             # collection scheduler. Preserve the saved scheduler day and let
             # the app's maintenance boundary retry after collection startup.
@@ -294,10 +348,20 @@ class GardenGameEngine:
         if self.state.to_dict() != snapshot:
             self._persist_or_restore(snapshot)
 
-    def _state_snapshot(self) -> dict[str, Any]:
-        return deepcopy(self.state.to_dict())
+    def _state_snapshot(self) -> _StateSnapshot:
+        checkpoint_resolver = getattr(
+            self.storage, "reward_ledger_checkpoint", None
+        )
+        checkpoint = (
+            checkpoint_resolver() if callable(checkpoint_resolver) else None
+        )
+        return _StateSnapshot(deepcopy(self.state.to_dict()), checkpoint)
 
     def _restore_state(self, snapshot: dict[str, Any]) -> None:
+        rollback = getattr(self.storage, "rollback_reward_ledger", None)
+        checkpoint = getattr(snapshot, "ledger_checkpoint", None)
+        if callable(rollback) and checkpoint is not None:
+            rollback(checkpoint)
         restored = GardenState.from_dict(snapshot)
         self.state.__dict__.clear()
         self.state.__dict__.update(restored.__dict__)
@@ -306,6 +370,8 @@ class GardenGameEngine:
     def _persist_or_restore(self, snapshot: dict[str, Any]) -> None:
         try:
             self.storage.save()
+            if self.state.reward_state_initialized:
+                self._pending_reward_activation_ms = None
         except Exception:
             self._restore_state(snapshot)
             raise
@@ -370,7 +436,7 @@ class GardenGameEngine:
         }
         if not isinstance(self.state.daily_environment_claims, dict):
             self.state.daily_environment_claims = {}
-        for item_id in ("booster_potion", *GROWTH_CHARGES):
+        for item_id in ("booster_potion", "fertilizer_basic", *GROWTH_CHARGES):
             value = self.state.consumables.get(item_id, 0)
             self.state.consumables[item_id] = (
                 max(0, int(value))
@@ -558,51 +624,333 @@ class GardenGameEngine:
         resolver = getattr(self.storage, "current_time_ms", None)
         return int(resolver() if callable(resolver) else self._now_seconds() * 1000)
 
+    def initialize_reward_state(
+        self,
+        *,
+        activation_ms: int | None = None,
+        persist: bool = True,
+    ) -> bool:
+        """Establish the no-replay boundary for recurring rewards and Finds."""
+
+        if self.state.reward_state_initialized:
+            return False
+        snapshot = self._state_snapshot()
+        boundary = max(1, int(self._now_ms() if activation_ms is None else activation_ms))
+        self.state.reward_state_initialized = True
+        self.state.reward_activation_ms = boundary
+        self.state.garden_find_activation_ms = boundary
+        self._activate_progression_if_ready(boundary)
+        # The legacy eligible-answer counter is not a compatible drought.
+        self.state.garden_find_drought_count = 0
+        if persist:
+            self._persist_or_restore(snapshot)
+        return True
+
+    def _activate_progression_if_ready(self, event_ms: int) -> bool:
+        """Persist the first instant answer rewards could reach a nurtured plant."""
+
+        if (
+            not self.state.reward_state_initialized
+            or self.state.progression_activation_ms > 0
+        ):
+            return False
+        plant = next((
+            candidate
+            for candidate in self.state.plants
+            if candidate.plant_id == self.state.active_plant_id
+            and candidate.planted
+            and not candidate.fully_grown
+        ), None)
+        established_setup = bool(
+            int(self.state.garden_setup_version) >= 1
+            or any(
+                period.plant_id is not None
+                for period in self.state.active_plant_periods
+            )
+        )
+        if (
+            not self.state.starter_selection_complete
+            or (plant is None and not established_setup)
+        ):
+            return False
+        boundary = max(1, int(event_ms))
+        self.state.progression_activation_ms = boundary
+        latest = max(
+            (
+                period
+                for period in self.state.active_plant_periods
+                if period.started_at_ms <= boundary
+            ),
+            key=lambda period: (period.started_at_ms, period.day),
+            default=None,
+        )
+        if latest is None or latest.plant_id != self.state.active_plant_id:
+            self.state.active_plant_periods.append(ActivePlantPeriod(
+                self.state.daily_stats.day,
+                self.state.active_plant_id,
+                boundary,
+            ))
+        return True
+
+    def _reward_applied(self, event_key: str) -> bool:
+        resolver = getattr(self.storage, "reward_applied", None)
+        if callable(resolver):
+            return bool(resolver(str(event_key)))
+        return str(event_key) in self.state.applied_reward_event_keys
+
+    def _append_reward_event_key(self, event_key: str) -> None:
+        key = str(event_key)
+        stager = getattr(self.storage, "stage_reward_event", None)
+        if callable(stager):
+            stager(key)
+            return
+        if key and key not in self.state.applied_reward_event_keys:
+            self.state.applied_reward_event_keys.append(key)
+
+    def _append_reward_receipt(
+        self,
+        *,
+        event_key: str,
+        reward_type: str,
+        source: str,
+        source_id: str,
+        scheduler_day: str,
+        correlation_id: str,
+        amount: int,
+        item_id: str = "",
+        plant_id: str = "",
+        title: str = "",
+        description: str = "",
+    ) -> RewardReceipt:
+        receipt = RewardReceipt(
+            event_key=str(event_key),
+            reward_type=str(reward_type),
+            source=str(source),
+            source_id=str(source_id),
+            scheduler_day=str(scheduler_day),
+            correlation_id=str(correlation_id),
+            occurred_at=utc_now_iso(),
+            amount=max(0, int(amount)),
+            item_id=str(item_id),
+            plant_id=str(plant_id),
+            title=str(title),
+            description=str(description),
+        )
+        self.state.recent_reward_receipts.append(receipt)
+        self.state.recent_reward_receipts = bounded_reward_receipts(
+            self.state.recent_reward_receipts,
+            limit=MAX_REWARD_RECEIPTS,
+        )
+        return receipt
+
+    def _grant_reward_bundle(
+        self,
+        event_key: str,
+        *,
+        source: str,
+        source_id: str,
+        reason: str,
+        scheduler_day: str | None = None,
+        correlation_id: str = "",
+        coins: int = 0,
+        growth: int = 0,
+        inventory_item_id: str = "",
+        inventory_quantity: int = 0,
+        inventory_items: dict[str, int] | None = None,
+        plant: Plant | None = None,
+        title: str = "",
+        description: str = "",
+    ) -> tuple[RewardReceipt, ...]:
+        """Apply one atomic, typed reward event inside the caller transaction."""
+
+        key = str(event_key)
+        if not key or self._reward_applied(key):
+            return ()
+        day_value = str(scheduler_day or self.state.daily_stats.day)
+        correlation = str(correlation_id or key)
+        occurred_at = utc_now_iso()
+        coin_amount = max(0, int(coins))
+        item_grants = {
+            str(item_id): max(0, int(quantity))
+            for item_id, quantity in (inventory_items or {}).items()
+            if max(0, int(quantity)) > 0
+        }
+        inventory_amount = max(0, int(inventory_quantity))
+        if inventory_amount:
+            item_grants[str(inventory_item_id)] = (
+                item_grants.get(str(inventory_item_id), 0) + inventory_amount
+            )
+        receipts: list[RewardReceipt] = []
+
+        if coin_amount:
+            self.state.currency_balance += coin_amount
+            self.state.currency_transactions.append(CurrencyTransaction(
+                transaction_id=f"tx_{uuid.uuid4().hex}",
+                event_key=key,
+                reason=str(reason),
+                delta=coin_amount,
+                balance=self.state.currency_balance,
+                occurred_at=occurred_at,
+                transaction_type="credit",
+                source=str(source),
+                source_id=str(source_id),
+                scheduler_day=day_value,
+                correlation_id=correlation,
+            ))
+            self.state.currency_transactions = self.state.currency_transactions[-500:]
+            receipts.append(self._append_reward_receipt(
+                event_key=key,
+                reward_type="coins",
+                source=source,
+                source_id=source_id,
+                scheduler_day=day_value,
+                correlation_id=correlation,
+                amount=coin_amount,
+                title=title or reason,
+                description=description,
+            ))
+
+        if growth:
+            actual_growth = self._apply_direct_growth(
+                plant,
+                max(0, int(growth)),
+                stats_field="direct_reward_growth",
+                transition_source=str(source),
+            )
+            if actual_growth:
+                receipts.append(self._append_reward_receipt(
+                    event_key=key,
+                    reward_type="growth",
+                    source=source,
+                    source_id=source_id,
+                    scheduler_day=day_value,
+                    correlation_id=correlation,
+                    amount=actual_growth,
+                    plant_id=plant.plant_id if plant is not None else "",
+                    title=title or reason,
+                    description=description,
+                ))
+
+        for item_id, item_amount in item_grants.items():
+            if item_id not in self.state.consumables:
+                raise ValueError(f"unsupported reward inventory item: {item_id}")
+            self.state.consumables[item_id] = (
+                self.state.consumables.get(item_id, 0) + item_amount
+            )
+            receipts.append(self._append_reward_receipt(
+                event_key=key,
+                reward_type="inventory_item",
+                source=source,
+                source_id=source_id,
+                scheduler_day=day_value,
+                correlation_id=correlation,
+                amount=item_amount,
+                item_id=item_id,
+                title=title or reason,
+                description=description,
+            ))
+
+        self._append_reward_event_key(key)
+        return tuple(receipts)
+
     def rollover_if_needed(self, *, persist: bool = True) -> None:
         today = self._scheduler_day()
         if self.state.daily_stats.day == today:
             return
         scheduler_day_floor = self._scheduler_day_floor()
         snapshot = self._state_snapshot()
+        transition_snapshot = list(self._pending_stage_transitions)
         previous = self.state.daily_stats
         try:
             previous_day = date.fromisoformat(previous.day)
             current_day = date.fromisoformat(today)
         except ValueError:
             previous_day = current_day = date.today()
+        if (
+            previous_day < current_day
+            and self.state.reward_state_initialized
+            and callable(getattr(self.storage, "load_eligible_review_history", None))
+        ):
+            # The reviewer hook runs after Anki writes the new answer. During
+            # rollover that answer already appears in revlog, but it still
+            # belongs to the open day and must be handled by the live path
+            # below. Reconcile only closed days here so the answer is not
+            # consumed into temporary stats and then reported as a duplicate.
+            reconciled, message = self.reconcile_reward_history(
+                persist=False,
+                include_open_day=False,
+            )
+            if not reconciled:
+                raise RevlogReadError(message)
         self.state.daily_stats = DailyStats(day=today)
         self.state.processed_revlog_floor = scheduler_day_floor
         self.state.processed_revlog_ids = []
-        # Reviews outside the current scheduler day are no longer eligible for
-        # catch-up, so their completed Fertilizer windows can be pruned without
-        # losing answer-time attribution. Keep any interval that overlaps the
-        # new day because a late synced answer may still fall inside it.
+        # A post-activation mobile answer can arrive after any number of Anki
+        # days. Preserve every local target/effect interval so delayed
+        # ingestion can reconstruct answer-time Growth without granting an
+        # item retroactively.
         scheduler_day_start = (scheduler_day_floor + 1) / 1000.0
         for plant in self.state.plants:
-            plant.fertilizer_history = [
-                period for period in plant.fertilizer_history
-                if float(period.expires_at) > scheduler_day_start
-            ][-MAX_FERTILIZER_HISTORY:]
             if (
                 plant.fertilizer is not None
                 and float(plant.fertilizer.expires_at) <= scheduler_day_start
             ):
+                archived = self._historical_fertilizer_period(
+                    plant.fertilizer,
+                    ended_at=scheduler_day_start,
+                )
+                identities = {
+                    self._fertilizer_period_identity(period)
+                    for period in plant.fertilizer_history
+                }
+                if (
+                    archived is not None
+                    and self._fertilizer_period_identity(archived) not in identities
+                ):
+                    plant.fertilizer_history.append(archived)
+                    plant.fertilizer_history.sort(key=lambda period: (
+                        float(
+                            period.started_at
+                            if period.started_at is not None
+                            else period.expires_at
+                        ),
+                        float(period.expires_at),
+                        str(period.tier),
+                    ))
                 plant.fertilizer = None
-            plant.booster_history = [
-                period for period in plant.booster_history
-                if float(period.expires_at) > scheduler_day_start
-            ][-MAX_BOOSTER_HISTORY:]
             if (
                 plant.booster is not None
                 and float(plant.booster.expires_at) <= scheduler_day_start
             ):
+                archived = self._historical_booster_period(
+                    plant.booster,
+                    ended_at=scheduler_day_start,
+                )
+                identities = {
+                    self._booster_period_identity(period)
+                    for period in plant.booster_history
+                }
+                if (
+                    archived is not None
+                    and self._booster_period_identity(archived) not in identities
+                ):
+                    plant.booster_history.append(archived)
+                    plant.booster_history.sort(key=lambda period: (
+                        float(
+                            period.started_at
+                            if period.started_at is not None
+                            else period.expires_at
+                        ),
+                        float(period.expires_at),
+                    ))
                 plant.booster = None
-        self.state.active_plant_periods = [
-            period for period in self.state.active_plant_periods if period.day >= (current_day - timedelta(days=7)).isoformat()
-        ]
-        self.state.active_plant_periods.append(ActivePlantPeriod(today, self.state.active_plant_id, self._now_ms()))
+        self._record_active_period(self.state.active_plant_id)
         if persist:
-            self._persist_or_restore(snapshot)
+            try:
+                self._persist_or_restore(snapshot)
+            except Exception:
+                self._pending_stage_transitions = transition_snapshot
+                raise
 
     def fertilizer_growth(self, plant: Plant | None, *, now: float | None = None) -> int:
         if plant is None:
@@ -674,6 +1022,56 @@ class GardenGameEngine:
             float(period.expires_at),
         )
 
+    def _activate_fertilizer_effect(
+        self,
+        plant: Plant,
+        spec: FertilizerSpec,
+        *,
+        now: float,
+    ) -> str:
+        """Apply the one canonical Fertilizer effect used by buys and Finds."""
+
+        existing = plant.fertilizer
+        current = existing if existing and existing.active(now) else None
+        extending = current is not None and current.tier == spec.tier
+        replacing = current is not None and current.tier != spec.tier
+        archived = (
+            None
+            if extending
+            else self._historical_fertilizer_period(existing, ended_at=now)
+        )
+        history_identities = {
+            self._fertilizer_period_identity(period)
+            for period in plant.fertilizer_history
+        }
+        if (
+            archived is not None
+            and self._fertilizer_period_identity(archived) not in history_identities
+        ):
+            plant.fertilizer_history.append(archived)
+            plant.fertilizer_history.sort(key=lambda period: (
+                float(
+                    period.started_at
+                    if period.started_at is not None
+                    else period.expires_at
+                ),
+                float(period.expires_at),
+                str(period.tier),
+            ))
+        expiration_base = current.expires_at if extending else now
+        activation_start = (
+            current.started_at
+            if extending and current.started_at is not None
+            else now
+        )
+        plant.fertilizer = Fertilizer(
+            spec.tier,
+            spec.growth_per_answer,
+            expiration_base + spec.duration_seconds,
+            activation_start,
+        )
+        return "extended" if extending else "replaced" if replacing else "applied"
+
     @staticmethod
     def _historical_booster_period(
         booster: Booster | None,
@@ -710,70 +1108,296 @@ class GardenGameEngine:
     def current_streak_bonus_percent(self) -> int:
         return self.streak_bonus_percent(self.state.streak_days)
 
-    def reconcile_retrospective_streak(self, *, persist: bool = True) -> tuple[bool, str]:
-        """Reconcile streak display/rewards without replaying historic Growth.
+    @staticmethod
+    def _streak_by_scheduler_day(entries: tuple[Any, ...]) -> dict[str, int]:
+        days = sorted({str(entry.scheduler_day) for entry in entries})
+        result: dict[str, int] = {}
+        previous: date | None = None
+        run = 0
+        for day_value in days:
+            current = date.fromisoformat(day_value)
+            run = run + 1 if previous is not None and current == previous + timedelta(days=1) else 1
+            result[day_value] = run
+            previous = current
+        return result
 
-        A collection or scheduler read failure is deliberately non-destructive:
-        the saved streak remains active and the next maintenance boundary can
-        retry. Existing milestone transaction keys make backfilled Coins
-        idempotent across restarts and sync reconciliation.
+    def reconcile_reward_history(
+        self,
+        *,
+        persist: bool = True,
+        include_open_day: bool = True,
+    ) -> tuple[bool, str]:
+        """Rebuild achievements and process only post-activation synced answers.
+
+        Rollover uses ``include_open_day=False`` because Anki has already added
+        the answer that triggered the reviewer hook to revlog. Normal startup
+        and sync maintenance include the open day so unseen mobile reviews are
+        caught up.
         """
 
-        resolver = getattr(self.storage, "retrospective_streak", None)
+        resolver = getattr(self.storage, "load_eligible_review_history", None)
         if not callable(resolver):
             return False, "Anki review history is not available yet."
-        try:
-            streak = resolver()
-        except (RevlogReadError, SchedulerBoundaryError):
-            return False, "Anki review history is not available yet."
         snapshot = self._state_snapshot()
-        previous_days = int(self.state.streak_days)
-        self.state.streak_days = max(0, int(getattr(streak, "days", 0)))
-        latest_day = str(getattr(streak, "latest_day", "") or "")
-        if latest_day:
-            self.state.last_active_day = latest_day
-        credited_total = 0
-        newly_claimed: list[int] = []
-        for threshold, reward in sorted(self.STREAK_CURRENCY.items()):
-            if (
-                self.state.streak_days >= threshold
-                and threshold not in self.state.claimed_streak_rewards
-            ):
-                if self._credit_currency(
-                    f"streak:{threshold}",
-                    f"{threshold}-day Anki streak",
-                    reward,
-                ):
-                    credited_total += reward
-                # A legacy transaction may already hold this event key; the
-                # claim still needs to be repaired to prevent repeated checks.
-                self.state.claimed_streak_rewards.append(threshold)
-                newly_claimed.append(threshold)
-        self.state.claimed_streak_rewards = sorted(set(self.state.claimed_streak_rewards))
-        if credited_total:
-            milestone_copy = ", ".join(f"{value}-day" for value in newly_claimed)
-            self._queue_feedback(
-                f"streak-backfill:{':'.join(str(value) for value in newly_claimed)}",
-                "streak",
-                (
-                    f"Your review history restored a {self.state.streak_days}-day Anki streak "
-                    f"and {credited_total} Garden Coins from the {milestone_copy} milestones."
-                ),
-                title="Streak rewards restored",
-                asset_category="ui",
-                asset_key="streak_reward",
-                amount=credited_total,
+        transition_snapshot = list(self._pending_stage_transitions)
+        try:
+            if not self.state.reward_state_initialized:
+                if self._pending_reward_activation_ms is None:
+                    self._pending_reward_activation_ms = self._now_ms()
+                self.initialize_reward_state(
+                    activation_ms=self._pending_reward_activation_ms,
+                    persist=False,
+                )
+            history_snapshot = resolver()
+            current_day = self._scheduler_day()
+            entries = tuple(
+                entry
+                for entry in history_snapshot.entries
+                if include_open_day or str(entry.scheduler_day) < current_day
             )
-        self._update_achievements()
-        if self.state.to_dict() == snapshot:
-            return True, "Your Anki streak is up to date."
-        if persist:
-            try:
+            reviews = tuple(
+                HistoricalReview(
+                    event_id=int(entry.revlog_id),
+                    answered_at_ms=int(entry.answer_ms),
+                    scheduler_day=str(entry.scheduler_day),
+                    rating=int(entry.ease),
+                )
+                for entry in entries
+            )
+            history = analyze_history(reviews, current_open_day=current_day)
+            self.state.lifetime_eligible_answers = int(history.lifetime_answers)
+            self.state.current_non_again_run = int(history.current_non_again_tail)
+            self.state.streak_days = int(history.current_streak_days)
+            if history.latest_active_day:
+                self.state.last_active_day = history.latest_active_day
+            self._ensure_achievements()
+
+            reconciled_high_water = max(
+                (int(entry.revlog_id) for entry in entries),
+                default=0,
+            )
+            sync_correlation = (
+                f"sync:{reconciled_high_water}:{history.fingerprint[:12]}"
+            )
+            existing_receipts = tuple(self.state.recent_reward_receipts)
+            unlocked_before_sync = {
+                achievement_id
+                for achievement_id, achievement in self.state.achievements.items()
+                if achievement.unlocked
+            }
+            for definition in ACHIEVEMENT_DEFINITIONS:
+                completion_day = history.unlock_day(definition.achievement_id)
+                if completion_day:
+                    self._unlock_achievement(
+                        definition.achievement_id,
+                        completion_day=completion_day,
+                        correlation_id=sync_correlation,
+                        historical=True,
+                    )
+            self._refresh_achievement_progress(history)
+            unlocked_during_sync = tuple(
+                definition.achievement_id
+                for definition in ACHIEVEMENT_DEFINITIONS
+                if (
+                    self.state.achievements[definition.achievement_id].unlocked
+                    and definition.achievement_id not in unlocked_before_sync
+                )
+            )
+            for summary in history.daily_summaries:
+                if summary.closed:
+                    self._record_finalized_day(
+                        summary.scheduler_day,
+                        f"history:{summary.total_answers}:"
+                        f"{summary.non_again_answers}:{summary.again_answers}"
+                    )
+
+            streak_by_day = self._streak_by_scheduler_day(
+                entries
+            )
+            entries_by_day: dict[str, list[Any]] = {}
+            for entry in entries:
+                entries_by_day.setdefault(str(entry.scheduler_day), []).append(entry)
+            recurring_boundary = max(
+                1,
+                int(self.state.reward_activation_ms),
+                int(self.state.progression_activation_ms),
+            )
+            if self.state.progression_activation_ms > 0:
+                # Sync may fill an older gap and move an already-studied day
+                # onto an authoritative 7-day boundary. Grants are monotonic:
+                # preserve any earlier committed cycle and add each newly
+                # proven post-activation cycle once. Previously committed
+                # answer Growth is intentionally not rewritten or revoked.
+                for day_value, streak_days in streak_by_day.items():
+                    if streak_days <= 0 or streak_days % 7:
+                        continue
+                    if not any(
+                        int(entry.answer_ms) >= recurring_boundary
+                        for entry in entries_by_day.get(day_value, ())
+                    ):
+                        continue
+                    self._apply_streak_rewards(
+                        scheduler_day=day_value,
+                        correlation_id=sync_correlation,
+                        streak_days=streak_days,
+                        allow_recurring_reward=True,
+                    )
+            day_answer_numbers: dict[str, int] = {}
+            temporary_stats: dict[str, DailyStats] = {}
+            current_stats = self.state.daily_stats
+            candidate_answer_keys = {
+                consumption_id(stable_answer_event_identity(
+                    int(entry.revlog_id),
+                    card_id=int(entry.card_id),
+                    answered_at_ms=int(entry.answer_ms),
+                    lineage_id=str(entry.stable_answer_key),
+                ))
+                for entry in entries
+                if int(entry.answer_ms) >= int(self.state.reward_activation_ms)
+            }
+            consumed_resolver = getattr(
+                self.storage, "consumed_answer_keys", None
+            )
+            processed_answer_keys = (
+                set(consumed_resolver(candidate_answer_keys))
+                if callable(consumed_resolver)
+                else candidate_answer_keys.intersection(
+                    self.state.processed_answer_keys
+                )
+            )
+            synced_answers = 0
+            synced_growth = 0
+            for entry in entries:
+                day_value = str(entry.scheduler_day)
+                day_answer_numbers[day_value] = day_answer_numbers.get(day_value, 0) + 1
+                answer_number = day_answer_numbers[day_value]
+                if int(entry.answer_ms) < int(self.state.reward_activation_ms):
+                    continue
+                answer_identity = stable_answer_event_identity(
+                    int(entry.revlog_id),
+                    card_id=int(entry.card_id),
+                    answered_at_ms=int(entry.answer_ms),
+                    lineage_id=str(entry.stable_answer_key),
+                )
+                answer_key = consumption_id(answer_identity)
+                if entry.stable_answer_key:
+                    self._bind_answer_lineage(
+                        int(entry.revlog_id),
+                        str(entry.stable_answer_key),
+                    )
+                if answer_key in processed_answer_keys:
+                    if day_value == current_day:
+                        self._acknowledge_current_revlog(int(entry.revlog_id))
+                    continue
+                if day_value == current_stats.day:
+                    self.state.daily_stats = current_stats
+                else:
+                    self.state.daily_stats = temporary_stats.setdefault(
+                        day_value, DailyStats(day=day_value)
+                    )
+                semantics = queue_and_lapse_from_revlog_type(
+                    entry.review_type, entry.ease
+                )
+                if semantics is None:
+                    continue
+                queue, lapse_count = semantics
+                award = self._register_review_in_memory({
+                    "queue": queue,
+                    "ease": int(entry.ease),
+                    "factor": int(entry.factor),
+                    "lapse_count": lapse_count,
+                    "revlog_id": int(entry.revlog_id),
+                    "card_id": int(entry.card_id),
+                    "answered_at_ms": int(entry.answer_ms),
+                    "answer_identity": str(entry.stable_answer_key),
+                    "scheduler_day": day_value,
+                    "day_answer_number": answer_number,
+                    "first_answer_of_day": answer_number == 1,
+                    "streak_days": streak_by_day.get(day_value, 0),
+                    "history_counted": True,
+                    "historical_sync": True,
+                    "emit_feedback": False,
+                    "correlation_id": sync_correlation,
+                })
+                processed_answer_keys.add(answer_key)
+                if day_value == current_day:
+                    processed = self.state.processed_revlog_ids
+                    index = bisect_left(processed, int(entry.revlog_id))
+                    if index >= len(processed) or processed[index] != int(entry.revlog_id):
+                        if len(processed) >= MAX_PROCESSED_REVLOG_IDS:
+                            raise RuntimeError(
+                                "The current scheduler day exceeded Garden's "
+                                "review-history safety bound."
+                            )
+                        insort(processed, int(entry.revlog_id))
+                    self.state.last_processed_revlog_id = max(
+                        self.state.last_processed_revlog_id,
+                        int(entry.revlog_id),
+                    )
+                synced_answers += 1
+                synced_growth += award.total_growth
+            self.state.daily_stats = current_stats
+            self.state.achievement_history_fingerprint = history.fingerprint
+            self.state.achievement_history_high_water_revlog_id = (
+                reconciled_high_water
+            )
+            self._refresh_achievement_progress(history)
+
+            sync_receipts = tuple(
+                receipt
+                for receipt in self.state.recent_reward_receipts
+                if receipt not in existing_receipts
+                if receipt.correlation_id == sync_correlation
+            )
+            if sync_receipts:
+                self._queue_reward_feedback(
+                    sync_correlation,
+                    sync_receipts,
+                    achievement_ids=unlocked_during_sync,
+                    title="Synced review rewards",
+                )
+            elif synced_answers and synced_growth:
+                self._queue_feedback(
+                    f"reward-summary:{sync_correlation}",
+                    "reward_summary",
+                    (
+                        f"Processed {synced_answers:,} synced card answers and "
+                        f"added {synced_growth:,} Growth."
+                    ),
+                    title="Synced Garden progress",
+                    asset_category="ui",
+                    asset_key="growth",
+                    amount=synced_growth,
+                    correlation_id=sync_correlation,
+                )
+            has_staged_writes = getattr(
+                self.storage, "reward_ledger_has_staged_writes", None
+            )
+            if persist and (
+                self.state.to_dict() != snapshot
+                or (
+                    callable(has_staged_writes)
+                    and bool(has_staged_writes())
+                )
+            ):
                 self._persist_or_restore(snapshot)
-            except Exception:
-                return False, "The updated Anki streak could not be saved."
-        direction = "restored" if self.state.streak_days >= previous_days else "updated"
-        return True, f"Your {self.state.streak_days}-day Anki streak was {direction}."
+            return True, (
+                f"Garden history is up to date; {synced_answers:,} new synced "
+                f"answer{' was' if synced_answers == 1 else 's were'} processed."
+            )
+        except (RevlogReadError, SchedulerBoundaryError, ValueError, TypeError):
+            self._pending_stage_transitions = transition_snapshot
+            self._restore_state(snapshot)
+            return False, "Anki review history is not available yet."
+        except Exception:
+            self._pending_stage_transitions = transition_snapshot
+            self._restore_state(snapshot)
+            raise
+
+    def reconcile_retrospective_streak(self, *, persist: bool = True) -> tuple[bool, str]:
+        """Compatibility alias for the unified reward-history reconciliation."""
+
+        return self.reconcile_reward_history(persist=persist)
 
     def register_review(self, review_payload: Dict[str, Any]) -> ReviewAward:
         snapshot = self._state_snapshot()
@@ -781,7 +1405,6 @@ class GardenGameEngine:
         self.rollover_if_needed(persist=False)
         try:
             award = self._register_review_in_memory(review_payload)
-            self._update_achievements()
             self._persist_or_restore(snapshot)
             return award
         except Exception:
@@ -789,8 +1412,136 @@ class GardenGameEngine:
             self._restore_state(snapshot)
             raise
 
+    def _acknowledge_current_revlog(self, revlog_id: int) -> None:
+        """Persist a newly observed revlog alias without double-counting it."""
+
+        normalized = max(0, int(revlog_id))
+        processed = self.state.processed_revlog_ids
+        index = bisect_left(processed, normalized)
+        if (
+            normalized > self.state.processed_revlog_floor
+            and (index >= len(processed) or processed[index] != normalized)
+        ):
+            if len(processed) >= MAX_PROCESSED_REVLOG_IDS:
+                raise RuntimeError(
+                    "The current scheduler day exceeded Garden's review-history safety bound."
+                )
+            insort(processed, normalized)
+        self.state.last_processed_revlog_id = max(
+            self.state.last_processed_revlog_id,
+            normalized,
+        )
+
+    def _bind_answer_lineage(self, revlog_id: int, lineage_id: str) -> None:
+        """Persist an alias and retire a satisfied explicit reanswer hint."""
+
+        normalized = max(0, int(revlog_id))
+        lineage = str(lineage_id)
+        if normalized <= 0 or not lineage:
+            return
+        stager = getattr(self.storage, "stage_answer_lineage_alias", None)
+        if callable(stager):
+            stager(normalized, lineage)
+        else:
+            self.state.answer_lineage_bindings[str(normalized)] = lineage
+        hinted_floor = self.state.pending_reanswer_lineages.get(lineage)
+        if hinted_floor is not None and normalized >= int(hinted_floor):
+            self.state.pending_reanswer_lineages.pop(lineage, None)
+
+    def _answer_consumed(self, answer_key: str) -> bool:
+        resolver = getattr(self.storage, "answer_consumed", None)
+        if callable(resolver):
+            return bool(resolver(answer_key))
+        return answer_key in self.state.processed_answer_keys
+
+    def _record_answer_consumption(
+        self,
+        answer_key: str,
+        *,
+        scheduler_day: str,
+        lineage_id: str,
+        revlog_id: int,
+    ) -> None:
+        stager = getattr(self.storage, "stage_answer_consumption", None)
+        if callable(stager):
+            stager(
+                answer_key,
+                scheduler_day=scheduler_day,
+                lineage_key=lineage_id,
+                first_revlog_id=revlog_id,
+            )
+            return
+        if answer_key not in self.state.processed_answer_keys:
+            self.state.processed_answer_keys.append(answer_key)
+
+    def record_review_undo(self, *, undo_at_ms: int | None = None) -> bool:
+        """Mark the just-removed review lineage for one deterministic reanswer.
+
+        The Anki undo hook runs after the revlog row disappears. Comparing the
+        durable alias authority with current eligible history identifies the
+        orphan. Its wall-clock floor distinguishes a later reanswer from an
+        older row that arrives through sync in the meantime.
+        """
+
+        resolver = getattr(self.storage, "load_eligible_review_history", None)
+        if not callable(resolver):
+            return False
+        snapshot = self._state_snapshot()
+        try:
+            history_snapshot = resolver()
+            current_revlog_ids = {
+                int(entry.revlog_id) for entry in history_snapshot.entries
+            }
+            bindings_resolver = getattr(
+                self.storage, "all_answer_lineage_bindings", None
+            )
+            bindings = (
+                bindings_resolver()
+                if callable(bindings_resolver)
+                else dict(self.state.answer_lineage_bindings)
+            )
+            current_lineages = {
+                lineage
+                for raw_revlog_id, lineage in bindings.items()
+                if raw_revlog_id.isdigit()
+                and int(raw_revlog_id) in current_revlog_ids
+            }
+            candidates = [
+                (int(raw_revlog_id), lineage)
+                for raw_revlog_id, lineage in bindings.items()
+                if raw_revlog_id.isdigit()
+                and int(raw_revlog_id) not in current_revlog_ids
+                and lineage not in current_lineages
+                and lineage not in self.state.pending_reanswer_lineages
+            ]
+            if candidates:
+                removed_revlog_id, lineage = max(
+                    candidates, key=lambda item: item[0]
+                )
+                floor = max(
+                    removed_revlog_id + 1,
+                    int(self._now_ms() if undo_at_ms is None else undo_at_ms),
+                )
+                self.state.pending_reanswer_lineages[lineage] = floor
+            has_staged_writes = getattr(
+                self.storage, "reward_ledger_has_staged_writes", None
+            )
+            if (
+                self.state.to_dict() != snapshot
+                or (
+                    callable(has_staged_writes)
+                    and bool(has_staged_writes())
+                )
+            ):
+                self._persist_or_restore(snapshot)
+            return bool(candidates)
+        except Exception:
+            self._restore_state(snapshot)
+            raise
+
     def _register_review_in_memory(self, payload: Any) -> ReviewAward:
         source = payload if isinstance(payload, dict) else {}
+        historical_sync = bool(source.get("historical_sync", False))
         try:
             revlog_id = max(0, int(source.get("revlog_id", 0)))
         except (TypeError, ValueError):
@@ -804,7 +1555,38 @@ class GardenGameEngine:
                 0,
                 "This card answer has no stable review identity and was not counted.",
             )
-        if revlog_id:
+        try:
+            event_ms = max(0, int(source.get("answered_at_ms", revlog_id)))
+        except (TypeError, ValueError):
+            event_ms = revlog_id
+        lineage_id = str(source.get("answer_identity", "") or "").strip()
+        try:
+            card_id = (
+                int(source.get("card_id"))
+                if source.get("card_id") is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            card_id = None
+        answer_identity = stable_answer_event_identity(
+            revlog_id,
+            card_id=card_id,
+            answered_at_ms=event_ms,
+            lineage_id=lineage_id or None,
+        )
+        answer_key = consumption_id(answer_identity)
+        if lineage_id:
+            self._bind_answer_lineage(revlog_id, lineage_id)
+        if self._answer_consumed(answer_key):
+            if not historical_sync:
+                # Undo/reanswer can create a new revlog alias for an already
+                # consumed lineage. Record that alias so repeated hooks become
+                # a cheap ledger hit without granting or rerolling anything.
+                self._acknowledge_current_revlog(revlog_id)
+            return ReviewAward(
+                None, 0, 0, 0, 0, "This card answer was already counted."
+            )
+        if not historical_sync:
             processed = self.state.processed_revlog_ids
             index = bisect_left(processed, revlog_id)
             if (
@@ -816,17 +1598,99 @@ class GardenGameEngine:
                 raise RuntimeError(
                     "The current scheduler day exceeded Garden's review-history safety bound."
                 )
+
+        if not self.state.reward_state_initialized:
+            # A direct reviewer event can arrive before startup maintenance.
+            # Treat that event as the activation boundary; older history still
+            # remains ineligible for recurring rewards and Garden Finds.
+            if self._pending_reward_activation_ms is None:
+                self._pending_reward_activation_ms = event_ms
+            else:
+                self._pending_reward_activation_ms = min(
+                    self._pending_reward_activation_ms,
+                    event_ms,
+                )
+            self.initialize_reward_state(
+                activation_ms=self._pending_reward_activation_ms,
+                persist=False,
+            )
+        if not historical_sync and self.state.progression_activation_ms <= 0:
+            self._activate_progression_if_ready(event_ms)
+        after_activation = event_ms >= max(1, int(self.state.reward_activation_ms))
+        scheduler_day = str(
+            source.get("scheduler_day") or self.state.daily_stats.day
+        )
         try:
-            event_ms = max(0, int(source.get("answered_at_ms", revlog_id or self._now_ms())))
+            date.fromisoformat(scheduler_day)
         except (TypeError, ValueError):
-            event_ms = self._now_ms()
+            scheduler_day = self.state.daily_stats.day
+        if after_activation:
+            # Consumption is staged before any Find outcome so the database
+            # can enforce their foreign-key relationship in the same atomic
+            # commit. The surrounding engine checkpoint rolls both back if
+            # any later reward mutation fails.
+            self._record_answer_consumption(
+                answer_key,
+                scheduler_day=scheduler_day,
+                lineage_id=lineage_id,
+                revlog_id=revlog_id,
+            )
+        correlation_id = str(
+            source.get("correlation_id") or f"answer:{answer_key}"
+        )
+        existing_receipts = tuple(self.state.recent_reward_receipts)
+        unlocked_before = {
+            achievement_id
+            for achievement_id, achievement in self.state.achievements.items()
+            if achievement.unlocked
+        }
         queue, ease, _deck_id, _difficulty, lapse_count = self._normalized_review(source)
         stats = self.state.daily_stats
         first_review_today = stats.reviewed == 0
         previous_streak = self.state.streak_days
         previous_reviews = self.state.total_reviews
-        if first_review_today:
-            self._start_study_day()
+        progression_eligible = bool(
+            after_activation
+            and self.state.starter_selection_complete
+            and self.state.progression_activation_ms > 0
+            and event_ms >= int(self.state.progression_activation_ms)
+        )
+        daily_activity_event_key = f"daily_activity:{scheduler_day}"
+        explicit_streak: int | None = None
+        if source.get("streak_days") is not None:
+            try:
+                explicit_streak = max(0, int(source.get("streak_days")))
+            except (TypeError, ValueError):
+                explicit_streak = None
+        if first_review_today and not historical_sync:
+            self._start_study_day(
+                correlation_id=correlation_id,
+                allow_recurring_rewards=progression_eligible,
+            )
+        elif (
+            historical_sync
+            and bool(source.get("first_answer_of_day", False))
+            and explicit_streak is not None
+        ):
+            self._apply_streak_rewards(
+                scheduler_day=scheduler_day,
+                correlation_id=correlation_id,
+                streak_days=explicit_streak,
+                allow_recurring_reward=progression_eligible,
+            )
+        if progression_eligible and not self._reward_applied(
+            daily_activity_event_key
+        ):
+            # Activation or a sync can occur after earlier answers from this
+            # Anki day were reconstructed without recurring rewards. The first
+            # post-activation eligible answer still starts today's recurring
+            # reward cadence, including a seventh-day cycle when applicable.
+            self._apply_streak_rewards(
+                scheduler_day=scheduler_day,
+                correlation_id=correlation_id,
+                streak_days=explicit_streak,
+                allow_recurring_reward=True,
+            )
         stats.reviewed += 1
         self.state.total_reviews += 1
         is_correct = ease > 1
@@ -845,20 +1709,117 @@ class GardenGameEngine:
             stats.learning_count += 1
         else:
             stats.review_count += 1
+
+        history_counted = bool(source.get("history_counted", False)) or (
+            revlog_id <= int(self.state.achievement_history_high_water_revlog_id)
+        )
+        if not history_counted:
+            self.state.lifetime_eligible_answers += 1
+            self.state.current_non_again_run = (
+                self.state.current_non_again_run + 1 if is_correct else 0
+            )
         plant = self._active_plant_at(event_ms)
-        award = self._award_review_growth(plant, event_ms)
+        if progression_eligible:
+            self._grant_reward_bundle(
+                daily_activity_event_key,
+                source="daily_activity",
+                source_id=scheduler_day,
+                reason="First eligible answer of the Anki day",
+                scheduler_day=scheduler_day,
+                correlation_id=correlation_id,
+                coins=self.DAILY_ACTIVITY_COINS,
+                title="Daily activity reward",
+            )
+            award = self._award_review_growth(
+                plant,
+                event_ms,
+                streak_days=explicit_streak,
+                answer_number=source.get("day_answer_number"),
+            )
+        else:
+            paused_reason = (
+                "Choose an unfinished plant to nurture to resume Growth."
+                if self.state.starter_selection_complete
+                and int(self.state.garden_setup_version) >= 1
+                else "Complete Garden setup before answer rewards begin."
+            )
+            award = ReviewAward(
+                plant.plant_id if plant is not None else None,
+                0,
+                0,
+                0,
+                self.streak_bonus_percent(
+                    self.state.streak_days
+                    if explicit_streak is None
+                    else explicit_streak
+                ),
+                paused_reason,
+            )
         # Attribute milestones crossed by this answer to the plant that
         # received it. Reaching Rare clears the nurtured-plant pointer, so
         # looking it up again here would otherwise lose same-answer memories.
         self._record_shared_memories(previous_reviews, previous_streak, plant=plant)
-        if revlog_id and self.state.starter_selection_complete:
-            self._maybe_award_random_drop(revlog_id, plant)
-        if revlog_id:
-            insort(self.state.processed_revlog_ids, revlog_id)
-            self.state.last_processed_revlog_id = max(self.state.last_processed_revlog_id, revlog_id)
-        return award
+        if progression_eligible:
+            self._grant_daily_environment_gift(
+                answer_identity,
+                scheduler_day=scheduler_day,
+                plant=plant,
+                correlation_id=correlation_id,
+            )
+        finds_eligible = bool(
+            progression_eligible
+            and event_ms >= max(1, int(self.state.garden_find_activation_ms))
+        )
+        if finds_eligible:
+            self._resolve_garden_finds(
+                answer_identity,
+                answer_key=answer_key,
+                scheduler_day=scheduler_day,
+                plant=plant,
+                correlation_id=correlation_id,
+            )
+        self._update_achievements(correlation_id=correlation_id)
+        if not historical_sync:
+            self._acknowledge_current_revlog(revlog_id)
+        new_receipts = tuple(
+            receipt
+            for receipt in self.state.recent_reward_receipts
+            if receipt not in existing_receipts
+        )
+        new_achievement_ids = tuple(
+            achievement_id
+            for achievement_id, achievement in self.state.achievements.items()
+            if achievement.unlocked and achievement_id not in unlocked_before
+        )
+        if new_receipts and bool(source.get("emit_feedback", True)):
+            self._queue_reward_feedback(
+                correlation_id,
+                new_receipts,
+                achievement_ids=new_achievement_ids,
+                plant_id=plant.plant_id if plant is not None else None,
+            )
+        reward_event_keys = tuple(dict.fromkeys(
+            receipt.event_key for receipt in new_receipts
+        ))
+        garden_find_ids = tuple(dict.fromkeys(
+            receipt.source_id
+            for receipt in new_receipts
+            if receipt.source in {"garden_find", "garden_find_environment"}
+        ))
+        return replace(
+            award,
+            correlation_id=correlation_id,
+            reward_event_keys=reward_event_keys,
+            garden_find_ids=garden_find_ids,
+            achievement_ids=new_achievement_ids,
+        )
 
-    def _start_study_day(self) -> None:
+    def _start_study_day(
+        self,
+        *,
+        correlation_id: str = "",
+        allow_recurring_rewards: bool = True,
+    ) -> None:
         today = date.fromisoformat(self.state.daily_stats.day)
         try:
             last = date.fromisoformat(self.state.last_active_day)
@@ -873,19 +1834,105 @@ class GardenGameEngine:
         else:
             self.state.streak_days = self.state.streak_days + 1 if day_gap == 1 else 1
         self.state.last_active_day = today.isoformat()
-        for threshold, reward in self.STREAK_CURRENCY.items():
-            if self.state.streak_days >= threshold and threshold not in self.state.claimed_streak_rewards:
-                credited = self._credit_currency(
-                    f"streak:{threshold}",
-                    f"{threshold}-day Anki streak",
-                    reward,
-                    feedback=(
-                        f"Your {threshold}-day Anki streak earned "
-                        f"{reward} Garden Coins."
-                    ),
-                )
-                if credited:
-                    self.state.claimed_streak_rewards.append(threshold)
+        self._apply_streak_rewards(
+            scheduler_day=today.isoformat(),
+            correlation_id=correlation_id,
+            allow_recurring_reward=allow_recurring_rewards,
+        )
+
+    @staticmethod
+    def _reward_bundle_description(bundle: RewardBundle) -> str:
+        parts: list[str] = []
+        if bundle.coins:
+            parts.append(f"+{bundle.coins:,} Garden Coins")
+        if bundle.small_growth_charges:
+            parts.append(
+                f"+{bundle.small_growth_charges} Small Growth Charge"
+                + ("s" if bundle.small_growth_charges != 1 else "")
+            )
+        if bundle.standard_growth_charges:
+            parts.append(
+                f"+{bundle.standard_growth_charges} Standard Growth Charge"
+                + ("s" if bundle.standard_growth_charges != 1 else "")
+            )
+        return " and ".join(parts) if parts else "Badge only"
+
+    def _unlock_achievement(
+        self,
+        achievement_id: str,
+        *,
+        completion_day: str,
+        correlation_id: str,
+        historical: bool = False,
+    ) -> bool:
+        definition = ACHIEVEMENTS_BY_ID.get(str(achievement_id))
+        achievement = self.state.achievements.get(str(achievement_id))
+        if definition is None or achievement is None or achievement.unlocked:
+            return False
+        event_key = f"achievement:{definition.achievement_id}"
+        self._grant_reward_bundle(
+            event_key,
+            source="achievement_backfill" if historical else "achievement",
+            source_id=definition.achievement_id,
+            reason=f"Achievement: {definition.name}",
+            scheduler_day=completion_day,
+            correlation_id=correlation_id,
+            coins=definition.reward.coins,
+            inventory_items={
+                "growth_charge_small": definition.reward.small_growth_charges,
+                "growth_charge_standard": definition.reward.standard_growth_charges,
+            },
+            title=definition.name,
+            description=definition.description,
+        )
+        now = utc_now_iso()
+        achievement.unlocked = True
+        achievement.progress = 1.0
+        achievement.unlocked_at = (
+            f"{completion_day}T00:00:00+00:00" if historical else now
+        )
+        achievement.rewarded_at = now
+        achievement.reward_event_key = event_key
+        achievement.historical_backfill = bool(historical)
+        if definition.achievement_id == "streak_7":
+            # Integrate the first badge payout with the first weekly cycle.
+            self._append_reward_event_key(f"weekly_streak:{completion_day}")
+        return True
+
+    def _apply_streak_rewards(
+        self,
+        *,
+        scheduler_day: str,
+        correlation_id: str,
+        streak_days: int | None = None,
+        allow_recurring_reward: bool = True,
+    ) -> None:
+        days = max(0, int(self.state.streak_days if streak_days is None else streak_days))
+        definition = next(
+            (
+                candidate
+                for candidate in STREAK_ACHIEVEMENTS
+                if candidate.progress_target == days
+            ),
+            None,
+        )
+        if definition is not None:
+            self._unlock_achievement(
+                definition.achievement_id,
+                completion_day=scheduler_day,
+                correlation_id=correlation_id,
+            )
+        if allow_recurring_reward and days > 0 and days % 7 == 0:
+            self._grant_reward_bundle(
+                f"weekly_streak:{scheduler_day}",
+                source="weekly_streak",
+                source_id=f"day_{days}",
+                reason=f"Day {days} seven-day streak cycle",
+                scheduler_day=scheduler_day,
+                correlation_id=correlation_id,
+                coins=self.WEEKLY_STREAK_COINS,
+                title="Seven-day streak reward",
+            )
 
     @staticmethod
     def _normalized_review(payload: Any) -> tuple[int, int, Optional[int], float, int]:
@@ -914,15 +1961,22 @@ class GardenGameEngine:
         return queue, ease, deck_id, difficulty, lapse_count
 
     def _active_plant_at(self, event_ms: int) -> Plant | None:
-        day = self.state.daily_stats.day
-        periods = [period for period in self.state.active_plant_periods if period.day == day and period.started_at_ms <= event_ms]
-        plant_id = periods[-1].plant_id if periods else self.state.active_plant_id
-        plant = next((item for item in self.state.plants if item.plant_id == plant_id), None)
-        return (
-            plant
-            if plant is not None and plant.planted and not plant.fully_grown
-            else None
+        periods = sorted(
+            (
+                period
+                for period in self.state.active_plant_periods
+                if period.started_at_ms <= event_ms
+            ),
+            key=lambda period: (period.started_at_ms, period.day),
         )
+        if periods:
+            plant_id = periods[-1].plant_id
+        else:
+            # An empty timeline or an event before its first target must fail
+            # closed. Valid progression activation always creates an anchor.
+            return None
+        plant = next((item for item in self.state.plants if item.plant_id == plant_id), None)
+        return plant
 
     def equipped_environment(self, kind: str) -> CatalogItem:
         if str(kind) == "weather":
@@ -971,6 +2025,7 @@ class GardenGameEngine:
         event_ms: int,
         *,
         answer_number: int,
+        streak_days: int | None = None,
     ) -> tuple[ReviewAward, int]:
         """Project one review award without mutating plant or daily state."""
 
@@ -986,7 +2041,9 @@ class GardenGameEngine:
                 ),
                 0,
             )
-        bonus_percent = self.current_streak_bonus_percent()
+        bonus_percent = self.streak_bonus_percent(
+            self.state.streak_days if streak_days is None else streak_days
+        )
         bonus_numerator = plant.bonus_remainder + (self.BASE_GROWTH_PER_REVIEW * bonus_percent)
         proposed_streak_bonus, next_remainder = divmod(bonus_numerator, 100)
         proposed_fertilizer_bonus = self.fertilizer_growth(plant, now=event_ms / 1000)
@@ -1134,11 +2191,23 @@ class GardenGameEngine:
             ))
         return tuple(allocations)
 
-    def _award_review_growth(self, plant: Plant | None, event_ms: int) -> ReviewAward:
+    def _award_review_growth(
+        self,
+        plant: Plant | None,
+        event_ms: int,
+        *,
+        streak_days: int | None = None,
+        answer_number: int | None = None,
+    ) -> ReviewAward:
         award, next_remainder = self._review_growth_projection(
             plant,
             event_ms,
-            answer_number=max(1, int(self.state.daily_stats.reviewed)),
+            answer_number=(
+                max(1, int(self.state.daily_stats.reviewed))
+                if answer_number is None
+                else max(1, int(answer_number))
+            ),
+            streak_days=streak_days,
         )
         if plant is None or award.total_growth <= 0:
             return award
@@ -1229,143 +2298,32 @@ class GardenGameEngine:
         stats.reconcile_growth_totals()
         return replace(award, allocations=tuple(allocations))
 
-    def _reward_digest(self, revlog_id: int, *, namespace: bytes) -> bytes:
-        return hashlib.blake2b(
-            f"{self.state.reward_seed}:{int(revlog_id)}".encode("utf-8"),
-            digest_size=32,
-            person=namespace[:16],
-        ).digest()
-
-    def _record_reward_drop(self, revlog_id: int, kind: str, amount: int) -> None:
-        self.state.reward_drop_history.append(RewardDrop(
-            int(revlog_id), self.state.daily_stats.day, str(kind), int(amount), utc_now_iso()
-        ))
-        self.state.reward_drop_history = self.state.reward_drop_history[-500:]
-
-    def _drop_hit(self, revlog_id: int, tier: str, denominator: int) -> bool:
-        digest = self._reward_digest(
-            revlog_id,
-            namespace=f"drop-v2:{tier}".encode("utf-8"),
-        )
-        return int.from_bytes(digest[:8], "big") % max(1, int(denominator)) == 0
-
-    def _drop_choice_index(self, revlog_id: int, tier: str, size: int) -> int:
-        if size <= 1:
-            return 0
-        digest = self._reward_digest(
-            revlog_id,
-            namespace=f"choice:{tier}".encode("utf-8"),
-        )
-        return int.from_bytes(digest[8:16], "big") % int(size)
-
-    def _grant_consumable_drop(
+    def _grant_daily_environment_gift(
         self,
-        revlog_id: int,
-        consumable_id: str,
+        answer_identity: str,
         *,
+        scheduler_day: str,
         plant: Plant | None,
-        title: str,
-        message: str,
-        event_prefix: str = "drop",
-    ) -> None:
-        self.state.consumables[consumable_id] = (
-            self.state.consumables.get(consumable_id, 0) + 1
-        )
-        self._queue_feedback(
-            f"{event_prefix}:{consumable_id}:{revlog_id}",
-            "charge_drop" if consumable_id in GROWTH_CHARGES else "booster_drop",
-            message,
-            plant.plant_id if plant is not None else None,
-            title=title,
-            asset_category="ui",
-            asset_key=consumable_id,
-            amount=1,
-        )
-        self._record_reward_drop(revlog_id, consumable_id, 1)
-
-    def _grant_environment_drop(
-        self,
-        revlog_id: int,
-        item: CatalogItem,
-        *,
-        plant: Plant | None,
-    ) -> None:
-        if item.kind == "weather":
-            owned = self.state.inventory.setdefault("weather", [])
-        else:
-            owned = self.state.inventory.setdefault("scenery", [])
-        if item.item_id not in owned:
-            owned.append(item.item_id)
-        if item.kind == "scenery":
-            backgrounds = self.state.inventory.setdefault("backgrounds", [])
-            if item.item_id not in backgrounds:
-                backgrounds.append(item.item_id)
-        self._queue_feedback(
-            f"drop:environment:{item.item_id}:{revlog_id}",
-            "environment_drop",
-            (
-                f"You found {item.name}. It is now in Garden Progress → Weather and Scenery, "
-                f"ready to equip. {item.effect}"
-            ),
-            plant.plant_id if plant is not None else None,
-            title=f"{item.rarity} garden discovery",
-            asset_category="weather" if item.kind == "weather" else "backgrounds",
-            asset_key=item.item_id,
-            amount=1,
-        )
-        self._record_reward_drop(revlog_id, item.item_id, 1)
-
-    def _grant_environment_tier(
-        self,
-        revlog_id: int,
-        tier: str,
-        *,
-        plant: Plant | None,
-    ) -> None:
-        candidates = [
-            item for item in DROP_TIER_ITEMS.get(tier, ())
-            if not self.owns_environment(item.kind, item.item_id)
-        ]
-        if candidates:
-            item = candidates[self._drop_choice_index(revlog_id, tier, len(candidates))]
-            self._grant_environment_drop(revlog_id, item, plant=plant)
-            return
-        fallback = (
-            "growth_charge_standard"
-            if tier == "rare_environment"
-            else "growth_charge_grand"
-        )
-        spec = GROWTH_CHARGES[fallback]
-        self._grant_consumable_drop(
-            revlog_id,
-            fallback,
-            plant=plant,
-            title=f"{spec.name} found",
-            message=(
-                f"You already own every environment in this tier, so the garden "
-                f"left you a {spec.name} instead."
-            ),
-        )
-
-    def _claim_daily_environment_gift(
-        self,
-        revlog_id: int,
-        *,
-        plant: Plant | None,
+        correlation_id: str,
     ) -> bool:
+        """Grant the existing scenery gift without suppressing either Find pool."""
+
         scenery = self.state.selected_background
         if scenery not in {"snowy", "halloween", "full_moon"}:
             return False
-        day = self.state.daily_stats.day
-        if self.state.daily_environment_claims.get(scenery) == day:
+        event_key = f"environment_daily:{scenery}:{scheduler_day}"
+        if self._reward_applied(event_key):
             return False
-        self.state.daily_environment_claims[scenery] = day
         if scenery == "snowy":
             consumable_id = "growth_charge_small"
         elif scenery == "full_moon":
             consumable_id = "booster_potion"
         else:
-            digest = self._reward_digest(revlog_id, namespace=b"halloween-gift")
+            digest = hashlib.blake2b(
+                f"{self.state.reward_seed}:{answer_identity}".encode("utf-8"),
+                digest_size=32,
+                person=b"halloween-gift",
+            ).digest()
             roll = int.from_bytes(digest[:8], "big") % 100
             consumable_id = (
                 "growth_charge_small"
@@ -1380,118 +2338,359 @@ class GardenGameEngine:
             else GROWTH_CHARGES[consumable_id].name
         )
         scenery_name = SCENERY_CATALOG[scenery].name
-        self._grant_consumable_drop(
-            revlog_id,
-            consumable_id,
-            plant=plant,
+        receipts = self._grant_reward_bundle(
+            event_key,
+            source="environment_daily_gift",
+            source_id=scenery,
+            reason=f"{scenery_name} daily gift",
+            scheduler_day=scheduler_day,
+            correlation_id=correlation_id,
+            inventory_item_id=consumable_id,
+            inventory_quantity=1,
             title=f"{scenery_name} daily gift",
-            message=(
-                f"Your first card answer today awakened {scenery_name}. "
-                f"It left one {name} in your Supplements collection."
-            ),
-            event_prefix="daily",
+            description=f"+1 {name}",
         )
-        return True
+        if receipts:
+            self.state.daily_environment_claims[scenery] = scheduler_day
+            return True
+        return False
 
-    def _maybe_award_random_drop(self, revlog_id: int, plant: Plant | None) -> None:
-        """Resolve one deterministic reward slot after a qualifying card answer."""
+    def _grant_standard_find_reward(
+        self,
+        reward: GardenFindReward,
+        *,
+        event_key: str,
+        scheduler_day: str,
+        correlation_id: str,
+        plant: Plant | None,
+    ) -> tuple[RewardReceipt, ...]:
+        return self._grant_reward_bundle(
+            event_key,
+            source="garden_find",
+            source_id=reward.reward_id,
+            reason=f"Garden Find: {reward.display_name}",
+            scheduler_day=scheduler_day,
+            correlation_id=correlation_id,
+            coins=reward.amount if reward.reward_kind == "coins" else 0,
+            growth=reward.amount if reward.reward_kind == "growth" else 0,
+            inventory_item_id=reward.inventory_item_id or "",
+            inventory_quantity=(
+                reward.amount if reward.reward_kind == "inventory_item" else 0
+            ),
+            plant=plant,
+            title=reward.display_name,
+            description=reward.description,
+        )
 
-        if revlog_id <= 0 or any(
-            event.revlog_id == revlog_id for event in self.state.reward_drop_history
-        ):
-            return
-        self.state.eligible_reward_count += 1
-        if self._claim_daily_environment_gift(revlog_id, plant=plant):
-            self.state.ultra_pity_misses += 1
-            return
-        ultra_hit = False
-        for band in DROP_BANDS:
-            denominator = (
-                ultra_denominator(self.state.ultra_pity_misses)
-                if band.tier == "ultra_environment"
-                else self.BOOSTER_DROP_CHANCE
-                if band.tier == "booster_potion"
-                else self.COIN_DROP_CHANCE
-                if band.tier == "coin_cache"
-                else band.denominator
+    def _grant_environment_find(
+        self,
+        *,
+        event_key: str,
+        item_id: str,
+        environment_kind: str,
+        display_name: str,
+        tier: str,
+        scheduler_day: str,
+        correlation_id: str,
+    ) -> tuple[RewardReceipt, ...]:
+        if self._reward_applied(event_key):
+            return ()
+        inventory_key = "weather" if environment_kind == "weather" else "scenery"
+        owned = self.state.inventory.setdefault(inventory_key, [])
+        if item_id not in owned:
+            owned.append(item_id)
+        receipt = self._append_reward_receipt(
+            event_key=event_key,
+            reward_type="environment_item",
+            source="garden_find_environment",
+            source_id=item_id,
+            scheduler_day=scheduler_day,
+            correlation_id=correlation_id,
+            amount=1,
+            item_id=item_id,
+            title=display_name,
+            description=f"{tier.replace('_', ' ').title()} Garden Find",
+        )
+        self._append_reward_event_key(event_key)
+        return (receipt,)
+
+    def _garden_find_outcome(
+        self,
+        answer_key: str,
+        pool_id: str,
+    ) -> GardenFindOutcome | None:
+        resolver = getattr(self.storage, "garden_find_outcome", None)
+        if callable(resolver):
+            return resolver(answer_key, pool_id)
+        return self.state.garden_find_outcomes.get(f"{pool_id}:{answer_key}")
+
+    def _garden_find_counts(
+        self,
+        scheduler_day: str,
+    ) -> tuple[int, dict[str, int]]:
+        resolver = getattr(self.storage, "garden_find_counts", None)
+        if callable(resolver):
+            total, reward_counts = resolver(
+                scheduler_day, pool_id=STANDARD_POOL_ID
             )
-            if not self._drop_hit(revlog_id, band.tier, denominator):
-                continue
-            if band.tier in {
-                "ultra_environment",
-                "very_rare_environment",
-                "rare_environment",
-            }:
-                self._grant_environment_tier(
-                    revlog_id, band.tier, plant=plant
+            return max(0, int(total)), dict(reward_counts)
+        return (
+            max(0, int(self.state.garden_find_daily_counts.get(
+                scheduler_day, 0
+            ))),
+            dict(self.state.garden_find_reward_daily_counts.get(
+                scheduler_day, {}
+            )),
+        )
+
+    def _record_garden_find_outcome(
+        self,
+        outcome: GardenFindOutcome,
+    ) -> None:
+        stager = getattr(self.storage, "stage_garden_find_outcome", None)
+        if callable(stager):
+            stager(outcome)
+            return
+        outcome_key = f"{outcome.pool_id}:{outcome.answer_key}"
+        if outcome_key in self.state.garden_find_outcomes:
+            return
+        self.state.garden_find_outcomes[outcome_key] = outcome
+        if outcome.pool_id == STANDARD_POOL_ID and outcome.status == "hit":
+            finds_today = max(0, int(
+                self.state.garden_find_daily_counts.get(
+                    outcome.scheduler_day, 0
                 )
-                ultra_hit = band.tier == "ultra_environment"
-            elif band.tier == "grand_charge":
-                self._grant_consumable_drop(
-                    revlog_id,
-                    "growth_charge_grand",
+            ))
+            self.state.garden_find_daily_counts[outcome.scheduler_day] = min(
+                STANDARD_DAILY_CAP, finds_today + 1
+            )
+            reward_counts = self.state.garden_find_reward_daily_counts.setdefault(
+                outcome.scheduler_day, {}
+            )
+            reward_counts[outcome.reward_id] = min(
+                STANDARD_DAILY_CAP,
+                max(0, int(reward_counts.get(outcome.reward_id, 0))) + 1,
+            )
+
+    def _resolve_garden_finds(
+        self,
+        answer_identity: str,
+        *,
+        answer_key: str,
+        scheduler_day: str,
+        plant: Plant | None,
+        correlation_id: str,
+    ) -> tuple[str, ...]:
+        """Resolve and record both independent pools inside the review save."""
+
+        occurred_at = utc_now_iso()
+        found_ids: list[str] = []
+        if self._garden_find_outcome(answer_key, STANDARD_POOL_ID) is None:
+            finds_today, reward_daily_counts = self._garden_find_counts(
+                scheduler_day
+            )
+            decision = resolve_standard_find(
+                secret=self.state.reward_seed,
+                answer_identity=answer_identity,
+                drought_misses=self.state.garden_find_drought_count,
+                finds_today=finds_today,
+                registry=self.garden_find_registry,
+                growth_available=bool(plant is not None and not plant.fully_grown),
+                available_inventory_item_ids=self.state.consumables.keys(),
+                reward_daily_counts=reward_daily_counts,
+                scheduler_day=scheduler_day,
+                addon_version=self._addon_version,
+            )
+            self.state.garden_find_drought_count = decision.next_drought_misses
+            status = "paused" if decision.capped else "hit" if decision.hit else "miss"
+            reward_id = ""
+            reward_type = ""
+            reward_amount = 0
+            item_id = ""
+            if decision.hit and decision.reward is not None:
+                reward = decision.reward
+                event_key = f"garden_find:{answer_key}:{STANDARD_POOL_ID}"
+                receipts = self._grant_standard_find_reward(
+                    reward,
+                    event_key=event_key,
+                    scheduler_day=scheduler_day,
+                    correlation_id=correlation_id,
                     plant=plant,
-                    title="A Grand Growth Charge!",
-                    message=(
-                        "Your garden uncovered a Grand Growth Charge. "
-                        "Its 2,000 Growth is waiting in Supplements & Boosters."
-                    ),
                 )
-            elif band.tier == "standard_charge":
-                self._grant_consumable_drop(
-                    revlog_id,
-                    "growth_charge_standard",
-                    plant=plant,
-                    title="A Standard Growth Charge!",
-                    message="A Standard Growth Charge joined your Supplements collection.",
+                reward_id = reward.reward_id
+                reward_type = reward.reward_kind
+                reward_amount = sum(
+                    receipt.amount
+                    for receipt in receipts
+                    if receipt.event_key == event_key
+                ) or reward.amount
+                item_id = reward.inventory_item_id or ""
+                found_ids.append(reward.reward_id)
+            self._record_garden_find_outcome(GardenFindOutcome(
+                answer_key=answer_key,
+                scheduler_day=scheduler_day,
+                status=status,
+                pool_id=STANDARD_POOL_ID,
+                pool_version=STANDARD_POOL_VERSION,
+                occurred_at=occurred_at,
+                reward_id=reward_id,
+                reward_type=reward_type,
+                amount=reward_amount,
+                item_id=item_id,
+                display_name=(decision.reward.display_name if decision.reward else ""),
+                description=(decision.reward.description if decision.reward else ""),
+                tier=(decision.reward.tier if decision.reward else ""),
+                artwork_ref=(decision.reward.artwork_ref if decision.reward else ""),
+                localization_key=(
+                    decision.reward.localization_key if decision.reward else ""
+                ),
+            ))
+            for issue in decision.registry_issues:
+                logger.warning(
+                    "Anki Garden disabled Garden Find entry %s: %s",
+                    issue.reward_id or issue.code,
+                    issue.message,
                 )
-            elif band.tier == "booster_potion":
-                self._grant_consumable_drop(
-                    revlog_id,
-                    "booster_potion",
-                    plant=plant,
-                    title="A rare garden gift",
-                    message=(
-                        "Your nurtured plant found a Booster Potion. "
-                        "Your steady work is helping the whole garden grow."
-                    ),
+
+        if self._garden_find_outcome(answer_key, ENVIRONMENT_POOL_ID) is None:
+            owned_environment_ids = {
+                *self.state.inventory.get("weather", []),
+                *self.state.inventory.get("scenery", []),
+            }
+            environment = resolve_environment_find(
+                secret=self.state.reward_seed,
+                answer_identity=answer_identity,
+                owned_environment_ids=owned_environment_ids,
+                ultra_pity_misses=self.state.garden_find_ultra_misses,
+            )
+            self.state.garden_find_ultra_misses = (
+                environment.next_ultra_pity_misses
+            )
+            environment_reward_id = ""
+            environment_reward_type = ""
+            environment_item_id = ""
+            environment_amount = 0
+            if environment.hit and environment.item is not None:
+                item = environment.item
+                event_key = f"garden_find:{answer_key}:{ENVIRONMENT_POOL_ID}"
+                receipts = self._grant_environment_find(
+                    event_key=event_key,
+                    item_id=item.item_id,
+                    environment_kind=item.environment_kind,
+                    display_name=item.display_name,
+                    tier=item.tier,
+                    scheduler_day=scheduler_day,
+                    correlation_id=correlation_id,
                 )
-            elif band.tier == "small_charge":
-                self._grant_consumable_drop(
-                    revlog_id,
-                    "growth_charge_small",
-                    plant=plant,
-                    title="A Small Growth Charge!",
-                    message="A Small Growth Charge joined your Supplements collection.",
-                )
-            else:
-                event_key = f"drop:coins:{revlog_id}"
-                if self._credit_currency(
-                    event_key, "Rare study gift", self.COIN_DROP_AMOUNT
-                ):
-                    plant_name = plant.name if plant is not None else "Your garden"
-                    self._queue_feedback(
-                        event_key,
-                        "coin_drop",
-                        (
-                            f"{plant_name} seems to say: “I can see how much care you’re "
-                            f"putting in. Please take these {self.COIN_DROP_AMOUNT} "
-                            "Garden Coins.”"
-                        ),
-                        plant.plant_id if plant is not None else None,
-                        title="A little garden gift",
-                        asset_category="ui",
-                        asset_key="garden_coins",
-                        amount=self.COIN_DROP_AMOUNT,
-                    )
-                    self._record_reward_drop(
-                        revlog_id, "garden_coins", self.COIN_DROP_AMOUNT
-                    )
-            break
-        if ultra_hit:
-            self.state.ultra_pity_misses = 0
-        else:
-            self.state.ultra_pity_misses += 1
+                environment_reward_id = item.item_id
+                environment_reward_type = "environment_item"
+                environment_item_id = item.item_id
+                environment_amount = 1 if receipts else 1
+                found_ids.append(item.item_id)
+            self._record_garden_find_outcome(GardenFindOutcome(
+                answer_key=answer_key,
+                scheduler_day=scheduler_day,
+                status="hit" if environment.hit else "miss",
+                pool_id=ENVIRONMENT_POOL_ID,
+                pool_version=ENVIRONMENT_POOL_VERSION,
+                occurred_at=occurred_at,
+                reward_id=environment_reward_id,
+                reward_type=environment_reward_type,
+                amount=environment_amount,
+                item_id=environment_item_id,
+                display_name=(
+                    environment.item.display_name if environment.item else ""
+                ),
+                description=(
+                    f"Added to {environment.item.environment_kind.title()} and Scenery"
+                    if environment.item else ""
+                ),
+                tier=(environment.item.tier if environment.item else ""),
+                artwork_ref=(environment.item.item_id if environment.item else ""),
+                localization_key=(
+                    f"garden_find.environment.{environment.item.item_id}"
+                    if environment.item else ""
+                ),
+            ))
+        return tuple(found_ids)
+
+    def _queue_reward_feedback(
+        self,
+        correlation_id: str,
+        receipts: tuple[RewardReceipt, ...],
+        *,
+        achievement_ids: tuple[str, ...] = (),
+        plant_id: str | None = None,
+        title: str = "Review rewards",
+    ) -> bool:
+        coins = sum(
+            receipt.amount for receipt in receipts if receipt.reward_type == "coins"
+        )
+        growth = sum(
+            receipt.amount for receipt in receipts if receipt.reward_type == "growth"
+        )
+        items: dict[str, int] = {}
+        for receipt in receipts:
+            if receipt.reward_type in {"inventory_item", "environment_item"}:
+                items[receipt.item_id] = items.get(receipt.item_id, 0) + receipt.amount
+        find_receipts = tuple(
+            receipt
+            for receipt in receipts
+            if receipt.source in {"garden_find", "garden_find_environment"}
+        )
+        parts: list[str] = []
+        if growth:
+            parts.append(f"+{growth:,} Growth")
+        if coins:
+            parts.append(f"+{coins:,} Garden Coins")
+        parts.extend(
+            f"+{amount} {item_id.replace('_', ' ').title()}"
+            for item_id, amount in sorted(items.items())
+            if item_id
+        )
+        if achievement_ids:
+            names = [
+                ACHIEVEMENTS_BY_ID[item].name
+                for item in achievement_ids
+                if item in ACHIEVEMENTS_BY_ID
+            ]
+            if names:
+                parts.append("Unlocked " + ", ".join(names))
+        if find_receipts:
+            find_names = [receipt.title for receipt in find_receipts if receipt.title]
+            title = (
+                f"Garden Find: {find_names[0]}"
+                if len(find_names) == 1 and len(receipts) == 1
+                else "Garden Finds and review rewards"
+            )
+        message = "; ".join(parts) or "Your Garden rewards were recorded."
+        first_find = find_receipts[0] if find_receipts else None
+        find_artwork = ""
+        if first_find is not None:
+            definition = next(
+                (
+                    reward
+                    for reward in self.garden_find_registry.rewards
+                    if reward.reward_id == first_find.source_id
+                ),
+                None,
+            )
+            find_artwork = (
+                definition.artwork_ref
+                if definition is not None
+                else first_find.item_id or first_find.source_id
+            )
+        return self._queue_feedback(
+            f"reward-summary:{correlation_id}",
+            "garden_find" if first_find is not None else "reward_summary",
+            message,
+            plant_id,
+            title=title,
+            asset_category="ui",
+            asset_key=find_artwork if first_find else "garden_coins",
+            amount=sum(receipt.amount for receipt in receipts),
+            correlation_id=correlation_id,
+        )
 
     def _project_stage_rewards(
         self,
@@ -1578,9 +2777,7 @@ class GardenGameEngine:
             )
         if after >= GROWTH_THRESHOLDS[-1] and self.state.active_plant_id == plant.plant_id:
             self.state.active_plant_id = None
-            self.state.active_plant_periods.append(ActivePlantPeriod(
-                self.state.daily_stats.day, None, self._now_ms()
-            ))
+            self._record_active_period(None)
             self._queue_feedback(
                 f"nurture-needed:{plant.plant_id}:rare",
                 "nurture_needed",
@@ -1639,6 +2836,20 @@ class GardenGameEngine:
         )
         return coins, growth
 
+    def observe_due_start(self, status: DueObligationStatus | None) -> bool:
+        """Persist the collection-wide due baseline before the first answer."""
+
+        self.rollover_if_needed()
+        stats = self.state.daily_stats
+        if stats.reviewed > 0 or stats.due_started_with_cards is not None:
+            return stats.due_started_with_cards is True
+        if status is None or not status.available or status.error:
+            return False
+        snapshot = self._state_snapshot()
+        stats.due_started_with_cards = status.remaining > 0
+        self._persist_or_restore(snapshot)
+        return stats.due_started_with_cards is True
+
     def evaluate_all_due(self, status: DueObligationStatus | None = None) -> tuple[bool, str]:
         # Rollover is itself durable state. Persist it before taking the reward
         # snapshot so every early-return branch leaves memory and disk aligned.
@@ -1648,8 +2859,14 @@ class GardenGameEngine:
         stats = self.state.daily_stats
         if stats.completed_due_cards:
             return False, "You already earned today’s reward for finishing all due cards."
-        if stats.reviewed <= 0:
+        if not self._reward_applied(f"daily_activity:{stats.day}"):
             return False, "Answer at least one card before you can earn the reward for finishing all due cards."
+        if stats.due_started_with_cards is not True:
+            return False, (
+                "Today did not begin with a verified due review or learning step."
+            )
+        if not self.state.starter_selection_complete:
+            return False, "Complete Garden setup before all-due rewards begin."
         if status is None:
             resolver = getattr(self.storage, "due_obligations", None)
             status = resolver() if callable(resolver) else DueObligationStatus(available=False, error="Unavailable")
@@ -1658,31 +2875,57 @@ class GardenGameEngine:
                 return False, status.error
             unit = "due review or learning step remains" if status.remaining == 1 else "due reviews or learning steps remain"
             return False, f"{status.remaining:,} {unit}."
-        stats.completed_due_cards = True
-        coin_reward, configured_growth = self.all_due_rewards()
-        weather_growth = 0
-        if configured_growth:
-            weather_growth = self._apply_direct_growth(
-                self.active_plant(),
-                configured_growth,
-                stats_field="direct_reward_growth",
-                transition_source="direct_reward",
-            )
-        feedback = (
-            f"You finished all due cards and earned {coin_reward} Garden Coins"
-            + (f" and {weather_growth} Growth." if weather_growth else ".")
-        )
-        self._credit_currency(
-            f"all-due:{stats.day}",
-            "All due cards finished",
-            coin_reward,
-            feedback=feedback,
-        )
         try:
-            self._update_achievements()
+            if not self.state.reward_state_initialized:
+                self.initialize_reward_state(persist=False)
+            stats.completed_due_cards = True
+            coin_reward, configured_growth = self.all_due_rewards()
+            correlation_id = f"all-due:{stats.day}"
+            existing_receipts = tuple(self.state.recent_reward_receipts)
+            self._grant_reward_bundle(
+                f"all_due:{stats.day}",
+                source="all_due",
+                source_id=stats.day,
+                reason="All due cards finished",
+                scheduler_day=stats.day,
+                correlation_id=correlation_id,
+                coins=coin_reward,
+                growth=configured_growth,
+                plant=self.active_plant(),
+                title="All due cards finished",
+            )
+            all_clear_unlocked = self._unlock_achievement(
+                "all_due_done",
+                completion_day=stats.day,
+                correlation_id=correlation_id,
+            )
+            receipts = tuple(
+                receipt
+                for receipt in self.state.recent_reward_receipts
+                if receipt not in existing_receipts
+            )
+            total_coins = sum(
+                receipt.amount for receipt in receipts if receipt.reward_type == "coins"
+            )
+            weather_growth = sum(
+                receipt.amount for receipt in receipts if receipt.reward_type == "growth"
+            )
+            feedback = (
+                f"You finished all due cards and earned {total_coins} Garden Coins"
+                + (f" and {weather_growth} Growth." if weather_growth else ".")
+            )
+            self._queue_reward_feedback(
+                correlation_id,
+                receipts,
+                achievement_ids=("all_due_done",) if all_clear_unlocked else (),
+                plant_id=self.state.active_plant_id,
+                title="Anki day complete",
+            )
+            self._refresh_achievement_progress()
             self._persist_or_restore(snapshot)
         except Exception:
             self._pending_stage_transitions = transition_snapshot
+            self._restore_state(snapshot)
             return False, "The reward for finishing all due cards could not be saved."
         return True, feedback
 
@@ -1705,7 +2948,6 @@ class GardenGameEngine:
             self.state.last_processed_revlog_id = max(
                 self.state.last_processed_revlog_id, max(0, int(latest_revlog_id))
             )
-            self._update_achievements()
             self._persist_or_restore(snapshot)
         except Exception:
             self._pending_stage_transitions = transition_snapshot
@@ -1721,22 +2963,30 @@ class GardenGameEngine:
         *,
         feedback: str = "",
         plant_id: str | None = None,
+        source: str = "garden_reward",
+        source_id: str = "",
+        scheduler_day: str | None = None,
+        correlation_id: str = "",
     ) -> bool:
-        if amount <= 0 or any(tx.event_key == event_key for tx in self.state.currency_transactions):
-            return False
-        self.state.currency_balance += int(amount)
-        self.state.currency_transactions.append(CurrencyTransaction(
-            transaction_id=f"tx_{uuid.uuid4().hex}",
-            event_key=event_key,
+        receipts = self._grant_reward_bundle(
+            event_key,
+            source=source,
+            source_id=source_id or event_key,
             reason=reason,
-            delta=int(amount),
-            balance=self.state.currency_balance,
-            occurred_at=utc_now_iso(),
-        ))
-        self.state.currency_transactions = self.state.currency_transactions[-500:]
-        if feedback:
-            self._queue_feedback(event_key, "currency", feedback, plant_id)
-        return True
+            scheduler_day=scheduler_day,
+            correlation_id=correlation_id or event_key,
+            coins=amount,
+            title=reason,
+        )
+        if feedback and receipts:
+            self._queue_feedback(
+                event_key,
+                "currency",
+                feedback,
+                plant_id,
+                correlation_id=correlation_id or event_key,
+            )
+        return bool(receipts)
 
     def _debit_currency(self, event_key: str, reason: str, amount: int) -> bool:
         cost = max(0, int(amount))
@@ -1752,6 +3002,11 @@ class GardenGameEngine:
             delta=-cost,
             balance=self.state.currency_balance,
             occurred_at=utc_now_iso(),
+            transaction_type="debit",
+            source="purchase",
+            source_id=event_key,
+            scheduler_day=self.state.daily_stats.day,
+            correlation_id=event_key,
         ))
         self.state.currency_transactions = self.state.currency_transactions[-500:]
         return True
@@ -1767,19 +3022,21 @@ class GardenGameEngine:
         asset_category: str = "",
         asset_key: str = "",
         amount: int = 0,
+        correlation_id: str = "",
     ) -> bool:
         if any(event.event_id == event_id for event in self.state.pending_feedback):
             return False
         self.state.pending_feedback.append(FeedbackEvent(
-            event_id,
-            kind,
-            message,
-            utc_now_iso(),
-            plant_id,
-            title,
-            asset_category,
-            asset_key,
-            max(0, int(amount)),
+            event_id=event_id,
+            kind=kind,
+            message=message,
+            occurred_at=utc_now_iso(),
+            plant_id=plant_id,
+            title=title,
+            asset_category=asset_category,
+            asset_key=asset_key,
+            amount=max(0, int(amount)),
+            correlation_id=str(correlation_id),
         ))
         self.state.pending_feedback = self.state.pending_feedback[-100:]
         return True
@@ -1869,25 +3126,41 @@ class GardenGameEngine:
         }
 
     def environment_drop_odds(self) -> dict[str, Any]:
-        rows: list[dict[str, Any]] = []
-        for band in DROP_BANDS:
-            denominator = (
-                ultra_denominator(self.state.ultra_pity_misses)
-                if band.tier == "ultra_environment"
-                else int(band.denominator)
-            )
-            rows.append({
-                "tier": band.tier,
-                "name": band.display_name,
+        finds_today, _reward_counts = self._garden_find_counts(
+            self.state.daily_stats.day
+        )
+        standard_bands = [
+            {
+                "first_answer": int(band.first_answer),
+                "last_answer": int(band.last_answer),
                 "numerator": int(band.numerator),
-                "denominator": denominator,
-                "base_denominator": int(band.denominator),
-            })
+                "denominator": int(band.denominator),
+            }
+            for band in STANDARD_DROUGHT_SCHEDULE
+        ]
+        special_bands = [
+            {
+                "tier": tier,
+                "numerator": 1,
+                "denominator": (
+                    ultra_denominator(self.state.garden_find_ultra_misses)
+                    if tier == "ultra_environment"
+                    else int(denominator)
+                ),
+                "base_denominator": int(denominator),
+            }
+            for tier, denominator in ENVIRONMENT_TIER_DENOMINATORS.items()
+        ]
         return {
-            "eligible_answers": int(self.state.eligible_reward_count),
-            "ultra_pity_misses": int(self.state.ultra_pity_misses),
-            "ultra_denominator": ultra_denominator(self.state.ultra_pity_misses),
-            "bands": rows,
+            "drought_misses": int(self.state.garden_find_drought_count),
+            "finds_today": int(finds_today),
+            "daily_cap": STANDARD_DAILY_CAP,
+            "standard_bands": standard_bands,
+            "ultra_pity_misses": int(self.state.garden_find_ultra_misses),
+            "ultra_denominator": ultra_denominator(
+                self.state.garden_find_ultra_misses
+            ),
+            "bands": special_bands,
         }
 
     @staticmethod
@@ -2196,27 +3469,8 @@ class GardenGameEngine:
             current = existing if existing and existing.active(now) else None
             extending = bool(current is not None and current.tier == tier)
             replacing = bool(current is not None and current.tier != tier)
-            archived = (
-                None
-                if extending
-                else self._historical_fertilizer_period(existing, ended_at=now)
-            )
-            identities = {
-                self._fertilizer_period_identity(period)
-                for period in plant.fertilizer_history
-            }
-            needs_archive = bool(
-                archived is not None
-                and self._fertilizer_period_identity(archived) not in identities
-            )
             status = PurchaseStatus.READY
             message = ""
-            if needs_archive and len(plant.fertilizer_history) >= MAX_FERTILIZER_HISTORY:
-                status = PurchaseStatus.TARGET_INVALID
-                message = (
-                    "This plant's current-day Fertilizer history is full. "
-                    "Try again after Anki's next-day cutoff."
-                )
             seconds_remaining = (
                 max(0, int(math.ceil(float(current.expires_at) - now)))
                 if current is not None
@@ -2654,51 +3908,7 @@ class GardenGameEngine:
                     balance=self.state.currency_balance,
                 )
             now = self._now_seconds()
-            existing = plant.fertilizer
-            current = existing if existing and existing.active(now) else None
-            extending = current is not None and current.tier == spec.tier
-            archived = (
-                None
-                if extending
-                else self._historical_fertilizer_period(existing, ended_at=now)
-            )
-            history_identities = {
-                self._fertilizer_period_identity(period)
-                for period in plant.fertilizer_history
-            }
-            if (
-                archived is not None
-                and self._fertilizer_period_identity(archived) not in history_identities
-            ):
-                plant.fertilizer_history.append(archived)
-                plant.fertilizer_history.sort(key=lambda period: (
-                    float(
-                        period.started_at
-                        if period.started_at is not None
-                        else period.expires_at
-                    ),
-                    float(period.expires_at),
-                    str(period.tier),
-                ))
-            expiration_base = current.expires_at if extending else now
-            activation_start = (
-                current.started_at
-                if extending and current.started_at is not None
-                else now
-            )
-            plant.fertilizer = Fertilizer(
-                spec.tier,
-                spec.growth_per_answer,
-                expiration_base + spec.duration_seconds,
-                activation_start,
-            )
-            action = (
-                "extended"
-                if quote.disposition is PurchaseDisposition.EXTENDED
-                else "replaced"
-                if quote.disposition is PurchaseDisposition.REPLACED
-                else "applied"
-            )
+            action = self._activate_fertilizer_effect(plant, spec, now=now)
             applied = True
             result_id = plant.plant_id
             self._queue_feedback(
@@ -3126,7 +4336,6 @@ class GardenGameEngine:
                     -MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:
                 ]
             )
-            self._update_achievements()
             self._persist_or_restore(snapshot)
             return outcome
         except Exception:
@@ -3360,6 +4569,69 @@ class GardenGameEngine:
         )
         return outcome.success, outcome.message
 
+    def use_fertilizer_item(
+        self,
+        plant_id: str | None = None,
+        *,
+        replace_active: bool = False,
+    ) -> tuple[bool, str]:
+        """Use one stored Rich Compost as the existing Basic Fertilizer effect."""
+
+        plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
+        if (
+            plant is None
+            or self.state.active_plant_id != plant.plant_id
+            or not plant.planted
+            or plant.fully_grown
+        ):
+            return False, "Nurture an unfinished planted plant before using Basic Fertilizer."
+        if self.state.consumables.get("fertilizer_basic", 0) <= 0:
+            return False, "You do not have any Rich Compost yet."
+        spec = self.FERTILIZERS["basic"]
+        now = self._now_seconds()
+        current = plant.fertilizer if plant.fertilizer and plant.fertilizer.active(now) else None
+        if current is not None and current.tier != spec.tier and not replace_active:
+            current_spec = self.FERTILIZERS.get(current.tier)
+            current_name = current_spec.name if current_spec is not None else "active Fertilizer"
+            return False, (
+                f"Using Rich Compost will replace {current_name}. Confirm replacement first."
+            )
+        snapshot = self._state_snapshot()
+        try:
+            self.state.consumables["fertilizer_basic"] -= 1
+            action = self._activate_fertilizer_effect(plant, spec, now=now)
+            event_id = f"fertilizer-item:{uuid.uuid4().hex}"
+            self._queue_feedback(
+                event_id,
+                "fertilizer",
+                (
+                    f"Basic Fertilizer {action} on {plant.name} for "
+                    f"{self._duration_label(spec.duration_seconds)}."
+                ),
+                plant.plant_id,
+                title=f"Basic Fertilizer {action}",
+                asset_category="ui",
+                asset_key="fertilizer_basic",
+                amount=1,
+                correlation_id=event_id,
+            )
+            self._persist_or_restore(snapshot)
+        except Exception:
+            self._restore_state(snapshot)
+            return False, "Basic Fertilizer could not be used because it was not saved."
+        return True, f"Basic Fertilizer {action} on {plant.name} for 1 hour."
+
+    def use_basic_fertilizer(
+        self,
+        plant_id: str | None = None,
+        *,
+        replace_active: bool = False,
+    ) -> tuple[bool, str]:
+        return self.use_fertilizer_item(
+            plant_id,
+            replace_active=replace_active,
+        )
+
     def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
         plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
         if plant is None:
@@ -3381,11 +4653,6 @@ class GardenGameEngine:
             archived is not None
             and self._booster_period_identity(archived) not in history_identities
         )
-        if needs_archive and len(plant.booster_history) >= MAX_BOOSTER_HISTORY:
-            return False, (
-                "This plant's current-day Booster history is full. "
-                "Try again after Anki's next-day cutoff."
-            )
         snapshot = self._state_snapshot()
         self.state.consumables["booster_potion"] -= 1
         if needs_archive and archived is not None:
@@ -3552,11 +4819,13 @@ class GardenGameEngine:
             replacement = self._deterministic_active_candidate()
             self.state.active_plant_id = replacement.plant_id if replacement is not None else None
             self.state._active_plant_reference_invalid = False
-            if replacement is not None:
-                self._record_active_period(replacement.plant_id)
+            self._record_active_period(
+                replacement.plant_id if replacement is not None else None
+            )
             return replacement
         if plant is None or not plant.planted or plant.fully_grown:
             self.state.active_plant_id = None
+            self._record_active_period(None)
             return None
         return plant
 
@@ -3573,17 +4842,19 @@ class GardenGameEngine:
             if plant.planted and not plant.fully_grown
         ), None)
 
-    def _record_active_period(self, plant_id: str) -> None:
+    def _record_active_period(self, plant_id: str | None) -> None:
         day = self.state.daily_stats.day
         latest = max(
-            (period for period in self.state.active_plant_periods if period.day == day),
-            key=lambda period: period.started_at_ms,
+            self.state.active_plant_periods,
+            key=lambda period: (period.started_at_ms, period.day),
             default=None,
         )
         if latest is None or latest.plant_id != plant_id:
+            activated_at = self._now_ms()
             self.state.active_plant_periods.append(ActivePlantPeriod(
-                day, plant_id, self._now_ms()
+                day, plant_id, activated_at
             ))
+            self._activate_progression_if_ready(activated_at)
 
     def active_plant(self) -> Plant | None:
         return self._repair_active_plant()
@@ -3614,9 +4885,7 @@ class GardenGameEngine:
             return True, f"{plant.name} is already being nurtured and receives Growth from future card answers."
         snapshot = self._state_snapshot()
         self.state.active_plant_id = plant.plant_id
-        self.state.active_plant_periods.append(ActivePlantPeriod(
-            self.state.daily_stats.day, plant.plant_id, self._now_ms()
-        ))
+        self._record_active_period(plant.plant_id)
         self._add_memory(plant, "nurture:first", "first_nurture")
         if (
             progress.step == OnboardingStep.NURTURE
@@ -3716,6 +4985,9 @@ class GardenGameEngine:
         self.state.active_plant_periods = [
             ActivePlantPeriod(today, nurtured.plant_id, self._now_ms())
         ]
+        self._activate_progression_if_ready(
+            self.state.active_plant_periods[0].started_at_ms
+        )
         coin_delta = max(0, 100_000 - int(self.state.currency_balance))
         if coin_delta:
             self._credit_currency(
@@ -3751,6 +5023,22 @@ class GardenGameEngine:
         return True, "Development garden populated with 100,000 Coins, all plants, spaces, and items."
 
     def restore_development_backup(self, path: Any) -> tuple[bool, str]:
+        exact_restorer = getattr(
+            self.storage, "restore_development_backup", None
+        )
+        if (
+            callable(exact_restorer)
+            and getattr(self.storage, "_reward_ledger", None) is not None
+        ):
+            try:
+                restored = exact_restorer(path)
+                self.state.__dict__.clear()
+                self.state.__dict__.update(restored.__dict__)
+                self.storage.state = self.state
+            except Exception:
+                return False, "The development backup could not be restored."
+            return True, "The pre-development garden backup was restored."
+
         snapshot = self._state_snapshot()
         try:
             restored = self.storage.load_development_backup(path)
@@ -3971,38 +5259,138 @@ class GardenGameEngine:
         return f"Garden milestone! {names} reached new growth stages."
 
     def _ensure_achievements(self) -> None:
-        definitions = {
-            "streak_7": ("7-Day Anki Streak", "Answer at least one card on 7 Anki days in a row."),
-            "streak_30": ("30-Day Anki Streak", "Answer at least one card on 30 Anki days in a row."),
-            "reviews_100_day": ("Century Day", "Record 100 card answers in one Anki day."),
-            "reviews_1000_total": ("Deep Roots", "Record 1,000 total card answers."),
-            "retention_90": ("Clear Recall", "Reach at least 90% accuracy after 20 card answers."),
-            "retention_100": ("Perfect Canopy", "Complete 30 card answers without choosing Again."),
-            "all_due_done": ("All Clear", "Finish all due cards in the collection."),
-            "no_lapse": ("No-Again Session", "Complete 40 card answers without choosing Again."),
+        allowed = {definition.achievement_id for definition in ACHIEVEMENT_DEFINITIONS}
+        self.state.achievements = {
+            key: value
+            for key, value in self.state.achievements.items()
+            if key in allowed
         }
-        self.state.achievements = {key: value for key, value in self.state.achievements.items() if key in definitions}
-        for key, (name, description) in definitions.items():
-            self.state.achievements.setdefault(key, Achievement(key, name, description))
+        for definition in ACHIEVEMENT_DEFINITIONS:
+            achievement = self.state.achievements.setdefault(
+                definition.achievement_id,
+                Achievement(
+                    definition.achievement_id,
+                    definition.name,
+                    definition.description,
+                ),
+            )
+            achievement.name = definition.name
+            achievement.description = definition.description
+            achievement.category = definition.category.value
+            achievement.requirement = definition.description
+            achievement.reward_summary = self._reward_bundle_description(
+                definition.reward
+            )
 
-    def _update_achievements(self) -> None:
-        stats = self.state.daily_stats
+    def _refresh_achievement_progress(self, history: Any | None = None) -> None:
+        current_day_answers = int(self.state.daily_stats.reviewed)
+        streak_days = int(self.state.streak_days)
+        lifetime_answers = int(self.state.lifetime_eligible_answers)
+        non_again_run = int(self.state.current_non_again_run)
+        if history is not None:
+            current_summary = history.day_summary(history.current_open_day)
+            current_day_answers = (
+                int(current_summary.total_answers)
+                if current_summary is not None
+                else 0
+            )
+            streak_days = int(history.current_streak_days)
+            lifetime_answers = int(history.lifetime_answers)
+            non_again_run = int(history.current_non_again_tail)
+        for definition in ACHIEVEMENT_DEFINITIONS:
+            achievement = self.state.achievements[definition.achievement_id]
+            if achievement.unlocked:
+                achievement.progress = 1.0
+                continue
+            metric = definition.progress_metric.value
+            current = (
+                streak_days
+                if metric == "streak_days"
+                else current_day_answers
+                if metric == "daily_answers"
+                else lifetime_answers
+                if metric == "lifetime_answers"
+                else non_again_run
+                if metric == "consecutive_non_again"
+                else 0
+            )
+            achievement.progress = min(
+                1.0,
+                max(0.0, current / max(1, definition.progress_target)),
+            )
+
+    def _update_achievements(self, *, correlation_id: str = "") -> None:
+        """Unlock only criteria that cannot be invalidated later in the day."""
+
         checks = {
             "streak_7": self.state.streak_days >= 7,
             "streak_30": self.state.streak_days >= 30,
-            "reviews_100_day": stats.reviewed >= 100,
-            "reviews_1000_total": self.state.total_reviews >= 1_000,
-            "retention_90": stats.reviewed >= 20 and stats.accuracy >= 0.9,
-            "retention_100": stats.reviewed >= 30 and stats.accuracy == 1.0,
-            "all_due_done": stats.completed_due_cards,
-            "no_lapse": stats.reviewed >= 40 and stats.wrong == 0,
+            "streak_100": self.state.streak_days >= 100,
+            "streak_365": self.state.streak_days >= 365,
+            "reviews_100_day": self.state.daily_stats.reviewed >= 100,
+            "reviews_1000_total": self.state.lifetime_eligible_answers >= 1_000,
+            "retention_100": self.state.current_non_again_run >= 30,
         }
-        for key, achieved in checks.items():
-            achievement = self.state.achievements[key]
-            if achieved and not achievement.unlocked:
-                achievement.unlocked = True
-                achievement.unlocked_at = utc_now_iso()
-            achievement.progress = 1.0 if achievement.unlocked else 0.0
+        day_value = self.state.daily_stats.day
+        for achievement_id, achieved in checks.items():
+            if achieved:
+                self._unlock_achievement(
+                    achievement_id,
+                    completion_day=day_value,
+                    correlation_id=correlation_id or f"achievement:{achievement_id}",
+                )
+        self._refresh_achievement_progress()
+
+    def _finalize_day_achievements(
+        self,
+        scheduler_day: str,
+        *,
+        answered: int,
+        successful: int,
+        again: int,
+        fingerprint: str,
+        correlation_id: str,
+    ) -> tuple[str, ...]:
+        """Finalize the two closed-day recall achievements idempotently."""
+
+        try:
+            date.fromisoformat(str(scheduler_day))
+        except (TypeError, ValueError):
+            return ()
+        total = max(0, int(answered))
+        non_again = max(0, min(total, int(successful)))
+        again_count = max(0, min(total, int(again)))
+        unlocked: list[str] = []
+        if total >= 20 and non_again * 10 >= total * 9:
+            if self._unlock_achievement(
+                "retention_90",
+                completion_day=scheduler_day,
+                correlation_id=correlation_id,
+            ):
+                unlocked.append("retention_90")
+        if total >= 40 and again_count == 0:
+            if self._unlock_achievement(
+                "no_lapse",
+                completion_day=scheduler_day,
+                correlation_id=correlation_id,
+            ):
+                unlocked.append("no_lapse")
+        self._record_finalized_day(scheduler_day, fingerprint)
+        self._refresh_achievement_progress()
+        return tuple(unlocked)
+
+    def _record_finalized_day(
+        self,
+        scheduler_day: str,
+        fingerprint: str,
+    ) -> None:
+        stager = getattr(self.storage, "stage_finalized_day", None)
+        if callable(stager):
+            stager(str(scheduler_day), str(fingerprint))
+            return
+        self.state.finalized_day_fingerprints[str(scheduler_day)] = str(
+            fingerprint
+        )
 
     def progress_estimates(self, plant: Plant) -> int:
         stage_index = GROWTH_STAGES.index(plant.growth_stage)

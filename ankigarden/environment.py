@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
 from typing import Literal
 
 from .purchases import EffectDescriptor
@@ -12,13 +11,8 @@ AcquisitionKind = Literal["free", "purchase", "drop"]
 Rarity = Literal["Common", "Uncommon", "Rare", "Very Rare", "Ultra Rare"]
 DropTier = Literal[
     "ultra_environment",
-    "grand_charge",
     "very_rare_environment",
-    "standard_charge",
     "rare_environment",
-    "booster_potion",
-    "small_charge",
-    "coin_cache",
 ]
 
 
@@ -81,18 +75,6 @@ class GrowthChargeSpec:
             replacement="Replaces nothing.",
             unlock_requirement=self.how_to_earn,
         )
-
-
-@dataclass(frozen=True)
-class DropBand:
-    tier: DropTier
-    numerator: int
-    denominator: int
-    display_name: str
-
-    @property
-    def chance(self) -> Fraction:
-        return Fraction(self.numerator, self.denominator)
 
 
 WEATHER_CATALOG: dict[str, CatalogItem] = {
@@ -274,7 +256,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         100,
         30,
         "Common",
-        "Nursery: 30 Garden Coins; daily Scenery; or 1 in 2,000 review drop.",
+        "Nursery: 30 Garden Coins; daily Scenery; achievements; or Garden Finds.",
     ),
     "growth_charge_standard": GrowthChargeSpec(
         "growth_charge_standard",
@@ -282,7 +264,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         500,
         125,
         "Rare",
-        "Nursery: 125 Garden Coins; Halloween Garden; or 1 in 8,000 review drop.",
+        "Nursery: 125 Garden Coins; Halloween Garden; achievements; or Garden Finds.",
     ),
     "growth_charge_grand": GrowthChargeSpec(
         "growth_charge_grand",
@@ -290,51 +272,13 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Review reward: 1 in 30,000, or duplicate completed Very/Ultra Rare tier.",
+        "Legacy earned item; no longer awarded by the current Garden Finds pool.",
     ),
-}
-
-
-DROP_BANDS: tuple[DropBand, ...] = (
-    DropBand("ultra_environment", 1, 100_000, "Ultra Rare environment"),
-    DropBand("grand_charge", 1, 30_000, "Grand Growth Charge"),
-    DropBand("very_rare_environment", 1, 20_000, "Very Rare environment"),
-    DropBand("standard_charge", 1, 8_000, "Standard Growth Charge"),
-    DropBand("rare_environment", 1, 5_000, "Rare environment"),
-    DropBand("booster_potion", 1, 5_000, "Booster Potion"),
-    DropBand("small_charge", 1, 2_000, "Small Growth Charge"),
-    DropBand("coin_cache", 1, 800, "50 Garden Coins"),
-)
-
-
-DROP_TIER_ITEMS: dict[str, tuple[CatalogItem, ...]] = {
-    tier: tuple(
-        item
-        for catalog in ENVIRONMENT_CATALOG.values()
-        for item in catalog.values()
-        if item.drop_tier == tier
-    )
-    for tier in ("rare_environment", "very_rare_environment", "ultra_environment")
 }
 
 
 DEFAULT_WEATHER_ID = "sunny"
 DEFAULT_SCENERY_ID = "default"
-
-
-def ultra_denominator(misses: int) -> int:
-    count = max(0, int(misses))
-    if count < 75_000:
-        return 100_000
-    if count < 85_000:
-        return 90_000
-    if count < 95_000:
-        return 80_000
-    if count < 105_000:
-        return 70_000
-    if count < 115_000:
-        return 60_000
-    return 50_000
 
 
 def environment_item(kind: str, item_id: str) -> CatalogItem | None:

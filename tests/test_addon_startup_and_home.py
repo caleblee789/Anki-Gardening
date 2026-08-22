@@ -1727,6 +1727,7 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
 
     rows = [
         (150, 7, 3, 10, 5, 2500, 100, 1),
+        (180, 7, 4, 20, 10, 2300, 100, 1),
         (250, 8, 4, 20, 10, 2300, 100, 1),
     ]
 
@@ -1739,20 +1740,30 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
     storage = object.__new__(storage_module.GardenStorage)
     storage.mw = aqt_mod.mw
     storage.state = importlib.import_module("ankigarden.models.state").GardenState(
-        last_processed_revlog_id=99,
+        last_processed_revlog_id=180,
         processed_revlog_floor=99,
+        processed_revlog_ids=[180],
     )
     storage.current_scheduler_day_bounds_ms = lambda: (100, 200)
+    storage.current_scheduler_day = lambda: "2026-08-21"
     storage.current_day_start_ms = lambda: 100
     storage.due_obligations = lambda: SimpleNamespace(complete=False)
+    binding_requests = []
+    storage.answer_lineage_bindings_for_cards = lambda card_ids: (
+        binding_requests.append(set(card_ids))
+        or {"180": "v1|2026-08-21|7|1"}
+    )
 
     class Engine:
         def __init__(self):
             self.ids = []
+            self.last_identity = ""
 
         def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
             self.ids.extend(payload["revlog_id"] for payload in payloads)
+            self.last_identity = payloads[-1]["answer_identity"] if payloads else ""
             storage.state.processed_revlog_ids.extend(self.ids)
+            storage.state.processed_revlog_ids.sort()
             storage.state.last_processed_revlog_id = latest_revlog_id
             return len(payloads) * 10
 
@@ -1767,7 +1778,9 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
     app._apply_same_day_catchup()
 
     assert app.engine.ids == [150]
-    assert storage.state.last_processed_revlog_id == 150
+    assert binding_requests == [{7}]
+    assert app.engine.last_identity == "v1|2026-08-21|7|2"
+    assert storage.state.last_processed_revlog_id == 180
     assert 250 not in storage.state.processed_revlog_ids
 
 
