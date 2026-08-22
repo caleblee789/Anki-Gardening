@@ -6,15 +6,16 @@ that style as a read-only card beside a live, noninteractive garden preview.
 ## Garden display
 
 - **Show garden on home screens**: Show the compact garden preview in Deck
-  Browser and Overview. The preview displays only nurtured-plant Growth, Anki
-  streak, Garden Coins, and **Open Garden** (or **Choose starter** before setup); its plants and Nursery cannot be
-  clicked.
+  Browser and Overview. The preview displays nurtured-plant Growth, today's
+  answer count, Anki streak, Garden Coins, the closest immediate achievement
+  when useful, and **Open Garden** (or **Choose starter** before setup). Its
+  plants and Nursery cannot be clicked.
 - **Show progress notifications**: Show quiet, silent, non-modal stage,
   milestone, Garden Coin, environment, and consumable cards with relevant
-  artwork. This is off by default. When notices are hidden, the relevant tab
+  artwork. This is on by default. When notices are hidden, the relevant tab
   receives a small **New** badge instead.
 
-Weather and Scenery are no longer settings choices. Open the Garden Progress cottage or
+Weather and Scenery are managed in Garden Progress. Open the Garden Progress cottage or
 **Garden Progress**, choose **Weather and Scenery**, then equip one of each or change the
 two visual-layer switches. Hiding Weather or Scenery does not disable its
 equipped passive. Purchasable choices live in the Nursery's matching tab.

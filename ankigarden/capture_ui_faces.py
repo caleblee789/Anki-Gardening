@@ -203,7 +203,7 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "settings-unsaved-changes",
             "reviewer-find-common-reduced-motion",
-            "reviewer-find-exceptional",
+            "reviewer-find-environment",
             "reviewer-find-stacked-sync",
         ),
     ),
@@ -1089,7 +1089,7 @@ _SETTINGS_CAPTURE_LABELS = frozenset({
 
 _REVIEWER_CAPTURE_LABELS = frozenset({
     "reviewer-find-common-reduced-motion",
-    "reviewer-find-exceptional",
+    "reviewer-find-environment",
     "reviewer-find-stacked-sync",
 })
 
@@ -1239,7 +1239,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "state": label,
             "toast_tier": (
                 "Common" if label == "reviewer-find-common-reduced-motion" else
-                "Exceptional" if label == "reviewer-find-exceptional" else
+                "Rare" if label == "reviewer-find-environment" else
                 ""
             ),
             "stacked_sync": label == "reviewer-find-stacked-sync",
@@ -1677,7 +1677,7 @@ class _UiFaceCaptureRunner:
             self._capture_missing_artwork_fallback,
             self._capture_settings_unsaved,
             self._capture_reviewer_find_common,
-            self._capture_reviewer_find_exceptional,
+            self._capture_reviewer_find_environment,
             self._capture_reviewer_find_stacked_sync,
             self._capture_reduced_motion,
             self._capture_keyboard_focus,
@@ -3890,14 +3890,19 @@ class _UiFaceCaptureRunner:
             }
             expected_titles = {
                 "reviewer-find-common-reduced-motion": "Garden Find: Morning Dew",
-                "reviewer-find-exceptional": "Garden Find: Root Core",
+                "reviewer-find-environment": "Garden Find: Firefly Evening",
                 "reviewer-find-stacked-sync": "Garden Finds and review rewards",
             }
             expected_details = {
-                "reviewer-find-common-reduced-motion": "+40 Growth",
-                "reviewer-find-exceptional": "+1 Standard Growth Charge",
+                "reviewer-find-common-reduced-motion": (
+                    "+40 direct Growth to the nurtured plant"
+                ),
+                "reviewer-find-environment": (
+                    "Added to the Weather and Scenery collection"
+                ),
                 "reviewer-find-stacked-sync": (
-                    "Morning Dew — +40 Growth ×2; Garden Pouch — +4 Garden Coins"
+                    "Morning Dew — +40 direct Growth to the nurtured plant ×2; "
+                    "Garden Pouch — +4 Garden Coins"
                 ),
             }
             require(
@@ -3966,7 +3971,8 @@ class _UiFaceCaptureRunner:
             )
             if state_name == "reviewer-find-stacked-sync":
                 expected_message = (
-                    "+80 Growth; +6 Garden Coins; +1 Growth Charge Small; "
+                    "+6 Garden Coins, +80 direct Growth to the nurtured plant, "
+                    "and +1 Small Growth Charge; "
                     "Unlocked Perfect Canopy"
                 )
                 require(
@@ -3978,7 +3984,7 @@ class _UiFaceCaptureRunner:
                         and annotation.get("canonical_feedback_message")
                         == expected_message
                         and labels.get("ankiGardenRewardMessage", "")
-                        == f"Review total: {expected_message}"
+                        == expected_message
                     ),
                     {
                         "stacked_find_count": annotation.get("stacked_find_count"),
@@ -11585,6 +11591,7 @@ class _UiFaceCaptureRunner:
         self,
         *,
         find_reward_ids: tuple[str, ...],
+        environment_item_ids: tuple[str, ...] = (),
         include_daily_activity: bool = False,
         achievement_ids: tuple[str, ...] = (),
     ) -> tuple[dict[str, Any], Any, dict[str, Any]]:
@@ -11592,6 +11599,9 @@ class _UiFaceCaptureRunner:
 
         from .achievements import ACHIEVEMENTS_BY_ID
         from .garden_finds import (
+            ENVIRONMENT_POOL_ID,
+            ENVIRONMENT_POOL_VERSION,
+            SPECIAL_ENVIRONMENT_POOL,
             STANDARD_FIND_REGISTRY,
             STANDARD_POOL_ID,
             STANDARD_POOL_VERSION,
@@ -11601,7 +11611,10 @@ class _UiFaceCaptureRunner:
             GardenFindOutcome,
             RewardReceipt,
         )
-        from .reward_presentation import recent_garden_finds
+        from .reward_presentation import (
+            recent_garden_finds,
+            recent_reward_summaries,
+        )
 
         snapshot = self.app.engine._state_snapshot()
         try:
@@ -11625,11 +11638,22 @@ class _UiFaceCaptureRunner:
             reward_by_id = {
                 reward.reward_id: reward for reward in STANDARD_FIND_REGISTRY
             }
+            environment_by_id = {
+                item.item_id: item for item in SPECIAL_ENVIRONMENT_POOL
+            }
             unknown_find_ids = set(find_reward_ids) - set(reward_by_id)
             if unknown_find_ids:
                 raise ValueError(
                     "unknown canonical Reviewer Find IDs: "
                     + ", ".join(sorted(unknown_find_ids))
+                )
+            unknown_environment_ids = (
+                set(environment_item_ids) - set(environment_by_id)
+            )
+            if unknown_environment_ids:
+                raise ValueError(
+                    "unknown canonical Reviewer environment Find IDs: "
+                    + ", ".join(sorted(unknown_environment_ids))
                 )
             unknown_achievement_ids = set(achievement_ids) - set(
                 ACHIEVEMENTS_BY_ID
@@ -11806,6 +11830,58 @@ class _UiFaceCaptureRunner:
                 receipt_group = tuple(receipts)
                 all_receipt_groups.append(receipt_group)
 
+            for offset, item_id in enumerate(environment_item_ids, start=1):
+                item = environment_by_id[item_id]
+                answer_key = f"capture-reviewer-environment-{offset}"
+                correlation_id = sync_correlation
+                minute = len(find_reward_ids) + offset
+                occurred_at = f"{day_value}T09:{minute:02d}:30+00:00"
+                find_event_key = (
+                    f"garden_find:{answer_key}:{ENVIRONMENT_POOL_ID}"
+                )
+                outcome = GardenFindOutcome(
+                    answer_key=answer_key,
+                    scheduler_day=day_value,
+                    status="hit",
+                    pool_id=ENVIRONMENT_POOL_ID,
+                    pool_version=ENVIRONMENT_POOL_VERSION,
+                    occurred_at=occurred_at,
+                    reward_id=item.item_id,
+                    reward_type="environment_item",
+                    amount=1,
+                    item_id=item.item_id,
+                    display_name=item.display_name,
+                    description="Added to the Weather and Scenery collection",
+                    tier=item.tier,
+                    artwork_ref=item.item_id,
+                    localization_key=f"garden_find.environment.{item.item_id}",
+                )
+                state.garden_find_outcomes[outcome.outcome_key] = outcome
+                receipt = RewardReceipt(
+                    event_key=find_event_key,
+                    reward_type="environment_item",
+                    source="garden_find_environment",
+                    source_id=item.item_id,
+                    scheduler_day=day_value,
+                    correlation_id=correlation_id,
+                    occurred_at=occurred_at,
+                    amount=1,
+                    item_id=item.item_id,
+                    title=item.display_name,
+                    description=outcome.description,
+                )
+                state.recent_reward_receipts.append(receipt)
+                if receipt.event_key not in state.applied_reward_event_keys:
+                    state.applied_reward_event_keys.append(receipt.event_key)
+                owned_items = state.inventory.setdefault(
+                    item.environment_kind,
+                    [],
+                )
+                if item.item_id not in owned_items:
+                    owned_items.append(item.item_id)
+                state.processed_answer_keys.append(answer_key)
+                all_receipt_groups.append((receipt,))
+
             all_receipts = tuple(
                 receipt
                 for group in all_receipt_groups
@@ -11851,31 +11927,18 @@ class _UiFaceCaptureRunner:
                 and all(all_receipt_groups)
                 and receipt_correlations == {sync_correlation}
             )
-            expected_parts: list[str] = []
-            expected_growth = sum(
-                receipt.amount
-                for receipt in all_receipts
-                if receipt.reward_type == "growth"
+            matching_summaries = tuple(
+                summary
+                for summary in recent_reward_summaries(state)
+                if summary.correlation_id == sync_correlation
             )
-            expected_coins = sum(
-                receipt.amount
-                for receipt in all_receipts
-                if receipt.reward_type == "coins"
-            )
-            if expected_growth:
-                expected_parts.append(f"+{expected_growth:,} Growth")
-            if expected_coins:
-                expected_parts.append(f"+{expected_coins:,} Garden Coins")
-            item_totals: dict[str, int] = {}
-            for receipt in all_receipts:
-                if receipt.reward_type in {"inventory_item", "environment_item"}:
-                    item_totals[receipt.item_id] = (
-                        item_totals.get(receipt.item_id, 0) + receipt.amount
-                    )
-            expected_parts.extend(
-                f"+{amount} {item_id.replace('_', ' ').title()}"
-                for item_id, amount in sorted(item_totals.items())
-                if item_id
+            if len(matching_summaries) != 1:
+                raise RuntimeError(
+                    "canonical Reviewer fixture did not produce one typed summary"
+                )
+            expected_parts = (
+                [matching_summaries[0].learner_text]
+                if matching_summaries[0].learner_text else []
             )
             achievement_names = [
                 ACHIEVEMENTS_BY_ID[achievement_id].name
@@ -11887,16 +11950,18 @@ class _UiFaceCaptureRunner:
                 "; ".join(expected_parts)
                 or "Your Garden rewards were recorded."
             )
-            expected_total = sum(receipt.amount for receipt in all_receipts)
             annotation = {
                 "canonical_find_ids": [
                     presentation.reward_id for presentation in presentations
+                ],
+                "canonical_find_pools": [
+                    presentation.pool_id for presentation in presentations
                 ],
                 "canonical_feedback_title": feedback.title,
                 "canonical_feedback_detail": feedback.reward_detail,
                 "canonical_feedback_message": feedback.message,
                 "expected_feedback_message": expected_message,
-                "expected_feedback_amount": expected_total,
+                "expected_feedback_amount": 0,
                 "stacked_find_count": len(presentations),
                 "sync_correlation": sync_correlation,
                 "all_receipt_groups_share_correlation": (
@@ -11906,9 +11971,10 @@ class _UiFaceCaptureRunner:
                     feedback.title == expected_title
                     and feedback.reward_detail == expected_detail
                     and feedback.message == expected_message
-                    and feedback.amount == expected_total
+                    and feedback.amount == 0
                     and all_groups_share_correlation
-                    and len(presentations) == len(find_reward_ids)
+                    and len(presentations)
+                    == len(find_reward_ids) + len(environment_item_ids)
                 ),
             }
             return snapshot, feedback, annotation
@@ -12110,11 +12176,12 @@ class _UiFaceCaptureRunner:
             reduced_motion=True,
         )
 
-    def _capture_reviewer_find_exceptional(self) -> None:
+    def _capture_reviewer_find_environment(self) -> None:
         self._capture_reviewer_find_feedback(
-            "reviewer-find-exceptional",
+            "reviewer-find-environment",
             lambda: self._prepare_canonical_reviewer_feedback_fixture(
-                find_reward_ids=("find_standard_charge",),
+                find_reward_ids=(),
+                environment_item_ids=("fireflies",),
             ),
         )
 

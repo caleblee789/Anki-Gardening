@@ -227,7 +227,7 @@ Capture contract v18 keeps the 191-ID order. It replaces ID 037 with
 `settings-home-preview-disabled`, ID 073 with
 `clear-recall-canonical-projection`, ID 076 with
 `streak-achievement-earned-next`, and IDs 083-085 with
-`reviewer-find-common-reduced-motion`, `reviewer-find-exceptional`, and
+`reviewer-find-common-reduced-motion`, `reviewer-find-environment`, and
 `reviewer-find-stacked-sync`. The final v18 run must contain all 191 source-owned
 faces and exactly 24 contact sheets. That run, its manifest path, package hash,
 and acceptance result remain pending and must not be inferred from v16 evidence.
@@ -302,7 +302,7 @@ surface family.
 | 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-21 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
 | 184-191 | Growth Charge confirmation and receipt | `GrowthChargeConfirmationDialog` | Selected plant action or per-plant Plant Growth action | Native Qt over renderer-neutral quote/request/outcome contracts; target, inventory, Growth, scenery reward terms, and bounded replay ledger are revalidated at commit | Select Charge type, cancel, use, open Nursery, close receipt; ready, empty, loading, stale, invalid, rollback, rewarded success, and minimum-responsive variants |
 | 037-041, 082, 086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, save rollback/error, reduced-motion, and responsive variants |
-| 083-085 | Reviewer Garden Find notifications | `ReviewerRewardFeedback` rendered over the real Anki Reviewer | Eligible review or synchronized reward reconciliation | Native Qt from canonical reward/find presentations and persisted event identities; one nonmodal card acknowledges all rendered event IDs | Continue reviewing; Common reduced-motion, Exceptional, stacked-sync, exact name/reward/tier/artwork, and focus-preservation variants |
+| 083-085 | Reviewer Garden Find notifications | `ReviewerRewardFeedback` rendered over the real Anki Reviewer | Eligible review or synchronized reward reconciliation | Native Qt from canonical reward/find presentations and persisted event identities; one nonmodal card acknowledges all rendered event IDs | Continue reviewing; Common reduced-motion, Rare environment Find, stacked-sync, exact name/reward/tier/artwork, and focus-preservation variants |
 
 Window opening, selection, open tabs, filters, Nursery pages, Move drafts, hover,
 focus, and resize mode are transient UI state. They must not be added to the
@@ -379,7 +379,7 @@ The authoritative flow is:
    sorted revlog-ID ledger.
 3. Answer-time `active_plant_periods` resolves the owned, planted, unfinished
    plant being nurtured when the answer occurred.
-4. The engine projects 10 base Growth plus percentage and flat Streak,
+4. The engine projects 10 base Growth plus the percentage Streak bonus and flat
    Fertilizer, Booster, Weather, Scenery, and other contributions exactly once.
    `DailyStats` records those study sources; their sum is the final nurtured
    allocation, not total Garden Growth.
@@ -399,9 +399,10 @@ The authoritative flow is:
 
 `ReviewAward.allocations` is the immutable per-plant result and
 `ReviewAward.total_garden_growth` is a projection. `StageTransition` carries
-plant name and source (`study_nurtured`, `study_passive`, `growth_charge`, or
-`direct_reward`). Compatibility totals on `DailyStats` are computed properties,
-not independently writable state.
+plant name and the committed engine source: `nurtured`, `passive`, `charge`, or
+the originating reward source such as `garden_find` or `all_due`. Compatibility
+totals on `DailyStats` are computed properties, not independently writable
+state.
 
 ## Growth Charge transaction flow
 

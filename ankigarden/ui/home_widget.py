@@ -1211,8 +1211,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     preview_support = preview.summary
     answer_unit = "answer" if data.reviews_today == 1 else "answers"
     today_answers_text = f"{format_integer(data.reviews_today)} {answer_unit} today"
-    streak_text = f"{format_integer(data.streak_days)}-day streak"
-    coin_unit = "coin" if data.garden_currency == 1 else "coins"
+    streak_text = f"{format_integer(data.streak_days)}-day Anki streak"
+    coin_unit = "Garden Coin" if data.garden_currency == 1 else "Garden Coins"
     coin_text = f"{format_integer(data.garden_currency)} {coin_unit}"
     nearest_achievement_text = ""
     nearest_achievement_accessible = ""
@@ -1331,7 +1331,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     metrics_accessible_label = escape(
         f"{active_accessible_text}; {streak_text}; "
-        f"{format_integer(data.garden_currency)} Garden Coins; "
+        f"{coin_text}; "
         f"Study Growth generated {format_integer(data.study_growth_generated)}; "
         f"nurtured allocation {format_integer(data.nurtured_growth_today)}; "
         f"other planted plants credited "
@@ -1575,7 +1575,11 @@ def _nearest_locked_achievement(state: Any) -> tuple[str, str, str]:
     locked = [
         item
         for item in presentations
-        if not item.unlocked and item.progress_metric in relevant_metrics
+        if (
+            not item.unlocked
+            and item.evaluation_mode == "immediate"
+            and item.progress_metric in relevant_metrics
+        )
     ]
     if not locked:
         return "", "", ""

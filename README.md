@@ -28,7 +28,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 | **Anki streak** | Anki days in a row with at least one eligible answer. | Gives 0% Growth at day 1, then +5%, +10%, +15%, +20%, and +25% at days 7, 14, 30, 100, and 365. Every active day grants 2 Garden Coins; every seventh day grants a 10-Coin reward, with the first cycle integrated into the 7-Day Anki Streak achievement. |
 | **Garden Coins** | A separate spendable reward recorded in the reward and transaction ledgers. | Earned from daily study, seven-day streak rewards, achievements, All Clear, plant stages, environment effects, and Garden Finds; spent in the Nursery. |
 | **Garden Find** | A deterministic chance after an eligible, newly processed answer, with drought protection and a daily limit. | Can grant Garden Coins, direct Growth to the nurtured plant, a consumable, or an unowned Weather or Scenery item. |
-| **Fertilizer** | A timed direct Growth boost for the plant you nurture. | Adds `+1`, `+2`, or `+3` Growth per answer while active. |
+| **Fertilizer** | A timed bonus to the normal answer Growth calculation. | Adds `+1`, `+2`, or `+3` Growth per answer while active; the resulting award keeps normal nurtured and passive routing. |
 | **Booster Potion** | A rare, non-purchasable study gift kept in your collection. | Adds `+5` Growth per answer for two hours and stacks with Fertilizer. |
 | **Growth Charge** | A stored one-use supplement applied to any owned, planted, unfinished plant. | Adds `+100`, `+500`, or `+2,000` Growth immediately, capped at Rare, without study buffs or passive fan-out. |
 | **Weather** | One equipped sky effect and its minor passive. | Can be shown or hidden without turning its passive off. |
@@ -101,8 +101,10 @@ previews, and item art.
 - Quality Fertilizer: 65 Garden Coins, `+2` Growth per answer, 2 hours.
 - Magical Fertilizer: 150 Garden Coins, `+3` Growth per answer, 4 hours.
 
-Fertilizer adds direct Growth to the answer-time plant you nurture only while
-its real elapsed-time activation interval is active. The choice card shows cost,
+Fertilizer adds to the normal answer Growth calculation only while its real
+elapsed-time activation interval is active. The full result goes to the
+answer-time plant you nurture and each other eligible planted plant receives its
+usual exact 20 percent. The choice card shows cost,
 effect, and duration. Extending the same active tier keeps one continuous
 interval. Replacing a different active tier requires confirmation and discards
 its remaining time, but the completed portion is retained so a late same-day
@@ -117,12 +119,13 @@ Booster Potion rather than discarding its remaining time.
 
 Small and Standard Growth Charges can be bought repeatedly for 30 and 125
 Garden Coins. They add 100 and 500 Growth immediately. The 2,000-Growth Grand
-Charge is earn-only. A Charge can target any owned, planted, unfinished plant
-from its selected-plant panel or Plant Growth card. Confirmation revalidates
-the target, inventory, Growth, reward terms, and request identity; it applies
-only to that plant without passive fan-out or study buffs. Normal stage and
-Coin rewards still apply. A failed save restores Growth, inventory, rewards,
-feedback, and the replay ledger.
+Charge is not currently obtainable. A Charge already present in imported
+development state remains usable. A Charge can target any owned, planted,
+unfinished plant from its selected-plant panel or Plant Growth card.
+Confirmation revalidates the target, inventory, Growth, reward terms, and
+request identity; it applies only to that plant without passive fan-out or study
+buffs. Normal stage and Coin rewards still apply. A failed save restores Growth,
+inventory, rewards, feedback, and the replay ledger.
 
 ## Weather, Scenery, and Garden Finds
 

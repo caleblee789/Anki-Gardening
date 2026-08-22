@@ -7,8 +7,9 @@ profile window, the disposable filesystem, and logged-out/sync-off state. Never
 control the normal profile.
 
 1. Launch cleanly with one **Caleb M. Add-ons Settings → Anki Garden settings** action, no direct **Tools → Anki Garden** action, and no add-on warning.
-2. Confirm Deck Browser and Overview show only the noninteractive scene,
-   nurtured-plant Growth, Anki streak, Garden Coins, and **Open Garden**. Plant
+2. Confirm Deck Browser and Overview show the noninteractive scene,
+   nurtured-plant Growth, today's answer count, Anki streak, Garden Coins, the
+   closest locked immediate achievement when useful, and **Open Garden**. Plant
    and Nursery clicks must do nothing there.
 3. With fresh schema-21 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
@@ -35,8 +36,9 @@ control the normal profile.
    lines, while seeded legacy-owned species remain visible and usable.
 8. Purchase, move to Collection, and plant in garden a species; unlock spaces
    three through six sequentially; purchase Small/Standard Growth Charges and
-   use all three tiers; purchase a Weather and Scenery and confirm neither
-   auto-equips. For every Coin purchase, inspect artwork, item/category/quantity,
+   use both; purchase a Weather and Scenery and confirm neither auto-equips.
+   Confirm Grand shows no current acquisition path. For every Coin purchase,
+   inspect artwork, item/category/quantity,
    exact mechanics, target where applicable, price, current/resulting balance,
    Cancel focus, disabled submission, and receipt. Exercise insufficient
    balance, persistence failure/retry, unavailable, already-owned, invalid
@@ -83,7 +85,7 @@ control the normal profile.
     unfinished plant is nurtured.
 14. Exercise all due with due review, intraday learning/relearning, unseen new,
     active filtered, suspended, and buried cards. Confirm exact inclusion,
-    exclusions, at-least-one-answer guard, one award, and no revocation.
+    exclusions, at-least-one-eligible-answer guard, one award, and no revocation.
 15. Run same-day synced-answer catch-up and refresh twice. Sync a lower ID after
     a higher one and include prior-day and future/device-skew rows. Current-day
     supported rows apply exactly once; excluded rows create no Growth and are

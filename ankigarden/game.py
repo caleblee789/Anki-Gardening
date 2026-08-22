@@ -3397,10 +3397,10 @@ class GardenGameEngine:
                     unit_price=0,
                     disposition=PurchaseDisposition.INVENTORY,
                     descriptor=self._unavailable_descriptor(
-                        "That Growth Charge is no longer available."
+                        "That Growth Charge is not currently available."
                     ),
                     status=PurchaseStatus.ITEM_UNAVAILABLE,
-                    message="That Growth Charge is no longer available.",
+                    message="That Growth Charge is not currently available.",
                     state_signature={"available": False},
                 )
             status = PurchaseStatus.READY
@@ -3410,7 +3410,7 @@ class GardenGameEngine:
             )
             if not spec.purchasable or spec.price is None:
                 status = PurchaseStatus.ITEM_UNAVAILABLE
-                message = f"{spec.name} can only be earned while reviewing cards."
+                message = f"{spec.name} is not currently obtainable."
             return self._make_purchase_quote(
                 kind=purchase_kind,
                 item_id=spec.charge_id,

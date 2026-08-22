@@ -30,8 +30,10 @@ GARDEN_CURRENCY_EXPLANATION = (
 )
 
 FERTILIZER_EXPLANATION = (
-    "Fertilizer temporarily adds direct Growth to the plant you nurture: Basic adds 1, Quality "
-    "adds 2, and Magical adds 3 Growth per Anki card answer while active."
+    "Fertilizer temporarily adds bonus Growth to normal Anki card answers: Basic adds 1, Quality "
+    "adds 2, and Magical adds 3 Growth per Anki card answer while active. The resulting answer "
+    "Growth goes in full to the plant you nurture, while each other eligible planted plant "
+    "receives its usual exact 20 percent."
 )
 
 PROGRESSION_SUMMARY = (

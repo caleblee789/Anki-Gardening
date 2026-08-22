@@ -302,7 +302,12 @@ def purchase_presentation(
         outcome = f"Adds {species_name} to your collection permanently."
         facts.extend((
             PurchaseFact("planting", "", "Plant in any open garden bed"),
-            PurchaseFact("passive", "", "No passive bonus"),
+            PurchaseFact(
+                "passive",
+                "Growth routing",
+                "No Growth while in Collection. Once planted and unfinished, "
+                "this plant participates in normal nurtured and passive Growth routing.",
+            ),
             PurchaseFact(
                 "collection",
                 "Collection",
@@ -536,7 +541,11 @@ def purchase_presentation(
     elif effective_status is PurchaseStatus.ITEM_UNAVAILABLE:
         unavailable_name = item_name if item_name.lower() != "unavailable item" else category
         display_title = f"{unavailable_name} Unavailable"
-        display_outcome = "This item can no longer be purchased."
+        display_outcome = str(
+            message
+            or quote.message
+            or "This item is not currently available."
+        )
         visible_facts = ()
         badges = []
         more_details = []
@@ -601,11 +610,41 @@ def purchase_presentation(
             PurchaseStatus.STALE_BALANCE: "Balance refreshed",
             PurchaseStatus.STALE_TARGET: "Purchase details changed",
         }[effective_status]
-        display_outcome = str(
+        stale_outcome = str(
             message
             or quote.message
             or "Review the updated purchase terms before continuing."
         )
+        display_outcome = (
+            f"{stale_outcome} No purchase was made; the terms below are previews."
+        )
+        visible_facts = tuple(
+            PurchaseFact(
+                fact.key,
+                f"{fact.label} · Preview" if fact.label else "Preview",
+                f"Proposed: {fact.value}" if "→" in fact.value else fact.value,
+                fact.emphasized,
+            )
+            for fact in visible_facts
+        ) + (
+            PurchaseFact(
+                "balance_preview",
+                "Balance after purchase · Preview",
+                f"Proposed: {max(0, quote.balance_before):,} → "
+                f"{max(0, quote.balance_after):,}",
+                True,
+            ),
+        )
+        badges = ["Updated terms preview"]
+        balance_after = None
+
+    if effective_status not in {
+        PurchaseStatus.READY,
+        PurchaseStatus.SUCCESS,
+    }:
+        activity_label = ""
+        success_message = ""
+        next_actions = ()
 
     return PurchasePresentation(
         action=action,

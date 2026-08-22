@@ -26,9 +26,10 @@
 ## Home preview
 
 - Deck Browser and Overview show the Verdant Twilight scene, nurtured-plant
-  Growth, Anki streak, Garden Coins, and one **Open Garden** action.
+  Growth, today's answer count, Anki streak, Garden Coins, the closest locked
+  immediate achievement when useful, and one **Open Garden** action.
 - Plants, garden spaces, and the Nursery landmark are noninteractive. No card
-  counts, collection denominator, milestone ruler, or duplicate actions appear.
+  collection denominator, milestone ruler, or duplicate actions appear.
 - Loading, empty, disabled, success, stale, and recoverable-error states use one
   preview snapshot. Stale content retains the last valid scene and adds a text
   updating indicator. Background, weather, scenery, plants, foreground, and
@@ -67,7 +68,8 @@
 
 ## All due and Garden Coins
 
-- The learner must answer at least one card before all due can award Coins.
+- The learner must record at least one eligible answer before all due can award
+  Coins.
 - A live collection-wide check includes due reviews and introduced
   learning/relearning steps due before cutoff, including active filtered decks.
 - Unseen new, suspended, and buried cards are excluded while unavailable.
@@ -124,9 +126,11 @@
   stacks with Fertilizer, and another Potion extends the active interval. Snow
   Flurry and Full Moon add 10% and 25% duration when equipped.
 - Small and Standard Growth Charges are repeat purchases for 30 and 125 Coins;
-  Grand is earn-only. They add 100, 500, or 2,000 Growth to any selected owned,
-  planted, unfinished plant, follow stage rewards, cap at Rare, and consume only
-  if the state saves. They receive no study modifier or passive fan-out.
+  Grand is not currently obtainable. If already present in imported development
+  state, it remains usable. They add 100, 500, or 2,000 Growth to any selected
+  owned, planted, unfinished plant, follow stage rewards, cap at Rare, and
+  consume only if the state saves. They receive no study modifier or passive
+  fan-out.
 
 ## Nursery landmark and catalog
 

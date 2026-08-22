@@ -3,11 +3,14 @@
 The current schema-21 product has one normal-answer progression path: the plant
 the learner chooses to **Nurture** receives the full committed Growth award and
 every other planted unfinished plant receives an exact 20% allocation carried
-in fifths. Streak tiers, Fertilizer, Booster Potions, equipped Weather and
-Scenery, and one-use Growth Charges can add Growth. Daily and seventh-day
-rewards, one-time achievements, All Clear, stages, environment gifts, and
-Garden Finds grant **Garden Coins** or consumables through one reward ledger.
-Garden Find Growth is the direct-to-nurtured exception and never fans out.
+in fifths. Streak tiers, Fertilizer, Booster Potions, equipped Weather, and
+Scenery can add to that normal-answer award. One-use Growth Charges are a
+separate direct-Growth path and never fan out. Daily and seventh-day rewards,
+one-time achievements, All Clear, stages, environment gifts, and Garden Finds
+grant **Garden Coins**, direct Growth, consumables, or environment entitlements
+through one reward ledger. The repeatable all-due reward is distinct from the
+one-time All Clear achievement. Garden Find Growth is direct to the nurtured
+plant and never fans out.
 
 The full Garden is scene-first. Its integrated named header contains Garden
 Progress, Collection, and Settings; its three metric buttons open focused
@@ -18,6 +21,8 @@ full-Garden landmark; the compact home preview remains noninteractive.
 
 - `feature-evidence-matrix.md`: current feature contracts and automated/live
   release gates.
+- `release-notes-2.1.0.md`: learner-visible changes, schema-21 development-state
+  compatibility, and the boundary between automated and live release evidence.
 - `comprehensive-qa-report.md`: historical frozen-candidate status and its
   then-current exact-package acceptance boundary.
 - `display-validation-matrix.md`: prominent visible values and their

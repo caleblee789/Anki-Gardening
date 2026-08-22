@@ -125,7 +125,7 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
     assert 'data-testid="home-partial-error"' in html
     assert 'class="ag-home__partial-message"' in html
     assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
-    assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
+    assert "Moss, Seed stage, 30 of 500 Growth; 7-day Anki streak; 35 Garden Coins" in html
     assert 'data-testid="home-reviews"' not in html
     assert "Weather: Cloudy" not in html
 
@@ -139,16 +139,16 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
     assert 'data-testid="home-active-name"' not in html
     assert 'data-testid="home-growth"' not in html
-    assert 'data-testid="home-currency">35 coins</span>' in html
-    assert 'data-testid="home-streak">7-day streak</span>' in html
+    assert 'data-testid="home-currency">35 Garden Coins</span>' in html
+    assert 'data-testid="home-streak">7-day Anki streak</span>' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
     assert 'data-testid="home-accessible-summary"' in html
-    assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
+    assert "Moss, Seed stage, 30 of 500 Growth; 7-day Anki streak; 35 Garden Coins" in html
     assert 'role="button" tabindex="0"' in html
     assert (
         'aria-label="Open My Garden. Moss, Seed — 30 / 500 Growth. 12 answers today. '
-        '7-day streak. 35 coins"'
+        '7-day Anki streak. 35 Garden Coins"'
         in html
     )
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
@@ -430,8 +430,8 @@ def test_success_state_is_garden_wide_and_does_not_duplicate_selected_plant_deta
 def test_streak_is_visible_and_available_to_accessibility() -> None:
     base = _sample_data()
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=base))
-    assert "7-day streak" in html
-    assert 'data-testid="home-streak">7-day streak</span>' in html
+    assert "7-day Anki streak" in html
+    assert 'data-testid="home-streak">7-day Anki streak</span>' in html
     assert "data-tooltip" not in html
     assert html.count('data-testid="home-open"') == 1
 
@@ -448,7 +448,7 @@ def test_zero_day_streak_invites_study_without_a_zero_bonus_badge() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-    assert "0-day streak" in html
+    assert "0-day Anki streak" in html
     assert "+0% Growth" not in html
     assert "at day 1" not in html
 
@@ -465,14 +465,14 @@ def test_day_one_streak_points_to_the_first_real_bonus() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-    assert "1-day streak" in html
+    assert "1-day Anki streak" in html
     assert "+0% Growth" not in html
 
 
 def test_large_streak_and_coin_values_keep_number_units_and_balances_atomic() -> None:
     base = _sample_data()
 
-    for streak_days, coins in ((749, 0), (1_234, 9_999), (9_999, 54_321)):
+    for streak_days, coins in ((1, 1), (749, 0), (1_234, 9_999), (9_999, 54_321)):
         data = HomeWidgetData(**{
             **base.__dict__,
             "streak_days": streak_days,
@@ -480,10 +480,13 @@ def test_large_streak_and_coin_values_keep_number_units_and_balances_atomic() ->
         })
         html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-        assert f"{streak_days:,}-day streak" in html
+        assert f"{streak_days:,}-day Anki streak" in html
         assert "white-space:nowrap" in html
         assert "font-variant-numeric:tabular-nums" in html
-        assert f"{coins:,} Garden Coins" in html
+        coin_unit = "Garden Coin" if coins == 1 else "Garden Coins"
+        assert f'data-testid="home-currency">{coins:,} {coin_unit}</span>' in html
+        if coins == 1:
+            assert "1 Garden Coins" not in html
 
 
 def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() -> None:
@@ -505,7 +508,7 @@ def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() ->
 
     assert f'aria-label="{garden_name}"' in html
     assert f'title="{plant_name}, Rare — 50,000 / 50,000 Growth"' in html
-    assert "365-day streak" in html
+    assert "365-day Anki streak" in html
     assert "54,321 Garden Coins" in html
     assert "text-overflow:ellipsis" in html
 
@@ -574,6 +577,12 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
                 description="Reach a 7-day active Anki streak.",
                 progress=6 / 7,
             ),
+            "retention_90": Achievement(
+                achievement_id="retention_90",
+                name="Clear Recall",
+                description="Finalized compound achievement",
+                progress=1.0,
+            ),
         },
     )
 
@@ -589,6 +598,7 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert 'data-testid="home-today-answers">3 answers today</span>' in html
     assert html.count('data-testid="home-nearest-achievement"') == 1
     assert "7-Day Anki Streak · 6 of 7" in html
+    assert "Clear Recall" not in html
     assert "Reward: +10 Garden Coins" in html
 
 

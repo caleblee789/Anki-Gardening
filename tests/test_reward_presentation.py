@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from ankigarden.models.state import Achievement, GardenFindOutcome, GardenState, RewardReceipt
 from ankigarden.reward_presentation import (
+    RewardLine,
     achievement_presentations,
     lookup,
     recent_reward_summaries,
@@ -24,6 +27,17 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
             item_id="growth_charge_small",
         ),
         RewardReceipt(
+            "garden_find:answer:1:standard", "inventory_item", "garden_find",
+            "find_fertilizer", "2026-08-20", "answer:1",
+            "2026-08-20T12:00:00+00:00", amount=1,
+            item_id="fertilizer_basic", title="Rich Compost",
+        ),
+        RewardReceipt(
+            "all_due:2026-08-20", "growth", "all_due", "2026-08-20", "2026-08-20",
+            "answer:1", "2026-08-20T12:00:00+00:00", amount=5,
+            plant_id="plant:1",
+        ),
+        RewardReceipt(
             "bundle:2", "coins", "daily_activity", "2026-08-20", "2026-08-20",
             "answer:2", "2026-08-20T12:01:00+00:00", amount=2,
         ),
@@ -32,14 +46,33 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
     summaries = recent_reward_summaries(state)
 
     assert len(summaries) == 2
-    assert summaries[0].event_keys == ("bundle:1", "achievement:streak_30")
+    assert summaries[0].event_keys == (
+        "bundle:1", "achievement:streak_30", "garden_find:answer:1:standard",
+        "all_due:2026-08-20",
+    )
     assert summaries[0].correlation_id == "answer:1"
-    assert summaries[0].amounts == {"coins": 100, "inventory_item": 1}
+    assert summaries[0].amounts == {
+        "coins": 100,
+        "inventory_item": 2,
+        "growth": 5,
+    }
     assert summaries[0].coins_total == 100
-    assert summaries[0].inventory_totals == (("growth_charge_small", 1),)
+    assert summaries[0].inventory_totals == (
+        ("fertilizer_basic", 1),
+        ("growth_charge_small", 1),
+    )
     assert summaries[0].title == "Thirty-day streak"
-    assert [line.item_id for line in summaries[0].lines] == ["", "growth_charge_small"]
+    assert [line.item_id for line in summaries[0].lines] == [
+        "", "growth_charge_small", "fertilizer_basic", "",
+    ]
+    assert summaries[0].learner_text == (
+        "+100 Garden Coins, +1 Small Growth Charge, +1 Basic Fertilizer, and "
+        "+5 direct Growth to the nurtured plant"
+    )
     assert summaries[1].event_key == "bundle:2"
+    assert RewardLine(
+        "inventory_item", 2, item_id="growth_charge_small"
+    ).learner_text == "+2 Small Growth Charges"
 
 
 def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None:
@@ -80,6 +113,42 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
         "Added to the Weather and Scenery collection"
     )
 
+    persisted_growth = GardenFindOutcome(
+        "answer:7", "2026-08-20", "hit", "standard", "standard-v1",
+        "2026-08-20T12:03:00+00:00", reward_id="find_morning_dew",
+        reward_type="growth", amount=40, display_name="Morning Dew",
+        description="+40 Growth",
+    )
+    assert lookup(persisted_growth).description == (
+        "+40 direct Growth to the nurtured plant"
+    )
+    registry_growth = GardenFindOutcome(
+        "answer:8", "2026-08-20", "hit", "standard", "standard-v1",
+        "2026-08-20T12:04:00+00:00", reward_id="find_sun_patch",
+        reward_type="growth", amount=60,
+    )
+    assert lookup(registry_growth).description == (
+        "+60 direct Growth to the nurtured plant"
+    )
+
+    state = GardenState(garden_find_outcomes={
+        persisted_growth.outcome_key: persisted_growth,
+    })
+    assert lookup(state, persisted_growth.answer_key) == lookup(persisted_growth)
+    assert lookup(state, persisted_growth.outcome_key) == lookup(persisted_growth)
+
+    second_pool_hit = GardenFindOutcome(
+        persisted_growth.answer_key, "2026-08-20", "hit", "environment",
+        "environment-v1", "2026-08-20T12:05:00+00:00",
+        reward_id="fireflies", reward_type="environment_item", amount=1,
+        item_id="fireflies",
+    )
+    state.garden_find_outcomes[second_pool_hit.outcome_key] = second_pool_hit
+    with pytest.raises(ValueError, match="pool-qualified"):
+        lookup(state, persisted_growth.answer_key)
+    assert lookup(state, persisted_growth.outcome_key) == lookup(persisted_growth)
+    assert lookup(state, second_pool_hit.outcome_key) == lookup(second_pool_hit)
+
 
 def test_achievement_presentations_join_definition_identity_to_persisted_progress_metadata() -> None:
     state = GardenState(achievements={
@@ -100,19 +169,25 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     assert projection.unlocked is True
     assert projection.reward_event_key == "achievement:streak_7"
     assert projection.reward_coins == 10
+    assert projection.historical_backfill is True
 
-    state.daily_stats.reviewed = 12
-    state.daily_stats.correct = 10
-    state.daily_stats.wrong = 2
+    state.daily_stats.reviewed = 29
+    state.daily_stats.correct = 26
+    state.daily_stats.wrong = 3
     clear_recall = next(
         item for item in achievement_presentations(state)
         if item.achievement_id == "retention_90"
     )
     assert clear_recall.category == "recall"
     assert clear_recall.condition_lines == (
-        "Answers: 12 of 20",
-        "Non-Again accuracy: 83% of 90% required",
+        "Answers: 29 of 20",
+        "Non-Again accuracy: 89.7% of 90% required",
     )
+    absent_but_derivable = next(
+        item for item in achievement_presentations(state)
+        if item.achievement_id == "streak_30"
+    )
+    assert absent_but_derivable.historical_backfill is False
 
 
 def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_state() -> None:
@@ -128,10 +203,17 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
         "2026-08-20T12:00:00+00:00",
         amount=2,
     )]
+    all_due_calls = []
+
+    def all_due_rewards() -> tuple[int, int]:
+        all_due_calls.append(True)
+        return 12, 5
+
     engine = SimpleNamespace(
         DAILY_ACTIVITY_COINS=2,
         WEEKLY_STREAK_COINS=10,
         ALL_DUE_BASE_COINS=10,
+        all_due_rewards=all_due_rewards,
     )
 
     rules = {
@@ -141,7 +223,54 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
 
     assert rules["daily_activity"].reward_summary == "+2 Garden Coins"
     assert rules["daily_activity"].status == "Earned today"
-    assert rules["all_due"].reward_summary == "+10 Garden Coins"
+    assert rules["all_due"].reward_summary == (
+        "+12 Garden Coins and +5 direct Growth to the nurtured plant"
+    )
+    assert all_due_calls == [True]
     assert rules["weekly_streak"].reward_summary == "+10 Garden Coins"
     assert rules["weekly_streak"].next_streak_day == 7
     assert rules["weekly_streak"].streak_days_remaining == 1
+
+    state.recent_reward_receipts.extend((
+        RewardReceipt(
+            "all_due:2026-08-20", "coins", "all_due", "2026-08-20",
+            "2026-08-20", "answer:2", "2026-08-20T12:01:00+00:00",
+            amount=12,
+        ),
+        RewardReceipt(
+            "all_due:2026-08-20", "growth", "all_due", "2026-08-20",
+            "2026-08-20", "answer:2", "2026-08-20T12:01:00+00:00",
+            amount=5, plant_id="plant:1",
+        ),
+    ))
+    all_due_calls.clear()
+    committed_rules = {
+        item.rule_id: item
+        for item in recurring_reward_presentations(state, engine)
+    }
+    assert committed_rules["all_due"].awarded_today is True
+    assert committed_rules["all_due"].reward_summary == (
+        "+12 Garden Coins and +5 direct Growth to the nurtured plant"
+    )
+    assert all_due_calls == []
+
+    def unavailable_all_due_rewards() -> tuple[int, int]:
+        raise RuntimeError("resolver unavailable")
+
+    state.recent_reward_receipts = [
+        receipt
+        for receipt in state.recent_reward_receipts
+        if receipt.source != "all_due"
+    ]
+    fallback = SimpleNamespace(
+        DAILY_ACTIVITY_COINS=2,
+        WEEKLY_STREAK_COINS=10,
+        ALL_DUE_BASE_COINS=10,
+        all_due_rewards=unavailable_all_due_rewards,
+    )
+    fallback_rules = {
+        item.rule_id: item
+        for item in recurring_reward_presentations(state, fallback)
+    }
+    assert fallback_rules["all_due"].reward_coins == 10
+    assert fallback_rules["all_due"].reward_growth == 0

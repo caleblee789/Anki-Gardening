@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable
@@ -474,44 +473,77 @@ class ReviewerHookHandler:
             title=title,
             asset_category=asset_category,
             asset_key=asset_key,
-            amount=sum(max(0, int(getattr(event, "amount", 0) or 0)) for event in unique),
-            correlation_id=str(getattr(preferred, "correlation_id", "") or ""),
+            correlation_id=self._feedback_correlation_id(preferred),
             tier=tier,
             reward_detail=reward_detail,
         )
 
     @staticmethod
-    def _aggregate_reward_messages(events: list[Any]) -> str:
-        if len(events) == 1:
-            return str(getattr(events[0], "message", "") or "")
+    def _is_reward_feedback_event(event: Any) -> bool:
+        return str(getattr(event, "kind", "") or "") in {
+            "garden_find",
+            "reward_summary",
+        }
 
-        amounts: dict[str, int] = {}
-        unlocked: list[str] = []
-        other: list[str] = []
+    @staticmethod
+    def _feedback_correlation_id(event: Any) -> str:
+        correlation_id = str(getattr(event, "correlation_id", "") or "")
+        if correlation_id:
+            return correlation_id
+        event_id = str(getattr(event, "event_id", "") or "")
+        prefix = "reward-summary:"
+        return event_id[len(prefix):] if event_id.startswith(prefix) else ""
+
+    def _aggregate_reward_messages(self, events: list[Any]) -> str:
+        """Render committed typed summaries without interpreting display prose."""
+
+        achievement_definitions: Any = {}
+        try:
+            from ..achievements import ACHIEVEMENTS_BY_ID as achievement_definitions
+            from ..reward_presentation import recent_reward_summaries
+
+            summaries = recent_reward_summaries(self.storage.state)
+        except (AttributeError, ImportError, TypeError, ValueError):
+            summaries = ()
+
+        summaries_by_correlation = {
+            summary.correlation_id: summary for summary in summaries
+        }
+        parts: list[str] = []
+        rendered_correlations: set[str] = set()
         for event in events:
-            for raw_part in str(getattr(event, "message", "") or "").split(";"):
-                part = raw_part.strip()
-                if not part:
+            correlation_id = self._feedback_correlation_id(event)
+            is_reward_event = self._is_reward_feedback_event(event)
+            if (
+                is_reward_event
+                and correlation_id
+                and correlation_id in rendered_correlations
+            ):
+                continue
+            summary = (
+                summaries_by_correlation.get(correlation_id)
+                if is_reward_event
+                else None
+            )
+            if summary is not None and correlation_id not in rendered_correlations:
+                typed_parts = [summary.learner_text] if summary.learner_text else []
+                achievement_names = [
+                    achievement_definitions[achievement_id].name
+                    for achievement_id in summary.achievement_ids
+                    if achievement_id in achievement_definitions
+                ]
+                if achievement_names:
+                    typed_parts.append("Unlocked " + ", ".join(achievement_names))
+                if typed_parts:
+                    parts.append("; ".join(typed_parts))
+                    rendered_correlations.add(correlation_id)
                     continue
-                match = re.fullmatch(r"\+([\d,]+)\s+(.+)", part)
-                if match:
-                    label = match.group(2).strip()
-                    amounts[label] = amounts.get(label, 0) + int(
-                        match.group(1).replace(",", "")
-                    )
-                    continue
-                if part.startswith("Unlocked "):
-                    for name in part[len("Unlocked "):].split(","):
-                        normalized = name.strip()
-                        if normalized and normalized not in unlocked:
-                            unlocked.append(normalized)
-                    continue
-                if part not in other:
-                    other.append(part)
-        parts = [f"+{amount:,} {label}" for label, amount in amounts.items()]
-        if unlocked:
-            parts.append("Unlocked " + ", ".join(unlocked))
-        parts.extend(other)
+
+            # Non-reward feedback and pruned legacy reward summaries remain
+            # opaque. Their prose is never parsed or numerically combined.
+            message = str(getattr(event, "message", "") or "").strip()
+            if message and message not in parts:
+                parts.append(message)
         return "; ".join(parts) or "Your Garden rewards were recorded."
 
     def _garden_find_presentations(self, events: list[Any]) -> tuple[Any, ...]:
@@ -523,10 +555,11 @@ class ReviewerHookHandler:
             return ()
 
         event_correlations = {
-            str(getattr(event, "correlation_id", "") or "")
+            self._feedback_correlation_id(event)
             for event in events
             if str(getattr(event, "kind", "")) == "garden_find"
         }
+        event_correlations.discard("")
         answer_keys = {
             correlation[len("answer:"):]
             for correlation in event_correlations
@@ -549,15 +582,33 @@ class ReviewerHookHandler:
                 outcome_keys.append((pool_id, answer_key))
 
         resolver = getattr(self.storage, "recent_garden_find_outcomes", None)
+        cached_outcomes = tuple(
+            getattr(state, "garden_find_outcomes", {}).values()
+        )
         if callable(resolver):
             try:
-                outcomes = tuple(resolver(limit=32))
+                stored_outcomes = tuple(resolver(limit=32))
             except Exception:
-                outcomes = ()
+                stored_outcomes = ()
+            # The bounded state cache contains the just-committed result even
+            # when an adapter's historical query is stale or unavailable.
+            by_outcome_key = {
+                (
+                    str(getattr(outcome, "pool_id", "")),
+                    str(getattr(outcome, "answer_key", "")),
+                ): outcome
+                for outcome in stored_outcomes
+            }
+            by_outcome_key.update({
+                (
+                    str(getattr(outcome, "pool_id", "")),
+                    str(getattr(outcome, "answer_key", "")),
+                ): outcome
+                for outcome in cached_outcomes
+            })
+            outcomes = tuple(by_outcome_key.values())
         else:
-            outcomes = tuple(
-                getattr(state, "garden_find_outcomes", {}).values()
-            )
+            outcomes = cached_outcomes
         if not outcome_keys and answer_keys:
             outcome_keys.extend(
                 (str(getattr(outcome, "pool_id", "")), str(getattr(outcome, "answer_key", "")))
@@ -725,9 +776,7 @@ class ReviewerHookHandler:
                 copy.addWidget(reward)
             message_text = str(getattr(event, "message", "") or "")
             if message_text and message_text != reward_detail:
-                message = QLabel(
-                    f"Review total: {message_text}" if reward_detail else message_text
-                )
+                message = QLabel(message_text)
                 message.setObjectName("ankiGardenRewardMessage")
                 message.setWordWrap(True)
                 copy.addWidget(message)

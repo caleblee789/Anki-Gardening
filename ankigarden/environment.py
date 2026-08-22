@@ -272,7 +272,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Legacy earned item; no longer awarded by the current Garden Finds pool.",
+        "Not currently obtainable.",
     ),
 }
 

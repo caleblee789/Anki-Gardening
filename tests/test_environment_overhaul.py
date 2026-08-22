@@ -381,7 +381,9 @@ def test_growth_charges_purchase_apply_normal_transitions_cap_at_rare_and_fail_s
     storage.state.consumables["growth_charge_small"] = 1
     assert not engine.use_growth_charge("growth_charge_small")[0]
     assert storage.state.consumables["growth_charge_small"] == 1
-    assert not engine.purchase_growth_charge("growth_charge_grand")[0]
+    grand_purchase = engine.purchase_growth_charge("growth_charge_grand")
+    assert not grand_purchase[0]
+    assert grand_purchase[1] == "Grand Growth Charge is not currently obtainable."
 
 
 def test_equipped_weather_and_scenery_extend_booster_duration_additively(monkeypatch):

@@ -311,6 +311,14 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         f"for {quote.total_price:,} Garden Coins"
     )
     assert presentation.balance_after == 5_000 - quote.total_price
+    if kind is PurchaseKind.SPECIES:
+        growth_routing = next(
+            fact for fact in presentation.facts if fact.key == "passive"
+        )
+        assert growth_routing.label == "Growth routing"
+        assert "No Growth while in Collection" in growth_routing.value
+        assert "normal nurtured and passive Growth routing" in growth_routing.value
+        assert "No passive bonus" not in visible
     assert all(
         noise not in visible
         for noise in (
@@ -439,6 +447,61 @@ def test_purchase_error_presentations_have_distinct_recovery_actions(
         assert presentation.badges == ("Retry preview",)
     if presentation.terminal:
         assert presentation.badges == ()
+
+
+@pytest.mark.parametrize(
+    "status",
+    tuple(
+        status
+        for status in PurchaseStatus
+        if status not in {PurchaseStatus.READY, PurchaseStatus.SUCCESS}
+    ),
+)
+def test_non_success_purchase_presentations_never_expose_receipt_copy(
+    status: PurchaseStatus,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+
+    presentation = purchase_presentation(quote, status=status)
+
+    assert presentation.activity_label == ""
+    assert presentation.success_message == ""
+    assert presentation.next_actions == ()
+
+
+@pytest.mark.parametrize(
+    "status",
+    (
+        PurchaseStatus.STALE_PRICE,
+        PurchaseStatus.STALE_BALANCE,
+        PurchaseStatus.STALE_TARGET,
+    ),
+)
+def test_stale_purchase_terms_are_explicit_uncommitted_previews(
+    status: PurchaseStatus,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+
+    presentation = purchase_presentation(quote, status=status)
+    facts = {fact.key: fact for fact in presentation.facts}
+
+    assert presentation.badges == ("Updated terms preview",)
+    assert "No purchase was made" in presentation.outcome
+    assert "terms below are previews" in presentation.outcome
+    assert presentation.balance_after is None
+    assert all("Preview" in fact.label for fact in presentation.facts)
+    assert facts["inventory"].value == "Proposed: 0 → 1"
+    assert facts["balance_preview"].value == "Proposed: 5,000 → 4,970"
 
 
 @pytest.mark.parametrize(
@@ -791,6 +854,9 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "no Garden Coins were spent" in commit
     assert "self.presentation = purchase_presentation(" in commit
     assert "ignore_status=True" in commit
+    assert "if refreshed.ready:" in commit
+    assert "self._show_status_banner(" in commit
+    assert "balance_only_refresh" not in commit
     assert constructor.index("root.addWidget(self.status)") < constructor.index(
         "root.addWidget(self.content_scroll, 1)"
     )

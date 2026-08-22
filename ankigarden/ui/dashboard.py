@@ -2534,7 +2534,6 @@ class PurchaseConfirmationDialog(DialogShell):
             self.accept()
             return
         if outcome.status in self._REFRESHABLE_FAILURES:
-            previous_quote = self.quote
             refreshed = self.engine.quote_purchase(
                 self.request.kind,
                 self.request.item_id,
@@ -2547,19 +2546,7 @@ class PurchaseConfirmationDialog(DialogShell):
             )
             self._set_submitting(False)
             self._apply_quote(refreshed)
-            balance_only_refresh = bool(
-                outcome.status is PurchaseStatus.STALE_BALANCE
-                and refreshed.ready
-                and previous_quote.kind is refreshed.kind
-                and previous_quote.item_id == refreshed.item_id
-                and previous_quote.target_id == refreshed.target_id
-                and previous_quote.total_price == refreshed.total_price
-                and previous_quote.disposition is refreshed.disposition
-                and previous_quote.inventory_after == refreshed.inventory_after
-                and previous_quote.replacement_required
-                == refreshed.replacement_required
-            )
-            if refreshed.ready and not balance_only_refresh:
+            if refreshed.ready:
                 self._show_status_banner(
                     outcome.status,
                     outcome.message,
@@ -8272,7 +8259,11 @@ class NurseryDialog(DialogShell):
         meta = QLabel(" · ".join((
             effect,
             "Single use",
-            cost_label(spec.price) if spec.price is not None else "Earn-only",
+            (
+                cost_label(spec.price)
+                if spec.price is not None
+                else "Not currently obtainable"
+            ),
         )))
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)

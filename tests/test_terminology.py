@@ -1,6 +1,7 @@
 import ast
 from pathlib import Path
 
+from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.terminology import (
     ACTIVE_PLANT_EXPLANATION,
     ANKI_STREAK_EXPLANATION,
@@ -26,6 +27,9 @@ def test_gameplay_terms_explain_source_and_progression_effect() -> None:
     assert "Garden Finds" in GARDEN_CURRENCY_EXPLANATION
     assert "Spend them in the Nursery" in GARDEN_CURRENCY_EXPLANATION
     assert "Basic adds 1" in FERTILIZER_EXPLANATION
+    assert "bonus Growth to normal Anki card answers" in FERTILIZER_EXPLANATION
+    assert "usual exact 20 percent" in FERTILIZER_EXPLANATION
+    assert "direct Growth" not in FERTILIZER_EXPLANATION
 
 
 def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
@@ -40,12 +44,18 @@ def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
         ROOT / "ankigarden" / "ui" / "scene.py",
     ]
     combined = "\n".join(path.read_text("utf-8") for path in paths)
+    config_doc = (ROOT / "ankigarden" / "config.md").read_text("utf-8")
+    normalized_config = " ".join(config_doc.split())
     dashboard = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text("utf-8")
 
     assert "Anki streak" in combined
     assert "Nurture" in combined
     assert "All due cards" in combined
     assert "Vitality" not in combined
+    default_state = "on" if DEFAULT_CONFIG["show_progress_notifications"] else "off"
+    assert f"This is {default_state} by default." in config_doc
+    assert "today's answer count" in normalized_config
+    assert "closest immediate achievement" in normalized_config
     for category in ("Consistency", "Study Volume", "Recall", "Completion"):
         assert f'"{category}"' in dashboard
 

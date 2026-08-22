@@ -29,6 +29,20 @@ OBSOLETE_ROSE_V6_ALIASES = {
     for stage in ("seed", "sprout", "young", "mature", "flowering", "rare")
 }
 
+SCHEMA_21_REQUIRED_RUNTIME_FILES = frozenset({
+    "achievements.py",
+    "addon.py",
+    "game.py",
+    "garden_finds.py",
+    "hooks/reviewer.py",
+    "models/state.py",
+    "reward_ledger.py",
+    "reward_presentation.py",
+    "storage.py",
+})
+
+EXPECTED_PACKAGED_USER_FILES = frozenset({"user_files/README.txt"})
+
 
 def _archive_capabilities(archive: zipfile.ZipFile) -> dict[str, object]:
     namespace: dict[str, object] = {}
@@ -74,7 +88,13 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
             b"\n"
         )
     assert {"__init__.py", "manifest.json", "config.json", "assets/manifest.json"} <= names
-    assert "user_files/README.txt" in names
+    assert SCHEMA_21_REQUIRED_RUNTIME_FILES <= names, sorted(
+        SCHEMA_21_REQUIRED_RUNTIME_FILES - names
+    )
+    packaged_user_files = {
+        name for name in names if name.startswith("user_files/")
+    }
+    assert packaged_user_files == EXPECTED_PACKAGED_USER_FILES
     assert "meta.json" not in names
     assert not any(name.endswith("garden_state.json") or "__pycache__" in name for name in names)
     assert CAPTURE_HARNESS not in names

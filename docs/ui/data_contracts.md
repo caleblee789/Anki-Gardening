@@ -7,7 +7,7 @@ distributable archive.
 
 ## Authoritative fields
 
-- Totals: `streak_days` (Anki days in a row with at least one card answer), `total_reviews` (card-answer events), `total_correct`, and `total_wrong`.
+- Totals: `streak_days` (Anki days in a row with at least one eligible answer), `total_reviews` (card-answer events), `total_correct`, and `total_wrong`.
 - Today: `daily_stats.day`, answer counters, `base_growth`, `streak_bonus_growth`, `fertilizer_growth`, `booster_growth`, `weather_growth`, `scenery_growth`, `charge_growth`, `bonus_growth`, `growth_earned`, per-plant Growth, daily environment claims, and the all-due completion flag.
 - Garden identity: `garden_name` is profile-wide plain text, normalized to one-line whitespace and capped at 40 characters. `garden_setup_version` distinguishes first-use naming from later edits.
 - Plants: stable ID, one supported species, generated/editable name, optional garden-space slot, non-negative Growth, a fractional bonus remainder, planted date, semantic story memories, optional current Fertilizer and Booster intervals, and bounded histories of replaced or expired intervals.
@@ -114,7 +114,8 @@ additive.
 
 Small, Standard, and Grand Growth Charges add 100, 500, and 2,000 direct Growth
 to any selected owned, planted, unfinished plant, capped at Rare. Small and
-Standard are repeat purchases for 30 and 125 Garden Coins; Grand is earn-only.
+Standard are repeat purchases for 30 and 125 Garden Coins. Grand remains usable
+if present in imported development state but is not currently obtainable.
 Charge use crosses normal stages, grants normal stage Coins, records its Growth
 separately, and consumes the item only in the same successful transaction. It
 never receives study modifiers or passive fan-out.

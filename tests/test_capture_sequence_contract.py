@@ -227,7 +227,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert groups["Release stress — Settings and reviewer rewards"] == (
         "settings-unsaved-changes",
         "reviewer-find-common-reduced-motion",
-        "reviewer-find-exceptional",
+        "reviewer-find-environment",
         "reviewer-find-stacked-sync",
     )
     assert groups["Accessibility and responsive"] == (
@@ -972,6 +972,11 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert '"fertilizer_basic"' in reward_history
     assert '"direct_growth_has_passive_wording"' in reward_history
     assert "STANDARD_FIND_REGISTRY" in reviewer_feedback
+    assert "SPECIAL_ENVIRONMENT_POOL" in reviewer_feedback
+    assert "ENVIRONMENT_POOL_ID" in reviewer_feedback
+    assert "ENVIRONMENT_POOL_VERSION" in reviewer_feedback
+    assert 'source="garden_find_environment"' in reviewer_feedback
+    assert "recent_reward_summaries(state)" in reviewer_feedback
     assert "GardenFindOutcome(" in reviewer_feedback
     assert "RewardReceipt(" in reviewer_feedback
     assert "self.app.engine._queue_reward_feedback(" in reviewer_feedback
@@ -979,7 +984,8 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert 'sync_correlation = f"sync:capture-reviewer:{day_value}"' in reviewer_feedback
     assert 'title="Synced review rewards"' in reviewer_feedback
     assert 'feedback.message == expected_message' in reviewer_feedback
-    assert 'feedback.amount == expected_total' in reviewer_feedback
+    assert "feedback.amount == 0" in reviewer_feedback
+    assert "expected_total = sum" not in reviewer_feedback
     assert "handler._consolidated_reward_feedback(" in reviewer_feedback
     assert "all_receipt_groups_share_correlation" in reviewer_feedback
     assert 'cleanup_holder["callback"] = cleanup' in reviewer_capture
@@ -998,8 +1004,11 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
         '"Non-Again accuracy: 83% of 90% required"'
     ) == 2
     assert "At least 20 eligible answers" not in capture_source
-    assert "+80 Growth; +6 Garden Coins; +1 Growth Charge Small; " in capture_source
+    assert "+6 Garden Coins, +80 direct Growth to the nurtured plant, " in capture_source
+    assert "and +1 Small Growth Charge; " in capture_source
     assert "Unlocked Perfect Canopy" in capture_source
+    assert 'environment_item_ids=("fireflies",)' in capture_source
+    assert '"reviewer-find-exceptional"' not in capture_source
     assert "ReviewerRewardFeedback(" not in capture_source
     for retired_contract in (
         "claimed_streak_rewards",

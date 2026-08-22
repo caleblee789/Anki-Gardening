@@ -8,9 +8,11 @@ not mutate state, grant rewards, or make eligibility decisions.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping, Sequence
 
 from .achievements import ACHIEVEMENT_DEFINITIONS, ACHIEVEMENTS_BY_ID, AchievementDefinition
+from .environment import ENVIRONMENT_CATALOG, GROWTH_CHARGES
 from .garden_finds import (
     ENVIRONMENT_POOL_ID,
     ENVIRONMENT_POOL_VERSION,
@@ -32,6 +34,25 @@ class RewardLine:
     amount: int
     item_id: str = ""
     plant_id: str = ""
+
+    @property
+    def learner_text(self) -> str:
+        """Return exact learner-facing copy without parsing receipt prose."""
+
+        amount = max(0, int(self.amount))
+        if self.reward_type == "coins":
+            unit = "Garden Coin" if amount == 1 else "Garden Coins"
+            return f"+{amount:,} {unit}"
+        if self.reward_type == "growth":
+            return f"+{amount:,} direct Growth to the nurtured plant"
+        if self.reward_type == "inventory_item":
+            item_name = _inventory_item_name(self.item_id)
+            if amount != 1 and not item_name.endswith("s"):
+                item_name = f"{item_name}s"
+            return f"+{amount:,} {item_name}"
+        if self.reward_type == "environment_item":
+            return f"Unlocked {_environment_item_name(self.item_id)}"
+        return f"+{amount:,} {_identifier_name(self.reward_type or 'reward')}"
 
 
 @dataclass(frozen=True)
@@ -150,6 +171,37 @@ class RewardSummary:
     def items(self) -> tuple[RewardLine, ...]:
         return self.lines
 
+    @property
+    def consolidated_lines(self) -> tuple[RewardLine, ...]:
+        """Combine like typed resources while retaining first-seen order."""
+
+        totals: dict[tuple[str, str, str], int] = {}
+        order: list[tuple[str, str, str]] = []
+        for line in self.lines:
+            identity = (line.reward_type, line.item_id, line.plant_id)
+            if identity not in totals:
+                order.append(identity)
+                totals[identity] = 0
+            totals[identity] += line.amount
+        return tuple(
+            RewardLine(
+                reward_type=reward_type,
+                amount=totals[(reward_type, item_id, plant_id)],
+                item_id=item_id,
+                plant_id=plant_id,
+            )
+            for reward_type, item_id, plant_id in order
+        )
+
+    @property
+    def learner_text(self) -> str:
+        """Return one consolidated result assembled from typed reward lines."""
+
+        parts = tuple(line.learner_text for line in self.consolidated_lines)
+        if len(parts) <= 2:
+            return " and ".join(parts)
+        return f"{', '.join(parts[:-1])}, and {parts[-1]}"
+
 
 @dataclass(frozen=True)
 class RecurringRewardPresentation:
@@ -173,7 +225,9 @@ class RecurringRewardPresentation:
             label = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
             parts.append(f"+{self.reward_coins:,} {label}")
         if self.reward_growth:
-            parts.append(f"+{self.reward_growth:,} Growth")
+            parts.append(
+                f"+{self.reward_growth:,} direct Growth to the nurtured plant"
+            )
         return " and ".join(parts) if parts else "No reward"
 
 
@@ -268,7 +322,35 @@ def recurring_reward_presentations(
 
     daily_coins = max(0, int(engine.DAILY_ACTIVITY_COINS))
     weekly_coins = max(0, int(engine.WEEKLY_STREAK_COINS))
-    all_due_coins = max(0, int(engine.ALL_DUE_BASE_COINS))
+    today_all_due_receipts = tuple(
+        receipt for receipt in today_receipts if receipt.source == "all_due"
+    )
+    if today_all_due_receipts:
+        # Once earned, the committed ledger remains authoritative even if the
+        # learner later changes the equipped Weather or Scenery.
+        all_due_coins = sum(
+            max(0, int(receipt.amount))
+            for receipt in today_all_due_receipts
+            if receipt.reward_type == "coins"
+        )
+        all_due_growth = sum(
+            max(0, int(receipt.amount))
+            for receipt in today_all_due_receipts
+            if receipt.reward_type == "growth"
+        )
+    else:
+        all_due_coins = max(0, int(getattr(engine, "ALL_DUE_BASE_COINS", 0)))
+        all_due_growth = max(0, int(getattr(engine, "ALL_DUE_BASE_GROWTH", 0)))
+        all_due_resolver = getattr(engine, "all_due_rewards", None)
+        if callable(all_due_resolver):
+            try:
+                resolved_coins, resolved_growth = all_due_resolver()
+                all_due_coins = max(0, int(resolved_coins))
+                all_due_growth = max(0, int(resolved_growth))
+            except Exception:
+                # Presentation must remain available if an injected or older
+                # engine cannot resolve its equipped all-due bonuses.
+                pass
 
     streak_days = max(0, int(getattr(state, "streak_days", 0) or 0))
     next_streak_day = ((streak_days // 7) + 1) * 7
@@ -302,7 +384,7 @@ def recurring_reward_presentations(
                 "after at least one Anki card answer Garden can count"
             ),
             reward_coins=all_due_coins,
-            reward_growth=0,
+            reward_growth=all_due_growth,
             awarded_today="all_due" in today_sources,
             status=(
                 "Earned today"
@@ -354,6 +436,42 @@ class GardenFindPresentation:
         return self.display_name
 
 
+def _identifier_name(value: str) -> str:
+    return str(value or "").replace("_", " ").strip().title() or "Reward"
+
+
+def _inventory_item_name(item_id: str) -> str:
+    normalized = str(item_id or "")
+    charge = GROWTH_CHARGES.get(normalized)
+    if charge is not None:
+        return charge.name
+    if normalized.startswith("fertilizer_"):
+        tier = normalized.removeprefix("fertilizer_")
+        return f"{_identifier_name(tier)} Fertilizer"
+    return _identifier_name(normalized or "item")
+
+
+def _environment_item_name(item_id: str) -> str:
+    normalized = str(item_id or "")
+    for catalog in ENVIRONMENT_CATALOG.values():
+        item = catalog.get(normalized)
+        if item is not None:
+            return item.name
+    return _identifier_name(normalized or "environment item")
+
+
+def _garden_find_description(
+    reward_type: str,
+    amount: int,
+    persisted_or_registry_description: str,
+) -> str:
+    """Keep old and registry-backed Growth snapshots explicit and accurate."""
+
+    if str(reward_type) == "growth":
+        return f"+{max(0, int(amount)):,} direct Growth to the nurtured plant"
+    return str(persisted_or_registry_description)
+
+
 def _reward_entries(
     registry: Iterable[GardenFindReward] | PreparedRewardRegistry | Mapping[str, GardenFindReward] | None,
 ) -> tuple[GardenFindReward, ...]:
@@ -388,7 +506,22 @@ def lookup(
     if isinstance(outcome, GardenState):
         if answer_key is None:
             raise ValueError("answer_key is required when looking up GardenState")
-        outcome = outcome.garden_find_outcomes.get(str(answer_key))
+        lookup_key = str(answer_key)
+        outcomes = outcome.garden_find_outcomes
+        resolved = outcomes.get(lookup_key)
+        if resolved is None:
+            candidates = tuple(
+                candidate
+                for candidate in outcomes.values()
+                if isinstance(candidate, GardenFindOutcome)
+                and candidate.answer_key == lookup_key
+            )
+            if len(candidates) > 1:
+                raise ValueError(
+                    "answer_key is ambiguous; use the pool-qualified outcome key"
+                )
+            resolved = candidates[0] if candidates else None
+        outcome = resolved
         if outcome is None:
             return None
     if not isinstance(outcome, GardenFindOutcome) or outcome.status != "hit":
@@ -406,7 +539,11 @@ def lookup(
             amount=max(0, int(outcome.amount)),
             item_id=outcome.item_id,
             display_name=outcome.display_name,
-            description=outcome.description,
+            description=_garden_find_description(
+                outcome.reward_type,
+                outcome.amount,
+                outcome.description,
+            ),
             tier=outcome.tier,
             artwork_ref=outcome.artwork_ref,
             localization_key=outcome.localization_key,
@@ -472,7 +609,11 @@ def lookup(
             amount=max(0, int(outcome.amount)),
             item_id=outcome.item_id,
             display_name=reward_id.replace("_", " ").title(),
-            description=description,
+            description=_garden_find_description(
+                outcome.reward_type,
+                outcome.amount,
+                description,
+            ),
             tier="",
             artwork_ref=outcome.item_id or reward_id,
             localization_key="",
@@ -488,7 +629,11 @@ def lookup(
         amount=max(0, int(outcome.amount)),
         item_id=outcome.item_id or reward.inventory_item_id or "",
         display_name=reward.display_name,
-        description=reward.description,
+        description=_garden_find_description(
+            outcome.reward_type or reward.reward_kind,
+            outcome.amount,
+            reward.description,
+        ),
         tier=reward.tier,
         artwork_ref=reward.artwork_ref,
         localization_key=reward.localization_key,
@@ -626,9 +771,10 @@ def _achievement_condition_lines(
                 answers,
                 max(0, int(getattr(daily_stats, "wrong", 0) or 0)),
             )
-            non_again_percent = (
-                round((answers - again_answers) * 100 / answers)
-                if answers else 0
+            non_again_percent = _compound_accuracy_percent(
+                answers - again_answers,
+                answers,
+                definition.minimum_non_again_percent,
             )
             return (
                 f"Answers: {answers:,} of {definition.minimum_answers:,}",
@@ -646,6 +792,30 @@ def _achievement_condition_lines(
             accuracy,
         )
     return (persisted_requirement or definition.description,)
+
+
+def _compound_accuracy_percent(
+    non_again_answers: int,
+    total_answers: int,
+    required_percent: int,
+) -> str:
+    """Format accuracy without rounding a near miss up to its requirement."""
+
+    if total_answers <= 0:
+        return "0"
+    exact = (
+        Decimal(max(0, non_again_answers))
+        * Decimal(100)
+        / Decimal(total_answers)
+    )
+    rounded_whole = exact.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    requirement = Decimal(max(0, required_percent))
+    if exact < requirement <= rounded_whole:
+        rounded_tenth = exact.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        if rounded_tenth >= requirement:
+            rounded_tenth = exact.quantize(Decimal("0.1"), rounding=ROUND_DOWN)
+        return format(rounded_tenth, ".1f")
+    return format(rounded_whole, ".0f")
 
 
 def achievement_presentation(
@@ -673,7 +843,9 @@ def achievement_presentation(
         unlocked = False
         unlocked_at = rewarded_at = None
         reward_event_key = ""
-        historical_backfill = definition.historical_backfill
+        # Derivability is a policy on the definition, not provenance for a
+        # learner who has no persisted unlock record.
+        historical_backfill = False
         persisted_requirement = persisted_reward_summary = ""
     else:
         progress = min(1.0, max(0.0, float(persisted.progress)))
