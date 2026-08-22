@@ -12,11 +12,13 @@ Every read merges committed and staged rows, allowing a multi-answer sync batch
 to observe the answers staged earlier in the same Garden transaction.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
+import errno
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union
 import uuid
@@ -26,10 +28,20 @@ LEDGER_SCHEMA_VERSION = 1
 FIND_OUTCOME_STATUSES = frozenset({"miss", "hit", "paused"})
 MAX_RECENT_HITS_QUERY = 1_000
 _SQL_IN_CHUNK = 500
+_HARD_LINK_FALLBACK_ERRNOS = frozenset({
+    errno.EACCES,
+    errno.EINVAL,
+    errno.ENOSYS,
+    errno.EPERM,
+    errno.EXDEV,
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
+})
 UNBOUNDED_STATE_AUTHORITY_KEYS = frozenset({
     "applied_reward_event_keys",
     "processed_answer_keys",
     "answer_lineage_bindings",
+    "pending_reanswer_lineages",
     "garden_find_outcomes",
     "garden_find_daily_counts",
     "garden_find_reward_daily_counts",
@@ -94,6 +106,7 @@ class AnswerLineageRecord:
     original_day: str
     card_id: int
     serial: int
+    reanswer_floor: int = 0
 
 
 @dataclass(frozen=True)
@@ -143,6 +156,12 @@ class _StagedFinalizedDay:
     replace: bool
 
 
+@dataclass(frozen=True)
+class _StagedReanswerFloor:
+    lineage_key: str
+    minimum_revlog_id: int
+
+
 _SCHEMA_STATEMENTS = (
     """
     CREATE TABLE state_snapshot (
@@ -166,6 +185,7 @@ _SCHEMA_STATEMENTS = (
         original_day TEXT NOT NULL,
         card_id INTEGER NOT NULL CHECK (card_id > 0),
         serial INTEGER NOT NULL CHECK (serial > 0),
+        reanswer_floor INTEGER NOT NULL DEFAULT 0 CHECK (reanswer_floor >= 0),
         UNIQUE (original_day, card_id, serial)
     )
     """,
@@ -207,6 +227,10 @@ _SCHEMA_STATEMENTS = (
     "CREATE INDEX revlog_alias_lineage_idx ON revlog_alias(lineage_key)",
     "CREATE INDEX answer_lineage_card_idx ON answer_lineage(card_id)",
     """
+    CREATE INDEX answer_lineage_reanswer_idx
+    ON answer_lineage(reanswer_floor) WHERE reanswer_floor > 0
+    """,
+    """
     CREATE INDEX find_outcome_day_idx
     ON find_outcome(scheduler_day, pool_id, status, reward_id)
     """,
@@ -234,7 +258,7 @@ _EXPECTED_COLUMNS = {
         "event_key", "source", "scheduler_day", "occurred_at",
     ),
     "answer_lineage": (
-        "lineage_key", "original_day", "card_id", "serial",
+        "lineage_key", "original_day", "card_id", "serial", "reanswer_floor",
     ),
     "revlog_alias": ("revlog_id", "lineage_key"),
     "answer_consumption": (
@@ -278,6 +302,7 @@ _REQUIRED_FOREIGN_KEYS = {
 _REQUIRED_NAMED_INDEXES = frozenset({
     "revlog_alias_lineage_idx",
     "answer_lineage_card_idx",
+    "answer_lineage_reanswer_idx",
     "find_outcome_day_idx",
     "find_outcome_recent_hit_idx",
 })
@@ -319,6 +344,7 @@ class RewardLedger:
         self._pending_aliases: Dict[int, RevlogAliasRecord] = {}
         self._pending_consumptions: Dict[str, AnswerConsumptionRecord] = {}
         self._pending_consumption_lineages: Dict[str, AnswerConsumptionRecord] = {}
+        self._pending_reanswer_floors: Dict[str, int] = {}
         self._pending_outcomes: Dict[Tuple[str, str], FindOutcomeRecord] = {}
         self._pending_finalized_days: Dict[str, _StagedFinalizedDay] = {}
         try:
@@ -389,49 +415,29 @@ class RewardLedger:
             target.name + ".tmp-" + uuid.uuid4().hex
         )
         destination_connection: Optional[sqlite3.Connection] = None
-        verification_connection: Optional[sqlite3.Connection] = None
         try:
             destination_connection = sqlite3.connect(str(temporary))
             self._connection.backup(destination_connection)
             destination_connection.close()
             destination_connection = None
-
-            verification_connection = sqlite3.connect(str(temporary))
-            integrity_result = tuple(
-                str(row[0])
-                for row in verification_connection.execute(
-                    "PRAGMA integrity_check"
-                ).fetchall()
-            )
-            version = int(
-                verification_connection.execute(
-                    "PRAGMA user_version"
-                ).fetchone()[0]
-            )
-            foreign_key_errors = verification_connection.execute(
-                "PRAGMA foreign_key_check"
-            ).fetchall()
-            verification_connection.close()
-            verification_connection = None
-            if (
-                integrity_result != ("ok",)
-                or version != LEDGER_SCHEMA_VERSION
-                or foreign_key_errors
-            ):
-                raise RewardLedgerCorruptionError(
-                    "The reward-ledger backup did not verify."
-                )
+            _verify_backup_database(temporary)
             # Both paths share a directory/filesystem. Hard-link installation
             # is atomic and fails with EEXIST rather than replacing a file that
-            # appeared after the initial validation.
-            os.link(str(temporary), str(target))
+            # appeared after the initial validation. Some valid Anki storage
+            # volumes (for example exFAT or a restricted network share) do not
+            # support hard links, so retain the no-overwrite contract with an
+            # exclusive, flushed, independently verified copy on those volumes.
+            try:
+                os.link(str(temporary), str(target))
+            except OSError as error:
+                if error.errno not in _HARD_LINK_FALLBACK_ERRNOS:
+                    raise
+                _exclusive_verified_copy(temporary, target)
             temporary.unlink()
             return target
         finally:
             if destination_connection is not None:
                 destination_connection.close()
-            if verification_connection is not None:
-                verification_connection.close()
             if temporary.exists():
                 temporary.unlink()
             for suffix in ("-wal", "-shm"):
@@ -543,13 +549,26 @@ class RewardLedger:
         key = _required_text(lineage_key, "lineage_key")
         pending = self._pending_lineages.get(key)
         if pending is not None:
+            if key in self._pending_reanswer_floors:
+                return replace(
+                    pending,
+                    reanswer_floor=self._pending_reanswer_floors[key],
+                )
             return pending
         row = self._connection.execute(
-            "SELECT lineage_key, original_day, card_id, serial "
+            "SELECT lineage_key, original_day, card_id, serial, reanswer_floor "
             "FROM answer_lineage WHERE lineage_key = ?",
             (key,),
         ).fetchone()
-        return _lineage_from_row(row) if row is not None else None
+        if row is None:
+            return None
+        record = _lineage_from_row(row)
+        if key in self._pending_reanswer_floors:
+            record = replace(
+                record,
+                reanswer_floor=self._pending_reanswer_floors[key],
+            )
+        return record
 
     def stage_answer_lineage(self, record: AnswerLineageRecord) -> None:
         self._ensure_open()
@@ -748,6 +767,85 @@ class RewardLedger:
                     "That answer lineage already belongs to another consumption."
                 )
         self._append_operation("answer_consumption", normalized)
+
+    def reanswer_floor_for_lineage(self, lineage_key: str) -> Optional[int]:
+        """Return a committed or staged undo floor for one answer lineage.
+
+        ``None`` means the lineage does not exist; ``0`` means it has no pending
+        reanswer.
+        """
+
+        self._ensure_open()
+        key = _required_text(lineage_key, "lineage_key")
+        if key in self._pending_reanswer_floors:
+            return self._pending_reanswer_floors[key]
+        pending = self._pending_lineages.get(key)
+        if pending is not None:
+            return pending.reanswer_floor
+        row = self._connection.execute(
+            "SELECT reanswer_floor FROM answer_lineage WHERE lineage_key = ?",
+            (key,),
+        ).fetchone()
+        return int(row["reanswer_floor"]) if row is not None else None
+
+    def reanswer_hints(self) -> Dict[str, int]:
+        """Return every durable pending reanswer lineage and its minimum ID."""
+
+        self._ensure_open()
+        rows = self._connection.execute(
+            "SELECT lineage_key, reanswer_floor FROM answer_lineage "
+            "WHERE reanswer_floor > 0"
+        ).fetchall()
+        result = {
+            str(row["lineage_key"]): int(row["reanswer_floor"])
+            for row in rows
+        }
+        for record in self._pending_lineages.values():
+            if record.reanswer_floor > 0:
+                result[record.lineage_key] = record.reanswer_floor
+        for lineage, floor in self._pending_reanswer_floors.items():
+            if floor > 0:
+                result[lineage] = floor
+            else:
+                result.pop(lineage, None)
+        return result
+
+    def stage_reanswer_hint(self, lineage_key: str, minimum_revlog_id: int) -> None:
+        """Stage one durable undo/reanswer floor for an answer lineage."""
+
+        self._ensure_open()
+        lineage = _required_text(lineage_key, "lineage_key")
+        floor = _positive_int(minimum_revlog_id, "minimum_revlog_id")
+        current = self.reanswer_floor_for_lineage(lineage)
+        if current is None:
+            raise ValueError(
+                "lineage_key must reference a committed or staged lineage"
+            )
+        if current == floor:
+            return
+        if current > 0:
+            raise RewardLedgerConflictError(
+                "That answer lineage already has a different reanswer floor."
+            )
+        self._append_operation(
+            "reanswer_floor", _StagedReanswerFloor(lineage, floor)
+        )
+
+    def stage_clear_reanswer_hint(self, lineage_key: str) -> None:
+        """Stage removal of a satisfied undo/reanswer floor."""
+
+        self._ensure_open()
+        lineage = _required_text(lineage_key, "lineage_key")
+        current = self.reanswer_floor_for_lineage(lineage)
+        if current is None:
+            raise ValueError(
+                "lineage_key must reference a committed or staged lineage"
+            )
+        if current == 0:
+            return
+        self._append_operation(
+            "reanswer_floor", _StagedReanswerFloor(lineage, 0)
+        )
 
     def find_outcome(
         self,
@@ -1155,6 +1253,10 @@ class RewardLedger:
             self._pending_consumptions[record.answer_key] = record
             if record.lineage_key:
                 self._pending_consumption_lineages[record.lineage_key] = record
+        elif kind == "reanswer_floor":
+            self._pending_reanswer_floors[record.lineage_key] = (
+                record.minimum_revlog_id
+            )
         elif kind == "find_outcome":
             self._pending_outcomes[(record.answer_key, record.pool_id)] = record
         elif kind == "finalized_day":
@@ -1170,6 +1272,7 @@ class RewardLedger:
         self._pending_aliases.clear()
         self._pending_consumptions.clear()
         self._pending_consumption_lineages.clear()
+        self._pending_reanswer_floors.clear()
         self._pending_outcomes.clear()
         self._pending_finalized_days.clear()
         for _operation_id, kind, record in operations:
@@ -1183,6 +1286,7 @@ class RewardLedger:
         self._pending_aliases.clear()
         self._pending_consumptions.clear()
         self._pending_consumption_lineages.clear()
+        self._pending_reanswer_floors.clear()
         self._pending_outcomes.clear()
         self._pending_finalized_days.clear()
         if increment_generation:
@@ -1192,12 +1296,14 @@ class RewardLedger:
         for record in self._pending_lineages.values():
             self._connection.execute(
                 "INSERT INTO answer_lineage "
-                "(lineage_key, original_day, card_id, serial) VALUES (?, ?, ?, ?)",
+                "(lineage_key, original_day, card_id, serial, reanswer_floor) "
+                "VALUES (?, ?, ?, ?, ?)",
                 (
                     record.lineage_key,
                     record.original_day,
                     record.card_id,
                     record.serial,
+                    record.reanswer_floor,
                 ),
             )
         for record in self._pending_aliases.values():
@@ -1208,8 +1314,8 @@ class RewardLedger:
         for record in self._pending_consumptions.values():
             self._connection.execute(
                 "INSERT INTO answer_consumption "
-                "(answer_key, scheduler_day, occurred_at, lineage_key, first_revlog_id) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "(answer_key, scheduler_day, occurred_at, lineage_key, "
+                "first_revlog_id) VALUES (?, ?, ?, ?, ?)",
                 (
                     record.answer_key,
                     record.scheduler_day,
@@ -1218,6 +1324,16 @@ class RewardLedger:
                     record.first_revlog_id,
                 ),
             )
+        for lineage_key, minimum_revlog_id in self._pending_reanswer_floors.items():
+            cursor = self._connection.execute(
+                "UPDATE answer_lineage SET reanswer_floor = ? "
+                "WHERE lineage_key = ?",
+                (minimum_revlog_id, lineage_key),
+            )
+            if cursor.rowcount != 1:
+                raise sqlite3.IntegrityError(
+                    "reanswer floor lost its answer lineage"
+                )
         for record in self._pending_reward_events.values():
             self._connection.execute(
                 "INSERT INTO reward_event "
@@ -1375,7 +1491,13 @@ def _normalize_lineage(record: AnswerLineageRecord) -> AnswerLineageRecord:
         raise ValueError(
             "lineage_key must match its v1 day, card, and serial fields"
         )
-    return AnswerLineageRecord(lineage_key, original_day, card_id, serial)
+    return AnswerLineageRecord(
+        lineage_key,
+        original_day,
+        card_id,
+        serial,
+        _nonnegative_int(record.reanswer_floor, "reanswer_floor"),
+    )
 
 
 def _normalize_alias(record: RevlogAliasRecord) -> RevlogAliasRecord:
@@ -1465,6 +1587,7 @@ def _lineage_from_row(row: sqlite3.Row) -> AnswerLineageRecord:
         str(row["original_day"]),
         int(row["card_id"]),
         int(row["serial"]),
+        int(row["reanswer_floor"]),
     )
 
 
@@ -1523,6 +1646,53 @@ def _chunks(values: List[int], size: int) -> Iterable[List[int]]:
 def _chunks_text(values: List[str], size: int) -> Iterable[List[str]]:
     for start in range(0, len(values), size):
         yield values[start:start + size]
+
+
+def _verify_backup_database(path: Path) -> None:
+    connection: Optional[sqlite3.Connection] = None
+    try:
+        connection = sqlite3.connect(str(path))
+        integrity_result = tuple(
+            str(row[0])
+            for row in connection.execute("PRAGMA integrity_check").fetchall()
+        )
+        version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+        foreign_key_errors = connection.execute(
+            "PRAGMA foreign_key_check"
+        ).fetchall()
+    except sqlite3.DatabaseError as error:
+        raise RewardLedgerCorruptionError(
+            "The reward-ledger backup did not verify."
+        ) from error
+    finally:
+        if connection is not None:
+            connection.close()
+    if (
+        integrity_result != ("ok",)
+        or version != LEDGER_SCHEMA_VERSION
+        or foreign_key_errors
+    ):
+        raise RewardLedgerCorruptionError(
+            "The reward-ledger backup did not verify."
+        )
+
+
+def _exclusive_verified_copy(source: Path, target: Path) -> None:
+    created_target = False
+    try:
+        with source.open("rb") as reader:
+            with target.open("xb") as writer:
+                created_target = True
+                shutil.copyfileobj(reader, writer, length=1024 * 1024)
+                writer.flush()
+                os.fsync(writer.fileno())
+        _verify_backup_database(target)
+    except BaseException:
+        if created_target:
+            target.unlink(missing_ok=True)
+            for suffix in ("-wal", "-shm"):
+                Path(str(target) + suffix).unlink(missing_ok=True)
+        raise
 
 
 def _quote_identifier(value: str) -> str:

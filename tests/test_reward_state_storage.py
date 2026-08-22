@@ -97,6 +97,9 @@ def test_schema20_reward_migration_preserves_legacy_and_starts_new_find_drought(
 def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     tmp_path,
 ) -> None:
+    lineage = "v1|2026-08-20|42|1"
+    original_revlog_id = 1_776_700_000_001
+    reanswer_floor = original_revlog_id + 50_000
     event_keys = [f"event:{index}" for index in range(MAX_REWARD_RECEIPTS + 25)]
     outcomes = {
         f"standard:answer:{index}": GardenFindOutcome(
@@ -141,6 +144,8 @@ def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
         )],
         applied_reward_event_keys=event_keys,
         processed_answer_keys=list(event_keys),
+        answer_lineage_bindings={str(original_revlog_id): lineage},
+        pending_reanswer_lineages={lineage: reanswer_floor},
         recent_reward_receipts=[
             RewardReceipt(
                 "event:bundle",
@@ -198,11 +203,15 @@ def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     assert storage.reward_applied("event:bundle")
     assert storage.answer_consumed("answer:0")
     assert storage.garden_find_outcome("answer:0", "environment") is not None
+    assert storage.pending_reanswer_lineages() == {lineage: reanswer_floor}
+    assert storage.reanswer_floor_for_lineage(lineage) == reanswer_floor
     snapshot = storage._reward_ledger.load_state_snapshot()
     assert snapshot is not None
     assert not {
         "applied_reward_event_keys",
         "processed_answer_keys",
+        "answer_lineage_bindings",
+        "pending_reanswer_lineages",
         "garden_find_outcomes",
     }.intersection(snapshot.payload)
 
@@ -213,10 +222,25 @@ def test_reward_authorities_round_trip_without_using_bounded_history_for_replay(
     reopened._reward_ledger = None
     reopened._ledger_revision = 0
     reloaded_state = reopened._load_authoritative_state()
+    reopened.state = reloaded_state
     assert reloaded_state.currency_balance == 10
     assert reopened.reward_applied("event:bundle")
     assert reopened.answer_consumed("answer:0")
+    assert reloaded_state.pending_reanswer_lineages == {
+        lineage: reanswer_floor
+    }
+    reopened.clear_reanswer_hint(lineage)
+    reopened.save()
     reopened._reward_ledger.close()
+
+    cleared = object.__new__(GardenStorage)
+    cleared.user_files_dir = tmp_path
+    cleared.database_path = storage.database_path
+    cleared._reward_ledger = None
+    cleared._ledger_revision = 0
+    cleared_state = cleared._load_authoritative_state()
+    assert cleared_state.pending_reanswer_lineages == {}
+    cleared._reward_ledger.close()
 
 
 def test_oversized_sync_receipts_compact_without_losing_atomic_totals() -> None:

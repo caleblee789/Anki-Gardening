@@ -1444,9 +1444,20 @@ class GardenGameEngine:
             stager(normalized, lineage)
         else:
             self.state.answer_lineage_bindings[str(normalized)] = lineage
-        hinted_floor = self.state.pending_reanswer_lineages.get(lineage)
+        floor_resolver = getattr(
+            self.storage, "reanswer_floor_for_lineage", None
+        )
+        hinted_floor = (
+            floor_resolver(lineage)
+            if callable(floor_resolver)
+            else self.state.pending_reanswer_lineages.get(lineage)
+        )
         if hinted_floor is not None and normalized >= int(hinted_floor):
-            self.state.pending_reanswer_lineages.pop(lineage, None)
+            clearer = getattr(self.storage, "clear_reanswer_hint", None)
+            if callable(clearer):
+                clearer(lineage)
+            else:
+                self.state.pending_reanswer_lineages.pop(lineage, None)
 
     def _answer_consumed(self, answer_key: str) -> bool:
         resolver = getattr(self.storage, "answer_consumed", None)
@@ -1500,6 +1511,14 @@ class GardenGameEngine:
                 if callable(bindings_resolver)
                 else dict(self.state.answer_lineage_bindings)
             )
+            pending_resolver = getattr(
+                self.storage, "pending_reanswer_lineages", None
+            )
+            pending_reanswers = (
+                pending_resolver()
+                if callable(pending_resolver)
+                else dict(self.state.pending_reanswer_lineages)
+            )
             current_lineages = {
                 lineage
                 for raw_revlog_id, lineage in bindings.items()
@@ -1512,7 +1531,7 @@ class GardenGameEngine:
                 if raw_revlog_id.isdigit()
                 and int(raw_revlog_id) not in current_revlog_ids
                 and lineage not in current_lineages
-                and lineage not in self.state.pending_reanswer_lineages
+                and lineage not in pending_reanswers
             ]
             if candidates:
                 removed_revlog_id, lineage = max(
@@ -1522,7 +1541,13 @@ class GardenGameEngine:
                     removed_revlog_id + 1,
                     int(self._now_ms() if undo_at_ms is None else undo_at_ms),
                 )
-                self.state.pending_reanswer_lineages[lineage] = floor
+                hint_stager = getattr(
+                    self.storage, "stage_reanswer_hint", None
+                )
+                if callable(hint_stager):
+                    hint_stager(lineage, floor)
+                else:
+                    self.state.pending_reanswer_lineages[lineage] = floor
             has_staged_writes = getattr(
                 self.storage, "reward_ledger_has_staged_writes", None
             )
@@ -2602,7 +2627,7 @@ class GardenGameEngine:
                     environment.item.display_name if environment.item else ""
                 ),
                 description=(
-                    f"Added to {environment.item.environment_kind.title()} and Scenery"
+                    "Added to the Weather and Scenery collection"
                     if environment.item else ""
                 ),
                 tier=(environment.item.tier if environment.item else ""),

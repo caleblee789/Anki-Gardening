@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import sqlite3
 
 import pytest
@@ -48,7 +49,10 @@ def _stage_answer(
     ))
 
 
-def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) -> None:
+def test_atomic_state_commit_round_trips_staged_authorities_and_reads(
+    tmp_path,
+    monkeypatch,
+) -> None:
     database = tmp_path / "reward-ledger.sqlite3"
     ledger = RewardLedger(database)
     _stage_answer(
@@ -77,6 +81,9 @@ def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) 
         "fireflies",
         {"display_name": "Firefly Evening", "amount": 1},
     ))
+    reanswer_lineage = f"v1|{DAY}|41|1"
+    reanswer_floor = 1_787_325_400_100
+    ledger.stage_reanswer_hint(reanswer_lineage, reanswer_floor)
     _stage_answer(
         ledger,
         answer_key="answer-two",
@@ -114,6 +121,8 @@ def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) 
         1_787_325_400_002: f"v1|{DAY}|42|1"
     }
     assert ledger.find_outcome("answer-one", "standard").status == "miss"
+    assert ledger.reanswer_hints() == {reanswer_lineage: reanswer_floor}
+    assert ledger.reanswer_floor_for_lineage(reanswer_lineage) == reanswer_floor
     assert ledger.find_counts(DAY).reward_counts == {"find_coin_sprout": 1}
     assert [item.reward_id for item in ledger.recent_hit_outcomes()] == [
         "find_coin_sprout",
@@ -142,6 +151,12 @@ def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) 
     assert reopened.all_revlog_bindings()[1_787_325_400_002] == (
         f"v1|{DAY}|42|1"
     )
+    assert reopened.reanswer_hints() == {reanswer_lineage: reanswer_floor}
+    hint_checkpoint = reopened.checkpoint()
+    reopened.stage_clear_reanswer_hint(reanswer_lineage)
+    assert reopened.reanswer_hints() == {}
+    reopened.rollback(hint_checkpoint)
+    assert reopened.reanswer_hints() == {reanswer_lineage: reanswer_floor}
     assert reopened.consumed_answer_keys([
         "answer-one", "answer-two", "not-consumed"
     ]) == {"answer-one", "answer-two"}
@@ -156,6 +171,12 @@ def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) 
         "fireflies",
     ]
     reopened.integrity_check()
+    monkeypatch.setattr(
+        "ankigarden.reward_ledger.os.link",
+        lambda _source, _target: (_ for _ in ()).throw(
+            OSError(errno.EOPNOTSUPP, "hard links unavailable")
+        ),
+    )
     backup = reopened.backup_to(tmp_path / "backup.sqlite3")
     reopened.close()
 
@@ -165,6 +186,7 @@ def test_atomic_state_commit_round_trips_staged_authorities_and_reads(tmp_path) 
         "version": 22,
     }
     assert backed_up.answer_consumed("answer-two")
+    assert backed_up.reanswer_hints() == {reanswer_lineage: reanswer_floor}
     backed_up.close()
 
 
@@ -188,6 +210,9 @@ def test_checkpoint_rollback_discards_only_later_staged_rows(tmp_path) -> None:
         f"v1|{DAY}|50|1", DAY, 50, 1
     ))
     retained = ledger.checkpoint()
+    ledger.stage_reanswer_hint(
+        f"v1|{DAY}|50|1", 1_787_325_500_100
+    )
     ledger.stage_revlog_alias(RevlogAliasRecord(
         1_787_325_500_001, f"v1|{DAY}|50|1"
     ))
@@ -203,6 +228,7 @@ def test_checkpoint_rollback_discards_only_later_staged_rows(tmp_path) -> None:
     ledger.rollback(retained)
 
     assert ledger.lineage_record(f"v1|{DAY}|50|1") is not None
+    assert ledger.reanswer_hints() == {}
     assert ledger.binding_for_revlog(1_787_325_500_001) is None
     assert not ledger.answer_consumed("rolled-back-answer")
     assert not ledger.reward_applied("rolled-back-reward")
@@ -210,7 +236,7 @@ def test_checkpoint_rollback_discards_only_later_staged_rows(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="unbounded ledger authorities"):
         ledger.commit_state(
-            {"version": 22, "processed_answer_keys": []},
+            {"version": 22, "pending_reanswer_lineages": {}},
             schema_version=22,
             expected_revision=0,
         )

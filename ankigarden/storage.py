@@ -1008,6 +1008,7 @@ class GardenStorage:
                 state = _materialize_unlocked_species(
                     GardenState.from_dict(dict(snapshot.payload))
                 )
+                self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
             except Exception as error:
@@ -1059,6 +1060,7 @@ class GardenStorage:
         state.applied_reward_event_keys = []
         state.processed_answer_keys = []
         state.answer_lineage_bindings = {}
+        state.pending_reanswer_lineages = {}
         state.finalized_day_fingerprints = {}
         state.garden_find_daily_counts = {}
         state.garden_find_reward_daily_counts = {}
@@ -1100,6 +1102,7 @@ class GardenStorage:
             self._reward_ledger = RewardLedger(self.database_path)
             self._ledger_revision = committed.revision
             self._clear_unbounded_state_authorities(state)
+            self._refresh_reanswer_hint_cache(state)
             self._refresh_recent_find_cache(state)
         except Exception:
             if ledger is not None:
@@ -1116,6 +1119,8 @@ class GardenStorage:
         state: GardenState,
     ) -> None:
         """One-way import of exact schema-21 replay authorities."""
+
+        from .garden_finds import consumption_id, stable_answer_event_identity
 
         for event_key in dict.fromkeys(state.applied_reward_event_keys):
             ledger.stage_reward_event(RewardEventRecord(str(event_key)))
@@ -1145,8 +1150,6 @@ class GardenStorage:
         processed_keys.update(outcomes_by_answer)
         lineage_for_consumption: dict[str, tuple[str, int]] = {}
         if processed_keys:
-            from .garden_finds import consumption_id, stable_answer_event_identity
-
             for lineage in parsed_lineages:
                 answer_key = consumption_id(stable_answer_event_identity(
                     1, lineage_id=lineage
@@ -1178,6 +1181,9 @@ class GardenStorage:
                 lineage_key=lineage,
                 first_revlog_id=first_revlog_id,
             ))
+        for lineage, minimum_revlog_id in state.pending_reanswer_lineages.items():
+            if ledger.lineage_record(lineage) is not None:
+                ledger.stage_reanswer_hint(lineage, int(minimum_revlog_id))
         for answer_key, outcomes in outcomes_by_answer.items():
             for outcome in outcomes:
                 ledger.stage_find_outcome(FindOutcomeRecord(
@@ -1235,6 +1241,13 @@ class GardenStorage:
             f"{outcome.pool_id}:{outcome.answer_key}": outcome
             for outcome in outcomes
         }
+
+    def _refresh_reanswer_hint_cache(self, state: GardenState | None = None) -> None:
+        target = state if state is not None else getattr(self, "state", None)
+        ledger = self._reward_ledger
+        if target is None or ledger is None:
+            return
+        target.pending_reanswer_lineages = ledger.reanswer_hints()
 
     def reward_ledger_checkpoint(self) -> LedgerCheckpoint | None:
         return self._reward_ledger.checkpoint() if self._reward_ledger else None
@@ -1311,6 +1324,33 @@ class GardenStorage:
             str(revlog_id): lineage
             for revlog_id, lineage in self._reward_ledger.all_revlog_bindings().items()
         }
+
+    def pending_reanswer_lineages(self) -> dict[str, int]:
+        if self._reward_ledger is None:
+            state = getattr(self, "state", None)
+            return dict(
+                getattr(state, "pending_reanswer_lineages", {}) or {}
+            )
+        return self._reward_ledger.reanswer_hints()
+
+    def reanswer_floor_for_lineage(self, lineage: str) -> int | None:
+        if self._reward_ledger is None:
+            return self.state.pending_reanswer_lineages.get(str(lineage))
+        floor = self._reward_ledger.reanswer_floor_for_lineage(str(lineage))
+        return floor if floor and floor > 0 else None
+
+    def stage_reanswer_hint(self, lineage: str, minimum_revlog_id: int) -> None:
+        key = str(lineage)
+        floor = max(1, int(minimum_revlog_id))
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_reanswer_hint(key, floor)
+        self.state.pending_reanswer_lineages[key] = floor
+
+    def clear_reanswer_hint(self, lineage: str) -> None:
+        key = str(lineage)
+        if self._reward_ledger is not None:
+            self._reward_ledger.stage_clear_reanswer_hint(key)
+        self.state.pending_reanswer_lineages.pop(key, None)
 
     def stage_answer_lineage_alias(self, revlog_id: int, lineage: str) -> None:
         if self._reward_ledger is None:
@@ -1546,13 +1586,16 @@ class GardenStorage:
             ledger = RewardLedger(candidate)
             try:
                 snapshot = ledger.load_state_snapshot()
+                reanswer_hints = ledger.reanswer_hints()
             finally:
                 ledger.close()
             if snapshot is None or snapshot.schema_version != STATE_VERSION:
                 raise StatePreservationError(
                     "That development backup uses an unsupported schema."
                 )
-            return GardenState.from_dict(dict(snapshot.payload))
+            state = GardenState.from_dict(dict(snapshot.payload))
+            state.pending_reanswer_lineages = reanswer_hints
+            return state
         raw = json.loads(candidate.read_text("utf-8"))
         if not isinstance(raw, dict) or int(raw.get("version", -1)) != STATE_VERSION:
             raise StatePreservationError("That development backup uses an unsupported schema.")
@@ -1602,6 +1645,7 @@ class GardenStorage:
                 )
             self._ledger_revision = snapshot.revision
             restored = GardenState.from_dict(dict(snapshot.payload))
+            self._refresh_reanswer_hint_cache(restored)
             self._refresh_recent_find_cache(restored)
             self.state = restored
             return restored
@@ -1974,11 +2018,7 @@ class GardenStorage:
                 for entry in normalized
             ],
             existing_bindings,
-            getattr(
-                getattr(self, "state", None),
-                "pending_reanswer_lineages",
-                {},
-            ),
+            self.pending_reanswer_lineages(),
         )
         normalized = [
             replace(

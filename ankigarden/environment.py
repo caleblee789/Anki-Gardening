@@ -134,7 +134,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "+5 Growth on your first 5 card answers each Anki day.",
-        "Rare review drop: 1 in 5,000.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="rare_environment",
     ),
     "rainbow_sunshower": CatalogItem(
@@ -144,7 +144,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "Very Rare",
         "drop",
         "+5 Growth when you finish all due cards that day.",
-        "Very Rare review drop: 1 in 20,000.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="very_rare_environment",
     ),
 }
@@ -207,7 +207,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "+1 Growth on every card answer.",
-        "Rare review drop: 1 in 5,000.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="rare_environment",
     ),
     "halloween": CatalogItem(
@@ -217,7 +217,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Very Rare",
         "drop",
         "First daily answer: Small Charge 70%, Standard Charge 25%, or Booster Potion 5%.",
-        "Very Rare review drop: 1 in 20,000.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="very_rare_environment",
     ),
     "full_moon": CatalogItem(
@@ -227,7 +227,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Ultra Rare",
         "drop",
         "First daily answer gives 1 Booster Potion; Potions last 25% longer.",
-        "Ultra Rare review drop: base 1 in 100,000; pity after 75,000 misses.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="ultra_environment",
     ),
     "eclipse": CatalogItem(
@@ -237,7 +237,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Ultra Rare",
         "drop",
         "+10 Scenery Growth per card answer; doubles base Growth only.",
-        "Ultra Rare review drop: base 1 in 100,000; pity after 75,000 misses.",
+        "Discover through an occasional Garden Find while reviewing.",
         drop_tier="ultra_environment",
     ),
 }

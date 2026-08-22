@@ -1406,7 +1406,8 @@ def test_reanswer_alias_is_acknowledged_without_regranting_consumed_lineage():
     engine, storage = make_engine()
     lineage = f"v1|{storage.day}|42|1"
     first_id = storage.now_ms + 1_000
-    replacement_id = storage.now_ms + 2_000
+    older_synced_id = storage.now_ms + 2_000
+    replacement_id = storage.now_ms + 3_000
 
     first = engine.register_review({
         "queue": 2,
@@ -1416,6 +1417,24 @@ def test_reanswer_alias_is_acknowledged_without_regranting_consumed_lineage():
         "answered_at_ms": first_id,
         "answer_identity": lineage,
     })
+    storage.state.pending_reanswer_lineages[lineage] = replacement_id
+    storage.reanswer_floor_for_lineage = (
+        lambda key: storage.state.pending_reanswer_lineages.get(key)
+    )
+    storage.clear_reanswer_hint = (
+        lambda key: storage.state.pending_reanswer_lineages.pop(key, None)
+    )
+    older_synced = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "card_id": 42,
+        "revlog_id": older_synced_id,
+        "answered_at_ms": older_synced_id,
+        "answer_identity": lineage,
+    })
+    assert storage.state.pending_reanswer_lineages == {
+        lineage: replacement_id
+    }
     replacement = engine.register_review({
         "queue": 2,
         "ease": 3,
@@ -1426,10 +1445,16 @@ def test_reanswer_alias_is_acknowledged_without_regranting_consumed_lineage():
     })
 
     assert first.total_growth == 10
+    assert older_synced.total_growth == 0
     assert replacement.total_growth == 0
     assert storage.state.daily_stats.reviewed == 1
-    assert storage.state.processed_revlog_ids == [first_id, replacement_id]
+    assert storage.state.processed_revlog_ids == [
+        first_id,
+        older_synced_id,
+        replacement_id,
+    ]
     assert storage.state.answer_lineage_bindings[str(replacement_id)] == lineage
+    assert lineage not in storage.state.pending_reanswer_lineages
 
 
 def test_species_bed_and_collection_economy_preserves_plant_progress():
