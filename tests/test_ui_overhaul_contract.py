@@ -362,7 +362,7 @@ def test_garden_chrome_uses_one_unified_progress_dialog() -> None:
     assert '("streak", "Anki Streak")' in dashboard
     assert '("currency", "Garden Coins")' in dashboard
     assert "self.progress_dialog = GardenProgressDialog(" in dashboard
-    assert "DialogSizeClass.CATALOG" in progress_source
+    assert "DialogSizeClass.PROGRESS" in progress_source
     assert "self.apply_size_policy(" in progress_source
     assert "self.navigation = GardenSideNavigation()" in dashboard
     assert "self.set_body_widget(self.navigation)" in dashboard
@@ -1351,7 +1351,7 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "discovery reward" not in collection_option
     assert 'QPushButton("Unlock bed")' in spaces
     assert "class FertilizerReplacementDialog(PurchaseConfirmationDialog)" in replacement
-    assert "DialogSizeClass.COMPARISON" in confirmation
+    assert "DialogSizeClass.TRANSACTION" in confirmation
     assert "self.register_scroll_region(self.content_scroll)" in confirmation
     assert "self.register_pinned_footer(self.action_footer)" in confirmation
     assert "presentation = purchase_presentation(quote)" in confirmation

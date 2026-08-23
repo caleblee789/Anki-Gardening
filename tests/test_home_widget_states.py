@@ -1004,6 +1004,15 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
     assert preview.scene_opacity == expected_opacity
     assert preview.motion_enabled is False
     assert preview.summary.count("Young") <= 1
+    assert tuple(metric.metric_id for metric in preview.metrics) == ("stage", "growth")
+    assert preview.action_label == "Open Garden"
+    assert preview.action_command == "home-open"
+    assert preview.status_tone == {
+        "loading": "info",
+        "stale": "info",
+        "error": "error",
+        "disabled": "neutral",
+    }.get(preview.phase, "neutral")
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:

@@ -21,6 +21,7 @@ MIN_BODY_TEXT_SIZE = 14
 class TextRole(str, Enum):
     """Product typography roles shared by native Garden surfaces."""
 
+    BRAND_EYEBROW = "brand-eyebrow"
     DISPLAY_TITLE = "display-title"
     SCREEN_TITLE = "screen-title"
     SECTION_HEADING = "section-heading"
@@ -59,8 +60,9 @@ class TypographyToken:
 # action copy have intentionally larger defaults so platform font substitution
 # does not force them below a practical reading size.
 TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
+    TextRole.BRAND_EYEBROW: TypographyToken(12, 17, 600, 0.8),
     TextRole.DISPLAY_TITLE: TypographyToken(32, 40, 800, -0.2),
-    TextRole.SCREEN_TITLE: TypographyToken(26, 34, 800, -0.1),
+    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 700, -0.1),
     TextRole.SECTION_HEADING: TypographyToken(20, 28, 700),
     TextRole.CARD_TITLE: TypographyToken(16, 23, 700),
     TextRole.BODY: TypographyToken(14, 21, 400),
@@ -117,13 +119,20 @@ BUTTON_VARIANT_DESTRUCTIVE = ControlVariant.DESTRUCTIVE.value
 # new work uses the clearer quiet role.
 BUTTON_VARIANT_TERTIARY = "tertiary"
 
-# Forty-four pixels is the shared effective target, including icon-only, tab,
-# disclosure, filter, and plant actions. Compact visual controls may opt into
-# 40 px only when their parent row preserves the 44 px hit area.
+# Visual chrome follows the compact release geometry. Forty-four pixels remains
+# the effective target, including icon-only, tab, disclosure, filter, and plant
+# actions; a smaller painted control must live inside a 44 px interactive row.
 MIN_HIT_TARGET = 44
 CONTROL_MIN_HIT_TARGET = MIN_HIT_TARGET
 BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
-COMPACT_BUTTON_HEIGHT = 40
+BUTTON_VISUAL_HEIGHT = 36
+PRIMARY_BUTTON_VISUAL_HEIGHT = 40
+COMPACT_BUTTON_HEIGHT = BUTTON_VISUAL_HEIGHT
+ICON_BUTTON_VISUAL_SIZE = 32
+INPUT_VISUAL_HEIGHT = 40
+TAB_VISUAL_HEIGHT = 40
+TOGGLE_VISUAL_WIDTH = 36
+TOGGLE_VISUAL_HEIGHT = 20
 PLANT_ACTION_MIN_HEIGHT = MIN_HIT_TARGET
 ICON_BUTTON_SIZE = MIN_HIT_TARGET
 SCENE_HELP_BUTTON_SIZE = MIN_HIT_TARGET
@@ -134,59 +143,68 @@ class ThemeContext(str, Enum):
     NURSERY = "nursery"
 
 
+SEMANTIC_COLORS = {
+    "bg": "#071B14",
+    "surface_1": "#0E2A20",
+    "surface_2": "#14372A",
+    "surface_3": "#1A4434",
+    "text_primary": "#F2F5EC",
+    "text_secondary": "#C7D2C9",
+    "text_muted": "#95A99C",
+    "primary": "#62D49A",
+    "primary_hover": "#79E2AA",
+    "primary_pressed": "#48B77F",
+    "gold": "#E2B85F",
+    "danger": "#D96570",
+    "warning": "#D2A54F",
+    "info": "#6BA8CC",
+    "shop_surface_1": "#2A1E18",
+    "shop_surface_2": "#3A291F",
+    "shop_surface_3": "#493328",
+}
+
+
 GARDEN_THEME = {
-    "garden_background": "#071A15",
-    "dialog_surface": "#0C261F",
-    "raised_surface": "#123228",
-    "selected_surface": "#173B30",
+    "garden_background": SEMANTIC_COLORS["bg"],
+    "dialog_surface": SEMANTIC_COLORS["surface_1"],
+    "raised_surface": SEMANTIC_COLORS["surface_2"],
+    "selected_surface": SEMANTIC_COLORS["surface_3"],
     "subtle_border": "rgba(128, 178, 155, 0.22)",
     "strong_border": "#4F806E",
-    "text_primary": "#F4F7F5",
-    "text_secondary": "#CBD6D0",
-    "text_muted": "#ACBBB3",
-    "action_accent": "#5CC58B",
-    "action_hover": "#71D39C",
-    "action_pressed": "#49AA75",
+    "text_primary": SEMANTIC_COLORS["text_primary"],
+    "text_secondary": SEMANTIC_COLORS["text_secondary"],
+    "text_muted": SEMANTIC_COLORS["text_muted"],
+    "action_accent": SEMANTIC_COLORS["primary"],
+    "action_hover": SEMANTIC_COLORS["primary_hover"],
+    "action_pressed": SEMANTIC_COLORS["primary_pressed"],
     "action_text": "#062017",
-    "action_border": "#5CC58B",
-    "secondary_action": "#123228",
-    "secondary_hover": "#173B30",
-    "secondary_pressed": "#0C261F",
+    "action_border": SEMANTIC_COLORS["primary"],
+    "secondary_action": SEMANTIC_COLORS["surface_2"],
+    "secondary_hover": SEMANTIC_COLORS["surface_3"],
+    "secondary_pressed": SEMANTIC_COLORS["surface_1"],
     "secondary_border": "#4F806E",
     "disabled_surface": "#173029",
     "disabled_border": "#3F5C50",
     "disabled_text": "#A6B6AE",
-    "growth_accent": "#5CC58B",
-    "coin_accent": "#E7C96A",
-    "success": "#82E2AC",
-    "warning": "#E7C96A",
-    "error": "#E27B78",
-    "focus_ring": "#82E2AC",
+    "growth_accent": SEMANTIC_COLORS["primary"],
+    "coin_accent": SEMANTIC_COLORS["gold"],
+    "success": SEMANTIC_COLORS["primary"],
+    "warning": SEMANTIC_COLORS["warning"],
+    "error": SEMANTIC_COLORS["danger"],
+    "danger": SEMANTIC_COLORS["danger"],
+    "info": SEMANTIC_COLORS["info"],
+    "focus_ring": SEMANTIC_COLORS["primary_hover"],
+    "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
+    "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
+    "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
 }
 
-# Nursery keeps its established warm contextual surface while sharing type,
-# spacing, hit targets, semantics, and interaction conventions. These tokens
-# are opt-in; they do not override the existing Nursery stylesheet globally.
+# Brown identifies Nursery catalogue content; the shell and controls remain on
+# the shared green product palette.
 NURSERY_THEME_OVERRIDES = {
-    "garden_background": "#241813",
-    "dialog_surface": "#241813",
-    "raised_surface": "#34231C",
-    "selected_surface": "#4D3528",
-    "subtle_border": "#604333",
-    "strong_border": "#71513C",
-    "text_primary": "#FFF3DA",
-    "text_secondary": "#D6C4AC",
-    "text_muted": "#BCA991",
-    "action_accent": "#D5AD70",
-    "action_hover": "#E0BC82",
-    "action_pressed": "#B88A52",
-    "action_text": "#2B1B13",
-    "action_border": "#D5AD70",
-    "secondary_action": "#34231C",
-    "secondary_hover": "#46332A",
-    "secondary_pressed": "#2F211B",
-    "secondary_border": "#71513C",
-    "focus_ring": "#F1C979",
+    "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
+    "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
+    "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
 }
 NURSERY_THEME = {**GARDEN_THEME, **NURSERY_THEME_OVERRIDES}
 
@@ -645,10 +663,9 @@ def button_stylesheet(
     """Return the complete text-button contract, including safe defaults."""
 
     t = theme_palette(context)
-    nursery = _enum_value(context).lower() == ThemeContext.NURSERY.value
-    hover_border = "#846044" if nursery else "#5b836f"
-    pressed_border = "#9B7650" if nursery else "#6d9581"
-    primary_pressed_border = "#F1C979" if nursery else "#86bc91"
+    hover_border = "#5b836f"
+    pressed_border = "#6d9581"
+    primary_pressed_border = "#86bc91"
     return f"""
         QPushButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
@@ -706,9 +723,9 @@ def button_stylesheet(
         QPushButton[variant='destructive']:hover {{ background: #7b3434; }}
         QPushButton[variant='destructive']:pressed {{ background: #562424; }}
         QPushButton:checked, QPushButton[selected='true'] {{
-            background: #344f35;
-            border-color: #9a8751;
-            color: #f5e5ba;
+            background: {t['selected_surface']};
+            border-color: {t['focus_ring']};
+            color: {t['text_primary']};
             font-weight: 700;
         }}
         QPushButton:disabled {{
@@ -729,9 +746,8 @@ def tool_button_stylesheet(
     """Return the matching treatment for visible and icon tool buttons."""
 
     t = theme_palette(context)
-    nursery = _enum_value(context).lower() == ThemeContext.NURSERY.value
-    hover_border = "#846044" if nursery else "#5b836f"
-    pressed_border = "#9B7650" if nursery else "#6d9581"
+    hover_border = "#5b836f"
+    pressed_border = "#6d9581"
     return f"""
         QToolButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
@@ -816,6 +832,7 @@ def typography_stylesheet(
 
     t = theme_palette(context)
     colors = {
+        TextRole.BRAND_EYEBROW: t["text_muted"],
         TextRole.DISPLAY_TITLE: t["text_primary"],
         TextRole.SCREEN_TITLE: t["text_primary"],
         TextRole.SECTION_HEADING: t["text_primary"],
@@ -980,6 +997,10 @@ def semantic_component_stylesheet(
         QFrame[gardenRole='toast'][gardenTone='warning'] {{
             border-left-color: {t['warning']};
         }}
+        QFrame[gardenRole='banner'][gardenTone='info'],
+        QFrame[gardenRole='toast'][gardenTone='info'] {{
+            border-left-color: {t['info']};
+        }}
         QFrame[gardenRole='banner'][gardenTone='error'],
         QFrame[gardenRole='toast'][gardenTone='error'] {{
             border-left-color: {t['error']};
@@ -1014,9 +1035,32 @@ def foundation_stylesheet(
 
     return "\n".join(
         (
+            "QWidget { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }",
             button_stylesheet(context),
             tool_button_stylesheet(context),
             typography_stylesheet(context),
             semantic_component_stylesheet(context),
         )
     )
+
+
+def nursery_catalog_stylesheet() -> str:
+    """Warm content treatment that never recolors Nursery shell chrome."""
+
+    t = theme_palette(ThemeContext.NURSERY)
+    return f"""
+        QFrame[nurseryCatalog='true'], QWidget[nurseryCatalog='true'] {{
+            background: {t['shop_surface_1']};
+            border: 0;
+        }}
+        QFrame[nurseryCatalogCard='true'], QPushButton[nurseryCatalogCard='true'] {{
+            background: {t['shop_surface_2']};
+            border: 1px solid rgba(226, 184, 95, 0.28);
+            border-radius: 10px;
+        }}
+        QFrame[nurseryCatalogCard='true'][selected='true'],
+        QPushButton[nurseryCatalogCard='true']:checked {{
+            background: {t['shop_surface_3']};
+            border: 2px solid {t['focus_ring']};
+        }}
+    """

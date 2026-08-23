@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 from weakref import WeakMethod
 
+from .formatters import format_growth, format_stage
 from .plant_display import growth_display
 
 
@@ -218,6 +219,15 @@ PREVIEW_PHASES = frozenset({
 
 
 @dataclass(frozen=True)
+class GardenPreviewMetric:
+    """One calculation-free metric shared by compact preview renderers."""
+
+    metric_id: str
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
 class GardenPreviewSnapshot:
     """Renderer-neutral scene and copy shared by every compact preview."""
 
@@ -233,6 +243,13 @@ class GardenPreviewSnapshot:
     selected_scenery: str
     scene_items: tuple[dict[str, Any], ...]
     unlocked_slots: int
+    growth_current: int = 0
+    growth_goal: int = 0
+    growth_text: str = ""
+    metrics: tuple[GardenPreviewMetric, ...] = ()
+    action_label: str = "Open Garden"
+    action_command: str = "home-open"
+    status_tone: str = "neutral"
     scene_opacity: float = 1.0
     motion_enabled: bool = True
     status_text: str = ""
@@ -346,6 +363,31 @@ def garden_preview_from_values(
         status_text = status_text or "Updating garden preview…"
     elif normalized_phase == "disabled":
         status_text = status_text or "Home previews are off."
+    growth_current = max(0, int(active_stage_points or 0))
+    growth_goal = max(0, int(active_stage_goal or 0))
+    growth_text = (
+        format_growth(growth_current, growth_goal)
+        if growth_goal > 0 and not active_fully_grown
+        else format_growth(max(0, int(active_growth_points or 0)))
+        if active_name
+        else ""
+    )
+    metrics = tuple(
+        metric
+        for metric in (
+            GardenPreviewMetric("stage", "Stage", format_stage(stage))
+            if stage else None,
+            GardenPreviewMetric("growth", "Growth", growth_text)
+            if growth_text else None,
+        )
+        if metric is not None
+    )
+    status_tone = {
+        "loading": "info",
+        "stale": "info",
+        "error": "error",
+        "disabled": "neutral",
+    }.get(normalized_phase, "neutral")
     return GardenPreviewSnapshot(
         consumer=str(consumer),
         phase=normalized_phase,
@@ -361,6 +403,11 @@ def garden_preview_from_values(
         selected_scenery=str(selected_scenery or "verdant_twilight"),
         scene_items=tuple(scene_items),
         unlocked_slots=max(0, min(6, int(unlocked_slots or 0))),
+        growth_current=growth_current,
+        growth_goal=growth_goal,
+        growth_text=growth_text,
+        metrics=metrics,
+        status_tone=status_tone,
         scene_opacity=(
             0.46 if normalized_phase == "disabled" else
             0.72 if normalized_phase == "stale" else
@@ -391,6 +438,12 @@ def preview_with_phase(
     return replace(
         snapshot,
         phase=normalized_phase,
+        status_tone={
+            "loading": "info",
+            "stale": "info",
+            "error": "error",
+            "disabled": "neutral",
+        }.get(normalized_phase, "neutral"),
         scene_opacity=(
             0.46 if normalized_phase == "disabled" else
             0.72 if normalized_phase == "stale" else

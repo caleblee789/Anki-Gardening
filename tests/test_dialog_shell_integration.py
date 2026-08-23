@@ -165,16 +165,16 @@ def test_capture_gate_rejects_nested_scroll_and_footer_clearance_failures() -> N
 def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -> None:
     source = DASHBOARD.read_text("utf-8")
     expected = {
-        "PurchaseConfirmationDialog": "DialogSizeClass.COMPARISON",
+        "PurchaseConfirmationDialog": "DialogSizeClass.TRANSACTION",
         "PlantStoryDialog": "DialogSizeClass.STANDARD_TEXT",
-        "StarterConfirmationDialog": "DialogSizeClass.COMPACT_CONFIRMATION",
-        "NurseryDialog": "DialogSizeClass.CATALOG",
-        "GardenProgressDialog": "DialogSizeClass.CATALOG",
-            "CollectibleDetailDialog": "DialogSizeClass.PREVIEW",
+        "StarterConfirmationDialog": "DialogSizeClass.COMPACT_STATUS",
+        "NurseryDialog": "DialogSizeClass.NURSERY",
+        "GardenProgressDialog": "DialogSizeClass.PROGRESS",
+            "CollectibleDetailDialog": "DialogSizeClass.LOADOUT",
     }
     for class_name, size_class in expected.items():
         assert size_class in _class_source(DASHBOARD, class_name)
-    assert "self.setMaximumSize(policy.max_width, policy.max_height)" in source
+    assert "min(policy.max_width, screen_max_width)" in source
     starter = _class_source(DASHBOARD, "StarterConfirmationDialog")
     assert 'self.setProperty("actionMode", actions.mode)' in starter
     assert 'self.setProperty("summaryMode", summary.mode)' in starter
@@ -215,9 +215,9 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
 
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:
     constructors = (
-        ("GardenSettingsDialog", "DialogSizeClass.CATALOG"),
+        ("GardenSettingsDialog", "DialogSizeClass.SETTINGS"),
         ("GardenDetailsDialog", "DialogSizeClass.STANDARD_TEXT"),
-        ("GardenProgressDialog", "DialogSizeClass.CATALOG"),
+        ("GardenProgressDialog", "DialogSizeClass.PROGRESS"),
     )
     for class_name, size_class in constructors:
         constructor = _method_source(DASHBOARD, class_name, "__init__")

@@ -15,8 +15,20 @@ from enum import Enum
 class DialogSizeClass(str, Enum):
     """Semantic size policies rather than screenshot-specific dimensions."""
 
-    COMPACT_CONFIRMATION = "compact-confirmation"
-    COMPARISON = "comparison"
+    COMPACT_STATUS = "compact-status"
+    TRANSACTION = "transaction"
+    FERTILIZER = "fertilizer"
+    SETTINGS = "settings"
+    NURSERY = "nursery"
+    PROGRESS = "progress"
+    LOADOUT = "loadout"
+    GARDEN_WORKSPACE = "garden-workspace"
+
+    # Compatibility families remain available while feature call sites move
+    # to the release-specific policies above.  Aliases intentionally share a
+    # single policy rather than retaining duplicate geometry authorities.
+    COMPACT_CONFIRMATION = "compact-status"
+    COMPARISON = "transaction"
     STANDARD_TEXT = "standard-text"
     CATALOG = "catalog"
     PREVIEW = "preview"
@@ -195,39 +207,119 @@ class DialogSizePolicy:
     width_ratio: float
     height_ratio: float
     grows_with_screen: bool = True
+    content_fit: bool = False
+    screen_margin: int = 24
+    preserve_transition_height: bool = False
 
 
 DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
-    DialogSizeClass.COMPACT_CONFIRMATION: DialogSizePolicy(
+    DialogSizeClass.COMPACT_STATUS: DialogSizePolicy(
+        520,
+        260,
+        560,
+        320,
+        600,
+        380,
+        1.0,
+        1.0,
+        False,
+        True,
+    ),
+    DialogSizeClass.TRANSACTION: DialogSizePolicy(
+        640,
+        380,
+        680,
+        460,
+        700,
+        520,
+        1.0,
+        1.0,
+        False,
+        True,
+        24,
+        True,
+    ),
+    DialogSizeClass.FERTILIZER: DialogSizePolicy(
+        720,
         360,
-        280,
-        480,
-        300,
+        760,
         520,
-        520,
-        0.82,
-        0.78,
+        800,
+        620,
+        1.0,
+        1.0,
+        False,
+        True,
+    ),
+    DialogSizeClass.SETTINGS: DialogSizePolicy(
+        960,
+        620,
+        1020,
+        690,
+        1040,
+        720,
+        1.0,
+        1.0,
         False,
     ),
-    DialogSizeClass.COMPARISON: DialogSizePolicy(
-        420,
-        400,
+    DialogSizeClass.NURSERY: DialogSizePolicy(
+        980,
+        640,
+        1100,
         720,
-        560,
-        820,
-        660,
-        0.88,
-        0.86,
+        1120,
+        740,
+        1.0,
+        1.0,
+        False,
     ),
+    DialogSizeClass.PROGRESS: DialogSizePolicy(
+        1000,
+        700,
+        1120,
+        800,
+        1140,
+        820,
+        1.0,
+        1.0,
+        False,
+    ),
+    DialogSizeClass.LOADOUT: DialogSizePolicy(
+        1040,
+        700,
+        1160,
+        810,
+        1180,
+        840,
+        1.0,
+        1.0,
+        False,
+    ),
+    DialogSizeClass.GARDEN_WORKSPACE: DialogSizePolicy(
+        900,
+        640,
+        1240,
+        840,
+        1600,
+        1100,
+        1.0,
+        1.0,
+        True,
+    ),
+    # Legacy generic policies remain for secondary dialogs that are outside
+    # the named release families. They are deliberately not used by Settings,
+    # Nursery, Progress, loadout, fertilizer, or transaction surfaces.
     DialogSizeClass.STANDARD_TEXT: DialogSizePolicy(
         480,
-        400,
+        320,
         760,
-        620,
+        560,
         960,
-        820,
-        0.86,
-        0.88,
+        760,
+        1.0,
+        1.0,
+        False,
+        True,
     ),
     DialogSizeClass.CATALOG: DialogSizePolicy(
         640,
@@ -236,8 +328,9 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         700,
         1200,
         900,
-        0.92,
-        0.90,
+        1.0,
+        1.0,
+        False,
     ),
     DialogSizeClass.PREVIEW: DialogSizePolicy(
         680,
@@ -246,8 +339,9 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         760,
         1280,
         960,
-        0.94,
-        0.92,
+        1.0,
+        1.0,
+        False,
     ),
 }
 
@@ -270,8 +364,10 @@ def resolved_dialog_size(
     policy = DIALOG_SIZE_POLICIES[size_class]
     available_width = max(1, int(available_width))
     available_height = max(1, int(available_height))
-    screen_width = max(1, int(available_width * policy.width_ratio))
-    screen_height = max(1, int(available_height * policy.height_ratio))
+    usable_width = max(1, available_width - (policy.screen_margin * 2))
+    usable_height = max(1, available_height - (policy.screen_margin * 2))
+    screen_width = max(1, int(usable_width * policy.width_ratio))
+    screen_height = max(1, int(usable_height * policy.height_ratio))
     wanted_width = max(
         policy.min_width,
         int(preferred_width or policy.preferred_width),
@@ -284,8 +380,8 @@ def resolved_dialog_size(
         wanted_width = max(wanted_width, screen_width)
         wanted_height = max(wanted_height, screen_height)
     return (
-        min(available_width, screen_width, policy.max_width, wanted_width),
-        min(available_height, screen_height, policy.max_height, wanted_height),
+        min(usable_width, screen_width, policy.max_width, wanted_width),
+        min(usable_height, screen_height, policy.max_height, wanted_height),
     )
 
 

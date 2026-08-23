@@ -121,6 +121,7 @@ def test_text_roles_define_legible_type_and_line_metrics() -> None:
     tokens = scope["TEXT_ROLE_TOKENS"]
 
     assert {role.value for role in text_role} == {
+        "brand-eyebrow",
         "display-title",
         "screen-title",
         "section-heading",
@@ -310,7 +311,11 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
     assert scope["GARDEN_THEME"]["raised_surface"] in garden
     assert scope["NURSERY_THEME"]["raised_surface"] in nursery
     assert scope["NURSERY_THEME"]["focus_ring"] in nursery
-    assert scope["NURSERY_THEME"]["raised_surface"] not in garden
+    assert scope["NURSERY_THEME"]["raised_surface"] in garden
+    catalog = scope["nursery_catalog_stylesheet"]()
+    assert scope["NURSERY_THEME"]["shop_surface_1"] in catalog
+    assert scope["NURSERY_THEME"]["shop_surface_2"] in catalog
+    assert scope["NURSERY_THEME"]["shop_surface_3"] in catalog
     nursery_foundation = scope["foundation_stylesheet"]("nursery")
     assert scope["NURSERY_THEME"]["action_accent"] in nursery_foundation
     assert scope["NURSERY_THEME"]["secondary_action"] in nursery_foundation

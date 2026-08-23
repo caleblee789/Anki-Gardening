@@ -30,7 +30,7 @@ def test_compact_confirmation_does_not_expand_with_a_large_screen() -> None:
         DialogSizeClass.COMPACT_CONFIRMATION,
         2560,
         1440,
-    ) == (480, 300)
+    ) == (560, 320)
 
 
 def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> None:
@@ -38,16 +38,34 @@ def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> No
         DialogSizeClass.COMPARISON,
         2560,
         1440,
-    ) == (820, 660)
+    ) == (680, 460)
 
 
 def test_preview_dialog_uses_large_screen_without_exceeding_policy() -> None:
     width, height = resolved_dialog_size(DialogSizeClass.PREVIEW, 2560, 1440)
-    assert (width, height) == (1280, 960)
+    assert (width, height) == (1120, 760)
 
 
 def test_dialog_size_clamps_to_small_available_geometry() -> None:
-    assert resolved_dialog_size(DialogSizeClass.CATALOG, 500, 360) == (460, 324)
+    assert resolved_dialog_size(DialogSizeClass.CATALOG, 500, 360) == (452, 312)
+
+
+def test_release_dialog_families_use_locked_content_fit_geometry() -> None:
+    expected = {
+        DialogSizeClass.COMPACT_STATUS: (560, 320),
+        DialogSizeClass.TRANSACTION: (680, 460),
+        DialogSizeClass.FERTILIZER: (760, 520),
+        DialogSizeClass.SETTINGS: (1020, 690),
+        DialogSizeClass.NURSERY: (1100, 720),
+        DialogSizeClass.PROGRESS: (1120, 800),
+        DialogSizeClass.LOADOUT: (1160, 810),
+        DialogSizeClass.GARDEN_WORKSPACE: (1600, 1100),
+    }
+    for family, size in expected.items():
+        assert resolved_dialog_size(family, 2560, 1440) == size
+    assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].content_fit is True
+    assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].screen_margin == 24
+    assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].preserve_transition_height is True
 
 
 def test_dialog_state_and_focus_values_are_stable_contracts() -> None:

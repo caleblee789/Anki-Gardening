@@ -36,7 +36,9 @@ def test_button_targets_and_shared_state_contract_are_consistent() -> None:
     stylesheet = scope["button_stylesheet"]()
 
     assert scope["BUTTON_MIN_HEIGHT"] == 44
-    assert scope["COMPACT_BUTTON_HEIGHT"] == 40
+    assert scope["COMPACT_BUTTON_HEIGHT"] == 36
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 40
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 32
     assert scope["PLANT_ACTION_MIN_HEIGHT"] == 44
     assert scope["ICON_BUTTON_SIZE"] == 44
     assert scope["SCENE_HELP_BUTTON_SIZE"] == 44

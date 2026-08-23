@@ -92,6 +92,7 @@ from .responsive import (
     responsive_interpolate,
 )
 from .formatters import format_growth_fifths, format_status_label
+from .icons import garden_icon
 from .garden_studio import GardenStudioWidget
 from .plant_display import (
     chronological_memories,
@@ -460,6 +461,10 @@ class DialogShell(QWidget):
         self._dialog_exec_active = False
         self._modal_requested = False
         self._native_position_initialized = False
+        self._dialog_size_class: DialogSizeClass | None = None
+        self._family_width = 0
+        self._preserved_transition_height = 0
+        self._preserve_transition_height = False
         # DialogShell deliberately remains a QWidget subclass so its custom
         # dialog contract works consistently in Anki's supported Qt versions.
         # The Tool/Dialog window flag supplies the native top-level window.
@@ -745,14 +750,79 @@ class DialogShell(QWidget):
             preferred_width=preferred_width,
             preferred_height=preferred_height,
         )
+        screen_max_width = max(1, available_width - (policy.screen_margin * 2))
+        screen_max_height = max(1, available_height - (policy.screen_margin * 2))
         self.setMinimumSize(
-            min(policy.min_width, width),
-            min(policy.min_height, height),
+            min(policy.min_width, width, screen_max_width),
+            min(policy.min_height, height, screen_max_height),
         )
-        self.setMaximumSize(policy.max_width, policy.max_height)
+        self.setMaximumSize(
+            min(policy.max_width, screen_max_width),
+            min(policy.max_height, screen_max_height),
+        )
         self.resize(width, height)
+        self._dialog_size_class = size_class
+        self._family_width = width
+        self._preserve_transition_height = bool(
+            policy.preserve_transition_height
+        )
+        self._preserved_transition_height = height
         self.setProperty("dialogSizeClass", size_class.value)
+        self.setProperty("dialogFamilyWidth", width)
+        self.setProperty("dialogContentFit", policy.content_fit)
+        self.setProperty("dialogScreenMargin", policy.screen_margin)
+        if policy.content_fit:
+            QTimer.singleShot(0, self.fit_content_to_family)
         return width, height
+
+    def fit_content_to_family(
+        self,
+        *,
+        breathing_room: int = 16,
+        preserve_transition: bool | None = None,
+    ) -> int:
+        """Fit the active family to native content without changing width.
+
+        Loading/ready transitions in transaction families may deliberately
+        retain their first measured height, while terminal compact states can
+        call this method with ``preserve_transition=False``.
+        """
+
+        size_class = self._dialog_size_class
+        if size_class is None:
+            return int(self.height())
+        policy = DIALOG_SIZE_POLICIES[size_class]
+        if not policy.content_fit:
+            return int(self.height())
+        keep_height = (
+            self._preserve_transition_height
+            if preserve_transition is None
+            else bool(preserve_transition)
+        )
+        if keep_height and self.dialog_in_flight and self._preserved_transition_height:
+            target = min(self.maximumHeight(), self._preserved_transition_height)
+            self.resize(self._family_width or self.width(), target)
+            return target
+        root_layout = self.layout()
+        natural_height = int(self.height())
+        if root_layout is not None:
+            root_layout.invalidate()
+            root_layout.activate()
+            natural_height = max(1, int(root_layout.sizeHint().height()))
+        target = max(
+            min(policy.min_height, self.maximumHeight()),
+            min(
+                self.maximumHeight(),
+                policy.max_height,
+                natural_height + max(0, int(breathing_room)),
+            ),
+        )
+        self.resize(self._family_width or self.width(), target)
+        if not self.dialog_in_flight:
+            self._preserved_transition_height = target
+        self.setProperty("contentNaturalHeight", natural_height)
+        self.setProperty("contentFittedHeight", target)
+        return target
 
     def set_content_bounded_maximum_height(
         self,
@@ -1238,6 +1308,62 @@ class DialogShell(QWidget):
         super().keyPressEvent(event)
 
 
+class GardenDialogHeader(QFrame):
+    """Shared, non-scrolling dialog header surface."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("dialogHeader", True)
+        self.setProperty("gardenComponent", "dialog-header")
+
+
+class GardenDialogFooter(QFrame):
+    """Shared sticky action/footer surface."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("actionFooter", True)
+        self.setProperty("gardenComponent", "dialog-footer")
+
+
+class GardenButton(QPushButton):
+    """Button with one canonical priority and effective hit target."""
+
+    def __init__(
+        self,
+        label: str,
+        parent: QWidget | None = None,
+        *,
+        variant: str = BUTTON_VARIANT_SECONDARY,
+    ) -> None:
+        super().__init__(str(label), parent)
+        self.setProperty("gardenComponent", "button")
+        _set_button_variant(self, variant)
+        self.setAccessibleName(str(label))
+
+
+class GardenIconButton(GardenButton):
+    """Compact visual icon inside the shared 44 px interaction target."""
+
+    def __init__(
+        self,
+        icon_name: str,
+        accessible_name: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__("", parent, variant=BUTTON_VARIANT_TERTIARY)
+        self.setProperty("gardenComponent", "icon-button")
+        self.setProperty("visualControlSize", 32)
+        self.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
+        self.setIcon(garden_icon(icon_name))
+        self.setIconSize(QSize(20, 20))
+        set_icon_accessible_name(
+            self,
+            accessible_name,
+            tooltip=accessible_name,
+        )
+
+
 class GardenDialog(DialogShell):
     """Shared four-region dialog shell: header, tabs, body, and optional footer."""
 
@@ -1257,8 +1383,7 @@ class GardenDialog(DialogShell):
         self._shell_layout.setContentsMargins(24, 18, 24, 18)
         self._shell_layout.setSpacing(16)
 
-        self.header = QFrame()
-        self.header.setProperty("dialogHeader", True)
+        self.header = GardenDialogHeader(self)
         self.header_layout = QHBoxLayout(self.header)
         self.header_layout.setContentsMargins(0, 0, 0, 0)
         self.header_layout.setSpacing(12)
@@ -1285,14 +1410,7 @@ class GardenDialog(DialogShell):
         self.dialog_subtitle.setVisible(bool(subtitle))
         title_copy.addWidget(self.dialog_subtitle)
         self.header_layout.addLayout(title_copy, 1)
-        self.top_close = QPushButton("×", self.header)
-        self.top_close.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
-        set_icon_accessible_name(
-            self.top_close,
-            f"Close {title}",
-            tooltip=f"Close {title}",
-        )
-        _set_button_variant(self.top_close, BUTTON_VARIANT_TERTIARY)
+        self.top_close = GardenIconButton("close", f"Close {title}", self.header)
         self.top_close.setVisible(show_close)
         self._close_policy_disabled_top_close = False
         self.top_close.clicked.connect(
@@ -1348,8 +1466,7 @@ class GardenDialog(DialogShell):
         self.state_panel.hide()
         self.body_layout.addWidget(self.state_panel, 1)
 
-        self.footer = QFrame()
-        self.footer.setProperty("actionFooter", True)
+        self.footer = GardenDialogFooter(self)
         self.footer_layout = QHBoxLayout(self.footer)
         self.footer_layout.setContentsMargins(0, 10, 0, 0)
         self.footer_layout.setSpacing(8)
@@ -1484,6 +1601,11 @@ class GardenDialog(DialogShell):
         QTimer.singleShot(0, self._sync_footer_clearance)
 
 
+# Canonical release name; ``GardenDialog`` remains a source-compatible alias
+# for existing feature dialogs while all call sites share this implementation.
+GardenDialogShell = GardenDialog
+
+
 def _garden_dialog_stylesheet() -> str:
     t = GARDEN_THEME
     return foundation_stylesheet() + f"""
@@ -1593,7 +1715,7 @@ class PurchaseConfirmationDialog(DialogShell):
         self._comparison_policy_minimum_height = 400
         self.setModal(True)
         self.configure_close_policy(protect_in_flight=True)
-        self.apply_size_policy(DialogSizeClass.COMPARISON)
+        self.apply_size_policy(DialogSizeClass.TRANSACTION)
         self._comparison_policy_minimum_height = self.minimumHeight()
         self.setStyleSheet(_garden_dialog_stylesheet())
 
@@ -2875,9 +2997,9 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.setModal(True)
         self.configure_close_policy(protect_in_flight=True)
         self.apply_size_policy(
-            DialogSizeClass.COMPARISON,
+            DialogSizeClass.TRANSACTION,
             preferred_width=680,
-            preferred_height=610,
+            preferred_height=500,
         )
 
         self.content_scroll = QScrollArea()
@@ -3800,6 +3922,9 @@ class ToastRegion(QFrame):
         self.setAccessibleDescription("")
         self.dismiss.hide()
         self.hide()
+
+
+GardenToast = ToastRegion
 
 
 class _TooltipFocusFilter(QObject):
@@ -4876,6 +5001,9 @@ class ProgressBar(LabeledProgress):
     """Shared stage-relative Growth progress presentation."""
 
 
+GardenProgressBar = ProgressBar
+
+
 class GardenTabs(QTabWidget):
     """Shared accessible tab container with unclipped, scrollable labels."""
 
@@ -4897,6 +5025,18 @@ class SectionCard(QFrame):
         self.setProperty("sectionCard", True)
 
 
+GardenCard = SectionCard
+
+
+class GardenItemRow(QFrame):
+    """One compact catalogue or inventory row without nested card chrome."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenItemRow", True)
+        self.setProperty("gardenComponent", "item-row")
+
+
 class StatSummary(QFrame):
     """Compact equal-width summary values used by Today and metric views."""
 
@@ -4916,6 +5056,54 @@ class StatSummary(QFrame):
             grid.addWidget(label, 0, column)
             grid.addWidget(value, 1, column)
             grid.setColumnStretch(column, 1)
+
+
+GardenStat = StatSummary
+
+
+class GardenBadge(QLabel):
+    """Shared semantic badge; color is supplied by role and tone."""
+
+    def __init__(
+        self,
+        text: str = "",
+        parent: QWidget | None = None,
+        *,
+        tone: FeedbackTone = FeedbackTone.NEUTRAL,
+    ) -> None:
+        super().__init__(str(text), parent)
+        self.setProperty("gardenComponent", "badge")
+        set_semantic_role(self, SemanticRole.BADGE, tone=tone)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+
+
+class GardenStatusBanner(QFrame):
+    """Single-source feedback block for one state or transaction."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenComponent", "status-banner")
+        set_semantic_role(self, SemanticRole.BANNER)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        self.message = QLabel("")
+        self.message.setWordWrap(True)
+        self.message.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.message, 1)
+        self.hide()
+
+    def set_status(
+        self,
+        message: str,
+        *,
+        tone: FeedbackTone = FeedbackTone.NEUTRAL,
+    ) -> None:
+        copy = str(message).strip()
+        self.message.setText(copy)
+        self.setAccessibleName("Garden status")
+        self.setAccessibleDescription(copy)
+        set_semantic_role(self, SemanticRole.BANNER, tone=tone)
+        self.setVisible(bool(copy))
 
 
 class EmptyState(QFrame):
@@ -4949,6 +5137,98 @@ class EmptyState(QFrame):
                 action,
                 str(action.property("variant") or BUTTON_VARIANT_PRIMARY),
             )
+
+
+GardenEmptyState = EmptyState
+
+
+class GardenTooltip:
+    """Shared truncation tooltip helper."""
+
+    @staticmethod
+    def attach(widget: QWidget, full_text: str) -> None:
+        copy = str(full_text)
+        widget.setToolTip(copy)
+        if not widget.accessibleName():
+            widget.setAccessibleName(copy)
+
+
+class GardenOutcomePreview(QFrame):
+    """Structured outcome rows with one section-level preview label."""
+
+    def __init__(
+        self,
+        rows: list[tuple[str, str]] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenComponent", "outcome-preview")
+        self.grid = QGridLayout(self)
+        self.grid.setContentsMargins(12, 10, 12, 10)
+        self.grid.setHorizontalSpacing(16)
+        self.grid.setVerticalSpacing(6)
+        self.set_rows(rows or [])
+
+    def set_rows(self, rows: list[tuple[str, str]]) -> None:
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        for index, (label_text, value_text) in enumerate(rows):
+            label = QLabel(str(label_text))
+            value = QLabel(str(value_text))
+            value.setAlignment(Qt.AlignmentFlag.AlignRight)
+            apply_tabular_numerals(value)
+            self.grid.addWidget(label, index, 0)
+            self.grid.addWidget(value, index, 1)
+
+
+class GardenPlantSummary(SectionCard):
+    """Single structured plant summary used before contextual actions."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenComponent", "plant-summary")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(4)
+        self.name_label = QLabel("")
+        self.name_label.setProperty("rowTitle", True)
+        self.stage_label = QLabel("")
+        self.stage_label.setProperty("summaryLabel", True)
+        self.progress = GardenProgressBar("Plant Growth")
+        layout.addWidget(self.name_label)
+        layout.addWidget(self.stage_label)
+        layout.addWidget(self.progress)
+
+    def set_summary(
+        self,
+        name: str,
+        stage: str,
+        current: int,
+        maximum: int,
+    ) -> None:
+        self.name_label.setText(str(name))
+        self.stage_label.setText(str(stage))
+        self.progress.set_progress("Growth", current, maximum)
+
+
+class GardenSceneOverlay(QFrame):
+    """Shared transparent scene-overlay marker for geometry ownership."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenComponent", "scene-overlay")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+
+class GardenPopover(GardenSceneOverlay):
+    """Shared bounded scene popover surface."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setProperty("gardenComponent", "popover")
 
 
 class DisclosureRow(QWidget):
@@ -5021,12 +5301,12 @@ class DataTable(QFrame):
         self.grid.setVerticalSpacing(0)
 
 
-class ActionFooter(QFrame):
+class ActionFooter(GardenDialogFooter):
     """Static action row for dialogs that genuinely have a primary action."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setProperty("actionFooter", True)
+        self.setProperty("gardenComponent", "action-footer")
 
 
 class ToggleSwitch(QCheckBox):
@@ -5679,9 +5959,7 @@ class GardenSettingsDialog(GardenDialog):
         self.config = config
         self._save_status_generation = 0
         self.apply_size_policy(
-            DialogSizeClass.CATALOG,
-            preferred_width=980,
-            preferred_height=680,
+            DialogSizeClass.SETTINGS,
         )
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
             QLabel[saveStatus='true'] {{ padding:5px 8px; border-radius:8px; }}
@@ -7227,7 +7505,7 @@ class StarterConfirmationDialog(DialogShell):
         species_name = format_status_label(species)
         item_name = seed_title(species_name)
         self.setWindowTitle(f"Choose {item_name}")
-        self.apply_size_policy(DialogSizeClass.COMPACT_CONFIRMATION)
+        self.apply_size_policy(DialogSizeClass.COMPACT_STATUS)
         self.setStyleSheet(_garden_dialog_stylesheet())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
@@ -7383,9 +7661,7 @@ class NurseryDialog(DialogShell):
         self.storage = storage
         self.setWindowTitle("Nursery")
         self.apply_size_policy(
-            DialogSizeClass.CATALOG,
-            preferred_width=840,
-            preferred_height=640,
+            DialogSizeClass.NURSERY,
         )
         self.setStyleSheet(foundation_stylesheet("nursery") + """
             QWidget[gardenDialogShell='true'] { background:#241813; color:#f5ead7; }
@@ -12485,9 +12761,7 @@ class GardenProgressDialog(GardenDetailsDialog):
         self.dialog_subtitle.setText("")
         self.dialog_subtitle.hide()
         self.apply_size_policy(
-            DialogSizeClass.CATALOG,
-            preferred_width=940,
-            preferred_height=680,
+            DialogSizeClass.PROGRESS,
         )
 
         metric_pages: dict[str, QWidget] = {}
@@ -12660,9 +12934,7 @@ class CollectibleDetailDialog(GardenDialog):
             confirm_dirty=self._confirm_discard_preview,
         )
         self.apply_size_policy(
-            DialogSizeClass.PREVIEW,
-            preferred_width=1040,
-            preferred_height=700,
+            DialogSizeClass.LOADOUT,
         )
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
             QFrame[collectionLibrary='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:0; border-radius:12px; }}
@@ -17873,9 +18145,7 @@ class GardenDashboard(DialogShell):
         dialog.remember_invoker(self.plant_card.fertilize)
         dialog.setWindowTitle(f"Fertilize {plant.name}")
         dialog.apply_size_policy(
-            DialogSizeClass.STANDARD_TEXT,
-            preferred_width=760,
-            preferred_height=620,
+            DialogSizeClass.FERTILIZER,
         )
         dialog.setStyleSheet(foundation_stylesheet() + """
             QWidget[gardenDialogShell='true'] { background:#071a15; color:#f3f7f2; }

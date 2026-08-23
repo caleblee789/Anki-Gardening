@@ -581,7 +581,7 @@ def test_dialog_shell_construction_never_shows_parentless_widgets_on_macos() -> 
 
     assert "self.hide()" in shell_init
     assert 'QLabel(subtitle, self.header)' in garden_dialog_source
-    assert 'QPushButton("×", self.header)' in garden_dialog_source
+    assert 'GardenIconButton("close", f"Close {title}", self.header)' in garden_dialog_source
 
     assigned_parents: dict[str, str] = {}
     for statement in garden_dialog_init.body:
