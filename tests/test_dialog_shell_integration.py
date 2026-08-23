@@ -205,13 +205,10 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert "natural_height + max(0, int(breathing_room))" in shell
     assert 'self.setProperty("contentNaturalHeight", natural_height)' in shell
     assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
-    assert "minimum_height=self._comparison_policy_minimum_height" in purchase
-    assert "breathing_room=6" in purchase
+    assert "self.fit_content_to_family(" in purchase
+    assert "breathing_room=8" in purchase
     assert "compact = comparison.mode == COMPACT_MODE" in purchase
-    assert "660 if comparison.mode == COMPACT_MODE else 561" in purchase
-    assert "and int(width) >= 760" in purchase
-    assert "and not self.presentation.terminal" in purchase
-    assert "preferred = max(535, bounded)" in purchase
+    assert "preserve_transition=not self.presentation.terminal" in purchase
     assert "preferred_width=920" in species
     assert "preferred_height=720" in species
     assert "dialog.set_content_bounded_maximum_height" not in species

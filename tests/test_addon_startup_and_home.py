@@ -589,13 +589,10 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
     assert feedback.event_ids == tuple(event.event_id for event in events)
     assert feedback.title == "Garden Find: Morning Dew"
     assert feedback.message == (
-        "+2 Garden Coins; +40 direct Growth to the nurtured plant and "
-        "+5 Garden Coins; Unlocked All Clear; "
-        "A separate Garden notice remains unchanged"
+        "+7 coins · +40 growth · A separate Garden notice remains unchanged"
     )
-    assert feedback.reward_detail == (
-        "+40 direct Growth to the nurtured plant"
-    )
+    assert feedback.reward_detail == ""
+    assert (feedback.coins_total, feedback.growth_total) == (7, 40)
     assert feedback.tier == "Common"
     assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
     assert feedback.amount == 0

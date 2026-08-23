@@ -75,9 +75,9 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     assert '"Your collection"' in nursery
     assert '"Botanical catalog"' in nursery
     assert "self._plant_stage_strip(species)" in nursery
-    assert "self._plant_artwork(species, GROWTH_STAGES[0], 112)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 84)" in nursery
     assert "starter_selection_complete" in nursery
-    assert '"Return to Collection"' in owned_card
+    assert '"Store plant"' in owned_card
     assert '"Move to Collection"' not in owned_card
     for consequence in (
         "will still own",
@@ -138,7 +138,8 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
     assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
-    assert 'ownership = QLabel("Not collected")' in available_card
+    assert 'GardenBadge("Permanent"' in available_card
+    assert 'ownership = QLabel("Not collected")' not in available_card
     assert "COST_FREE" not in available_card
     assert "Cost: {amount} Garden Coins" in _source("ankigarden/ui/copy.py")
     assert '"Starts as Seed"' not in available_card
@@ -284,8 +285,8 @@ def test_available_plants_fill_space_with_a_two_column_catalog() -> None:
     )
 
     assert "card_layout = QVBoxLayout(card)" in available_card
-    assert "presentation.outcome" in available_card
-    assert '_purchase_fact(presentation, "planting")' in available_card
+    assert '"Growth begins when planted."' in available_card
+    assert '_purchase_fact(presentation, "planting")' not in available_card
     assert 'details = QPushButton("Details")' in available_card
     assert "footer = QHBoxLayout()" in available_card
     assert "Qt.AlignmentFlag.AlignHCenter" in available_card
@@ -609,29 +610,25 @@ def test_growth_charge_failures_keep_committed_state_separate_from_retry_preview
     )
     assert '"Charge quantity"' not in dialog
     assert '"Earn one through rewards or obtain one in the Nursery."' in dialog
-    assert '"This plant is no longer eligible. No Growth Charge was used."' in dialog
-    assert '"No Growth was added and no charge was used."' in dialog
-    assert '"No stage change"' in dialog
-    assert "outcome.resulting_growth" in dialog
+    assert '"Growth Charge not applied. This plant is no longer eligible. "' in dialog
+    assert '"Growth Charge could not be saved. No inventory was used and "' in dialog
+    assert 'f"Remains {current_stage}"' in dialog
     assert "outcome.inventory_remaining" in dialog
-    assert "Values marked Preview" in dialog
+    assert "Values marked Preview" not in dialog
     assert "tone = FeedbackTone.ERROR if is_error else FeedbackTone.WARNING" in dialog
     assert "self.configure_close_policy(protect_in_flight=True)" in dialog
     assert "self.set_dialog_in_flight(True)" in dialog
     assert "self.set_dialog_in_flight(False)" in dialog
     assert 'self.use_action.setText("Applying Growth Charge…")' in dialog
     for copy in (
-        "Preview — not committed",
         "Growth:",
         "Stage:",
-        "Stage rewards:",
         "Inventory:",
     ):
         assert copy in compact_preview
-    assert "sum(" in compact_preview
-    assert 'getattr(quote, "rewards", ())' in compact_preview
+    assert "(preview)" not in dialog
     assert '"compact" if compact else "default"' in responsive
-    assert "self.compact_summary_card.setVisible(show_compact_summary)" in responsive
+    assert "self.compact_summary_card.hide()" in responsive
 
 
 def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None:
@@ -646,15 +643,13 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
         "_committed_receipt_copy",
     )
     assert "self.quote" not in show_receipt
-    assert "sum(" not in show_receipt
+    assert "for reward in tuple(outcome.rewards or ())" in show_receipt
     assert "_committed_receipt_copy(outcome, reward_copy)" in show_receipt
     assert "_render_committed_target(outcome)" in show_receipt
-    assert "outcome.previous_stage" in receipt_copy
-    assert "outcome.resulting_stage" in receipt_copy
-    assert "outcome.growth_granted" in receipt_copy
+    assert "outcome.charge_name" in receipt_copy
     assert "outcome.inventory_remaining" in receipt_copy
-    assert "if outcome.rewards" in receipt_copy
-    assert 'f"{outcome.target_name} reached {resulting_stage}"' in show_receipt
+    assert "outcome.previous_stage" in show_receipt
+    assert "GardenBadge(" in show_receipt
     assert 'self.use_action.setText("View plant")' in show_receipt
     assert 'self.cancel_action.setText("Close")' in show_receipt
     assert "self.preview_banner.hide()" in show_receipt
@@ -875,7 +870,7 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     settings = dashboard.split("class GardenSettingsDialog", 1)[1].split("class MemoryTimeline", 1)[0]
     theme_card = studio.split("self.theme_card = QFrame()", 1)[1].split(
-        "self.animations_enabled = QCheckBox()", 1
+        "self.reduced_motion = QCheckBox()", 1
     )[0]
     apply_preview = _method_source("ankigarden/ui/garden_studio.py", "GardenStudioWidget", "_apply_preview")
     save = _method_source("ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_save_visual_settings")
@@ -887,6 +882,7 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     assert 'self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")' in theme_card
     assert "QComboBox" not in theme_card
     assert 'self.manage_environment = QToolButton()' in theme_card
+    assert 'self.manage_environment.setText("Manage appearance")' in theme_card
     assert 'background_asset = asset_paths.get("background")' in apply_preview
     assert "self.theme_thumbnail.setPixmap(background_pixmap.scaled(" in apply_preview
     assert "dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))" in apply_preview
@@ -898,10 +894,11 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     assert 'QPushButton("Restore display defaults")' in settings
     assert "self.garden_name_edit = QLineEdit()" in settings
     assert "self.garden_name_edit.setMaxLength(MAX_GARDEN_NAME_LENGTH + 80)" in settings
-    assert 'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in settings
+    assert 'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in settings
     assert 'self.garden_name_error.setProperty("fieldError", True)' in settings
     assert "self.garden_name_error.setVisible(not valid)" in settings
-    assert 'self.save_status.setText("Fix 1 error before saving.")' in save
+    assert "self._update_dirty_state()" in save
+    assert "self.garden_name_error.text()" in save
     assert "self.garden_name_edit.setFocus()" in save
     assert "self.garden_name_edit.selectAll()" in save
     assert "self.engine.rename_garden" in settings
@@ -941,9 +938,10 @@ def test_settings_preview_debounces_expensive_asset_resolution() -> None:
 def test_reduced_motion_control_is_visible_and_owns_animation_behavior() -> None:
     studio = _source("ankigarden/ui/garden_studio.py")
     assert "self.motion_row = ToggleSettingRow(" in studio
-    assert "REDUCED_MOTION_LABEL" in studio
+    assert 'STUDIO_TEXT["animations_label"]' in studio
     assert "REDUCED_MOTION_DESCRIPTION" in studio
-    assert "controls_layout.addWidget(self.motion_row)" in studio
+    assert "self.advanced_actions_layout.addWidget(self.motion_row)" in studio
+    assert "controls_layout.addWidget(self.motion_row)" not in studio
     assert "self.motion_row.hide()" not in studio
 
 
@@ -956,7 +954,7 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
 
     assert 'self.preview_panel.setProperty("previewPanel", True)' in studio
     assert 'preview_title = QLabel("Home preview")' in studio
-    assert 'self.home_preview = HomeGardenPreview(self.scene)' in studio
+    assert 'self.home_preview = GardenHomePreview(self.scene)' in studio
     assert "preview_layout.addWidget(self.home_preview)" in studio
     assert "self.root_layout.addWidget(self.preview_panel, 1)" in studio
     assert "self.controls.setMaximumWidth(16777215 if compact else 380)" in studio
@@ -1025,7 +1023,7 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in fertilizer
-    assert "current_status = FertilizerStatusBlock(allow_description=True)" in fertilizer
+    assert "current_status = FertilizerStatusBlock(allow_description=False)" in fertilizer
     assert "fertilizer_status(" in fertilizer
     assert 'action_label = presentation.primary_label.split(" ·", 1)[0]' in fertilizer
     assert '_affordability_status(spec.price, balance_value)' in fertilizer
@@ -1262,7 +1260,7 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert "affordable and not self._bed_purchase_pending" in space_card
     assert "more needed" in space_card
     assert "current_status" in fertilizer
-    assert "self._fertilizer_text(plant)" in fertilizer
+    assert 'extend_current = QPushButton("Extend")' in fertilizer
     assert "set_control_enabled(" in fertilizer
     assert "affordable and active" in fertilizer
     assert "Nurture this plant before purchasing Fertilizer." in fertilizer
@@ -1343,7 +1341,8 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert '— {count} owned' in charge
     assert '"Inventory:' not in charge
     assert "helper_text = spec.how_to_earn" in charge
-    assert 'action = QPushButton("Locked")' in charge
+    assert 'action = QPushButton("Not available")' in charge
+    assert "helper_text = spec.how_to_earn" in charge
     assert 'f"Need {spec.price - self.storage.state.currency_balance:,} "' in charge
     assert '"Equipped" if equipped else' in environment
     assert '"Open Collection" if owned else' in environment
@@ -1410,7 +1409,9 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "Preview cost:",
         "Preview balance:",
     ):
-        assert preview_copy in confirmation
+        assert preview_copy not in confirmation
+    assert 'self.outcome_heading = QLabel("Outcome preview")' in confirmation
+    assert "self.proposal_notice.hide()" in confirmation
     assert "purchase_presentation(\n                    refreshed,\n                    status=outcome.status" in confirmation
     assert "Review the updated terms before continuing." not in confirmation
     button_copy = _function_source(
@@ -1430,7 +1431,6 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "Replaces nothing",
         "Quantity",
         "Are you sure you want to purchase",
-        "Balance after purchase",
     ):
         assert noise not in confirmation
     for source in (available, supplement, charge, environment, spaces):
@@ -1552,8 +1552,8 @@ def test_diagnostics_has_one_copy_action_and_one_details_toggle() -> None:
     )
 
     assert settings.count('QPushButton("Copy report")') == 1
-    assert "Copy details" not in settings
-    assert 'QPushButton("View technical details")' in settings
+    assert 'QPushButton("View details")' in settings
+    assert 'self.copy_debug.setText("Copy details" if expanded else "Copy report")' in settings
     assert "self.debug_report.setVisible(bool(expanded))" in toggle
 
 

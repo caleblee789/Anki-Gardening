@@ -44,7 +44,7 @@ from .theme import (
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
-    "animations_label": REDUCED_MOTION_LABEL,
+    "animations_label": "Reduce animations",
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
@@ -213,11 +213,10 @@ class HomeGardenPreview(QFrame):
         self.status.setVisible(bool(snapshot.status_text))
         self._scene_opacity.setOpacity(snapshot.scene_opacity)
         enabled = snapshot.phase != "disabled"
-        self.action.setText(HOME_ACTIVE_ACTION if enabled else "Preview off")
+        self.action.setText(HOME_ACTIVE_ACTION)
+        self.action.setVisible(enabled)
         self.action.setAccessibleName(
             f"Home preview action: {HOME_ACTIVE_ACTION}"
-            if enabled else
-            "Home preview is off"
         )
         self.setAccessibleDescription(
             f"{safe_title}. {safe_support}. "
@@ -236,6 +235,9 @@ class HomeGardenPreview(QFrame):
         )
         preview = replace(preview, summary=str(support))
         self.set_snapshot(preview)
+
+
+GardenHomePreview = HomeGardenPreview
 
 
 class GardenStudioWidget(QWidget):
@@ -434,17 +436,17 @@ class GardenStudioWidget(QWidget):
         theme_copy.addWidget(theme_value)
         theme_layout.addWidget(self.theme_thumbnail)
         theme_layout.addLayout(theme_copy, 1)
-        controls_layout.addWidget(self.theme_card)
         self.manage_environment = QToolButton()
-        self.manage_environment.setText("Open Collection")
+        self.manage_environment.setText("Manage appearance")
         self.manage_environment.setAccessibleDescription(
             "Open Collection to manage Weather, Scenery, and the garden loadout."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
-        controls_layout.addWidget(self.manage_environment)
+        theme_layout.addWidget(self.manage_environment)
+        controls_layout.addWidget(self.theme_card)
 
         self.reduced_motion = QCheckBox()
-        self.reduced_motion.setAccessibleName(REDUCED_MOTION_LABEL)
+        self.reduced_motion.setAccessibleName(STUDIO_TEXT["animations_label"])
         _describe_control(
             self.reduced_motion,
             REDUCED_MOTION_DESCRIPTION,
@@ -481,11 +483,10 @@ class GardenStudioWidget(QWidget):
         particle_row.addWidget(self.particle_value)
 
         self.motion_row = ToggleSettingRow(
-            REDUCED_MOTION_LABEL,
+            STUDIO_TEXT["animations_label"],
             REDUCED_MOTION_DESCRIPTION,
             self.reduced_motion,
         )
-        controls_layout.addWidget(self.motion_row)
 
         self.show_home_widget = QCheckBox()
         self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
@@ -547,6 +548,7 @@ class GardenStudioWidget(QWidget):
             "Show brief Growth and reward notices after studying.",
             self.show_progress_notifications,
         )
+        self.advanced_actions_layout.addWidget(self.motion_row)
         self.advanced_actions_layout.addWidget(self.notifications_row)
         self.advanced_panel.hide()
         controls_layout.addWidget(self.advanced_toggle)
@@ -566,17 +568,11 @@ class GardenStudioWidget(QWidget):
         preview_title = QLabel("Home preview")
         preview_title.setProperty("settingsHeading", True)
         preview_title.setMinimumWidth(0)
-        self.preview_disabled_note = QLabel("Home-screen preview is turned off.")
-        self.preview_disabled_note.setWordWrap(True)
-        self.preview_disabled_note.setMinimumWidth(0)
-        self.preview_disabled_note.setStyleSheet("color:#e6c47a; font-weight:700;")
-        self.preview_disabled_note.hide()
-        self.home_preview = HomeGardenPreview(self.scene)
+        self.home_preview = GardenHomePreview(self.scene)
         self.preview_name = self.home_preview.title
         self.preview_metrics = self.home_preview.support
         preview_layout.addWidget(preview_title)
         preview_layout.addWidget(self.home_preview)
-        preview_layout.addWidget(self.preview_disabled_note)
 
         # Scroll only the settings column. Keeping the preview outside this
         # scroll surface prevents an expanded Advanced section from pushing
@@ -657,7 +653,6 @@ class GardenStudioWidget(QWidget):
             sender.setAccessibleDescription("On" if checked else "Off")
 
     def _sync_preview_enabled(self, checked: bool) -> None:
-        self.preview_disabled_note.setVisible(not checked)
         self._apply_preview()
 
     def set_preview_garden_name(self, name: str) -> None:

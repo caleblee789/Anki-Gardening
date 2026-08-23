@@ -1107,20 +1107,20 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         def setFocus(self) -> None:
             self.focused = True
 
-    class ReceiptActions:
+    class NurseryToast:
         def __init__(self) -> None:
             self.visible = True
 
-        def hide(self) -> None:
+        def clear(self) -> None:
             self.visible = False
 
     status = Status()
-    receipt_actions = ReceiptActions()
+    nursery_toast = NurseryToast()
     announcements: list[tuple[str, str]] = []
     nursery = SimpleNamespace(
         _status_generation=0,
         status=status,
-        receipt_actions=receipt_actions,
+        nursery_toast=nursery_toast,
         accessibility_announcer=SimpleNamespace(
             announce=lambda message, *, priority, target: announcements.append(
                 (message, priority)
@@ -1139,7 +1139,7 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     assert (status.text, status.description, status.visible, status.focused) == (
         "Not enough Garden Coins.", "Not enough Garden Coins.", True, True,
     )
-    assert receipt_actions.visible is False
+    assert nursery_toast.visible is False
     assert announcements[-1] == ("Not enough Garden Coins.", "polite")
 
     show_result(nursery, True, "Garden space unlocked.")

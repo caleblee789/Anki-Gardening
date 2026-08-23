@@ -302,7 +302,7 @@ def test_reduced_motion_is_visible_and_suppresses_scene_motion() -> None:
     scene = _source("ankigarden/ui/scene.py")
     assert 'self.reduced_motion = QCheckBox()' in studio
     assert "self.motion_row = ToggleSettingRow(" in studio
-    assert 'controls_layout.addWidget(self.motion_row)' in studio
+    assert 'self.advanced_actions_layout.addWidget(self.motion_row)' in studio
     assert '"reduced_motion": animation_flags[1]' in studio
     assert "effective_motion_enabled(" in studio
     assert "os_reader=lambda: self._system_reduced_motion" in studio

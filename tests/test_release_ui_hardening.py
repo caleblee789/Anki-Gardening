@@ -734,10 +734,10 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
 
     assert _module_constant(STATE_PATH, "MAX_GARDEN_NAME_LENGTH") == 40
     assert (
-        'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."'
+        'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."'
         in settings_source
     ), "Garden name validation must resolve to the exact 1-to-40 message."
-    assert "Fix 1 error before saving." in _strings(settings)
+    assert "Fix 1 error before saving." not in _strings(settings)
 
     assert re.search(
         r"addWidget\(self\.[A-Za-z_]*(?:error|validation)[A-Za-z_]*\)",

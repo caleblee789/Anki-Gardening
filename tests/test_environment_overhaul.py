@@ -503,7 +503,7 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     assert 'self.option_tabs.addTab(self.effects_page, "Effects")' in dashboard
     assert "Show Weather" in dashboard
     assert "Show Scenery" in dashboard
-    assert "controls_layout.addWidget(self.motion_row)" in studio
+    assert "self.advanced_actions_layout.addWidget(self.motion_row)" in studio
     assert "controls_layout.addWidget(self.fine_tune_toggle)" not in studio
     assert "controls_layout.addWidget(self.fine_tune_section)" not in studio
 
