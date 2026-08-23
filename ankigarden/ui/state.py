@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 from weakref import WeakMethod
 
-from .formatters import format_growth, format_stage
+from .formatters import format_garden_coins, format_growth, format_integer
 from .plant_display import growth_display
 
 
@@ -228,8 +228,8 @@ class GardenPreviewMetric:
 
 
 @dataclass(frozen=True)
-class GardenPreviewSnapshot:
-    """Renderer-neutral scene and copy shared by every compact preview."""
+class GardenHomePreview:
+    """Canonical, renderer-neutral model for every compact Garden preview."""
 
     consumer: str
     phase: str
@@ -259,6 +259,11 @@ class GardenPreviewSnapshot:
         return self.phase == "stale"
 
 
+# Transitional compatibility for the Settings stream and older integrations.
+# There remains one preview model and one projection path.
+GardenPreviewSnapshot = GardenHomePreview
+
+
 def garden_preview_snapshot(
     snapshot: GardenUiSnapshot | None,
     *,
@@ -268,7 +273,7 @@ def garden_preview_snapshot(
     enabled: bool = True,
     motion_enabled: bool = True,
     status_text: str = "",
-) -> GardenPreviewSnapshot:
+) -> GardenHomePreview:
     return garden_preview_from_values(
         consumer=consumer,
         phase=phase,
@@ -287,6 +292,9 @@ def garden_preview_snapshot(
         active_fully_grown=(
             snapshot.active_fully_grown if snapshot is not None else False
         ),
+        reviews_today=(snapshot.reviewed_today if snapshot is not None else 0),
+        streak_days=(snapshot.streak_days if snapshot is not None else 0),
+        garden_currency=(snapshot.currency_balance if snapshot is not None else 0),
         selected_weather=(snapshot.selected_weather if snapshot is not None else "sunny"),
         selected_scenery=(
             snapshot.selected_background if snapshot is not None else "verdant_twilight"
@@ -310,6 +318,9 @@ def garden_preview_from_values(
     active_stage_points: int = 0,
     active_stage_goal: int = 0,
     active_fully_grown: bool = False,
+    reviews_today: int = 0,
+    streak_days: int = 0,
+    garden_currency: int = 0,
     starter_selected: bool = True,
     planted_starter_name: str = "",
     planted_starter_stage: str = "",
@@ -320,7 +331,7 @@ def garden_preview_from_values(
     enabled: bool = True,
     motion_enabled: bool = True,
     status_text: str = "",
-) -> GardenPreviewSnapshot:
+) -> GardenHomePreview:
     normalized_phase = str(phase)
     if normalized_phase not in PREVIEW_PHASES:
         normalized_phase = "error"
@@ -335,7 +346,7 @@ def garden_preview_from_values(
         normalized_phase = "empty"
     if normalized_phase == "empty":
         title = "Choose your first plant"
-        summary = "Pick a starter in the Garden to begin growing."
+        summary = "Start with one free seed."
     elif active_name and stage_label:
         if active_fully_grown:
             summary = (
@@ -354,7 +365,7 @@ def garden_preview_from_values(
         planted_stage = str(planted_starter_stage or "seed").replace("_", " ").title()
         summary = f"{planted_starter_name}, {planted_stage}. Planted starter."
     else:
-        summary = "No nurtured plant. Open the garden to choose one."
+        summary = "Choose a plant to begin growing."
     if normalized_phase == "loading":
         summary = "Loading garden preview…"
     elif normalized_phase == "error":
@@ -362,7 +373,7 @@ def garden_preview_from_values(
     elif normalized_phase == "stale":
         status_text = status_text or "Updating garden preview…"
     elif normalized_phase == "disabled":
-        status_text = status_text or "Home previews are off."
+        status_text = status_text or "Preview paused."
     growth_current = max(0, int(active_stage_points or 0))
     growth_goal = max(0, int(active_stage_goal or 0))
     growth_text = (
@@ -373,14 +384,21 @@ def garden_preview_from_values(
         else ""
     )
     metrics = tuple(
-        metric
-        for metric in (
-            GardenPreviewMetric("stage", "Stage", format_stage(stage))
-            if stage else None,
-            GardenPreviewMetric("growth", "Growth", growth_text)
-            if growth_text else None,
+        (
+            GardenPreviewMetric(
+                "today", "Today", f"{format_integer(max(0, int(reviews_today or 0)))} today"
+            ),
+            GardenPreviewMetric(
+                "streak",
+                "Streak",
+                f"{format_integer(max(0, int(streak_days or 0)))}-day streak",
+            ),
+            GardenPreviewMetric(
+                "coins",
+                "Garden Coins",
+                f"{format_garden_coins(max(0, int(garden_currency or 0)), include_unit=False)} coins",
+            ),
         )
-        if metric is not None
     )
     status_tone = {
         "loading": "info",
@@ -388,7 +406,7 @@ def garden_preview_from_values(
         "error": "error",
         "disabled": "neutral",
     }.get(normalized_phase, "neutral")
-    return GardenPreviewSnapshot(
+    return GardenHomePreview(
         consumer=str(consumer),
         phase=normalized_phase,
         garden_name=garden_name,
@@ -419,12 +437,12 @@ def garden_preview_from_values(
 
 
 def preview_with_phase(
-    snapshot: GardenPreviewSnapshot,
+    snapshot: GardenHomePreview,
     phase: str,
     *,
     motion_enabled: bool | None = None,
     status_text: str | None = None,
-) -> GardenPreviewSnapshot:
+) -> GardenHomePreview:
     """Project request state without replacing the last valid scene or copy."""
 
     normalized_phase = str(phase)

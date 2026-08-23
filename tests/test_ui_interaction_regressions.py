@@ -137,7 +137,8 @@ def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route(
     assert "_persist_or_restore(snapshot)" in game
     assert "self.refresh_all()" in failed
     assert "begin_placement_draft" in failed
-    assert "error=True" in failed
+    assert "self.rearrange_bar.set_failure(failure_copy)" in failed
+    assert "toast_region.show_message" not in failed
 
     background = next(
         row for row in manifest["assets"]
@@ -299,7 +300,7 @@ class _FakePen:
         pass
 
 
-def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None:
+def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> None:
     draw_slots = _compiled_method(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -343,17 +344,17 @@ def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None
 
     draw_slots(scene, painter)
 
-    # Current, occupied swap, empty move, invalid, and locked spaces remain
-    # legible without relying on outline color alone.
+    # Current, occupied swap, and empty move targets keep concise labels.
+    # Invalid and locked beds are dimmed without repetitive badges.
     assert len(painter.ellipses) == 6
-    assert len(painter.badges) == 6
-    assert painter.labels.count("+") == 1
-    assert painter.labels.count("↔") == 1
-    assert painter.labels.count("!") == 2
-    assert painter.labels.count("×") == 1
-    semantic_labels = ("Current", "Swap", "Move", "Occupied", "Invalid", "Locked")
+    assert len(painter.badges) == 3
+    assert painter.labels.count("+") == 0
+    assert painter.labels.count("↔") == 0
+    semantic_labels = ("Current", "Swap", "Move here")
     for label in semantic_labels:
         assert label in painter.labels
+    for label in ("Occupied", "Invalid", "Locked"):
+        assert label not in painter.labels
     assert {
         label: size for label, size in painter.label_font_sizes
         if label in semantic_labels
@@ -1227,7 +1228,10 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
         grid=Grid(),
         growth_support=SimpleNamespace(setVisible=lambda value: None),
         streak_support=SimpleNamespace(setVisible=lambda value: None),
-        currency_support=SimpleNamespace(setVisible=lambda value: None),
+        currency_support=SimpleNamespace(
+            setVisible=lambda value: None,
+            hide=lambda: None,
+        ),
         streak_label=SimpleNamespace(
             setText=lambda value: None,
             setAccessibleName=lambda value: None,
@@ -1365,12 +1369,14 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
-    assert '"Growth Breakdown"' in refresh
-    assert '"Study Growth generated"' in refresh
-    assert '"Nurtured allocation"' in refresh
+    assert '"Total Growth today"' in refresh
+    assert '"No growth recorded today"' in refresh
+    assert '"View calculation details"' in refresh
+    assert '"Study Growth total"' in refresh
+    assert '"Nurtured plant allocation"' in refresh
     assert '"Passive Growth credited"' in refresh
     assert 'compact=True' in refresh
-    assert '("Total Growth",' not in refresh
+    assert '"Nurtured plant allocation"' in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1457,12 +1463,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert rearrange.failure == "The move was not saved. Your garden is unchanged."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
-    assert toast.messages == [
-        (
-            ("The move was not saved. Your garden is unchanged.",),
-            {"error": True, "duration_ms": 0, "dismissible": False},
-        )
-    ]
+    assert toast.messages == []
 
     rearrange_source = DASHBOARD_PATH.read_text("utf-8").split(
         "class RearrangeBar", 1
@@ -1646,7 +1647,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert "geometry = self.scene.card_geometry(" in dashboard_source
     assert "if geometry is None:" in dashboard_source
     assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
-    assert "if docked else 330" in dashboard_source
+    assert "if docked else 340" in dashboard_source
     assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
     assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 
@@ -2135,13 +2136,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     begin_move(dashboard, "plant-a")
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert toast.events == [
-        "clear",
-        (
-            ("The move was not saved. Your garden is unchanged.",),
-            {"error": True, "duration_ms": 0, "dismissible": False},
-        ),
-    ]
+    assert toast.events == ["clear"]
     assert scene.focused is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is draft

@@ -1060,7 +1060,9 @@ class GardenSceneWidget(QWidget):
             plant_id = str(plant.get("plant_id", ""))
             bed_geometry = self._scene_geometry_layout.bed(row.slot_index)
             hit = bed_geometry.selection_region if bed_geometry is not None else row.hit
-            hit_rect = QRectF(hit.x, hit.y, hit.width, hit.height)
+            hit_rect = QRectF(hit.x, hit.y, hit.width, hit.height).adjusted(
+                -8.0, -6.0, 8.0, 6.0
+            )
             if plant_id:
                 self._plant_hit_rects[plant_id] = hit_rect
                 self._plant_anchors[plant_id] = (
@@ -1913,28 +1915,15 @@ class GardenSceneWidget(QWidget):
             visual_label = (
                 "Current"
                 if current else
-                "Occupied"
-                if target_state == "unavailable" and occupied_target else
-                "Invalid"
-                if target_state == "unavailable" else
-                "Locked"
-                if target_state == "locked" else
                 "Swap"
                 if swap_target else
-                "Move"
+                "Move here"
                 if semantic_state in {"active", "available"} else
                 label
             )
             if getattr(self, "_starter_placement", False) and target_state == "valid":
                 label = "Place here"
-                visual_label = "Place"
-            cue = (
-                "•" if current else
-                "×" if target_state == "locked" else
-                "!" if target_state == "unavailable" else
-                "↔" if swap_target else
-                "+"
-            )
+                visual_label = "Place here"
             footprint = QRectF(
                 layout.bed_footprint.x,
                 layout.bed_footprint.y,
@@ -1983,23 +1972,11 @@ class GardenSceneWidget(QWidget):
                         vertical_padding,
                     )
                 painter.drawEllipse(move_footprint)
-            painter.setPen(
-                QColor(
-                    244,
-                    255,
-                    248,
-                    255 if active or current else 210 if not blocked else 168,
-                )
-            )
-            cue_font = painter.font()
-            cue_font.setPointSizeF(max(16.0, cue_font.pointSizeF() + 4.0))
-            cue_font.setBold(True)
-            painter.setFont(cue_font)
-            painter.drawText(
-                footprint,
-                Qt.AlignmentFlag.AlignCenter,
-                cue,
-            )
+            # Locked and otherwise ineligible beds are dimmed but unlabelled;
+            # only current and actionable destinations receive chips.
+            if blocked:
+                painter.restore()
+                continue
             if target_state == "valid":
                 preview = getattr(self, "_draw_move_preview", None)
                 if active and callable(preview):

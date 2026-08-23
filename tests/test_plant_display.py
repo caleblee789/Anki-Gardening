@@ -1104,24 +1104,20 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert "self.plant_card.story.clicked.connect" in dashboard
     for label in (
         "Species",
-        "Current stage",
         "Planted date",
-        "Growth today",
+        "Current bed",
         "Total Growth",
-        "Nurtured status",
-        "Nurtured Growth today",
-        "Passive Growth today",
-        "Passive remainder",
+        "Growth source",
+        "Fertilizer",
     ):
         assert f'"{label}"' in story
     assert '"Allocation"' not in story
     assert '"Stored passive fraction"' not in story
-    assert "plant_snapshot.passive_growth_fifths_today" in story
-    assert "plant_snapshot.passive_remainder_fifths" in story
-    assert "self.fertilizer_status.setVisible(fertilizer_projection.active)" in story
-    assert "self.booster_status.setVisible(bool(booster_text))" in story
+    assert "plant_snapshot.allocation_type" in story
+    assert "self.fertilizer_status" not in story
+    assert "self.booster_status" not in story
     assert "configure_close_policy(" in story
-    assert "size = 84 if mode == COMPACT_MODE else 104" in story
+    assert "size = 136 if mode == COMPACT_MODE else 176" in story
     for stage_state in ("reached", "current", "preview", "undiscovered"):
         assert f'"{stage_state}"' in story
 
@@ -1210,7 +1206,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert 'self.nurture.setText("Nurture")' in dashboard
     assert 'self.fertilize.setText("Fertilize")' in dashboard
     assert "class RearrangeBar(QFrame):" in dashboard
-    assert 'self.title = QLabel("Moving plant")' in dashboard
+    assert 'self.title = QLabel("Move plant")' in dashboard
     assert 'self.cancel = QPushButton("Cancel")' in dashboard
     assert 'self.done = QPushButton("Done")' not in dashboard
     assert "destination_selector" not in dashboard
@@ -1223,7 +1219,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert '"dashboard.rearrange-actions"' in dashboard
     assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
+    assert "84 if guided else (176 if metrics_compact else 84)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "ONBOARDING_COACHMARK_MAX_WIDTH = 360" in dashboard

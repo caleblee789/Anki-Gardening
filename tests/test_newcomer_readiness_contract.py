@@ -221,11 +221,8 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert '"Explore garden"' in refresh_onboarding
     assert '"Try again"' in refresh_onboarding
     assert '"Return to setup"' in refresh_onboarding
-    assert 'f"Starter selected: {species}\\n"' in completion
-    assert 'f"Garden bed selected: {bed}\\n"' in completion
-    assert 'f"Plant nurtured: {plant_name}\\n"' in completion
-    assert '"Earlier Growth and repeatable rewards are not backfilled. "' in completion
-    assert '"Reliably reconstructable one-time achievements may be."' in completion
+    assert 'f"{plant_name}, your {species}, is growing in {bed}. "' in completion
+    assert '"Future qualifying Anki card answers now generate Growth."' in completion
     assert '"The last committed setup state is unchanged."' in failure
     assert "self._onboarding_save_error = message" in open_starter
     assert "self.toast_region.show_message" not in open_starter

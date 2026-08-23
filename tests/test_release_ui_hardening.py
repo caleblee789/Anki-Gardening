@@ -666,14 +666,14 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
         _method_node("GardenDashboard", "_sync_header_minimum_heights")
     )
 
-    assert "cell.setMinimumHeight(96)" in stats
+    assert "cell.setMinimumHeight(84)" in stats
     assert "self.garden_stats_bar.set_onboarding_mode(guided)" in refresh
     assert refresh.index("self.garden_stats_bar.set_onboarding_mode(guided)") < refresh.index(
         "self._sync_header_minimum_heights()"
     )
-    assert "96 if guided else (192 if metrics_compact else 104)" in heights
-    assert "186 if self._header_narrow_layout else" in heights
-    assert "160 if self._header_compact_layout else" in heights
+    assert "84 if guided else (176 if metrics_compact else 84)" in heights
+    assert "210 if self._header_narrow_layout else" in heights
+    assert "148" in heights
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 
 
@@ -683,9 +683,6 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     sync_dirty = _segment(_method_node("CollectibleDetailDialog", "_sync_dirty_state"))
     apply_draft = _segment(_method_node("CollectibleDetailDialog", "_apply_draft"))
     cancel_preview = _segment(_method_node("CollectibleDetailDialog", "_cancel_preview"))
-    unavailable_tile = _segment(
-        _method_node("CollectibleDetailDialog", "_unavailable_option_tile")
-    )
     rebuild_options = _segment(
         _method_node("CollectibleDetailDialog", "_rebuild_options")
     )
@@ -704,7 +701,7 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "compact_direction=QBoxLayout.Direction.TopToBottom" in constructor
     assert "effects_advanced_layout.setDirection" not in responsive
     assert "self.loadout_footer_responsive.evaluate(content_width)" in responsive
-    assert "Appearance changes could not be saved. No equipped items changed." in sync_dirty
+    assert "Changes were not applied." not in sync_dirty
     assert '"Saving appearance changes…"' in sync_dirty
     assert '"Saving…"' in sync_dirty
     assert '"preview" if dirty else "committed-state"' in sync_dirty
@@ -713,17 +710,14 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert '"Discard preview" if self._loadout_failure' in sync_dirty
     assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
     assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
-    assert "The live preview is still available to retry or discard." in apply_draft
+    assert "this preview is available to retry or discard." in apply_draft
     assert "if self._loadout_failure:" in cancel_preview
     assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
         "self.request_close(DialogCloseReason.CANCEL_BUTTON)"
     )
-    assert 'tile.setProperty("collectionState", "unavailable")' in unavailable_tile
-    assert "no longer offered" in unavailable_tile
-    assert "_environment_placeholder_pixmap(164, 92)" in unavailable_tile
-    assert "SemanticRole.MISSING_ART" in unavailable_tile
-    assert "unavailable_decorations" in rebuild_options
-    assert 'self._unavailable_option_tile("decoration", str(item_id))' in rebuild_options
+    assert "self.engine.owns_environment(item.kind, item.item_id)" in rebuild_options
+    assert "self._browse_nursery_empty_state(kind)" in rebuild_options
+    assert "_unavailable_option_tile" not in constructor + rebuild_options
     assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
     assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview
     assert 'f"{format_status_label(self._draft_decoration)} (Unavailable)"' in refresh_preview

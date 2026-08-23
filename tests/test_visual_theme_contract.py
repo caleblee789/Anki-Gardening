@@ -93,10 +93,10 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert "streak_layout.addWidget(self.streak_support)" in stats
     assert "currency_layout.addWidget(self.currency_support)" in stats
     assert "QLabel(METRIC_AFFORDANCE)" not in stats
-    assert "cell.setMinimumHeight(96)" in stats
+    assert "cell.setMinimumHeight(84)" in stats
     assert "growth_layout.setContentsMargins(16, 10, 16, 11)" in stats
     assert "growth_layout.setSpacing(5)" in stats
-    assert "growth_bar.setFixedHeight(10)" in stats
+    assert "growth_bar.setFixedHeight(4)" in stats
     assert "self.growth_support.setWordWrap(True)" in stats
     assert "self.streak_support.setWordWrap(True)" in stats
     assert "self.currency_support.setWordWrap(True)" in stats
@@ -104,7 +104,7 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert stats.count("QSizePolicy.Policy.Ignored") >= 3
     assert "stretches = (1, 1, 1, 1)" in stats
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
+    assert "84 if guided else (176 if metrics_compact else 84)" in dashboard
     assert "self.garden_stats_bar.setFixedHeight" not in dashboard
 
 
@@ -115,10 +115,9 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     )[0]
 
     assert "self.top_bar.setMinimumHeight(minimum)" in dashboard
-    assert "186 if self._header_narrow_layout else" in dashboard
-    assert "160 if self._header_compact_layout else" in dashboard
-    assert "320 if self._header_narrow_layout and metrics_compact else" in dashboard
-    assert "264 if self._header_compact_layout and metrics_compact else" in dashboard
+    assert "210 if self._header_narrow_layout else" in dashboard
+    assert "304 if self._header_narrow_layout and metrics_compact else" in dashboard
+    assert "248 if self._header_compact_layout and metrics_compact else" in dashboard
     assert "top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)" in dashboard
     assert "self.top_bar.setFixedHeight" not in dashboard
     assert "self.feedback_panel.hide()" in dashboard

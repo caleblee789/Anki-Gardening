@@ -1452,6 +1452,9 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             compact_scale,
             1.0,
         )
+        # Preserve the already-generous compact composition while giving the
+        # desktop Garden the requested 8–12% readability lift.
+        context_scale = min(1.20, context_scale * 1.10)
     nominal_h = min(height * 0.29, available_w * 0.205) * context_scale
     specs: list[
         tuple[int, dict[str, Any], BedAnchor, tuple[float, float, float, float], tuple[float, float]]

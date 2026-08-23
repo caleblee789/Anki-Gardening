@@ -146,8 +146,9 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
     assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in html
-    assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in html
+    assert "Aster, Seed — 250 / 500 Growth. 12 today. 8-day streak. 35 coins." in html
     assert 'data-testid="home-weather"' not in html
+    assert "ag-home__weather-layer" not in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
@@ -168,11 +169,11 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     refreshed = app._build_home_garden_html()
 
     assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in updated
-    assert "9-day Anki streak" in updated
+    assert "9-day streak" in updated
     assert 'data-testid="home-weather"' not in updated
 
     assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in refreshed
-    assert "9-day Anki streak" in refreshed
+    assert "9-day streak" in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -194,4 +195,4 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
     for rendered in (deck_content.body, overview_content.body):
         assert 'data-testid="home-reviews"' not in rendered
         assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in rendered
-        assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in rendered
+        assert "Aster, Seed — 250 / 500 Growth. 12 today. 8-day streak. 35 coins." in rendered

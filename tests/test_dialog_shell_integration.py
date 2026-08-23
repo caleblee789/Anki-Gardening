@@ -183,8 +183,10 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     assert 'floor=64' in starter
     assert 'floor=240' in starter
     assert "compact_direction=QBoxLayout.Direction.LeftToRight" in starter
-    assert 'f"Species: {species_name}\\n"' in starter
-    assert '"Species choice is permanent.\\n"' in starter
+    assert 'f"{species_name} · {COST_FREE}\\n"' in starter
+    assert '"• Permanent species choice\\n"' in starter
+    assert '"• Can be moved later\\n"' in starter
+    assert 'self.choose_action = QPushButton("Choose starter")' in starter
 
 
 def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None:
@@ -210,7 +212,9 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert "and int(width) >= 760" in purchase
     assert "and not self.presentation.terminal" in purchase
     assert "preferred = max(535, bounded)" in purchase
-    assert "dialog.set_content_bounded_maximum_height(540)" in species
+    assert "preferred_width=920" in species
+    assert "preferred_height=720" in species
+    assert "dialog.set_content_bounded_maximum_height" not in species
 
 
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:
