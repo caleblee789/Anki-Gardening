@@ -59,7 +59,7 @@ def test_release_dialog_families_use_locked_content_fit_geometry() -> None:
         DialogSizeClass.NURSERY: (1100, 720),
         DialogSizeClass.PROGRESS: (1120, 800),
         DialogSizeClass.LOADOUT: (1160, 810),
-        DialogSizeClass.GARDEN_WORKSPACE: (1600, 1100),
+        DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
         assert resolved_dialog_size(family, 2560, 1440) == size

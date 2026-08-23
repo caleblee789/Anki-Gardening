@@ -304,7 +304,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1100,
         1.0,
         1.0,
-        True,
+        False,
     ),
     # Legacy generic policies remain for secondary dialogs that are outside
     # the named release families. They are deliberately not used by Settings,

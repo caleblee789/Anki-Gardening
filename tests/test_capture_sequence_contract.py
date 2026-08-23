@@ -119,7 +119,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 19
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 20
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
