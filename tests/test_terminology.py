@@ -88,6 +88,7 @@ def test_runtime_copy_outside_dialog_views_never_uses_middle_dot_separators() ->
     active_dialog_owners = {
         ROOT / "ankigarden" / "capture_ui_faces.py",
         ROOT / "ankigarden" / "purchases.py",
+        ROOT / "ankigarden" / "hooks" / "reviewer.py",
         ROOT / "ankigarden" / "ui" / "dashboard.py",
         ROOT / "ankigarden" / "ui" / "garden_studio.py",
         ROOT / "ankigarden" / "ui" / "home_widget.py",

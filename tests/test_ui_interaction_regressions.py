@@ -139,6 +139,11 @@ def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route(
     assert "begin_placement_draft" in failed
     assert "self.rearrange_bar.set_failure(failure_copy)" in failed
     assert "toast_region.show_message" not in failed
+    collection_retry = place.split(
+        "if self.scene.begin_collection_placement(plant_id, allowed):", 1
+    )[1].split("return", 1)[0]
+    assert "self.rearrange_bar.set_failure(failure_copy)" in collection_retry
+    assert "toast_region.show_message" not in collection_retry
 
     background = next(
         row for row in manifest["assets"]

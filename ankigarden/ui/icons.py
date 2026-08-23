@@ -57,4 +57,3 @@ def garden_icon(name: str, *, color: str = "#F2F5EC") -> Any:
     renderer.render(painter)
     painter.end()
     return QIcon(pixmap)
-

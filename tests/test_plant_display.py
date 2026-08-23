@@ -1183,7 +1183,7 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert 'self.cancel_settings.setText("Discard changes" if dirty else "Cancel")' in dashboard
     assert 'else f"{modified_count} unsaved changes"' in dashboard
     assert 'f"{count} / {MAX_GARDEN_NAME_LENGTH}"' in dashboard
-    assert 'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in dashboard
+    assert 'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in dashboard
     assert 'self.garden_name_error.setProperty("fieldError", True)' in dashboard
     assert "self.garden_name_error.setVisible(not valid)" in dashboard
     assert "self.garden_name_edit.setFocus()" in dashboard
@@ -1263,10 +1263,10 @@ def test_settings_sections_and_preview_only_controls_match_persistence_contract(
     assert '"Artwork detail"' in studio  # retained only for config compatibility
     assert '"weather"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
     assert '"growth_stage"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
-    assert '"animations_label": REDUCED_MOTION_LABEL' in studio
+    assert '"animations_label": "Reduce animations"' in studio
     assert '"reduced_motion_description": REDUCED_MOTION_DESCRIPTION' in studio
     assert 'self.reduced_motion = QCheckBox()' in studio
-    assert 'controls_layout.addWidget(self.motion_row)' in studio
+    assert 'self.advanced_actions_layout.addWidget(self.motion_row)' in studio
 
 
 def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():

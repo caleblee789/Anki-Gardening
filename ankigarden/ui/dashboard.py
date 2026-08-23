@@ -16476,12 +16476,6 @@ class GardenDashboard(DialogShell):
                     self._record_active_placement_token()
                     self.rearrange_bar.set_failure(failure_copy)
                     self.rearrange_bar.show()
-                    self.toast_region.show_message(
-                        f"{failure_copy} {_learner_text(message)}",
-                        error=True,
-                        duration_ms=0,
-                        dismissible=False,
-                    )
                     self.rearrange_bar.retry.setFocus(Qt.FocusReason.OtherFocusReason)
                     return
                 self._collection_placement_plant_id = ""
