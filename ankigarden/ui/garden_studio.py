@@ -578,6 +578,7 @@ class GardenStudioWidget(QWidget):
         # scroll surface prevents an expanded Advanced section from pushing
         # the preview above the viewport and leaving a blank right column.
         self.controls_scroll = QScrollArea()
+        self.controls_scroll.setObjectName("gardenStudioControlsScroll")
         self.controls_scroll.setAccessibleName("Display settings controls")
         self.controls_scroll.setWidgetResizable(True)
         self.controls_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -709,6 +710,7 @@ class GardenStudioWidget(QWidget):
         # its content even in the wide two-column layout, otherwise expanding
         # Advanced can clip its final controls with no reachable scrollbar.
         self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())
+        self._sync_controls_scroll_width()
         self.controls_scroll.updateGeometry()
         self.controls.updateGeometry()
         self.updateGeometry()
@@ -725,9 +727,9 @@ class GardenStudioWidget(QWidget):
         # actually visible.
         QTimer.singleShot(
             0,
-            lambda target=target, expanded=expanded: self._scroll_controls_to(
-                target,
-                expanded,
+            lambda target=target, expanded=expanded: (
+                self._sync_controls_scroll_width(),
+                self._scroll_controls_to(target, expanded),
             ),
         )
 
@@ -855,6 +857,18 @@ class GardenStudioWidget(QWidget):
         self.preview_panel.updateGeometry()
         self.updateGeometry()
 
+    def _sync_controls_scroll_width(self) -> None:
+        """Keep the non-scrolling controls host inside its live viewport."""
+
+        viewport_width = max(0, int(self.controls_scroll.viewport().width()))
+        if viewport_width <= 0:
+            return
+        self.controls.setMinimumWidth(viewport_width)
+        self.controls.setMaximumWidth(viewport_width)
+        if int(self.controls.width()) != viewport_width:
+            self.controls.resize(viewport_width, self.controls.height())
+        self.controls.updateGeometry()
+
     def _apply_responsive_layout(self, width: int) -> None:
         if hasattr(self, "studio_responsive"):
             telemetry = self.studio_responsive.evaluate(width)
@@ -863,6 +877,8 @@ class GardenStudioWidget(QWidget):
     def resizeEvent(self, event: Any) -> None:
         self._apply_responsive_layout(event.size().width())
         super().resizeEvent(event)
+        self._sync_controls_scroll_width()
+        QTimer.singleShot(0, self._sync_controls_scroll_width)
 
     def _update_slider_labels(self) -> None:
         self.anim_value.setText(self._level_label(self.anim_slider.value(), 35, 75))

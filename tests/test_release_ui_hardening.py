@@ -698,7 +698,13 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "_set_button_variant(restore, BUTTON_VARIANT_SECONDARY)" in constructor
     assert "self.unsaved.setWordWrap(True)" in constructor
     assert '"collection-loadout.actions"' in constructor
-    assert "compact_direction=QBoxLayout.Direction.TopToBottom" in constructor
+    assert "apply_mode=self._set_loadout_footer_mode" in constructor
+    footer_mode = _segment(
+        _method_node("CollectibleDetailDialog", "_set_loadout_footer_mode")
+    )
+    assert "QBoxLayout.Direction.TopToBottom" in footer_mode
+    assert "QBoxLayout.Direction.LeftToRight" in footer_mode
+    assert "QSizePolicy.Policy.Expanding" in footer_mode
     assert "effects_advanced_layout.setDirection" not in responsive
     assert "self.loadout_footer_responsive.evaluate(content_width)" in responsive
     assert "Changes were not applied." not in sync_dirty

@@ -1900,6 +1900,10 @@ class PurchaseConfirmationDialog(DialogShell):
             "color:#d8eee5; background:#17352c; border:1px solid #416b5d; "
             "border-radius:8px; padding:8px 10px;"
         )
+        self.compact_decision_summary.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         apply_tabular_numerals(self.compact_decision_summary)
         self.compact_decision_summary.hide()
         content.insertWidget(
@@ -2483,7 +2487,10 @@ class PurchaseConfirmationDialog(DialogShell):
         self.compact_replacement_summary.setText("\n".join(lines))
 
     def _update_compact_decision_summary(self) -> None:
-        details = [self.presentation.category, self.presentation.outcome]
+        # The status banner already owns the transaction outcome. Repeating it
+        # here creates a large second error panel at short viewport heights.
+        # Keep this summary to the item identity and decision-relevant facts.
+        details = [self.presentation.item_name, self.presentation.category]
         if self.presentation.target_name:
             details.append(f"Target: {self.presentation.target_name}")
         details.extend(
@@ -3489,6 +3496,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             ("Stage", values["stage"]),
             ("Inventory", values["inventory"]),
         ])
+        self.fact_values = dict(self.facts_card.value_labels)
         self._set_preview_mode(
             "ready" if quote.ready else "unavailable",
             "",
@@ -5150,9 +5158,11 @@ class GardenOutcomePreview(QFrame):
         self.grid.setContentsMargins(12, 10, 12, 10)
         self.grid.setHorizontalSpacing(16)
         self.grid.setVerticalSpacing(6)
+        self.value_labels: dict[str, QLabel] = {}
         self.set_rows(rows or [])
 
     def set_rows(self, rows: list[tuple[str, str]]) -> None:
+        self.value_labels = {}
         while self.grid.count():
             item = self.grid.takeAt(0)
             widget = item.widget()
@@ -5165,6 +5175,7 @@ class GardenOutcomePreview(QFrame):
             apply_tabular_numerals(value)
             self.grid.addWidget(label, index, 0)
             self.grid.addWidget(value, index, 1)
+            self.value_labels[str(label_text).strip().lower()] = value
 
 
 class GardenPlantSummary(SectionCard):
@@ -5993,6 +6004,15 @@ class GardenSettingsDialog(GardenDialog):
         self.save_status.hide()
         self.behavior.persistentChanged.connect(self._update_dirty_state)
         behavior = QWidget()
+        # Let the Display page shrink to the live scroll viewport after its
+        # vertical scrollbar appears. Without the ignored horizontal hint,
+        # the expanded Advanced panel can retain its pre-scrollbar width and
+        # overflow the viewport by exactly the scrollbar extent.
+        behavior.setMinimumWidth(0)
+        behavior.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         behavior_layout = QVBoxLayout(behavior)
         behavior_layout.setContentsMargins(0, 0, 0, 0)
         behavior_layout.setSpacing(10)
@@ -6051,18 +6071,26 @@ class GardenSettingsDialog(GardenDialog):
         # the native dialog reaches its minimum height, so the preview remains
         # reachable without changing the window size.
         behavior_layout.addWidget(self.behavior, 1)
-        behavior_scroll = QScrollArea()
-        behavior_scroll.setWidgetResizable(True)
-        behavior_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        behavior_scroll.setHorizontalScrollBarPolicy(
+        self.behavior_page = behavior
+        self.behavior_scroll = QScrollArea()
+        self.behavior_scroll.setObjectName("gardenSettingsDisplayScroll")
+        self.behavior_scroll.setWidgetResizable(True)
+        self.behavior_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.behavior_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        behavior_scroll.setAccessibleName("Display settings")
-        behavior_scroll.setWidget(behavior)
+        self.behavior_scroll.setAccessibleName("Display settings")
+        self.behavior_scroll.setWidget(behavior)
         _set_scroll_surface(
-            behavior_scroll,
+            self.behavior_scroll,
             behavior,
             GARDEN_THEME["dialog_surface"],
+        )
+        self.behavior_scroll.verticalScrollBar().rangeChanged.connect(
+            lambda _minimum, _maximum: QTimer.singleShot(
+                0,
+                self._sync_display_scroll_width,
+            )
         )
 
         # Save feedback gets the full content width so long validation errors do
@@ -6228,7 +6256,7 @@ class GardenSettingsDialog(GardenDialog):
         a_layout.addWidget(self.debug_report)
         self._refresh_debug_report()
 
-        self.tabs.addTab(behavior_scroll, "Display")
+        self.tabs.addTab(self.behavior_scroll, "Display")
         self.tabs.addTab(advanced, UI_TEXT["tab_advanced"])
         self.tabs.currentChanged.connect(self._sync_settings_tab)
         self._sync_settings_tab(0)
@@ -6321,8 +6349,24 @@ class GardenSettingsDialog(GardenDialog):
             self.setMaximumHeight(720)
             self.setMinimumHeight(680)
         QTimer.singleShot(0, self._sync_footer_clearance)
+        QTimer.singleShot(0, self._sync_display_scroll_width)
         if diagnostics:
             QTimer.singleShot(0, self._sync_report_actions_layout)
+
+    def _sync_display_scroll_width(self) -> None:
+        """Keep the Display page inside the live vertical-scroll viewport."""
+
+        if not hasattr(self, "behavior_scroll"):
+            return
+        viewport_width = max(0, int(self.behavior_scroll.viewport().width()))
+        if viewport_width <= 0:
+            return
+        page = self.behavior_page
+        page.setMinimumWidth(0)
+        page.setMaximumWidth(viewport_width)
+        if int(page.width()) != viewport_width:
+            page.resize(viewport_width, page.height())
+        page.updateGeometry()
 
     def resizeEvent(self, event: Any) -> None:
         if hasattr(self, "settings_footer_grid"):
@@ -6334,6 +6378,9 @@ class GardenSettingsDialog(GardenDialog):
                 )
             )
         super().resizeEvent(event)
+        if hasattr(self, "behavior_scroll"):
+            self._sync_display_scroll_width()
+            QTimer.singleShot(0, self._sync_display_scroll_width)
         if hasattr(self, "report_actions_responsive"):
             self._sync_report_actions_layout()
             QTimer.singleShot(0, self._sync_report_actions_layout)
@@ -8109,6 +8156,7 @@ class NurseryDialog(DialogShell):
         meta = QLabel(f"{stage} Stage\n{progress_text}")
         meta.setProperty("nurseryMeta", True)
         meta.setTextFormat(Qt.TextFormat.PlainText)
+        meta.setWordWrap(True)
         apply_tabular_numerals(meta)
         copy.addLayout(badges)
         copy.addWidget(title)
@@ -8133,7 +8181,7 @@ class NurseryDialog(DialogShell):
             action_floor=131,
             spacing=11,
             margins=(12, 6, 12, 6),
-            wide_maximum_height=72,
+            wide_maximum_height=96,
         )
         card.setProperty("nurseryGrowing", True)
         card.setAccessibleDescription(
@@ -8316,7 +8364,13 @@ class NurseryDialog(DialogShell):
         meta.setWordWrap(True)
         apply_tabular_numerals(meta)
         affordability_label = QLabel(
-            _compact_affordability_status(price, balance) if not affordable else ""
+            _compact_affordability_status(
+                price,
+                balance,
+                ready_text="Ready to purchase",
+            )
+            if not affordable
+            else ""
         )
         affordability_label.setProperty("nurseryShortfall", True)
         affordability_label.setWordWrap(True)
@@ -13096,7 +13150,8 @@ class CollectibleDetailDialog(GardenDialog):
         self.apply_changes.clicked.connect(self._apply_draft)
         self.footer_layout.addWidget(self.cancel_preview)
         self.footer_layout.addWidget(self.apply_changes)
-        self.loadout_footer_responsive = AdaptiveRow.for_box_layout(
+        self._loadout_footer_compact: bool | None = None
+        self.loadout_footer_responsive = AdaptiveRow(
             "collection-loadout.actions",
             (
                 AdaptiveRegion.measured("status", self.unsaved, floor=220),
@@ -13111,14 +13166,47 @@ class CollectibleDetailDialog(GardenDialog):
                     floor=140,
                 ),
             ),
-            layout=self.footer_layout,
-            wide_direction=QBoxLayout.Direction.LeftToRight,
-            compact_direction=QBoxLayout.Direction.TopToBottom,
             spacing=8,
+            apply_mode=self._set_loadout_footer_mode,
             telemetry_target=self.footer,
         )
         self.footer.show()
         self.prepare_to_show()
+
+    def _set_loadout_footer_mode(self, mode: str) -> None:
+        compact = mode == COMPACT_MODE
+        if compact == self._loadout_footer_compact:
+            return
+        self._loadout_footer_compact = compact
+        self.footer_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if compact else
+            QBoxLayout.Direction.LeftToRight
+        )
+        self.footer_layout.setAlignment(
+            Qt.AlignmentFlag.AlignTop
+            if compact else
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        for button in (self.cancel_preview, self.apply_changes):
+            button.setMaximumWidth(
+                16777215
+                if compact else
+                max(180, int(button.sizeHint().width()) + 24)
+            )
+            button.setSizePolicy(
+                QSizePolicy.Policy.Expanding
+                if compact else
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Preferred,
+            )
+        self.unsaved.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.footer_layout.invalidate()
+        self.footer_layout.activate()
+        self.footer.updateGeometry()
 
     def _option_page(self, accessible_name: str) -> tuple[QWidget, QGridLayout]:
         host = QWidget()
@@ -15250,6 +15338,17 @@ class GardenDashboard(DialogShell):
         root.invalidate()
         root.activate()
         required = max(1, int(root.minimumSize().height()))
+        # Overlay and responsive children can legitimately extend beyond the
+        # root layout's minimum hint. Include their live bottom edge so the
+        # sole dashboard scroll owner can reach every rendered pixel.
+        for descendant in page.findChildren(QWidget):
+            if descendant.isHidden():
+                continue
+            origin = descendant.mapTo(page, descendant.rect().topLeft())
+            required = max(
+                required,
+                int(origin.y()) + int(descendant.height()),
+            )
         page.setMinimumHeight(required)
         page.setProperty("minimumReachableContentHeight", required)
 

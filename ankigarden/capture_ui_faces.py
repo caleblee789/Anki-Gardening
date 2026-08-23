@@ -3442,7 +3442,13 @@ class _UiFaceCaptureRunner:
     @staticmethod
     def _onboarding_copy_geometry(dashboard: Any) -> dict[str, Any]:
         panel = getattr(dashboard, "onboarding_panel", None)
-        message = getattr(dashboard, "onboarding_message", None)
+        ordinary_message = getattr(dashboard, "onboarding_message", None)
+        error_banner = getattr(dashboard, "onboarding_error_banner", None)
+        message = (
+            error_banner
+            if error_banner is not None and error_banner.isVisible()
+            else ordinary_message
+        )
         actions = [
             getattr(dashboard, "onboarding_action", None),
             getattr(dashboard, "dismiss_onboarding", None),
@@ -3703,7 +3709,11 @@ class _UiFaceCaptureRunner:
             development_names = [
                 str(getattr(plant, "name", "") or "") for plant in plants
             ]
-            expected_species = list(DEVELOPMENT_STRESS_SPECIES_ORDER)
+            expected_species = list(
+                DEVELOPMENT_STRESS_SPECIES_ORDER[:6]
+                if state_name == "nursery-item-owned" else
+                DEVELOPMENT_STRESS_SPECIES_ORDER
+            )
             expected_ids = [f"dev_{species}" for species in expected_species]
             expected_names = [
                 f"{species.replace('_', ' ').title()} Plant"[:40]
@@ -3788,8 +3798,8 @@ class _UiFaceCaptureRunner:
             expected_title = str(
                 annotation.get("canonical_feedback_title", "")
             )
-            expected_detail = str(
-                annotation.get("canonical_feedback_detail", "")
+            expected_message = str(
+                annotation.get("canonical_feedback_message", "")
             )
             require(
                 "reviewer_surface",
@@ -3808,10 +3818,14 @@ class _UiFaceCaptureRunner:
                 labels.get("ankiGardenRewardTitle", ""),
             )
             require(
-                "reward_toast_detail",
-                bool(expected_detail)
-                and labels.get("ankiGardenRewardDetail") == expected_detail,
-                labels.get("ankiGardenRewardDetail", ""),
+                "reward_toast_message",
+                bool(expected_message)
+                and labels.get("ankiGardenRewardMessage") == expected_message
+                and not labels.get("ankiGardenRewardDetail", ""),
+                {
+                    "message": labels.get("ankiGardenRewardMessage", ""),
+                    "detail": labels.get("ankiGardenRewardDetail", ""),
+                },
             )
             require(
                 "canonical_reviewer_reward_projection",
@@ -4228,12 +4242,16 @@ class _UiFaceCaptureRunner:
                     [getattr(garden_state, "currency_balance", None), len(transactions)],
                 )
                 require(
-                    "empty_reward_and_find_history",
+                    "empty_coin_activity",
                     not receipts
                     and not outcomes
                     and bool(annotation.get("passed", False))
-                    and "No rewards recorded yet" in visible_label_texts
-                    and "No Garden Finds yet" in visible_label_texts,
+                    and "No Garden Coins earned yet" in visible_label_texts
+                    and any(
+                        "Study on an Anki day" in text
+                        and "reach a new plant stage" in text
+                        for text in visible_label_texts
+                    ),
                     {
                         "receipt_count": len(receipts),
                         "find_count": len(outcomes),
@@ -4291,18 +4309,22 @@ class _UiFaceCaptureRunner:
                     annotation,
                 )
                 require(
-                    "reward_and_find_copy",
-                    "Recent rewards" in visible_label_texts
-                    and "Recent coin activity" in visible_label_texts
-                    and "Recent Finds" in visible_label_texts
-                    and direct_growth is not None
-                    and direct_growth.description in visible_label_texts
-                    and compost is not None
-                    and (
-                        f"{compost.display_name} · {compost.tier}"
-                        in visible_label_texts
+                    "coin_activity_ledger_copy",
+                    "Recent activity" in visible_label_texts
+                    and all(
+                        heading in visible_label_texts
+                        for heading in (
+                            "Date",
+                            "Source",
+                            "Change",
+                            "Resulting balance",
+                        )
                     )
-                    and compost.description in visible_label_texts,
+                    and "Garden Find" in visible_label_texts
+                    and any(
+                        text.startswith("Achievement · ")
+                        for text in visible_label_texts
+                    ),
                     visible_label_texts,
                 )
             elif state_name == "progress-overview-redirect-growth":
@@ -4395,10 +4417,10 @@ class _UiFaceCaptureRunner:
                     and annotation.get("reward_summary")
                     == projection.reward_summary
                     and not projection.completed
-                    and all(
-                        f"• {condition}" in visible_label_texts
-                        for condition in projection.condition_lines
-                    )
+                    and projection.name in visible_label_texts
+                    and projection.criteria_text in visible_label_texts
+                    and "Progress" in visible_label_texts
+                    and projection.value_text in visible_label_texts
                     and f"Reward: {projection.reward_summary}"
                     in visible_label_texts
                     and bool(annotation.get("target_card_fully_visible", False)),
@@ -4543,7 +4565,16 @@ class _UiFaceCaptureRunner:
                     len(plants) >= 6
                     and bool(owned_species)
                     and owned_species.issubset(unlocked)
-                    and "Return to Collection" in visible_buttons,
+                    and bool(
+                        set(visible_buttons)
+                        & {"Store plant", "Plant in garden", "View in garden"}
+                    )
+                    and bool(
+                        self.app.engine.catalog_summary().get(
+                            "available_species",
+                            [],
+                        )
+                    ),
                     {
                         "buttons": visible_buttons,
                         "owned_species": sorted(owned_species),
@@ -4589,23 +4620,28 @@ class _UiFaceCaptureRunner:
                 title = str(
                     getattr(getattr(widget, "environment_feature_title", None), "text", lambda: "")()
                 )
-                status = getattr(widget, "status", None)
-                status_text = str(
-                    getattr(status, "text", lambda: "")()
-                    if status is not None else ""
+                toast = getattr(widget, "nursery_toast", None)
+                toast_text = str(
+                    getattr(getattr(toast, "message", None), "text", lambda: "")()
+                )
+                primary = str(
+                    getattr(getattr(toast, "action", None), "text", lambda: "")()
+                )
+                secondary = str(
+                    getattr(getattr(toast, "dismiss", None), "text", lambda: "")()
                 )
                 require(
                     "purchased_item_preview",
                     bool(title)
-                    and bool(status is not None and status.isVisible())
-                    and "Soft Breeze unlocked." in status_text
-                    and "Preview or equip it in Collection." in status_text
-                    and "Spent: 100 Garden Coins" in status_text
-                    and "Balance:" in status_text
-                    and "Open Collection" in visible_buttons,
+                    and bool(toast is not None and toast.isVisible())
+                    and toast_text == "Soft Breeze unlocked"
+                    and primary == "Open Collection"
+                    and secondary == "Continue shopping",
                     {
                         "title": title,
-                        "status": status_text,
+                        "toast": toast_text,
+                        "primary": primary,
+                        "secondary": secondary,
                         "buttons": visible_buttons,
                     },
                 )
@@ -4614,10 +4650,9 @@ class _UiFaceCaptureRunner:
                 "purchase-success-fertilizer-applied",
                 "purchase-success-garden-bed-unlocked",
             }:
-                status = getattr(widget, "status", None)
-                status_text = str(
-                    getattr(status, "text", lambda: "")()
-                    if status is not None else ""
+                toast = getattr(widget, "nursery_toast", None)
+                toast_text = str(
+                    getattr(getattr(toast, "message", None), "text", lambda: "")()
                 )
                 expected_action = {
                     "purchase-success-inventory-collection": "Plant in garden",
@@ -4625,20 +4660,20 @@ class _UiFaceCaptureRunner:
                     "purchase-success-garden-bed-unlocked": "View garden",
                 }[state_name]
                 expected_outcome = {
-                    "purchase-success-inventory-collection": "Sunflower added to your collection.",
-                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant for 1 hour.",
-                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked.",
+                    "purchase-success-inventory-collection": "Sunflower Seed added to your collection",
+                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant",
+                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked",
                 }[state_name]
                 require(
                     "typed_purchase_receipt",
-                    bool(status is not None and status.isVisible())
-                    and expected_outcome in status_text
-                    and "Spent:" in status_text
-                    and "Balance:" in status_text
-                    and expected_action in visible_buttons
+                    bool(toast is not None and toast.isVisible())
+                    and toast_text == expected_outcome
+                    and getattr(toast, "action", None) is not None
+                    and toast.action.text() == expected_action
+                    and toast.dismiss.text() == "Continue shopping"
                     and bool(annotation.get("passed", False)),
                     {
-                        "status": status_text,
+                        "toast": toast_text,
                         "buttons": visible_buttons,
                         "annotation": annotation,
                     },
@@ -4736,11 +4771,11 @@ class _UiFaceCaptureRunner:
                 require(
                     "loadout_rollback",
                     bool(annotation.get("passed", False))
-                    and int(widget.unsaved.margin()) >= 8,
-                    {
-                        "annotation": annotation,
-                        "status_margin": int(widget.unsaved.margin()),
-                    },
+                    and bool(annotation.get("error_visible", False))
+                    and bool(annotation.get("single_banner", False))
+                    and bool(annotation.get("normal_width_actions", False))
+                    and bool(annotation.get("actions_right_aligned", False)),
+                    annotation,
                 )
             else:
                 persisted_visibility = tuple(
@@ -4794,7 +4829,7 @@ class _UiFaceCaptureRunner:
                 require(
                     "starter_confirmation",
                     title.startswith("Choose ")
-                    and "Choose free starter" in buttons
+                    and "Choose starter" in buttons
                     and "Go back" in buttons,
                     {"title": title, "buttons": buttons},
                 )
@@ -4828,13 +4863,12 @@ class _UiFaceCaptureRunner:
                     "fertilizer_replacement",
                     title.startswith("Replace with ")
                     and "Keep current" in buttons
-                    and any(
-                        button.startswith("Purchase & Replace · ")
-                        for button in buttons
-                    ),
+                    and "Purchase and replace" in buttons,
                     {"title": title, "buttons": buttons},
                 )
             elif state_name in _GROWTH_CHARGE_CAPTURE_LABELS:
+                from .ui.formatters import format_status_label
+
                 expected_status = str(
                     expectation.get("growth_charge_status", "")
                 )
@@ -4846,8 +4880,7 @@ class _UiFaceCaptureRunner:
                 ]
                 active_scrolls = tuple(widget.active_vertical_scroll_regions())
                 required_fact_keys = {
-                    "current",
-                    "projected",
+                    "growth",
                     "stage",
                     "inventory",
                 }
@@ -4890,9 +4923,32 @@ class _UiFaceCaptureRunner:
                         and bool(widget.alert.text().strip())
                     )
                 elif state_name == "growth-charge-success-stage-reward":
+                    reward_chips = {
+                        str(label_widget.text())
+                        for label_widget in widget.reward_chips.findChildren(QLabel)
+                        if label_widget.isVisible()
+                        and str(label_widget.text()).strip()
+                    }
+                    outcome = widget.outcome
+                    rewards = tuple(outcome.rewards or ())
+                    reward_total = sum(
+                        max(0, int(getattr(reward, "garden_coins", 0) or 0))
+                        for reward in rewards
+                    )
+                    expected_reward_chips = {
+                        f"+{max(0, int(outcome.growth_granted)):,} Growth",
+                        *{
+                            f"{format_status_label(str(getattr(reward, 'stage', '') or 'Stage'))} reward"
+                            for reward in rewards
+                        },
+                    }
+                    if reward_total:
+                        expected_reward_chips.add(
+                            f"+{reward_total:,} Garden Coins"
+                        )
                     state_visible = (
                         not widget.receipt.isHidden()
-                        and "earned 5 Garden Coins" in widget.receipt_copy.text()
+                        and expected_reward_chips.issubset(reward_chips)
                         and _displayed_button_text(widget.use_action) == "View plant"
                         and _displayed_button_text(widget.cancel_action) == "Close"
                     )
@@ -4994,14 +5050,18 @@ class _UiFaceCaptureRunner:
                     "purchase-error-stale-balance",
                 }:
                     require(
-                        "stale_purchase_values_are_previews",
+                        "stale_purchase_updated_terms",
                         bool(
-                            "Preview —" in visible_text
-                            and "· Preview" in visible_text
-                            and "Proposed:" in visible_text
-                            and widget.price_label.text().startswith("Preview cost:")
-                            and widget.balance_label.text().startswith("Preview balance:")
-                            and bool(annotation.get("stale_preview_visible", False))
+                            "Preview" not in visible_text
+                            and "Proposed" not in visible_text
+                            and widget.price_label.text()
+                            == f"{widget.presentation.price:,} Garden Coins"
+                            and widget.balance_label.text()
+                            == (
+                                "Balance after purchase: "
+                                f"{max(0, int(widget.quote.balance_after)):,}"
+                            )
+                            and bool(annotation.get("stale_terms_visible", False))
                             and bool(
                                 annotation.get("refreshed_request_matches_live_terms", False)
                             )
@@ -6845,6 +6905,7 @@ class _UiFaceCaptureRunner:
         app = QApplication.instance()
         for _pass in range(2):
             dashboard._position_onboarding_coachmark()
+            dashboard._sync_dashboard_content_minimum_height()
             if app is not None:
                 app.processEvents()
 
@@ -7010,12 +7071,18 @@ class _UiFaceCaptureRunner:
             finally:
                 self.app.storage.save = original_save
             current = self.app.storage.state
+            error_banner = dashboard.onboarding_error_banner
+            error_copy = str(error_banner.message.text())
             self._capture_annotations["onboarding-persistence-error"] = {
                 "passed": bool(
                     current.onboarding.step == OnboardingStep.INTRODUCTION
                     and not current.plants
                     and dashboard.onboarding_panel.isVisible()
-                    and dashboard.onboarding_panel.property("statusTone") == "error"
+                    and error_banner.isVisible()
+                    and dashboard.onboarding_title.text()
+                    == "Starter setup was not saved"
+                    and "No species" in error_copy
+                    and "committed" in error_copy
                     and dashboard.onboarding_action.text() == "Try again"
                     and dashboard.dismiss_onboarding.text() == "Return to setup"
                     and bool(dashboard._onboarding_save_error)
@@ -7023,6 +7090,7 @@ class _UiFaceCaptureRunner:
                 ),
                 "onboarding_step": current.onboarding.step.value,
                 "committed_plants": len(current.plants),
+                "error_copy": error_copy,
             }
             self._capture_and_advance(
                 "onboarding-persistence-error",
@@ -7101,8 +7169,12 @@ class _UiFaceCaptureRunner:
                 dashboard.scene._interaction.dragged_id == plant_id
             )
             error_visible = bool(
-                dashboard.toast_region.isVisible()
-                and dashboard.toast_region.property("error")
+                dashboard.rearrange_bar.isVisible()
+                and dashboard.rearrange_bar.property("error")
+                and dashboard.rearrange_bar.title.text() == "Move not saved"
+                and dashboard.rearrange_bar.retry.isVisible()
+                and dashboard.rearrange_bar.retry.text() == "Try again"
+                and dashboard.rearrange_bar.cancel.text() == "Cancel move"
             )
             self._capture_annotations["move-persistence-error"] = {
                 "passed": bool(
@@ -8406,6 +8478,28 @@ class _UiFaceCaptureRunner:
                     if no_results is not None and scroll is not None:
                         scroll.ensureWidgetVisible(no_results, 0, 80)
                         QApplication.processEvents()
+                        # Collection refreshes can replace the empty-state
+                        # instance during that event turn. Audit the live
+                        # instance that will actually be captured.
+                        no_results = getattr(
+                            dashboard,
+                            "collection_no_results",
+                            None,
+                        )
+                        collection_grid = getattr(
+                            dashboard,
+                            "collection_list",
+                            None,
+                        )
+                        scroll = getattr(collection_grid, "scroll", None)
+                    if no_results is not None and scroll is not None:
+                        scroll.ensureWidgetVisible(no_results, 0, 80)
+                        QApplication.processEvents()
+                        no_results = getattr(
+                            dashboard,
+                            "collection_no_results",
+                            no_results,
+                        )
                         viewport = scroll.viewport()
                         origin = no_results.mapTo(
                             viewport,
@@ -9007,20 +9101,24 @@ class _UiFaceCaptureRunner:
                 "Quantity: 1",
                 "Are you sure you want to purchase",
             ) + (() if stale_variant else ("Balance after purchase",))
-            stale_preview_visible = bool(
+            stale_terms_visible = bool(
                 not stale_variant
                 or (
-                    "Preview —" in visible_copy
-                    and "· Preview" in visible_copy
-                    and "Proposed:" in visible_copy
-                    and dialog.price_label.text().startswith("Preview cost:")
-                    and dialog.balance_label.text().startswith("Preview balance:")
+                    "Preview" not in visible_copy
+                    and "Proposed" not in visible_copy
+                    and dialog.price_label.text()
+                    == f"{dialog.presentation.price:,} Garden Coins"
+                    and dialog.balance_label.text()
+                    == (
+                        "Balance after purchase: "
+                        f"{max(0, int(dialog.quote.balance_after)):,}"
+                    )
                 )
             )
             expected_primary = (
                 str(dialog.presentation.processing_label)
                 if variant == "loading" else
-                "Return to Garden"
+                "Choose another plant"
                 if variant == "invalid-target" else
                 str(dialog.presentation.primary_label)
             )
@@ -9048,8 +9146,7 @@ class _UiFaceCaptureRunner:
                 )
             )
             applicable_copy = bool(
-                dialog.outcome_label.text().strip()
-                and dialog.item_name.text().strip()
+                dialog.item_name.text().strip()
                 and dialog.category.text().strip()
             )
             unavailable_terminal = variant == "unavailable"
@@ -9087,7 +9184,7 @@ class _UiFaceCaptureRunner:
                 "quantity": quote.quantity,
                 "target_id": target_id or "",
                 "error_banner_visible": error_banner_visible,
-                "stale_preview_visible": stale_preview_visible,
+                "stale_terms_visible": stale_terms_visible,
                 "request_expected_price": int(dialog.request.expected_price),
                 "live_quote_price": int(dialog.quote.total_price),
                 "request_expected_balance": int(dialog.request.expected_balance),
@@ -9114,7 +9211,7 @@ class _UiFaceCaptureRunner:
                     )
                     and quote.quantity == 1
                     and (not error_variant or error_banner_visible)
-                    and stale_preview_visible
+                    and stale_terms_visible
                     and refreshed_request_matches_live_terms
                 ),
             }
@@ -9229,7 +9326,11 @@ class _UiFaceCaptureRunner:
 
             # Register exact restoration before any purchase can commit.
             cleanup_holder["callback"] = cleanup
-            from .purchases import PurchaseKind, PurchaseRequest
+            from .purchases import (
+                PurchaseKind,
+                PurchaseRequest,
+                purchase_presentation,
+            )
             from .ui.dashboard import NurseryDialog
 
             state = self.app.storage.state
@@ -9273,7 +9374,10 @@ class _UiFaceCaptureRunner:
                 dialog.refresh()
                 dialog.catalog_tabs.setCurrentIndex(tab_index)
             if outcome.success:
-                dialog._show_purchase_receipt(outcome)
+                dialog._show_purchase_receipt(
+                    outcome,
+                    purchase_presentation(quote, ignore_status=True),
+                )
             self._capture_annotations[label] = {
                 "status": outcome.status.value,
                 "disposition": outcome.disposition.value,
@@ -9442,7 +9546,7 @@ class _UiFaceCaptureRunner:
         elif variant == "stale":
             conditions.extend([
                 alert_visible,
-                "inventory changed" in dialog.alert.text(),
+                "inventory changed" in dialog.alert.text().casefold(),
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 1_250,
                 ledger_count == 0,
@@ -9655,21 +9759,48 @@ class _UiFaceCaptureRunner:
                 self.app.storage,
             )
             dialog.catalog_tabs.setCurrentIndex(0)
-            empty_visible = any(
-                "collected every plant" in str(label_widget.text()).lower()
-                for label_widget in dialog.findChildren(QLabel)
-            )
-            self._capture_annotations[label] = {
-                "empty_state_visible": empty_visible,
-                "available_count": len(self.app.engine.catalog_summary().get("available_species", [])),
-                "passed": bool(empty_visible),
-            }
             dialog.setWindowModality(Qt.WindowModality.NonModal)
             dialog.setModal(False)
             self._move_to_capture_display(dialog)
             dialog.show()
             scrollbar = dialog.scroll.verticalScrollBar()
             QTimer.singleShot(120, lambda: scrollbar.setValue(scrollbar.maximum()))
+
+            def audit_empty_state() -> None:
+                QApplication.processEvents()
+                visible_labels = {
+                    str(label_widget.text())
+                    for label_widget in dialog.findChildren(QLabel)
+                    if not label_widget.isHidden()
+                }
+                visible_buttons = {
+                    _displayed_button_text(button)
+                    for button in dialog.findChildren(QAbstractButton)
+                    if not button.isHidden()
+                }
+                available_count = len(
+                    self.app.engine.catalog_summary().get(
+                        "available_species",
+                        [],
+                    )
+                )
+                empty_visible = bool(
+                    "No new plants available" in visible_labels
+                    and any(
+                        "Every currently available species is already in your collection."
+                        in copy
+                        for copy in visible_labels
+                    )
+                    and {"View collection", "Return to garden"}.issubset(
+                        visible_buttons
+                    )
+                )
+                self._capture_annotations[label] = {
+                    "empty_state_visible": empty_visible,
+                    "available_count": available_count,
+                    "actions": sorted(visible_buttons),
+                    "passed": bool(empty_visible and available_count == 0),
+                }
 
             def close_dialog() -> None:
                 self._close_widget(dialog)
@@ -9679,6 +9810,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=520,
+                before_capture=audit_empty_state,
                 close_callback=close_dialog,
                 close_ms=900,
                 next_ms=1240,
@@ -9850,9 +9982,16 @@ class _UiFaceCaptureRunner:
                     ),
                     "loadout_summary_visible": (
                         "Equipped appearance" in labels
-                        and all(
-                            category in labels
-                            for category in ("Scenery", "Weather", "Decoration")
+                        and any(
+                            all(
+                                f"{category}:" in text
+                                for category in (
+                                    "Scenery",
+                                    "Weather",
+                                    "Decoration",
+                                )
+                            )
+                            for text in labels
                         )
                     ),
                     "equipment_state_visible": any(
@@ -9938,13 +10077,61 @@ class _UiFaceCaptureRunner:
             finally:
                 self.app.storage.save = original_save
             after = self.app.engine.state.loadout.to_dict()
-            self._capture_annotations[label] = {
-                "passed": before == after and bool(dialog.unsaved.text()),
-                "state_restored": before == after,
-                "error_visible": bool(dialog.unsaved.text()),
-            }
             self._move_to_capture_display(dialog)
             dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            QApplication.processEvents()
+            error_copy = str(dialog.preview_feedback.message.text())
+            error_visible = bool(
+                dialog.preview_feedback.isVisible()
+                and dialog.preview_panel.isAncestorOf(dialog.preview_feedback)
+                and "Changes were not applied" in error_copy
+                and "unchanged" in error_copy
+            )
+            actions = {
+                _displayed_button_text(dialog.cancel_preview),
+                _displayed_button_text(dialog.apply_changes),
+            }
+            normal_width_actions = bool(
+                dialog.property("footerMode") == "wide"
+                and max(
+                    dialog.cancel_preview.width(),
+                    dialog.apply_changes.width(),
+                )
+                <= max(220, int(dialog.footer.width() * 0.35))
+            )
+            apply_origin = dialog.apply_changes.mapTo(
+                dialog.footer,
+                dialog.apply_changes.rect().topLeft(),
+            )
+            footer_margins = dialog.footer_layout.contentsMargins()
+            actions_right_aligned = bool(
+                apply_origin.x() + dialog.apply_changes.width()
+                >= dialog.footer.width() - footer_margins.right() - 2
+            )
+            single_banner = bool(
+                error_visible
+                and dialog.unsaved.isHidden()
+                and not str(dialog.unsaved.text()).strip()
+            )
+            self._capture_annotations[label] = {
+                "passed": bool(
+                    before == after
+                    and error_visible
+                    and actions == {"Try again", "Discard preview"}
+                    and single_banner
+                    and normal_width_actions
+                    and actions_right_aligned
+                ),
+                "state_restored": before == after,
+                "error_visible": error_visible,
+                "error_copy": error_copy,
+                "actions": sorted(actions),
+                "single_banner": single_banner,
+                "normal_width_actions": normal_width_actions,
+                "actions_right_aligned": actions_right_aligned,
+            }
 
             def close_dialog() -> None:
                 self._close_widget(dialog)
@@ -11249,7 +11436,7 @@ class _UiFaceCaptureRunner:
                 replace = next(
                     (
                         button for button in dialog.findChildren(QAbstractButton)
-                        if _displayed_button_text(button) == "Purchase & Replace"
+                        if _displayed_button_text(button) == "Purchase and replace"
                         and button.isEnabled()
                     ),
                     None,
@@ -11879,8 +12066,32 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_nursery_owned_item(self) -> None:
-        self._ensure_development_stress_state()
-        self._capture_nursery_tab(0, "nursery-item-owned")
+        label = "nursery-item-owned"
+
+        def setup(_dashboard: Any) -> Callable[[], None]:
+            if not self._ensure_development_stress_state():
+                raise RuntimeError("development stress state was unavailable")
+            snapshot = self._capture_fixture_state_snapshot(label)
+            state = self.app.storage.state
+            state.plants = list(state.plants[:6])
+            state.unlocked_species = [
+                str(plant.species) for plant in state.plants
+            ]
+            state.active_plant_id = state.plants[0].plant_id
+            state.onboarding.starter_plant_id = state.active_plant_id
+            self._refresh_capture_dashboard()
+            return lambda: self._restore_capture_fixture_state(snapshot)
+
+        def reveal_owned_rows(dialog: Any) -> None:
+            scrollbar = dialog.scroll.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+
+        self._capture_nursery_tab(
+            0,
+            label,
+            fixture_setup=setup,
+            ready_audit=reveal_owned_rows,
+        )
 
     def _capture_custom_nursery(
         self,
@@ -11960,7 +12171,7 @@ class _UiFaceCaptureRunner:
 
     def _capture_nursery_purchase_success(self) -> None:
         from .environment import SCENERY_CATALOG, WEATHER_CATALOG
-        from .purchases import PurchaseKind, PurchaseRequest
+        from .purchases import PurchaseKind, PurchaseRequest, purchase_presentation
 
         label = "nursery-purchase-success"
         snapshot = self._capture_fixture_state_snapshot(
@@ -12000,7 +12211,10 @@ class _UiFaceCaptureRunner:
             dialog.catalog_tabs.setCurrentIndex(3)
             dialog._preview_environment_item(item)
             if outcome.success:
-                dialog._show_purchase_receipt(outcome)
+                dialog._show_purchase_receipt(
+                    outcome,
+                    purchase_presentation(quote, ignore_status=True),
+                )
             if not self.app.engine.owns_environment(item.kind, item.item_id):
                 self._failures.append({
                     "label": label,
@@ -12677,15 +12891,10 @@ class _UiFaceCaptureRunner:
                 raise RuntimeError(
                     "canonical Reviewer reward feedback could not be projected"
                 )
-            expected_detail = (
-                presentations[0].description
-                if len(presentations) == 1
-                else handler._aggregate_find_details(presentations)
-            )
             expected_title = (
                 f"Garden Find: {presentations[0].display_name}"
                 if len(presentations) == 1
-                else "Garden Finds and review rewards"
+                else f"{len(presentations):,} Garden Finds and rewards synced"
             )
             receipt_correlations = {
                 receipt.correlation_id for receipt in all_receipts
@@ -12704,20 +12913,42 @@ class _UiFaceCaptureRunner:
                 raise RuntimeError(
                     "canonical Reviewer fixture did not produce one typed summary"
                 )
-            expected_parts = (
-                [matching_summaries[0].learner_text]
-                if matching_summaries[0].learner_text else []
+            expected_coins = sum(
+                max(0, int(receipt.amount))
+                for receipt in all_receipts
+                if receipt.reward_type == "coins"
             )
-            achievement_names = [
-                ACHIEVEMENTS_BY_ID[achievement_id].name
-                for achievement_id in achievement_ids
-            ]
-            if achievement_names:
-                expected_parts.append("Unlocked " + ", ".join(achievement_names))
-            expected_message = (
-                "; ".join(expected_parts)
-                or "Your Garden rewards were recorded."
+            expected_growth = sum(
+                max(0, int(receipt.amount))
+                for receipt in all_receipts
+                if receipt.reward_type == "growth"
             )
+            expected_environments = sum(
+                max(0, int(receipt.amount))
+                for receipt in all_receipts
+                if receipt.reward_type == "environment_item"
+            )
+            expected_parts = []
+            if expected_coins:
+                expected_parts.append(f"+{expected_coins:,} coins")
+            if expected_growth:
+                expected_parts.append(f"+{expected_growth:,} growth")
+            if expected_environments:
+                expected_parts.append(
+                    f"{expected_environments:,} environment"
+                )
+            if (
+                len(presentations) == 1
+                and presentations[0].pool_id == ENVIRONMENT_POOL_ID
+                and expected_environments
+            ):
+                expected_message = "Added to Weather and Scenery"
+            elif expected_parts:
+                expected_message = " · ".join(expected_parts)
+            elif len(presentations) == 1:
+                expected_message = str(presentations[0].description)
+            else:
+                expected_message = "Rewards synced"
             annotation = {
                 "canonical_find_ids": [
                     presentation.reward_id for presentation in presentations
@@ -12737,7 +12968,7 @@ class _UiFaceCaptureRunner:
                 ),
                 "canonical_projection_passed": bool(
                     feedback.title == expected_title
-                    and feedback.reward_detail == expected_detail
+                    and feedback.reward_detail == ""
                     and feedback.message == expected_message
                     and feedback.amount == 0
                     and all_groups_share_correlation
@@ -12887,7 +13118,6 @@ class _UiFaceCaptureRunner:
                 rendered
                 and toast is not None
                 and toast.isVisible()
-                and focus_before is not None
                 and focus_after is focus_before
                 and focus_after is not toast
                 and fixture_annotation.get(
@@ -12912,7 +13142,7 @@ class _UiFaceCaptureRunner:
             if not passed:
                 self._failures.append({
                     "label": label,
-                    "reason": "Reviewer Find notification did not preserve keyboard focus",
+                    "reason": "Reviewer Find notification did not match its focus-safe projection",
                 })
 
             try:

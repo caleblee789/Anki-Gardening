@@ -1159,11 +1159,12 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert '"daily_goal"' not in studio
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
     assert "self.controls_scroll.setWidgetResizable(True)" in studio
-    assert "behavior_scroll.setWidgetResizable(True)" in dashboard
-    assert "behavior_scroll.setHorizontalScrollBarPolicy(" in dashboard
+    assert 'self.behavior_scroll.setObjectName("gardenSettingsDisplayScroll")' in dashboard
+    assert "self.behavior_scroll.setWidgetResizable(True)" in dashboard
+    assert "self.behavior_scroll.setHorizontalScrollBarPolicy(" in dashboard
     assert 'QPushButton("Save changes")' in dashboard
     assert 'QPushButton("Restore display defaults")' in dashboard
-    assert 'self.tabs.addTab(behavior_scroll, "Display")' in dashboard
+    assert 'self.tabs.addTab(self.behavior_scroll, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
     assert "DEVELOPMENT_MUTATION_ENABLED" not in dashboard

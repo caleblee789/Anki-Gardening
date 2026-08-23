@@ -337,7 +337,8 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "on_error=registered_cleanup" in purchase_fixture
     assert '"unavailable_terminal"' in purchase_fixture
     assert 'if variant == "invalid-target"' in purchase_fixture
-    assert 'and "Return to Collection" in visible_buttons' in fixture_postcondition
+    for owned_action in ("Store plant", "Plant in garden", "View in garden"):
+        assert f'"{owned_action}"' in fixture_postcondition
     assert '== "Applying Growth Charge…"' in fixture_postcondition
     assert '== "Choose another plant"' in fixture_postcondition
     assert '== "View plant"' in fixture_postcondition
@@ -345,8 +346,9 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert 'dialog.use_action.text() == "Choose another plant"' in growth_charge_annotation
     assert 'dialog.use_action.text() == "View plant"' in growth_charge_annotation
     assert 'dialog.cancel_action.text() == "Close"' in growth_charge_annotation
-    assert '"current",' in fixture_postcondition
-    assert '"projected",' in fixture_postcondition
+    assert '"growth",' in fixture_postcondition
+    assert '"current",' not in fixture_postcondition
+    assert '"projected",' not in fixture_postcondition
     assert '"stage",' in fixture_postcondition
     assert '"inventory",' in fixture_postcondition
     assert '"Growth Charge applied"' in fixture_postcondition
@@ -845,6 +847,8 @@ def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() 
     assert "FertilizerReplacementDialog" in finder
     assert "QMessageBox" not in finder
     assert "_visible_fertilizer_replacement_dialog" in replacement
+    assert '"Purchase and replace"' in replacement
+    assert '"Purchase & Replace"' not in replacement
     assert "purchase_fertilizer" not in fertilize
     assert "purchase_fertilizer" not in prepare_expiring
     assert "Fertilizer(" in fertilize
@@ -2270,7 +2274,7 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
     assert '"restored_preview_status_cleared"' in postcondition
     assert '"restored_preview_transition"' in postcondition
     assert 'annotation.get("persisted_visibility"' in postcondition
-    assert '"stale_purchase_values_are_previews"' in postcondition
+    assert '"stale_purchase_updated_terms"' in postcondition
     assert '"onboarding_copy_clear_of_actions"' in postcondition
     onboarding_geometry = _method_source(
         "_UiFaceCaptureRunner",
@@ -2280,7 +2284,9 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
     assert 'annotation.get("target_card_fully_visible", False)' in postcondition
     assert 'annotation.get("plant_card_fully_visible", False)' in postcondition
     assert '"distinct_weather_preview_art"' in postcondition
-    assert 'int(widget.unsaved.margin()) >= 8' in postcondition
+    assert 'annotation.get("single_banner", False)' in postcondition
+    assert 'annotation.get("normal_width_actions", False)' in postcondition
+    assert 'annotation.get("actions_right_aligned", False)' in postcondition
     assert '"unified_dimmed_weather_scenery_scene"' not in postcondition
     assert 'state_name == "collection-origin-plant-placement"' in postcondition
     for proof in (

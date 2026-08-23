@@ -621,6 +621,12 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         application.processEvents()
         assert settings.behavior.property("studioMode") == "wide"
         assert settings.property("footerMode") == "wide"
+    settings.resize(1020, 690)
+    settings.behavior.advanced_toggle.setChecked(True)
+    application.processEvents()
+    application.processEvents()
+    display_scroll = settings.active_vertical_scroll_regions()[0]
+    assert display_scroll.widget().width() <= display_scroll.viewport().width()
     settings.hide()
 
     dashboard.show()

@@ -619,6 +619,15 @@ def _required_postcondition_facts(
                 if inferred_values is not None and inferred is not _NO_INFERRED_VALUE:
                     inferred_values[fact] = inferred
             elif isinstance(statement, ast.If):
+                if not any(
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "require"
+                    for node in ast.walk(statement)
+                ):
+                    # Runtime-only presentation branches do not alter the
+                    # declared postcondition fact schema.
+                    continue
                 branch = (
                     statement.body
                     if bool(_schema_condition_value(statement.test, environment))

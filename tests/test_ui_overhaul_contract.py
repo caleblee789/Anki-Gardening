@@ -97,6 +97,17 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     assert '"committed-state-unchanged"' in show_result
 
 
+def test_currently_growing_strip_preserves_both_status_lines() -> None:
+    strip = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_currently_growing_strip",
+    )
+
+    assert "meta.setWordWrap(True)" in strip
+    assert "wide_maximum_height=96" in strip
+
+
 def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     scope: dict[str, object] = {"Any": object, "isfinite": isfinite}
     exec(_function_source("ankigarden/ui/dashboard.py", "_padded_preview_bounds"), scope)
@@ -135,6 +146,7 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
+    assert 'ready_text="Ready to purchase"' in available_card
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
     assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
@@ -897,6 +909,8 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     assert 'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in settings
     assert 'self.garden_name_error.setProperty("fieldError", True)' in settings
     assert "self.garden_name_error.setVisible(not valid)" in settings
+    assert "behavior.setMinimumWidth(0)" in settings
+    assert "QSizePolicy.Policy.Ignored" in settings
     assert "self._update_dirty_state()" in save
     assert "self.garden_name_error.text()" in save
     assert "self.garden_name_edit.setFocus()" in save
@@ -1383,7 +1397,8 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "No active time remaining",
     ):
         assert label in compact_replacement
-    assert "self.presentation.outcome" in compact_decision
+    assert "self.presentation.outcome" not in compact_decision
+    assert "self.presentation.item_name" in compact_decision
     assert "self.presentation.category" in compact_decision
     assert "self.presentation.facts" in compact_decision
     assert "self.presentation.badges" in compact_decision
