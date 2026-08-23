@@ -1,10 +1,18 @@
-# Planter Family Geometry Baseline
+# Planter family geometry contract
 
-Captured from the worktree on 2026-08-12 before the planter-family implementation.
+Status: current geometry authority for the six fixed Verdant Twilight V6 garden
+slots. Planter artwork may change, but every value that positions, scales,
+orders, or targets a plant is invariant unless a separately approved scene
+migration changes the contract.
 
-This document is the regression baseline for the six fixed V6 garden slots. The planter artwork may change; every value that positions, scales, orders, or targets a plant is immutable for this task.
+All nine Scenery families use geometry-compatible `bedless_v1` backgrounds.
+Slots 0-1 use the shallow back planter, slots 2-3 use the medium planter, and
+slots 4-5 use the largest front planter. Each depth band renders planter base,
+the unchanged plant layer, and then the matching foreground rim. Legacy painted
+bed and combined occlusion paths remain disabled while the planter family is
+active.
 
-## Rendering contract audited
+## Runtime geometry
 
 - `GardenScene.heightForWidth()` uses a 4:3 scene below 620 px, 16:9 from 620 through 1399 px, and a 12:5 home-like scene at 1400 px and above. The registered surface profile selects its 4:3 bitmap at aspect ratios up to 1.42, its home bitmap from 2.05 upward, and its 16:9 bitmap in between.
 - The three native background canvases are 1280 x 960 (4:3), 1672 x 941 (16:9), and 1942 x 809 (home). There was no independent bed asset before this change: every bed was painted into these full-scene bitmaps and repeated in their scenery reskins.
@@ -67,6 +75,15 @@ These values are the source-of-truth geometry before cover projection. `anchor` 
 | 4 | `near_left_soil_bed` | `[0.4700, 0.82704]` | `[0.1300, 0.0910]` | `[0.4700, 0.8990]` |
 | 5 | `near_right_soil_bed` | `[0.6450, 0.82704]` | `[0.1300, 0.0910]` | `[0.6450, 0.8990]` |
 
-## Forbidden dependencies
+## Forbidden dependencies and validation
 
-No plant coordinate is currently read from the full-scene background's natural width, height, alpha bounds, or visible bed silhouette. The new planter layer must preserve that separation: planter paths and planter draw boxes may be added, but they must not feed plant anchors, plant scale, plant hitboxes, plant labels, or render order.
+No plant coordinate is read from the full-scene background's natural width,
+height, alpha bounds, or visible bed silhouette. The planter layer must preserve
+that separation: planter paths and draw boxes may be revised, but they must not
+feed plant anchors, plant scale, plant hitboxes, plant labels, or render order.
+
+`tests/test_planter_family_contract.py`, the scene surface fixture, the asset
+audit, responsive geometry matrices, and package parity are the executable
+authorities. Visual review images under `build/` are reproducible diagnostics,
+not permanent source or release evidence. The canonical v19 UI capture remains
+the retained scene-level visual record.
