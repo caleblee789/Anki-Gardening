@@ -16,7 +16,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- The release checks cover all 191 declared UI capture surfaces, runtime asset references, deterministic archive contents, and exact source-to-package parity.
+- The release checks cover all 126 distinct UI surfaces and states once at canonical 100% scale, runtime asset references, deterministic archive contents, and exact source-to-package parity. Resize, breakpoint, 150%, and 200% screenshot duplicates are excluded; responsive geometry remains an automated release gate.
 
 ## Gameplay terms
 

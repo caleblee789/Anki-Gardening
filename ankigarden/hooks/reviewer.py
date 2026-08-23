@@ -436,12 +436,6 @@ class ReviewerHookHandler:
             else:
                 title = "Garden Finds and review rewards"
                 reward_detail = self._aggregate_find_details(presentations)
-                tiers = {
-                    self._display_tier(find.tier)
-                    for find in presentations
-                    if self._display_tier(find.tier)
-                }
-                tier = tiers.pop() if len(tiers) == 1 else ""
             first_find = presentations[0]
             asset_key = str(first_find.artwork_ref or asset_key)
             asset_category = (

@@ -35,7 +35,7 @@ CONTACT_SHEET_PREVIEW_BOTTOM = 40
 CONTACT_SHEET_PREVIEW_INSET = 8
 MIN_LOGICAL_CAPTURE_DIMENSION = 100
 MAX_PNG_PIXELS = 100_000_000
-CAPTURE_SCALE_FACTOR = 1.5
+CAPTURE_SCALE_FACTOR = 1.0
 MEMORY_PROBE_CYCLES = 12
 MEMORY_PROBE_CLASSES = (
     "NurseryDialog",
@@ -50,13 +50,6 @@ INTENTIONAL_DUPLICATE_VISUALS: dict[frozenset[str], str] = {
     frozenset({"starter-nursery-plants", "starter-action-above-footer"}): (
         "The same first-run Nursery painting is captured once for state and once "
         "for the action-above-footer geometry audit."
-    ),
-    frozenset({
-        "display-scaling-200-qt-representative",
-        "resize-dashboard-minimum",
-    }): (
-        "Both are the 620x520 logical dashboard at the unchanged 150 percent "
-        "process scale; one is explicitly a Qt logical-viewport proxy."
     ),
 }
 
@@ -405,8 +398,6 @@ def load_expected_renderer_families(
         raise CaptureValidationError(("capture source is missing expected_capture_window_family",))
 
     mapping: dict[str, str] = {}
-    saw_resize_loop = False
-
     def add(labels: Sequence[str], family: str) -> None:
         if not family:
             raise CaptureValidationError(("renderer family must be non-empty",))
@@ -432,34 +423,6 @@ def load_expected_renderer_families(
                 raise CaptureValidationError(("renderer branch must return a string literal",))
             add(tuple(_branch_labels(statement.test, module)), return_value.value)
             continue
-        if isinstance(statement, ast.For):
-            # The resize matrix is repository-owned data.  Fail closed if the
-            # renderer function no longer iterates over that exact source.
-            if (
-                saw_resize_loop
-                or not isinstance(statement.iter, ast.Name)
-                or statement.iter.id != "RESIZE_MATRIX_SPECS"
-                or len(statement.body) != 1
-                or not isinstance(statement.body[0], ast.If)
-            ):
-                raise CaptureValidationError(("resize renderer loop is unsupported",))
-            saw_resize_loop = True
-            try:
-                specs = ast.literal_eval(_assignment_value(module, "RESIZE_MATRIX_SPECS"))
-                families = ast.literal_eval(_assignment_value(module, "_RESIZE_WINDOW_FAMILIES"))
-            except (ValueError, SyntaxError) as error:
-                raise CaptureValidationError(("resize renderer declarations must be literals",)) from error
-            if not isinstance(specs, (tuple, list)) or not isinstance(families, dict):
-                raise CaptureValidationError(("resize renderer declarations are malformed",))
-            for spec in specs:
-                if not isinstance(spec, (tuple, list)) or len(spec) < 2:
-                    raise CaptureValidationError(("resize renderer specification is malformed",))
-                label, family_key = spec[:2]
-                family = families.get(family_key)
-                if not isinstance(label, str) or not isinstance(family, str) or not family:
-                    raise CaptureValidationError(("resize renderer family is missing",))
-                add((label,), family)
-            continue
         if (
             isinstance(statement, ast.Return)
             and isinstance(statement.value, ast.Constant)
@@ -470,8 +433,6 @@ def load_expected_renderer_families(
             (f"unsupported statement in expected_capture_window_family: {type(statement).__name__}",)
         )
 
-    if not saw_resize_loop:
-        raise CaptureValidationError(("renderer mapping is missing the resize matrix",))
     expected = set(contract.labels)
     actual = set(mapping)
     if actual != expected:
@@ -1853,7 +1814,7 @@ def validate_capture_manifest(
     except (TypeError, ValueError):
         scale = math.nan
     if not math.isfinite(scale) or not math.isclose(scale, CAPTURE_SCALE_FACTOR):
-        issues.append("requested_scale_factor must be numeric-equivalent to 1.5")
+        issues.append("requested_scale_factor must be numeric-equivalent to 1.0")
     if _manifest_groups(payload) != contract.groups:
         issues.append("capture_groups does not exactly match source order and labels")
     if payload.get("expected_faces") != list(expected_labels):
@@ -2386,17 +2347,6 @@ def validate_capture_manifest(
                 and action_audit.get("action_count", 0) > 0
             ):
                 issues.append("starter Nursery duplicate lacks the footer-clearance audit")
-        elif label_set == frozenset({
-            "display-scaling-200-qt-representative", "resize-dashboard-minimum"
-        }):
-            scaling_audit = record_audits.get("display-scaling-200-qt-representative", {})
-            if not (
-                scaling_audit.get("representative_kind") == "deterministic-qt-logical-viewport"
-                and scaling_audit.get("effective_scale_percent") == 200
-                and scaling_audit.get("os_display_scaling_changed") is False
-            ):
-                issues.append("display-scaling duplicate lacks explicit Qt-proxy provenance")
-
     normalized_screenshot_paths = [path for path in screenshot_paths if path is not None]
     if len(normalized_screenshot_paths) != len(set(normalized_screenshot_paths)):
         issues.append("screenshots contains duplicate paths")

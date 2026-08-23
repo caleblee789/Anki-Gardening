@@ -30,7 +30,9 @@
   unowned Weather or Scenery and retains stepped Ultra pity.
 - Rich Compost grants one Basic Fertilizer consumable. Existing Fertilizer,
   Booster Potion, Growth Charge, environment, and purchase services remain the
-  only owners of item effects and transactions.
+  only owners of item effects and transactions. Booster Potions are not sold in
+  the Nursery; they are earned from the Standard Garden Find pool or eligible
+  daily Scenery rewards.
 - Small and Standard Growth Charges remain current acquisition paths. A Grand
   Growth Charge is not currently obtainable. If one is present in imported
   development state, it remains usable.
@@ -88,6 +90,9 @@ this release. Anki Garden retains its established styling.
 
 Automated source, simulation, and package gates must pass before live capture.
 Exact-package Anki startup, restart, interactive acceptance, the complete
-191-surface/24-sheet capture, geometry validation, full-resolution visual
+126-surface/17-sheet canonical-100%-scale capture, geometry validation,
+full-resolution visual
 review, final archive path, and SHA-256 belong to the immutable capture report
-for the final combined package. This note does not substitute for that evidence.
+for the final combined package. Resize, breakpoint, 150%, and 200% screenshot
+duplicates are excluded; responsive geometry remains automated. This note does
+not substitute for that evidence.

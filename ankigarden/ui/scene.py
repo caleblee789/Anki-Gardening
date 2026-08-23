@@ -24,6 +24,7 @@ except Exception:
 
 from .formatters import format_percent
 from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
+from ..build_capabilities import CAPTURE_HARNESS_ENABLED
 from .landmarks import (
     DEFAULT_LANDMARK_ACTIONS,
     LandmarkAction,
@@ -546,8 +547,11 @@ class GardenSceneWidget(QWidget):
         safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
         safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
         safe_scene["debug_placement"] = bool(
-            safe_scene.get("debug_placement", False)
-            or os.environ.get("ANKI_GARDEN_PLACEMENT_DEBUG") == "1"
+            CAPTURE_HARNESS_ENABLED
+            and (
+                safe_scene.get("debug_placement", False)
+                or os.environ.get("ANKI_GARDEN_PLACEMENT_DEBUG") == "1"
+            )
         )
         self.set_motion_enabled(safe_scene["motion_enabled"])
         return safe_scene
@@ -2033,6 +2037,10 @@ class GardenSceneWidget(QWidget):
             painter.setBrush(badge_fill)
             painter.drawRoundedRect(badge_rect, 10, 10)
             painter.setPen(badge_text)
+            badge_font = painter.font()
+            badge_font.setPointSizeF(11.0)
+            badge_font.setBold(True)
+            painter.setFont(badge_font)
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, visual_label)
             painter.restore()
 

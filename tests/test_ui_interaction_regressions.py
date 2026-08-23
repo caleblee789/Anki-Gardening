@@ -90,14 +90,15 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
         assert 'class="ag-home__state"' in html
 
 
-def test_home_preview_has_one_explicit_action_and_a_keyboard_clickable_card() -> None:
+def test_home_preview_has_one_explicit_keyboard_action_and_noninteractive_summary() -> None:
     html = render_home_widget(HomeWidgetSnapshot(1, "success", _home_data()))
 
     assert 'data-tooltip=' not in html
-    assert 'role="button" tabindex="0"' in html
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
     assert 'role="tooltip"' not in html
-    assert html.count("onclick=") == 2
-    assert "event.key==='Enter'||event.key===' '" in html
+    assert html.count("onclick=") == 1
+    assert "event.key==='Enter'||event.key===' '" not in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-scene" aria-hidden="true"' in html
 
@@ -226,6 +227,8 @@ class _FakePainter:
         self.ellipses: list[Any] = []
         self.badges: list[Any] = []
         self.labels: list[str] = []
+        self.label_font_sizes: list[tuple[str, float]] = []
+        self._font_size = 12.0
 
     def save(self) -> None:
         return None
@@ -247,12 +250,13 @@ class _FakePainter:
 
     def drawText(self, _rect: Any, _alignment: Any, text: str) -> None:
         self.labels.append(text)
+        self.label_font_sizes.append((text, self._font_size))
 
     def font(self) -> Any:
         return _FakeFont()
 
     def setFont(self, _font: Any) -> None:
-        return None
+        self._font_size = _font.pointSizeF()
 
 
 class _FakeFont:
@@ -319,18 +323,21 @@ def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None
     plants = [
         {"plant_id": "p0", "slot_index": 0, "name": "Briar"},
         {"plant_id": "p1", "slot_index": 1, "name": "Juniper"},
+        {"plant_id": "p3", "slot_index": 3, "name": "Moss"},
     ]
     interaction = PlantInteractionState()
     assert interaction.begin_placement("p0", 0, [0, 1, 2], keyboard=True)
     scene = SimpleNamespace(
         _interaction=interaction,
-        scene={"plants": plants, "unlocked_slots": 4},
+        scene={"plants": plants, "unlocked_slots": 5},
         _slot_placements={row.slot_index: row for row in placements},
         _hovered_move_slot=None,
         _destination_slots=lambda: [1, 2],
         width=lambda: 480,
         height=lambda: 320,
-        _layout_plants=lambda _width, _height: list(zip(plants, placements[:2])),
+        _layout_plants=lambda _width, _height: [
+            (plant, placements[int(plant["slot_index"])]) for plant in plants
+        ],
     )
     painter = _FakePainter()
 
@@ -342,10 +349,15 @@ def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None
     assert len(painter.badges) == 6
     assert painter.labels.count("+") == 1
     assert painter.labels.count("↔") == 1
-    assert painter.labels.count("!") == 1
-    assert painter.labels.count("×") == 2
-    for label in ("Current", "Swap", "Move", "Invalid", "Locked"):
+    assert painter.labels.count("!") == 2
+    assert painter.labels.count("×") == 1
+    semantic_labels = ("Current", "Swap", "Move", "Occupied", "Invalid", "Locked")
+    for label in semantic_labels:
         assert label in painter.labels
+    assert {
+        label: size for label, size in painter.label_font_sizes
+        if label in semantic_labels
+    } == {label: 11.0 for label in semantic_labels}
 
     accessible_targets = _method_source(
         SCENE_PATH,
@@ -1535,6 +1547,12 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
         def show(self) -> None:
             self.shown = True
 
+        def setGeometry(self, x: int, y: int, width: int, height: int) -> None:
+            self.geometry = (x, y, width, height)
+
+        def raise_(self) -> None:
+            self.raised = True
+
     class Dock:
         def width(self) -> int:
             return 880
@@ -1574,11 +1592,61 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     position(dashboard)
     assert dashboard.plant_card.fixed_width == 500
 
+    class Geometry:
+        def x(self) -> int:
+            return 12
+
+        def y(self) -> int:
+            return 190
+
+        def width(self) -> int:
+            return 876
+
+        def height(self) -> int:
+            return 264
+
+    geometry_calls: list[tuple[int, int, dict[str, int]]] = []
+
+    def in_scene_geometry(width: int, height: int, **minimums: int) -> Geometry:
+        geometry_calls.append((width, height, minimums))
+        return Geometry()
+
+    connector_calls: list[tuple[Any, ...]] = []
+    wide_scene = SimpleNamespace(
+        _interaction=SimpleNamespace(placing=False),
+        width=lambda: 900,
+        height=lambda: 480,
+        card_geometry=in_scene_geometry,
+        card_popover_placement=lambda: SimpleNamespace(docked=True),
+        set_card_connector_geometry=lambda *args: connector_calls.append(args),
+    )
+    dashboard.scene = wide_scene
+    dashboard.plant_card.parent = wide_scene
+    dashboard._position_scene_overlays = lambda: None
+    dock.shown = False
+
+    position(dashboard)
+
+    assert dashboard.plant_card.parent is wide_scene
+    assert dashboard.plant_card.docked is True
+    assert dashboard.plant_card.fixed_width == 876
+    assert dashboard.plant_card.maximum_width == 876
+    assert dashboard.plant_card.geometry == (12, 190, 876, 264)
+    assert geometry_calls == [
+        (320, 264, {}),
+        (876, 264, {"minimum_width": 876, "minimum_height": 264}),
+    ]
+    assert len(connector_calls) == 1
+    assert isinstance(connector_calls[0][0], Geometry)
+    assert connector_calls[0][1] == "plant-a"
+    assert dock.shown is False
+
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "self.plant_card_dock = QFrame()" in dashboard_source
     assert "geometry = self.scene.card_geometry(" in dashboard_source
     assert "if geometry is None:" in dashboard_source
-    assert "if docked:" in dashboard_source
+    assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
+    assert "if docked else 330" in dashboard_source
     assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
     assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 

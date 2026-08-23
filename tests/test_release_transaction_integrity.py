@@ -802,6 +802,7 @@ def test_every_nursery_transaction_routes_through_the_shared_pending_guard() -> 
 
     guarded_methods = (
         "_purchase_fertilizer",
+        "_use_basic_fertilizer",
         "_use_booster",
         "_purchase_growth_charge",
         "_use_growth_charge",
@@ -1092,6 +1093,97 @@ def test_catalog_refresh_exception_reports_saved_change_without_duplicate_use() 
 
     scheduled.pop()()
     assert nursery._catalog_transaction_pending is False
+
+
+def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() -> None:
+    confirmations: list[tuple[str, str]] = []
+    engine_calls: list[tuple[str, bool]] = []
+    scheduled: list[Any] = []
+    refreshes: list[str] = []
+    results: list[tuple[bool, str]] = []
+    inventory = {"fertilizer_basic": 2}
+
+    class _Confirmation:
+        @staticmethod
+        def confirm(_parent: Any, title: str, message: str) -> bool:
+            confirmations.append((title, message))
+            return True
+
+    use_fertilizer = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_use_basic_fertilizer",
+        {
+            "ConfirmationDialog": _Confirmation,
+            "collectible_registry": lambda: (
+                SimpleNamespace(
+                    item_id="growth_items:fertilizer_basic",
+                    name="Rich Compost",
+                ),
+            ),
+            "fertilizer_status": lambda *_args, **_kwargs: SimpleNamespace(
+                active=True,
+                name="Quality Fertilizer",
+                duration="1h 00m remaining",
+                seconds_remaining=3_600,
+            ),
+            "_learner_text": str,
+            "time": SimpleNamespace(time=lambda: 1_000.0),
+        },
+    )
+    plant = SimpleNamespace(
+        plant_id="p1",
+        name="Moss",
+        fertilizer=SimpleNamespace(tier="quality"),
+    )
+    basic = SimpleNamespace(
+        tier="basic",
+        name="Basic Fertilizer",
+        growth_per_answer=1,
+        duration_seconds=3_600,
+    )
+
+    def use_item(plant_id: str, *, replace_active: bool) -> tuple[bool, str]:
+        engine_calls.append((plant_id, replace_active))
+        if len(engine_calls) == 1:
+            inventory["fertilizer_basic"] -= 1
+            return True, "Basic Fertilizer applied"
+        return False, "Basic Fertilizer could not be used because it was not saved."
+
+    nursery = SimpleNamespace(_catalog_transaction_pending=False)
+    nursery._begin_catalog_transaction = lambda: not nursery._catalog_transaction_pending
+    nursery._schedule_catalog_transaction_release = lambda: scheduled.append(True)
+    nursery._show_catalog_transaction_exception = lambda *_args, **_kwargs: None
+    nursery._show_result = lambda ok, message: results.append((ok, message))
+    nursery._refresh_parent = lambda: refreshes.append("parent")
+    nursery.refresh = lambda: refreshes.append("nursery")
+    nursery.storage = SimpleNamespace(
+        state=SimpleNamespace(consumables=inventory)
+    )
+    nursery.engine = SimpleNamespace(
+        active_plant=lambda: plant,
+        _now_seconds=lambda: 1_000.0,
+        _duration_label=lambda _seconds: "1 hour",
+        FERTILIZERS={"basic": basic},
+        use_fertilizer_item=use_item,
+    )
+
+    use_fertilizer(nursery)
+    use_fertilizer(nursery)
+
+    assert engine_calls == [("p1", True), ("p1", True)]
+    assert inventory == {"fertilizer_basic": 1}
+    assert refreshes == ["parent", "nursery"]
+    assert scheduled == [True, True]
+    assert confirmations[0][0] == "Replace active Fertilizer?"
+    assert "Quality Fertilizer" in confirmations[0][1]
+    assert "3,600 seconds" in confirmations[0][1]
+    assert "cannot be recovered" in confirmations[0][1]
+    assert results[0] == (True, "Basic Fertilizer applied")
+    assert results[1][0] is False
+    assert "Rich Compost was not used" in results[1][1]
+    assert "Committed Rich Compost inventory count: 1 (unchanged)" in results[1][1]
+    assert "Active Fertilizer on Moss: Quality Fertilizer (unchanged)" in results[1][1]
 
 
 @pytest.mark.parametrize(

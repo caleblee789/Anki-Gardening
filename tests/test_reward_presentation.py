@@ -231,6 +231,22 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     assert rules["weekly_streak"].next_streak_day == 7
     assert rules["weekly_streak"].streak_days_remaining == 1
 
+    state.streak_days = 3
+    missed_day_rules = {
+        item.rule_id: item
+        for item in recurring_reward_presentations(
+            state,
+            engine,
+            current_streak_days=0,
+        )
+    }
+    assert missed_day_rules["weekly_streak"].next_streak_day == 7
+    assert missed_day_rules["weekly_streak"].streak_days_remaining == 7
+    assert missed_day_rules["weekly_streak"].status == (
+        "Next on Day 7, 7 streak days to go"
+    )
+    state.streak_days = 6
+
     state.recent_reward_receipts.extend((
         RewardReceipt(
             "all_due:2026-08-20", "coins", "all_due", "2026-08-20",

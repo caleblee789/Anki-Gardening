@@ -8,6 +8,7 @@ from typing import Any
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..models.state import STREAK_BONUS_TIERS
 from ..reward_presentation import achievement_presentations
+from ..terminology import PASSIVE_GROWTH_EXPLANATION
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
@@ -1372,19 +1373,15 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     ) if marker_plant is not None else ""
     marker_accessible = (
         f". Watering can: {marker_plant_name} is nurtured and receives full Growth from "
-        "future Anki card answers; other eligible planted plants receive 20 percent of "
-        "that Growth after bonuses"
+        f"future Anki card answers. {PASSIVE_GROWTH_EXPLANATION}"
         if marker_visible else
         ""
     )
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"button\" tabindex=\"0\"
-  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{escape(home_progress_accessible, quote=True)}{marker_accessible}\"
-  data-anki-garden-command=\"anki-garden:{action_command}\"
-  onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"
-  onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('anki-garden:{action_command}')}}\">
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"region\"
+  aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}{escape(home_progress_accessible, quote=True)}{marker_accessible}\">
   <div class=\"ag-home__body\">
     {stage_up_html}
     {partial_banner}

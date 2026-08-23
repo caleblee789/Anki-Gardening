@@ -229,6 +229,7 @@ class FertilizerSpec:
 
 class GardenGameEngine:
     BASE_GROWTH_PER_REVIEW = 10
+    PASSIVE_GROWTH_DENOMINATOR = 5
     STREAK_MEMORY_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
     STAGE_CURRENCY = {"sprout": 5, "young": 10, "mature": 20, "flowering": 35, "rare": 50}
     BOOSTER_GROWTH_PER_ANSWER = 5
@@ -2172,7 +2173,9 @@ class GardenGameEngine:
         allocations: list[GrowthAllocation] = [GrowthAllocation(
             plant_id=plant.plant_id,
             role="nurtured",
-            exact_fifths=award.total_growth * 5,
+            exact_fifths=(
+                award.total_growth * self.PASSIVE_GROWTH_DENOMINATOR
+            ),
             credited_growth=award.total_growth,
         )]
         for passive in sorted(
@@ -2192,11 +2195,14 @@ class GardenGameEngine:
         ):
             residual_before = max(
                 0,
-                min(4, int(passive.passive_growth_remainder_fifths)),
+                min(
+                    self.PASSIVE_GROWTH_DENOMINATOR - 1,
+                    int(passive.passive_growth_remainder_fifths),
+                ),
             )
             whole_growth, residual_after = divmod(
                 residual_before + award.total_growth,
-                5,
+                self.PASSIVE_GROWTH_DENOMINATOR,
             )
             credited = min(
                 whole_growth,
@@ -2269,7 +2275,9 @@ class GardenGameEngine:
         allocations.append(GrowthAllocation(
             plant_id=plant.plant_id,
             role="nurtured",
-            exact_fifths=award.total_growth * 5,
+            exact_fifths=(
+                award.total_growth * self.PASSIVE_GROWTH_DENOMINATOR
+            ),
             credited_growth=award.total_growth,
         ))
         self._record_growth_crossings(
@@ -2283,11 +2291,14 @@ class GardenGameEngine:
             passive_before = int(passive.growth_points)
             residual_before = max(
                 0,
-                min(4, int(passive.passive_growth_remainder_fifths)),
+                min(
+                    self.PASSIVE_GROWTH_DENOMINATOR - 1,
+                    int(passive.passive_growth_remainder_fifths),
+                ),
             )
             whole_growth, residual_after = divmod(
                 residual_before + award.total_growth,
-                5,
+                self.PASSIVE_GROWTH_DENOMINATOR,
             )
             credited = min(
                 whole_growth,
@@ -2648,35 +2659,30 @@ class GardenGameEngine:
         plant_id: str | None = None,
         title: str = "Review rewards",
     ) -> bool:
-        coins = sum(
-            receipt.amount for receipt in receipts if receipt.reward_type == "coins"
-        )
-        growth = sum(
-            receipt.amount for receipt in receipts if receipt.reward_type == "growth"
-        )
-        items: dict[str, int] = {}
-        for receipt in receipts:
-            if receipt.reward_type in {"inventory_item", "environment_item"}:
-                items[receipt.item_id] = items.get(receipt.item_id, 0) + receipt.amount
         find_receipts = tuple(
             receipt
             for receipt in receipts
             if receipt.source in {"garden_find", "garden_find_environment"}
         )
-        parts: list[str] = []
-        if growth:
-            parts.append(f"+{growth:,} Growth")
-        if coins:
-            parts.append(f"+{coins:,} Garden Coins")
-        parts.extend(
-            f"+{amount} {item_id.replace('_', ' ').title()}"
-            for item_id, amount in sorted(items.items())
-            if item_id
-        )
-        if achievement_ids:
+        projected_achievement_ids: tuple[str, ...] = ()
+        try:
+            from .reward_presentation import reward_summary
+
+            summary = reward_summary(receipts, correlation_id=correlation_id)
+            message = summary.learner_text
+            projected_achievement_ids = summary.achievement_ids
+        except Exception:
+            # Reward presentation is deliberately non-transactional. A copy
+            # projection failure must not roll back an otherwise valid grant.
+            message = ""
+        parts = [message] if message else []
+        visible_achievement_ids = tuple(dict.fromkeys(
+            (*projected_achievement_ids, *achievement_ids)
+        ))
+        if visible_achievement_ids:
             names = [
                 ACHIEVEMENTS_BY_ID[item].name
-                for item in achievement_ids
+                for item in visible_achievement_ids
                 if item in ACHIEVEMENTS_BY_ID
             ]
             if names:
@@ -2711,9 +2717,13 @@ class GardenGameEngine:
             message,
             plant_id,
             title=title,
-            asset_category="ui",
+            asset_category=(
+                "environment"
+                if first_find is not None
+                and first_find.source == "garden_find_environment"
+                else "ui"
+            ),
             asset_key=find_artwork if first_find else "garden_coins",
-            amount=sum(receipt.amount for receipt in receipts),
             correlation_id=correlation_id,
         )
 
@@ -3208,6 +3218,30 @@ class GardenGameEngine:
         if not minutes:
             return hour_text
         return f"{hour_text} {minutes} minutes"
+
+    @classmethod
+    def booster_descriptor(cls) -> EffectDescriptor:
+        """Return the canonical learner-facing Booster Potion contract."""
+
+        duration = cls._duration_label(cls.BOOSTER_DURATION_SECONDS)
+        return EffectDescriptor(
+            function="Applies a timed Growth boost to the nurtured plant.",
+            buff=(
+                f"+{cls.BOOSTER_GROWTH_PER_ANSWER:,} Growth per Anki card "
+                "answer while active."
+            ),
+            activation_condition=(
+                "Use on a nurtured, unfinished planted plant."
+            ),
+            duration=(
+                f"Lasts {duration}; another Potion extends the same active window."
+            ),
+            stacking="Inventory quantities stack; active duration extends.",
+            replacement="Replaces nothing.",
+            unlock_requirement=(
+                "Earn from a Garden Find or an eligible daily Scenery reward."
+            ),
+        )
 
     @staticmethod
     def _unavailable_descriptor(message: str) -> EffectDescriptor:

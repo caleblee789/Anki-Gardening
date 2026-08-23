@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Literal
 
 from .environment import GROWTH_CHARGES, SCENERY_CATALOG, WEATHER_CATALOG
+from .garden_finds import STANDARD_FIND_REGISTRY
 from .models.state import CURRENT_CATALOG_SPECIES_ORDER, GROWTH_THRESHOLDS
 from .purchases import EffectDescriptor
 
@@ -107,6 +108,18 @@ def _environment_definitions() -> Iterable[CollectibleDefinition]:
 def collectible_registry() -> tuple[CollectibleDefinition, ...]:
     """Return the complete ordered registry used by Collection categories."""
 
+    from .game import GardenGameEngine
+
+    rich_compost = next(
+        reward
+        for reward in STANDARD_FIND_REGISTRY
+        if reward.inventory_item_id == "fertilizer_basic"
+    )
+    basic_fertilizer = GardenGameEngine.FERTILIZERS["basic"]
+    basic_duration = GardenGameEngine._duration_label(
+        basic_fertilizer.duration_seconds
+    )
+
     plants = tuple(_species_definition(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
     environments = tuple(_environment_definitions())
     decorations = (
@@ -150,21 +163,43 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
     )
     growth_items = [
         CollectibleDefinition(
+            item_id="growth_items:fertilizer_basic",
+            name=rich_compost.display_name,
+            category="growth_items",
+            rarity=rich_compost.tier,
+            descriptor=EffectDescriptor(
+                function=(
+                    "Adds "
+                    f"{rich_compost.description.removeprefix('+').strip()} "
+                    "to Growth Items inventory."
+                ),
+                buff=(
+                    f"+{basic_fertilizer.growth_per_answer:,} Growth per eligible "
+                    "Anki card answer while active."
+                ),
+                activation_condition=(
+                    "Use on a nurtured, unfinished planted plant."
+                ),
+                duration=(
+                    f"Lasts {basic_duration}; another {basic_fertilizer.name} "
+                    "extends the same active window."
+                ),
+                stacking="Inventory quantities stack; active duration extends.",
+                replacement=(
+                    "A different active Fertilizer is replaced only after "
+                    "confirmation; its remaining time is discarded."
+                ),
+                unlock_requirement=f"Garden Find: {rich_compost.display_name}.",
+            ),
+            source_kind="growth_item",
+            source_id=rich_compost.inventory_item_id,
+        ),
+        CollectibleDefinition(
             item_id="growth_items:booster_potion",
             name="Booster Potion",
             category="growth_items",
             rarity="Rare",
-            descriptor=EffectDescriptor(
-                function="Applies a timed Growth boost to the nurtured plant.",
-                buff="+5 Growth per Anki card answer while active.",
-                activation_condition="Use on a nurtured, unfinished planted plant.",
-                duration="Timed; the exact remaining duration appears on the plant.",
-                stacking="Inventory quantities stack; active duration extends.",
-                replacement="Replaces nothing.",
-                unlock_requirement=(
-                    "Purchase in the Nursery or receive as a Garden Find."
-                ),
-            ),
+            descriptor=GardenGameEngine.booster_descriptor(),
             source_kind="growth_item",
             source_id="booster_potion",
         )

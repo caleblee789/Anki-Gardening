@@ -17,6 +17,7 @@ from ankigarden.ui.home_widget import (
     render_home_widget,
 )
 from ankigarden.models.state import Achievement
+from ankigarden.terminology import PASSIVE_GROWTH_EXPLANATION
 from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
@@ -145,12 +146,15 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-testid="home-refresh"' not in html
     assert 'data-testid="home-accessible-summary"' in html
     assert "Moss, Seed stage, 30 of 500 Growth; 7-day Anki streak; 35 Garden Coins" in html
-    assert 'role="button" tabindex="0"' in html
+    assert 'id="ag-home-root"' in html
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
     assert (
-        'aria-label="Open My Garden. Moss, Seed — 30 / 500 Growth. 12 answers today. '
+        'aria-label="My Garden Anki Garden summary. Moss, Seed — 30 / 500 Growth. 12 answers today. '
         '7-day Anki streak. 35 Garden Coins"'
         in html
     )
+    assert 'aria-label="Open My Garden"' in html
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "max-width:720px" in html
@@ -299,14 +303,16 @@ def test_success_state_renders_stage_transition_message() -> None:
     assert "overflow-wrap: anywhere" in html
 
 
-def test_home_card_and_explicit_action_are_keyboard_reachable() -> None:
+def test_home_summary_has_one_keyboard_reachable_explicit_action() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
 
     assert 'data-tooltip=' not in html
     assert 'role="tooltip"' not in html
-    assert 'role="button" tabindex="0"' in html
-    assert "event.key==='Enter'||event.key===' '" in html
-    assert html.count("onclick=") == 2
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
+    assert "event.key==='Enter'||event.key===' '" not in html
+    assert html.count("onclick=") == 1
+    assert html.count('data-testid="home-open"') == 1
 
 
 def test_home_surface_occlusion_is_behind_plants() -> None:
@@ -728,7 +734,7 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert "display:none" in html
     assert (
         "Watering can: Rose is nurtured and receives full Growth from future Anki card "
-        "answers; other eligible planted plants receive 20 percent of that Growth after bonuses"
+        f"answers. {PASSIVE_GROWTH_EXPLANATION}"
         in html
     )
 

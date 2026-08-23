@@ -301,6 +301,8 @@ def recent_reward_summaries(
 def recurring_reward_presentations(
     state: GardenState,
     engine: Any,
+    *,
+    current_streak_days: int | None = None,
 ) -> tuple[RecurringRewardPresentation, ...]:
     """Project exact recurring rules and today's committed receipt state."""
 
@@ -352,7 +354,12 @@ def recurring_reward_presentations(
                 # engine cannot resolve its equipped all-due bonuses.
                 pass
 
-    streak_days = max(0, int(getattr(state, "streak_days", 0) or 0))
+    projected_streak_days = (
+        getattr(state, "streak_days", 0) or 0
+        if current_streak_days is None
+        else current_streak_days
+    )
+    streak_days = max(0, int(projected_streak_days))
     next_streak_day = ((streak_days // 7) + 1) * 7
     streak_days_remaining = max(1, next_streak_day - streak_days)
     weekly_awarded = (

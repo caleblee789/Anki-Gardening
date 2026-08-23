@@ -37,11 +37,12 @@ full-Garden landmark; the compact home preview remains noninteractive.
 - `ui-release-overhaul-contract.md`: current source, state, layout,
   accessibility, and the release capture requirements; older validator runs
   are retained only as pre-overhaul baselines.
-- `ui-surface-inventory.md`: current ordered 191-surface source inventory plus
-  explicitly historical v8/v9 reconciliation evidence.
+- `ui-surface-inventory.md`: current ordered 126-surface,
+  canonical-100%-scale source inventory plus explicitly historical v8/v9
+  reconciliation evidence.
 - `ui/final-ui-audit-2.1.0.md`: historical 146-surface visual, responsive,
   accessibility, package-static evidence, and frozen-production acceptance
-  boundary; it is not current v18 evidence.
+  boundary; it is not current v19 evidence.
 - `ui/surface-copy-audit-2.1.0.md`: historical v7 copy/polish ledger and its
   relationship to the historical v8 capture contract.
 - `planter-family-geometry-baseline.md`: canonical six-space planter and plant

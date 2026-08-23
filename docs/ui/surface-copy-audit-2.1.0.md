@@ -5,8 +5,12 @@ itself superseded for current visual coverage by
 `docs/ui-release-overhaul-contract.md`. This file preserves the original
 v7/134 baseline ledger and its then-pending After cells; a later pre-freeze v8
 run covered all 146 then-current surfaces cleanly, but it is not
-exact-frozen-package release acceptance or current v18/191 evidence. The
-required v18 24-sheet final run remains pending.
+exact-frozen-package release acceptance or current v19/126 evidence. The
+required v19 17-sheet final run at canonical 100% scale completed at 126/126 in
+`capture-sequence-20260823-000843`. This
+historical ledger retains its old resize and scale rows as predecessor evidence;
+the current screenshot contract excludes resize, breakpoint, 150%, and 200%
+duplicates while responsive geometry remains automated.
 
 ## Evidence baseline
 

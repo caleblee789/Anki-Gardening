@@ -1,19 +1,29 @@
 # Anki Garden 2.1.0 Final UI Audit
 
-Status: historical frozen-release record, superseded for current visual coverage
-by `docs/ui-release-overhaul-contract.md`. For the source audited here,
-repository/package acceptance was complete and strict live acceptance remained
-incomplete under an explicit owner-approved release boundary. Historical
-capture contract v8 evidence was clean at 146/146 surfaces. The exact final
-capture archive produced 139/146 uniform-primary screenshots and safely omitted
-seven Home frames after macOS refused exact-window pixels; the owner authorized
-proceeding without them. The frozen production archive passed every
-repository-local package gate. Windows and Linux remained a static portability
-review, not live GUI acceptance. Current source uses capture contract v18 with
-191 ordered surfaces and a pending 24-sheet final run; this audit is not
-evidence for it.
+Status: current automated and macOS Qt capture record for Release 2.1.0.
+Capture contract v19 completed at 126/126 distinct ordered surfaces, each once
+at canonical 100% scale, in 17 manifest-owned contact sheets. The final run is
+`build/ui-face-captures/capture-sequence-20260823-000843`; it is fail-closed,
+warning-free, `quality_status: clean`, and validator `valid`. Resize,
+breakpoint, 150%, and 200% screenshot duplicates are excluded while responsive
+geometry remains an automated release gate. Historical v8 evidence below is
+retained only for its audited 2026-08-15 source. Native Windows/Linux GUI,
+screen-reader, human/device, restart, and strict end-to-end live acceptance
+remain separate and unrun.
 
-## Outcome
+## Current v19 outcome
+
+The current 126-face set covers the final Growth, reward, achievement, Garden
+Find, Reviewer feedback, transaction, onboarding, Collection, Nursery, Garden,
+Progress, Settings, loading, empty, stale, warning, error, success, keyboard,
+and reduced-motion surfaces. The preceding sheet audit found and drove fixes
+for SVG weather previews, Dashboard popover/placement framing, missed-streak
+projection, Collection empty-state timing, onboarding completion copy, and
+Collection mechanics controls. The final corrected faces 092, 117, and 119
+were inspected at native screenshot resolution; a redundant full-set re-audit
+was skipped at user direction.
+
+## Historical v8 outcome
 
 The candidate preserves the approved Verdant Twilight V6 identity, six-bed scene geometry, plant placement, interactions, saved-state behavior, and learner-facing feature set. The final review found two remaining product-UI defects and one evidence-gate defect; all three were repaired:
 
@@ -32,50 +42,83 @@ defect within that historical contract.
 |---|---|---|
 | First run and Home | Deck Browser and Overview previews, starter state, setup guidance, action hierarchy, image readiness, and Home open behavior | Clean after semantic Home-capture repair; production DOM and screenshots verified |
 | Garden | Header, statistics, six-bed scene, plant cards, selection, nurturing, fertilizer, move mode, story, long names, occupied plots, and missing-art fallback | Clean; V6 geometry and interaction contracts preserved |
-| Garden Progress | Today, Growth, streak, Coins, achievements, collection, milestones, empty states, and stress states | Clean; no remaining redundant or competing hierarchy found |
-| Nursery and purchases | Plants, supplements, permanent upgrades, Weather/Scenery, owned/locked/success states, long rows, and confirmation dialogs | Clean; controls remain reachable above stable footers |
+| Garden Progress | Growth, streak, Coins, achievements, committed reward history, Garden Finds, Collection, empty states, and stress states | Clean; no remaining redundant or competing hierarchy found |
+| Nursery and purchases | Plants, consumables, Garden spaces, Weather/Scenery, owned/locked/success states, long rows, and confirmation dialogs | Clean; controls remain reachable above stable footers |
 | Settings and Customize | Tabs, toggles, text fields, preview cards, Effects, diagnostics, validation, unsaved changes, disabled states, and production-only controls | Clean after Effects repair; capture-only control absent from production |
 | Buttons and controls | Primary/secondary hierarchy, enabled/disabled states, footer alignment, keyboard focus, touch-target sizing, close actions, and switch clarity | Clean; production Settings measured 46 px for the visible Cancel and Save actions, above the 44 px minimum |
 | Tabs and drop-down behavior | Tab labels, active states, responsive widths, keyboard reachability, and selection ownership | Clean; the internal hidden combo box is intentionally not learner-facing and no visible drop-down needed adjustment |
 | Copy and repetition | Titles, helper copy, stage/Growth language, purchase terms, action casing, empty/error states, and accessible descriptions | Clean; essential accessible context remains self-contained rather than being removed as visual repetition |
 | Color and visual hierarchy | V6 dark-green shell, mint actions/focus, gold brand accent, disabled states, artwork legibility, overlays, and scene-to-panel balance | Clean across normal, focus, disabled, reduced-motion, and stress captures; identity was refined rather than redesigned |
-| Responsive and accessibility | Minimum/default/large windows, every declared breakpoint boundary, representative 150% and 200% scaling, keyboard focus, scroll reachability, and reduced motion | Clean with zero recorded geometry or text-layout warnings |
-| State and recovery | Unsaved changes, validation failure, missing artwork, save status, production/capture separation, and settings persistence | Clean in automated and historical live evidence; the exact-final production restart was waived as documented below |
+| Responsive and accessibility | Canonical 100% captures plus automated minimum/default/large, breakpoint, 150%, and 200% geometry; keyboard focus, scroll reachability, and reduced motion | Automated geometry and capture warnings are clean; native screen-reader and human/device acceptance remain unrun |
+| State and recovery | Unsaved changes, validation failure, missing artwork, save status, and production/capture separation | Clean in automated/capture evidence; final-SHA restart and persistence journeys remain unrun |
 
-## Assets and preview sizing
+## Historical v8 assets and preview sizing
 
 The manifest-owned runtime audit reports 86 assets: 9 backgrounds, 1 decoration, 60 plant stage images, 9 UI assets, and 7 Weather assets. The final review covered the dedicated Home crops, 4:3 and 16:9 scene variants, all six plant spaces, every represented plant stage, Nursery/Story previews, watering-can positions, transparent artwork bounds, and missing-art fallback.
 
-No asset or plant-preview resize was justified. Current preview crops preserve every landmark and bed; plant art remains grounded and readable without clipping or unintended upscaling; and changing sprite or card dimensions would risk the saved V6 geometry contract without solving an observed defect. The frozen production archive is 81,702,743 bytes (77.92 MiB), below the ratcheted 78 MiB ceiling, and its ZIP contains 262 files with 83,248,307 uncompressed bytes. The optimizer retains every manifest-owned image byte exactly.
+No asset or plant-preview resize was justified for that historical candidate.
+Its preview crops preserved every landmark and bed; plant art remained grounded
+and readable without clipping or unintended upscaling. Its frozen production
+archive was 81,702,743 bytes (77.92 MiB) with 262 files. Those counts and that
+optimizer result are historical and are not promoted to the current package.
 
 ## Capture evidence
 
-- Contract: v8, full profile, requested Qt scale factor 1.5.
-- Historical complete result: 146 expected, 146 captured, 0 failures, 0 text-layout warnings, quality `clean`; its 19 high-resolution contact sheets were visually reviewed.
-- Historical complete visual-run capture-package SHA-256: `64d663b55610b44f4f6d15decd4175339306cd1f93eab25fd24ce4ba5c0a314e`.
-- Exact final-source result: 139/146 uniform-primary screenshots, 0 text-layout warnings, and 7 safely omitted Home frames. The omitted labels are `active-overview-home-after-nurture` plus all six watering-can Deck Browser/Overview Home faces. A separate diagnostic captured the six watering-can Home faces 6/6 clean. The incomplete full manifest remains fail-closed and is not called a complete capture.
-- Frozen explicit capture archive: 263 files, 81,737,735 bytes, SHA-256 `14114da87e24f4683bbcefdcdcca0ba2340263641d867bd9651bdbe7d28ddfeb`; ZIP integrity, capture-harness identity, and exact source parity pass.
-- Capture images/contact sheets are ignored local build evidence and are intentionally not linked as durable repository files.
-- The shared runner now builds this explicit capture archive with `--capture --output` and never touches the production artifact. Its retention logic prunes only proven-complete, strictly named evidence and preserves partial runs.
+- Contract v19: 126 expected, 126 captured, requested Qt scale factor `1.0`,
+  primary display, zero failures, zero text-layout warnings, quality `clean`.
+- Manifest:
+  `build/ui-face-captures/capture-sequence-20260823-000843/20260823-000847/manifest.json`.
+- Contact-sheet set:
+  `build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260823-000843`,
+  17 pages and 126 surfaces, validator `valid`.
+- Evidence ZIP:
+  `build/ui-face-captures/anki-garden-ui-faces-20260823-000843.zip`.
+- Production archive: 273 entries, 81,884,216 bytes, SHA-256
+  `005cae6ee1278bcdc68756f6d36b9e3857c3babbec5124219e8eea9930189dc7`.
+- Capture-derivative add-on SHA-256:
+  `10e7760fb1dfa098acfaab018693fa3acb281c4bcdaccb9b401550b31a2d43ff`.
+  This is the derivative `.ankiaddon` hash, not the evidence-ZIP hash.
+- All 272 shared payloads are byte-identical, with shared-payload SHA-256
+  `47eb2980055297b05753c9c8739dd110ba2c45260b20afbcef39151106d92a9d`.
+  The only permitted differences are capture-only `capture_ui_faces.py` and
+  mode-specific `build_capabilities.py`.
+- The runner retained the newest three complete capture/contact-sheet sets and
+  preserved partial diagnostic output, including the older explicitly named
+  partial set.
+
+Historical v8 evidence remains recorded in repository history: one 146/146
+visual run and one fail-closed 139/146 exact-source run with seven omitted Home
+frames. It is not current-source evidence.
 
 The capture build is deliberately different from the production archive because only the capture build contains the fail-closed screenshot harness. The production package excludes `capture_ui_faces.py` and reports production capabilities only.
 
 ## Automated validation
 
-- Full repository suite: 1,536 passed in 84.21 seconds.
-- Dedicated lossless pixel/container, planter, scene-profile, landmark, and item-art gate: 50 passed in 22.56 seconds.
-- Asset manifest audit: 9 backgrounds, 1 decoration, 60 plants, 9 UI assets, 7 Weather assets.
-- Python compilation: clean with a disposable bytecode cache.
-- `git diff --check`: clean.
-- Local Markdown links: clean.
-- Production and explicit capture ZIP integrity plus exact ordered source parity: clean.
-- Capture geometry and semantic Home audits: all saved frames clean; no geometry-warning records. Seven frames were omitted under the owner-approved boundary above.
+- Full repository suite: 1,856 passed and 8 skipped.
+- Package tests: 10 passed before the final UI/capture-only geometry fixes.
+- Focused post-fix checks: 3 passed; Python compilation and
+  `git diff --check` passed. The broad suite was intentionally not repeated for
+  the final narrow geometry adjustment.
+- Production/capture derivative parity: 272 shared entries byte-identical.
+- Capture geometry, fixture postconditions, semantic Home checks, and
+  contact-sheet validation: 126/126 faces, 17/17 sheets, zero failures, zero
+  text-layout warnings, release validation `valid`.
 
 ## Exact-production macOS acceptance boundary
 
-The frozen archive is `dist/anki_garden.ankiaddon`, SHA-256 `9d60b0d1b9523ca3f8c2b9e14be186c8b5ca19137f63064d1edfe15c99aa5b79`.
+The current archive is `dist/anki_garden.ankiaddon`, SHA-256
+`005cae6ee1278bcdc68756f6d36b9e3857c3babbec5124219e8eea9930189dc7`.
 
-Repository-local validation proves its contents and production-only capabilities, but it does not substitute for an identity-gated GUI launch. An exact-production Anki 26.08.1 attempt used disposable profile `Anki Garden 2.1.0 Release 20260815-1711` and instance-key fingerprint `3fdbc25e59f9`. Process and filesystem identity passed, the exact add-on registered its hooks, and no pre-existing Anki process was controlled. The PID-owned window-title query returned no unique title, however, and the process opened a connection to `sync11.ankiweb.net` despite disconnected, auto-sync-off profile metadata. It was stopped immediately and was not restarted. Window, sync, and restart acceptance remain incomplete; the owner explicitly authorized release publication with that boundary.
+A disposable macOS Anki 26.8.1 startup/import smoke passed for the immediately
+preceding production package before the final UI/capture-only fixes. It verified
+unique process/window/filesystem identity, sync-disabled isolation, add-on hook
+registration, production capabilities, and database integrity, then stopped
+only the disposable process. Because the source and package hash changed after
+that smoke, it is evidence for the launch/import path only. It is not final-SHA
+runtime acceptance and did not cover complete journeys, restart, or persistence.
+The final capture derivative did launch successfully with all 272 production-
+shared payloads byte-identical, but it is intentionally not the production
+archive.
 
 ## Windows and Linux portability boundary
 

@@ -140,8 +140,6 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         logical_size = (
             tuple(expected_profile["declared_client_size"])
             if label in resize_layout_modes
-            else (620, 520)
-            if label == "display-scaling-200-qt-representative"
             else (100, 100)
         )
         dpr = 1.0
@@ -323,7 +321,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         "text_layout_warnings": [],
         "failures": [],
         "expected_count": len(contract.labels),
-        "requested_scale_factor": "1.5",
+        "requested_scale_factor": "1.0",
         "dialog_memory_probe": {
             "status": "measured",
             "cycles": 12,
@@ -539,11 +537,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 191
+    assert capture_result["capture_count"] == 126
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
-        "page_count": 24,
-        "surface_count": 191,
+        "page_count": 17,
+        "surface_count": 126,
         "status": "valid",
     }
 
@@ -553,8 +551,7 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     pages = expected_contact_sheet_pages(contract)
 
     assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 9, 5, 10, 10, 10, 10, 10,
-        9, 8, 10, 10, 4, 10,
+        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 5, 9, 8, 10, 9, 9,
     ]
     assert pages[6:10] == (
         (("Release stress — Garden", 10),),
@@ -564,34 +561,33 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     )
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
         4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
-        4148, 5192, 3218, 5078, 5078, 5078, 5078, 5078, 5078, 4148,
-        5078, 5078, 2288, 5192,
+        4148, 3218, 5192, 4148, 5078, 5078, 5192,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_191_faces() -> None:
+def test_renderer_families_are_derived_from_source_for_all_126_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
     assert tuple(families) == contract.labels
     assert Counter(families.values()) == Counter({
-        "GardenDashboard": 48,
-        "GardenProgressDialog": 25,
-        "GardenSettingsDialog": 14,
-        "NurseryDialog": 20,
+        "GardenDashboard": 32,
+        "GardenProgressDialog": 17,
+        "GardenSettingsDialog": 10,
+        "NurseryDialog": 15,
         "AnkiQt": 18,
-        "CollectibleDetailDialog": 9,
-        "FertilizerDialog": 7,
-        "StarterConfirmationDialog": 6,
-        "PlantStoryDialog": 6,
-        "FertilizerReplacementDialog": 11,
-        "SpeciesOverviewDialog": 5,
+        "CollectibleDetailDialog": 4,
+        "FertilizerDialog": 4,
+        "StarterConfirmationDialog": 1,
+        "PlantStoryDialog": 1,
+        "FertilizerReplacementDialog": 1,
+        "SpeciesOverviewDialog": 2,
         "PurchaseConfirmationDialog": 14,
-        "GrowthChargeConfirmationDialog": 8,
+        "GrowthChargeConfirmationDialog": 7,
     })
     assert families["popover-plot-6"] == "GardenDashboard"
     assert families["watering-can-garden-plot-6"] == "GardenDashboard"
-    assert families["resize-species-overview-large"] == "SpeciesOverviewDialog"
+    assert "resize-species-overview-large" not in families
     resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
     assert len(resize_modes) == 65
     assert resize_modes["resize-dashboard-content-819"] == "compact"
@@ -599,7 +595,7 @@ def test_renderer_families_are_derived_from_source_for_all_191_faces() -> None:
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_191_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_all_126_faces() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -608,14 +604,13 @@ def test_state_evidence_contracts_are_derived_for_all_191_faces() -> None:
 
     assert tuple(states) == contract.labels
     assert Counter(state["kind"] for state in states.values()) == Counter({
-        "resize": 64,
-        "dashboard": 35,
+        "dashboard": 32,
         "progress": 17,
         "home": 15,
         "nursery": 15,
-        "settings": 7,
+        "settings": 10,
         "reviewer": 3,
-        "dialog": 31,
+        "dialog": 30,
         "collectible-detail": 4,
     })
     assert states["watering-can-overview-plot-6"]["profile"] == {
@@ -629,16 +624,7 @@ def test_state_evidence_contracts_are_derived_for_all_191_faces() -> None:
     assert states["growth-zero"]["profile"]["page"] == "growth"
     assert states["nursery-item-locked"]["profile"]["tab"] == 1
     assert states["nursery-item-locked"]["profile"]["starter_mode"] is False
-    assert states["resize-progress-default"]["profile"] == {
-        "profile_id": "resize-progress-default",
-        "window_family": "GardenProgressDialog",
-        "kind": "resize",
-        "resize_family": "progress",
-        "transition_path": "minimum-to-default",
-        "declared_client_size": [940, 680],
-        "layout_mode": "wide",
-        "canonical_page": "growth",
-    }
+    assert "resize-progress-default" not in states
     assert states["growth-charge-success-stage-reward"]["profile"][
         "growth_charge_status"
     ] == "success"
@@ -670,26 +656,9 @@ def test_accessibility_fixture_ownership_and_cleanup_are_source_bound() -> None:
         "keyboard_focus_visible": True,
         "keyboard_focus_owner": "progress_btn",
     }
-    cleanup_labels = (
-        "narrow-window-responsive",
-        "display-scaling-150",
-        "display-scaling-200-qt-representative",
-        "resize-dashboard-minimum",
-        "resize-dashboard-large",
-    )
-    for label in cleanup_labels:
-        assert states[label]["expected_fact_values"][
-            "reduced_motion_baseline_restored"
-        ] is False
-        assert states[label]["fact_constraints"] == {
-            "keyboard_focus_fixture_cleared": "focus-cleared-object",
-        }
-    assert "reduced_motion_baseline_restored" not in states[
-        "resize-settings-minimum"
-    ]["required_facts"]
-    assert "keyboard_focus_fixture_cleared" not in states[
-        "resize-settings-minimum"
-    ]["required_facts"]
+    assert "narrow-window-responsive" not in states
+    assert "display-scaling-150" not in states
+    assert "display-scaling-200-qt-representative" not in states
 
 
 def test_state_profile_loader_tracks_source_mapping_and_fails_closed(
@@ -852,30 +821,13 @@ def test_manifest_rejects_incomplete_or_mismatched_state_postcondition(
     assert "postcondition did not pass" in message
 
 
-def test_manifest_rejects_resize_postcondition_without_expected_layout_mode(
-    tmp_path: Path,
-) -> None:
-    manifest, payload = _valid_capture(tmp_path)
+def test_resize_layout_modes_remain_a_non_visual_automated_contract() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
-    resize_index = contract.labels.index("resize-dashboard-content-821")
-    records = payload["captures"]
-    assert isinstance(records, list)
-    record = records[resize_index]
-    assert isinstance(record, dict)
-    fixture = record["fixture_validation"]
-    assert isinstance(fixture, dict)
-    postcondition = fixture["postcondition"]
-    assert isinstance(postcondition, dict)
-    facts = postcondition["facts"]
-    assert isinstance(facts, dict)
-    facts["layout_mode"] = "narrow"
-    audit = record["audit"]
-    assert isinstance(audit, dict)
-    audit["fixture_identity"] = copy.deepcopy(fixture)
-    _write_json(manifest, payload)
+    resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
 
-    with pytest.raises(CaptureValidationError, match="layout_mode fact must be 'compact'"):
-        validate_capture_manifest(manifest)
+    assert "resize-dashboard-content-821" not in contract.labels
+    assert resize_modes["resize-dashboard-content-821"] == "compact"
+    assert resize_modes["resize-progress-default"] == "wide"
 
 
 def test_manifest_rejects_same_renderer_state_schema_substitution(
@@ -914,7 +866,7 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
 
     substitutions = (
         ("reduced-motion-enabled", "settings-home-preview-disabled"),
-        ("keyboard-focus-state", "narrow-window-responsive"),
+        ("keyboard-focus-state", "full-garden"),
     )
     for target_label, source_label in substitutions:
         target = records[contract.labels.index(target_label)]
@@ -937,18 +889,18 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
         validate_capture_manifest(manifest)
 
     message = str(raised.value)
-    assert "capture 086 reduced-motion-enabled: postcondition fact schema mismatch" in message
-    assert "capture 087 keyboard-focus-state: postcondition fact schema mismatch" in message
+    assert "capture 089 reduced-motion-enabled: postcondition fact schema mismatch" in message
+    assert "capture 090 keyboard-focus-state: postcondition fact schema mismatch" in message
 
 
-def test_manifest_rejects_forged_accessibility_cleanup_fact_value(
+def test_manifest_rejects_forged_accessibility_focus_fact_value(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
     records = payload["captures"]
     assert isinstance(records, list)
-    record = records[contract.labels.index("narrow-window-responsive")]
+    record = records[contract.labels.index("keyboard-focus-state")]
     assert isinstance(record, dict)
     fixture = record["fixture_validation"]
     assert isinstance(fixture, dict)
@@ -956,95 +908,68 @@ def test_manifest_rejects_forged_accessibility_cleanup_fact_value(
     assert isinstance(postcondition, dict)
     facts = postcondition["facts"]
     assert isinstance(facts, dict)
-    facts["keyboard_focus_fixture_cleared"] = {
-        "focus_owner": "QPushButton",
-        "progress_button_has_focus": True,
-    }
+    facts["keyboard_focus_owner"] = "scene"
     audit = record["audit"]
     assert isinstance(audit, dict)
     audit["fixture_identity"] = copy.deepcopy(fixture)
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="must prove the Progress button"):
+    with pytest.raises(CaptureValidationError, match="keyboard_focus_owner.*progress_btn"):
         validate_capture_manifest(manifest)
 
 
-def test_manifest_rejects_fabricated_resize_size_despite_self_consistent_record(
-    tmp_path: Path,
-) -> None:
-    manifest, payload = _valid_capture(tmp_path)
-    label = "resize-dashboard-large"
-    _set_resize_geometry(
-        payload,
-        label=label,
-        declared=(100, 100),
-        actual=(100, 100),
+def test_resize_geometry_rejects_fabricated_size() -> None:
+    result = expected_resize_geometry_acceptance(
+        label="resize-dashboard-large",
+        declared_size=(1440, 960),
+        actual_size=(100, 100),
+        minimum_size=(100, 100),
+        maximum_size=(2000, 2000),
         screen_limited=False,
+        constraint_limited=False,
         native_normalized=False,
         normalization_reason="",
     )
-    contract = load_capture_contract(CAPTURE_SOURCE)
-    records = payload["captures"]
-    assert isinstance(records, list)
-    record = records[contract.labels.index(label)]
-    assert isinstance(record, dict)
-    fixture = record["fixture_validation"]
-    assert isinstance(fixture, dict)
-    postcondition = fixture["postcondition"]
-    assert isinstance(postcondition, dict)
-    facts = postcondition["facts"]
-    assert isinstance(facts, dict)
-    facts["declared_client_size"] = [100, 100]
-    facts["requested_client_size"] = [100, 100]
-    audit = record["audit"]
-    assert isinstance(audit, dict)
-    audit["fixture_identity"] = copy.deepcopy(fixture)
-    _write_json(manifest, payload)
-
-    with pytest.raises(CaptureValidationError, match="must match source profile"):
-        validate_capture_manifest(manifest)
+    assert result["drifted"] is True
+    assert result["accepted"] is False
+    assert result["provenance_explains_drift"] is False
 
 
-def test_manifest_accepts_provenance_backed_bounded_resize_height_drift(
-    tmp_path: Path,
-) -> None:
-    manifest, payload = _valid_capture(tmp_path)
-    _set_resize_geometry(
-        payload,
+def test_resize_geometry_accepts_provenance_backed_bounded_height_drift() -> None:
+    result = expected_resize_geometry_acceptance(
         label="resize-dashboard-content-821",
-        declared=(845, 720),
-        actual=(845, 600),
+        declared_size=(845, 720),
+        actual_size=(845, 600),
+        minimum_size=(100, 100),
+        maximum_size=(2000, 2000),
         screen_limited=True,
+        constraint_limited=False,
         native_normalized=True,
         normalization_reason=(
             "extends-beyond-available-screen,native-frame-or-scale"
         ),
     )
-    _write_json(manifest, payload)
+    assert result["accepted"] is True
+    assert result["provenance_explains_drift"] is True
 
-    assert validate_capture_manifest(manifest)["status"] == "valid"
 
-
-def test_manifest_rejects_unexplained_resize_drift(tmp_path: Path) -> None:
-    manifest, payload = _valid_capture(tmp_path)
-    _set_resize_geometry(
-        payload,
+def test_resize_geometry_rejects_unexplained_drift() -> None:
+    result = expected_resize_geometry_acceptance(
         label="resize-dashboard-content-821",
-        declared=(845, 720),
-        actual=(845, 600),
+        declared_size=(845, 720),
+        actual_size=(845, 600),
+        minimum_size=(100, 100),
+        maximum_size=(2000, 2000),
         screen_limited=False,
+        constraint_limited=False,
         native_normalized=False,
         normalization_reason="",
     )
-    _write_json(manifest, payload)
-
-    with pytest.raises(CaptureValidationError, match="unexplained or unsafe"):
-        validate_capture_manifest(manifest)
+    assert result["accepted"] is False
+    assert result["provenance_explains_drift"] is False
 
 
-def test_manifest_rejects_breakpoint_resize_width_drift_over_one_pixel(
-    tmp_path: Path,
-) -> None:
+def test_resize_geometry_rejects_breakpoint_width_drift_over_one_pixel() -> None:
     measured_breakpoint = expected_resize_geometry_acceptance(
         label="purchase-confirmation-breakpoint-low",
         declared_size=(517, 520),
@@ -1058,22 +983,22 @@ def test_manifest_rejects_breakpoint_resize_width_drift_over_one_pixel(
     )
     assert measured_breakpoint["accepted"] is True
     assert measured_breakpoint["breakpoint_fixture"] is True
-    manifest, payload = _valid_capture(tmp_path)
-    _set_resize_geometry(
-        payload,
+    drifted_breakpoint = expected_resize_geometry_acceptance(
         label="resize-dashboard-content-821",
-        declared=(845, 720),
-        actual=(842, 600),
+        declared_size=(845, 720),
+        actual_size=(842, 600),
+        minimum_size=(100, 100),
+        maximum_size=(2000, 2000),
         screen_limited=True,
+        constraint_limited=False,
         native_normalized=True,
         normalization_reason=(
             "extends-beyond-available-screen,native-frame-or-scale"
         ),
     )
-    _write_json(manifest, payload)
-
-    with pytest.raises(CaptureValidationError, match="unexplained or unsafe"):
-        validate_capture_manifest(manifest)
+    assert drifted_breakpoint["breakpoint_fixture"] is True
+    assert drifted_breakpoint["breakpoint_width_within_one"] is False
+    assert drifted_breakpoint["accepted"] is False
 
 
 def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
@@ -1100,7 +1025,7 @@ def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
         validate_capture_manifest(manifest)
 
     message = str(raised.value)
-    assert "numeric-equivalent to 1.5" in message
+    assert "numeric-equivalent to 1.0" in message
     assert "status must be 'measured'" in message
     assert "cycles must be 12" in message
     assert "actual_client_size must match" in message
@@ -1220,8 +1145,8 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 191" in message
-    assert "pages account for 190 surfaces" in message
+    assert "surface_count must be 126" in message
+    assert "pages account for 125 surfaces" in message
     assert "PNG dimensions must be 3000x4262px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message
@@ -1339,10 +1264,10 @@ def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
     streak_index = contract.labels.index("streak-achievement-earned-next")
-    resize_index = contract.labels.index("resize-progress-default")
+    coins_index = contract.labels.index("coins-zero")
     screenshots = payload["screenshots"]
     assert isinstance(screenshots, list)
-    Path(screenshots[resize_index]).write_bytes(
+    Path(screenshots[coins_index]).write_bytes(
         Path(screenshots[streak_index]).read_bytes()
     )
 
@@ -1376,32 +1301,12 @@ def test_manifest_accepts_documented_duplicate_with_required_audit(
     assert validate_capture_manifest(manifest)["status"] == "valid"
 
 
-def test_manifest_accepts_qt_proxy_duplicate_with_explicit_provenance(
-    tmp_path: Path,
-) -> None:
-    manifest, payload = _valid_capture(tmp_path)
+def test_contract_excludes_resize_and_scale_visual_proxies() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
-    scaling_index = contract.labels.index("display-scaling-200-qt-representative")
-    resize_index = contract.labels.index("resize-dashboard-minimum")
-    screenshots = payload["screenshots"]
-    records = payload["captures"]
-    assert isinstance(screenshots, list)
-    assert isinstance(records, list)
-    Path(screenshots[resize_index]).write_bytes(
-        Path(screenshots[scaling_index]).read_bytes()
-    )
-    scaling_record = records[scaling_index]
-    assert isinstance(scaling_record, dict)
-    scaling_audit = scaling_record["audit"]
-    assert isinstance(scaling_audit, dict)
-    scaling_audit.update({
-        "representative_kind": "deterministic-qt-logical-viewport",
-        "effective_scale_percent": 200,
-        "os_display_scaling_changed": False,
-    })
-    _write_json(manifest, payload)
-
-    assert validate_capture_manifest(manifest)["status"] == "valid"
+    assert "display-scaling-150" not in contract.labels
+    assert "display-scaling-200-qt-representative" not in contract.labels
+    assert "resize-dashboard-minimum" not in contract.labels
+    assert "growth-charge-minimum-responsive" not in contract.labels
 
 
 def test_manifest_rejects_scroll_geometry_and_collection_page_drift(

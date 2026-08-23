@@ -28,6 +28,7 @@ from aqt.qt import (
 )
 
 from ..config import DEFAULT_CONFIG
+from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
 from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .scene import GardenSceneWidget
@@ -992,8 +993,10 @@ class GardenStudioWidget(QWidget):
                 self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             ))
-        preview_points = {"seed": 0, "sprout": 500, "young": 2_500, "mature": 8_000, "flowering": 20_000, "rare": 50_000}.get(
-            str(self.preview["growth_stage"]), 0
+        stage_thresholds = dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))
+        preview_points = stage_thresholds.get(
+            str(self.preview["growth_stage"]),
+            GROWTH_THRESHOLDS[0],
         )
         preview_growth = growth_display(preview_points)
         if self.garden_snapshot_provider is not None:

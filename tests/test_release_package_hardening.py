@@ -49,12 +49,32 @@ def test_production_archive_excludes_capture_surface_and_disables_capabilities(
             archive.read(CAPABILITY_MODULE).decode("utf-8")
         )
         packaged_game = archive.read("game.py").decode("utf-8")
+        packaged_ui_sources = {
+            name: archive.read(name).decode("utf-8")
+            for name in names
+            if name.startswith("ui/") and name.endswith(".py")
+        }
+        packaged_scene = packaged_ui_sources["ui/scene.py"]
+        packaged_ui = "\n".join(
+            packaged_ui_sources[name] for name in sorted(packaged_ui_sources)
+        )
 
     assert CAPTURE_HARNESS not in names
     assert capabilities["BUILD_MODE"] == PRODUCTION_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is False
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is False
     assert "if not build_capabilities.DEVELOPMENT_MUTATION_ENABLED:" in packaged_game
+    assert "from ..build_capabilities import CAPTURE_HARNESS_ENABLED" in packaged_scene
+    assert "CAPTURE_HARNESS_ENABLED\n            and (" in packaged_scene
+    for forbidden_control in (
+        "Unlock development tools",
+        "Populate test garden",
+        "Restore backup",
+        "unlock_development",
+        "populate_development",
+        "restore_development",
+    ):
+        assert forbidden_control not in packaged_ui
 
 
 def test_capture_build_requires_a_separate_explicit_target() -> None:

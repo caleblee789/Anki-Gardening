@@ -1,15 +1,19 @@
 # Anki Garden UI release-overhaul contract
 
 Status: implementation contract for Release 2.1.0. Current source declares
-capture contract v18 with 191 ordered surfaces for the authoritative Growth,
-rewards, achievements, Garden Finds, Reviewer feedback, and targetable Growth
-Charge overhaul, plus the disabled-Home-preview Settings state. The requested
-v8 reference remains the primary visual baseline
-but is incomplete at 139/146. The complete v16 run is predecessor-source
-evidence only. The final current-source v18 capture and exact 24-sheet set are
-intentionally pending until implementation and all non-GUI, asset, and package
-gates pass. This document records the current implementation boundary and the
-still-separate native-platform and human-acceptance gates.
+capture contract v19 with 126 distinct ordered surfaces and states for the
+authoritative Growth, rewards, achievements, Garden Finds, Reviewer feedback,
+and targetable Growth Charge overhaul, plus the disabled-Home-preview Settings
+state. Each distinct surface or state is captured once at canonical 100% scale
+under `QT_SCALE_FACTOR=1.0`. Resize, breakpoint, 150%, and 200% screenshot
+duplicates are excluded; responsive geometry remains an automated release
+gate outside the screenshot manifest. The requested v8 reference remains the
+primary visual baseline but is incomplete at 139/146. The complete v16 run is
+predecessor-source evidence only. The final current-source v19 capture is now
+complete at 126/126 faces in an exact 17-sheet set, with canonical scale 1.0,
+zero capture failures, zero text-layout warnings, and clean manifest/contact-
+sheet validation. This document records that completed macOS Qt evidence and
+the still-separate native-platform and human-acceptance gates.
 
 The source code and persisted-state behavior are authoritative. Existing UI
 documents remain useful context, but any conflict called out in
@@ -79,7 +83,7 @@ surfaces. IDs 001-146 retain their established identities, and IDs 147-149 add
 `resize-collection-large` for the actual Collection page in
 `GardenProgressDialog`.
 
-The current after-change capture is:
+The then-current v10 after-change capture was:
 
 `build/ui-face-captures/capture-sequence-20260816-134539/20260816-134543`
 
@@ -223,14 +227,39 @@ This closes v16 predecessor-source automated completeness only, not current
 source or the native Windows, true OS-level 100/150/200-percent, high/mixed-DPI,
 keyboard-walkthrough, contrast, screen-reader, or human visual-acceptance gates.
 
-Capture contract v18 keeps the 191-ID order. It replaces ID 037 with
+Capture contract v18 kept the 191-ID order. It replaced ID 037 with
 `settings-home-preview-disabled`, ID 073 with
 `clear-recall-canonical-projection`, ID 076 with
 `streak-achievement-earned-next`, and IDs 083-085 with
 `reviewer-find-common-reduced-motion`, `reviewer-find-environment`, and
-`reviewer-find-stacked-sync`. The final v18 run must contain all 191 source-owned
-faces and exactly 24 contact sheets. That run, its manifest path, package hash,
-and acceptance result remain pending and must not be inferred from v16 evidence.
+`reviewer-find-stacked-sync`. It did not receive a final current-source run.
+
+Capture contract v19 retains those functional and state identities while
+filtering the manifest to 126 distinct faces in source order and renumbering
+them 001-126. The three distinct Settings states for validation failure,
+expanded diagnostics, and absent production-only development controls remain
+required; they are functional states, not resize duplicates. Its final run must
+capture each face once under `QT_SCALE_FACTOR=1.0`; the three Reviewer faces
+therefore follow at IDs 086-088. The completed run produces exactly 17 contact
+sheets.
+Logical resize, breakpoint, 150%, and 200% screenshot duplicates are not
+manifest faces;
+responsive geometry remains enforced by automated tests.
+
+The final manifest is
+`build/ui-face-captures/capture-sequence-20260823-000843/20260823-000847/manifest.json`.
+It records `complete: true`, 126 ordered captures, contract v19, requested scale
+factor `1.0`, primary-display capture, zero failures, and zero text-layout
+warnings. The manifest-owned 17-sheet set is
+`build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260823-000843`;
+its index validates at 126 surfaces and 17 pages. The production archive SHA-256
+is `005cae6ee1278bcdc68756f6d36b9e3857c3babbec5124219e8eea9930189dc7`;
+the capture-derivative archive SHA-256 is
+`10e7760fb1dfa098acfaab018693fa3acb281c4bcdaccb9b401550b31a2d43ff`.
+All 272 shared payloads are byte-identical, with shared-payload SHA-256
+`47eb2980055297b05753c9c8739dd110ba2c45260b20afbcef39151106d92a9d`;
+only `capture_ui_faces.py` and the explicit `build_capabilities.py` mode payload
+differ as permitted.
 
 ## Approved downstream decisions
 
@@ -285,24 +314,27 @@ directly from a renderer.
 
 The complete per-capture record belongs in `docs/ui-surface-inventory.md`. This
 map defines the implementation boundary shared by capture states in each
-surface family.
+surface family. Capture IDs below identify canonical 100%-scale screenshots
+only. Where a required-variants cell mentions responsive behavior, that behavior
+is covered by automated geometry validation and does not receive a duplicate
+screenshot ID.
 
 | Capture IDs | User-facing surface | Component or dialog | Entry point | Renderer and authoritative state | Primary actions and required variants |
 |---|---|---|---|---|---|
 | 001-002 | First-run Deck Browser and Overview | Anki Home card | Anki Deck Browser/Overview hooks | `render_home_widget()` HTML/CSS from `GardenUiSnapshot`; onboarding, garden, metrics, currency, environment, and manifest asset metadata | Open Garden, starter route, Retry; loading, starter-empty, partial, recoverable error, and stale-response rejection |
-| 003, 150-151, 155 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-21 state with resumable onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
+| 003, 091-092, 096 | First-run Garden | `GardenDashboard` | Open Garden before starter completion | Native Qt plus `GardenSceneWidget`; schema-21 state with resumable onboarding semantics and scene projection | Introduction, Nursery, confirmation, placement, nurture, completion, persistence error, and resume variants |
 | 004-006 | Starter Nursery and confirmation | `NurseryDialog`, `StarterConfirmationDialog` | First-run route from Dashboard | Native Qt; release-ready asset catalog plus onboarding and ownership state | Choose, confirm, cancel/back; locked/no-stock, missing artwork, disabled, and action-above-footer variants |
-| 007-008, 018-019, 064-069, 152-154 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from `GardenPreviewSnapshot`; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
-| 009-012, 016, 042-055, 058-063, 087-103, 156 | Full Garden, plant interaction, Move, stress, focus, responsive, scaling | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and shared `SceneGeometryLayout` | Select, Nurture, Fertilize, Growth Charge, Move/swap, Story, Garden Progress, Collection, Settings, Undo; hover/focus, long values, all stages/plots, rollback, narrow/scaling variants |
-| 013-015, 056-057, 136-143, 161-162, 173, 175-179 | Fertilizer and replacement confirmation | `PurchaseConfirmationDialog`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; current state from `fertilizer_status()`, new terms from the engine quote, target, active interval/history, balance, and replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current; unaffordable, active, expiring, persistence error, exact discarded time, and measured responsive variants |
-| 017, 126-130 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, shared forecast/fertilizer projections, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, and responsive variants |
-| 020-021, 026, 111-115 | Plant Growth and stale Overview redirect | Plant Growth page in `GardenProgressDialog` | Plant Growth metric, General Progress, stale `overview` alias | Native Qt from `GardenUiSnapshot`; schema-21 daily study sources, per-plant nurtured/passive/direct allocations, residual fifths, stage projection, and planted-slot order | Inspect exact reconciling totals, expand/collapse Growth Breakdown, target a Charge; zero/nonzero, stale alias, and responsive variants |
+| 007-008, 018-019, 064-069, 093-095 | Normal, nurtured, and watering Home | Anki Home card | Deck Browser/Overview hooks | Home HTML/CSS from `GardenPreviewSnapshot`; active plant, slots, metrics, currency, environment, and asset placement | Open Garden, Retry; no nurtured plant, active plant, watering marker per slot, loading, partial, error, and stale states |
+| 009-012, 016, 042-055, 058-063, 097 | Full Garden, plant interaction, Move, stress, and focus | `GardenDashboard`, `GardenSceneWidget`, `PlantInfoCard` / `AnchoredPlantPopover` | Open Garden; scene selection; header and landmark actions | Native scene payload from engine state and shared `SceneGeometryLayout` | Select, Nurture, Fertilize, Growth Charge, Move/swap, Story, Garden Progress, Collection, Settings, Undo; hover/focus, long values, all stages/plots, rollback, plus automated narrow/scaling geometry |
+| 013-015, 056-057, 102-103, 114 | Fertilizer and replacement confirmation | `PurchaseConfirmationDialog`, `FertilizerReplacementDialog` | Selected plant -> Fertilize | Native Qt; current state from `fertilizer_status()`, new terms from the engine quote, target, active interval/history, balance, and replay ledger | Purchase & Apply, Extend, Purchase & Replace, Keep current; unaffordable, active, expiring, persistence error, exact discarded time, plus automated responsive geometry |
+| 017 | Plant Story | `PlantStoryDialog` | Selected plant -> Story | Native Qt; plant identity, stage, Growth, memories, discovery, shared forecast/fertilizer projections, and asset metadata | Rename, cancel/close; new/no-memory, one/many memories, fully grown, Rare locked, missing art, save-error, plus automated responsive geometry |
+| 020-021, 026 | Plant Growth and stale Overview redirect | Plant Growth page in `GardenProgressDialog` | Plant Growth metric, General Progress, stale `overview` alias | Native Qt from `GardenUiSnapshot`; schema-21 daily study sources, per-plant nurtured/passive/direct allocations, residual fifths, stage projection, and planted-slot order | Inspect exact reconciling totals, expand/collapse Growth Breakdown, target a Charge; zero/nonzero, stale alias, plus automated responsive geometry |
 | 022-025 | Streak and Garden Coins details | Focused pages in `GardenProgressDialog` | Dashboard metric buttons | Native Qt; review totals, streak, currency, and canonical reward ledger | Navigate/close; new, active, history, empty, and error variants |
-| 027-032, 070-076, 116-120, 144-149, 157, 181-183 | Achievements, Collection, loadout details, species overview | `GardenProgressDialog`, `CollectibleDetailDialog`, species overview `GardenDialog` | Header Collection, cottage, metric routes, Nursery/Settings compatibility routes | Native Qt; registry-derived categories, plant instances, canonical loadout, shared descriptors, ownership/equipment/mystery metadata, and assets | Search/filter/sort, inspect, preview/apply/cancel/unequip, plant/place/move/remove/nurture, navigate; empty, locked, mystery, rollback, placement, mechanics, and responsive variants |
-| 033-036, 077-081, 121-125, 158-174, 180 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-21 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
-| 184-191 | Growth Charge confirmation and receipt | `GrowthChargeConfirmationDialog` | Selected plant action or per-plant Plant Growth action | Native Qt over renderer-neutral quote/request/outcome contracts; target, inventory, Growth, scenery reward terms, and bounded replay ledger are revalidated at commit | Select Charge type, cancel, use, open Nursery, close receipt; ready, empty, loading, stale, invalid, rollback, rewarded success, and minimum-responsive variants |
-| 037-041, 082, 086, 104-110 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, save rollback/error, reduced-motion, and responsive variants |
-| 083-085 | Reviewer Garden Find notifications | `ReviewerRewardFeedback` rendered over the real Anki Reviewer | Eligible review or synchronized reward reconciliation | Native Qt from canonical reward/find presentations and persisted event identities; one nonmodal card acknowledges all rendered event IDs | Continue reviewing; Common reduced-motion, Rare environment Find, stacked-sync, exact name/reward/tier/artwork, and focus-preservation variants |
+| 027-032, 070-076, 098, 117-119 | Achievements, Collection, loadout details, species overview | `GardenProgressDialog`, `CollectibleDetailDialog`, species overview `GardenDialog` | Header Collection, cottage, metric routes, Nursery/Settings compatibility routes | Native Qt; registry-derived categories, plant instances, canonical loadout, shared descriptors, ownership/equipment/mystery metadata, and assets | Search/filter/sort, inspect, preview/apply/cancel/unequip, plant/place/move/remove/nurture, navigate; empty, locked, mystery, rollback, placement, mechanics, plus automated responsive geometry |
+| 033-036, 077-081, 099-116 | Nursery catalog and commerce | `NurseryDialog`, `PurchaseConfirmationDialog` | Nursery landmark, first-run route, related product route | Native Qt; catalogs and `GardenGameEngine` projections over schema-21 state, shared descriptors, replay-safe quotes, normalized artwork metadata | Choose, Purchase, Use, open Collection, Unlock bed, Plant in garden, Move, Remove from garden; ready/loading/typed-error/success/empty/owned/locked/missing-art/footer variants |
+| 120-126 | Growth Charge confirmation and receipt | `GrowthChargeConfirmationDialog` | Selected plant action or per-plant Plant Growth action | Native Qt over renderer-neutral quote/request/outcome contracts; target, inventory, Growth, scenery reward terms, and bounded replay ledger are revalidated at commit | Select Charge type, cancel, use, open Nursery, close receipt; ready, empty, loading, stale, invalid, rollback, rewarded success, plus automated minimum-responsive geometry |
+| 037-041, 082-085, 089-090 | Settings and Diagnostics | `GardenSettingsDialog`, `GardenStudioWidget` | Add-on settings menu or Dashboard Settings | Native Qt; staged Anki config plus separately persisted garden name; diagnostics/build capabilities are derived runtime data | Save settings, cancel, restore defaults, toggle, refresh/copy/expand diagnostics; clean/warning, dirty, validation error, production-capability branch, save rollback/error, reduced-motion, plus automated responsive geometry |
+| 086-088 | Reviewer Garden Find notifications | `ReviewerRewardFeedback` rendered over the real Anki Reviewer | Eligible review or synchronized reward reconciliation | Native Qt from canonical reward/find presentations and persisted event identities; one nonmodal card acknowledges all rendered event IDs | Continue reviewing; Common reduced-motion, Rare environment Find, stacked-sync, exact name/reward/tier/artwork, and focus-preservation variants |
 
 Window opening, selection, open tabs, filters, Nursery pages, Move drafts, hover,
 focus, and resize mode are transient UI state. They must not be added to the
@@ -330,7 +362,7 @@ webview bridge, not a general routing framework.
 | Selected plant card | Move | Scene placement mode | Destination commit changes slots atomically; Undo is session-local |
 | Selected plant card | Story | `PlantStoryDialog` | None except a confirmed rename |
 | Collection plant | Plant in garden | Engine `plant_from_collection()` | Atomically assigns an empty unlocked slot |
-| Garden plant | Move to Collection | Engine `move_to_collection()` | Atomically clears its slot; prohibited for the nurtured plant |
+| Garden plant | Return to Collection | Engine `move_to_collection()` | Atomically clears its slot; prohibited for the nurtured plant |
 | Collection species | Inspect | Species overview dialog | None |
 | Collection collectible | Inspect or Preview | `CollectibleDetailDialog` | Preview is transient and restores the persisted appearance on cancel |
 | Collection loadout detail | Apply changes | Engine `apply_garden_loadout()` | Atomically commits Weather, Scenery, Decoration, and visibility; failure restores the previous loadout |
@@ -630,7 +662,7 @@ slot are distinct states:
 
 - Purchasing a species creates a stored zero-Growth plant instance.
 - Plant assigns an owned stored instance to an empty unlocked slot.
-- Move to Collection clears its slot and preserves identity, Growth,
+- Return to Collection clears its slot and preserves identity, Growth,
   memories, Fertilizer, and Booster.
 - The currently nurtured plant cannot be stored until another unfinished plant
   is nurtured.
@@ -694,33 +726,37 @@ two-pixel probe must retain the same semantic mode on both sides.
 | Fertilizer replacement comparison | 474 px | Comparison cards share one row |
 
 Each controller publishes its semantic region order, owning width, measured
-threshold, and mode for deterministic capture audits. Layout reflow preserves
-source and focus order. Home uses container-scoped 420/469 px refinements, not
+threshold, and mode for deterministic automated geometry audits. Layout reflow
+preserves source and focus order. Home uses container-scoped 420/469 px refinements, not
 viewport media queries. Scene aspect, plant fit, and minimum scene height now
 blend across responsive ranges instead of switching at a single pixel. The
 selected-plant card attempts content-aware in-scene placement and docks only
 when no protected overlay lane is available.
 
-Dashboard header composition and metric density are independent. The clean v10
-resize/scaling fixtures observe thresholds of 1,568 inner px for the complete
-header, 632 px for title plus actions, and 948 px for full metric copy. Earlier
+Dashboard header composition and metric density are independent. The historical
+clean v10 resize/scaling fixtures observed thresholds of 1,568 inner px for the
+complete header, 632 px for title plus actions, and 948 px for full metric copy. Earlier
 Dashboard content states 003, 009-012, and 016 measure shorter visible actions
 and record 1,502/566/948 px; the threshold is intentionally content-derived.
-The final manifest also records `dashboard.growth-identity` independently: it
+Current automated geometry metadata also records `dashboard.growth-identity`
+independently: it
 uses compact presentation with compact metrics through the 901 probe and wide
 presentation from the 999 probe upward, while long-name and near-stage fixtures
 publish their own measured requirements.
-Every captured Dashboard resize state through the 1440 px large window is
+Every historical v10 Dashboard resize state through the 1440 px large window was
 top-level `compact`; only the 620 px minimum is top-level `narrow`. Metric copy
-is compact through the historical 901 px probe and wide from the 999 px probe
-upward. These are realized macOS values, not fixed cross-platform constants:
+was compact through the historical 901 px probe and wide from the 999 px probe
+upward. These were realized macOS values, not fixed cross-platform constants:
 localized or platform font metrics may move them while preserving the same
 content-first policy and stable semantic pair results.
 
 Global CSS transforms, Qt scaling transforms, and fixed screenshot-specific
-offsets are prohibited. Standard scale, 150%, 200%, and high-DPI behavior must
-be accepted using real display-scale evidence on both macOS and Windows in
-addition to logical resize fixtures.
+offsets are prohibited. The final screenshot manifest captures every distinct
+surface and state once at canonical 100% scale under
+`QT_SCALE_FACTOR=1.0`; it does not repeat those faces at resize breakpoints,
+150%, or 200%. Responsive and high-DPI geometry remain covered by automated
+layout and scaling gates outside the screenshot manifest, with native-platform
+and human review tracked separately.
 
 ## Existing accessibility mechanisms
 
@@ -767,7 +803,7 @@ same action rather than overloading a generic verb.
 | Unequip | Reset one equipped non-default Weather or Scenery item to its included neutral default. | No Coin debit; Collection commits the replacement atomically. Hiding artwork remains a separate visual-only choice and does not disable the equipped passive. |
 | Plant in garden | Assign one owned stored plant instance to an empty unlocked garden space. | Preserves all plant identity and progression. |
 | Move | Relocate or swap a planted instance through direct scene placement. | Valid destination saves immediately; the open-session Undo may restore the latest placement. |
-| Move to Collection | Remove a non-nurtured planted instance from its slot without deleting it. | Preserves Growth, memories, Fertilizer, Booster, and identity. This is the approved canonical learner-facing phrase; **Store** is not a competing action label. |
+| Return to Collection | Remove a non-nurtured planted instance from its slot without deleting it. | Preserves Growth, memories, Fertilizer, Booster, and identity. This is the approved canonical learner-facing phrase; **Store** is not a competing action label. |
 | Replace | Confirm discarding the remaining interval of a different active Fertilizer and activate the purchased tier. | Old interval is truncated/archived; debit and replacement save together. |
 | Nurture | Route future eligible review Growth to one unfinished planted plant. | Updates active plant periods. It never moves or backfills prior Growth. |
 | Fertilize | Open and complete the target-plant Fertilizer purchase flow. Same tier extends; another active tier requires Replace. | Purchase, interval history, activation/extension, balance, and ledger commit together. |
@@ -777,7 +813,7 @@ Purchase actions now use **Purchase**; Garden Spaces use the product-specific
 **Purchase & Apply**, **Extend**, or **Purchase & Replace** according to the
 quoted disposition. **Apply changes** remains limited to saving a Collection
 loadout draft and is not currency language. Placement and storage controls
-use **Plant in garden**, **Move**, and **Move to Collection**; the former
+use **Plant in garden**, **Move**, and **Return to Collection**; the former
 **Buy**, **Apply**, **Shelve**, and ambiguous **Plant** purchase/placement labels
 are not part of the current commerce UI.
 
@@ -904,7 +940,7 @@ explicitly approves a contract change:
 7. Purchase, Use, equipment, placement, reward, and Growth changes are atomic.
    Repeatable user intents must be idempotent across retry, not only guarded
    against double-click.
-8. Plant, Move to Collection, and Move preserve the stable plant instance, Growth, memories,
+8. Plant, Return to Collection, and Move preserve the stable plant instance, Growth, memories,
    Fertilizer, Booster, and identity.
 9. Six V6 direct-soil slots, manifest support geometry, crop, and painterly
    layering are visual contracts. Runtime fitting may scale but may not move a
@@ -947,7 +983,7 @@ verified defects in the reference v8 harness, not acceptable release behavior:
   supplied (`ankigarden/capture_ui_faces.py:769-803`).
 - Capture and next-step scheduling were independent in v8, allowing a window to
   close or the next fixture to begin before the current pixmap was secured. The
-  current v18 harness retains the repaired capture, cleanup, and advancement
+  current v19 harness retains the repaired capture, cleanup, and advancement
   sequence introduced before v16.
 
 The foundation implementation adds repository-owned manifest and contact-sheet
@@ -1018,10 +1054,18 @@ text/layout warnings. IDs 019 and 064-069 are present; IDs 184-191 prove the
 target-specific Growth Charge confirmation states, including an exact 420x400
 minimum-responsive fixture.
 
-The v18 contract replaces the achievement and Reviewer reward faces identified
-above while retaining 191 surfaces and a 24-page topology. Its final capture has
-not run. No current-source manifest, contact-sheet path, package hash, or visual
-acceptance result may be recorded until that one end-of-plan run validates.
+The v19 contract retains the updated achievement and Reviewer reward faces
+identified above while filtering out resize, breakpoint, 150%, and 200%
+screenshot duplicates. It contains 126 distinct surfaces and states in a
+17-page topology, each captured once at canonical 100% scale under
+`QT_SCALE_FACTOR=1.0`. The final run at
+`build/ui-face-captures/capture-sequence-20260823-000843` completed with all 126
+fixtures, zero failures, zero text-layout warnings, and `quality_status: clean`.
+Its manifest and 17-page contact-sheet index both validate. The final corrected
+faces 092, 117, and 119 were inspected at native screenshot resolution; the
+redundant full-set re-audit was skipped at user direction. Responsive geometry
+remains a separate automated prerequisite rather than duplicated screenshot
+evidence.
 
 `text_layout_warnings: 0` means only that automated Qt label/button glyph and
 ancestor-clip heuristics passed for captured widgets. The Home semantic pixel
@@ -1031,18 +1075,20 @@ or human visual quality.
 
 The v9 manifest records `capture_display: mixed`: six first-run files came from
 the secondary macOS display at DPR 1.5 and 140 files came from the primary
-display at DPR 3.0, under requested Qt scale 1.5. In the current v10 run, six
+display at DPR 3.0, under requested Qt scale 1.5. In the historical v10 run, six
 files came from the secondary display at DPR 1.5 and 143 came from the primary
-display at DPR 3.0, again under requested Qt scale 1.5. Capture 090 is a logical
+display at DPR 3.0, again under requested Qt scale 1.5. Historical capture 090
+is a logical
 620 x 520 proxy and explicitly does not change OS display scaling. Neither run
 provides native standard-scale, true OS 200%, Windows, Windows-high-DPI, or
 deliberate mixed-DPI transition acceptance. In historical v9, 100 was 1383x699
-compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Current v10 keeps
+compact, 101 was 1385x699 wide, and 103 reached 1440x699 wide. Historical v10 kept
 100, 101, and 103 top-level compact; the available screen still caps several
 requested resize heights. The v16 predecessor run captured all 191 surfaces on
 the primary macOS display at DPR 3.0 under requested Qt scale 1.5; that cleaner
-historical provenance does not substitute for a v18 run, native OS scale, or
-cross-platform acceptance.
+historical provenance is superseded for current-source visual evidence by the
+completed v19 canonical-100% run. Neither run closes separate native-platform
+acceptance.
 
 The v16 complete count must not be confused with current product visual
 acceptance. Targeted inspection of those predecessor raw PNGs confirms that 039 is the
@@ -1073,12 +1119,13 @@ and restore every temporary mutation.
 
 Current release documents use schema 21, the canonical reward/achievement/Find
 registries, the dedicated Fertilizer and Growth Charge dialogs, and the Nursery
-labels **Fertilizer and Boosters** and **Garden Spaces**. Files explicitly
-labeled historical remain immutable evidence for their audited source and must
-not be read as current behavior. In particular,
-`docs/ui/final-ui-audit-2.1.0.md` and the complete v16 capture remain predecessor
-evidence only. Neither closes the pending v18 capture or current-source visual
-acceptance.
+labels **Fertilizer and Boosters** and **Garden Spaces**. Files and sections
+explicitly labeled historical remain immutable evidence for their audited
+source and must not be read as current behavior. The complete v16 capture
+remains predecessor evidence only. The current-source v19 evidence is the
+20260823-000843 run documented above and in
+`docs/ui/final-ui-audit-2.1.0.md`; it closes the canonical macOS Qt capture gate,
+not the separate native-platform or human assistive-technology gates.
 
 ## Contract-change and acceptance rule
 

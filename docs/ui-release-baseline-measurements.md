@@ -7,8 +7,12 @@ have not been measured. A passing static test or screenshot check is not a
 substitute for a native Anki timing or memory measurement.
 
 Current-contract note: this is a historical measurement record, not current
-visual acceptance. Current source declares capture contract v18 with 191
-ordered surfaces; its required 24-sheet final capture remains pending. The v12
+visual acceptance. Current source declares capture contract v19 with 126
+distinct ordered surfaces captured once at canonical 100% scale. Its final
+20260823-000843 run is complete at 126/126 with 17 valid sheets, zero failures,
+and zero text-layout warnings. Resize, breakpoint, 150%, and 200%
+screenshot duplicates are excluded while responsive geometry remains an
+automated release gate. The v12
 macOS Qt run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
 the complete 157-of-157 pre-purchase-overhaul baseline. The historical v14
@@ -197,7 +201,7 @@ not deliberate mixed-DPI transition acceptance. It does not provide native
 Windows, true standard-scale, or true OS 200-percent evidence; 090 is a logical
 Qt proxy. Screen height capped several resize fixtures, although 100 and 101
 preserved distinct historical-v9 widths at 1383x699 compact and 1385x699 wide.
-Current v10 retains both as stability probes and confirms both as top-level
+The historical v10 source retained both as stability probes and confirmed both as top-level
 compact.
 Historical v9 contact-sheet review reported Home detail-line ellipsis in 066
 and the final “s” of Achievements clipped in 111. Capture 039 was subsequently
@@ -205,9 +209,9 @@ confirmed as the intentional Advanced-scroll context fixture, not a clipping
 defect. Therefore, zero warnings and 146-of-146 historical completeness were
 not claims of current platform or product visual acceptance.
 
-## Current v10 capture evidence
+## Historical v10 capture evidence
 
-Current source preserves IDs 001-146 and appends three actual Collection-page
+The v10 source preserved IDs 001-146 and appended three actual Collection-page
 resize states:
 
 | ID | Capture state | Requested logical size |
@@ -389,7 +393,7 @@ run, 146-file completeness gate, and independent manifest/contact-sheet
 validation are complete. The v10 run supplies the corresponding 149-file
 pre-change macOS Qt gate; the v11 run supplies the 156-file frozen-foundation
 gate; and v12 supplies the 157-file pre-purchase-overhaul macOS Qt gate. V13
-declares 181 surfaces and remains pending its final current-source run. The
+declared 181 surfaces and remained pending its final then-current-source run. The
 remaining performance and platform work is:
 
 1. Measure cold and warm Garden openings separately, including an explicit

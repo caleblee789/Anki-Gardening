@@ -17,6 +17,7 @@ from scripts.package_addon import (
     _requested_cli_build,
     _requested_cli_mode,
     build,
+    capture_derivative_report,
     package_files,
     package_payload,
     package_report,
@@ -138,7 +139,12 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     tmp_path: Path,
 ) -> None:
+    production_output = build(
+        PRODUCTION_BUILD,
+        output=tmp_path / "anki_garden_production.ankiaddon",
+    )
     output = build(CAPTURE_BUILD, output=tmp_path / "anki_garden_capture.ankiaddon")
+    derivative = capture_derivative_report(production_output, output)
 
     with zipfile.ZipFile(output) as archive:
         names = set(archive.namelist())
@@ -150,11 +156,36 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
         assert names == set(expected)
         for name, payload in expected.items():
             assert archive.read(name) == payload
+        shared_names = sorted(names.difference({CAPTURE_HARNESS, CAPABILITY_MODULE}))
+        digest = hashlib.sha256()
+        digest.update(b"anki-garden-shared-payload-v1\0")
+        for name in shared_names:
+            encoded_name = name.encode("utf-8")
+            payload = archive.read(name)
+            digest.update(len(encoded_name).to_bytes(8, "big"))
+            digest.update(encoded_name)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
 
     assert CAPTURE_HARNESS in names
     assert capabilities["BUILD_MODE"] == CAPTURE_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is True
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is True
+    assert derivative == {
+        "capture_archive": str(output.resolve()),
+        "capture_archive_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "capture_only_entries": [CAPTURE_HARNESS],
+        "mode_specific_entries": [CAPABILITY_MODULE],
+        "production_archive": str(production_output.resolve()),
+        "production_archive_sha256": hashlib.sha256(
+            production_output.read_bytes()
+        ).hexdigest(),
+        "shared_payload_entry_count": len(shared_names),
+        "shared_payload_sha256": digest.hexdigest(),
+        "shared_payloads_identical": True,
+    }
+    with pytest.raises(ValueError, match="package entries"):
+        capture_derivative_report(output, output)
 
 
 def test_package_build_is_byte_reproducible(tmp_path: Path) -> None:

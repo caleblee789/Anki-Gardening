@@ -6,11 +6,7 @@ from typing import Any, Iterable
 
 from ..asset_manager import DEFAULT_BED_ANCHORS, BedAnchor
 from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
-from .state_contracts import (
-    CURRENT_ONBOARDING_VERSION,
-    AchievementProgressDisplay,
-    achievement_progress_display,
-)
+from .state_contracts import CURRENT_ONBOARDING_VERSION
 from .responsive import (
     COMPACT_MODE,
     adaptive_layout_mode,
@@ -2144,7 +2140,10 @@ def bed_badge_rect(
     obstacles: Iterable[Rect] = (),
 ) -> Rect:
     """Place a compact badge from its dedicated anchor without covering plants."""
-    badge_width = max(44.0, min(72.0, 20.0 + len(label) * 4.4))
+    # These controls are painted over a detailed scene and must remain legible
+    # at Anki's supported display scales.  Reserve enough logical width for the
+    # complete semantic label instead of relying on painter clipping.
+    badge_width = max(48.0, min(96.0, 24.0 + len(label) * 7.0))
     badge_height = 44.0
     anchor_x, anchor_y = placement.label_anchor
     candidates = (

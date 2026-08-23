@@ -242,7 +242,7 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_eleven_scroll_surfaces_have_canonical_and_size_evidence() -> None:
+def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
@@ -267,24 +267,18 @@ def test_all_eleven_scroll_surfaces_have_canonical_and_size_evidence() -> None:
     flattened = [label for labels in coverage.values() for label in labels]
     assert set(semantics) == set(flattened)
     assert len(flattened) == len(set(flattened))
+    assert len(flattened) == 40
     for surface, labels in coverage.items():
         assert labels
         assert set(labels) <= contract
-        assert any(not label.startswith("resize-") for label in labels)
-        if surface == "Growth Charge confirmation":
-            assert "growth-charge-use-ready" in labels
-            assert "growth-charge-minimum-responsive" in labels
-            continue
-        assert any(label.endswith("-minimum") for label in labels)
-        assert any(label.endswith("-default") for label in labels)
-        assert any(label.endswith("-large") for label in labels)
+        assert all(not label.startswith("resize-") for label in labels)
+    assert "growth-charge-use-ready" in coverage[
+        "Growth Charge confirmation"
+    ]
     assert coverage["Collection"] == (
         "progress-collection",
         "collection-several-discovered",
         "collection-no-filter-matches",
-        "resize-collection-minimum",
-        "resize-collection-default",
-        "resize-collection-large",
     )
     assert {
         semantics[label] for label in coverage["Collection"]
@@ -307,7 +301,15 @@ def test_all_eleven_scroll_surfaces_have_canonical_and_size_evidence() -> None:
         "purchase-confirmation-breakpoint-low",
         "purchase-confirmation-breakpoint-high",
     }
-    assert responsive_dialog_edges <= set(flattened)
+    assert responsive_dialog_edges.isdisjoint(flattened)
+    resize_labels = {
+        spec[0]
+        for spec in (
+            *_literal_assignment("RESIZE_MATRIX_SPECS"),
+            *_literal_assignment("PURCHASE_CONFIRMATION_RESIZE_SPECS"),
+        )
+    }
+    assert responsive_dialog_edges <= resize_labels
 
 
 def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
@@ -316,7 +318,7 @@ def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
     source = CAPTURE.read_text("utf-8")
     ambiguous = source.replace(
         '    "Collection": (\n        "progress-collection",',
-        '    "Collection": (\n        "resize-progress-minimum",\n'
+        '    "Collection": (\n        "progress-overview-redirect-growth",\n'
         '        "progress-collection",',
         1,
     )
@@ -339,14 +341,8 @@ def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     assert specs["resize-collection-large"][3:5] == (1000, 820)
 
 
-def test_resize_and_footer_stress_fixtures_reset_deferred_ui_state() -> None:
-    resize = _method_source("_UiFaceCaptureRunner", "_capture_resize_matrix_face")
+def test_footer_stress_fixture_resets_deferred_scroll_state() -> None:
     final_row = _method_source("_UiFaceCaptureRunner", "_capture_nursery_final_row")
-
-    prepare_position = resize.index("prepare()")
-    tab_position = resize.index("option_tabs.setCurrentIndex(0)", prepare_position)
-    capture_position = resize.index("capture_widget(detail, close=True)", tab_position)
-    assert prepare_position < tab_position < capture_position
 
     capture_ready = final_row.split("def capture_ready()", 1)[1]
     audit_position = capture_ready.index("self._audit_nursery_action_above_footer")
@@ -396,14 +392,11 @@ def test_conflicting_duplicate_responsive_semantic_ids_fail_closed() -> None:
     assert conflicts == ("dashboard.header-full",)
 
 
-def test_capture_records_visible_semantics_and_finishes_all_stability_pairs() -> None:
+def test_capture_records_visible_semantics_and_defers_resize_pairs_to_automation() -> None:
     capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
     telemetry = _method_source("_UiFaceCaptureRunner", "_responsive_semantic_telemetry")
     finish = _method_source("_UiFaceCaptureRunner", "_finish")
     report = _method_source("_UiFaceCaptureRunner", "_responsive_stability_report")
-    pairs = _literal_assignment("RESPONSIVE_STABILITY_PAIRS")
-
-    assert len(pairs) == 13
     assert '"responsive_semantics": responsive_semantics' in capture
     for property_name in (
         "responsiveRegion",
@@ -416,8 +409,10 @@ def test_capture_records_visible_semantics_and_finishes_all_stability_pairs() ->
     assert "candidate.isVisibleTo(root)" in telemetry
     assert "candidate.window() is not root" in telemetry
     assert '"conflicting-responsive-semantic-id"' in telemetry
-    assert "RESPONSIVE_STABILITY_PAIRS" in report
-    assert "responsive_stability_pair_issue_codes" in report
+    assert '"required": False' in report
+    assert '"coverage": "automated-responsive-geometry"' in report
+    assert "RESPONSIVE_STABILITY_PAIRS" not in report
+    assert "responsive_stability_pair_issue_codes" not in report
     assert "and responsive_stability_complete" in finish
     assert '"responsive_stability_complete": responsive_stability_complete' in finish
 

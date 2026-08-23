@@ -7,8 +7,13 @@
 
 Status: historical frozen-candidate report. Its v8 139/146 and 146/146 records
 remain evidence for the source audited on 2026-08-15, not for current source.
-Current source is governed by capture contract v18 with 191 ordered surfaces;
-its required 24-sheet final capture remains pending.
+Current source is governed by capture contract v19 with 126 distinct ordered
+surfaces captured once at canonical 100% scale. The final run at
+`build/ui-face-captures/capture-sequence-20260823-000843` is complete and clean:
+126/126 faces, 17 manifest-owned sheets, requested scale factor `1.0`, zero
+capture failures, zero text-layout warnings, and valid manifest/contact-sheet
+release validation. Resize, breakpoint, 150%, and 200% screenshot duplicates
+are excluded while responsive geometry remains an automated release gate.
 The schema-17 v12 run at
 `build/ui-face-captures/capture-sequence-20260816-190930/20260816-190933` is
 the 157/157 warning-free, validator-clean pre-purchase-overhaul baseline. The
@@ -76,37 +81,32 @@ pass.
   The run was stopped immediately and was not restarted. Window, sync, and
   restart acceptance therefore remain explicitly waived, not passed.
 
-## Current remediation contract
+## Current release outcome
 
-| Area | Required result |
+| Area | Current result |
 |---|---|
-| State | Schema 18 preserves schema-17 atomic resumable onboarding and adds a bounded completed-purchase replay ledger over the schema-16 environment, Growth Charge, separate Growth-source, passive-claim, and Ultra-pity state. |
-| Scene | Verdant Twilight V6 provides six fixed direct-soil spaces, responsive composition, depth/occlusion metadata, and shaped Nursery/cottage landmarks. Eight Scenery reskins preserve those exact masks, placements, and hotspots; seven Weather overlays compose over all nine settings. |
-| Home | Deck Browser and Overview show a compact named, noninteractive preview with relative Growth/streak bars, Garden Coins, and Open Garden. |
-| Garden | A centered named header, three clickable metric cards, and scene share one themed frame; header/cottage Progress opens the separate Today/Achievements/Collection/Weather & Scenery/How it grows window. |
-| Nursery | First Open Garden names the Garden and opens one free starter. Later access opens a four-tab catalog adding Weather & Scenery; stock still derives from complete V6 lines and environment purchases never auto-equip. |
-| Plant actions | The compact card uses Nurture, equal-width Fertilize and Growth Charge primary slots, then Move and Story. Cards-left and Fertilizer status come from shared projections; fully grown plants show no meaningless next-stage bar. Move selects scene destinations directly, saves immediately, and offers Undo without a dropdown or Done button. |
-| Supplements | Basic, Quality, and Magical Fertilizer retain exact Coin/effect/interval contracts. Booster Potions add +5 Growth for two hours and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 Growth atomically; Grand remains earn-only. |
-| Rewards | One ordered deterministic roll awards at most one environment, Charge, Booster, or 50-Coin cache. Exact odds, completed-tier Charge fallbacks, daily scenery gifts, and stepped no-guarantee Ultra pity match the catalog. |
-| Story | The one-scroll Story surface aligns normalized art, identity, rename, metadata, distinct stage/Nurtured/Fertilized badges, stage history, memories, and shared Growth/Fertilizer summaries across minimum, 539/541, default, and large layouts. Catalog species and ordinary stages remain known; Rare artwork unlocks only when that species reaches Rare. |
-| Settings | Environment, art-quality/detail/performance, animation, and Fine tune choices are absent. Balanced art and reduced-motion behavior are automatic; display/notification Save/Cancel remain. Backup/populate/restore are capture-build-only and must be absent from the production archive. |
-| Language | Learner-facing surfaces use Nurture and Garden Coins. Internal compatibility fields such as `active_plant_id` and `currency_balance` remain unchanged. |
+| State and transactions | Schema 21 keeps onboarding, loadout, passive-Growth residuals, reward/answer/Find/finalized-day identity, and purchase/Growth Charge replay under the shared engine/storage transaction boundary. |
+| Rewards and Finds | UI surfaces read the authoritative reward-presentation and registry projections plus committed transaction results. They do not calculate reward amounts, achievement requirements, Find probabilities, inventory effects, or acquisition rules. Normal-answer receipts retain nurtured and passive exact-fifths allocations; Garden Find Growth is presented as direct Growth only. |
+| Garden, Progress, Nursery, and Collection | The canonical dashboard, dialogs, popovers, responsive scroll behavior, loading/empty/error/success states, transaction receipts, environment previews, and collection placement routes are represented in the v19 capture contract. |
+| Accessibility and responsive behavior | Keyboard focus, reduced motion, accessible descriptions, scroll containment, and breakpoint/scale geometry remain automated contracts. Native screen-reader and platform GUI acceptance remain separate. |
+| Styling | Existing Garden styling is preserved. The superseded four-theme integration and its palette matrices are not part of this release. |
 
-## Required automated and package gates
+## Current automated and package evidence
 
-- Complete pytest suite with no failures.
-- Python compilation with an isolated cache location.
-- Asset audit, V6 release-readiness checks, and all-stage/all-space geometry and
-  responsive-render validation.
-- Deterministic package build, ZIP integrity, package-content checks, and
-  byte-for-byte source/archive parity for shipped files.
-- `git diff --check` and a stale-copy audit covering schema version, learner
-  terminology, home metrics, Nursery access, movement controls, Story ordering,
-  Settings behavior, scheduler-day ledger boundaries, retrospective streaks,
-  reward bands/pity/daily gifts, environment passives, Growth Charges, and
-  Fertilizer/Booster interval history.
-- Record the final commands, results, artifact file count, and SHA-256 only after
-  the source is frozen; never carry forward historical counts.
+- Full regression suite: 1,856 passed and 8 skipped.
+- Focused post-capture-fix checks: 3 passed; Python compilation and
+  `git diff --check` passed. The broad suite was intentionally not repeated for
+  the final capture-only/coachmark geometry adjustment.
+- Package tests: 10 passed before final capture framing work.
+- Production archive: 273 entries, 81,884,216 bytes, SHA-256
+  `005cae6ee1278bcdc68756f6d36b9e3857c3babbec5124219e8eea9930189dc7`.
+- Capture derivative: SHA-256
+  `10e7760fb1dfa098acfaab018693fa3acb281c4bcdaccb9b401550b31a2d43ff`.
+  All 272 shared payloads are byte-identical, with shared-payload SHA-256
+  `47eb2980055297b05753c9c8739dd110ba2c45260b20afbcef39151106d92a9d`.
+- Capture contract v19: 126/126 faces, 17 sheets, requested scale factor 1.0,
+  zero failures, zero text-layout warnings, `quality_status: clean`, and release
+  validation `valid`.
 
 ## August 10 Weather and Scenery overhaul evidence
 
@@ -157,12 +157,12 @@ effects; Flowering remains the natural botanical peak.
   `Anki-Garden-cleanup-20260810-v6-library`. Accepted masters, compatibility
   inputs, the current full-library sheets, and final provenance were retained.
 
-Exact-package isolated-Anki checks have verified the unique process, window,
+At that August 10 checkpoint, exact-package isolated-Anki checks verified the unique process, window,
 filesystem, and sync-disabled profile gates, the ten-species Nursery, the Home
 Widget, and the live Rose Seed scene. The remaining live Flowering/Rare A/B
-capture was interrupted when the Mac locked; until that capture is completed,
-the strict responsive sheets are the final visual evidence and live acceptance
-is intentionally partial.
+capture was interrupted when the Mac locked; that checkpoint's live acceptance
+therefore remained partial. It is historical evidence, not the current v19
+capture result.
 
 ## Required exact-package isolated-Anki acceptance
 
@@ -183,7 +183,8 @@ Garden naming, starter choice, preselection review behavior, both home surfaces,
 both scene landmarks, metric details, four-tab Nursery, environment collection
 loadout/visibility, all Scenery/Weather combinations, Growth Charges, collection
 transactions, direct Move and Undo, Fertilizer/Booster cards, seeded reward
-bands/pity/daily gifts, real reviews and catch-up, Story, Settings,
+receipts, achievement and Garden Find projections, real reviews and catch-up,
+Story, Settings,
 accessibility, reduced motion, responsive layouts, and restart persistence.
 
 The catch-up journey must include an out-of-order lower ID after a higher ID,
@@ -195,6 +196,8 @@ same-tier extension, tier replacement, expired repurchase, Booster stacking, and
 restart.
 
 Record strict live acceptance only after all four gates and every required
-journey pass. For this release, the owner authorized publication with the exact
-capture and production-live exclusions above. Repository/package acceptance is
-complete; strict live acceptance remains incomplete.
+journey pass. A disposable macOS startup/import smoke passed for the immediately
+preceding production package before the final UI/capture-only fixes; it proves
+launch/import isolation only, not final-SHA runtime, full journeys, restart, or
+persistence. Native Windows/Linux GUI, screen-reader, human/device, and strict
+end-to-end live acceptance remain unrun.

@@ -1341,6 +1341,16 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
     outcomes = list(storage.state.garden_find_outcomes.values())
     assert {outcome.pool_id for outcome in outcomes} == {"standard", "environment"}
     assert sum(outcome.status == "hit" for outcome in outcomes) == 1
+    feedback = next(
+        event
+        for event in engine.peek_feedback()
+        if event.event_id == f"reward-summary:{first.correlation_id}"
+    )
+    assert feedback.message == (
+        "+2 Garden Coins and +40 direct Growth to the nurtured plant"
+    )
+    assert feedback.correlation_id == first.correlation_id
+    assert feedback.amount == 0
 
 
 def test_garden_finds_wait_for_their_own_activation_boundary():

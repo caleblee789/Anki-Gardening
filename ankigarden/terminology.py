@@ -1,20 +1,48 @@
 """Shared learner-facing explanations for Anki Garden gameplay terms."""
 
+from .game import GardenGameEngine
+from .models.state import STREAK_BONUS_TIERS
+
+
+PASSIVE_GROWTH_PERCENT = 100 // GardenGameEngine.PASSIVE_GROWTH_DENOMINATOR
+MAX_STREAK_BONUS_PERCENT = max(percent for _day, percent in STREAK_BONUS_TIERS)
+PASSIVE_GROWTH_EXPLANATION = (
+    "Other eligible planted plants receive "
+    f"{PASSIVE_GROWTH_PERCENT} percent of that Growth after bonuses."
+)
+
+_FERTILIZER_EFFECTS = tuple(
+    (
+        spec.name.removesuffix(" Fertilizer"),
+        int(spec.growth_per_answer),
+    )
+    for spec in GardenGameEngine.FERTILIZERS.values()
+)
+_FERTILIZER_EFFECT_TEXT = (
+    ", ".join(
+        f"{name} adds {amount:,}"
+        for name, amount in _FERTILIZER_EFFECTS[:-1]
+    )
+    + ", and "
+    + f"{_FERTILIZER_EFFECTS[-1][0]} adds {_FERTILIZER_EFFECTS[-1][1]:,}"
+)
+
 GROWTH_EXPLANATION = (
-    "Growth is plant progress. Each card answer Garden can count starts with 10 base Growth. The "
-    "nurtured plant receives full Growth. Other planted plants receive 20 percent of the "
-    "nurtured plant's Growth after bonuses. Anki streaks, Fertilizer, Booster Potions, equipped "
-    "Weather, and Scenery contribute to study Growth once; Growth Charges apply only to "
-    "their selected plant."
+    "Growth is plant progress. Each card answer Garden can count starts with "
+    f"{GardenGameEngine.BASE_GROWTH_PER_REVIEW:,} base Growth. The nurtured plant "
+    f"receives full Growth. {PASSIVE_GROWTH_EXPLANATION} Anki streaks, Fertilizer, "
+    "Booster Potions, equipped Weather, and Scenery contribute to study Growth once; "
+    "Growth Charges apply only to their selected plant."
 )
 
 ACTIVE_PLANT_EXPLANATION = (
-    "The plant you nurture receives full Growth from future card answers. Other eligible planted "
-    "plants receive 20 percent of that final value. Growth already earned stays put."
+    "The plant you nurture receives full Growth from future card answers. "
+    f"{PASSIVE_GROWTH_EXPLANATION} Growth already earned stays put."
 )
 
 ANKI_STREAK_EXPLANATION = (
-    "Your Anki streak counts study days in a row and can add up to 25% Growth."
+    "Your Anki streak counts study days in a row and can add up to "
+    f"{MAX_STREAK_BONUS_PERCENT}% Growth."
 )
 
 ALL_DUE_EXPLANATION = (
@@ -30,10 +58,10 @@ GARDEN_CURRENCY_EXPLANATION = (
 )
 
 FERTILIZER_EXPLANATION = (
-    "Fertilizer temporarily adds bonus Growth to normal Anki card answers: Basic adds 1, Quality "
-    "adds 2, and Magical adds 3 Growth per Anki card answer while active. The resulting answer "
-    "Growth goes in full to the plant you nurture, while each other eligible planted plant "
-    "receives its usual exact 20 percent."
+    "Fertilizer temporarily adds bonus Growth to normal Anki card answers: "
+    f"{_FERTILIZER_EFFECT_TEXT} Growth per Anki card answer while active. The resulting "
+    "answer Growth goes in full to the plant you nurture. "
+    f"{PASSIVE_GROWTH_EXPLANATION}"
 )
 
 PROGRESSION_SUMMARY = (

@@ -103,16 +103,20 @@ def _module_constant(path: Path, name: str) -> object:
     raise AssertionError(f"Missing module constant: {name}")
 
 
-def test_dashboard_is_a_fixed_root_shell_without_focus_driven_self_scrolling() -> None:
+def test_dashboard_uses_one_scroll_owner_without_focus_driven_self_scrolling() -> None:
     dashboard = _segment(_class_node("GardenDashboard"))
     build = _method_node("GardenDashboard", "_build_ui")
 
     assert "self.page_scroll" not in dashboard
     assert "ensureWidgetVisible" not in dashboard
+    assert "self.dashboard_scroll = QScrollArea()" in dashboard
+    assert "self.dashboard_scroll.setWidget(page)" in dashboard
 
     outer_adds = _calls(build, "outer.addWidget")
     assert any(
-        call.args and isinstance(call.args[0], ast.Name) and call.args[0].id == "page"
+        call.args
+        and isinstance(call.args[0], ast.Attribute)
+        and call.args[0].attr == "dashboard_scroll"
         for call in outer_adds
     )
     root_adds = _calls(build, "root.addWidget")
@@ -289,7 +293,7 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
 
     # The Collection category-chip scroller is gone; its narrow layout uses
     # native dropdowns, so every remaining scroll owner is vertical content.
-    assert len(scroll_constructors) == 15
+    assert len(scroll_constructors) == 16
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper
@@ -310,7 +314,13 @@ def test_shared_tabs_and_empty_state_action_never_fall_back_to_platform_gray() -
     assert "QPushButton[emptyStateAction='true'][variant='primary']" in stylesheet
     assert 'action.setProperty("emptyStateAction", True)' in empty_state
     assert "_pin_empty_state_action_style(" in empty_state
-    assert "self.collection_list.add_full_width(EmptyState(" in collection
+    assert "self.collection_list.add_full_width(no_results)" in collection
+    assert "no_results.hide()" in collection
+    assert "self.collection_list.finish()" in collection
+    assert "no_results.setVisible(result_count == 0)" in collection
+    assert collection.index("self.collection_list.finish()") < collection.index(
+        "no_results.setVisible(result_count == 0)"
+    )
 
     local_style = _segment(_function_node("_pin_empty_state_action_style"))
     assert "button.setStyleSheet(" in local_style
@@ -529,6 +539,10 @@ def test_exec_backed_nursery_story_species_and_fertilizer_share_modal_shell() ->
         ),
     }
     assert all(".exec()" in source for source in exec_callers.values())
+    species_action = _segment(
+        _method_node("GardenDashboard", "_collection_plant_action")
+    )
+    assert "The committed garden and plant state is unchanged." in species_action
 
     synchronous = _segment(_method_node("DialogShell", "exec"))
     assert synchronous.index("Qt.WindowModality.WindowModal") < synchronous.index(
@@ -770,8 +784,78 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
     )
 
 
+def test_settings_name_failure_reports_the_split_commit_if_rollback_fails() -> None:
+    class RollbackFailure(Exception):
+        pass
+
+    old_payload = {"show_home_widget": True, "reduced_motion": False}
+    new_payload = {"show_home_widget": False, "reduced_motion": True}
+
+    class Config:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, bool]] = []
+            self.committed = dict(old_payload)
+
+        def update(self, payload: dict[str, bool]) -> None:
+            self.calls.append(dict(payload))
+            if len(self.calls) == 2:
+                raise RollbackFailure("rollback write failed")
+            self.committed = dict(payload)
+
+    class Dialog:
+        def __init__(self) -> None:
+            self._persisted_payload = dict(old_payload)
+            self._persisted_name = "Old Garden"
+            self.behavior = SimpleNamespace(
+                build_theme_payload=lambda: dict(new_payload)
+            )
+            self.garden_name_edit = SimpleNamespace(text=lambda: "New Garden")
+            self.config = Config()
+            self.engine = SimpleNamespace(
+                rename_garden=lambda _name: (False, "Garden name was not saved.")
+            )
+            self.dirty_baselines: list[tuple[dict[str, bool], str]] = []
+            self.errors: list[str] = []
+
+        def _update_dirty_state(self) -> None:
+            self.dirty_baselines.append((
+                dict(self._persisted_payload),
+                self._persisted_name,
+            ))
+
+        def _show_save_error(self, message: str) -> None:
+            self.errors.append(message)
+
+    save = _compiled_method(
+        "GardenSettingsDialog",
+        "_save_visual_settings",
+        {
+            "deepcopy": lambda value: dict(value),
+            "MAX_GARDEN_NAME_LENGTH": 40,
+            "ConfigError": RollbackFailure,
+            "_learner_text": str,
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+        },
+    )
+    dialog = Dialog()
+
+    save(dialog)
+
+    assert dialog.config.calls == [new_payload, old_payload]
+    assert dialog.config.committed == new_payload
+    assert dialog._persisted_payload == new_payload
+    assert dialog._persisted_name == "Old Garden"
+    assert dialog.dirty_baselines == [(new_payload, "Old Garden")]
+    assert len(dialog.errors) == 1
+    assert "Committed state: your display settings are saved" in dialog.errors[0]
+    assert "your Garden name is unchanged" in dialog.errors[0]
+    assert "Garden name draft is still here to retry" in dialog.errors[0]
+    assert "no Settings changes were applied" not in dialog.errors[0]
+
+
 def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_substitution() -> None:
     placeholder = _segment(_function_node("_botanical_placeholder_pixmap"))
+    source_loader = _segment(_function_node("_preview_source_pixmap"))
     environment_placeholder = _segment(
         _function_node("_environment_placeholder_pixmap")
     )
@@ -799,8 +883,12 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     assert "QPainter(" in weather_placeholder
     assert "drawEllipse(" in weather_placeholder
     assert "drawLine(" in weather_placeholder
+    assert "QSvgRenderer" in source_loader
+    assert "renderer.render(" in source_loader
     assert "_environment_placeholder_pixmap(" in environment_preview
     assert "_weather_placeholder_overlay(" in environment_preview
+    assert "_preview_source_pixmap(base_path)" in environment_preview
+    assert "_preview_source_pixmap(weather_path)" in environment_preview
 
     for source in (plant_preview, populated_preview, item_preview, plant_card):
         assert "_botanical_placeholder_pixmap(" in source

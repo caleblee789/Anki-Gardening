@@ -4,20 +4,18 @@ from datetime import date
 from pathlib import Path
 
 from ankigarden.models.state import (
-    Achievement,
-    DailyStats,
     GardenState,
     OnboardingProgress,
     OnboardingStep,
     Plant,
     PlantMemory,
 )
+from ankigarden.reward_presentation import achievement_presentations
 from ankigarden.terminology import FERTILIZER_EXPLANATION
 from ankigarden.ui.state_contracts import (
     CURRENT_ONBOARDING_VERSION,
     OnboardingState,
     StreakPresentationState,
-    achievement_progress_display,
     onboarding_state_display,
     streak_presentation,
 )
@@ -127,60 +125,37 @@ def test_onboarding_preference_cannot_make_an_unassigned_starter_look_nurtured()
     assert display.nurtured_marker_visible is False
 
 
-def test_completed_one_time_achievement_uses_immutable_thresholds() -> None:
-    state = GardenState(
-        streak_days=0,
-        daily_stats=DailyStats(reviewed=0, correct=0, wrong=0),
-    )
-    achievement = Achievement(
-        "streak_7",
-        "7-Day Anki Streak",
-        "",
-        unlocked=True,
-        unlocked_at="2026-08-01T12:00:00+00:00",
+def test_canonical_achievement_projection_includes_every_streak_threshold() -> None:
+    streaks = tuple(
+        (projection.achievement_id, projection.progress_target)
+        for projection in achievement_presentations(GardenState())
+        if projection.progress_metric == "streak_days"
     )
 
-    display = achievement_progress_display(achievement, state)
-
-    assert display.completed is True
-    assert (display.current, display.target) == (7, 7)
-    assert display.value_text == "7 of 7 Anki days"
-
-
-def test_clear_recall_has_separate_live_condition_rows() -> None:
-    achievement = Achievement("retention_90", "Clear Recall", "")
-    state = GardenState(
-        daily_stats=DailyStats(reviewed=12, correct=10, wrong=2),
+    assert streaks == (
+        ("streak_7", 7),
+        ("streak_30", 30),
+        ("streak_100", 100),
+        ("streak_365", 365),
     )
 
-    display = achievement_progress_display(achievement, state)
 
-    assert [(row.label, row.value_text, row.satisfied) for row in display.conditions] == [
-        ("Accuracy", "83% / 90%", False),
-        ("Anki card answers", "12 / 20", False),
-    ]
+def test_canonical_clear_recall_projection_does_not_round_a_near_miss_up() -> None:
+    state = GardenState()
+    state.daily_stats.reviewed = 29
+    state.daily_stats.correct = 26
+    state.daily_stats.wrong = 3
 
-
-def test_completed_clear_recall_conditions_do_not_regress_with_new_day_counters() -> None:
-    achievement = Achievement(
-        "retention_90",
-        "Clear Recall",
-        "",
-        unlocked=True,
-        unlocked_at="2026-08-01T12:00:00+00:00",
-    )
-    state = GardenState(
-        daily_stats=DailyStats(reviewed=3, correct=1, wrong=2),
+    projection = next(
+        item
+        for item in achievement_presentations(state)
+        if item.achievement_id == "retention_90"
     )
 
-    display = achievement_progress_display(achievement, state)
-
-    assert display.completed is True
-    assert (display.current, display.target) == (90, 90)
-    assert [(row.label, row.value_text, row.satisfied) for row in display.conditions] == [
-        ("Accuracy", "90% / 90%", True),
-        ("Anki card answers", "20 / 20", True),
-    ]
+    assert projection.condition_lines == (
+        "Answers: 29 of 20",
+        "Non-Again accuracy: 89.7% of 90% required",
+    )
 
 
 def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> None:

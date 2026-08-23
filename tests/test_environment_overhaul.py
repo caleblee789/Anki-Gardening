@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
-from ankigarden.collectibles import collectible_registry, collection_categories
+from ankigarden.collectibles import (
+    collectible_registry,
+    collectible_views,
+    collection_categories,
+)
 from ankigarden.environment import (
     GROWTH_CHARGES,
     SCENERY_CATALOG,
@@ -164,6 +168,46 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
         "plants", "scenery", "weather", "decorations", "garden_beds", "growth_items"
     ]
     registry = collectible_registry()
+    booster = next(
+        item for item in registry
+        if item.item_id == "growth_items:booster_potion"
+    )
+    compost = next(
+        item for item in registry
+        if item.item_id == "growth_items:fertilizer_basic"
+    )
+    basic_fertilizer = GardenGameEngine.FERTILIZERS["basic"]
+    assert compost.name == "Rich Compost"
+    assert compost.source_id == "fertilizer_basic"
+    assert compost.rarity == "Rare"
+    assert (
+        f"+{basic_fertilizer.growth_per_answer:,} Growth"
+        in compost.descriptor.buff
+    )
+    assert GardenGameEngine._duration_label(
+        basic_fertilizer.duration_seconds
+    ) in compost.descriptor.duration
+    assert "Garden Find" in compost.descriptor.unlock_requirement
+    compost_view = next(
+        view
+        for view in collectible_views(GardenState(
+            consumables={"fertilizer_basic": 2},
+        ))
+        if view.definition.item_id == "growth_items:fertilizer_basic"
+    )
+    assert compost_view.owned
+    assert compost_view.quantity == 2
+    assert booster.descriptor.unlock_requirement == (
+        "Earn from a Garden Find or an eligible daily Scenery reward."
+    )
+    assert booster.descriptor.buff == (
+        f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per Anki card "
+        "answer while active."
+    )
+    assert GardenGameEngine._duration_label(
+        GardenGameEngine.BOOSTER_DURATION_SECONDS
+    ) in booster.descriptor.duration
+    assert "Purchase" not in booster.descriptor.unlock_requirement
     assert all(
         item.mystery == (
             item.category in {"weather", "scenery"}

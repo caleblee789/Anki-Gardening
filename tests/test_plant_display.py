@@ -11,7 +11,6 @@ from ankigarden.ui.plant_display import (
     PlantInteractionState,
     Rect,
     SceneGeometryLayout,
-    achievement_progress_display,
     bed_badge_rect,
     compact_plant_layout,
     chronological_memories,
@@ -31,7 +30,7 @@ from ankigarden.ui.plant_display import (
     settings_layout_is_compact,
     smart_card_rect,
 )
-from ankigarden.models.state import Achievement, DailyStats, GardenState, PlantMemory
+from ankigarden.models.state import PlantMemory
 
 
 def _release_background(manifest: dict) -> dict:
@@ -333,17 +332,6 @@ def test_growth_display_exposes_plain_language_stage_progress():
     display = growth_display(1_000)
     assert display.stage_points == 500
     assert display.stage_goal == 2_000
-
-
-def test_achievement_progress_adapter_exposes_numeric_criteria_without_schema_changes():
-    state = GardenState(streak_days=5, total_reviews=412, daily_stats=DailyStats(reviewed=18, correct=16, wrong=2))
-    streak = achievement_progress_display(Achievement("streak_7", "Rhythm", ""), state)
-    retention = achievement_progress_display(Achievement("retention_90", "Recall", ""), state)
-    total = achievement_progress_display(Achievement("reviews_1000_total", "Roots", ""), state)
-
-    assert (streak.current, streak.target, streak.value_text) == (5, 7, "5 of 7 Anki days")
-    assert retention.value_text == "89 of 90% accuracy; 18 of 20 card answers"
-    assert (total.current, total.target) == (412, 1000)
 
 
 def test_onboarding_stages_first_review_and_nurture_without_schema_state():
@@ -709,6 +697,9 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
         assert 0 <= badge.y < badge.bottom <= 560
         assert badge.width >= 44 and badge.height >= 44
         assert not any(badge.intersects(obstacle) for obstacle in obstacles)
+
+    occupied = bed_badge_rect(rows[1], "Occupied", 900, 560, obstacles)
+    assert occupied.width >= 80
 
 
 def test_seed_stage_uses_bundled_artwork_without_drawn_or_emoji_cues():
@@ -1168,6 +1159,7 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     root = Path(__file__).resolve().parents[1]
     studio = (root / "ankigarden/ui/garden_studio.py").read_text()
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text()
+    scene = (root / "ankigarden/ui/scene.py").read_text()
     assert '"daily_goal"' not in studio
     assert '"show_home_widget": self.show_home_widget.isChecked()' in studio
     assert "self.controls_scroll.setWidgetResizable(True)" in studio
@@ -1178,16 +1170,19 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert 'self.tabs.addTab(behavior_scroll, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
-    assert 'QPushButton("Unlock development tools")' in settings_block
-    assert "from ..build_capabilities import DEVELOPMENT_MUTATION_ENABLED" in dashboard
-    assert "if DEVELOPMENT_MUTATION_ENABLED:" in settings_block
-    assert "ANKI_GARDEN_DEV_TOOLS" not in settings_block
+    assert "DEVELOPMENT_MUTATION_ENABLED" not in dashboard
+    assert 'QPushButton("Unlock development tools")' not in settings_block
+    assert 'QPushButton("Populate test garden")' not in settings_block
+    assert 'QPushButton("Restore backup")' not in settings_block
     capabilities = (root / "ankigarden/build_capabilities.py").read_text()
     assert 'BUILD_MODE = "production"' in capabilities
     assert "CAPTURE_HARNESS_ENABLED = False" in capabilities
     assert "DEVELOPMENT_MUTATION_ENABLED = False" in capabilities
-    assert "create_development_backup" in settings_block
-    assert "restore_development_backup" in settings_block
+    assert "from ..build_capabilities import CAPTURE_HARNESS_ENABLED" in scene
+    assert "CAPTURE_HARNESS_ENABLED\n            and (" in scene
+    assert "ANKI_GARDEN_PLACEMENT_DEBUG" in scene
+    assert "create_development_backup" not in settings_block
+    assert "restore_development_backup" not in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
     assert 'self.cancel_settings.setText("Discard changes" if dirty else "Cancel")' in dashboard
     assert 'else f"{modified_count} unsaved changes"' in dashboard
@@ -1231,6 +1226,12 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
+    assert "ONBOARDING_COACHMARK_MAX_WIDTH = 360" in dashboard
+    assert "self.onboarding_message.heightForWidth(" in dashboard
+    assert "self.onboarding_layout.activate()" in dashboard
+    assert "self.onboarding_layout.sizeHint().height()" in dashboard
+    assert 'card.setProperty("achievementId", projection.achievement_id)' in dashboard
+    assert "self.unsaved.setMargin(8)" in dashboard
     assert "self._position_scene_overlays()" in dashboard
     assert "self.today_summary = StatSummary" not in dashboard
     assert "QMessageBox.information(\n            self,\n            \"How to use the garden\"" not in dashboard
