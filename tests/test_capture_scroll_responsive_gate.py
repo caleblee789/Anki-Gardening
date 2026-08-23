@@ -331,14 +331,14 @@ def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
 
 def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     specs = {spec[0]: spec for spec in _literal_assignment("RESIZE_MATRIX_SPECS")}
-    assert specs["resize-story-large"][3:5] == (900, 800)
-    assert specs["resize-fertilizer-large"][3:5] == (900, 800)
-    assert specs["resize-species-overview-large"][3:5] == (900, 800)
-    assert specs["resize-fertilizer-replacement-large"][3:5] == (820, 660)
-    assert specs["resize-starter-confirmation-large"][3:5] == (520, 360)
+    assert specs["resize-story-large"][3:5] == (940, 800)
+    assert specs["resize-fertilizer-large"][3:5] == (940, 800)
+    assert specs["resize-species-overview-large"][3:5] == (940, 800)
+    assert specs["resize-fertilizer-replacement-large"][3:5] == (820, 535)
+    assert specs["resize-starter-confirmation-large"][3:5] == (600, 380)
     assert specs["resize-collection-minimum"][3:5] == (720, 500)
-    assert specs["resize-collection-default"][3:5] == (940, 680)
-    assert specs["resize-collection-large"][3:5] == (1000, 820)
+    assert specs["resize-collection-default"][3:5] == (1120, 800)
+    assert specs["resize-collection-large"][3:5] == (1180, 880)
 
 
 def test_footer_stress_fixture_resets_deferred_scroll_state() -> None:

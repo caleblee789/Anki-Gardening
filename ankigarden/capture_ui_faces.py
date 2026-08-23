@@ -381,52 +381,52 @@ RESIZE_MATRIX_SPECS: tuple[
     ("resize-dashboard-content-1361", "dashboard", "historical-edge-high-stability-probe", 1385, 900, 1240, 840),
     ("resize-dashboard-default", "dashboard", "minimum-to-default", 1240, 840, 620, 520),
     ("resize-dashboard-large", "dashboard", "default-to-large", 1440, 960, 1240, 840),
-    ("resize-settings-minimum", "settings", "default-to-minimum", 560, 420, 980, 680),
-    ("resize-settings-content-699", "settings", "historical-edge-low-stability-probe", 747, 620, 980, 680),
-    ("resize-settings-content-701", "settings", "historical-edge-high-stability-probe", 749, 620, 980, 680),
-    ("resize-settings-content-759", "settings", "historical-edge-low-stability-probe", 807, 650, 980, 680),
-    ("resize-settings-content-761", "settings", "historical-edge-high-stability-probe", 809, 650, 980, 680),
-    ("resize-settings-default", "settings", "minimum-to-default", 980, 680, 560, 420),
-    ("resize-settings-large", "settings", "default-to-large", 1000, 820, 980, 680),
-    ("resize-progress-minimum", "progress", "default-to-minimum", 720, 500, 940, 680),
-    ("resize-progress-content-819", "progress", "historical-edge-low-stability-probe", 867, 620, 940, 680),
-    ("resize-progress-content-821", "progress", "historical-edge-high-stability-probe", 869, 620, 940, 680),
-    ("resize-progress-default", "progress", "minimum-to-default", 940, 680, 720, 500),
-    ("resize-progress-large", "progress", "default-to-large", 1000, 820, 940, 680),
-    ("resize-collectible-detail-minimum", "collectible-detail", "default-to-minimum", 680, 480, 1040, 700),
-    ("resize-collectible-detail-content-819", "collectible-detail", "historical-edge-low-stability-probe", 867, 620, 1040, 700),
-    ("resize-collectible-detail-content-821", "collectible-detail", "historical-edge-high-stability-probe", 869, 620, 1040, 700),
-    ("resize-collectible-detail-default", "collectible-detail", "minimum-to-default", 1040, 700, 680, 480),
-    ("resize-collectible-detail-large", "collectible-detail", "default-to-large", 1120, 860, 1040, 700),
-    ("resize-nursery-minimum", "nursery", "default-to-minimum", 640, 460, 840, 640),
-    ("resize-nursery-content-759", "nursery", "historical-edge-low-stability-probe", 795, 600, 840, 640),
-    ("resize-nursery-content-761", "nursery", "historical-edge-high-stability-probe", 797, 600, 840, 640),
-    ("resize-nursery-default", "nursery", "minimum-to-default", 840, 640, 640, 460),
-    ("resize-nursery-large", "nursery", "default-to-large", 1050, 800, 840, 640),
-    ("resize-story-minimum", "story", "default-to-minimum", 480, 400, 640, 520),
-    ("resize-story-content-539", "story", "historical-edge-low-stability-probe", 587, 500, 640, 520),
-    ("resize-story-content-541", "story", "historical-edge-high-stability-probe", 589, 500, 640, 520),
-    ("resize-story-default", "story", "minimum-to-default", 640, 520, 480, 400),
-    ("resize-story-large", "story", "default-to-large", 900, 800, 640, 520),
-    ("resize-starter-confirmation-minimum", "starter-confirmation", "default-to-minimum", 360, 280, 480, 300),
-    ("resize-starter-confirmation-content-399", "starter-confirmation", "historical-edge-low-stability-probe", 447, 280, 480, 300),
-    ("resize-starter-confirmation-content-401", "starter-confirmation", "historical-edge-high-stability-probe", 449, 280, 480, 300),
-    ("resize-starter-confirmation-default", "starter-confirmation", "minimum-to-default", 480, 300, 360, 280),
-    ("resize-starter-confirmation-large", "starter-confirmation", "default-to-large", 520, 360, 480, 300),
-    ("resize-fertilizer-minimum", "fertilizer", "default-to-minimum", 520, 460, 600, 580),
-    ("resize-fertilizer-default", "fertilizer", "minimum-to-default", 600, 580, 520, 460),
-    ("resize-fertilizer-large", "fertilizer", "default-to-large", 900, 800, 600, 580),
-    ("resize-fertilizer-replacement-minimum", "fertilizer-replacement", "default-to-minimum", 420, 400, 480, 420),
-    ("resize-fertilizer-replacement-content-399", "fertilizer-replacement", "historical-edge-low-stability-probe", 443, 420, 480, 420),
-    ("resize-fertilizer-replacement-content-401", "fertilizer-replacement", "historical-edge-high-stability-probe", 445, 420, 480, 420),
-    ("resize-fertilizer-replacement-default", "fertilizer-replacement", "minimum-to-default", 480, 420, 420, 400),
-    ("resize-fertilizer-replacement-large", "fertilizer-replacement", "default-to-large", 820, 660, 480, 420),
-    ("resize-species-overview-minimum", "species-overview", "default-to-minimum", 500, 420, 560, 500),
-    ("resize-species-overview-default", "species-overview", "minimum-to-default", 560, 500, 500, 420),
-    ("resize-species-overview-large", "species-overview", "default-to-large", 900, 800, 560, 500),
-    ("resize-collection-minimum", "collection", "default-to-minimum", 720, 500, 940, 680),
-    ("resize-collection-default", "collection", "minimum-to-default", 940, 680, 720, 500),
-    ("resize-collection-large", "collection", "default-to-large", 1000, 820, 940, 680),
+    ("resize-settings-minimum", "settings", "default-to-minimum", 560, 420, 1020, 690),
+    ("resize-settings-content-699", "settings", "historical-edge-low-stability-probe", 747, 620, 1020, 690),
+    ("resize-settings-content-701", "settings", "historical-edge-high-stability-probe", 749, 620, 1020, 690),
+    ("resize-settings-content-759", "settings", "historical-edge-low-stability-probe", 807, 650, 1020, 690),
+    ("resize-settings-content-761", "settings", "historical-edge-high-stability-probe", 809, 650, 1020, 690),
+    ("resize-settings-default", "settings", "minimum-to-default", 1020, 690, 560, 420),
+    ("resize-settings-large", "settings", "default-to-large", 1180, 880, 1020, 690),
+    ("resize-progress-minimum", "progress", "default-to-minimum", 720, 500, 1120, 800),
+    ("resize-progress-content-819", "progress", "historical-edge-low-stability-probe", 867, 620, 1120, 800),
+    ("resize-progress-content-821", "progress", "historical-edge-high-stability-probe", 869, 620, 1120, 800),
+    ("resize-progress-default", "progress", "minimum-to-default", 1120, 800, 720, 500),
+    ("resize-progress-large", "progress", "default-to-large", 1180, 880, 1120, 800),
+    ("resize-collectible-detail-minimum", "collectible-detail", "default-to-minimum", 680, 480, 1160, 810),
+    ("resize-collectible-detail-content-819", "collectible-detail", "historical-edge-low-stability-probe", 867, 620, 1160, 810),
+    ("resize-collectible-detail-content-821", "collectible-detail", "historical-edge-high-stability-probe", 869, 620, 1160, 810),
+    ("resize-collectible-detail-default", "collectible-detail", "minimum-to-default", 1160, 810, 680, 480),
+    ("resize-collectible-detail-large", "collectible-detail", "default-to-large", 1180, 880, 1160, 810),
+    ("resize-nursery-minimum", "nursery", "default-to-minimum", 640, 460, 1100, 720),
+    ("resize-nursery-content-759", "nursery", "historical-edge-low-stability-probe", 795, 600, 1100, 720),
+    ("resize-nursery-content-761", "nursery", "historical-edge-high-stability-probe", 797, 600, 1100, 720),
+    ("resize-nursery-default", "nursery", "minimum-to-default", 1100, 720, 640, 460),
+    ("resize-nursery-large", "nursery", "default-to-large", 1180, 880, 1100, 720),
+    ("resize-story-minimum", "story", "default-to-minimum", 480, 400, 840, 640),
+    ("resize-story-content-539", "story", "historical-edge-low-stability-probe", 587, 500, 840, 640),
+    ("resize-story-content-541", "story", "historical-edge-high-stability-probe", 589, 500, 840, 640),
+    ("resize-story-default", "story", "minimum-to-default", 840, 640, 480, 400),
+    ("resize-story-large", "story", "default-to-large", 940, 800, 840, 640),
+    ("resize-starter-confirmation-minimum", "starter-confirmation", "default-to-minimum", 360, 280, 560, 320),
+    ("resize-starter-confirmation-content-399", "starter-confirmation", "historical-edge-low-stability-probe", 447, 280, 560, 320),
+    ("resize-starter-confirmation-content-401", "starter-confirmation", "historical-edge-high-stability-probe", 449, 280, 560, 320),
+    ("resize-starter-confirmation-default", "starter-confirmation", "minimum-to-default", 560, 320, 360, 280),
+    ("resize-starter-confirmation-large", "starter-confirmation", "default-to-large", 600, 380, 560, 320),
+    ("resize-fertilizer-minimum", "fertilizer", "default-to-minimum", 520, 460, 760, 520),
+    ("resize-fertilizer-default", "fertilizer", "minimum-to-default", 760, 520, 520, 460),
+    ("resize-fertilizer-large", "fertilizer", "default-to-large", 940, 800, 760, 520),
+    ("resize-fertilizer-replacement-minimum", "fertilizer-replacement", "default-to-minimum", 420, 400, 680, 460),
+    ("resize-fertilizer-replacement-content-399", "fertilizer-replacement", "historical-edge-low-stability-probe", 443, 420, 680, 460),
+    ("resize-fertilizer-replacement-content-401", "fertilizer-replacement", "historical-edge-high-stability-probe", 445, 420, 680, 460),
+    ("resize-fertilizer-replacement-default", "fertilizer-replacement", "minimum-to-default", 680, 460, 420, 400),
+    ("resize-fertilizer-replacement-large", "fertilizer-replacement", "default-to-large", 820, 535, 680, 460),
+    ("resize-species-overview-minimum", "species-overview", "default-to-minimum", 500, 420, 920, 720),
+    ("resize-species-overview-default", "species-overview", "minimum-to-default", 920, 720, 500, 420),
+    ("resize-species-overview-large", "species-overview", "default-to-large", 940, 800, 920, 720),
+    ("resize-collection-minimum", "collection", "default-to-minimum", 720, 500, 1120, 800),
+    ("resize-collection-default", "collection", "minimum-to-default", 1120, 800, 720, 500),
+    ("resize-collection-large", "collection", "default-to-large", 1180, 880, 1120, 800),
 )
 
 # Automated purchase-confirmation geometry. The comparison threshold is
@@ -436,11 +436,11 @@ RESIZE_MATRIX_SPECS: tuple[
 PURCHASE_CONFIRMATION_RESIZE_SPECS: tuple[
     tuple[str, str, str, int, int, int, int], ...
 ] = (
-    ("purchase-confirmation-minimum", "purchase-confirmation", "default-to-minimum", 420, 400, 720, 560),
-    ("purchase-confirmation-breakpoint-low", "purchase-confirmation", "measured-threshold-minus-one", 517, 520, 720, 560),
-    ("purchase-confirmation-breakpoint-high", "purchase-confirmation", "measured-threshold-plus-one", 519, 520, 720, 560),
-    ("purchase-confirmation-default", "purchase-confirmation", "minimum-to-default", 720, 560, 420, 400),
-    ("purchase-confirmation-large", "purchase-confirmation", "default-to-large", 820, 660, 720, 560),
+    ("purchase-confirmation-minimum", "purchase-confirmation", "default-to-minimum", 420, 400, 680, 460),
+    ("purchase-confirmation-breakpoint-low", "purchase-confirmation", "measured-threshold-minus-one", 517, 520, 680, 460),
+    ("purchase-confirmation-breakpoint-high", "purchase-confirmation", "measured-threshold-plus-one", 519, 520, 680, 460),
+    ("purchase-confirmation-default", "purchase-confirmation", "minimum-to-default", 680, 460, 420, 400),
+    ("purchase-confirmation-large", "purchase-confirmation", "default-to-large", 820, 535, 680, 460),
 )
 
 # Automated Growth Charge minimum-size geometry. It is not a release capture
@@ -455,7 +455,7 @@ GROWTH_CHARGE_RESIZE_SPECS: tuple[
         420,
         400,
         680,
-        610,
+        500,
     ),
 )
 
@@ -2321,6 +2321,9 @@ class _UiFaceCaptureRunner:
               );
               const sceneFrame = root.querySelector('.ag-home__scene-frame');
               const weatherLayer = root.querySelector('[data-testid="home-weather-layer"]');
+              const sunLayer = root.querySelector(
+                '[data-testid="home-sun-layer"], .ag-home__sun-layer, .ag-home__sun'
+              );
               const sceneryLayer = root.querySelector('[data-testid="home-scenery-layer"]');
               const previewStatusPresent = !!root.querySelector(
                 '[data-testid="home-preview-status"]'
@@ -2377,6 +2380,7 @@ class _UiFaceCaptureRunner:
                 activeSlot,
                 markerPresent: !!marker,
                 weatherLayerPresent: !!weatherLayer,
+                sunLayerPresent: !!sunLayer,
                 sceneryLayerPresent: !!sceneryLayer,
                 sceneOpacity: sceneFrame
                   ? Number.parseFloat(window.getComputedStyle(sceneFrame).opacity || '1')
@@ -3899,6 +3903,17 @@ class _UiFaceCaptureRunner:
                 str(dom.get("capture_label", "")),
             )
             require("dom_fixture_ready", bool(dom.get("ready", False)), dom)
+            require(
+                "home_weather_and_sun_absent",
+                not bool(dom.get("weatherLayerPresent", False))
+                and not bool(dom.get("sunLayerPresent", False)),
+                {
+                    "weather_layer_present": bool(
+                        dom.get("weatherLayerPresent", False)
+                    ),
+                    "sun_layer_present": bool(dom.get("sunLayerPresent", False)),
+                },
+            )
             if "active_slot" in expectation:
                 expected_slot = int(expectation["active_slot"])
                 actual_slot = int(getattr(active_plant, "slot_index", -1) or 0)

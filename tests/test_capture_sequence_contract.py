@@ -2259,6 +2259,9 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
     assert "expected_capture_state_profile(label)" in postcondition
     assert '"ordered_fixture_label"' in postcondition
     assert '"dom_fixture_ready"' in postcondition
+    assert '"home_weather_and_sun_absent"' in postcondition
+    assert 'dom.get("weatherLayerPresent", False)' in postcondition
+    assert 'dom.get("sunLayerPresent", False)' in postcondition
     assert '"progress_page"' in postcondition
     assert '"nursery_tab"' in postcondition
     assert '"settings_tab"' in postcondition
