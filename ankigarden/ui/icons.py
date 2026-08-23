@@ -24,6 +24,7 @@ GARDEN_ICON_PATHS: dict[str, str] = {
     "plant": '<path d="M12 20v-9M12 14c-4 0-6-2.1-6-6 4 0 6 2 6 6Zm0-3c4 0 6-2.1 6-6-4 0-6 2-6 6ZM7 20h10"/>',
     "warning": '<path d="M12 4 3 20h18L12 4Z"/><path d="M12 9v5M12 17h.01"/>',
     "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
+    "help": '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.7 2.7 0 0 1 5.2 1c0 2-2.7 2.1-2.7 4M12 17h.01"/>',
 }
 
 

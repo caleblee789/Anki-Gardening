@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import types
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import ankigarden.ui.icons as icons
@@ -29,6 +31,7 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
         "plant",
         "warning",
         "info",
+        "help",
     } <= set(GARDEN_ICON_PATHS)
     for name in GARDEN_ICON_PATHS:
         payload = garden_icon_svg(name, color="#123456")
@@ -36,6 +39,19 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
         assert 'style="color:#123456"' in payload
         assert 'stroke="currentColor"' in payload
         assert 'stroke-width="1.8"' in payload
+
+
+def test_literal_icon_consumers_are_registered() -> None:
+    root = Path(__file__).resolve().parents[1] / "ankigarden"
+    requested: set[str] = set()
+    consumer_pattern = re.compile(
+        r'(?:GardenIconButton|garden_icon|garden_icon_svg)\(\s*"([^"]+)"'
+    )
+    for path in root.rglob("*.py"):
+        requested.update(consumer_pattern.findall(path.read_text("utf-8")))
+
+    assert "help" in requested
+    assert requested <= set(GARDEN_ICON_PATHS)
 
 
 def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
