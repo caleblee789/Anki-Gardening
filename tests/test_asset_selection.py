@@ -533,6 +533,10 @@ def test_invalid_placement_values_fall_back_or_clamp():
     assert placement.crop == "contain"
     assert placement.base_type == "legacy"
     assert placement.visible_bounds == (0.08, 0.04, 0.84, 0.92)
+    assert placement.thumbnail_bounds == placement.visible_bounds
+    assert placement.thumbnail_optical_center == (0.5, 0.5)
+    assert placement.thumbnail_scale == 1.0
+    assert placement.thumbnail_safe_padding == 0.10
     assert len(placement.bed_anchors) == 6
 
 
@@ -565,6 +569,8 @@ def test_current_production_plants_use_alpha_aware_grounding_metadata():
     assert len(plants) == 60
     for row in plants:
         placement = row["placement"]
+        normalized = AssetPlacement.from_manifest(placement, category="plants")
+        thumbnail = normalized.to_dict()
         visible = placement["visible_bounds"]
         ground = placement["ground_anchor"]
         assert len(visible) == 4 and visible[2] > 0 and visible[3] > 0
@@ -579,6 +585,12 @@ def test_current_production_plants_use_alpha_aware_grounding_metadata():
         assert placement["base_type"] == "direct_soil"
         assert 0.2 <= placement["contact_shadow"][0] <= 1.0
         assert 0.015 <= placement["contact_shadow"][1] <= 0.12
+        assert len(thumbnail["thumbnail_bounds"]) == 4
+        assert thumbnail["thumbnail_bounds"][2] > 0
+        assert thumbnail["thumbnail_bounds"][3] > 0
+        assert len(thumbnail["thumbnail_optical_center"]) == 2
+        assert 0.5 <= thumbnail["thumbnail_scale"] <= 1.5
+        assert 0.0 <= thumbnail["thumbnail_safe_padding"] <= 0.3
 
 
 def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():

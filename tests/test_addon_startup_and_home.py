@@ -470,24 +470,101 @@ def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears
     assert notices.current.message == ""
 
 
-def test_reviewer_reward_feedback_prioritizes_one_event_and_consumes_exactly_that_id(
+def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata(
     monkeypatch,
 ):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
     reviewer_module.mw = aqt_mod.mw
+    state_module = importlib.import_module("ankigarden.models.state")
+    GardenFindOutcome = state_module.GardenFindOutcome
+    GardenState = state_module.GardenState
+    RewardReceipt = state_module.RewardReceipt
+    standard_pool_version = importlib.import_module(
+        "ankigarden.garden_finds"
+    ).STANDARD_POOL_VERSION
     events = [
         SimpleNamespace(
-            event_id="growth:1", kind="growth_milestone", occurred_at="2026-08-10T10:00:00"
+            event_id="reward-summary:answer:base",
+            kind="reward_summary",
+            title="Review rewards",
+            message="+999 coins reconstructed from stale prose",
+            occurred_at="2026-08-10T10:00:00",
+            amount=999,
         ),
         SimpleNamespace(
-            event_id="coins:1", kind="coin_drop", occurred_at="2026-08-10T10:01:00"
+            event_id="reward-summary:answer:abc",
+            kind="garden_find",
+            title="Garden Find: Morning Dew",
+            message="+40 Growth; +4 coins; Unlocked stale display copy",
+            occurred_at="2026-08-10T10:01:00",
+            amount=44,
+            asset_category="ui",
+            asset_key="growth",
         ),
         SimpleNamespace(
-            event_id="booster:1", kind="booster_drop", occurred_at="2026-08-10T09:59:00"
+            event_id="garden-notice:answer:abc",
+            kind="garden_notice",
+            message="A separate Garden notice remains unchanged",
+            occurred_at="2026-08-10T10:02:00",
+            amount=5_000,
+            correlation_id="answer:abc",
         ),
     ]
-    shown: list[str] = []
+    outcome = GardenFindOutcome(
+        answer_key="abc",
+        scheduler_day="2026-08-10",
+        status="hit",
+        pool_id="standard",
+        pool_version=standard_pool_version,
+        occurred_at="2026-08-10T10:01:00",
+        reward_id="find_morning_dew",
+        reward_type="growth",
+        amount=40,
+        display_name="Morning Dew",
+        description="+40 Growth",
+        tier="Common",
+        artwork_ref="growth",
+    )
+    state = GardenState(
+        garden_find_outcomes={outcome.outcome_key: outcome},
+        recent_reward_receipts=[
+            RewardReceipt(
+                event_key="daily_activity:2026-08-10",
+                reward_type="coins",
+                source="daily_activity",
+                source_id="2026-08-10",
+                scheduler_day="2026-08-10",
+                correlation_id="answer:base",
+                occurred_at="2026-08-10T10:00:00",
+                amount=2,
+            ),
+            RewardReceipt(
+                event_key="garden_find:abc:standard",
+                reward_type="growth",
+                source="garden_find",
+                source_id="find_morning_dew",
+                scheduler_day="2026-08-10",
+                correlation_id="answer:abc",
+                occurred_at="2026-08-10T10:01:00",
+                amount=40,
+                plant_id="plant:1",
+                title="Morning Dew",
+            ),
+            RewardReceipt(
+                event_key="achievement:all_due_done",
+                reward_type="coins",
+                source="achievement",
+                source_id="all_due_done",
+                scheduler_day="2026-08-10",
+                correlation_id="answer:abc",
+                occurred_at="2026-08-10T10:01:00",
+                amount=5,
+                title="All Clear",
+            ),
+        ],
+    )
+    shown: list[object] = []
     consumed: list[tuple[str, ...]] = []
     engine = SimpleNamespace(
         config=SimpleNamespace(
@@ -496,14 +573,35 @@ def test_reviewer_reward_feedback_prioritizes_one_event_and_consumes_exactly_tha
         peek_feedback=lambda: list(events),
         consume_feedback=lambda *, event_ids: consumed.append(tuple(event_ids)),
     )
-    handler = reviewer_module.ReviewerHookHandler(engine, SimpleNamespace())
-    handler._show_reward_toast = lambda event: shown.append(event.event_id) or True
+    storage = SimpleNamespace(
+        state=state,
+        # The just-committed bounded cache remains presentation authority when
+        # a historical adapter query has not surfaced the row yet.
+        recent_garden_find_outcomes=lambda *, limit: (),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    handler._show_reward_toast = lambda event: shown.append(event) or True
 
     handler._show_optional_progress_feedback()
 
-    assert shown == ["booster:1"]
-    assert consumed == [("booster:1",)]
-    assert handler._last_notified_event == "booster:1"
+    assert len(shown) == 1
+    feedback = shown[0]
+    assert feedback.event_ids == tuple(event.event_id for event in events)
+    assert feedback.title == "Garden Find: Morning Dew"
+    assert feedback.message == (
+        "+2 Garden Coins; +40 direct Growth to the nurtured plant and "
+        "+5 Garden Coins; Unlocked All Clear; "
+        "A separate Garden notice remains unchanged"
+    )
+    assert feedback.reward_detail == (
+        "+40 direct Growth to the nurtured plant"
+    )
+    assert feedback.tier == "Common"
+    assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
+    assert feedback.amount == 0
+    assert feedback.correlation_id == "answer:abc"
+    assert consumed == [tuple(event.event_id for event in events)]
+    assert handler._last_notified_event == feedback.event_id
 
 
 def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatch):
@@ -511,7 +609,9 @@ def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatc
     reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
     reviewer_module.mw = aqt_mod.mw
     event = SimpleNamespace(
-        event_id="coins:2", kind="coin_drop", occurred_at="2026-08-10T10:02:00"
+        event_id="reward:2",
+        kind="reward_summary",
+        occurred_at="2026-08-10T10:02:00",
     )
     consumed: list[tuple[str, ...]] = []
     engine = SimpleNamespace(
@@ -526,6 +626,66 @@ def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatc
 
     assert consumed == []
     assert handler._last_notified_event == ""
+
+
+def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    first = SimpleNamespace(
+        event_id="reward:first",
+        kind="reward_summary",
+        message="+2 Garden Coins",
+        occurred_at="2026-08-10T10:00:00",
+        amount=2,
+    )
+    second = SimpleNamespace(
+        event_id="reward:second",
+        kind="reward_summary",
+        message="+40 Growth",
+        occurred_at="2026-08-10T10:01:00",
+        amount=40,
+    )
+    pending = [first]
+    consume_attempts: list[tuple[str, ...]] = []
+
+    def fail_consume(*, event_ids):
+        consume_attempts.append(tuple(event_ids))
+        raise RuntimeError("temporary persistence failure")
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(value=lambda _key, _default=None: True),
+        peek_feedback=lambda: list(pending),
+        consume_feedback=fail_consume,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(recent_reward_receipts=[], garden_find_outcomes={}),
+    )
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    shown: list[object] = []
+    handler._show_reward_toast = lambda event: shown.append(event) or True
+
+    handler._show_optional_progress_feedback()
+    pending.append(second)
+    handler._show_optional_progress_feedback()
+    handler._show_optional_progress_feedback()
+
+    assert [event.event_ids for event in shown] == [
+        ("reward:first",),
+        ("reward:second",),
+    ]
+    assert [event.message for event in shown] == [
+        "+2 Garden Coins",
+        "+40 Growth",
+    ]
+    assert consume_attempts == [
+        ("reward:first",),
+        ("reward:first", "reward:second"),
+        ("reward:first", "reward:second"),
+    ]
+    assert pending == [first, second]
 
 
 def test_successful_maintenance_clears_notice_before_live_dashboard_refresh_without_reentry(
@@ -1727,6 +1887,7 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
 
     rows = [
         (150, 7, 3, 10, 5, 2500, 100, 1),
+        (180, 7, 4, 20, 10, 2300, 100, 1),
         (250, 8, 4, 20, 10, 2300, 100, 1),
     ]
 
@@ -1739,20 +1900,30 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
     storage = object.__new__(storage_module.GardenStorage)
     storage.mw = aqt_mod.mw
     storage.state = importlib.import_module("ankigarden.models.state").GardenState(
-        last_processed_revlog_id=99,
+        last_processed_revlog_id=180,
         processed_revlog_floor=99,
+        processed_revlog_ids=[180],
     )
     storage.current_scheduler_day_bounds_ms = lambda: (100, 200)
+    storage.current_scheduler_day = lambda: "2026-08-21"
     storage.current_day_start_ms = lambda: 100
     storage.due_obligations = lambda: SimpleNamespace(complete=False)
+    binding_requests = []
+    storage.answer_lineage_bindings_for_cards = lambda card_ids: (
+        binding_requests.append(set(card_ids))
+        or {"180": "v1|2026-08-21|7|1"}
+    )
 
     class Engine:
         def __init__(self):
             self.ids = []
+            self.last_identity = ""
 
         def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
             self.ids.extend(payload["revlog_id"] for payload in payloads)
+            self.last_identity = payloads[-1]["answer_identity"] if payloads else ""
             storage.state.processed_revlog_ids.extend(self.ids)
+            storage.state.processed_revlog_ids.sort()
             storage.state.last_processed_revlog_id = latest_revlog_id
             return len(payloads) * 10
 
@@ -1767,7 +1938,9 @@ def test_catchup_never_counts_or_consumes_future_device_skew_row(monkeypatch):
     app._apply_same_day_catchup()
 
     assert app.engine.ids == [150]
-    assert storage.state.last_processed_revlog_id == 150
+    assert binding_requests == [{7}]
+    assert app.engine.last_identity == "v1|2026-08-21|7|2"
+    assert storage.state.last_processed_revlog_id == 180
     assert 250 not in storage.state.processed_revlog_ids
 
 

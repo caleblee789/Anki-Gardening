@@ -271,6 +271,88 @@ def package_report(output: Path, mode: str = PRODUCTION_BUILD) -> dict[str, Any]
         }
 
 
+def _canonical_payload_digest(
+    entries: Sequence[tuple[str, bytes]],
+) -> str:
+    """Hash ordered payloads with unambiguous name and content framing."""
+
+    digest = hashlib.sha256()
+    digest.update(b"anki-garden-shared-payload-v1\0")
+    for name, payload in sorted(entries, key=lambda entry: entry[0]):
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
+
+
+def capture_derivative_report(
+    production_output: Path,
+    capture_output: Path,
+) -> dict[str, Any]:
+    """Prove that a capture archive is an exact production payload derivative."""
+
+    production = Path(production_output).resolve()
+    capture = Path(capture_output).resolve()
+    _validate_archive(production, PRODUCTION_BUILD)
+    _validate_archive(capture, CAPTURE_BUILD)
+    production_report = package_report(production, PRODUCTION_BUILD)
+    capture_report = package_report(capture, CAPTURE_BUILD)
+
+    with zipfile.ZipFile(production) as production_archive, zipfile.ZipFile(
+        capture
+    ) as capture_archive:
+        production_names = set(production_archive.namelist())
+        capture_names = set(capture_archive.namelist())
+        capture_only = sorted(capture_names - production_names)
+        production_only = sorted(production_names - capture_names)
+        expected_capture_only = [CAPTURE_HARNESS]
+        if production_only or capture_only != expected_capture_only:
+            raise ValueError(
+                "capture derivative archive entries differ outside the allowed "
+                f"capture harness delta; production-only={production_only!r}, "
+                f"capture-only={capture_only!r}"
+            )
+        if CAPABILITY_MODULE not in production_names:
+            raise ValueError("capture derivative requires the shared capability module")
+
+        shared_payload_names = sorted(
+            production_names.difference({CAPABILITY_MODULE})
+        )
+        production_entries: list[tuple[str, bytes]] = []
+        capture_entries: list[tuple[str, bytes]] = []
+        mismatched_payloads: list[str] = []
+        for name in shared_payload_names:
+            production_payload = production_archive.read(name)
+            capture_payload = capture_archive.read(name)
+            production_entries.append((name, production_payload))
+            capture_entries.append((name, capture_payload))
+            if production_payload != capture_payload:
+                mismatched_payloads.append(name)
+        if mismatched_payloads:
+            raise ValueError(
+                "capture derivative changed shared package payloads: "
+                + ", ".join(mismatched_payloads)
+            )
+
+    production_digest = _canonical_payload_digest(production_entries)
+    capture_digest = _canonical_payload_digest(capture_entries)
+    if production_digest != capture_digest:
+        raise ValueError("capture derivative shared payload digest does not match production")
+    return {
+        "capture_archive": str(capture),
+        "capture_archive_sha256": capture_report["archive_sha256"],
+        "capture_only_entries": expected_capture_only,
+        "mode_specific_entries": [CAPABILITY_MODULE],
+        "production_archive": str(production),
+        "production_archive_sha256": production_report["archive_sha256"],
+        "shared_payload_entry_count": len(production_entries),
+        "shared_payload_sha256": production_digest,
+        "shared_payloads_identical": True,
+    }
+
+
 def _requested_cli_build(
     arguments: Sequence[str] | None = None,
 ) -> tuple[str, Path | None]:

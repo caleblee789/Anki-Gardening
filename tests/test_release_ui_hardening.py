@@ -103,16 +103,20 @@ def _module_constant(path: Path, name: str) -> object:
     raise AssertionError(f"Missing module constant: {name}")
 
 
-def test_dashboard_is_a_fixed_root_shell_without_focus_driven_self_scrolling() -> None:
+def test_dashboard_uses_one_scroll_owner_without_focus_driven_self_scrolling() -> None:
     dashboard = _segment(_class_node("GardenDashboard"))
     build = _method_node("GardenDashboard", "_build_ui")
 
     assert "self.page_scroll" not in dashboard
     assert "ensureWidgetVisible" not in dashboard
+    assert "self.dashboard_scroll = QScrollArea()" in dashboard
+    assert "self.dashboard_scroll.setWidget(page)" in dashboard
 
     outer_adds = _calls(build, "outer.addWidget")
     assert any(
-        call.args and isinstance(call.args[0], ast.Name) and call.args[0].id == "page"
+        call.args
+        and isinstance(call.args[0], ast.Attribute)
+        and call.args[0].attr == "dashboard_scroll"
         for call in outer_adds
     )
     root_adds = _calls(build, "root.addWidget")
@@ -126,8 +130,9 @@ def test_dashboard_is_a_fixed_root_shell_without_focus_driven_self_scrolling() -
     )
 
 
-def test_820_header_stacks_title_actions_and_stats_on_distinct_rows() -> None:
+def test_content_measured_narrow_header_stacks_regions_on_distinct_rows() -> None:
     method = _method_node("GardenDashboard", "_apply_responsive_layout")
+    source = _segment(method)
     narrow_assignment = next(
         node
         for node in method.body
@@ -137,11 +142,9 @@ def test_820_header_stacks_title_actions_and_stats_on_distinct_rows() -> None:
             for target in node.targets
         )
     )
-    comparison = narrow_assignment.value
-    assert isinstance(comparison, ast.Compare)
-    assert isinstance(comparison.ops[0], ast.LtE)
-    assert isinstance(comparison.comparators[0], ast.Constant)
-    assert comparison.comparators[0].value == 820
+    assert isinstance(narrow_assignment.value, ast.BoolOp)
+    assert "header_compact and title_actions.mode == COMPACT_MODE" in source
+    assert "<= 820" not in source
 
     narrow_branch = next(
         node
@@ -196,9 +199,9 @@ def test_plant_popover_uses_one_slash_progress_value_and_hides_fully_grown_ferti
     }
     assert grown_actions == {"choose_another", "move", "story"}
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in selected_source
-    assert 'value_text=f"{growth_points:,} Growth"' in selected_source
-    assert '"Plant Growth"' in selected_source
-    assert _calls(selected, "self.growth_summary.hide")
+    assert 'self.growth_summary.setText(f"Fully grown · {growth_points:,} total Growth")' in selected_source
+    assert _calls(selected, "self.stage_progress.hide")
+    assert _calls(selected, "self.growth_summary.show")
     assert _calls(selected, "self.growth_remaining.hide")
     assert not _calls(selected, "self.growth_remaining.show")
     assert not _calls(selected, "self.growth_remaining.setText")
@@ -288,6 +291,8 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
     surface_calls = _calls(module, "_set_scroll_surface")
     helper = _segment(_function_node("_set_scroll_surface"))
 
+    # The Collection category-chip scroller is gone; its narrow layout uses
+    # native dropdowns, so every remaining scroll owner is vertical content.
     assert len(scroll_constructors) == 16
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
@@ -309,7 +314,13 @@ def test_shared_tabs_and_empty_state_action_never_fall_back_to_platform_gray() -
     assert "QPushButton[emptyStateAction='true'][variant='primary']" in stylesheet
     assert 'action.setProperty("emptyStateAction", True)' in empty_state
     assert "_pin_empty_state_action_style(" in empty_state
-    assert "self.collection_list.add_full_width(EmptyState(" in collection
+    assert "self.collection_list.add_full_width(no_results)" in collection
+    assert "no_results.hide()" in collection
+    assert "self.collection_list.finish()" in collection
+    assert "no_results.setVisible(result_count == 0)" in collection
+    assert collection.index("self.collection_list.finish()") < collection.index(
+        "no_results.setVisible(result_count == 0)"
+    )
 
     local_style = _segment(_function_node("_pin_empty_state_action_style"))
     assert "button.setStyleSheet(" in local_style
@@ -511,7 +522,10 @@ def test_exec_backed_nursery_story_species_and_fertilizer_share_modal_shell() ->
     assert _class_node("GardenDialog").bases[0].id == "DialogShell"
     assert _class_node("NurseryDialog").bases[0].id == "DialogShell"
     assert _class_node("StarterConfirmationDialog").bases[0].id == "DialogShell"
-    assert _class_node("FertilizerReplacementDialog").bases[0].id == "DialogShell"
+    assert _class_node("PurchaseConfirmationDialog").bases[0].id == "DialogShell"
+    assert _class_node("FertilizerReplacementDialog").bases[0].id == (
+        "PurchaseConfirmationDialog"
+    )
     assert _class_node("PlantStoryDialog").bases[0].id == "GardenDialog"
 
     exec_callers = {
@@ -525,6 +539,10 @@ def test_exec_backed_nursery_story_species_and_fertilizer_share_modal_shell() ->
         ),
     }
     assert all(".exec()" in source for source in exec_callers.values())
+    species_action = _segment(
+        _method_node("GardenDashboard", "_collection_plant_action")
+    )
+    assert "The committed garden and plant state is unchanged." in species_action
 
     synchronous = _segment(_method_node("DialogShell", "exec"))
     assert synchronous.index("Qt.WindowModality.WindowModal") < synchronous.index(
@@ -609,7 +627,10 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
         _method_node("GardenDashboard", "_update_scene_height")
     )
     customize = _segment(
-        _method_node("CustomizeGardenDialog", "resizeEvent")
+            _method_node("CollectibleDetailDialog", "resizeEvent")
+    )
+    customize_mode = _segment(
+            _method_node("CollectibleDetailDialog", "_apply_detail_layout_mode")
     )
     nursery = _segment(_method_node("NurseryDialog", "resizeEvent"))
 
@@ -620,10 +641,12 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
     assert "self.scene.setMaximumHeight(16777215)" in dashboard_scene
     assert "self.scene.setMaximumHeight(target)" not in dashboard_scene
     assert "margins = self._shell_layout.contentsMargins()" in customize
-    assert "self.main_grid.setColumnStretch(column, 0)" in customize
-    assert "self.main_grid.setRowStretch(row, 0)" in customize
+    assert "self.collection_detail_responsive.evaluate(content_width)" in customize
+    assert "self.main_grid.setColumnStretch(column, 0)" in customize_mode
+    assert "self.main_grid.setRowStretch(row, 0)" in customize_mode
     assert "margins = self.layout().contentsMargins()" in nursery
-    assert 'self.setProperty("layoutMode", "compact" if compact else "wide")' in nursery
+    assert "self.hero_responsive.evaluate(available)" in nursery
+    assert 'self.setProperty("heroMode", hero.mode)' in nursery
 
 
 def test_compact_stats_preserve_the_anki_streak_accessible_name() -> None:
@@ -643,31 +666,70 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
         _method_node("GardenDashboard", "_sync_header_minimum_heights")
     )
 
-    assert "cell.setMinimumHeight(64 if enabled else 96)" in stats
+    assert "cell.setMinimumHeight(96)" in stats
     assert "self.garden_stats_bar.set_onboarding_mode(guided)" in refresh
     assert refresh.index("self.garden_stats_bar.set_onboarding_mode(guided)") < refresh.index(
         "self._sync_header_minimum_heights()"
     )
-    assert "64 if guided else (96 if metrics_compact else 104)" in heights
-    assert "154 if self._header_narrow_layout else" in heights
-    assert "128 if self._header_compact_layout else" in heights
+    assert "96 if guided else (192 if metrics_compact else 104)" in heights
+    assert "186 if self._header_narrow_layout else" in heights
+    assert "160 if self._header_compact_layout else" in heights
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 
 
-def test_customize_effects_advanced_action_has_readable_copy_at_compact_widths() -> None:
-    constructor = _segment(_method_node("CustomizeGardenDialog", "__init__"))
-    responsive = _segment(_method_node("CustomizeGardenDialog", "resizeEvent"))
+def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths() -> None:
+    constructor = _segment(_method_node("CollectibleDetailDialog", "__init__"))
+    responsive = _segment(_method_node("CollectibleDetailDialog", "resizeEvent"))
+    sync_dirty = _segment(_method_node("CollectibleDetailDialog", "_sync_dirty_state"))
+    apply_draft = _segment(_method_node("CollectibleDetailDialog", "_apply_draft"))
+    cancel_preview = _segment(_method_node("CollectibleDetailDialog", "_cancel_preview"))
+    unavailable_tile = _segment(
+        _method_node("CollectibleDetailDialog", "_unavailable_option_tile")
+    )
+    rebuild_options = _segment(
+        _method_node("CollectibleDetailDialog", "_rebuild_options")
+    )
+    refresh_preview = _segment(
+        _method_node("CollectibleDetailDialog", "_refresh_preview")
+    )
 
     assert "self.effects_advanced_layout = QVBoxLayout(self.effects_advanced)" in constructor
-    assert 'QLabel("Included appearance")' in constructor
-    assert (
-        '"Preview Clear Skies with Verdant Twilight. Apply changes to save."'
-        in constructor
-    )
-    assert 'QPushButton("Preview included appearance")' in constructor
-    assert "The appearance is not saved until Apply changes is selected." in constructor
+    assert 'QLabel("Preview controls")' in constructor
+    assert "Reset the live preview to your currently equipped appearance." in constructor
+    assert 'QPushButton("Reset preview")' in constructor
+    assert "Discard the local preview and restore the currently equipped appearance." in constructor
     assert "_set_button_variant(restore, BUTTON_VARIANT_SECONDARY)" in constructor
+    assert "self.unsaved.setWordWrap(True)" in constructor
+    assert '"collection-loadout.actions"' in constructor
+    assert "compact_direction=QBoxLayout.Direction.TopToBottom" in constructor
     assert "effects_advanced_layout.setDirection" not in responsive
+    assert "self.loadout_footer_responsive.evaluate(content_width)" in responsive
+    assert "Appearance changes could not be saved. No equipped items changed." in sync_dirty
+    assert '"Saving appearance changes…"' in sync_dirty
+    assert '"Saving…"' in sync_dirty
+    assert '"preview" if dirty else "committed-state"' in sync_dirty
+    assert 'else "Try again"' in sync_dirty
+    assert "if self._loadout_failure" in sync_dirty
+    assert '"Discard preview" if self._loadout_failure' in sync_dirty
+    assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
+    assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
+    assert "The live preview is still available to retry or discard." in apply_draft
+    assert "if self._loadout_failure:" in cancel_preview
+    assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
+        "self.request_close(DialogCloseReason.CANCEL_BUTTON)"
+    )
+    assert 'tile.setProperty("collectionState", "unavailable")' in unavailable_tile
+    assert "no longer offered" in unavailable_tile
+    assert "_environment_placeholder_pixmap(164, 92)" in unavailable_tile
+    assert "SemanticRole.MISSING_ART" in unavailable_tile
+    assert "unavailable_decorations" in rebuild_options
+    assert 'self._unavailable_option_tile("decoration", str(item_id))' in rebuild_options
+    assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
+    assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview
+    assert 'f"{format_status_label(self._draft_decoration)} (Unavailable)"' in refresh_preview
+    assert '"resolve_decoration_asset"' in refresh_preview
+    assert '"decoration": self._asset_payload(decoration)' in refresh_preview
+    assert "def resolve_preview_asset(" in refresh_preview
 
 
 def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_field() -> None:
@@ -709,7 +771,9 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
     ) >= 2, "The inline validation message must also reach assistive technology."
 
     update_source = _segment(update)
-    assert "self.save_settings.setEnabled(dirty and valid)" in update_source
+    assert "set_control_enabled(" in update_source
+    assert "dirty and valid" in update_source
+    assert "Fix the Garden name error before saving." in update_source
     assert (
         "invalid" in update_source
         or "validation" in update_source
@@ -720,8 +784,78 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
     )
 
 
+def test_settings_name_failure_reports_the_split_commit_if_rollback_fails() -> None:
+    class RollbackFailure(Exception):
+        pass
+
+    old_payload = {"show_home_widget": True, "reduced_motion": False}
+    new_payload = {"show_home_widget": False, "reduced_motion": True}
+
+    class Config:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, bool]] = []
+            self.committed = dict(old_payload)
+
+        def update(self, payload: dict[str, bool]) -> None:
+            self.calls.append(dict(payload))
+            if len(self.calls) == 2:
+                raise RollbackFailure("rollback write failed")
+            self.committed = dict(payload)
+
+    class Dialog:
+        def __init__(self) -> None:
+            self._persisted_payload = dict(old_payload)
+            self._persisted_name = "Old Garden"
+            self.behavior = SimpleNamespace(
+                build_theme_payload=lambda: dict(new_payload)
+            )
+            self.garden_name_edit = SimpleNamespace(text=lambda: "New Garden")
+            self.config = Config()
+            self.engine = SimpleNamespace(
+                rename_garden=lambda _name: (False, "Garden name was not saved.")
+            )
+            self.dirty_baselines: list[tuple[dict[str, bool], str]] = []
+            self.errors: list[str] = []
+
+        def _update_dirty_state(self) -> None:
+            self.dirty_baselines.append((
+                dict(self._persisted_payload),
+                self._persisted_name,
+            ))
+
+        def _show_save_error(self, message: str) -> None:
+            self.errors.append(message)
+
+    save = _compiled_method(
+        "GardenSettingsDialog",
+        "_save_visual_settings",
+        {
+            "deepcopy": lambda value: dict(value),
+            "MAX_GARDEN_NAME_LENGTH": 40,
+            "ConfigError": RollbackFailure,
+            "_learner_text": str,
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+        },
+    )
+    dialog = Dialog()
+
+    save(dialog)
+
+    assert dialog.config.calls == [new_payload, old_payload]
+    assert dialog.config.committed == new_payload
+    assert dialog._persisted_payload == new_payload
+    assert dialog._persisted_name == "Old Garden"
+    assert dialog.dirty_baselines == [(new_payload, "Old Garden")]
+    assert len(dialog.errors) == 1
+    assert "Committed state: your display settings are saved" in dialog.errors[0]
+    assert "your Garden name is unchanged" in dialog.errors[0]
+    assert "Garden name draft is still here to retry" in dialog.errors[0]
+    assert "no Settings changes were applied" not in dialog.errors[0]
+
+
 def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_substitution() -> None:
     placeholder = _segment(_function_node("_botanical_placeholder_pixmap"))
+    source_loader = _segment(_function_node("_preview_source_pixmap"))
     environment_placeholder = _segment(
         _function_node("_environment_placeholder_pixmap")
     )
@@ -730,6 +864,13 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     plant_preview = _segment(_function_node("_asset_preview_label"))
     populated_preview = _segment(_function_node("_populate_asset_preview"))
     item_preview = _segment(_function_node("_item_preview_label"))
+    purchase_artwork = _segment(
+        _method_node("PurchaseConfirmationDialog", "_populate_artwork")
+    )
+    purchase_target = _segment(
+        _method_node("PurchaseConfirmationDialog", "_populate_target")
+    )
+    nursery_refresh = _segment(_method_node("NurseryDialog", "refresh"))
     nursery_item = _segment(_method_node("NurseryDialog", "_item_artwork"))
     plant_card = _segment(_method_node("PlantInfoCard", "set_selected"))
     story = _segment(_method_node("PlantStoryDialog", "refresh"))
@@ -742,22 +883,30 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     assert "QPainter(" in weather_placeholder
     assert "drawEllipse(" in weather_placeholder
     assert "drawLine(" in weather_placeholder
+    assert "QSvgRenderer" in source_loader
+    assert "renderer.render(" in source_loader
     assert "_environment_placeholder_pixmap(" in environment_preview
     assert "_weather_placeholder_overlay(" in environment_preview
+    assert "_preview_source_pixmap(base_path)" in environment_preview
+    assert "_preview_source_pixmap(weather_path)" in environment_preview
 
-    for source in (
-        plant_preview,
-        populated_preview,
-        item_preview,
-        nursery_item,
-        plant_card,
-        story,
-    ):
+    for source in (plant_preview, populated_preview, item_preview, plant_card):
         assert "_botanical_placeholder_pixmap(" in source
+    assert "_purchase_placeholder_pixmap(" in item_preview
+    assert "placeholder_kind=placeholder_kind" in nursery_item
+    assert "PurchaseKind.FERTILIZER" in nursery_item
+    assert "PurchaseKind.GROWTH_CHARGE" in nursery_item
+    assert "_item_preview_label(" in nursery_item
+    assert "_populate_asset_preview(" in story
+    assert "if missing_art:" in purchase_artwork
+    assert "if not artwork_available:" in purchase_artwork
+    assert "SemanticRole.MISSING_ART" in purchase_target
+    assert "_environment_placeholder_pixmap(350, 192)" in nursery_refresh
 
     assert "label.setText(stage_name)" not in plant_preview
     assert "target.setText(fallback_text)" not in populated_preview
     assert 'label.setText("◇")' not in item_preview
+    assert 'self.environment_feature_art = QLabel("◇")' not in nursery_refresh
     assert "label.setText(accessible_name)" not in nursery_item
     assert 'self.artwork.setText("◇")' not in plant_card
     assert 'stage_preview.setText("?")' not in story

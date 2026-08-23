@@ -5,6 +5,8 @@ from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Any
 
+from ..models.state import OnboardingStep
+
 
 CURRENT_ONBOARDING_VERSION = 3
 
@@ -24,6 +26,9 @@ class OnboardingStateDisplay:
     primary_action: str | None
     nurtured_marker_visible: bool
     onboarding_complete: bool
+    step: OnboardingStep | None = None
+    counted_step: int | None = None
+    total_steps: int = 6
 
 
 def onboarding_state_display(
@@ -34,11 +39,89 @@ def onboarding_state_display(
 ) -> OnboardingStateDisplay:
     """Derive the first-plant lifecycle from persisted Garden evidence.
 
-    ``first_nurture`` is written in the same Garden transaction as the active
-    plant assignment, so it is stronger completion evidence than the separate
-    add-on preference. The preference remains useful for legacy installations,
-    but it cannot make an empty or merely planted garden look nurtured.
+    Schema-18 Garden state preserves authoritative schema-17 onboarding
+    progress. The separate add-on
+    preference is consulted only by legacy callers that have no persisted
+    progress object, and can never make an empty or merely planted garden look
+    nurtured.
     """
+    persisted = getattr(garden_state, "onboarding", None)
+    persisted_step = getattr(persisted, "step", None)
+    if isinstance(persisted_step, str):
+        try:
+            persisted_step = OnboardingStep(persisted_step)
+        except ValueError:
+            persisted_step = None
+    if isinstance(persisted_step, OnboardingStep):
+        projections = {
+            OnboardingStep.INTRODUCTION: (
+                OnboardingState.NO_STARTER,
+                "No plant selected",
+                "Choose starter",
+                False,
+                False,
+                1,
+            ),
+            OnboardingStep.NURSERY: (
+                OnboardingState.STARTER_SELECTED,
+                "Choose a starter",
+                "Choose starter",
+                False,
+                False,
+                2,
+            ),
+            OnboardingStep.CONFIRMATION: (
+                OnboardingState.STARTER_SELECTED,
+                "Starter selected",
+                "Continue",
+                False,
+                False,
+                3,
+            ),
+            OnboardingStep.PLACEMENT: (
+                OnboardingState.STARTER_SELECTED,
+                "Ready to place",
+                "Place starter",
+                False,
+                False,
+                4,
+            ),
+            OnboardingStep.NURTURE: (
+                OnboardingState.STARTER_PLANTED_NOT_NURTURED,
+                "Ready to nurture",
+                "Nurture",
+                False,
+                False,
+                5,
+            ),
+            OnboardingStep.COMPLETION: (
+                OnboardingState.NURTURED_PLANT_ASSIGNED,
+                "Nurtured plant",
+                "Return to Anki",
+                True,
+                False,
+                6,
+            ),
+            OnboardingStep.DONE: (
+                OnboardingState.ONBOARDING_COMPLETE,
+                "Nurtured plant",
+                None,
+                True,
+                True,
+                None,
+            ),
+        }
+        state, label, action, marker, complete, number = projections[persisted_step]
+        return OnboardingStateDisplay(
+            state,
+            label,
+            action,
+            marker,
+            complete,
+            step=persisted_step,
+            counted_step=number,
+        )
+
     plants = tuple(getattr(garden_state, "plants", ()) or ())
     has_starter = bool(plants) and (
         bool(getattr(garden_state, "starter_selection_complete", False))
@@ -114,142 +197,6 @@ def onboarding_state_display(
     )
 
 
-@dataclass(frozen=True)
-class AchievementConditionDisplay:
-    label: str
-    current: int
-    target: int
-    value_text: str
-    satisfied: bool
-
-
-@dataclass(frozen=True)
-class AchievementProgressDisplay:
-    current: int
-    target: int
-    value_text: str
-    criteria_text: str
-    completed: bool = False
-    conditions: tuple[AchievementConditionDisplay, ...] = ()
-
-
-def achievement_progress_display(achievement: Any, state: Any) -> AchievementProgressDisplay:
-    """Project achievement progress without regressing completed cards.
-
-    Known one-time achievements have immutable thresholds. Once unlocked, the
-    satisfied thresholds are a valid derived completion snapshot even when the
-    current Anki day has reset its counters.
-    """
-    stats = getattr(state, "daily_stats", None)
-    reviewed = _nonnegative_int(getattr(stats, "reviewed", 0))
-    wrong = _nonnegative_int(getattr(stats, "wrong", 0))
-    accuracy = _percentage(getattr(stats, "accuracy", 0.0))
-    achievement_id = str(getattr(achievement, "achievement_id", "") or "")
-    completed = bool(getattr(achievement, "unlocked", False))
-
-    definitions: dict[str, tuple[int, int, str, str]] = {
-        "streak_7": (
-            _nonnegative_int(getattr(state, "streak_days", 0)),
-            7,
-            "Anki days",
-            "Answer at least one card on 7 Anki days in a row.",
-        ),
-        "streak_30": (
-            _nonnegative_int(getattr(state, "streak_days", 0)),
-            30,
-            "Anki days",
-            "Answer at least one card on 30 Anki days in a row.",
-        ),
-        "reviews_100_day": (
-            reviewed,
-            100,
-            "card answers",
-            "Record 100 card answers in one Anki day.",
-        ),
-        "reviews_1000_total": (
-            _nonnegative_int(getattr(state, "total_reviews", 0)),
-            1_000,
-            "card answers",
-            "Record 1,000 total card answers.",
-        ),
-        "retention_90": (
-            accuracy,
-            90,
-            "% accuracy",
-            "Reach 90% accuracy after at least 20 card answers today.",
-        ),
-        "retention_100": (
-            reviewed if wrong == 0 else 0,
-            30,
-            "card answers",
-            "Complete 30 card answers today without choosing Again.",
-        ),
-        "all_due_done": (
-            1 if bool(getattr(stats, "completed_due_cards", False)) else 0,
-            1,
-            "complete",
-            "Finish all due cards in the collection today.",
-        ),
-        "no_lapse": (
-            reviewed if wrong == 0 else 0,
-            40,
-            "card answers",
-            "Complete 40 card answers today without choosing Again.",
-        ),
-    }
-    current, target, unit, criteria = definitions.get(
-        achievement_id,
-        (
-            int(round(float(getattr(achievement, "progress", 0.0) or 0.0) * 100)),
-            100,
-            "%",
-            str(getattr(achievement, "description", "") or ""),
-        ),
-    )
-    current = _nonnegative_int(current)
-    target = max(1, _nonnegative_int(target))
-    if completed:
-        current = target
-
-    conditions: tuple[AchievementConditionDisplay, ...] = ()
-    if achievement_id == "retention_90":
-        condition_accuracy = 90 if completed else accuracy
-        condition_answers = 20 if completed else reviewed
-        conditions = (
-            AchievementConditionDisplay(
-                "Accuracy",
-                condition_accuracy,
-                90,
-                f"{condition_accuracy}% / 90%",
-                condition_accuracy >= 90,
-            ),
-            AchievementConditionDisplay(
-                "Anki card answers",
-                condition_answers,
-                20,
-                f"{condition_answers:,} / 20",
-                condition_answers >= 20,
-            ),
-        )
-        value_text = (
-            f"{condition_accuracy} of 90% accuracy; "
-            f"{condition_answers:,} of 20 card answers"
-        )
-    elif achievement_id == "all_due_done":
-        value_text = "1 of 1 complete" if current else "0 of 1 complete"
-    else:
-        value_text = f"{current:,} of {target:,} {unit}"
-
-    return AchievementProgressDisplay(
-        current,
-        target,
-        value_text,
-        criteria,
-        completed,
-        conditions,
-    )
-
-
 class StreakPresentationState(str, Enum):
     NEW = "new"
     ACTIVE = "active"
@@ -321,89 +268,9 @@ def streak_presentation(
     )
 
 
-class DailyProgressState(str, Enum):
-    IN_PROGRESS = "inProgress"
-    COMPLETE = "complete"
-    ACTIVATION_REQUIRED = "activationRequired"
-    NO_DUE = "noDue"
-
-
-@dataclass(frozen=True)
-class DailyProgressDisplay:
-    state: DailyProgressState
-    status_label: str
-    summary: str
-    detail: str
-    remaining_cards: int
-    action_label: str | None = None
-    action_kind: str | None = None
-    action_enabled: bool = False
-    reward_outcome: str = ""
-
-
-def daily_progress_display(
-    cards_remaining: Any,
-    *,
-    reward_complete: bool,
-    reviewed_today: Any,
-    custom_study_supported: bool = False,
-    reward_outcome: str = "",
-) -> DailyProgressDisplay:
-    """Derive one non-contradictory Daily Progress presentation state."""
-    remaining = _nonnegative_int(cards_remaining)
-    reviewed = _nonnegative_int(reviewed_today)
-    if remaining > 0:
-        noun = "card" if remaining == 1 else "cards"
-        return DailyProgressDisplay(
-            DailyProgressState.IN_PROGRESS,
-            "In progress",
-            f"{remaining:,} {noun} remaining",
-            "Finish today’s due cards.",
-            remaining,
-            "Continue studying",
-            "review",
-            True,
-        )
-    if reward_complete:
-        return DailyProgressDisplay(
-            DailyProgressState.COMPLETE,
-            "Complete",
-            "Today’s study goal is complete",
-            str(reward_outcome or "Today’s due-card reward is complete."),
-            0,
-            reward_outcome=str(reward_outcome or ""),
-        )
-    if reviewed == 0:
-        action_label = "Open custom study" if custom_study_supported else None
-        return DailyProgressDisplay(
-            DailyProgressState.ACTIVATION_REQUIRED,
-            "No cards due",
-            "No cards are due today",
-            "Answer one Anki card through custom study to activate today’s reward.",
-            0,
-            action_label,
-            "customStudy" if custom_study_supported else None,
-            bool(custom_study_supported),
-        )
-    return DailyProgressDisplay(
-        DailyProgressState.NO_DUE,
-        "No cards due",
-        "No cards are due today",
-        "There is no further Daily Progress action today.",
-        0,
-    )
-
-
 def _nonnegative_int(value: Any) -> int:
     try:
         return max(0, int(value))
-    except (TypeError, ValueError, OverflowError):
-        return 0
-
-
-def _percentage(value: Any) -> int:
-    try:
-        return max(0, min(100, int(round(float(value or 0.0) * 100))))
     except (TypeError, ValueError, OverflowError):
         return 0
 

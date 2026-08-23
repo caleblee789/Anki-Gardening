@@ -5,6 +5,7 @@ import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from ..environment import (
@@ -14,8 +15,11 @@ from ..environment import (
     SCENERY_CATALOG,
     WEATHER_CATALOG,
 )
+from ..growth import CompletedGrowthChargeRequest
+from ..purchases import CompletedPurchaseRequest
 
-STATE_VERSION = 16
+STATE_VERSION = 21
+ONBOARDING_PROGRESS_VERSION = 1
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
 WEATHER_TYPES = set(WEATHER_CATALOG)
@@ -53,14 +57,18 @@ PLANT_MEMORY_KINDS = {"planted", "first_nurture", "stage", "streak", "reviews"}
 MAX_PLANT_NAME_LENGTH = 40
 MAX_GARDEN_NAME_LENGTH = 40
 MAX_TRANSACTION_HISTORY = 500
+MAX_COMPLETED_PURCHASE_REQUESTS = 500
+MAX_COMPLETED_GROWTH_CHARGE_REQUESTS = 500
 MAX_FEEDBACK_EVENTS = 100
 MAX_REWARD_DROP_HISTORY = 500
+MAX_REWARD_RECEIPTS = 250
 MAX_ACTIVE_PERIODS = 64
 MAX_FERTILIZER_HISTORY = 64
 MAX_BOOSTER_HISTORY = 64
 MAX_PROCESSED_REVLOG_IDS = 100_000
 STREAK_REWARD_MILESTONES = {7, 14, 30, 100}
 STREAK_BONUS_TIERS = ((1, 0), (7, 5), (14, 10), (30, 15), (100, 20), (365, 25))
+GARDEN_FIND_OUTCOME_STATUSES = frozenset({"miss", "hit", "paused"})
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +133,7 @@ class Plant:
     booster: Optional[Booster] = None
     booster_history: List[Booster] = field(default_factory=list)
     name_customized: bool = False
+    passive_growth_remainder_fifths: int = 0
 
     @property
     def growth_stage(self) -> str:
@@ -160,16 +169,98 @@ class DailyStats:
     booster_growth: int = 0
     weather_growth: int = 0
     scenery_growth: int = 0
-    charge_growth: int = 0
-    bonus_growth: int = 0
-    growth_earned: int = 0
-    plant_growth: Dict[str, int] = field(default_factory=dict)
+    plant_nurtured_growth: Dict[str, int] = field(default_factory=dict)
+    plant_passive_growth_fifths: Dict[str, int] = field(default_factory=dict)
+    plant_passive_growth_credited: Dict[str, int] = field(default_factory=dict)
+    plant_charge_growth: Dict[str, int] = field(default_factory=dict)
+    plant_direct_reward_growth: Dict[str, int] = field(default_factory=dict)
+    legacy_unattributed_growth: int = 0
+    legacy_plant_growth: Dict[str, int] = field(default_factory=dict)
+    growth_accounting_stale: bool = False
     completed_due_cards: bool = False
+    # None means the start-of-day due state was not observed, so All Clear
+    # must fail closed rather than infer a historical obligation.
+    due_started_with_cards: Optional[bool] = None
 
     @property
     def accuracy(self) -> float:
         total = self.correct + self.wrong
         return 0 if total == 0 else self.correct / total
+
+    @property
+    def study_growth_generated(self) -> int:
+        return max(0, int(
+            self.base_growth
+            + self.streak_bonus_growth
+            + self.fertilizer_growth
+            + self.booster_growth
+            + self.weather_growth
+            + self.scenery_growth
+        ))
+
+    @property
+    def plant_growth(self) -> Dict[str, int]:
+        plant_ids = {
+            *self.plant_nurtured_growth,
+            *self.plant_passive_growth_credited,
+            *self.plant_charge_growth,
+            *self.plant_direct_reward_growth,
+        }
+        return {
+            plant_id: sum((
+                max(0, int(self.plant_nurtured_growth.get(plant_id, 0))),
+                max(0, int(self.plant_passive_growth_credited.get(plant_id, 0))),
+                max(0, int(self.plant_charge_growth.get(plant_id, 0))),
+                max(0, int(self.plant_direct_reward_growth.get(plant_id, 0))),
+            ))
+            for plant_id in sorted(plant_ids)
+        }
+
+    @property
+    def charge_growth(self) -> int:
+        return sum(max(0, int(value)) for value in self.plant_charge_growth.values())
+
+    @property
+    def direct_reward_growth(self) -> int:
+        return sum(
+            max(0, int(value))
+            for value in self.plant_direct_reward_growth.values()
+        )
+
+    @property
+    def bonus_growth(self) -> int:
+        return max(
+            0,
+            self.study_growth_generated
+            - max(0, int(self.base_growth))
+            + self.charge_growth
+            + self.direct_reward_growth,
+        )
+
+    @property
+    def growth_earned(self) -> int:
+        return (
+            max(0, int(self.legacy_unattributed_growth))
+            + sum(self.plant_growth.values())
+        )
+
+    def reconcile_growth_totals(self) -> None:
+        """Normalize canonical maps; compatibility totals are computed properties."""
+
+        for field_name in (
+            "plant_nurtured_growth",
+            "plant_passive_growth_fifths",
+            "plant_passive_growth_credited",
+            "plant_charge_growth",
+            "plant_direct_reward_growth",
+            "legacy_plant_growth",
+        ):
+            mapping = getattr(self, field_name)
+            setattr(self, field_name, {
+                str(plant_id): max(0, int(value))
+                for plant_id, value in mapping.items()
+                if str(plant_id)
+            })
 
 
 @dataclass
@@ -180,6 +271,11 @@ class CurrencyTransaction:
     delta: int
     balance: int
     occurred_at: str
+    transaction_type: str = "legacy"
+    source: str = "legacy"
+    source_id: str = ""
+    scheduler_day: str = ""
+    correlation_id: str = ""
 
 
 @dataclass
@@ -193,6 +289,202 @@ class FeedbackEvent:
     asset_category: str = ""
     asset_key: str = ""
     amount: int = 0
+    correlation_id: str = ""
+
+
+@dataclass
+class RewardReceipt:
+    """Bounded presentation history for an applied reward event.
+
+    Idempotency never depends on this display history; the unbounded
+    ``applied_reward_event_keys`` ledger remains authoritative after receipts
+    or currency transactions are pruned.
+    """
+
+    event_key: str
+    reward_type: str
+    source: str
+    source_id: str
+    scheduler_day: str
+    correlation_id: str
+    occurred_at: str
+    amount: int = 0
+    item_id: str = ""
+    plant_id: str = ""
+    title: str = ""
+    description: str = ""
+
+
+def bounded_reward_receipts(
+    receipts: List[RewardReceipt],
+    *,
+    limit: int = MAX_REWARD_RECEIPTS,
+) -> List[RewardReceipt]:
+    """Keep the newest complete correlation groups for presentation history.
+
+    A very large sync can produce more rows than the display-history limit in
+    one correlation. Such a group is compacted into resource totals plus as
+    many zero-value Find references as fit, preserving both the atomic total
+    and a bounded Recent Finds projection. Idempotency never depends on these
+    receipts.
+    """
+
+    bounded_limit = max(1, int(limit))
+    groups: Dict[str, List[RewardReceipt]] = {}
+    order: List[str] = []
+    for receipt in receipts:
+        identity = str(receipt.correlation_id or receipt.event_key)
+        if identity not in groups:
+            groups[identity] = []
+        elif identity in order:
+            order.remove(identity)
+        order.append(identity)
+        groups[identity].append(receipt)
+    retained: List[str] = []
+    retained_rows = 0
+    for identity in reversed(order):
+        group = groups[identity]
+        if len(group) > bounded_limit:
+            group = _compact_reward_receipt_group(group, bounded_limit)
+            groups[identity] = group
+        group_size = len(group)
+        if retained and retained_rows + group_size > bounded_limit:
+            break
+        retained.append(identity)
+        retained_rows += group_size
+        if retained_rows >= bounded_limit:
+            break
+    retained.reverse()
+    return [receipt for identity in retained for receipt in groups[identity]]
+
+
+def _compact_reward_receipt_group(
+    receipts: List[RewardReceipt],
+    limit: int,
+) -> List[RewardReceipt]:
+    """Compress one oversized correlation without dropping its resource total."""
+
+    if not receipts:
+        return []
+    bounded_limit = max(1, int(limit))
+    value_receipts = [
+        receipt for receipt in receipts if receipt.reward_type != "reference"
+    ]
+
+    def aggregate(mode: str) -> List[RewardReceipt]:
+        buckets: Dict[tuple[str, str], List[RewardReceipt]] = {}
+        for receipt in value_receipts:
+            if mode == "resource_item":
+                key = (receipt.reward_type, receipt.item_id)
+            elif mode == "resource":
+                key = (receipt.reward_type, "")
+            else:
+                key = ("mixed", "")
+            buckets.setdefault(key, []).append(receipt)
+        result: List[RewardReceipt] = []
+        correlation = str(receipts[-1].correlation_id or receipts[-1].event_key)
+        for index, ((reward_type, item_id), bucket) in enumerate(
+            buckets.items(), start=1
+        ):
+            sources = tuple(dict.fromkeys(item.source for item in bucket))
+            source_ids = tuple(dict.fromkeys(
+                item.source_id for item in bucket if item.source_id
+            ))
+            plant_ids = tuple(dict.fromkeys(
+                item.plant_id for item in bucket if item.plant_id
+            ))
+            titles = tuple(dict.fromkeys(
+                item.title for item in bucket if item.title
+            ))
+            descriptions = tuple(dict.fromkeys(
+                item.description for item in bucket if item.description
+            ))
+            latest = max(bucket, key=lambda item: item.occurred_at)
+            result.append(RewardReceipt(
+                event_key=f"reward-summary:{correlation}:{index}",
+                reward_type=reward_type,
+                source=sources[0] if len(sources) == 1 else "reward_summary",
+                source_id=source_ids[0] if len(source_ids) == 1 else "",
+                scheduler_day=latest.scheduler_day,
+                correlation_id=correlation,
+                occurred_at=latest.occurred_at,
+                amount=sum(max(0, int(item.amount)) for item in bucket),
+                item_id=item_id,
+                plant_id=plant_ids[0] if len(plant_ids) == 1 else "",
+                title=titles[0] if len(titles) == 1 else "Consolidated rewards",
+                description=(
+                    descriptions[0]
+                    if len(descriptions) == 1
+                    else "Aggregated reward history"
+                ),
+            ))
+        return result
+
+    aggregates = aggregate("resource_item")
+    if len(aggregates) > bounded_limit:
+        aggregates = aggregate("resource")
+    if len(aggregates) > bounded_limit:
+        aggregates = aggregate("mixed")
+
+    references: Dict[str, RewardReceipt] = {}
+    reference_order: List[str] = []
+    for receipt in receipts:
+        if (
+            receipt.source not in {"garden_find", "garden_find_environment"}
+            or not receipt.event_key.startswith("garden_find:")
+        ):
+            continue
+        if receipt.event_key in reference_order:
+            reference_order.remove(receipt.event_key)
+        reference_order.append(receipt.event_key)
+        references[receipt.event_key] = RewardReceipt(
+            event_key=receipt.event_key,
+            reward_type="reference",
+            source=receipt.source,
+            source_id=receipt.source_id,
+            scheduler_day=receipt.scheduler_day,
+            correlation_id=receipt.correlation_id,
+            occurred_at=receipt.occurred_at,
+            amount=0,
+            item_id=receipt.item_id,
+            plant_id=receipt.plant_id,
+            title=receipt.title,
+            description=receipt.description,
+        )
+    available_reference_slots = max(0, bounded_limit - len(aggregates))
+    kept_reference_ids = (
+        reference_order[-available_reference_slots:]
+        if available_reference_slots
+        else []
+    )
+    return [*aggregates, *(references[event_key] for event_key in kept_reference_ids)]
+
+
+@dataclass
+class GardenFindOutcome:
+    """Durable consumed Garden Find roll, including misses and cap pauses."""
+
+    answer_key: str
+    scheduler_day: str
+    status: str
+    pool_id: str
+    pool_version: str
+    occurred_at: str
+    reward_id: str = ""
+    reward_type: str = ""
+    amount: int = 0
+    item_id: str = ""
+    display_name: str = ""
+    description: str = ""
+    tier: str = ""
+    artwork_ref: str = ""
+    localization_key: str = ""
+
+    @property
+    def outcome_key(self) -> str:
+        """Pool-qualified identity; independent pools may share one answer."""
+
+        return f"{self.pool_id}:{self.answer_key}"
 
 
 @dataclass
@@ -219,6 +511,68 @@ class Achievement:
     unlocked: bool = False
     progress: float = 0.0
     unlocked_at: Optional[str] = None
+    category: str = ""
+    requirement: str = ""
+    reward_summary: str = ""
+    rewarded_at: Optional[str] = None
+    reward_event_key: str = ""
+    historical_backfill: bool = False
+
+
+class OnboardingStep(str, Enum):
+    """The persisted six-step Garden setup state machine.
+
+    Anki Home is deliberately not represented here: it is an entry/resume
+    surface rather than a counted Garden step.
+    """
+
+    INTRODUCTION = "introduction"
+    NURSERY = "nursery"
+    CONFIRMATION = "confirmation"
+    PLACEMENT = "placement"
+    NURTURE = "nurture"
+    COMPLETION = "completion"
+    DONE = "done"
+
+
+@dataclass
+class OnboardingProgress:
+    version: int = ONBOARDING_PROGRESS_VERSION
+    step: OnboardingStep = OnboardingStep.INTRODUCTION
+    pending_species: Optional[str] = None
+    starter_plant_id: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": ONBOARDING_PROGRESS_VERSION,
+            "step": self.step.value,
+            "pending_species": self.pending_species,
+            "starter_plant_id": self.starter_plant_id,
+        }
+
+
+@dataclass
+class GardenLoadoutState:
+    """The single persisted authority for garden appearance and passives."""
+
+    weather_id: str = DEFAULT_WEATHER_ID
+    scenery_id: str = DEFAULT_SCENERY_ID
+    decoration_id: Optional[str] = None
+    visibility: Dict[str, bool] = field(default_factory=lambda: {
+        "weather": True,
+        "scenery": True,
+    })
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "weather_id": self.weather_id,
+            "scenery_id": self.scenery_id,
+            "decoration_id": self.decoration_id,
+            "visibility": {
+                "weather": bool(self.visibility.get("weather", True)),
+                "scenery": bool(self.visibility.get("scenery", True)),
+            },
+        }
 
 
 @dataclass
@@ -233,13 +587,15 @@ class GardenState:
     unlocked_slots: int = 2
     unlocked_species: List[str] = field(default_factory=list)
     starter_selection_complete: bool = False
-    selected_background: str = DEFAULT_SCENERY_ID
-    selected_weather: str = DEFAULT_WEATHER_ID
+    onboarding: OnboardingProgress = field(default_factory=OnboardingProgress)
+    loadout: GardenLoadoutState = field(default_factory=GardenLoadoutState)
     plants: List[Plant] = field(default_factory=list)
     achievements: Dict[str, Achievement] = field(default_factory=dict)
     daily_stats: DailyStats = field(default_factory=DailyStats)
     currency_balance: int = 0
     currency_transactions: List[CurrencyTransaction] = field(default_factory=list)
+    completed_purchase_requests: List[CompletedPurchaseRequest] = field(default_factory=list)
+    completed_growth_charge_requests: List[CompletedGrowthChargeRequest] = field(default_factory=list)
     claimed_streak_rewards: List[int] = field(default_factory=list)
     pending_feedback: List[FeedbackEvent] = field(default_factory=list)
     reward_seed: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -247,26 +603,40 @@ class GardenState:
     eligible_reward_count: int = 0
     ultra_pity_misses: int = 0
     daily_environment_claims: Dict[str, str] = field(default_factory=dict)
-    environment_visibility: Dict[str, bool] = field(default_factory=lambda: {
-        "weather": True,
-        "scenery": True,
-    })
+    # Schema-21 reward ownership. Visible histories are bounded, while the
+    # event and answer ledgers deliberately are not: pruning either authority
+    # would make an old reward or answer eligible again.
+    reward_state_initialized: bool = False
+    reward_activation_ms: int = 0
+    progression_activation_ms: int = 0
+    applied_reward_event_keys: List[str] = field(default_factory=list)
+    recent_reward_receipts: List[RewardReceipt] = field(default_factory=list)
+    processed_answer_keys: List[str] = field(default_factory=list)
+    answer_lineage_bindings: Dict[str, str] = field(default_factory=dict)
+    pending_reanswer_lineages: Dict[str, int] = field(default_factory=dict)
+    achievement_history_fingerprint: str = ""
+    achievement_history_high_water_revlog_id: int = 0
+    finalized_day_fingerprints: Dict[str, str] = field(default_factory=dict)
+    current_non_again_run: int = 0
+    lifetime_eligible_answers: int = 0
+    garden_find_activation_ms: int = 0
+    garden_find_drought_count: int = 0
+    garden_find_daily_counts: Dict[str, int] = field(default_factory=dict)
+    garden_find_reward_daily_counts: Dict[str, Dict[str, int]] = field(
+        default_factory=dict
+    )
+    garden_find_outcomes: Dict[str, GardenFindOutcome] = field(default_factory=dict)
+    garden_find_ultra_misses: int = 0
     consumables: Dict[str, int] = field(default_factory=lambda: {
         "booster_potion": 0,
+        "fertilizer_basic": 0,
         **{charge_id: 0 for charge_id in GROWTH_CHARGES},
     })
     inventory: Dict[str, List[str]] = field(default_factory=lambda: {
         "pots": ["ceramic_minimal"],
-        "backgrounds": [DEFAULT_SCENERY_ID],
         "scenery": [DEFAULT_SCENERY_ID],
         "decorations": ["lantern"],
         "weather": [DEFAULT_WEATHER_ID],
-    })
-    equipped: Dict[str, str] = field(default_factory=lambda: {
-        "pot": "ceramic_minimal",
-        "background": DEFAULT_SCENERY_ID,
-        "decoration": "none",
-        "weather": DEFAULT_WEATHER_ID,
     })
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
     active_plant_id: Optional[str] = None
@@ -293,6 +663,51 @@ class GardenState:
                 *self.unlocked_species,
                 *(plant.species for plant in self.plants if plant.species in PLANT_SPECIES),
             ]))
+            if self.onboarding.step == OnboardingStep.INTRODUCTION:
+                self.onboarding = OnboardingProgress(
+                    step=OnboardingStep.DONE,
+                    starter_plant_id=self.plants[0].plant_id,
+                )
+
+    @property
+    def selected_weather(self) -> str:
+        """Compatibility alias backed by the canonical loadout."""
+
+        return self.loadout.weather_id
+
+    @selected_weather.setter
+    def selected_weather(self, value: str) -> None:
+        self.loadout.weather_id = str(value)
+
+    @property
+    def selected_background(self) -> str:
+        """Compatibility alias for the canonical Scenery selection."""
+
+        return self.loadout.scenery_id
+
+    @selected_background.setter
+    def selected_background(self, value: str) -> None:
+        self.loadout.scenery_id = str(value)
+
+    @property
+    def environment_visibility(self) -> Dict[str, bool]:
+        """Compatibility alias backed by the canonical loadout visibility."""
+
+        return self.loadout.visibility
+
+    @environment_visibility.setter
+    def environment_visibility(self, value: Dict[str, bool]) -> None:
+        self.loadout.visibility = dict(value)
+
+    @property
+    def equipped(self) -> Dict[str, str]:
+        """Read-only compatibility projection; never persisted as a mirror."""
+
+        return {
+            "weather": self.loadout.weather_id,
+            "background": self.loadout.scenery_id,
+            "decoration": self.loadout.decoration_id or "none",
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return deepcopy({
@@ -306,8 +721,8 @@ class GardenState:
             "unlocked_slots": self.unlocked_slots,
             "unlocked_species": list(self.unlocked_species),
             "starter_selection_complete": self.starter_selection_complete,
-            "selected_background": self.selected_background,
-            "selected_weather": self.selected_weather,
+            "onboarding": self.onboarding.to_dict(),
+            "loadout": self.loadout.to_dict(),
             "plants": [
                 _plant_to_dict(plant)
                 for plant in sorted(
@@ -321,11 +736,49 @@ class GardenState:
             ],
             "achievements": {key: value.__dict__ for key, value in self.achievements.items()},
             "daily_stats": {
-                **{key: value for key, value in self.daily_stats.__dict__.items() if key != "plant_growth"},
+                **{
+                    key: value
+                    for key, value in self.daily_stats.__dict__.items()
+                    if key not in {
+                        "plant_growth",
+                        "plant_nurtured_growth",
+                        "plant_passive_growth_fifths",
+                        "plant_passive_growth_credited",
+                        "plant_charge_growth",
+                        "plant_direct_reward_growth",
+                        "legacy_plant_growth",
+                    }
+                },
+                "growth_earned": self.daily_stats.growth_earned,
+                "charge_growth": self.daily_stats.charge_growth,
+                "direct_reward_growth": self.daily_stats.direct_reward_growth,
+                "bonus_growth": self.daily_stats.bonus_growth,
                 "plant_growth": dict(self.daily_stats.plant_growth),
+                "plant_nurtured_growth": dict(self.daily_stats.plant_nurtured_growth),
+                "plant_passive_growth_fifths": dict(
+                    self.daily_stats.plant_passive_growth_fifths
+                ),
+                "plant_passive_growth_credited": dict(
+                    self.daily_stats.plant_passive_growth_credited
+                ),
+                "plant_charge_growth": dict(self.daily_stats.plant_charge_growth),
+                "plant_direct_reward_growth": dict(
+                    self.daily_stats.plant_direct_reward_growth
+                ),
+                "legacy_plant_growth": dict(self.daily_stats.legacy_plant_growth),
             },
             "currency_balance": self.currency_balance,
             "currency_transactions": [tx.__dict__ for tx in self.currency_transactions[-MAX_TRANSACTION_HISTORY:]],
+            "completed_purchase_requests": [
+                request.to_dict()
+                for request in self.completed_purchase_requests[-MAX_COMPLETED_PURCHASE_REQUESTS:]
+            ],
+            "completed_growth_charge_requests": [
+                request.to_dict()
+                for request in self.completed_growth_charge_requests[
+                    -MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:
+                ]
+            ],
             "claimed_streak_rewards": sorted(set(self.claimed_streak_rewards)),
             "pending_feedback": [event.__dict__ for event in self.pending_feedback[-MAX_FEEDBACK_EVENTS:]],
             "reward_seed": self.reward_seed,
@@ -335,13 +788,49 @@ class GardenState:
             "eligible_reward_count": self.eligible_reward_count,
             "ultra_pity_misses": self.ultra_pity_misses,
             "daily_environment_claims": dict(self.daily_environment_claims),
-            "environment_visibility": dict(self.environment_visibility),
+            "reward_state_initialized": bool(self.reward_state_initialized),
+            "reward_activation_ms": self.reward_activation_ms,
+            "progression_activation_ms": self.progression_activation_ms,
+            "applied_reward_event_keys": list(dict.fromkeys(
+                key for key in self.applied_reward_event_keys
+                if isinstance(key, str) and key
+            )),
+            "recent_reward_receipts": [
+                receipt.__dict__
+                for receipt in bounded_reward_receipts(self.recent_reward_receipts)
+            ],
+            "processed_answer_keys": list(dict.fromkeys(
+                key for key in self.processed_answer_keys
+                if isinstance(key, str) and key
+            )),
+            "answer_lineage_bindings": dict(self.answer_lineage_bindings),
+            "pending_reanswer_lineages": dict(self.pending_reanswer_lineages),
+            "achievement_history_fingerprint": self.achievement_history_fingerprint,
+            "achievement_history_high_water_revlog_id": (
+                self.achievement_history_high_water_revlog_id
+            ),
+            "finalized_day_fingerprints": dict(self.finalized_day_fingerprints),
+            "current_non_again_run": self.current_non_again_run,
+            "lifetime_eligible_answers": self.lifetime_eligible_answers,
+            "garden_find_activation_ms": self.garden_find_activation_ms,
+            "garden_find_drought_count": self.garden_find_drought_count,
+            "garden_find_daily_counts": dict(self.garden_find_daily_counts),
+            "garden_find_reward_daily_counts": {
+                day_value: dict(counts)
+                for day_value, counts in self.garden_find_reward_daily_counts.items()
+            },
+            "garden_find_outcomes": {
+                outcome.outcome_key: outcome.__dict__
+                for outcome in self.garden_find_outcomes.values()
+            },
+            "garden_find_ultra_misses": self.garden_find_ultra_misses,
             "consumables": dict(self.consumables),
             "inventory": self.inventory,
-            "equipped": self.equipped,
             "last_active_day": self.last_active_day,
             "active_plant_id": self.active_plant_id,
-            "active_plant_periods": [period.__dict__ for period in self.active_plant_periods[-MAX_ACTIVE_PERIODS:]],
+            "active_plant_periods": [
+                period.__dict__ for period in self.active_plant_periods
+            ],
             "last_processed_revlog_id": self.last_processed_revlog_id,
             "processed_revlog_floor": self.processed_revlog_floor,
             "processed_revlog_ids": sorted({
@@ -375,26 +864,7 @@ class GardenState:
             max(0, state.total_reviews - state.total_correct),
             _nonnegative_int(data.get("total_wrong"), 0, "total_wrong", issues),
         )
-        scenery = _string(
-            data.get("selected_background"),
-            DEFAULT_SCENERY_ID,
-            "selected_background",
-            issues,
-        )
-        state.selected_background = (
-            scenery if scenery in SCENERY_CATALOG else DEFAULT_SCENERY_ID
-        )
-        if scenery not in SCENERY_CATALOG:
-            issues.append(f"selected_background: unexpected value {scenery!r}")
-        weather = _string(
-            data.get("selected_weather"),
-            DEFAULT_WEATHER_ID,
-            "selected_weather",
-            issues,
-        )
-        state.selected_weather = weather if weather in WEATHER_TYPES else DEFAULT_WEATHER_ID
-        if weather not in WEATHER_TYPES:
-            issues.append(f"selected_weather: unexpected value {weather!r}")
+        state.loadout = _garden_loadout(data.get("loadout"), issues)
         state.daily_stats = _daily_stats(data.get("daily_stats"), issues)
         state.plants = _plants(data.get("plants"), issues)
         state.unlocked_slots = _bounded_int(
@@ -417,9 +887,20 @@ class GardenState:
             issues.append("starter_selection_complete: repaired to true for an existing collection")
             starter_selection_complete = True
         state.starter_selection_complete = starter_selection_complete
+        state.onboarding = _onboarding_progress(
+            data.get("onboarding"),
+            state.plants,
+            issues,
+        )
         state.achievements = _achievements(data.get("achievements"), issues)
         state.currency_balance = _nonnegative_int(data.get("currency_balance"), 0, "currency_balance", issues)
         state.currency_transactions = _transactions(data.get("currency_transactions"), state.currency_balance, issues)
+        state.completed_purchase_requests = _completed_purchase_requests(
+            data.get("completed_purchase_requests"), issues
+        )
+        state.completed_growth_charge_requests = _completed_growth_charge_requests(
+            data.get("completed_growth_charge_requests"), issues
+        )
         claimed_streaks = data.get("claimed_streak_rewards", [])
         if isinstance(claimed_streaks, list):
             claimed_values = {
@@ -456,19 +937,132 @@ class GardenState:
         state.daily_environment_claims = _daily_environment_claims(
             data.get("daily_environment_claims"), issues
         )
-        state.environment_visibility = _environment_visibility(
-            data.get("environment_visibility"), issues
+        initialized = data.get("reward_state_initialized", False)
+        if not isinstance(initialized, bool):
+            issues.append("reward_state_initialized: expected bool")
+            initialized = False
+        state.reward_state_initialized = initialized
+        state.reward_activation_ms = _nonnegative_int(
+            data.get("reward_activation_ms"), 0, "reward_activation_ms", issues
         )
+        state.progression_activation_ms = _nonnegative_int(
+            data.get("progression_activation_ms"),
+            0,
+            "progression_activation_ms",
+            issues,
+        )
+        state.applied_reward_event_keys = _unique_event_keys(
+            data.get("applied_reward_event_keys"),
+            "applied_reward_event_keys",
+            issues,
+        )
+        state.recent_reward_receipts = _reward_receipts(
+            data.get("recent_reward_receipts"), issues
+        )
+        state.processed_answer_keys = _unique_event_keys(
+            data.get("processed_answer_keys"),
+            "processed_answer_keys",
+            issues,
+        )
+        state.answer_lineage_bindings = _answer_lineage_bindings(
+            data.get("answer_lineage_bindings"), issues
+        )
+        state.pending_reanswer_lineages = _pending_reanswer_lineages(
+            data.get("pending_reanswer_lineages"), issues
+        )
+        state.achievement_history_fingerprint = _optional_token(
+            data.get("achievement_history_fingerprint"),
+            "achievement_history_fingerprint",
+            issues,
+        )
+        state.achievement_history_high_water_revlog_id = _nonnegative_int(
+            data.get("achievement_history_high_water_revlog_id"),
+            0,
+            "achievement_history_high_water_revlog_id",
+            issues,
+        )
+        state.finalized_day_fingerprints = _day_fingerprints(
+            data.get("finalized_day_fingerprints"), issues
+        )
+        state.current_non_again_run = _nonnegative_int(
+            data.get("current_non_again_run"), 0, "current_non_again_run", issues
+        )
+        state.lifetime_eligible_answers = _nonnegative_int(
+            data.get("lifetime_eligible_answers"),
+            0,
+            "lifetime_eligible_answers",
+            issues,
+        )
+        state.garden_find_activation_ms = _nonnegative_int(
+            data.get("garden_find_activation_ms"), 0, "garden_find_activation_ms", issues
+        )
+        state.garden_find_drought_count = _nonnegative_int(
+            data.get("garden_find_drought_count"), 0, "garden_find_drought_count", issues
+        )
+        state.garden_find_daily_counts = _garden_find_daily_counts(
+            data.get("garden_find_daily_counts"), issues
+        )
+        state.garden_find_reward_daily_counts = _garden_find_reward_daily_counts(
+            data.get("garden_find_reward_daily_counts"), issues
+        )
+        state.garden_find_outcomes = _garden_find_outcomes(
+            data.get("garden_find_outcomes"), issues
+        )
+        state.garden_find_ultra_misses = _nonnegative_int(
+            data.get("garden_find_ultra_misses"), 0, "garden_find_ultra_misses", issues
+        )
+        if state.reward_state_initialized:
+            if state.reward_activation_ms <= 0:
+                issues.append(
+                    "reward_state_initialized: disabled without an activation boundary"
+                )
+                state.reward_state_initialized = False
+                state.reward_activation_ms = 0
+                state.progression_activation_ms = 0
+                state.garden_find_activation_ms = 0
+            elif state.garden_find_activation_ms <= 0:
+                issues.append(
+                    "garden_find_activation_ms: repaired from reward activation boundary"
+                )
+                state.garden_find_activation_ms = state.reward_activation_ms
+        else:
+            state.reward_activation_ms = 0
+            state.progression_activation_ms = 0
+            state.garden_find_activation_ms = 0
+        if not state.starter_selection_complete and state.progression_activation_ms:
+            issues.append(
+                "progression_activation_ms: disabled until starter selection completes"
+            )
+            state.progression_activation_ms = 0
+
+        # Exact visible evidence can repair a missing authority entry, but the
+        # authority itself remains unbounded and therefore survives pruning.
+        state.applied_reward_event_keys = list(dict.fromkeys([
+            *state.applied_reward_event_keys,
+            *(
+                transaction.event_key
+                for transaction in state.currency_transactions
+                if transaction.delta > 0
+                or transaction.transaction_type == "credit"
+            ),
+            *(receipt.event_key for receipt in state.recent_reward_receipts),
+            *(
+                achievement.reward_event_key
+                for achievement in state.achievements.values()
+                if achievement.reward_event_key
+            ),
+        ]))
+        state.processed_answer_keys = list(dict.fromkeys([
+            *state.processed_answer_keys,
+            *(outcome.answer_key for outcome in state.garden_find_outcomes.values()),
+        ]))
         state.consumables = _consumables(data.get("consumables"), issues)
         state.inventory = _inventory(data.get("inventory"), state.inventory, issues)
-        state.equipped = _equipped(data.get("equipped"), state.equipped, issues)
         scenery_owned = list(dict.fromkeys([
             DEFAULT_SCENERY_ID,
-            *state.inventory.get("backgrounds", []),
             *state.inventory.get("scenery", []),
         ]))
         scenery_owned = [item_id for item_id in scenery_owned if item_id in SCENERY_CATALOG]
-        state.inventory["backgrounds"] = list(scenery_owned)
         state.inventory["scenery"] = list(scenery_owned)
         weather_owned = list(dict.fromkeys([
             DEFAULT_WEATHER_ID,
@@ -483,8 +1077,11 @@ class GardenState:
         if state.selected_weather not in state.inventory["weather"]:
             issues.append("selected_weather: repaired to an owned weather")
             state.selected_weather = DEFAULT_WEATHER_ID
-        state.equipped["background"] = state.selected_background
-        state.equipped["weather"] = state.selected_weather
+        decorations = state.inventory.get("decorations", [])
+        if state.loadout.decoration_id not in decorations:
+            if state.loadout.decoration_id is not None:
+                issues.append("loadout.decoration_id: repaired to none")
+            state.loadout.decoration_id = None
         state.last_active_day = _iso_date(
             data.get("last_active_day"), state.daily_stats.day, "last_active_day", issues
         )
@@ -545,6 +1142,7 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
         "slot_index": plant.slot_index,
         "growth_points": plant.growth_points,
         "bonus_remainder": plant.bonus_remainder,
+        "passive_growth_remainder_fifths": plant.passive_growth_remainder_fifths,
         "personality": plant.personality,
         "planted_on": plant.planted_on,
         "memories": [memory.__dict__ for memory in plant.memories],
@@ -558,7 +1156,7 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
                     float(item.expires_at),
                     str(item.tier),
                 ),
-            )[-MAX_FERTILIZER_HISTORY:]
+            )
         ],
         "booster": plant.booster.__dict__ if plant.booster else None,
         "booster_history": [
@@ -569,7 +1167,7 @@ def _plant_to_dict(plant: Plant) -> dict[str, Any]:
                     float(item.started_at if item.started_at is not None else item.expires_at),
                     float(item.expires_at),
                 ),
-            )[-MAX_BOOSTER_HISTORY:]
+            )
         ],
         "name_customized": bool(plant.name_customized),
     }
@@ -619,6 +1217,74 @@ def _garden_name(value: Any, issues: list[str]) -> str:
     if len(clean) > MAX_GARDEN_NAME_LENGTH:
         issues.append("garden_name: truncated to the current length limit")
     return clean[:MAX_GARDEN_NAME_LENGTH]
+
+
+def _onboarding_progress(
+    value: Any,
+    plants: list[Plant],
+    issues: list[str],
+) -> OnboardingProgress:
+    """Validate setup progress without deriving it from display copy or config."""
+
+    if not isinstance(value, dict):
+        if value is not None:
+            issues.append("onboarding: expected object")
+        return OnboardingProgress()
+    version = value.get("version")
+    if version != ONBOARDING_PROGRESS_VERSION:
+        issues.append("onboarding.version: unsupported version")
+        return OnboardingProgress()
+    try:
+        step = OnboardingStep(str(value.get("step", "")))
+    except ValueError:
+        issues.append("onboarding.step: unexpected value")
+        step = OnboardingStep.INTRODUCTION
+
+    pending = value.get("pending_species")
+    if pending is not None and pending not in PLANT_SPECIES:
+        issues.append("onboarding.pending_species: unsupported species")
+        pending = None
+    starter_id = value.get("starter_plant_id")
+    if starter_id is not None and not isinstance(starter_id, str):
+        issues.append("onboarding.starter_plant_id: expected string or null")
+        starter_id = None
+
+    plant_ids = {plant.plant_id for plant in plants}
+    if starter_id not in plant_ids:
+        if starter_id is not None:
+            issues.append("onboarding.starter_plant_id: missing plant")
+        starter_id = plants[0].plant_id if plants else None
+
+    if step in {OnboardingStep.CONFIRMATION, OnboardingStep.PLACEMENT} and pending is None:
+        issues.append("onboarding.pending_species: required for current step")
+        step = OnboardingStep.NURSERY
+    if not plants and step in {
+        OnboardingStep.NURTURE,
+        OnboardingStep.COMPLETION,
+        OnboardingStep.DONE,
+    }:
+        issues.append("onboarding.step: requires a starter plant")
+        step = OnboardingStep.INTRODUCTION
+        starter_id = None
+    elif plants and step in {
+        OnboardingStep.INTRODUCTION,
+        OnboardingStep.NURSERY,
+        OnboardingStep.CONFIRMATION,
+        OnboardingStep.PLACEMENT,
+    }:
+        issues.append("onboarding.step: repaired past atomic placement")
+        step = OnboardingStep.NURTURE
+        pending = None
+    if step in {OnboardingStep.INTRODUCTION, OnboardingStep.NURTURE, OnboardingStep.COMPLETION, OnboardingStep.DONE}:
+        pending = None
+    if step == OnboardingStep.DONE:
+        starter_id = starter_id or (plants[0].plant_id if plants else None)
+    return OnboardingProgress(
+        version=ONBOARDING_PROGRESS_VERSION,
+        step=step,
+        pending_species=pending,
+        starter_plant_id=starter_id,
+    )
 
 
 def _reward_seed(value: Any, default: str, issues: list[str]) -> str:
@@ -673,31 +1339,50 @@ def _daily_stats(value: Any, issues: list[str]) -> DailyStats:
         "reviewed", "correct", "wrong", "new_count", "learning_count", "review_count",
         "difficult_count", "recovered_lapses", "base_growth", "streak_bonus_growth",
         "fertilizer_growth", "booster_growth", "weather_growth", "scenery_growth",
-        "charge_growth", "bonus_growth", "growth_earned",
+        "legacy_unattributed_growth",
     ):
         setattr(result, key, _nonnegative_int(value.get(key), 0, f"daily_stats.{key}", issues))
     result.correct = min(result.correct, result.reviewed)
     result.wrong = min(result.wrong, max(0, result.reviewed - result.correct))
-    result.bonus_growth = (
-        result.streak_bonus_growth
-        + result.fertilizer_growth
-        + result.booster_growth
-        + result.weather_growth
-        + result.scenery_growth
-        + result.charge_growth
-    )
-    result.growth_earned = result.base_growth + result.bonus_growth
-    plant_growth = value.get("plant_growth", {})
-    if isinstance(plant_growth, dict):
-        result.plant_growth = {
-            str(key): max(0, int(points))
-            for key, points in plant_growth.items()
-            if isinstance(key, str) and isinstance(points, int) and not isinstance(points, bool)
+    def growth_map(key: str) -> dict[str, int]:
+        raw_map = value.get(key, {})
+        if not isinstance(raw_map, dict):
+            issues.append(f"daily_stats.{key}: expected object")
+            return {}
+        return {
+            str(plant_id): max(0, int(points))
+            for plant_id, points in raw_map.items()
+            if (
+                isinstance(plant_id, str)
+                and plant_id
+                and isinstance(points, int)
+                and not isinstance(points, bool)
+            )
         }
-    else:
-        issues.append("daily_stats.plant_growth: expected object")
+
+    result.plant_nurtured_growth = growth_map("plant_nurtured_growth")
+    result.plant_passive_growth_fifths = growth_map("plant_passive_growth_fifths")
+    result.plant_passive_growth_credited = growth_map("plant_passive_growth_credited")
+    result.plant_charge_growth = growth_map("plant_charge_growth")
+    result.plant_direct_reward_growth = growth_map("plant_direct_reward_growth")
+    result.legacy_plant_growth = growth_map("legacy_plant_growth")
+    stale = value.get("growth_accounting_stale", False)
+    if not isinstance(stale, bool):
+        issues.append("daily_stats.growth_accounting_stale: expected bool")
+        stale = False
+    result.growth_accounting_stale = stale
+    persisted_plant_growth = growth_map("plant_growth")
+    result.reconcile_growth_totals()
+    if persisted_plant_growth and persisted_plant_growth != result.plant_growth:
+        issues.append("daily_stats.plant_growth: repaired from typed allocation totals")
     raw = value.get("completed_due_cards", False)
     result.completed_due_cards = raw if isinstance(raw, bool) else False
+    raw_due = value.get("due_started_with_cards")
+    if raw_due is None or isinstance(raw_due, bool):
+        result.due_started_with_cards = raw_due
+    else:
+        issues.append("daily_stats.due_started_with_cards: expected bool or null")
+        result.due_started_with_cards = None
     return result
 
 
@@ -777,6 +1462,14 @@ def _plants(value: Any, issues: list[str]) -> list[Plant]:
             )),
             bonus_remainder=_bounded_int(
                 raw.get("bonus_remainder"), 0, 0, 99, f"plants[{index}].bonus_remainder", issues
+            ),
+            passive_growth_remainder_fifths=_bounded_int(
+                raw.get("passive_growth_remainder_fifths"),
+                0,
+                0,
+                4,
+                f"plants[{index}].passive_growth_remainder_fifths",
+                issues,
             ),
             personality=raw.get("personality", "balanced") if isinstance(raw.get("personality"), str) else "balanced",
             planted_on=_iso_date(
@@ -861,9 +1554,6 @@ def _fertilizer_history(
         float(item.expires_at),
         str(item.tier),
     ))
-    if len(parsed) > MAX_FERTILIZER_HISTORY:
-        issues.append(f"{label}: exceeded activation history safety bound")
-        parsed = parsed[-MAX_FERTILIZER_HISTORY:]
     return parsed
 
 
@@ -925,9 +1615,6 @@ def _booster_history(value: Any, label: str, issues: list[str]) -> list[Booster]
         float(item.started_at if item.started_at is not None else item.expires_at),
         float(item.expires_at),
     ))
-    if len(parsed) > MAX_BOOSTER_HISTORY:
-        issues.append(f"{label}: exceeded activation history safety bound")
-        parsed = parsed[-MAX_BOOSTER_HISTORY:]
     return parsed
 
 
@@ -966,6 +1653,328 @@ def _plant_memories(value: Any, plant_index: int, issues: list[str]) -> list[Pla
     return result
 
 
+def _optional_token(value: Any, label: str, issues: list[str]) -> str:
+    if value in (None, ""):
+        return ""
+    if not isinstance(value, str) or not value.strip():
+        issues.append(f"{label}: expected string")
+        return ""
+    return value.strip()
+
+
+def _unique_event_keys(value: Any, label: str, issues: list[str]) -> list[str]:
+    """Validate an intentionally unbounded replay-prevention ledger."""
+
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append(f"{label}: expected list")
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        if not isinstance(raw, str) or not raw or raw in seen:
+            if isinstance(raw, str) and raw in seen:
+                issues.append(f"{label}: removed duplicate key")
+            continue
+        seen.add(raw)
+        result.append(raw)
+    return result
+
+
+def _answer_lineage_bindings(value: Any, issues: list[str]) -> dict[str, str]:
+    """Validate the unbounded revlog-alias to stable-lineage authority."""
+
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("answer_lineage_bindings: expected object")
+        return {}
+    result: dict[str, str] = {}
+    for raw_revlog_id, raw_lineage in value.items():
+        if (
+            not isinstance(raw_revlog_id, str)
+            or not raw_revlog_id.isdigit()
+            or int(raw_revlog_id) <= 0
+            or not isinstance(raw_lineage, str)
+        ):
+            continue
+        parts = raw_lineage.split("|")
+        if len(parts) != 4 or parts[0] != "v1" or not _valid_iso_date(parts[1]):
+            continue
+        try:
+            card_id = int(parts[2])
+            serial = int(parts[3])
+        except ValueError:
+            continue
+        if card_id <= 0 or serial <= 0:
+            continue
+        result[raw_revlog_id] = raw_lineage
+    return result
+
+
+def _pending_reanswer_lineages(value: Any, issues: list[str]) -> dict[str, int]:
+    """Validate short-lived undo lineage hints used to prevent rerolling."""
+
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("pending_reanswer_lineages: expected object")
+        return {}
+    result: dict[str, int] = {}
+    for raw_lineage, raw_floor in value.items():
+        if (
+            not isinstance(raw_lineage, str)
+            or not isinstance(raw_floor, int)
+            or isinstance(raw_floor, bool)
+            or raw_floor <= 0
+        ):
+            continue
+        parts = raw_lineage.split("|")
+        if len(parts) != 4 or parts[0] != "v1" or not _valid_iso_date(parts[1]):
+            continue
+        try:
+            card_id = int(parts[2])
+            serial = int(parts[3])
+        except ValueError:
+            continue
+        if card_id > 0 and serial > 0:
+            result[raw_lineage] = raw_floor
+    return result
+
+
+def _reward_receipts(value: Any, issues: list[str]) -> list[RewardReceipt]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("recent_reward_receipts: expected list")
+        return []
+    result: list[RewardReceipt] = []
+    identities: set[tuple[str, str, str, str, str, str]] = set()
+    for index, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            continue
+        event_key = raw.get("event_key")
+        reward_type = raw.get("reward_type")
+        source = raw.get("source")
+        source_id = raw.get("source_id", "")
+        scheduler_day = raw.get("scheduler_day")
+        correlation_id = raw.get("correlation_id", "")
+        occurred_at = raw.get("occurred_at")
+        item_id = raw.get("item_id", "")
+        plant_id = raw.get("plant_id", "")
+        title = raw.get("title", "")
+        description = raw.get("description", "")
+        if not all(isinstance(item, str) and item for item in (
+            event_key, reward_type, source, scheduler_day, occurred_at,
+        )):
+            continue
+        if not _valid_iso_date(scheduler_day) or not _valid_iso_datetime(occurred_at):
+            continue
+        optional_strings = (
+            source_id,
+            correlation_id,
+            item_id,
+            plant_id,
+            title,
+            description,
+        )
+        if not all(isinstance(item, str) for item in optional_strings):
+            continue
+        amount = _nonnegative_int(
+            raw.get("amount"), 0, f"recent_reward_receipts[{index}].amount", issues
+        )
+        # One atomic event may contain several resource lines. Only collapse an
+        # exact duplicate receipt, never every row sharing its event key.
+        identity = (
+            event_key,
+            reward_type,
+            source_id,
+            item_id,
+            plant_id,
+            correlation_id,
+        )
+        if identity in identities:
+            issues.append(f"recent_reward_receipts[{index}]: duplicate resource line")
+            continue
+        identities.add(identity)
+        result.append(RewardReceipt(
+            event_key=event_key,
+            reward_type=reward_type,
+            source=source,
+            source_id=source_id,
+            scheduler_day=scheduler_day,
+            correlation_id=correlation_id,
+            occurred_at=occurred_at,
+            amount=amount,
+            item_id=item_id,
+            plant_id=plant_id,
+            title=title,
+            description=description,
+        ))
+    return bounded_reward_receipts(result)
+
+
+def _day_fingerprints(value: Any, issues: list[str]) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("finalized_day_fingerprints: expected object")
+        return {}
+    result: dict[str, str] = {}
+    for raw_day, raw_fingerprint in value.items():
+        if _valid_iso_date(raw_day) and isinstance(raw_fingerprint, str) and raw_fingerprint:
+            result[str(raw_day)] = raw_fingerprint
+    return result
+
+
+def _garden_find_daily_counts(value: Any, issues: list[str]) -> dict[str, int]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("garden_find_daily_counts: expected object")
+        return {}
+    result: dict[str, int] = {}
+    for raw_day, raw_count in value.items():
+        if not _valid_iso_date(raw_day):
+            continue
+        result[str(raw_day)] = _bounded_int(
+            raw_count,
+            0,
+            0,
+            3,
+            f"garden_find_daily_counts.{raw_day}",
+            issues,
+        )
+    return result
+
+
+def _garden_find_reward_daily_counts(
+    value: Any,
+    issues: list[str],
+) -> dict[str, dict[str, int]]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("garden_find_reward_daily_counts: expected object")
+        return {}
+    result: dict[str, dict[str, int]] = {}
+    for raw_day, raw_counts in value.items():
+        if not _valid_iso_date(raw_day) or not isinstance(raw_counts, dict):
+            continue
+        counts: dict[str, int] = {}
+        for raw_reward_id, raw_count in raw_counts.items():
+            if not isinstance(raw_reward_id, str) or not raw_reward_id:
+                continue
+            counts[raw_reward_id] = _bounded_int(
+                raw_count,
+                0,
+                0,
+                3,
+                f"garden_find_reward_daily_counts.{raw_day}.{raw_reward_id}",
+                issues,
+            )
+        if counts:
+            result[str(raw_day)] = counts
+    return result
+
+
+def _garden_find_outcomes(
+    value: Any,
+    issues: list[str],
+) -> dict[str, GardenFindOutcome]:
+    """Validate consumed outcomes without pruning replay-prevention history."""
+
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        issues.append("garden_find_outcomes: expected object")
+        return {}
+    result: dict[str, GardenFindOutcome] = {}
+    for outcome_key, raw in value.items():
+        if not isinstance(outcome_key, str) or not outcome_key or not isinstance(raw, dict):
+            continue
+        scheduler_day = raw.get("scheduler_day")
+        status = raw.get("status")
+        pool_id = raw.get("pool_id")
+        pool_version = raw.get("pool_version")
+        occurred_at = raw.get("occurred_at")
+        if (
+            not _valid_iso_date(scheduler_day)
+            or status not in GARDEN_FIND_OUTCOME_STATUSES
+            or not isinstance(pool_id, str)
+            or not pool_id
+            or not isinstance(pool_version, str)
+            or not pool_version
+            or not _valid_iso_datetime(occurred_at)
+        ):
+            continue
+        stored_answer_key = raw.get("answer_key")
+        if not isinstance(stored_answer_key, str) or not stored_answer_key:
+            prefix = f"{pool_id}:"
+            stored_answer_key = (
+                outcome_key[len(prefix):]
+                if outcome_key.startswith(prefix)
+                else outcome_key
+            )
+        expected_outcome_key = f"{pool_id}:{stored_answer_key}"
+        if outcome_key != expected_outcome_key:
+            issues.append(
+                f"garden_find_outcomes.{outcome_key}: repaired pool-qualified identity"
+            )
+        reward_id = raw.get("reward_id", "")
+        reward_type = raw.get("reward_type", "")
+        item_id = raw.get("item_id", "")
+        display_name = raw.get("display_name", "")
+        description = raw.get("description", "")
+        tier = raw.get("tier", "")
+        artwork_ref = raw.get("artwork_ref", "")
+        localization_key = raw.get("localization_key", "")
+        if not all(isinstance(item, str) for item in (
+            reward_id,
+            reward_type,
+            item_id,
+            display_name,
+            description,
+            tier,
+            artwork_ref,
+            localization_key,
+        )):
+            continue
+        amount = _nonnegative_int(
+            raw.get("amount"),
+            0,
+            f"garden_find_outcomes.{outcome_key}.amount",
+            issues,
+        )
+        if status == "hit" and (not reward_id or not reward_type):
+            issues.append(f"garden_find_outcomes.{outcome_key}: hit missing reward")
+            continue
+        if status != "hit":
+            reward_id = ""
+            reward_type = ""
+            item_id = ""
+            amount = 0
+        result[expected_outcome_key] = GardenFindOutcome(
+            answer_key=stored_answer_key,
+            scheduler_day=str(scheduler_day),
+            status=str(status),
+            pool_id=pool_id,
+            pool_version=str(pool_version),
+            occurred_at=str(occurred_at),
+            reward_id=reward_id,
+            reward_type=reward_type,
+            amount=amount,
+            item_id=item_id,
+            display_name=display_name,
+            description=description,
+            tier=tier,
+            artwork_ref=artwork_ref,
+            localization_key=localization_key,
+        )
+    return result
+
+
 def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyTransaction]:
     if value is None:
         return []
@@ -992,7 +2001,37 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
             continue
         ids.add(tx_id)
         events.add(event_key)
-        result.append(CurrencyTransaction(tx_id, event_key, reason, delta, resulting, occurred))
+        transaction_type = raw.get("transaction_type", "legacy")
+        source = raw.get("source", "legacy")
+        source_id = raw.get("source_id", "")
+        scheduler_day = raw.get("scheduler_day", "")
+        correlation_id = raw.get("correlation_id", "")
+        if not isinstance(transaction_type, str) or not transaction_type:
+            transaction_type = "legacy"
+        if not isinstance(source, str) or not source:
+            source = "legacy"
+        if not isinstance(source_id, str):
+            source_id = ""
+        if scheduler_day and not _valid_iso_date(scheduler_day):
+            issues.append(f"currency_transactions[{index}].scheduler_day: expected ISO date")
+            scheduler_day = ""
+        if not isinstance(scheduler_day, str):
+            scheduler_day = ""
+        if not isinstance(correlation_id, str):
+            correlation_id = ""
+        result.append(CurrencyTransaction(
+            tx_id,
+            event_key,
+            reason,
+            delta,
+            resulting,
+            occurred,
+            transaction_type,
+            source,
+            source_id,
+            scheduler_day,
+            correlation_id,
+        ))
     if result:
         opening_balance = balance - sum(item.delta for item in result)
         if opening_balance < 0:
@@ -1017,8 +2056,65 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
                 item.delta,
                 running,
                 item.occurred_at,
+                item.transaction_type,
+                item.source,
+                item.source_id,
+                item.scheduler_day,
+                item.correlation_id,
             ))
         result = repaired
+    return result
+
+
+def _completed_purchase_requests(
+    value: Any,
+    issues: list[str],
+) -> list[CompletedPurchaseRequest]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("completed_purchase_requests: expected list")
+        return []
+    result: list[CompletedPurchaseRequest] = []
+    request_ids: set[str] = set()
+    for index, raw in enumerate(value[-MAX_COMPLETED_PURCHASE_REQUESTS:]):
+        record = CompletedPurchaseRequest.from_dict(raw)
+        if record is None:
+            issues.append(f"completed_purchase_requests[{index}]: invalid record")
+            continue
+        if record.request_id in request_ids:
+            issues.append(
+                f"completed_purchase_requests[{index}]: duplicate request identity"
+            )
+            continue
+        request_ids.add(record.request_id)
+        result.append(record)
+    return result
+
+
+def _completed_growth_charge_requests(
+    value: Any,
+    issues: list[str],
+) -> list[CompletedGrowthChargeRequest]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        issues.append("completed_growth_charge_requests: expected list")
+        return []
+    result: list[CompletedGrowthChargeRequest] = []
+    request_ids: set[str] = set()
+    for index, raw in enumerate(value[-MAX_COMPLETED_GROWTH_CHARGE_REQUESTS:]):
+        record = CompletedGrowthChargeRequest.from_dict(raw)
+        if record is None:
+            issues.append(f"completed_growth_charge_requests[{index}]: invalid record")
+            continue
+        if record.request_id in request_ids:
+            issues.append(
+                f"completed_growth_charge_requests[{index}]: duplicate request identity"
+            )
+            continue
+        request_ids.add(record.request_id)
+        result.append(record)
     return result
 
 
@@ -1046,10 +2142,15 @@ def _feedback_events(value: Any, issues: list[str]) -> list[FeedbackEvent]:
         )
         asset_key = raw.get("asset_key") if isinstance(raw.get("asset_key"), str) else ""
         amount = _nonnegative_int(raw.get("amount"), 0, "pending_feedback.amount", issues)
+        correlation_id = (
+            raw.get("correlation_id")
+            if isinstance(raw.get("correlation_id"), str)
+            else ""
+        )
         ids.add(event_id)
         result.append(FeedbackEvent(
             event_id, kind, message, occurred, plant_id,
-            title, asset_category, asset_key, amount,
+            title, asset_category, asset_key, amount, correlation_id,
         ))
     return result
 
@@ -1105,6 +2206,7 @@ def _reward_drop_history(value: Any, issues: list[str]) -> list[RewardDrop]:
 def _consumables(value: Any, issues: list[str]) -> dict[str, int]:
     result = {
         "booster_potion": 0,
+        "fertilizer_basic": 0,
         **{charge_id: 0 for charge_id in GROWTH_CHARGES},
     }
     if value is None:
@@ -1157,6 +2259,38 @@ def _environment_visibility(value: Any, issues: list[str]) -> dict[str, bool]:
     return result
 
 
+def _garden_loadout(value: Any, issues: list[str]) -> GardenLoadoutState:
+    if value is None:
+        return GardenLoadoutState()
+    if not isinstance(value, dict):
+        issues.append("loadout: expected object")
+        return GardenLoadoutState()
+    weather = _string(
+        value.get("weather_id"), DEFAULT_WEATHER_ID, "loadout.weather_id", issues
+    )
+    scenery = _string(
+        value.get("scenery_id"), DEFAULT_SCENERY_ID, "loadout.scenery_id", issues
+    )
+    if weather not in WEATHER_CATALOG:
+        issues.append(f"loadout.weather_id: unexpected value {weather!r}")
+        weather = DEFAULT_WEATHER_ID
+    if scenery not in SCENERY_CATALOG:
+        issues.append(f"loadout.scenery_id: unexpected value {scenery!r}")
+        scenery = DEFAULT_SCENERY_ID
+    decoration = value.get("decoration_id")
+    if decoration in ("", "none"):
+        decoration = None
+    if decoration is not None and not isinstance(decoration, str):
+        issues.append("loadout.decoration_id: expected string or null")
+        decoration = None
+    return GardenLoadoutState(
+        weather_id=weather,
+        scenery_id=scenery,
+        decoration_id=decoration,
+        visibility=_environment_visibility(value.get("visibility"), issues),
+    )
+
+
 def _active_periods(value: Any, plant_ids: set[str], issues: list[str]) -> list[ActivePlantPeriod]:
     if value is None:
         return []
@@ -1164,7 +2298,7 @@ def _active_periods(value: Any, plant_ids: set[str], issues: list[str]) -> list[
         issues.append("active_plant_periods: expected list")
         return []
     result: list[ActivePlantPeriod] = []
-    for index, raw in enumerate(value[-MAX_ACTIVE_PERIODS:]):
+    for index, raw in enumerate(value):
         if not isinstance(raw, dict):
             continue
         day_value = _iso_date(raw.get("day"), "", f"active_plant_periods[{index}].day", issues)
@@ -1174,7 +2308,13 @@ def _active_periods(value: Any, plant_ids: set[str], issues: list[str]) -> list[
         started = _nonnegative_int(raw.get("started_at_ms"), 0, f"active_plant_periods[{index}].started_at_ms", issues)
         if day_value:
             result.append(ActivePlantPeriod(day_value, plant_id, started))
-    return sorted(result, key=lambda period: (period.day, period.started_at_ms))
+    ordered = sorted(result, key=lambda period: (period.started_at_ms, period.day))
+    coalesced: list[ActivePlantPeriod] = []
+    for period in ordered:
+        if coalesced and coalesced[-1].plant_id == period.plant_id:
+            continue
+        coalesced.append(period)
+    return coalesced
 
 
 def _achievements(value: Any, issues: list[str]) -> dict[str, Achievement]:
@@ -1187,11 +2327,43 @@ def _achievements(value: Any, issues: list[str]) -> dict[str, Achievement]:
         name, description = raw.get("name"), raw.get("description")
         if not isinstance(name, str) or not isinstance(description, str):
             continue
+        unlocked = raw.get("unlocked", False)
+        if not isinstance(unlocked, bool):
+            issues.append(f"achievements.{key}.unlocked: expected bool")
+            unlocked = False
+        unlocked_at = raw.get("unlocked_at")
+        if unlocked_at is not None and not _valid_iso_datetime(unlocked_at):
+            issues.append(f"achievements.{key}.unlocked_at: expected ISO datetime")
+            unlocked_at = None
+        rewarded_at = raw.get("rewarded_at")
+        if rewarded_at is not None and not _valid_iso_datetime(rewarded_at):
+            issues.append(f"achievements.{key}.rewarded_at: expected ISO datetime")
+            rewarded_at = None
+        category = raw.get("category", "")
+        requirement = raw.get("requirement", "")
+        reward_summary = raw.get("reward_summary", "")
+        reward_event_key = raw.get("reward_event_key", "")
+        historical_backfill = raw.get("historical_backfill", False)
         result[key] = Achievement(
-            key, name, description,
-            bool(raw.get("unlocked", False)),
-            _number(raw.get("progress"), 0.0, 0.0, 1.0, f"achievements.{key}.progress", issues),
-            raw.get("unlocked_at") if isinstance(raw.get("unlocked_at"), str) else None,
+            key,
+            name,
+            description,
+            unlocked,
+            _number(
+                raw.get("progress"),
+                0.0,
+                0.0,
+                1.0,
+                f"achievements.{key}.progress",
+                issues,
+            ),
+            unlocked_at,
+            category if isinstance(category, str) else "",
+            requirement if isinstance(requirement, str) else "",
+            reward_summary if isinstance(reward_summary, str) else "",
+            rewarded_at,
+            reward_event_key if isinstance(reward_event_key, str) else "",
+            historical_backfill if isinstance(historical_backfill, bool) else False,
         )
     return result
 
@@ -1209,10 +2381,22 @@ def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> 
     if not isinstance(value, dict):
         return default
     result = {key: list(items) for key, items in default.items()}
-    for key in result:
-        if key in value and isinstance(value[key], list):
-            result[key] = list(dict.fromkeys(item for item in value[key] if isinstance(item, str) and item))
-        elif key in value:
+    for key, raw in value.items():
+        normalized_key = "scenery" if key == "backgrounds" else str(key)
+        if isinstance(raw, list):
+            parsed = list(dict.fromkeys(
+                item for item in raw if isinstance(item, str) and item
+            ))
+            if normalized_key == "scenery":
+                result["scenery"] = list(dict.fromkeys([
+                    *result.get("scenery", []),
+                    *parsed,
+                ]))
+            else:
+                # Preserve extension-owned and historical inventory lists even
+                # when the current Collection has no renderer for them.
+                result[normalized_key] = parsed
+        else:
             issues.append(f"inventory.{key}: expected list")
     return result
 

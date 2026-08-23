@@ -237,7 +237,13 @@ def test_free_starter_is_atomic_requires_nurture_and_does_not_backfill_earlier_r
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
 
-    before_choice = engine.register_review({"queue": 2, "ease": 3})
+    first_revlog = storage.now_ms - 2_000
+    before_choice = engine.register_review({
+        "queue": 2,
+        "ease": 3,
+        "revlog_id": first_revlog,
+        "answered_at_ms": first_revlog,
+    })
     assert before_choice.total_growth == 0
     assert storage.state.total_reviews == 1
 
@@ -320,18 +326,17 @@ def test_starter_save_failure_restores_the_empty_garden():
     assert not storage.state.starter_selection_complete
 
 
-def test_customize_environment_draft_commits_atomically_and_rolls_back_on_save_failure():
+def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_failure():
     storage = FakeStorage()
     engine = GardenGameEngine(FakeConfig(), storage)
     storage.state.inventory.setdefault("weather", []).append("breeze")
     storage.state.inventory.setdefault("scenery", []).append("spring")
-    storage.state.inventory.setdefault("backgrounds", []).append("spring")
 
     ok, message = engine.apply_environment_loadout(
         "breeze", "spring", {"weather": False, "scenery": True}
     )
 
-    assert ok and message == "Garden appearance saved."
+    assert ok and message == "Garden loadout saved."
     assert storage.state.selected_weather == "breeze"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
@@ -363,7 +368,7 @@ def test_garden_space_cannot_be_purchased_before_free_starter_selection():
     ok, message = engine.purchase_next_bed()
 
     assert not ok
-    assert message == "Choose a starter before unlocking another garden space."
+    assert message == "Choose a starter before unlocking another garden bed."
     assert storage.state.to_dict() == before
     assert storage.state.currency_transactions == []
     assert storage.save_count == save_count

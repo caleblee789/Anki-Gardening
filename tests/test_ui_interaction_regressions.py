@@ -11,6 +11,7 @@ from typing import Any
 
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, Plant, PlantMemory
+from ankigarden.purchases import PurchaseKind
 from ankigarden.ui.home_widget import HomeWidgetData, HomeWidgetSnapshot, render_home_widget
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
@@ -29,6 +30,7 @@ ADDON_PATH = ROOT / "ankigarden/addon.py"
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 SCENE_PATH = ROOT / "ankigarden/ui/scene.py"
 STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
+GAME_PATH = ROOT / "ankigarden/game.py"
 
 
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
@@ -88,16 +90,72 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
         assert 'class="ag-home__state"' in html
 
 
-def test_home_preview_has_one_explicit_action_and_a_keyboard_clickable_card() -> None:
+def test_home_preview_has_one_explicit_keyboard_action_and_noninteractive_summary() -> None:
     html = render_home_widget(HomeWidgetSnapshot(1, "success", _home_data()))
 
     assert 'data-tooltip=' not in html
-    assert 'role="button" tabindex="0"' in html
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
     assert 'role="tooltip"' not in html
-    assert html.count("onclick=") == 2
-    assert "event.key==='Enter'||event.key===' '" in html
+    assert html.count("onclick=") == 1
+    assert "event.key==='Enter'||event.key===' '" not in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-scene" aria-hidden="true"' in html
+
+
+def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route() -> None:
+    dashboard = DASHBOARD_PATH.read_text("utf-8")
+    scene = SCENE_PATH.read_text("utf-8")
+    game = GAME_PATH.read_text("utf-8")
+    manifest = json.loads((ROOT / "ankigarden/assets/manifest.json").read_text("utf-8"))
+
+    shield = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_set_onboarding_shield",
+    )
+    focus_trap = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "focusNextPrevChild",
+    )
+    assert "self.onboarding_shield.raise_()" in shield
+    assert "self.onboarding_panel.raise_()" in shield
+    assert "self.onboarding_action" in focus_trap
+    assert "self.dismiss_onboarding" in focus_trap
+
+    interaction = PlantInteractionState()
+    assert interaction.cycle_focus(["left", "right"], 1) == "left"
+    interaction.toggle_pin("left")
+    assert interaction.pinned_id == "left"
+    assert "_spatial_destination(event.key())" in scene
+
+    place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
+    failed = _method_source(DASHBOARD_PATH, "GardenDashboard", "_finish_failed_move")
+    assert "occupant" in place and "swapped" in place
+    assert place.index("stage_placement") < place.index("commit_placement_draft")
+    assert "_persist_or_restore(snapshot)" in game
+    assert "self.refresh_all()" in failed
+    assert "begin_placement_draft" in failed
+    assert "error=True" in failed
+
+    background = next(
+        row for row in manifest["assets"]
+        if row.get("category") == "backgrounds" and row.get("release_preferred") is True
+    )
+    house = next(
+        row for row in background["placement"]["surface_profile"]["landmarks"]
+        if row.get("landmark_id") == "garden_house"
+    )
+    open_collection = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_open_collection",
+    )
+    assert house["action_id"] == "garden.collection.open"
+    assert '"garden.collection.open": self._open_collection' in dashboard
+    assert "self.progress_dialog.open_page(\"collection\")" in open_collection
+    assert "self._collection_activation_pending" in open_collection
 
 
 def test_six_plant_home_scene_keeps_each_depth_band_between_planter_layers() -> None:
@@ -169,6 +227,8 @@ class _FakePainter:
         self.ellipses: list[Any] = []
         self.badges: list[Any] = []
         self.labels: list[str] = []
+        self.label_font_sizes: list[tuple[str, float]] = []
+        self._font_size = 12.0
 
     def save(self) -> None:
         return None
@@ -190,12 +250,13 @@ class _FakePainter:
 
     def drawText(self, _rect: Any, _alignment: Any, text: str) -> None:
         self.labels.append(text)
+        self.label_font_sizes.append((text, self._font_size))
 
     def font(self) -> Any:
         return _FakeFont()
 
     def setFont(self, _font: Any) -> None:
-        return None
+        self._font_size = _font.pointSizeF()
 
 
 class _FakeFont:
@@ -238,7 +299,7 @@ class _FakePen:
         pass
 
 
-def test_compact_move_mode_paints_only_current_and_valid_destination_rings() -> None:
+def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None:
     draw_slots = _compiled_method(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -259,50 +320,58 @@ def test_compact_move_mode_paints_only_current_and_valid_destination_rings() -> 
         },
     )
     placements = plant_layout(480, 320, 6)
-    plants = [{"plant_id": "p0", "slot_index": 0, "name": "Briar"}]
+    plants = [
+        {"plant_id": "p0", "slot_index": 0, "name": "Briar"},
+        {"plant_id": "p1", "slot_index": 1, "name": "Juniper"},
+        {"plant_id": "p3", "slot_index": 3, "name": "Moss"},
+    ]
     interaction = PlantInteractionState()
-    assert interaction.begin_placement("p0", 0, [0, 1], keyboard=True)
+    assert interaction.begin_placement("p0", 0, [0, 1, 2], keyboard=True)
     scene = SimpleNamespace(
         _interaction=interaction,
-        scene={"plants": plants, "unlocked_slots": 2},
+        scene={"plants": plants, "unlocked_slots": 5},
         _slot_placements={row.slot_index: row for row in placements},
         _hovered_move_slot=None,
-        _destination_slots=lambda: [1],
+        _destination_slots=lambda: [1, 2],
         width=lambda: 480,
         height=lambda: 320,
-        _layout_plants=lambda _width, _height: list(zip(plants, placements[:1])),
+        _layout_plants=lambda _width, _height: [
+            (plant, placements[int(plant["slot_index"])]) for plant in plants
+        ],
     )
     painter = _FakePainter()
 
     draw_slots(scene, painter)
 
-    # Locked spaces remain pure background; only the current and valid target
-    # rings appear, with one short label for the current location.
-    assert len(painter.ellipses) == 2
-    assert len(painter.badges) == 1
+    # Current, occupied swap, empty move, invalid, and locked spaces remain
+    # legible without relying on outline color alone.
+    assert len(painter.ellipses) == 6
+    assert len(painter.badges) == 6
     assert painter.labels.count("+") == 1
-    assert "Current" in painter.labels
+    assert painter.labels.count("↔") == 1
+    assert painter.labels.count("!") == 2
+    assert painter.labels.count("×") == 1
+    semantic_labels = ("Current", "Swap", "Move", "Occupied", "Invalid", "Locked")
+    for label in semantic_labels:
+        assert label in painter.labels
+    assert {
+        label: size for label, size in painter.label_font_sizes
+        if label in semantic_labels
+    } == {label: 11.0 for label in semantic_labels}
 
-    scene._hovered_move_slot = 4
-    painter = _FakePainter()
-    draw_slots(scene, painter)
-
-    # A locked target becomes visible only while it is directly relevant.
-    assert len(painter.ellipses) == 3
-    assert len(painter.badges) == 2
-    assert painter.labels.count("+") == 1
-    assert "Current" in painter.labels
-    assert "Locked" in painter.labels
-
-    scene._hovered_move_slot = 1
-    painter = _FakePainter()
-    draw_slots(scene, painter)
-
-    assert len(painter.ellipses) == 2
-    assert len(painter.badges) == 2
-    assert painter.labels.count("+") == 1
-    assert "Current" in painter.labels
-    assert "Move" in painter.labels
+    accessible_targets = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "_placement_target_descriptions",
+    )
+    for description in (
+        "current bed",
+        "eligible; move here",
+        "swap with",
+        "locked bed",
+        "invalid destination",
+    ):
+        assert description in accessible_targets
 
 
 def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -> None:
@@ -311,7 +380,7 @@ def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -
         "GardenSceneWidget",
         "card_geometry",
     )
-    assert "marker_reservation = nurtured_marker_placement(" in source
+    assert "marker_reservation = geometry_layout.resolve_watering_can(" in source
     assert "marker_reservation.pulse_bounds.expanded(4.0, 4.0)" in source
     captured: list[tuple[list[Rect], Rect | None]] = []
 
@@ -384,6 +453,56 @@ def test_move_pointer_feedback_uses_target_state_and_skips_plant_hover() -> None
         "plant_id = self._plant_at(position)"
     )
     assert "request = self._interaction.complete_placement() if valid else None" in release
+
+
+def test_move_callback_token_rejects_cancelled_and_superseded_sessions() -> None:
+    is_current = _compiled_method(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_placement_callback_is_current",
+    )
+    scene = SimpleNamespace(token=41)
+    scene.active_placement_token = lambda: scene.token
+    dashboard = SimpleNamespace(
+        scene=scene,
+        _active_placement_token=41,
+    )
+
+    assert is_current(dashboard, 41) is True
+    assert is_current(dashboard, None) is False
+
+    scene.token = 42
+    dashboard._active_placement_token = 42
+    assert is_current(dashboard, 41) is False
+
+    scene.token = None
+    dashboard._active_placement_token = None
+    assert is_current(dashboard, 42) is False
+    assert is_current(dashboard, None) is False
+
+
+def test_selected_plant_suppresses_global_hint_and_close_restores_scene_focus() -> None:
+    show_hint = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "_show_keyboard_hint",
+    )
+    dismiss = _method_source(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "dismiss_selection",
+    )
+    selection = _method_source(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_on_scene_selection",
+    )
+
+    assert 'getattr(self, "_keyboard_hint_suppressed", False)' in show_hint
+    assert "self._interaction.pinned_id is not None" in show_hint
+    assert "self._hide_keyboard_hint()" in show_hint
+    assert "self.scene.set_keyboard_hint_suppressed(plant is not None)" in selection
+    assert "self.setFocus(Qt.FocusReason.OtherFocusReason)" in dismiss
 
 
 class _Signal:
@@ -581,6 +700,7 @@ def test_story_escape_cancels_rename_and_restores_focus_to_edit_button() -> None
         cancel_name_btn=Widget(),
         edit_name_btn=Widget(),
         feedback=Widget(),
+        set_dialog_dirty=lambda value: calls.append(("dirty", value)),
     )
     story._set_editing = lambda editing, restore_focus=False: set_editing(
         story, editing, restore_focus=restore_focus
@@ -702,7 +822,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 def test_watering_can_is_shared_by_full_garden_and_native_previews() -> None:
     customize_preview = _method_source(
         DASHBOARD_PATH,
-        "CustomizeGardenDialog",
+            "CollectibleDetailDialog",
         "_refresh_preview",
     )
     full_garden_refresh = _method_source(
@@ -810,11 +930,24 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
         def singleShot(cls, _delay: int, callback: Any) -> None:
             cls.callbacks.append(callback)
 
+    def set_control_enabled(widget: Any, enabled: bool, **_kwargs: Any) -> None:
+        widget.setEnabled(enabled)
+
     unlock = _compiled_method(
-        DASHBOARD_PATH, "NurseryDialog", "_unlock_bed", {"QTimer": Timer}
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_unlock_bed",
+        {
+            "QTimer": Timer,
+            "PurchaseKind": PurchaseKind,
+            "set_control_enabled": set_control_enabled,
+        },
     )
     release = _compiled_method(
-        DASHBOARD_PATH, "NurseryDialog", "_release_bed_purchase"
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_release_bed_purchase",
+        {"set_control_enabled": set_control_enabled},
     )
     begin_catalog_transaction = _compiled_method(
         DASHBOARD_PATH, "NurseryDialog", "_begin_catalog_transaction"
@@ -839,10 +972,6 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
             self.purchases = 0
             self.price: int | None = 150
 
-        def purchase_next_bed(self) -> tuple[bool, str]:
-            self.purchases += 1
-            return True, "Garden space unlocked."
-
         def next_bed_price(self) -> int | None:
             return self.price
 
@@ -859,8 +988,13 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
             )
         ),
         _show_result=lambda ok, message: None,
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
         _refresh_parent=lambda: None,
         refresh=lambda: None,
+    )
+    nursery._execute_purchase = lambda kind, item_id: (
+        setattr(engine, "purchases", engine.purchases + 1)
+        if kind is PurchaseKind.BED and item_id == "next" else None
     )
     nursery._begin_catalog_transaction = lambda: begin_catalog_transaction(nursery)
     nursery._release_catalog_transaction = lambda: release_catalog_transaction(nursery)
@@ -898,11 +1032,40 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
 
 
 def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() -> None:
+    class Timer:
+        callbacks: list[Any] = []
+
+        @classmethod
+        def singleShot(cls, _delay: int, callback: Any) -> None:
+            cls.callbacks.append(callback)
+
+    class Priority:
+        POLITE = "polite"
+        ASSERTIVE = "assertive"
+
+    class Tone:
+        SUCCESS = object()
+        INFO = object()
+        WARNING = object()
+        ERROR = object()
+
     show_result = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_show_result",
-        {"_learner_text": lambda value: value},
+        {
+            "_learner_text": lambda value: value,
+            "AnnouncementPriority": Priority,
+            "FeedbackTone": Tone,
+            "SemanticRole": SimpleNamespace(BANNER="banner"),
+            "set_semantic_role": lambda *_args, **_kwargs: None,
+            "QTimer": Timer,
+        },
+    )
+    hide_status = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_hide_status_if_current",
     )
     sync_recovery = _compiled_method(
         DASHBOARD_PATH,
@@ -931,8 +1094,14 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         def setAccessibleDescription(self, value: str) -> None:
             self.description = value
 
+        def setProperty(self, name: str, value: str) -> None:
+            setattr(self, name, value)
+
         def show(self) -> None:
             self.visible = True
+
+        def hide(self) -> None:
+            self.visible = False
 
         def setFocus(self) -> None:
             self.focused = True
@@ -946,8 +1115,23 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
 
     status = Status()
     receipt_actions = ReceiptActions()
+    announcements: list[tuple[str, str]] = []
+    nursery = SimpleNamespace(
+        _status_generation=0,
+        status=status,
+        receipt_actions=receipt_actions,
+        accessibility_announcer=SimpleNamespace(
+            announce=lambda message, *, priority, target: announcements.append(
+                (message, priority)
+            )
+        ),
+    )
+    nursery._hide_status_if_current = lambda generation: hide_status(
+        nursery,
+        generation,
+    )
     show_result(
-        SimpleNamespace(status=status, receipt_actions=receipt_actions),
+        nursery,
         False,
         "Not enough Garden Coins.",
     )
@@ -955,6 +1139,14 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         "Not enough Garden Coins.", "Not enough Garden Coins.", True, True,
     )
     assert receipt_actions.visible is False
+    assert announcements[-1] == ("Not enough Garden Coins.", "polite")
+
+    show_result(nursery, True, "Garden space unlocked.")
+    assert len(Timer.callbacks) == 1
+    show_result(nursery, False, "A newer purchase failed.")
+    Timer.callbacks.pop()()
+    assert status.visible is True
+    assert status.text == "A newer purchase failed."
 
     class Recovery:
         def setVisible(self, value: bool) -> None:
@@ -982,7 +1174,7 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     assert "self.status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in nursery_source
 
 
-def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> None:
+def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -> None:
     set_compact = _compiled_method(
         DASHBOARD_PATH,
         "GardenStatsStrip",
@@ -1042,18 +1234,22 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
             setMinimumWidth=lambda value: None,
             sizeHint=lambda: SimpleNamespace(width=lambda: 56),
         ),
-        streak_bonus=SimpleNamespace(setText=lambda value: None),
+        streak_bonus=SimpleNamespace(
+            setText=lambda value: None,
+            setMinimumWidth=lambda value: None,
+        ),
         streak_heading=Layout(),
         streak_value_row=Layout(),
         _streak_bonus_percent=10,
+        _streak_bonus_minimum_width=lambda compact: 53 if compact else 102,
     )
 
     set_compact(strip, True)
 
     assert strip.grid.positions == [
-        ("growth", 0, 0, 1, 2),
-        ("streak", 0, 2, 1, 1),
-        ("currency", 0, 3, 1, 1),
+        ("growth", 0, 0, 1, 4),
+        ("streak", 1, 0, 1, 2),
+        ("currency", 1, 2, 1, 2),
     ]
     assert strip.grid.stretches == [(0, 1), (1, 1), (2, 1), (3, 1)]
     assert strip.streak_value_row.insertions == [
@@ -1065,7 +1261,7 @@ def test_metric_cells_are_focusable_and_remain_one_shared_row_when_compact() -> 
     assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in stats_source
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
-    assert "font-size:11px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
+    assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
     assert "font-size:16px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
     assert "font-size:22px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
@@ -1074,19 +1270,23 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     source = _method_source(DASHBOARD_PATH, "PlantInfoCard", "set_selected")
 
     assert 'self.nurture.setVisible(not active and not fully_grown)' in source
-    assert 'self.nurtured_badge.setVisible(active or fully_grown)' in source
+    assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
     assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
-    assert 'self.fertilizer_summary.setVisible(fertilizer_growth > 0)' in source
+    assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
+    constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
+    assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
     assert "self.growth_summary.setText(" in source
     assert ".replace('card answer', 'eligible answer')" not in source
-    assert "_card_answer_count(reviews_remaining)" in source
+    assert 'forecast = plant.get("growth_forecast", {})' in source
     assert source.count("self.growth_remaining.hide()") == 2
     assert "self.growth_remaining.setText(" not in source
     assert "self.growth_summary.setAccessibleDescription(" in source
-    assert 'f"{remaining:,} Growth remaining. "' in source
-    assert 'self.status_row.hide()' in source
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in source
+    assert 'self.status_row.show()' in source
+    assert 'allocation_type = str(plant.get("allocation_type")' in source
+    assert 'Growth today' in source
     assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
 
@@ -1165,11 +1365,12 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
-    assert '"Growth breakdown"' in refresh
-    assert 'StatSummary([' in refresh
-    assert '("Total Growth",' in refresh
-    assert 'if int(stats.growth_earned) == 0:' in refresh
-    assert 'today_layout.addWidget(StatSummary([' in refresh
+    assert '"Growth Breakdown"' in refresh
+    assert '"Study Growth generated"' in refresh
+    assert '"Nurtured allocation"' in refresh
+    assert '"Passive Growth credited"' in refresh
+    assert 'compact=True' in refresh
+    assert '("Total Growth",' not in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1184,54 +1385,94 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
         DASHBOARD_PATH,
         "GardenDashboard",
         "_finish_failed_move",
-        {"QTimer": Timer, "_learner_text": lambda value: value},
+        {
+            "QTimer": Timer,
+            "Qt": SimpleNamespace(
+                FocusReason=SimpleNamespace(OtherFocusReason="other")
+            ),
+        },
     )
 
     class Toast:
         def __init__(self) -> None:
-            self.focused = False
             self.messages: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
         def show_message(self, *args: Any, **kwargs: Any) -> None:
             self.messages.append((args, kwargs))
 
-        def setFocus(self) -> None:
+    class Retry:
+        def setFocus(self, _reason: Any) -> None:
             self.focused = True
 
-    class Visible:
-        def hide(self) -> None:
-            self.hidden = True
+    class Rearrange:
+        def __init__(self) -> None:
+            self.retry = Retry()
+            self.plant_id = ""
 
-    scene = SimpleNamespace(
-        finish_move=lambda message: setattr(scene, "message", message),
-        setFocus=lambda: setattr(scene, "focused", True),
-        keep_card_open=lambda *_args: None,
+        def set_failure(self, message: str) -> None:
+            self.failure = message
+
+    retry_draft = SimpleNamespace(
+        selected_plant_id="plant-a",
+        scene_slots=lambda: {"plant-a": 0},
     )
+    scene = SimpleNamespace(token=17)
+    scene.finish_move = lambda message: setattr(scene, "message", message)
+    scene.begin_move = lambda plant_id, slots: (
+        setattr(scene, "retry", (plant_id, slots)) or True
+    )
+    scene.active_placement_token = lambda: scene.token
+    scene.keep_card_open = lambda *_args: None
     toast = Toast()
+    rearrange = Rearrange()
     dashboard = SimpleNamespace(
-        _placement_draft=object(),
+        _placement_draft=retry_draft,
         _undo_placement=None,
+        _active_placement_token=3,
+        engine=SimpleNamespace(
+            begin_placement_draft=lambda _plant_id: (True, "", retry_draft),
+            valid_destination_slots=lambda _draft: [0, 1],
+        ),
         scene=scene,
-        rearrange_bar=Visible(),
+        rearrange_bar=rearrange,
+        overlay_manager=SimpleNamespace(
+            move_mode_changed=lambda active: setattr(dashboard, "move_overlay", active)
+        ),
         _position_scene_overlays=lambda: None,
         _refresh_selected_plant_card=lambda: None,
+        _record_active_placement_token=lambda: setattr(
+            dashboard, "_active_placement_token", scene.token
+        ),
         toast_region=toast,
         refresh_all=lambda: setattr(dashboard, "refreshed", True),
     )
 
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert dashboard._placement_draft is None
-    assert scene.message == "Move not saved. The arrangement could not be saved."
-    assert dashboard.rearrange_bar.hidden is True
+    assert scene.message == "The move was not saved. Your garden is unchanged."
     assert dashboard.refreshed is True
-    assert scene.focused is True
+    assert scene.retry == ("plant-a", [0, 1])
+    assert dashboard._placement_draft is retry_draft
+    assert dashboard._active_placement_token == 17
+    assert rearrange.failure == "The move was not saved. Your garden is unchanged."
+    assert rearrange.retry.focused is True
+    assert dashboard.move_overlay is True
     assert toast.messages == [
-        (("The arrangement could not be saved.",), {"error": True, "duration_ms": 0})
+        (
+            ("The move was not saved. Your garden is unchanged.",),
+            {"error": True, "duration_ms": 0, "dismissible": False},
+        )
     ]
-    assert toast.focused is True
+
+    rearrange_source = DASHBOARD_PATH.read_text("utf-8").split(
+        "class RearrangeBar", 1
+    )[1].split("class GardenSideNavigation", 1)[0]
+    assert 'self.retry = QPushButton("Try again")' in rearrange_source
+    assert 'self.cancel.setText("Cancel move")' in rearrange_source
+    assert "_set_button_variant(self.retry, BUTTON_VARIANT_PRIMARY)" in rearrange_source
 
     place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
+    assert "if not self._placement_callback_is_current(request_token):" in place
     assert place.count("self._finish_failed_move(") == 3
     for private_scene_mutation in (
         "self.scene._interaction", "self.scene._clear_hit_targets",
@@ -1306,6 +1547,12 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
         def show(self) -> None:
             self.shown = True
 
+        def setGeometry(self, x: int, y: int, width: int, height: int) -> None:
+            self.geometry = (x, y, width, height)
+
+        def raise_(self) -> None:
+            self.raised = True
+
     class Dock:
         def width(self) -> int:
             return 880
@@ -1337,11 +1584,71 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
 
     assert dashboard.plant_card.parent is dock
     assert dashboard.plant_card.shown is True
-    assert dashboard.plant_card.fixed_width == 640
+    assert dashboard.plant_card.fixed_width == 360
     assert dock.shown is True
+
+    scene.width = lambda: 520
+    dock.width = lambda: 500
+    position(dashboard)
+    assert dashboard.plant_card.fixed_width == 500
+
+    class Geometry:
+        def x(self) -> int:
+            return 12
+
+        def y(self) -> int:
+            return 190
+
+        def width(self) -> int:
+            return 876
+
+        def height(self) -> int:
+            return 264
+
+    geometry_calls: list[tuple[int, int, dict[str, int]]] = []
+
+    def in_scene_geometry(width: int, height: int, **minimums: int) -> Geometry:
+        geometry_calls.append((width, height, minimums))
+        return Geometry()
+
+    connector_calls: list[tuple[Any, ...]] = []
+    wide_scene = SimpleNamespace(
+        _interaction=SimpleNamespace(placing=False),
+        width=lambda: 900,
+        height=lambda: 480,
+        card_geometry=in_scene_geometry,
+        card_popover_placement=lambda: SimpleNamespace(docked=True),
+        set_card_connector_geometry=lambda *args: connector_calls.append(args),
+    )
+    dashboard.scene = wide_scene
+    dashboard.plant_card.parent = wide_scene
+    dashboard._position_scene_overlays = lambda: None
+    dock.shown = False
+
+    position(dashboard)
+
+    assert dashboard.plant_card.parent is wide_scene
+    assert dashboard.plant_card.docked is True
+    assert dashboard.plant_card.fixed_width == 876
+    assert dashboard.plant_card.maximum_width == 876
+    assert dashboard.plant_card.geometry == (12, 190, 876, 264)
+    assert geometry_calls == [
+        (320, 264, {}),
+        (876, 264, {"minimum_width": 876, "minimum_height": 264}),
+    ]
+    assert len(connector_calls) == 1
+    assert isinstance(connector_calls[0][0], Geometry)
+    assert connector_calls[0][1] == "plant-a"
+    assert dock.shown is False
+
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "self.plant_card_dock = QFrame()" in dashboard_source
-    assert "narrow_sheet = self.scene.width() < 540" in dashboard_source
+    assert "geometry = self.scene.card_geometry(" in dashboard_source
+    assert "if geometry is None:" in dashboard_source
+    assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
+    assert "if docked else 330" in dashboard_source
+    assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
+    assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 
 
 def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_views() -> None:
@@ -1732,16 +2039,23 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         "_finish_failed_move",
         {
             "QTimer": Timer,
-            "_learner_text": lambda value: value,
             "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+            "Qt": SimpleNamespace(
+                FocusReason=SimpleNamespace(OtherFocusReason="other")
+            ),
         },
     )
+    class Retry:
+        def setFocus(self, _reason: Any) -> None:
+            self.focused = True
+
     class Visible:
         plant_id = ""
 
         def __init__(self) -> None:
             self.title = SimpleNamespace(setText=lambda value: setattr(self, "heading", value))
             self.instructions = SimpleNamespace(setText=lambda value: setattr(self, "instruction", value))
+            self.retry = Retry()
 
         def show(self) -> None:
             self.visible = True
@@ -1751,6 +2065,14 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
 
         def setVisible(self, value: bool) -> None:
             self.visible = value
+
+        def clear_failure(self) -> None:
+            self.failed = False
+
+        def set_failure(self, message: str) -> None:
+            self.failed = True
+            self.failure = message
+            self.visible = True
 
     class Toast:
         def __init__(self) -> None:
@@ -1762,9 +2084,6 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         def show_message(self, *args: Any, **kwargs: Any) -> None:
             self.events.append((args, kwargs))
 
-        def setFocus(self) -> None:
-            self.events.append("focus")
-
     draft = SimpleNamespace(
         selected_plant_id="plant-a",
         scene_slots=lambda: {"plant-a": 0},
@@ -1773,13 +2092,20 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     toast = Toast()
     scene = SimpleNamespace(
         keep_card_open=lambda *_args: None,
-        begin_move=lambda _plant_id, _slots: True,
+        begin_move=lambda plant_id, slots: (
+            setattr(scene, "retry", (plant_id, slots)) or True
+        ),
         finish_move=lambda message: setattr(scene, "message", message),
         setFocus=lambda: setattr(scene, "focused", True),
+        active_placement_token=lambda: 19,
     )
     dashboard = SimpleNamespace(
         _undo_placement=object(),
         _placement_draft=None,
+        _active_placement_token=None,
+        _failed_move_destination=None,
+        _move_focus_return=None,
+        _move_focus_plant_id="",
         engine=SimpleNamespace(
             begin_placement_draft=lambda _plant_id: (True, "", draft),
             valid_destination_slots=lambda _draft: [0, 1],
@@ -1791,6 +2117,15 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         ),
         scene=scene,
         rearrange_bar=rearrange,
+        overlay_manager=SimpleNamespace(
+            move_mode_changed=lambda active: setattr(dashboard, "move_overlay", active)
+        ),
+        _remember_move_focus=lambda plant_id: setattr(
+            dashboard, "_move_focus_plant_id", plant_id
+        ),
+        _record_active_placement_token=lambda: setattr(
+            dashboard, "_active_placement_token", 19
+        ),
         _position_scene_overlays=lambda: None,
         _refresh_selected_plant_card=lambda: None,
         toast_region=toast,
@@ -1802,10 +2137,17 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
 
     assert toast.events == [
         "clear",
-        (("The arrangement could not be saved.",), {"error": True, "duration_ms": 0}),
-        "focus",
+        (
+            ("The move was not saved. Your garden is unchanged.",),
+            {"error": True, "duration_ms": 0, "dismissible": False},
+        ),
     ]
     assert scene.focused is True
+    assert scene.retry == ("plant-a", [0, 1])
+    assert dashboard._placement_draft is draft
+    assert rearrange.visible is True
+    assert rearrange.failed is True
+    assert rearrange.retry.focused is True
 
 
 def test_long_plant_names_wrap_in_nursery_and_collection_rows() -> None:
@@ -1828,12 +2170,18 @@ def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() ->
     )
 
     assert "choose.setAccessibleDescription(" in fertilizer_menu
-    for required in ("spec.name", "spec.price", "spec.growth_per_answer", "duration"):
+    for required in (
+        "spec.name",
+        "spec.price",
+        "purchase_presentation",
+        "presentation.primary_accessible_name",
+        '"effect"',
+        '"duration"',
+        '"remaining"',
+    ):
         assert required in fertilizer_menu
-    assert 'duration = f"{hours} hour" if hours == 1 else f"{hours} hours"' in fertilizer_menu
     assert "Garden Coins" in fertilizer_menu
-    assert "Growth per Anki card answer" in fertilizer_menu
-    assert "Growth per answer" not in fertilizer_menu
+    assert "presentation.outcome" in fertilizer_menu
 
 
 def test_stage_transition_generation_ignores_stale_timer_and_reannounces_selection() -> None:

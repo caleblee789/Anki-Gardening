@@ -17,6 +17,7 @@ from scripts.package_addon import (
     _requested_cli_build,
     _requested_cli_mode,
     build,
+    capture_derivative_report,
     package_files,
     package_payload,
     package_report,
@@ -28,6 +29,20 @@ OBSOLETE_ROSE_V6_ALIASES = {
     f"assets/v6_storybook_gouache/plants/rose/{stage}/rose_{stage}.png"
     for stage in ("seed", "sprout", "young", "mature", "flowering", "rare")
 }
+
+SCHEMA_21_REQUIRED_RUNTIME_FILES = frozenset({
+    "achievements.py",
+    "addon.py",
+    "game.py",
+    "garden_finds.py",
+    "hooks/reviewer.py",
+    "models/state.py",
+    "reward_ledger.py",
+    "reward_presentation.py",
+    "storage.py",
+})
+
+EXPECTED_PACKAGED_USER_FILES = frozenset({"user_files/README.txt"})
 
 
 def _archive_capabilities(archive: zipfile.ZipFile) -> dict[str, object]:
@@ -74,7 +89,13 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
             b"\n"
         )
     assert {"__init__.py", "manifest.json", "config.json", "assets/manifest.json"} <= names
-    assert "user_files/README.txt" in names
+    assert SCHEMA_21_REQUIRED_RUNTIME_FILES <= names, sorted(
+        SCHEMA_21_REQUIRED_RUNTIME_FILES - names
+    )
+    packaged_user_files = {
+        name for name in names if name.startswith("user_files/")
+    }
+    assert packaged_user_files == EXPECTED_PACKAGED_USER_FILES
     assert "meta.json" not in names
     assert not any(name.endswith("garden_state.json") or "__pycache__" in name for name in names)
     assert CAPTURE_HARNESS not in names
@@ -107,18 +128,23 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
         for name in packaged_assets
     )
     assert "assets/migration_manifest_v2.json" not in packaged_assets
-    # The schema-16 release ships all nine responsive scenery plates, the
+    # The schema-20 release ships all nine responsive scenery plates, the
     # complete six-stage plant library, and the geometry-matched planter set.
-    # Ratchet the complete schema-16 art library to the next 0.25 MiB boundary
+    # Ratchet the complete schema-20 art library to the next 0.25 MiB boundary
     # above the optimized release artifact. This preserves a small deterministic
     # build margin without allowing the former 82 MiB budget to return.
-    assert OUTPUT.stat().st_size < 78 * 1024 * 1024
+    assert OUTPUT.stat().st_size < (78 * 1024 * 1024) + (256 * 1024)
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     tmp_path: Path,
 ) -> None:
+    production_output = build(
+        PRODUCTION_BUILD,
+        output=tmp_path / "anki_garden_production.ankiaddon",
+    )
     output = build(CAPTURE_BUILD, output=tmp_path / "anki_garden_capture.ankiaddon")
+    derivative = capture_derivative_report(production_output, output)
 
     with zipfile.ZipFile(output) as archive:
         names = set(archive.namelist())
@@ -130,11 +156,36 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
         assert names == set(expected)
         for name, payload in expected.items():
             assert archive.read(name) == payload
+        shared_names = sorted(names.difference({CAPTURE_HARNESS, CAPABILITY_MODULE}))
+        digest = hashlib.sha256()
+        digest.update(b"anki-garden-shared-payload-v1\0")
+        for name in shared_names:
+            encoded_name = name.encode("utf-8")
+            payload = archive.read(name)
+            digest.update(len(encoded_name).to_bytes(8, "big"))
+            digest.update(encoded_name)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
 
     assert CAPTURE_HARNESS in names
     assert capabilities["BUILD_MODE"] == CAPTURE_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is True
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is True
+    assert derivative == {
+        "capture_archive": str(output.resolve()),
+        "capture_archive_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "capture_only_entries": [CAPTURE_HARNESS],
+        "mode_specific_entries": [CAPABILITY_MODULE],
+        "production_archive": str(production_output.resolve()),
+        "production_archive_sha256": hashlib.sha256(
+            production_output.read_bytes()
+        ).hexdigest(),
+        "shared_payload_entry_count": len(shared_names),
+        "shared_payload_sha256": digest.hexdigest(),
+        "shared_payloads_identical": True,
+    }
+    with pytest.raises(ValueError, match="package entries"):
+        capture_derivative_report(output, output)
 
 
 def test_package_build_is_byte_reproducible(tmp_path: Path) -> None:

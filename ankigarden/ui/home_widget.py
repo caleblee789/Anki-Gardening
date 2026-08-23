@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from math import isfinite
 from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
 from ..models.state import STREAK_BONUS_TIERS
+from ..reward_presentation import achievement_presentations
+from ..terminology import PASSIVE_GROWTH_EXPLANATION
 from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
@@ -14,15 +17,20 @@ from .copy import (
     HOME_NO_STARTER_BODY,
     HOME_NO_STARTER_TITLE,
 )
-from .formatters import format_integer, format_status_label
+from .formatters import format_growth_fifths, format_integer, format_status_label
+from .state import (
+    GardenPreviewSnapshot,
+    garden_preview_from_values,
+    preview_with_phase,
+)
 from .plant_display import (
     compact_plant_layout,
     growth_display,
     nurtured_marker_fallback_rect,
-    nurtured_marker_placement,
     plant_layout,
     planter_draw_rect,
     Rect,
+    SceneGeometryLayout,
     scene_surface_variant,
 )
 
@@ -47,6 +55,7 @@ class HomeWidgetData:
     stage_transition_message: str = ""
     background_url: str = ""
     garden_overlay_url: str = ""
+    weather_url: str = ""
     nurtured_marker_url: str = ""
     nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
@@ -70,6 +79,17 @@ class HomeWidgetData:
     # Direct callers from older surfaces omit this derived field. Treat those
     # snapshots as established Gardens; the state builder sets it explicitly.
     starter_selected: bool = True
+    preview_snapshot: GardenPreviewSnapshot | None = None
+    study_growth_generated: int = 0
+    nurtured_growth_today: int = 0
+    passive_growth_fifths_today: int = 0
+    passive_growth_credited_today: int = 0
+    charge_growth_today: int = 0
+    direct_reward_growth_today: int = 0
+    growth_accounting_stale: bool = False
+    nearest_achievement_name: str = ""
+    nearest_achievement_progress: str = ""
+    nearest_achievement_reward: str = ""
 
 
 @dataclass(frozen=True)
@@ -78,6 +98,12 @@ class HomeWidgetSnapshot:
     phase: str
     data: HomeWidgetData | None = None
     error_message: str | None = None
+    enable_animations: bool = True
+    reduced_motion: bool = False
+
+    @property
+    def motion_enabled(self) -> bool:
+        return bool(self.enable_animations and not self.reduced_motion)
 
 
 class HomeWidgetStateController:
@@ -85,24 +111,73 @@ class HomeWidgetStateController:
 
     def __init__(self) -> None:
         self._next_request_id = 0
+        self._last_valid_data: HomeWidgetData | None = None
         self.snapshot = HomeWidgetSnapshot(request_id=0, phase="empty")
+
+    def set_motion_preferences(
+        self,
+        *,
+        enable_animations: bool,
+        reduced_motion: bool,
+    ) -> None:
+        """Project the add-on motion settings without persisting WebView state."""
+
+        current = self.snapshot
+        self.snapshot = HomeWidgetSnapshot(
+            request_id=current.request_id,
+            phase=current.phase,
+            data=current.data,
+            error_message=current.error_message,
+            enable_animations=bool(enable_animations),
+            reduced_motion=bool(reduced_motion),
+        )
+
+    def _snapshot(
+        self,
+        *,
+        request_id: int,
+        phase: str,
+        data: HomeWidgetData | None = None,
+        error_message: str | None = None,
+    ) -> HomeWidgetSnapshot:
+        return HomeWidgetSnapshot(
+            request_id=request_id,
+            phase=phase,
+            data=data,
+            error_message=error_message,
+            enable_animations=self.snapshot.enable_animations,
+            reduced_motion=self.snapshot.reduced_motion,
+        )
 
     def begin_request(self) -> int:
         self._next_request_id += 1
         req_id = self._next_request_id
-        self.snapshot = HomeWidgetSnapshot(request_id=req_id, phase="loading")
+        self.snapshot = self._snapshot(
+            request_id=req_id,
+            phase="stale" if self._last_valid_data is not None else "loading",
+            data=self._last_valid_data,
+            error_message=(
+                "Showing the last available garden preview. Updating..."
+                if self._last_valid_data is not None else None
+            ),
+        )
         return req_id
 
     def resolve_success(self, request_id: int, data: HomeWidgetData) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(request_id=request_id, phase="success", data=data)
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="success",
+            data=data,
+        )
+        self._last_valid_data = data
         return True
 
     def resolve_partial(self, request_id: int, data: HomeWidgetData, error_message: str) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(
+        self.snapshot = self._snapshot(
             request_id=request_id,
             phase="partial",
             data=data,
@@ -113,11 +188,55 @@ class HomeWidgetStateController:
     def resolve_error(self, request_id: int, error_message: str) -> bool:
         if request_id != self.snapshot.request_id:
             return False
-        self.snapshot = HomeWidgetSnapshot(request_id=request_id, phase="error", error_message=error_message)
+        retained = self.snapshot.data or self._last_valid_data
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="stale" if retained is not None else "error",
+            data=retained,
+            error_message=error_message,
+        )
+        return True
+
+    def resolve_stale(
+        self,
+        request_id: int,
+        error_message: str = "Showing the last available garden preview. Updating...",
+    ) -> bool:
+        if request_id != self.snapshot.request_id or self._last_valid_data is None:
+            return False
+        self.snapshot = self._snapshot(
+            request_id=request_id,
+            phase="stale",
+            data=self._last_valid_data,
+            error_message=error_message,
+        )
         return True
 
 
 DEFAULT_ERROR_MESSAGE = "Garden progress could not be loaded. Try again in a moment."
+
+HOME_COMPACT_CONTAINER_MAX_WIDTH = 469
+HOME_NARROW_CONTAINER_MAX_WIDTH = 420
+HOME_LAYOUT_STANDARD = "standard"
+HOME_LAYOUT_COMPACT = "compact"
+HOME_LAYOUT_NARROW = "narrow"
+
+
+def home_container_layout(width: int | float) -> str:
+    """Return the CSS-equivalent Home layout range for one inline size."""
+
+    try:
+        available = float(width)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Home container width must be finite") from exc
+    if not isfinite(available):
+        raise ValueError("Home container width must be finite")
+    available = max(0.0, available)
+    if available <= HOME_NARROW_CONTAINER_MAX_WIDTH:
+        return HOME_LAYOUT_NARROW
+    if available <= HOME_COMPACT_CONTAINER_MAX_WIDTH:
+        return HOME_LAYOUT_COMPACT
+    return HOME_LAYOUT_STANDARD
 
 
 HOME_WIDGET_STYLE = """
@@ -153,6 +272,22 @@ HOME_WIDGET_STYLE = """
 .ag-home__state-message, .ag-home__partial-message {
   line-height: 1.45;
 }
+.ag-home__loading-track {
+  width:100%;
+  height:4px;
+  margin-top:14px;
+  overflow:hidden;
+  border-radius:4px;
+  background:#183a30;
+}
+.ag-home__loading-track::after {
+  content:"";
+  display:block;
+  width:42%;
+  height:100%;
+  border-radius:4px;
+  background:#5cc58b;
+}
 .ag-home__partial-message {
   box-sizing: border-box;
   width: 100%;
@@ -168,7 +303,10 @@ HOME_WIDGET_STYLE = """
   min-width:0;
 }
 .ag-home__art { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
-.ag-home__marker-layer { position:absolute; z-index:101; left:0; top:50%; width:100%; aspect-ratio:var(--ag-source-aspect,2.4); transform:translateY(-50%); overflow:hidden; pointer-events:none; }
+.ag-home__scenery-layer,.ag-home__weather-layer { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; }
+.ag-home__scenery-layer { z-index:2; }
+.ag-home__weather-layer { z-index:5; }
+.ag-home__marker-layer { position:absolute; z-index:84; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
 .ag-home__nurtured-marker { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__nurtured-marker-fallback { position:absolute; display:none; box-sizing:border-box; border:1px solid #4c3e18; border-radius:50%; background:#dfbd57; pointer-events:none; }
@@ -189,7 +327,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__fallback-silhouette::before,.ag-home__fallback-silhouette::after { content:""; position:absolute; width:14px; height:9px; top:25%; border:1px solid #8fb18a; background:rgba(72,108,73,.74); }
 .ag-home__fallback-silhouette::before { right:0; border-radius:12px 2px 12px 2px; transform:rotate(18deg); transform-origin:right center; }
 .ag-home__fallback-silhouette::after { left:0; top:48%; border-radius:2px 12px 2px 12px; transform:rotate(-18deg); transform-origin:left center; }
-.ag-home__fallback-label { max-width:92%; overflow:hidden; padding:4px 6px; border-radius:5px; background:rgba(8,27,23,.84); color:#dce9dd; font-size:11px; line-height:1.2; text-align:center; }
+.ag-home__fallback-label { max-width:92%; overflow:hidden; padding:4px 6px; border-radius:5px; background:rgba(8,27,23,.84); color:#dce9dd; font-size:12px; line-height:1.2; text-align:center; }
 .ag-home__fallback-label > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ag-home__fallback-stage { margin-top:1px; color:#aac3b1; }
 .ag-home__sr-only { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
@@ -219,6 +357,8 @@ HOME_WIDGET_STYLE = """
   background-repeat:no-repeat;
   background-size:100% 100%;
   background-color:#17332d;
+  opacity:var(--ag-scene-opacity,1);
+  transition:opacity 140ms ease;
 }
 .ag-home__scene::after { content:""; position:absolute; inset:0; z-index:90; pointer-events:none; box-shadow:inset 0 -12px 24px rgba(5,14,12,.13); }
 .ag-home__details {
@@ -241,8 +381,8 @@ HOME_WIDGET_STYLE = """
 .ag-home__details,.ag-home__details * { box-sizing:border-box; }
 .ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-width:0; }
 .ag-home__identity { min-width:0; }
-.ag-home__garden-context { display:block; margin-top:2px; color:#aebfb4; font-size:11.5px; line-height:1.1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__eyebrow { margin-bottom:1px; color:#d8b875; font-size:10px; font-weight:700; letter-spacing:.09em; line-height:1.05; text-transform:uppercase; }
+.ag-home__garden-context { display:block; margin-top:2px; color:#aebfb4; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__eyebrow { margin-bottom:1px; color:#d8b875; font-size:12px; font-weight:700; letter-spacing:.09em; line-height:1.2; text-transform:uppercase; }
 .ag-home__focus-name {
   display:block;
   overflow:hidden;
@@ -265,10 +405,10 @@ HOME_WIDGET_STYLE = """
 .ag-home__metric { min-width:0; color:#edf5ea; font-size:13px; line-height:1.08; }
 .ag-home__metric + .ag-home__metric { margin-left:12px; padding-left:12px; border-left:1px solid rgba(153,178,159,.22); }
 .ag-home__metric strong { display:block; min-width:0; overflow:hidden; color:#edf5ea; font-size:13px; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__metric span { display:block; min-width:0; margin-top:1px; overflow:hidden; color:#aebfb4; font-size:11.5px; font-weight:500; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__metric span { display:block; min-width:0; margin-top:1px; overflow:hidden; color:#aebfb4; font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
 .ag-home__metric--streak strong { color:#edf5ea; }
 .ag-home__metric--coins strong { color:#f2dda4; }
-.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:11.5px; line-height:1.3; overflow-wrap:anywhere; }
+.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
 .ag-home__stage-up {
   box-sizing: border-box;
   width: 100%;
@@ -301,7 +441,7 @@ HOME_WIDGET_STYLE = """
   cursor: pointer;
   box-shadow:inset 0 1px 0 rgba(242,250,240,.08),0 3px 9px rgba(1,14,10,.12);
 }
-#ag-home-root button.ag-home__open::after { content:"→"; margin-left:6px; font-size:12px; line-height:1; }
+#ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root button.ag-home__open:disabled::after { content:""; margin:0; }
 #ag-home-root button:hover { background: #357f5b; }
 #ag-home-root button:active { background:#225e42; transform:translateY(1px); }
@@ -311,21 +451,16 @@ HOME_WIDGET_STYLE = """
   outline-offset: 2px;
 }
 .ag-home__open { flex:none; min-width:108px !important; min-height:36px !important; padding:0 14px !important; border-radius:8px !important; font-size:13px !important; }
+.ag-home__state-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+#ag-home-root button.ag-home__secondary {
+  border-color:#4F806E;
+  background:#123228;
+  color:#F4F7F5;
+  box-shadow:none;
+}
+#ag-home-root button.ag-home__secondary:hover { background:#173B30; }
+#ag-home-root button.ag-home__secondary:active { background:#0C261F; }
 .nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
-@media (max-width: 600px) {
-  #ag-home-root { margin-top:18px; }
-}
-@container (max-width: 469px) {
-  .ag-home__scene { height:160px; }
-  .ag-home__details { padding-top:3px; padding-bottom:4px; }
-  .ag-home__metrics { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"plant plant" "streak coins"; row-gap:3px; }
-  .ag-home__metric--plant { grid-area:plant; display:flex; align-items:baseline; gap:6px; }
-  .ag-home__metric--plant strong,.ag-home__metric--plant span { max-width:50%; }
-  .ag-home__metric--plant span { margin-top:0; }
-  .ag-home__metric--streak { grid-area:streak; }
-  .ag-home__metric--coins { grid-area:coins; }
-  .ag-home__metric--streak { margin-left:0 !important; padding-left:0 !important; border-left:0 !important; }
-}
 
 /* Release redesign: one artwork-first, full-bleed preview with a bottom scrim. */
 #ag-home-root {
@@ -378,7 +513,7 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__details::before { display:none; }
 .ag-home__identity-row { gap:16px; align-items:end; }
-.ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:10.5px; }
+.ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:12px; }
 .ag-home__focus-name { font-size:20px; line-height:1.15; }
 .ag-home__support {
   display:block;
@@ -392,6 +527,18 @@ HOME_WIDGET_STYLE = """
   text-overflow:ellipsis;
   white-space:nowrap;
 }
+.ag-home__reward-progress {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  gap:2px;
+  margin-top:5px;
+  color:#D3DDD8;
+  font-size:12px;
+  line-height:1.25;
+}
+.ag-home__reward-progress > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__reward-progress strong { color:#F0D57C; font-weight:700; }
 .ag-home__metrics,.ag-home__garden-context,.ag-home__status-notice { display:none; }
 .ag-home__partial-message,.ag-home__stage-up {
   position:absolute;
@@ -420,35 +567,46 @@ HOME_WIDGET_STYLE = """
 }
 #ag-home-root button:hover { background:#71D39C; }
 #ag-home-root button:active { background:#49AA75; }
-#ag-home-root button.ag-home__open::after { display:none; }
+#ag-home-root button.ag-home__open::after { content:""; display:none; }
+#ag-home-root[data-motion="reduced"] { transition:none; }
+#ag-home-root[data-motion="reduced"]:hover { transform:none; }
+#ag-home-root[data-motion="reduced"] button:active { transform:none; }
+#ag-home-root[data-motion="reduced"] .ag-home__scene-frame { transition:none; }
 @media (prefers-reduced-motion: reduce) {
   #ag-home-root { transition:none; }
   #ag-home-root:hover { transform:none; }
   #ag-home-root button:active { transform:none; }
+  .ag-home__scene-frame { transition:none; }
 }
-@media (max-width:650px) {
+@container (max-width: 469px) {
+  .ag-home__body { min-height:168px; }
+  .ag-home__details { padding:26px 14px 12px; }
+  .ag-home__support { max-width:100%; }
   .ag-home--no-starter .ag-home__support {
-    max-width:390px;
     overflow:visible;
     text-overflow:clip;
     white-space:normal;
   }
 }
-@media (max-width:520px) {
-  #ag-home-root { height:168px; }
-  .ag-home__state { min-height:168px; }
-  .ag-home__support { max-width:330px; }
-}
 @container (max-width:420px) {
   .ag-home__details { padding:24px 12px 12px; }
-  .ag-home__support { max-width:240px; font-size:12.5px; }
+  .ag-home__identity-row { gap:12px; }
+  .ag-home__support { max-width:100%; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
-#ag-home-root[data-active-slot="4"] .ag-home__identity-row {
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity-row {
   grid-template-columns:minmax(0,32%) auto;
   justify-content:space-between;
 }
-#ag-home-root[data-active-slot="4"] .ag-home__identity { text-align:left; }
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity {
+  text-align:left;
+}
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__support {
+  display:-webkit-box;
+  white-space:normal;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
 </style>
 """
 
@@ -461,21 +619,34 @@ def _plant_fallback(_stage: Any) -> str:
 def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     DISPLAY_TELEMETRY.track_render("home_widget")
     phase = snapshot.phase
+    motion_mode = "standard" if snapshot.motion_enabled else "reduced"
+    motion_attribute = f' data-motion="{motion_mode}"'
     if phase == "loading":
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="loading" role="region" aria-label="Anki Garden">'
-            '<div class="ag-home__state" data-testid="home-loading" role="status" aria-live="polite">'
+            f'<div id="ag-home-root" data-state="loading"{motion_attribute} role="region" '
+            'aria-label="Anki Garden" aria-busy="true">'
+            '<div class="ag-home__state" data-testid="home-loading">'
             '<div class="ag-home__state-title">Anki Garden</div>'
-            '<div class="ag-home__state-message">Loading overview…</div></div>'
+            '<div class="ag-home__state-message" role="status" aria-live="polite">'
+            'Loading garden preview…</div>'
+            '<div class="ag-home__loading-track" role="progressbar" aria-label="Loading garden preview"></div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden while the preview loads" '
+            'onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
     if phase == "empty":
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="empty" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="empty"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
             f'<div class="ag-home__state-title">{HOME_NO_STARTER_TITLE}</div>'
             f'<div class="ag-home__state-message">{HOME_NO_STARTER_BODY}</div>'
@@ -485,16 +656,23 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             "</div>"
         )
     if phase == "error":
-        message = escape(snapshot.error_message or DEFAULT_ERROR_MESSAGE)
+        detail = escape(snapshot.error_message or DEFAULT_ERROR_MESSAGE)
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Overview unavailable</div>'
-            f'<div class="ag-home__state-message" data-testid="home-error" role="alert">{message}</div>'
-            '<button data-testid="home-retry" type="button" aria-label="Retry loading overview" '
-            'onclick="pycmd(\'anki-garden:refresh\')">Retry</button></div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
+            'The preview could not be generated, but your garden is still available. '
+            f'<span class="ag-home__sr-only">{detail}</span></div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
 
@@ -509,14 +687,50 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            '<div id="ag-home-root" data-state="error" role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Overview unavailable</div>'
-            '<div class="ag-home__state-message" data-testid="home-error" role="alert">The summary could not be displayed.</div></div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
+            'The preview could not be generated, but your garden is still available.</div>'
+            '<div class="ag-home__state-actions">'
+            '<button data-testid="home-open" class="ag-home__open" type="button" '
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
+            'aria-label="Retry garden preview" '
+            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            '</div></div>'
             "</div>"
         )
     if not data.weather:
         DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="weather")
+
+    source_preview = data.preview_snapshot
+    if source_preview is None:
+        source_preview = garden_preview_from_values(
+            consumer="home",
+            garden_name=data.garden_name,
+            active_plant_name=data.active_plant_name,
+            active_stage=data.active_plant_stage,
+            active_growth_points=data.active_growth_points,
+            active_stage_points=data.active_stage_points,
+            active_stage_goal=data.active_stage_goal,
+            active_fully_grown=data.active_fully_grown,
+            starter_selected=data.starter_selected,
+            planted_starter_name=data.planted_starter_name,
+            planted_starter_stage=data.planted_starter_stage,
+            selected_weather=data.weather,
+            scene_items=data.scene_items,
+            unlocked_slots=data.unlocked_slots,
+        )
+    requested_preview_phase = (
+        phase if phase in {"stale", "disabled"} else source_preview.phase
+    )
+    preview = preview_with_phase(
+        source_preview,
+        requested_preview_phase,
+        motion_enabled=snapshot.motion_enabled,
+        status_text=(snapshot.error_message or source_preview.status_text),
+    )
 
     partial_banner = ""
     if phase == "partial":
@@ -524,6 +738,11 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         partial_banner = (
             '<div class="ag-home__partial-message" data-testid="home-partial-error" '
             f'role="status" aria-live="polite">{partial_error}</div>'
+        )
+    elif preview.status_text:
+        partial_banner = (
+            '<div class="ag-home__partial-message" data-testid="home-preview-status" '
+            f'role="status" aria-live="polite">{escape(preview.status_text)}</div>'
         )
 
     stage_up_html = ""
@@ -562,7 +781,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     crop_center_y = crop_y + crop_height / 2
     background_style = (
         f' style="--ag-source-aspect:{source_aspect:.6f};'
-        f'--ag-preview-x:{crop_center_x * 100:.2f}%;--ag-preview-y:{crop_center_y * 100:.2f}%'
+        f'--ag-preview-x:{crop_center_x * 100:.2f}%;--ag-preview-y:{crop_center_y * 100:.2f}%;'
+        f'--ag-scene-opacity:{preview.scene_opacity:.3f}'
     )
     background_url = str(surface_variant.get("url") or data.background_url)
     fallback_background = (
@@ -578,6 +798,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     else:
         background_style += f";background-image:{fallback_background}"
     background_style += '"'
+    scenery_identity = (
+        ' data-testid="home-scenery-layer"'
+        f' data-scenery="{escape(preview.selected_scenery, quote=True)}"'
+        if background_url else
+        ""
+    )
     layouts = compact_plant_layout(
         1000,
         420,
@@ -622,6 +848,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         slot_layout.slot_index: planter_draw_rect(slot_layout, planter_family)
         for slot_layout in slot_layouts
     }
+    occupied_layouts = {layout.slot_index: layout for layout in layouts}
+    home_geometry = SceneGeometryLayout.from_placements(
+        1000,
+        420,
+        (
+            occupied_layouts.get(layout.slot_index, layout)
+            for layout in slot_layouts
+        ),
+        planter_family=planter_family,
+    )
     marker_obstacles = [
         layout.visible.expanded(4.0, 4.0)
         for layout in layouts
@@ -637,7 +873,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         "middle": [],
         "near": [],
     }
-    marker_overlays: list[str] = []
+    marker_overlays: dict[str, list[str]] = {
+        "far": [],
+        "middle": [],
+        "near": [],
+    }
+    summary_clearance = "none"
     theme = str(data.scene_items[0].get("background_theme", "verdant_twilight")) if data.scene_items else "verdant_twilight"
     band_counts = {"far": 0, "middle": 0, "near": 0}
     plant_z_base = {"far": 10, "middle": 40, "near": 70}
@@ -709,27 +950,37 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         marker_markup = ""
         if bool(item.get("is_active")):
             placement_protected_regions = marker_protected_regions
-            if layout.slot_index == 4:
-                # Home reserves a center gap for the front-left marker. Match
-                # the solver's identity obstacle to that narrower text column
-                # so the can can remain on the plant's exact soil line.
+            center_left_summary_region: Rect | None = None
+            marker_needs_center_left_clearance = (
+                layout.depth_band == "near"
+                and float(layout.ground_anchor[0]) < 500.0
+            )
+            if marker_needs_center_left_clearance:
+                # Derive the summary gap from the front-left soil region, not
+                # a plot-number exception. This keeps the same collision-safe
+                # placement if the scene metadata reorders its plots.
+                center_left_summary_region = Rect(0.0, 300.0, 340.0, 120.0)
                 placement_protected_regions = (
-                    Rect(0.0, 300.0, 340.0, 120.0),
+                    center_left_summary_region,
                     marker_protected_regions[1],
                 )
-            marker_placement = nurtured_marker_placement(
-                1000,
-                420,
+            marker_placement = home_geometry.resolve_watering_can(
+                layout.slot_index,
                 layout,
-                planter_rect=planter_boxes.get(layout.slot_index),
                 obstacles=marker_obstacles,
                 protected_regions=placement_protected_regions,
             )
+            if (
+                center_left_summary_region is not None
+                and marker_placement.pulse_bounds.intersects(
+                    center_left_summary_region
+                )
+            ):
+                summary_clearance = "center-left-marker"
             marker_box = marker_placement.rect
             marker_common = (
                 f"left:{marker_box.x / 10:.3f}%;top:{marker_box.y / 4.2:.3f}%;"
-                f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%;"
-                "z-index:89"
+                f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%"
             )
             marker_rect_data = ",".join(
                 f"{value:.3f}"
@@ -761,11 +1012,25 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                     marker_placement.planter_rect.height,
                 )
             )
+            marker_bed = home_geometry.bed(layout.slot_index)
+            marker_exclusions_data = ";".join(
+                ",".join(
+                    f"{value:.3f}"
+                    for value in (
+                        exclusion.x,
+                        exclusion.y,
+                        exclusion.width,
+                        exclusion.height,
+                    )
+                )
+                for exclusion in (
+                    marker_bed.planter_exclusions if marker_bed is not None else ()
+                )
+            )
             fallback_box = nurtured_marker_fallback_rect(marker_placement)
             fallback_common = (
                 f"left:{fallback_box.x / 10:.3f}%;top:{fallback_box.y / 4.2:.3f}%;"
-                f"width:{fallback_box.width / 10:.3f}%;height:{fallback_box.height / 4.2:.3f}%;"
-                "z-index:89"
+                f"width:{fallback_box.width / 10:.3f}%;height:{fallback_box.height / 4.2:.3f}%"
             )
             marker_url = (
                 data.nurtured_marker_spout_right_url
@@ -789,6 +1054,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                     f'data-marker-pulse="{marker_pulse_data}" '
                     f'data-marker-target-ground="{marker_target_ground_data}" '
                     f'data-marker-planter-rect="{marker_planter_data}" '
+                    f'data-marker-planter-exclusions="{marker_exclusions_data}" '
                     f'src="{marker_src}" style="{marker_common}" '
                     'onerror="this.style.display=\'none\';var f=this.nextElementSibling;'
                     'if(f){f.style.display=\'block\';}">'
@@ -804,9 +1070,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 f'data-marker-pulse="{marker_pulse_data}" '
                 f'data-marker-target-ground="{marker_target_ground_data}" '
                 f'data-marker-planter-rect="{marker_planter_data}" '
+                f'data-marker-planter-exclusions="{marker_exclusions_data}" '
                 f'style="{fallback_common};display:{fallback_display}"></span>'
             )
-            marker_overlays.append(marker_markup)
+            marker_overlays[depth_band].append(marker_markup)
         plant_markup[depth_band].append(shadow + plant + tint)
 
     planter_markup: dict[str, dict[str, list[str]]] = {
@@ -887,10 +1154,23 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'<img class="ag-home__occlusion" src="{escape(legacy_occlusion_url, quote=True)}" alt="" aria-hidden="true" onerror="this.onerror=null;this.style.display=\'none\';">'
         if not planter_enabled and legacy_occlusion_url and not occlusion_markup else ""
     )
+    marker_z = {"far": 27, "middle": 57, "near": 87}
+    marker_layers = {
+        band: (
+            '<div class="ag-home__marker-layer" aria-hidden="true" '
+            f'data-marker-band="{band}" style="z-index:{marker_z[band]}">'
+            + "".join(marker_overlays[band])
+            + "</div>"
+            if marker_overlays[band] else
+            ""
+        )
+        for band in ("far", "middle", "near")
+    }
     if planter_enabled:
         layered_art = "".join(
             "".join(planter_markup[band]["base"])
             + "".join(plant_markup[band])
+            + marker_layers[band]
             + "".join(planter_markup[band]["foreground"])
             for band in ("far", "middle", "near")
         )
@@ -898,16 +1178,26 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         layered_art = (
             legacy_occlusion
             + "".join(plant_markup["far"])
+            + marker_layers["far"]
             + "".join(plant_markup["middle"])
+            + marker_layers["middle"]
             + occlusion_markup.get("rear", "")
             + "".join(plant_markup["near"])
+            + marker_layers["near"]
             + occlusion_markup.get("front", "")
         )
-    marker_layer = (
-        '<div class="ag-home__marker-layer" aria-hidden="true">'
-        + "".join(marker_overlays)
-        + "</div>"
-        if marker_overlays else
+    scenery_layer = (
+        f'<img class="ag-home__scenery-layer" data-testid="home-garden-overlay-layer" '
+        f'src="{escape(data.garden_overlay_url, quote=True)}" alt="" aria-hidden="true" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+        if data.garden_overlay_url else
+        ""
+    )
+    weather_layer = (
+        f'<img class="ag-home__weather-layer" data-testid="home-weather-layer" '
+        f'src="{escape(data.weather_url, quote=True)}" alt="" aria-hidden="true" '
+        'onerror="this.onerror=null;this.style.display=\'none\';">'
+        if data.weather_url else
         ""
     )
     starter_selected = bool(data.starter_selected)
@@ -916,35 +1206,55 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     planted_starter_stage = format_status_label(
         data.planted_starter_stage or "seed"
     )
-    garden_name_value = str(data.garden_name or FALLBACK_GARDEN_NAME)
+    garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
-    if not starter_selected:
-        preview_title = HOME_NO_STARTER_TITLE
-        preview_support = HOME_NO_STARTER_BODY
-    else:
-        preview_title = garden_name_value
-        active_name = str(data.active_plant_name or "").strip()
-        if active_name:
-            active_stage = format_status_label(data.active_plant_stage or "seed")
-            if data.active_fully_grown:
-                preview_support = (
-                    f"{active_name} · {active_stage} · "
-                    f"{format_integer(data.active_growth_points)} Growth"
-                )
-            else:
-                preview_support = (
-                    f"{active_name} · {active_stage} · "
-                    f"{format_integer(data.active_stage_points)} / "
-                    f"{format_integer(data.active_stage_goal)} Growth"
-                )
-        elif starter_waiting_for_nurture:
-            preview_support = (
-                f"{planted_starter_name} · {planted_starter_stage} · Planted starter"
-                if planted_starter_name else
-                "Planted starter · Open the garden to nurture it"
+    preview_title = preview.title
+    preview_support = preview.summary
+    answer_unit = "answer" if data.reviews_today == 1 else "answers"
+    today_answers_text = f"{format_integer(data.reviews_today)} {answer_unit} today"
+    streak_text = f"{format_integer(data.streak_days)}-day Anki streak"
+    coin_unit = "Garden Coin" if data.garden_currency == 1 else "Garden Coins"
+    coin_text = f"{format_integer(data.garden_currency)} {coin_unit}"
+    nearest_achievement_text = ""
+    nearest_achievement_accessible = ""
+    if data.nearest_achievement_name and data.nearest_achievement_progress:
+        nearest_achievement_text = (
+            f"{data.nearest_achievement_name} · {data.nearest_achievement_progress}"
+        )
+        nearest_achievement_accessible = (
+            f". Closest achievement: {nearest_achievement_text}"
+            + (
+                f". Reward: {data.nearest_achievement_reward}"
+                if data.nearest_achievement_reward else ""
             )
-        else:
-            preview_support = "No nurtured plant · Open the garden to choose one"
+        )
+    reward_progress_html = (
+        '<div class="ag-home__reward-progress" data-testid="home-reward-progress">'
+        '<span>'
+        f'<span data-testid="home-today-answers">{escape(today_answers_text)}</span> · '
+        f'<span data-testid="home-streak">{escape(streak_text)}</span> · '
+        f'<span data-testid="home-currency">{escape(coin_text)}</span>'
+        '</span>'
+        + (
+            f'<span data-testid="home-nearest-achievement" '
+            f'aria-label="Closest achievement: {escape(nearest_achievement_text, quote=True)}'
+            + (
+                f'. Reward: {escape(data.nearest_achievement_reward, quote=True)}'
+                if data.nearest_achievement_reward else ""
+            )
+            + f'" title="{escape(data.nearest_achievement_reward, quote=True)}">'
+            f'<strong>Closest</strong> · {escape(nearest_achievement_text)}</span>'
+            if nearest_achievement_text else ""
+        )
+        + '</div>'
+    )
+    home_progress_accessible = (
+        f". {today_answers_text}. {streak_text}. {coin_text}"
+        f"{nearest_achievement_accessible}"
+        if starter_selected else ""
+    )
+    if not starter_selected:
+        reward_progress_html = ""
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
@@ -956,9 +1266,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         '</div>'
     )
     streak_progress = _streak_milestone_progress(data.streak_days)
-    streak_text = f"{format_integer(data.streak_days)}-day streak"
-    coin_unit = "coin" if data.garden_currency == 1 else "coins"
-    coin_text = f"{format_integer(data.garden_currency)} {coin_unit}"
     active_name = str(data.active_plant_name or "").strip()
     if active_name:
         active_stage = format_status_label(data.active_plant_stage or "seed")
@@ -1025,7 +1332,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     metrics_accessible_label = escape(
         f"{active_accessible_text}; {streak_text}; "
-        f"{format_integer(data.garden_currency)} Garden Coins",
+        f"{coin_text}; "
+        f"Study Growth generated {format_integer(data.study_growth_generated)}; "
+        f"nurtured allocation {format_integer(data.nurtured_growth_today)}; "
+        f"other planted plants credited "
+        f"{format_integer(data.passive_growth_credited_today)} passive Growth from "
+        f"{format_growth_fifths(data.passive_growth_fifths_today)} exact Growth"
+        + (
+            "; today’s allocation detail is partially stale until scheduler rollover"
+            if data.growth_accounting_stale else ""
+        ),
         quote=True,
     )
 
@@ -1056,24 +1372,24 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         quote=True,
     ) if marker_plant is not None else ""
     marker_accessible = (
-        f". Watering can: {marker_plant_name} is nurtured and receives Growth from future Anki card answers"
+        f". Watering can: {marker_plant_name} is nurtured and receives full Growth from "
+        f"future Anki card answers. {PASSIVE_GROWTH_EXPLANATION}"
         if marker_visible else
         ""
     )
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-active-slot=\"{marker_slot}\" role=\"button\" tabindex=\"0\"
-  aria-label=\"{escape(action_label, quote=True)}. {escape(preview_support, quote=True)}{marker_accessible}\"
-  data-anki-garden-command=\"anki-garden:{action_command}\"
-  onclick=\"if(event.target.closest('button'))return;pycmd('anki-garden:{action_command}')\"
-  onkeydown=\"if(event.key==='Enter'||event.key===' '){{event.preventDefault();pycmd('anki-garden:{action_command}')}}\">
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"region\"
+  aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}{escape(home_progress_accessible, quote=True)}{marker_accessible}\">
   <div class=\"ag-home__body\">
     {stage_up_html}
     {partial_banner}
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
-      <div class=\"ag-home__scene-frame\" data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
+      <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
+        {scenery_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
+        {weather_layer}
       </div>
     </div>
     <aside class=\"ag-home__details home-summary-panel\">
@@ -1083,11 +1399,11 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
           title=\"{escape(HOME_NO_STARTER_ACCESSIBLE if not starter_selected else action_label, quote=True)}\"
           onclick=\"event.stopPropagation();if(this.disabled)return;this.disabled=true;this.textContent='Opening…';pycmd('anki-garden:{action_command}');setTimeout(()=>{{this.disabled=false;this.textContent='{action_reset}';}},1500)\">{action_text}</button>
       </header>
+      {reward_progress_html}
       {f'<p class="ag-home__status-notice" role="status">{escape(data.status_notice)}</p>' if data.status_notice else ''}
       {no_starter_body}
       {metrics_html}
     </aside>
-    {marker_layer}
   </div>
 </div>
 """
@@ -1102,6 +1418,7 @@ def build_home_widget_success_data(
     stage_transition_message: str = "",
     background_url: str = "",
     garden_overlay_url: str = "",
+    weather_url: str = "",
     nurtured_marker_url: str = "",
     nurtured_marker_spout_right_url: str = "",
     status_notice: str = "",
@@ -1129,6 +1446,11 @@ def build_home_widget_success_data(
         starter_complete and active_plant is None and planted_starter is not None
     )
     active_growth = growth_display(getattr(active_plant, "growth_points", 0))
+    (
+        nearest_achievement_name,
+        nearest_achievement_progress,
+        nearest_achievement_reward,
+    ) = _nearest_locked_achievement(state)
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
             route="home_widget",
@@ -1136,6 +1458,30 @@ def build_home_widget_success_data(
             reason="missing_or_empty",
             value=getattr(state, "selected_weather", None),
         )
+    preview_snapshot = garden_preview_from_values(
+        consumer="home",
+        phase="success",
+        garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
+        active_plant_name=str(getattr(active_plant, "name", "") or ""),
+        active_stage=str(getattr(active_plant, "growth_stage", "") or ""),
+        active_growth_points=max(0, int(getattr(active_plant, "growth_points", 0) or 0)),
+        active_stage_points=active_growth.stage_points if active_plant is not None else 0,
+        active_stage_goal=active_growth.stage_goal if active_plant is not None else 0,
+        active_fully_grown=active_growth.fully_grown if active_plant is not None else False,
+        starter_selected=bool(starter_complete),
+        planted_starter_name=(
+            str(getattr(planted_starter, "name", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        planted_starter_stage=(
+            str(getattr(planted_starter, "growth_stage", "") or "")
+            if starter_waiting_for_nurture else ""
+        ),
+        selected_weather=str(getattr(state, "selected_weather", "sunny") or "sunny"),
+        selected_scenery=str(getattr(state, "selected_background", "verdant_twilight") or "verdant_twilight"),
+        scene_items=scene_items,
+        unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
+    )
     return HomeWidgetData(
         reviews_today=reviews_today,
         growth_earned=int(stats.growth_earned),
@@ -1155,6 +1501,7 @@ def build_home_widget_success_data(
         stage_transition_message=stage_transition_message,
         background_url=background_url,
         garden_overlay_url=garden_overlay_url,
+        weather_url=weather_url,
         nurtured_marker_url=nurtured_marker_url,
         nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),
@@ -1180,7 +1527,72 @@ def build_home_widget_success_data(
         starter_planted_not_nurtured=starter_waiting_for_nurture,
         garden_name=str(getattr(state, "garden_name", FALLBACK_GARDEN_NAME) or FALLBACK_GARDEN_NAME),
         starter_selected=bool(starter_complete),
+        preview_snapshot=preview_snapshot,
+        study_growth_generated=max(
+            0, int(getattr(stats, "study_growth_generated", 0) or 0)
+        ),
+        nurtured_growth_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_nurtured_growth", {}).values()
+        ),
+        passive_growth_fifths_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_passive_growth_fifths", {}).values()
+        ),
+        passive_growth_credited_today=sum(
+            max(0, int(value))
+            for value in getattr(stats, "plant_passive_growth_credited", {}).values()
+        ),
+        charge_growth_today=max(0, int(getattr(stats, "charge_growth", 0) or 0)),
+        direct_reward_growth_today=max(
+            0, int(getattr(stats, "direct_reward_growth", 0) or 0)
+        ),
+        growth_accounting_stale=bool(
+            getattr(stats, "growth_accounting_stale", False)
+        ),
+        nearest_achievement_name=nearest_achievement_name,
+        nearest_achievement_progress=nearest_achievement_progress,
+        nearest_achievement_reward=nearest_achievement_reward,
     )
+
+
+def _nearest_locked_achievement(state: Any) -> tuple[str, str, str]:
+    """Return one useful locked milestone from the canonical presentation layer."""
+
+    try:
+        presentations = achievement_presentations(state)
+    except (AttributeError, TypeError, ValueError):
+        return "", "", ""
+    relevant_metrics = {
+        "streak_days",
+        "daily_answers",
+        "lifetime_answers",
+        "consecutive_non_again",
+    }
+    locked = [
+        item
+        for item in presentations
+        if (
+            not item.unlocked
+            and item.evaluation_mode == "immediate"
+            and item.progress_metric in relevant_metrics
+        )
+    ]
+    if not locked:
+        return "", "", ""
+    underway = [item for item in locked if item.current > 0]
+    candidates = underway or [
+        item for item in locked if item.progress_metric == "streak_days"
+    ] or locked
+    nearest = max(
+        candidates,
+        key=lambda item: (
+            item.progress,
+            -max(0, item.progress_target - item.current),
+            -item.progress_target,
+        ),
+    )
+    return nearest.name, nearest.value_text, nearest.reward_summary
 
 
 def _streak_bonus_percent(streak_days: int) -> int:

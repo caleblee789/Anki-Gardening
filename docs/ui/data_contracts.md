@@ -1,22 +1,25 @@
 # Progression state contract
 
-The persisted boundary is `user_files/garden_state.json`, currently schema version `16`. Mutable data and cache files never enter the distributable archive.
+The authoritative persisted boundary is the schema-21 reward database under
+`user_files/`. A legacy `garden_state.json` is imported atomically and retained
+as migration evidence; mutable data and cache files never enter the
+distributable archive.
 
 ## Authoritative fields
 
-- Totals: `streak_days` (Anki days in a row with at least one card answer), `total_reviews` (card-answer events), `total_correct`, and `total_wrong`.
+- Totals: `streak_days` (Anki days in a row with at least one eligible answer), `total_reviews` (card-answer events), `total_correct`, and `total_wrong`.
 - Today: `daily_stats.day`, answer counters, `base_growth`, `streak_bonus_growth`, `fertilizer_growth`, `booster_growth`, `weather_growth`, `scenery_growth`, `charge_growth`, `bonus_growth`, `growth_earned`, per-plant Growth, daily environment claims, and the all-due completion flag.
 - Garden identity: `garden_name` is profile-wide plain text, normalized to one-line whitespace and capped at 40 characters. `garden_setup_version` distinguishes first-use naming from later edits.
 - Plants: stable ID, one supported species, generated/editable name, optional garden-space slot, non-negative Growth, a fractional bonus remainder, planted date, semantic story memories, optional current Fertilizer and Booster intervals, and bounded histories of replaced or expired intervals.
-- Nurture routing: `active_plant_id` and timestamped `active_plant_periods` remain the internal compatibility fields. The UI calls this choice **Nurture**. A card answer goes to the nurtured unfinished plant at its answer time, and existing Growth never moves when the learner nurtures another plant.
+- Nurture routing: `active_plant_id` and timestamped `active_plant_periods` remain the internal compatibility fields. The UI calls this choice **Nurture**. A card answer gives the full committed normal-answer award to the answer-time nurtured unfinished plant. Each other planted unfinished plant also receives an exact 20% passive allocation, carried in persisted fifths. Existing Growth never moves when the learner nurtures another plant.
 - Streak Growth: `streak_days` is the only consistency progression value. The current streak bonus is 0% at day 1, +5% at day 7, +10% at day 14, +15% at day 30, +20% at day 100, and +25% at day 365. It is reconciled from authoritative Anki review history at startup, sync, rollover, and live answers; no seven-day history is stored.
-- Economy: `currency_balance`, an idempotent transaction ledger with a user-facing reason and resulting balance, once-ever claimed streak milestones, a stable reward seed, `eligible_reward_count`, `ultra_pity_misses`, bounded drop history, Booster/Charge inventory, and bounded pending feedback. Learner-facing copy calls the balance **Garden Coins**; the serialized field name does not change.
+- Rewards and economy: `currency_balance`, the append-only reward and transaction ledger, applied reward-event keys, grouped recent receipts, stable processed-answer identities and lineage bindings, achievement history/finalized-day fingerprints, Garden Find activation/drought/daily-count state, bounded visible Find outcomes, consumables, and the separate bounded purchase and Growth Charge replay ledgers. Learner-facing copy calls the balance **Garden Coins**; the compatibility field name does not change.
 - Environment: owned Weather and Scenery entitlements, one equipped ID for each kind, and independent Weather/Scenery visibility switches. Visibility changes rendering only; equipped passives remain active. Default entitlements are Clear Skies and Verdant Twilight.
 - Collection: `starter_selection_complete`, `unlocked_species`, two to six
   unlocked direct-soil spaces in `unlocked_slots`, and at most six planted
   plants. The configured roster currently contains ten species, but the UI never
   presents that number as a collection denominator. A fresh garden chooses one
-  free release-ready starter; shelved plants keep all progress.
+  free release-ready starter; plants moved to Collection keep all progress.
 - Review ingestion: `processed_revlog_floor` and the bounded, sorted
   `processed_revlog_ids` ledger are authoritative for the current scheduler
   day. `last_processed_revlog_id` remains a monotonic compatibility cursor, but
@@ -38,10 +41,18 @@ One eligible card answer gives the unfinished plant identified by
 Growth. The current streak tier adds a deterministic percentage bonus,
 unexpired Fertilizer adds a direct +1, +2, or +3 Growth, and an active Booster
 Potion adds +5 Growth per answer. Equipped Weather and Scenery add their exact
-direct passives after the base/streak calculation. Fertilizer, Booster, Weather,
+direct effects after the base/streak calculation. Fertilizer, Booster, Weather,
 and Scenery stack. Fractional streak Growth is carried deterministically;
 bonuses never reduce the 10 base Growth. Eclipse's +10 is a flat Scenery source,
 not a multiplier over any other source.
+
+The nurtured plant receives the full committed normal-answer award. Every other
+planted unfinished plant independently receives exactly one fifth of that same
+award. Whole Growth is credited immediately; residual fifths remain on that
+plant until later eligible answers make another whole point. The daily UI reads
+the committed nurtured, passive-exact-fifths, passive-credited, and remainder
+fields. Garden Find Growth is the explicit exception: it is direct Growth to
+the answer-time nurtured plant only, with no streak modifier or passive fan-out.
 
 The existing stage names and artwork remain authoritative:
 
@@ -94,56 +105,103 @@ overlapping the new day remain.
 ## Booster, Growth Charge, environment, and reward contract
 
 A Booster Potion is a non-purchasable consumable. Using one on the current
-nurtured unfinished plant creates a two-hour interval that adds +5 direct
-Growth per eligible answer and stacks with Fertilizer. Using another Potion
-extends the same interval. Current-day interval history is bounded so a late
-same-day sync receives exactly the Booster active at answer time. Equipped Snow
-Flurry adds 10% and Full Moon Garden adds 25% to the duration of each Potion
-used; the extensions are additive.
+nurtured unfinished plant creates a two-hour interval that adds +5 Growth per
+eligible answer and stacks with Fertilizer. Using another Potion extends the
+same interval. Current-day interval history is bounded so a late same-day sync
+receives exactly the Booster active at answer time. Equipped Snow Flurry adds
+10% and Full Moon Garden adds 25% to each Potion duration; the extensions are
+additive.
 
 Small, Standard, and Grand Growth Charges add 100, 500, and 2,000 direct Growth
-to the nurtured unfinished plant, capped at Rare. Small and Standard are repeat
-purchases for 30 and 125 Garden Coins; Grand is earn-only. Charge use crosses
-normal stages and grants normal stage Coins, records its Growth separately, and
-consumes the item only in the same successful state transaction. With no
-unfinished nurtured plant or on save failure, nothing is consumed.
+to any selected owned, planted, unfinished plant, capped at Rare. Small and
+Standard are repeat purchases for 30 and 125 Garden Coins. Grand remains usable
+if present in imported development state but is not currently obtainable.
+Charge use crosses normal stages, grants normal stage Coins, records its Growth
+separately, and consumes the item only in the same successful transaction. It
+never receives study modifiers or passive fan-out.
 
 Exactly one Weather and one Scenery are equipped. Purchases are one-time and do
 not auto-equip. Clear Skies and Verdant Twilight are free neutral defaults.
 Purchasable Weather is Soft Breeze (100), Cloudy Drift (175), Gentle Rain (250),
 and Snow Flurry (350). Purchasable Scenery is Spring Bloom (400), Golden Summer
-(600), Autumn Hearth (800), and Snow-Covered Garden (1,200). Drop-only choices
-remain visible in Collection with revealed effect/earning copy and silhouetted
-art until owned.
+(600), Autumn Hearth (800), and Snow-Covered Garden (1,200). Find-only choices
+remain visible in Collection with registry-derived earning copy and
+silhouetted art until owned.
 
-Rare rewards are determined from a stable per-garden seed and authoritative
-revlog ID only after duplicate detection. Each eligible answer checks these
-independent bands in order and stops after the first hit:
+### Recurring and one-time rewards
 
-| Order | Reward band | Chance per eligible answer |
-|---:|---|---:|
-| 1 | Ultra Rare environment | 1 in 100,000 before pity |
-| 2 | Grand Growth Charge | 1 in 30,000 |
-| 3 | Very Rare environment | 1 in 20,000 |
-| 4 | Standard Growth Charge | 1 in 8,000 |
-| 5 | Rare environment | 1 in 5,000 |
-| 6 | Booster Potion | 1 in 5,000 |
-| 7 | Small Growth Charge | 1 in 2,000 |
-| 8 | 50 Garden Coins | 1 in 800 |
+- The first eligible answer of each active Anki day grants 2 Garden Coins.
+- Every seventh active-streak day grants 10 Garden Coins. Day 7 is one
+  integrated payout with the one-time 7-Day Anki Streak achievement, not a
+  duplicate grant.
+- Finishing a valid all-due day grants 10 Garden Coins plus any equipped
+  environment effect. The first valid day also unlocks **All Clear** for an
+  additional 5 Garden Coins.
+- Stage rewards and every one-time achievement are separate atomic events and
+  may stack with the recurring rewards above.
+- Permanent Streak XP, the old variable daily Coin track, the guaranteed weekly
+  Small Growth Charge, and the former separate streak-milestone subsystem do
+  not exist.
 
-An environment tier selects uniformly among unowned items. Completing the Rare
-tier substitutes a Standard Charge; completing the Very Rare or Ultra tier
-substitutes a Grand Charge. Ultra misses 0–74,999 use 1 in 100,000; 75,000–
-84,999 use 1 in 90,000; 85,000–94,999 use 1 in 80,000; 95,000–104,999 use 1 in
-70,000; 105,000–114,999 use 1 in 60,000; and 115,000 or more use 1 in 50,000.
-There is no guaranteed drop. Only an Ultra environment resets the miss counter.
+The achievement registry is the only requirements-and-rewards authority:
 
-Snow-Covered Garden, Halloween Garden, and Full Moon Garden can grant a daily
-gift on the first eligible answer. Halloween chooses Small Charge 70%, Standard
-Charge 25%, or Booster Potion 5%. A daily gift consumes that answer's one reward
-slot, requires an answer that Anki day, and never backfills a missed day. Drop
-IDs and currency transactions are idempotent. Historical streak reconstruction
-never replays Growth or rewards.
+| Achievement | Requirement | Reward |
+|---|---|---|
+| 7-Day Anki Streak | Reach a 7-day active Anki streak | 10 Garden Coins |
+| 30-Day Anki Streak | Reach 30 days | 100 Garden Coins and 1 Small Growth Charge |
+| 100-Day Anki Streak | Reach 100 days | 300 Garden Coins |
+| 365-Day Anki Streak | Reach 365 days | 1,000 Garden Coins |
+| Century Day | 100 eligible answers in one Anki day | 25 Garden Coins |
+| Deep Roots | 1,000 lifetime eligible answers | 1 Standard Growth Charge |
+| Clear Recall | Close a day with at least 20 eligible answers and at least 90% non-Again | 10 Garden Coins |
+| Perfect Canopy | 30 consecutive eligible answers without Again | 1 Small Growth Charge |
+| No-Again Day | Close a day with at least 40 eligible answers and no Again | 15 Garden Coins |
+| All Clear | Complete the first valid all-due Anki day | 5 Garden Coins |
+
+Only derivable one-time achievements are reconstructed from history. Open-day
+finalization is never inferred early. Recurring rewards, answer Growth, Garden
+Finds, and All Clear are never historically backfilled.
+
+### Garden Finds
+
+After Garden Find activation, each newly processed eligible answer checks the
+Standard pool and the independent unowned-environment pool using its stable
+answer identity. A Standard Find uses drought protection: answers 1–40 are
+`1 in 100`, answers 41–60 are `1 in 40`, answers 61–74 are `1 in 20`, and
+answer 75 is guaranteed. A maximum of three Standard Finds may be earned in one
+Anki day. The registry then selects one currently eligible reward:
+
+| Find | Result | Selection share after a Standard hit |
+|---|---|---:|
+| Coin Sprout | 2 Garden Coins | 18% |
+| Garden Pouch | 4 Garden Coins | 17% |
+| Morning Dew | 40 direct Growth | 20% |
+| Sun Patch | 60 direct Growth | 15% |
+| Hidden Coin Cache | 8 Garden Coins | 9% |
+| Growth Burst | 100 direct Growth | 9% |
+| Charged Seed | 1 Small Growth Charge | 6% |
+| Buried Coin Cache | 20 Garden Coins | 2% |
+| Rich Compost | 1 Basic Fertilizer | 1.5% |
+| Bottled Rain | 1 Booster Potion | 1.5% |
+| Root Core | 1 Standard Growth Charge | 0.6% |
+| Garden Treasury | 40 Garden Coins | 0.4% |
+
+The environment pool checks unowned items rarest-first at `1 in 100,000`,
+`1 in 20,000`, and `1 in 5,000`. Ultra misses 0–74,999 use 1 in 100,000;
+75,000–84,999 use 1 in 90,000; 85,000–94,999 use 1 in 80,000;
+95,000–104,999 use 1 in 70,000; 105,000–114,999 use 1 in 60,000; and
+115,000 or more use 1 in 50,000. There is no guarantee, and only an Ultra
+environment resets the counter.
+
+A Standard and environment Find can both succeed for the same answer. Daily
+scenery gifts, recurring rewards, achievements, stage rewards, and Finds keep
+separate event keys but share the answer correlation ID so presentation can
+show one accurate stacked receipt. Snow-Covered Garden, Halloween Garden, and
+Full Moon Garden keep their existing daily gifts; those gifts do not suppress
+either Find pool. Garden Find Growth goes directly to the nurtured plant only.
+Rich Compost increments `consumables['fertilizer_basic']`; the existing
+Fertilizer service owns its effect. Stable event and answer ledgers make all
+paths idempotent across retry, restart, sync, and rerender.
 
 ## Scheduler-day review ingestion
 
@@ -181,10 +239,21 @@ even if a species is not currently stocked.
 
 Dashboard selection, open metric/Progress/Plant Story/Nursery dialogs, Nursery
 catalog page, and an in-progress Move draft are transient UI state. The
-Nursery's fourth tab sells purchasable Weather and Scenery. The cottage's
-**Weather & Scenery** tab owns loadout, visibility, all-item Collection details,
-odds, and pity display. A committed placement and its resulting plant slots are
-persisted; the temporary Undo snapshot lasts only for the open Garden session.
+Nursery's fourth tab sells purchasable Weather and Scenery. The cottage opens
+the **Collection** page in Garden Progress. Collection owns loadout, visibility,
+all-item details, odds, and pity display through a reversible preview whose
+Apply action commits atomically. A committed placement and its resulting plant
+slots are persisted; the temporary Undo snapshot lasts only for the open Garden
+session.
+
+Scene interaction geometry is also derived. `SceneGeometryLayout` projects the
+six normalized bed records into logical coordinates after each resize or DPR
+change. Each planter perspective variant supplies one normalized
+`accessory_exclusions` record measured from its opaque alpha bounds; native and
+Home watering-can renderers use the same projected lanes and exclusions rather
+than surface-specific offsets. Popover placement is transient and returns its
+chosen side, connector, usable height, avoided beds, and docked state without
+entering `garden_state.json`.
 
 ## Configuration contract
 
@@ -217,7 +286,7 @@ identity, name, slot, species unlock, story, total-review, appearance, and
 revlog-cursor data is retained. Legacy Growth is translated to the same stage
 and within-stage percentage under the current thresholds, avoiding visual
 regression without preserving a parallel points system. Entitlement-only
-unlocked species materialize as visible, plantable, shelved zero-Growth plants
+unlocked species materialize as visible, plantable, Collection-stored zero-Growth plants
 instead of becoming phantom ownership or requiring another purchase.
 
 Schemas 11, 12, and 13 migrate to schema 14 as established gardens with starter
@@ -234,13 +303,40 @@ name, reward seed/history, and empty Booster inventory. Schema 15 upgrades to
 schema 16 with neutral environment entitlements, visible layers, zero Charges,
 zero Ultra misses, empty daily environment claims, and separate Weather,
 Scenery, and Charge Growth counters. No historical review is replayed as Growth
-or a random gift.
+or a random gift. Schema 16 upgrades to schema 17 with a persisted
+`OnboardingProgress(version, step, pending_species, starter_plant_id)` record.
+Empty gardens resume at introduction, planted starters without nurture evidence
+resume at nurture, and established or completed gardens migrate to `done`. The
+legacy add-on `onboarding_version` is read only as migration evidence; schema-17
+renderers and transitions use the Garden-state record as their authority.
+Schema 17 upgrades to schema 18 after an exact backup and initializes the
+bounded purchase replay ledger. Schema 19 collapses legacy appearance mirrors
+into one canonical loadout. Schema 20 adds exact nurtured/passive Growth
+accounting and a bounded Growth Charge replay ledger without attributing older
+current-day totals to invented sources.
+
+Schema 21 adds the reward-event and processed-answer authorities, grouped
+reward receipts, achievement reconstruction/finalization state, Garden Find
+state, and Basic Fertilizer inventory. The JSON payload is then imported once
+into a temporary SQLite reward database, verified, backed up online, and
+atomically installed. The source JSON is preserved as a timestamped
+`pre-sqlite` backup. Unbounded idempotency authorities live in normalized
+ledger tables; the materialized state snapshot keeps bounded presentation
+caches. A database read or integrity failure is backed up and stops startup
+before overwrite.
+
+Completed purchase and Growth Charge records retain caller-generated request
+identities, canonical fingerprints, committed results, and completion times.
+Exact replay returns the committed result without another debit, grant, or item
+use. Reusing an identity with different terms fails closed. A failed save
+restores the full in-memory snapshot and creates no replay record.
 
 Migration backup or save failure is fail-closed: the original state is not
 overwritten and a fresh state is not returned as though conversion succeeded.
 
-Removed Quest, Vitality, seven-day-history, daily-goal, history-import,
-milestone-choice, and rare-variant fields are discarded. Schemas 10 through 15
-are migrated; any other unsupported schema is copied to a schema-labeled backup
-and starts a fresh recovery garden. Unreadable JSON is copied to
-`garden_state.invalid.json` before recovery.
+Removed Quest, Vitality, Permanent Streak XP, seven-day-history, daily-goal,
+history-import, milestone-choice, obsolete random-drop counters, and
+rare-variant fields are not restored as parallel authorities. Schemas 10
+through 20 are migrated; any other unsupported JSON schema is copied to a
+schema-labeled backup and starts a fresh recovery garden. Unreadable JSON is
+copied to `garden_state.invalid.json` before recovery.

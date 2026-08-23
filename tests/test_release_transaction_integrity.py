@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 import os
+import uuid
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -9,9 +11,29 @@ from typing import Any
 import pytest
 
 from ankigarden.config import DEFAULT_CONFIG
-from ankigarden.environment import CatalogItem, SCENERY_CATALOG, WEATHER_CATALOG
+from ankigarden.environment import (
+    CatalogItem,
+    GROWTH_CHARGES,
+    SCENERY_CATALOG,
+    WEATHER_CATALOG,
+)
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import ActivePlantPeriod, DailyStats, GardenState, Plant
+from ankigarden.models.state import (
+    ActivePlantPeriod,
+    DailyStats,
+    Fertilizer,
+    GardenState,
+    Plant,
+)
+from ankigarden.purchases import (
+    PurchaseAction,
+    PurchaseDisposition,
+    PurchaseKind,
+    PurchaseOutcome,
+    PurchaseRequest,
+    PurchaseStatus,
+    purchase_presentation,
+)
 from ankigarden.storage import DueObligationStatus
 from ankigarden.ui.copy import cost_label
 
@@ -126,6 +148,14 @@ def _compiled_method(
     return globals_dict[method_name]
 
 
+def _set_control_enabled_stub(
+    widget: Any,
+    enabled: bool,
+    **_kwargs: Any,
+) -> None:
+    widget.setEnabled(enabled)
+
+
 @pytest.mark.parametrize(
     "purchase_kind",
     ["fertilizer", "species", "bed", "growth_charge", "weather"],
@@ -153,6 +183,559 @@ def test_unaffordable_purchase_never_debits_or_mutates_state(
     assert storage.state.to_dict() == before
     assert storage.state.currency_transactions == []
     assert storage.save_count == saves_before
+
+
+@pytest.mark.parametrize(
+    ("kind", "item_id", "target_id", "expected_name", "expected_price"),
+    (
+        (PurchaseKind.SPECIES, "sunflower", None, "Sunflower Seed", 150),
+        (
+            PurchaseKind.GROWTH_CHARGE,
+            "growth_charge_small",
+            None,
+            "Small Growth Charge",
+            30,
+        ),
+        (PurchaseKind.FERTILIZER, "basic", "p1", "Basic Fertilizer", 25),
+        (PurchaseKind.WEATHER, "breeze", None, "Soft Breeze", 100),
+        (PurchaseKind.SCENERY, "spring", None, "Spring Bloom", 400),
+        (PurchaseKind.BED, "next", None, "Garden Bed 3", 150),
+    ),
+)
+def test_purchase_quotes_share_exact_current_terms(
+    kind: PurchaseKind,
+    item_id: str,
+    target_id: str | None,
+    expected_name: str,
+    expected_price: int,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+
+    quote = engine.quote_purchase(kind, item_id, target_id=target_id)
+
+    assert quote.ready
+    assert quote.item_name == expected_name
+    assert quote.total_price == expected_price
+    assert quote.balance_before == 5_000
+    assert quote.balance_after == 5_000 - expected_price
+    assert quote.quantity == 1
+    assert quote.descriptor.function
+    assert quote.descriptor.buff
+    assert quote.descriptor.activation_condition
+    assert quote.descriptor.duration
+    assert quote.descriptor.stacking
+    assert quote.descriptor.replacement
+    assert quote.descriptor.unlock_requirement
+    assert quote.descriptor.mechanics_rows() == quote.descriptor.detail_rows()[1:]
+    assert tuple(label for label, _value in quote.descriptor.mechanics_rows()) == (
+        "Effect",
+        "Activation",
+        "Duration",
+        "Stacking",
+        "Replacement",
+        "Unlock",
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "item_id", "target_id", "title", "action", "fact_keys"),
+    (
+        (
+            PurchaseKind.SPECIES,
+            "sunflower",
+            None,
+            "Purchase Sunflower Seed",
+            PurchaseAction.PURCHASE,
+            {"planting", "passive", "collection"},
+        ),
+        (
+            PurchaseKind.GROWTH_CHARGE,
+            "growth_charge_small",
+            None,
+            "Purchase Small Growth Charge",
+            PurchaseAction.PURCHASE,
+            {"effect", "inventory"},
+        ),
+        (
+            PurchaseKind.FERTILIZER,
+            "basic",
+            "p1",
+            "Purchase & Apply Basic Fertilizer",
+            PurchaseAction.PURCHASE_APPLY,
+            {"effect", "condition"},
+        ),
+        (
+            PurchaseKind.WEATHER,
+            "breeze",
+            None,
+            "Purchase Soft Breeze",
+            PurchaseAction.PURCHASE,
+            {"effect", "equipment_limit", "equipment"},
+        ),
+        (
+            PurchaseKind.BED,
+            "next",
+            None,
+            "Unlock Garden Bed 3",
+            PurchaseAction.UNLOCK,
+            {"unlocked_beds", "available_bed", "plants"},
+        ),
+    ),
+)
+def test_purchase_presentation_shows_only_decision_relevant_copy(
+    kind: PurchaseKind,
+    item_id: str,
+    target_id: str | None,
+    title: str,
+    action: PurchaseAction,
+    fact_keys: set[str],
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+
+    quote = engine.quote_purchase(kind, item_id, target_id=target_id)
+    presentation = purchase_presentation(quote)
+    visible = " ".join((
+        presentation.title,
+        presentation.outcome,
+        *(fact.value for fact in presentation.facts),
+        *presentation.badges,
+    ))
+
+    assert presentation.title == title
+    assert presentation.action is action
+    assert {fact.key for fact in presentation.facts} == fact_keys
+    assert presentation.primary_label.endswith(f"· {quote.total_price:,}")
+    assert presentation.primary_accessible_name.endswith(
+        f"for {quote.total_price:,} Garden Coins"
+    )
+    assert presentation.balance_after == 5_000 - quote.total_price
+    if kind is PurchaseKind.SPECIES:
+        growth_routing = next(
+            fact for fact in presentation.facts if fact.key == "passive"
+        )
+        assert growth_routing.label == "Growth routing"
+        assert "No Growth while in Collection" in growth_routing.value
+        assert "normal nurtured and passive Growth routing" in growth_routing.value
+        assert "No passive bonus" not in visible
+    assert all(
+        noise not in visible
+        for noise in (
+            "Not applicable",
+            "Replaces nothing",
+            "Quantity: 1",
+            "Are you sure",
+        )
+    )
+
+
+def test_fertilizer_presentations_distinguish_extension_and_replacement() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    engine._now_seconds = lambda: 1_000.0
+    storage.state.plants[0].fertilizer = Fertilizer(
+        "basic",
+        1,
+        3_700.0,
+        900.0,
+    )
+
+    extension_quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "basic",
+        target_id="p1",
+    )
+    extension = purchase_presentation(extension_quote)
+    assert extension.action is PurchaseAction.EXTEND
+    assert extension.title == "Extend Basic Fertilizer"
+    assert extension.primary_label == "Extend · 25"
+    assert extension_quote.current_seconds_remaining == 2_700
+    assert extension_quote.resulting_seconds_remaining == 6_300
+    assert next(
+        fact.value for fact in extension.facts if fact.key == "remaining"
+    ) == "45m → 1h 45m"
+
+    replacement_quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "premium",
+        target_id="p1",
+    )
+    replacement = purchase_presentation(replacement_quote)
+    assert replacement.action is PurchaseAction.PURCHASE_REPLACE
+    assert replacement.primary_label == "Purchase & Replace · 150"
+    assert replacement.secondary_label == "Keep current"
+    assert replacement_quote.current_seconds_remaining == 2_700
+
+    failed_replacement = purchase_presentation(
+        replacement_quote,
+        status=PurchaseStatus.PERSISTENCE_FAILURE,
+    )
+    assert failed_replacement.secondary_label == "Cancel"
+    assert failed_replacement.balance_after == replacement_quote.balance_before
+    assert next(
+        fact.value for fact in failed_replacement.facts
+        if fact.key == "fertilizer"
+    ) == "Basic Fertilizer (unchanged)"
+
+    extended = engine.confirm_purchase(PurchaseRequest.from_quote(extension_quote))
+    assert extended.success
+    assert extended.message == (
+        "Basic Fertilizer extended to 1h 45m remaining on Moss."
+    )
+    assert storage.state.currency_transactions[-1].reason == (
+        "Extended Basic Fertilizer on Moss"
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "title", "primary", "show_cost", "balance_after"),
+    (
+        (
+            PurchaseStatus.INSUFFICIENT_COINS,
+            "Not enough Garden Coins",
+            "View Ways to Earn",
+            True,
+            None,
+        ),
+        (
+            PurchaseStatus.PERSISTENCE_FAILURE,
+            "Purchase failed",
+            "Try Again",
+            True,
+            5_000,
+        ),
+        (
+            PurchaseStatus.ITEM_UNAVAILABLE,
+            "Small Growth Charge Unavailable",
+            "Return to Nursery",
+            False,
+            None,
+        ),
+    ),
+)
+def test_purchase_error_presentations_have_distinct_recovery_actions(
+    status: PurchaseStatus,
+    title: str,
+    primary: str,
+    show_cost: bool,
+    balance_after: int | None,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+    if status is PurchaseStatus.INSUFFICIENT_COINS:
+        quote = replace(quote, balance_before=0, balance_after=-30)
+
+    presentation = purchase_presentation(quote, status=status)
+
+    assert presentation.title == title
+    assert presentation.primary_label == primary
+    assert presentation.show_cost is show_cost
+    assert presentation.balance_after == balance_after
+    assert presentation.terminal is (status is not PurchaseStatus.PERSISTENCE_FAILURE)
+    if status is PurchaseStatus.PERSISTENCE_FAILURE:
+        assert presentation.outcome == (
+            "Purchase could not be saved. No Garden Coins were spent and no item was added."
+        )
+        facts = {fact.key: fact.value for fact in presentation.facts}
+        assert facts["inventory"] == "0 (unchanged)"
+        assert facts["retry_preview"] == "0 → 1"
+        assert presentation.badges == ("Retry preview",)
+    if presentation.terminal:
+        assert presentation.badges == ()
+
+
+@pytest.mark.parametrize(
+    "status",
+    tuple(
+        status
+        for status in PurchaseStatus
+        if status not in {PurchaseStatus.READY, PurchaseStatus.SUCCESS}
+    ),
+)
+def test_non_success_purchase_presentations_never_expose_receipt_copy(
+    status: PurchaseStatus,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+
+    presentation = purchase_presentation(quote, status=status)
+
+    assert presentation.activity_label == ""
+    assert presentation.success_message == ""
+    assert presentation.next_actions == ()
+
+
+@pytest.mark.parametrize(
+    "status",
+    (
+        PurchaseStatus.STALE_PRICE,
+        PurchaseStatus.STALE_BALANCE,
+        PurchaseStatus.STALE_TARGET,
+    ),
+)
+def test_stale_purchase_terms_are_explicit_uncommitted_previews(
+    status: PurchaseStatus,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+
+    presentation = purchase_presentation(quote, status=status)
+    facts = {fact.key: fact for fact in presentation.facts}
+
+    assert presentation.badges == ("Updated terms preview",)
+    assert "No purchase was made" in presentation.outcome
+    assert "terms below are previews" in presentation.outcome
+    assert presentation.balance_after is None
+    assert all("Preview" in fact.label for fact in presentation.facts)
+    assert facts["inventory"].value == "Proposed: 0 → 1"
+    assert facts["balance_preview"].value == "Proposed: 5,000 → 4,970"
+
+
+@pytest.mark.parametrize(
+    ("kind", "item_id", "target_id"),
+    (
+        (PurchaseKind.SPECIES, "sunflower", None),
+        (PurchaseKind.GROWTH_CHARGE, "growth_charge_small", None),
+        (PurchaseKind.FERTILIZER, "basic", "p1"),
+        (PurchaseKind.WEATHER, "breeze", None),
+        (PurchaseKind.SCENERY, "spring", None),
+        (PurchaseKind.BED, "next", None),
+    ),
+)
+def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
+    kind: PurchaseKind,
+    item_id: str,
+    target_id: str | None,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    before_balance = storage.state.currency_balance
+    saves_before = storage.save_count
+    quote = engine.quote_purchase(kind, item_id, target_id=target_id)
+    presentation = purchase_presentation(quote)
+
+    outcome = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
+
+    assert outcome.success
+    assert storage.state.currency_balance == before_balance - quote.total_price
+    assert storage.save_count == saves_before + 1
+    assert storage.state.currency_transactions[-1].delta == -quote.total_price
+    assert storage.state.currency_transactions[-1].reason == {
+        PurchaseKind.SPECIES: "Purchased Sunflower Seed",
+        PurchaseKind.GROWTH_CHARGE: "Purchased Small Growth Charge",
+        PurchaseKind.FERTILIZER: "Applied Basic Fertilizer to Moss",
+        PurchaseKind.WEATHER: "Purchased Soft Breeze",
+        PurchaseKind.SCENERY: "Purchased Spring Bloom",
+        PurchaseKind.BED: "Unlocked Garden Bed 3",
+    }[kind]
+    assert storage.state.completed_purchase_requests[-1].outcome == outcome
+    assert outcome.message == {
+        PurchaseKind.SPECIES: "Sunflower added to your collection.",
+        PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added to your inventory.",
+        PurchaseKind.FERTILIZER: "Basic Fertilizer applied to Moss for 1 hour.",
+        PurchaseKind.WEATHER: "Soft Breeze unlocked. Preview or equip it in Collection.",
+        PurchaseKind.SCENERY: "Spring Bloom unlocked. Preview or equip it in Collection.",
+        PurchaseKind.BED: "Garden Bed 3 unlocked.",
+    }[kind]
+    assert outcome.message == presentation.success_message
+    assert outcome.next_actions == presentation.next_actions
+    if kind is PurchaseKind.SPECIES:
+        assert any(plant.species == item_id for plant in storage.state.plants)
+    elif kind is PurchaseKind.GROWTH_CHARGE:
+        assert storage.state.consumables[item_id] == 1
+    elif kind is PurchaseKind.FERTILIZER:
+        assert storage.state.plants[0].fertilizer is not None
+        assert storage.state.plants[0].fertilizer.tier == item_id
+    elif kind is PurchaseKind.WEATHER:
+        assert item_id in storage.state.inventory["weather"]
+    elif kind is PurchaseKind.SCENERY:
+        assert item_id in storage.state.inventory["scenery"]
+    else:
+        assert storage.state.unlocked_slots == 3
+
+
+def test_confirm_purchase_is_atomic_idempotent_and_rejects_request_id_conflict() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    quote = engine.quote_purchase(PurchaseKind.SPECIES, "sunflower")
+    request_id = str(uuid.uuid4())
+    request = PurchaseRequest.from_quote(quote, request_id=request_id)
+
+    first = engine.confirm_purchase(request)
+    second = engine.confirm_purchase(request)
+
+    assert first.success
+    assert second == first
+    assert storage.state.currency_balance == 350
+    assert len([plant for plant in storage.state.plants if plant.species == "sunflower"]) == 1
+    assert len([
+        transaction
+        for transaction in storage.state.currency_transactions
+        if transaction.event_key == f"purchase-request:{request_id}"
+    ]) == 1
+    assert len(storage.state.completed_purchase_requests) == 1
+
+    other_quote = engine.quote_purchase(PurchaseKind.GROWTH_CHARGE, "growth_charge_small")
+    conflict = engine.confirm_purchase(PurchaseRequest.from_quote(
+        other_quote,
+        request_id=request_id,
+    ))
+
+    assert conflict.status is PurchaseStatus.REQUEST_ID_CONFLICT
+    assert storage.state.currency_balance == 350
+    assert storage.state.consumables["growth_charge_small"] == 0
+
+
+def test_confirm_purchase_rejects_noncanonical_uuid_without_mutation() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    quote = engine.quote_purchase(PurchaseKind.GROWTH_CHARGE, "growth_charge_small")
+    request = replace(
+        PurchaseRequest.from_quote(quote),
+        request_id=f"{{{uuid.uuid4()}}}",
+    )
+    before = storage.state.to_dict()
+    saves_before = storage.save_count
+
+    outcome = engine.confirm_purchase(request)
+
+    assert outcome.status is PurchaseStatus.REQUEST_ID_CONFLICT
+    assert storage.state.to_dict() == before
+    assert storage.save_count == saves_before
+
+
+def test_persistence_failure_rolls_back_and_same_request_can_be_retried() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    quote = engine.quote_purchase(PurchaseKind.WEATHER, "breeze")
+    request = PurchaseRequest.from_quote(quote, request_id=str(uuid.uuid4()))
+    before = storage.state.to_dict()
+    storage.fail_save = True
+
+    failed = engine.confirm_purchase(request)
+
+    assert failed.status is PurchaseStatus.PERSISTENCE_FAILURE
+    assert storage.state.to_dict() == before
+    assert not engine.owns_environment("weather", "breeze")
+
+    storage.fail_save = False
+    retried = engine.confirm_purchase(request)
+
+    assert retried.success
+    assert engine.owns_environment("weather", "breeze")
+    assert storage.state.currency_balance == 400
+
+
+def test_confirmation_distinguishes_stale_terms_and_target_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+
+    price_quote = engine.quote_purchase(
+        PurchaseKind.GROWTH_CHARGE,
+        "growth_charge_small",
+    )
+    price_request = PurchaseRequest.from_quote(price_quote)
+    monkeypatch.setitem(
+        GROWTH_CHARGES,
+        "growth_charge_small",
+        replace(GROWTH_CHARGES["growth_charge_small"], price=31),
+    )
+    assert engine.confirm_purchase(price_request).status is PurchaseStatus.STALE_PRICE
+
+    balance_quote = engine.quote_purchase(PurchaseKind.SCENERY, "spring")
+    balance_request = PurchaseRequest.from_quote(balance_quote)
+    storage.state.currency_balance += 1
+    assert engine.confirm_purchase(balance_request).status is PurchaseStatus.STALE_BALANCE
+
+    fertilizer_quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "basic",
+        target_id="p1",
+    )
+    fertilizer_request = PurchaseRequest.from_quote(fertilizer_quote)
+    storage.state.active_plant_id = None
+    assert engine.confirm_purchase(fertilizer_request).status is PurchaseStatus.TARGET_INVALID
+
+    storage.state.active_plant_id = "p1"
+    bed_quote = engine.quote_purchase(PurchaseKind.BED, "next")
+    bed_request = PurchaseRequest.from_quote(bed_quote)
+    storage.state.unlocked_slots += 1
+    assert engine.confirm_purchase(bed_request).status is PurchaseStatus.STALE_TARGET
+
+
+@pytest.mark.parametrize(
+    ("setup", "kind", "item_id", "target_id", "expected"),
+    (
+        ("insufficient", PurchaseKind.GROWTH_CHARGE, "growth_charge_small", None, PurchaseStatus.INSUFFICIENT_COINS),
+        ("normal", PurchaseKind.GROWTH_CHARGE, "missing", None, PurchaseStatus.ITEM_UNAVAILABLE),
+        ("normal", PurchaseKind.WEATHER, "sunny", None, PurchaseStatus.ALREADY_OWNED),
+        ("normal", PurchaseKind.FERTILIZER, "basic", "missing", PurchaseStatus.TARGET_INVALID),
+    ),
+)
+def test_purchase_quotes_expose_recoverable_typed_failures(
+    setup: str,
+    kind: PurchaseKind,
+    item_id: str,
+    target_id: str | None,
+    expected: PurchaseStatus,
+) -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 0 if setup == "insufficient" else 5_000
+
+    quote = engine.quote_purchase(kind, item_id, target_id=target_id)
+
+    assert quote.status is expected
+    assert not quote.ready
+    assert quote.message
+
+
+def test_fertilizer_replacement_requires_explicit_authorization_and_records_discard() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    engine._now_seconds = lambda: 1_000.0
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    engine._now_seconds = lambda: 1_200.0
+    quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "premium",
+        target_id="p1",
+    )
+
+    assert quote.replacement_required
+    assert quote.current_item_name == "Basic Fertilizer"
+    assert quote.current_seconds_remaining == 3_400
+    assert engine.confirm_purchase(PurchaseRequest.from_quote(quote)).status is (
+        PurchaseStatus.REPLACEMENT_REQUIRED
+    )
+
+    replaced = engine.confirm_purchase(PurchaseRequest.from_quote(
+        quote,
+        authorize_replacement=True,
+    ))
+    assert replaced.success
+    assert replaced.applied
+    assert replaced.disposition.value == "replaced"
+    assert replaced.message == (
+        "Magical Fertilizer replaced the Fertilizer on Moss for 4 hours."
+    )
+    assert storage.state.currency_transactions[-1].reason == (
+        "Replaced Fertilizer with Magical Fertilizer on Moss"
+    )
 
 
 def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> None:
@@ -219,6 +802,7 @@ def test_every_nursery_transaction_routes_through_the_shared_pending_guard() -> 
 
     guarded_methods = (
         "_purchase_fertilizer",
+        "_use_basic_fertilizer",
         "_use_booster",
         "_purchase_growth_charge",
         "_use_growth_charge",
@@ -252,47 +836,80 @@ def test_every_nursery_transaction_routes_through_the_shared_pending_guard() -> 
     assert "QTimer.singleShot(350, self._release_catalog_transaction)" in release_source
 
 
+def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error() -> None:
+    constructor = _method_source(
+        DASHBOARD_PATH,
+        "PurchaseConfirmationDialog",
+        "__init__",
+    )
+    commit = _method_source(
+        DASHBOARD_PATH,
+        "PurchaseConfirmationDialog",
+        "_commit",
+    )
+
+    assert "try:" in commit
+    assert "self.engine.confirm_purchase(self.request)" in commit
+    assert "except Exception:" in commit
+    assert "PurchaseStatus.PERSISTENCE_FAILURE" in commit
+    assert "no Garden Coins were spent" in commit
+    assert "self.presentation = purchase_presentation(" in commit
+    assert "ignore_status=True" in commit
+    assert "if refreshed.ready:" in commit
+    assert "self._show_status_banner(" in commit
+    assert "balance_only_refresh" not in commit
+    assert constructor.index("root.addWidget(self.status)") < constructor.index(
+        "root.addWidget(self.content_scroll, 1)"
+    )
+    assert "content.addWidget(self.status)" not in constructor
+
+
 def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     purchase_environment = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_purchase_environment",
         {
+            "PurchaseKind": PurchaseKind,
             "WEATHER_CATALOG": WEATHER_CATALOG,
             "SCENERY_CATALOG": SCENERY_CATALOG,
         },
     )
     observed: dict[str, Any] = {}
+    outcome = PurchaseOutcome(
+        status=PurchaseStatus.SUCCESS,
+        item_id="breeze",
+        item_name="Soft Breeze",
+        category="Weather",
+        quantity=1,
+        amount_spent=100,
+        new_balance=400,
+        disposition=PurchaseDisposition.OWNED_NOT_EQUIPPED,
+        message="Soft Breeze unlocked. Preview or equip it in Collection.",
+        next_actions=("Open Collection", "Continue shopping"),
+    )
     nursery = SimpleNamespace(
         _begin_catalog_transaction=lambda: True,
-        engine=SimpleNamespace(
-            purchase_environment=lambda kind, item_id: (
-                True,
-                f"completed:{kind}:{item_id}",
-            )
+        _execute_purchase=lambda kind, item_id: (
+            observed.update(kind=kind, item_id=item_id) or outcome
         ),
-        _refresh_parent=lambda: None,
-        refresh=lambda: None,
         _preview_environment_item=lambda product: observed.setdefault(
             "preview_product", product
         ),
-        _show_product_receipt=lambda product, message: observed.update(
-            receipt_product=product,
-            message=message,
-        ),
         _show_result=lambda ok, message: observed.update(result=(ok, message)),
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
         _schedule_catalog_transaction_release=lambda: observed.update(released=True),
     )
 
     purchase_environment(nursery, "weather", "breeze")
 
-    purchased = observed["receipt_product"]
+    purchased = observed["preview_product"]
     assert purchased is WEATHER_CATALOG["breeze"]
-    assert observed["preview_product"] is purchased
     assert purchased.item_id == "breeze"
     assert purchased.name == "Soft Breeze"
     assert purchased.price == 100
-    assert observed["message"] == "completed:weather:breeze"
+    assert observed["kind"] is PurchaseKind.WEATHER
+    assert observed["item_id"] == "breeze"
     assert observed["released"] is True
 
     class _Status:
@@ -301,6 +918,9 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
 
         def setAccessibleDescription(self, text: str) -> None:
             self.accessible_description = text
+
+        def accessibleDescription(self) -> str:
+            return self.accessible_description
 
         def setStyleSheet(self, text: str) -> None:
             self.style = text
@@ -314,33 +934,59 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
         def setToolTip(self, text: str) -> None:
             self.tooltip = text
 
+        def setProperty(self, name: str, value: str) -> None:
+            setattr(self, name, value)
+
     status = _Status()
     receipt_actions = SimpleNamespace(show=lambda: setattr(receipt_actions, "visible", True))
+    receipt_action = SimpleNamespace(
+        setText=lambda text: setattr(receipt_action, "text", text),
+        setAccessibleName=lambda text: setattr(receipt_action, "accessible_name", text),
+    )
     show_receipt = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
-        "_show_product_receipt",
+        "_show_purchase_receipt",
         {
-            "CatalogItem": CatalogItem,
+            "PurchaseDisposition": PurchaseDisposition,
+            "PurchaseKind": PurchaseKind,
+            "PurchaseOutcome": PurchaseOutcome,
+            "PurchasePresentation": object,
             "_learner_text": lambda text: text,
-            "cost_label": cost_label,
+            "format_status_label": lambda text: str(text).replace("_", " ").title(),
+            "set_semantic_role": lambda *_args, **_kwargs: None,
+            "SemanticRole": SimpleNamespace(BANNER="banner"),
+            "FeedbackTone": SimpleNamespace(SUCCESS="success"),
         },
     )
+    announcements: list[str] = []
     show_receipt(
-        SimpleNamespace(status=status, receipt_actions=receipt_actions),
-        purchased,
-        observed["message"],
+        SimpleNamespace(
+            _status_generation=0,
+            _receipt_outcome=None,
+            status=status,
+            receipt_actions=receipt_actions,
+            receipt_customize=receipt_action,
+            accessibility_announcer=SimpleNamespace(
+                announce=lambda message, **_kwargs: announcements.append(message)
+            ),
+        ),
+        outcome,
+        SimpleNamespace(facts=(), target_name=""),
     )
 
     assert status.text == (
-        "Soft Breeze unlocked\n"
-        "Cost: 100 Garden Coins\n"
-        "Owned · Ready in Customize Garden"
+        "Purchase complete\n"
+        "Soft Breeze unlocked. Preview or equip it in Collection.\n"
+        "Ownership: Owned · Not equipped\n"
+        "Spent: 100 Garden Coins · Balance: 400 Garden Coins"
     )
-    assert "Soft Breeze unlocked" in status.accessible_description
-    assert "Cost: 100 Garden Coins" in status.accessible_description
-    assert "Owned · Ready in Customize Garden" in status.accessible_description
+    assert "Purchase complete" in status.accessible_description
+    assert "Spent: 100 Garden Coins" in status.accessible_description
+    assert "Balance: 400 Garden Coins" in status.accessible_description
+    assert receipt_action.text == "Open Collection"
     assert receipt_actions.visible is True
+    assert announcements == [status.accessible_description]
 
 
 def test_catalog_engine_exception_keeps_double_activation_guarded_until_release() -> None:
@@ -348,6 +994,7 @@ def test_catalog_engine_exception_keeps_double_activation_guarded_until_release(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_purchase_growth_charge",
+        {"PurchaseKind": PurchaseKind},
     )
     begin = _compiled_method(
         DASHBOARD_PATH,
@@ -363,7 +1010,7 @@ def test_catalog_engine_exception_keeps_double_activation_guarded_until_release(
     failures: list[tuple[str, bool]] = []
     engine_calls = 0
 
-    def fail_purchase(_charge_id: str) -> tuple[bool, str]:
+    def fail_purchase(_kind: PurchaseKind, _charge_id: str) -> None:
         nonlocal engine_calls
         engine_calls += 1
         raise RuntimeError("injected engine failure")
@@ -380,7 +1027,7 @@ def test_catalog_engine_exception_keeps_double_activation_guarded_until_release(
     nursery._show_result = lambda *_args: None
     nursery._refresh_parent = lambda: None
     nursery.refresh = lambda: None
-    nursery.engine = SimpleNamespace(purchase_growth_charge=fail_purchase)
+    nursery._execute_purchase = fail_purchase
 
     purchase_growth_charge(nursery, "growth_charge_small")
     purchase_growth_charge(nursery, "growth_charge_small")
@@ -448,9 +1095,100 @@ def test_catalog_refresh_exception_reports_saved_change_without_duplicate_use() 
     assert nursery._catalog_transaction_pending is False
 
 
+def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() -> None:
+    confirmations: list[tuple[str, str]] = []
+    engine_calls: list[tuple[str, bool]] = []
+    scheduled: list[Any] = []
+    refreshes: list[str] = []
+    results: list[tuple[bool, str]] = []
+    inventory = {"fertilizer_basic": 2}
+
+    class _Confirmation:
+        @staticmethod
+        def confirm(_parent: Any, title: str, message: str) -> bool:
+            confirmations.append((title, message))
+            return True
+
+    use_fertilizer = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_use_basic_fertilizer",
+        {
+            "ConfirmationDialog": _Confirmation,
+            "collectible_registry": lambda: (
+                SimpleNamespace(
+                    item_id="growth_items:fertilizer_basic",
+                    name="Rich Compost",
+                ),
+            ),
+            "fertilizer_status": lambda *_args, **_kwargs: SimpleNamespace(
+                active=True,
+                name="Quality Fertilizer",
+                duration="1h 00m remaining",
+                seconds_remaining=3_600,
+            ),
+            "_learner_text": str,
+            "time": SimpleNamespace(time=lambda: 1_000.0),
+        },
+    )
+    plant = SimpleNamespace(
+        plant_id="p1",
+        name="Moss",
+        fertilizer=SimpleNamespace(tier="quality"),
+    )
+    basic = SimpleNamespace(
+        tier="basic",
+        name="Basic Fertilizer",
+        growth_per_answer=1,
+        duration_seconds=3_600,
+    )
+
+    def use_item(plant_id: str, *, replace_active: bool) -> tuple[bool, str]:
+        engine_calls.append((plant_id, replace_active))
+        if len(engine_calls) == 1:
+            inventory["fertilizer_basic"] -= 1
+            return True, "Basic Fertilizer applied"
+        return False, "Basic Fertilizer could not be used because it was not saved."
+
+    nursery = SimpleNamespace(_catalog_transaction_pending=False)
+    nursery._begin_catalog_transaction = lambda: not nursery._catalog_transaction_pending
+    nursery._schedule_catalog_transaction_release = lambda: scheduled.append(True)
+    nursery._show_catalog_transaction_exception = lambda *_args, **_kwargs: None
+    nursery._show_result = lambda ok, message: results.append((ok, message))
+    nursery._refresh_parent = lambda: refreshes.append("parent")
+    nursery.refresh = lambda: refreshes.append("nursery")
+    nursery.storage = SimpleNamespace(
+        state=SimpleNamespace(consumables=inventory)
+    )
+    nursery.engine = SimpleNamespace(
+        active_plant=lambda: plant,
+        _now_seconds=lambda: 1_000.0,
+        _duration_label=lambda _seconds: "1 hour",
+        FERTILIZERS={"basic": basic},
+        use_fertilizer_item=use_item,
+    )
+
+    use_fertilizer(nursery)
+    use_fertilizer(nursery)
+
+    assert engine_calls == [("p1", True), ("p1", True)]
+    assert inventory == {"fertilizer_basic": 1}
+    assert refreshes == ["parent", "nursery"]
+    assert scheduled == [True, True]
+    assert confirmations[0][0] == "Replace active Fertilizer?"
+    assert "Quality Fertilizer" in confirmations[0][1]
+    assert "3,600 seconds" in confirmations[0][1]
+    assert "cannot be recovered" in confirmations[0][1]
+    assert results[0] == (True, "Basic Fertilizer applied")
+    assert results[1][0] is False
+    assert "Rich Compost was not used" in results[1][1]
+    assert "Committed Rich Compost inventory count: 1 (unchanged)" in results[1][1]
+    assert "Active Fertilizer on Moss: Quality Fertilizer (unchanged)" in results[1][1]
+
+
 @pytest.mark.parametrize(
     ("failure_phase", "committed"),
-    (("engine", False), ("refresh", True)),
+    (("confirmation", False),),
 )
 def test_bed_unlock_exception_restores_both_guards_and_button(
     failure_phase: str,
@@ -464,7 +1202,9 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
         {
             "QTimer": SimpleNamespace(
                 singleShot=lambda _delay, callback: scheduled.append(callback)
-            )
+            ),
+            "PurchaseKind": PurchaseKind,
+            "set_control_enabled": _set_control_enabled_stub,
         },
     )
     begin = _compiled_method(
@@ -481,7 +1221,10 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_release_bed_purchase",
-        {"logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None)},
+        {
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+            "set_control_enabled": _set_control_enabled_stub,
+        },
     )
 
     class _Button:
@@ -500,16 +1243,10 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
     failures: list[tuple[str, bool]] = []
     engine_calls = 0
 
-    def purchase_next_bed() -> tuple[bool, str]:
+    def execute_purchase(_kind: PurchaseKind, _item_id: str) -> None:
         nonlocal engine_calls
         engine_calls += 1
-        if failure_phase == "engine":
-            raise RuntimeError("injected engine failure")
-        return True, "Garden space unlocked"
-
-    def refresh_parent() -> None:
-        if failure_phase == "refresh":
-            raise RuntimeError("injected refresh failure")
+        raise RuntimeError("injected confirmation failure")
 
     button = _Button()
     nursery = SimpleNamespace(
@@ -523,11 +1260,10 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
                 currency_balance=500,
             )
         ),
-        engine=SimpleNamespace(
-            purchase_next_bed=purchase_next_bed,
-            next_bed_price=lambda: 250,
-        ),
-    )
+            engine=SimpleNamespace(
+                next_bed_price=lambda: 250,
+            ),
+        )
     nursery._begin_catalog_transaction = lambda: begin(nursery)
     nursery._release_catalog_transaction = lambda: release(nursery)
     nursery._release_bed_purchase = lambda: release_bed(nursery)
@@ -535,8 +1271,7 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
         lambda context, *, committed: failures.append((context, committed))
     )
     nursery._show_result = lambda *_args: None
-    nursery._refresh_parent = refresh_parent
-    nursery.refresh = lambda: None
+    nursery._execute_purchase = execute_purchase
 
     unlock_bed(nursery)
     unlock_bed(nursery)
@@ -577,8 +1312,12 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
             )
         },
     )
+    properties: dict[str, str] = {}
     nursery = SimpleNamespace(
-        _show_result=lambda ok, message: results.append((ok, message))
+        _show_result=lambda ok, message: results.append((ok, message)),
+        status=SimpleNamespace(
+            setProperty=lambda name, value: properties.__setitem__(name, value)
+        ),
     )
 
     try:
@@ -590,6 +1329,10 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
     assert results and results[0][0] is False
     assert message_fragment in results[0][1]
     assert "reopen the Nursery" in results[0][1]
+    assert properties == (
+        {"transactionPresentation": "committed-result-with-refresh-failure"}
+        if committed else {}
+    )
 
 
 def test_production_addon_ignores_capture_environment_without_build_capability(

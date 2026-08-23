@@ -22,7 +22,7 @@ from .display_telemetry import DISPLAY_TELEMETRY
 from .game import GardenGameEngine
 from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
-from .storage import GardenStorage, SchedulerBoundaryError
+from .storage import GardenStorage, RevlogReadError, SchedulerBoundaryError
 from .ui.dashboard import GardenDashboard
 from .ui.state import GardenUiCoordinator
 from .ui.home_widget import (
@@ -117,6 +117,7 @@ class AnkiGardenApp:
         self._home_widget_hooked = False
         self._home_bridge_hooked = False
         self._reviewer_hooked = False
+        self._undo_hooked = False
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
         self._home_widget_controller = HomeWidgetStateController()
@@ -140,6 +141,7 @@ class AnkiGardenApp:
         self._setup_settings_menu()
         self._setup_home_screen_widget()
         self._setup_reviewer_hook()
+        self._setup_review_undo_hook()
         self._setup_sync_hooks()
         self._run_garden_maintenance("startup")
         self._maybe_start_ui_face_capture()
@@ -167,11 +169,19 @@ class AnkiGardenApp:
             if callable(prepare_ledger):
                 prepare_ledger()
             self.engine.rollover_if_needed()
-            reconcile_streak = getattr(self.engine, "reconcile_retrospective_streak", None)
-            if callable(reconcile_streak):
-                # This only updates the scalar streak and unclaimed historical
-                # Coin milestones. It never replays Growth or random drops.
-                reconcile_streak()
+            reconcile_rewards = getattr(self.engine, "reconcile_reward_history", None)
+            if not callable(reconcile_rewards):
+                reconcile_rewards = getattr(
+                    self.engine, "reconcile_retrospective_streak", None
+                )
+            if callable(reconcile_rewards):
+                reconciliation = reconcile_rewards()
+                if (
+                    isinstance(reconciliation, tuple)
+                    and reconciliation
+                    and reconciliation[0] is False
+                ):
+                    raise RevlogReadError(str(reconciliation[1]))
             catchup_result = self._apply_same_day_catchup()
         except SchedulerBoundaryError:
             # Anki constructs add-ons before the collection scheduler is fully
@@ -241,6 +251,34 @@ class AnkiGardenApp:
         if reviewer_did_show_question is not None and callable(question_handler):
             reviewer_did_show_question.append(question_handler)
         self._reviewer_hooked = True
+
+    def _setup_review_undo_hook(self) -> None:
+        if getattr(self, "_undo_hooked", False):
+            return
+        try:
+            from aqt import gui_hooks
+
+            hook = getattr(gui_hooks, "state_did_undo", None)
+            if hook is not None:
+                hook.append(self._on_state_did_undo)
+                self._undo_hooked = True
+        except Exception:
+            logger.exception("Anki Garden: failed to attach review-undo protection")
+
+    def _on_state_did_undo(self, changes: Any) -> None:
+        op_changes = getattr(changes, "changes", None)
+        if not bool(getattr(op_changes, "study_queues", False)):
+            return
+        try:
+            recorded = self.engine.record_review_undo(
+                undo_at_ms=self.storage.current_time_ms(),
+            )
+            if recorded:
+                self.state_events.notify("review undo protected")
+        except Exception:
+            # The consumed answer authority remains durable. Maintenance will
+            # retry history reads; never interrupt Anki's own undo operation.
+            logger.exception("Anki Garden: review-undo lineage protection deferred")
 
     def _settings_menu_bar(self) -> Any:
         """Resolve Anki's shared top-level add-on menu across Qt versions."""
@@ -765,6 +803,7 @@ class AnkiGardenApp:
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
+        self._sync_home_motion_preferences()
         state_events = getattr(self, "state_events", None)
         revision = int(getattr(state_events, "revision", 0))
         cached_html = getattr(self, "_home_html_cache", None)
@@ -784,6 +823,24 @@ class AnkiGardenApp:
         self._home_html_revision = int(getattr(state_events, "revision", revision))
         return html
 
+    def _sync_home_motion_preferences(self) -> None:
+        """Project current add-on motion settings into the transient Home view."""
+
+        enable_animations = bool(self.config.value("enable_animations", True))
+        reduced_motion = bool(self.config.value("reduced_motion", False))
+        snapshot = self._home_widget_controller.snapshot
+        if (
+            snapshot.enable_animations == enable_animations
+            and snapshot.reduced_motion == reduced_motion
+        ):
+            return
+        self._home_widget_controller.set_motion_preferences(
+            enable_animations=enable_animations,
+            reduced_motion=reduced_motion,
+        )
+        self._home_html_cache = None
+        self._home_html_revision = -1
+
     def _build_home_garden_html(self) -> str:
         request_id = self._home_widget_controller.begin_request()
         try:
@@ -801,6 +858,7 @@ class AnkiGardenApp:
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 garden_overlay_url=self._home_garden_overlay_url(),
+                weather_url=self._home_weather_url(),
                 nurtured_marker_url=self._home_nurtured_marker_url(),
                 nurtured_marker_spout_right_url=(
                     self._home_nurtured_marker_spout_right_url()
@@ -940,6 +998,19 @@ class AnkiGardenApp:
             return ""
         return self._asset_web_url(path)
 
+    def _home_weather_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_weather_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve home weather overlay",
+                exc_info=True,
+            )
+            return ""
+        return self._asset_web_url(path)
+
     def _home_nurtured_marker_url(self) -> str:
         resolver = getattr(self.engine, "resolve_nurtured_marker_asset", None)
         try:
@@ -1072,10 +1143,34 @@ class AnkiGardenApp:
 
         payloads = []
         latest_id = last_id
+        scheduler_day = ReviewerHookHandler.scheduler_day(self.storage)
+        binding_resolver = getattr(
+            self.storage, "answer_lineage_bindings_for_cards", None
+        )
+        existing_bindings = (
+            binding_resolver({int(row[1]) for row in day_rows})
+            if callable(binding_resolver)
+            else getattr(
+                self.storage.state, "answer_lineage_bindings", {}
+            )
+        )
+        identities = ReviewerHookHandler.stable_answer_identities(
+            day_rows,
+            scheduler_day=scheduler_day,
+            existing_bindings=existing_bindings,
+            reanswer_hints=getattr(
+                self.storage.state, "pending_reanswer_lineages", {}
+            ),
+        )
         for row in rows:
             rid = int(row[0])
             latest_id = max(latest_id, int(rid))
-            payload = ReviewerHookHandler.review_payload_from_row(row, collection)
+            payload = ReviewerHookHandler.review_payload_from_row(
+                row,
+                collection,
+                answer_identity=identities.get(rid, ""),
+                scheduler_day=scheduler_day,
+            )
             # Manual and rescheduled revlog rows are not answered cards and must
             # advance the cursor without producing Garden progress.
             if payload is not None:

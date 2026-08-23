@@ -74,7 +74,7 @@ def test_home_and_native_actions_share_the_same_visual_roles() -> None:
     assert "background:#71D39C" in home
     assert "outline:3px solid #82E2AC" in home
     assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in dashboard
-    assert "_set_button_variant(copy_debug, BUTTON_VARIANT_SECONDARY)" in dashboard
+    assert "_set_button_variant(self.copy_debug, BUTTON_VARIANT_SECONDARY)" in dashboard
     assert "min-height:44px; max-height:44px; min-width:44px" in dashboard
     assert "tool_button_stylesheet()" in studio
 
@@ -102,7 +102,7 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert stats.count("QSizePolicy.Policy.Ignored") >= 3
     assert "stretches = (1, 1, 1, 1)" in stats
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "64 if guided else (96 if metrics_compact else 104)" in dashboard
+    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
     assert "self.garden_stats_bar.setFixedHeight" not in dashboard
 
 
@@ -113,19 +113,22 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     )[0]
 
     assert "self.top_bar.setMinimumHeight(minimum)" in dashboard
-    assert "154 if self._header_narrow_layout else" in dashboard
-    assert "128 if self._header_compact_layout else" in dashboard
-    assert "168 if self._header_compact_layout and metrics_compact else" in dashboard
+    assert "186 if self._header_narrow_layout else" in dashboard
+    assert "160 if self._header_compact_layout else" in dashboard
+    assert "320 if self._header_narrow_layout and metrics_compact else" in dashboard
+    assert "264 if self._header_compact_layout and metrics_compact else" in dashboard
     assert "top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)" in dashboard
     assert "self.top_bar.setFixedHeight" not in dashboard
     assert "self.feedback_panel.hide()" in dashboard
     assert "self._sync_feedback_panel_visibility()" in dashboard
     assert dashboard.count("QSizePolicy.Policy.Maximum") >= 8
-    assert "self.title_stack_widget.setMinimumWidth(0)" in dashboard
+    assert "self.title_stack_widget.setMinimumWidth(230)" in dashboard
+    assert "QSizePolicy.Policy.MinimumExpanding" in dashboard
     assert "self.title_label.setMinimumWidth(0)" in dashboard
     assert "self.top_bar.adjustSize()" in dashboard
     assert "self.header_grid.addWidget(self.garden_stats_bar" in dashboard
-    assert "compact = int(width) < 700" in settings
+    assert '"settings.footer-actions"' in settings
+    assert "self.settings_footer_responsive.evaluate(width)" in settings
     assert "self.settings_footer_grid.addWidget(self.cancel_settings, 0, 0)" in settings
     assert "self.settings_footer_grid.addWidget(self.save_settings, 0, 1)" in settings
     assert "garden_name_panel.setMinimumHeight(96)" in settings

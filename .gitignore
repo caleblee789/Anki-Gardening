@@ -6,6 +6,8 @@ __pycache__/
 dist/
 build/
 ankigarden/user_files/*.json
+ankigarden/user_files/*.sqlite3*
+ankigarden/user_files/development_backups/
 ankigarden/user_files/cache/
 ankigarden/meta.json
 artwork_source/**/revision_*/

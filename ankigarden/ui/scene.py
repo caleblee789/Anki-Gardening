@@ -23,6 +23,8 @@ except Exception:
             QSvgRenderer = None  # type: ignore[assignment]
 
 from .formatters import format_percent
+from .accessibility import AccessibilityAnnouncer, AnnouncementPriority
+from ..build_capabilities import CAPTURE_HARNESS_ENABLED
 from .landmarks import (
     DEFAULT_LANDMARK_ACTIONS,
     LandmarkAction,
@@ -34,6 +36,8 @@ from .landmarks import (
 )
 from .plant_display import (
     NurturedMarkerPlacement,
+    PopoverPlacement,
+    SceneGeometryLayout,
     PlantInteractionState,
     PlantPlacement,
     Rect,
@@ -48,9 +52,11 @@ from .plant_display import (
     partition_scene_rows,
     repair_unique_slot_items,
     requires_native_destination_selector,
+    scene_height_for_width,
     scene_profile_name,
     scene_surface_variant,
     smart_card_rect,
+    status_overlay_rect,
     theme_integration_profile,
 )
 from ..terminology import PROGRESSION_SUMMARY
@@ -68,10 +74,12 @@ SCENE_TEXT = {
 STATS_HELP_TEXT = PROGRESSION_SUMMARY
 PLANT_HOVER_OUTLINE_WIDTH = 1.65
 PLANT_HOVER_OUTLINE_OPACITY = 0.55
+PLANT_POPOVER_MIN_WIDTH = 280.0
+PLANT_POPOVER_MIN_HEIGHT = 220.0
 
 
 class GardenSceneWidget(QWidget):
-    placementRequested = pyqtSignal(str, int)
+    placementRequested = pyqtSignal(str, int, int)
     selectionChanged = pyqtSignal(str)
     placementStateChanged = pyqtSignal(bool)
     cancelPlacementRequested = pyqtSignal()
@@ -101,10 +109,15 @@ class GardenSceneWidget(QWidget):
         self._plant_anchors: dict[str, tuple[float, float]] = {}
         self._card_connector_rect: QRectF | None = None
         self._card_connector_plant_id = ""
+        self._card_popover_placement: PopoverPlacement | None = None
         self._status_rect: QRectF | None = None
         self._stats_help_visible = False
         self._slot_placements: dict[int, PlantPlacement] = {}
+        self._scene_geometry_layout: SceneGeometryLayout | None = None
         self._allowed_move_slots: set[int] | None = None
+        self._starter_placement = False
+        self._placement_generation = 0
+        self._active_placement_token: int | None = None
         self._hovered_move_slot: int | None = None
         self._press_position: Any = None
         self._press_plant_id: str | None = None
@@ -117,7 +130,9 @@ class GardenSceneWidget(QWidget):
         self._keyboard_hint_timer.setSingleShot(True)
         self._keyboard_hint_timer.setInterval(5000)
         self._keyboard_hint_timer.timeout.connect(self._hide_keyboard_hint)
+        self._keyboard_hint_suppressed = False
         self.interactive = bool(interactive)
+        self.accessibility_announcer = AccessibilityAnnouncer(self)
         self._stats_help_button = QToolButton(self)
         self._stats_help_button.setText("?")
         self._stats_help_button.setAccessibleName("About garden statistics")
@@ -185,8 +200,7 @@ class GardenSceneWidget(QWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        aspect = 4 / 3 if width < 620 else 16 / 9 if width < 1400 else 12 / 5
-        return max(250, min(800, int(width / aspect)))
+        return scene_height_for_width(width)
 
     def set_motion_enabled(self, enabled: bool) -> None:
         if enabled and self.isVisible() and not self.timer.isActive():
@@ -237,6 +251,11 @@ class GardenSceneWidget(QWidget):
         if callable(set_motion):
             set_motion(bool(self.scene.get("motion_enabled", True)))
         self._interaction.reconcile(self._plant_ids())
+        if (
+            getattr(self, "_active_placement_token", None) is not None
+            and not self._interaction.placing
+        ):
+            self._invalidate_placement_session()
         valid_ids = set(self._plant_ids())
         self._hover_opacity = {
             plant_id: opacity for plant_id, opacity in self._hover_opacity.items() if plant_id in valid_ids
@@ -278,6 +297,7 @@ class GardenSceneWidget(QWidget):
         self.setAccessibleName("Interactive garden" if self.interactive else "Garden preview")
         if not self.interactive:
             self._interaction.cancel_placement()
+            self._invalidate_placement_session()
             self._interaction.dismiss()
             self._clear_hit_targets()
             self._stats_help_visible = False
@@ -361,7 +381,30 @@ class GardenSceneWidget(QWidget):
         self._plant_hit_rects.clear()
         self._plant_anchors.clear()
         self._slot_placements.clear()
+        self._scene_geometry_layout = None
         self._status_rect = None
+
+    def _activate_placement_session(self) -> int:
+        """Issue one token that makes queued destination callbacks fail closed."""
+
+        self._placement_generation += 1
+        self._active_placement_token = self._placement_generation
+        return self._placement_generation
+
+    def _invalidate_placement_session(self) -> None:
+        if self._active_placement_token is None:
+            return
+        self._placement_generation += 1
+        self._active_placement_token = None
+
+    def active_placement_token(self) -> int | None:
+        return self._active_placement_token
+
+    def _emit_placement_request(self, request: tuple[str, int]) -> None:
+        token = self._active_placement_token
+        if token is None:
+            return
+        self.placementRequested.emit(request[0], request[1], token)
 
     def begin_move(self, plant_id: str, valid_slots: list[int] | None = None) -> bool:
         if not self.interactive:
@@ -370,6 +413,7 @@ class GardenSceneWidget(QWidget):
         self._hovered_move_slot = None
         started = self._begin_move(plant_id, keyboard=True)
         if started:
+            self._activate_placement_session()
             self._interaction.pinned_id = None
             self._interaction.hovered_id = None
             self.selectionChanged.emit("")
@@ -379,6 +423,62 @@ class GardenSceneWidget(QWidget):
             self.update()
         return started
 
+    def begin_starter_placement(self, valid_slots: list[int]) -> bool:
+        """Select an initial bed without inventing a transient Plant record."""
+
+        if not self.interactive:
+            return False
+        valid = sorted({int(slot) for slot in valid_slots if int(slot) >= 0})
+        self._allowed_move_slots = set(valid)
+        self._hovered_move_slot = None
+        started = self._interaction.begin_unplaced("__starter__", valid)
+        if not started:
+            return False
+        self._activate_placement_session()
+        self._starter_placement = True
+        self._inline_message = "Choose a highlighted garden bed for your starter."
+        self.setAccessibleName("Place your starter plant")
+        self.setAccessibleDescription(
+            self._placement_accessible_description(
+                "Choose an eligible unlocked bed for your starter."
+            )
+        )
+        self.placementStateChanged.emit(True)
+        self._sync_landmark_hotspot()
+        self.setFocus()
+        self.update()
+        return True
+
+    def begin_collection_placement(
+        self,
+        plant_id: str,
+        valid_slots: list[int],
+    ) -> bool:
+        """Select an empty bed for an owned plant without mutating its state."""
+
+        if not self.interactive:
+            return False
+        valid = sorted({int(slot) for slot in valid_slots if int(slot) >= 0})
+        self._allowed_move_slots = set(valid)
+        self._hovered_move_slot = None
+        started = self._interaction.begin_unplaced(str(plant_id), valid)
+        if not started:
+            return False
+        self._activate_placement_session()
+        self._starter_placement = False
+        self._inline_message = "Choose a highlighted garden bed for this plant."
+        self.setAccessibleName("Plant from Collection")
+        self.setAccessibleDescription(
+            self._placement_accessible_description(
+                "Choose an eligible empty bed for this Collection plant."
+            )
+        )
+        self.placementStateChanged.emit(True)
+        self._sync_landmark_hotspot()
+        self.setFocus()
+        self.update()
+        return True
+
     def finish_move(self, message: str = "Move finished. Plant selection remains available.") -> None:
         """Reset every scene-owned move affordance without requesting a cancel.
 
@@ -386,8 +486,12 @@ class GardenSceneWidget(QWidget):
         placement.  Keeping that path signal-free prevents a completed save
         from re-entering the dashboard's cancel handler.
         """
+        invalidate_session = getattr(self, "_invalidate_placement_session", None)
+        if callable(invalidate_session):
+            invalidate_session()
         self._interaction.cancel_placement()
         self._allowed_move_slots = None
+        self._starter_placement = False
         self._hovered_move_slot = None
         self._press_position = None
         self._press_plant_id = None
@@ -443,8 +547,11 @@ class GardenSceneWidget(QWidget):
         safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
         safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
         safe_scene["debug_placement"] = bool(
-            safe_scene.get("debug_placement", False)
-            or os.environ.get("ANKI_GARDEN_PLACEMENT_DEBUG") == "1"
+            CAPTURE_HARNESS_ENABLED
+            and (
+                safe_scene.get("debug_placement", False)
+                or os.environ.get("ANKI_GARDEN_PLACEMENT_DEBUG") == "1"
+            )
         )
         self.set_motion_enabled(safe_scene["motion_enabled"])
         return safe_scene
@@ -489,12 +596,21 @@ class GardenSceneWidget(QWidget):
         if self._interaction.pinned_id is None:
             return
         self._interaction.dismiss()
+        self.set_keyboard_hint_suppressed(False)
         self._card_connector_rect = None
         self._card_connector_plant_id = ""
         self._inline_message = ""
         self._announce_focused_plant()
         self.selectionChanged.emit("")
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
         self.update()
+
+    def set_keyboard_hint_suppressed(self, suppressed: bool) -> None:
+        """Keep the global keyboard banner out of selected-plant panels."""
+
+        self._keyboard_hint_suppressed = bool(suppressed)
+        if self._keyboard_hint_suppressed:
+            self._hide_keyboard_hint()
 
     def register_landmark_action(self, action_id: str, accessible_name: str, tooltip: str) -> bool:
         """Register an intentional scene action before manifest geometry can expose it."""
@@ -649,34 +765,77 @@ class GardenSceneWidget(QWidget):
             return
         was_selected = self._interaction.pinned_id is not None
         self._interaction.dismiss()
+        if was_selected:
+            self.set_keyboard_hint_suppressed(False)
         self._inline_message = ""
         if was_selected:
             self.selectionChanged.emit("")
         self.landmarkActivated.emit(normalized_id)
         self.update()
 
-    def card_geometry(self, card_width: int, card_height: int) -> QRectF | None:
+    def card_geometry(
+        self,
+        card_width: int,
+        card_height: int,
+        *,
+        minimum_width: int | None = None,
+        minimum_height: int | None = None,
+    ) -> QRectF | None:
         plant_id = self._interaction.pinned_id
         if not plant_id or self._interaction.placing:
+            self._card_popover_placement = None
             return None
         layout_rows = self._layout_plants(self.width(), self.height())
-        anchor = self._plant_anchors.get(plant_id)
-        if anchor is None:
-            return None
-        selected_rect = self._plant_hit_rects.get(plant_id)
-        if selected_rect is not None:
-            anchor = (
-                selected_rect.x() + selected_rect.width() + 4.0,
-                selected_rect.y() + selected_rect.height() / 2.0,
+        plant_lookup = getattr(self, "_plant_for_id", None)
+        if not callable(plant_lookup):
+            anchor = self._plant_anchors.get(plant_id)
+            selected_rect = self._plant_hit_rects.get(plant_id)
+            if anchor is None:
+                return None
+            if selected_rect is not None:
+                anchor = (
+                    selected_rect.x() + selected_rect.width() + 4.0,
+                    selected_rect.y() + selected_rect.height() / 2.0,
+                )
+            legacy_obstacles = [
+                Rect(hit.x(), hit.y(), hit.width(), hit.height()).expanded(8.0, 8.0)
+                for other_id, hit in self._plant_hit_rects.items()
+                if other_id != plant_id
+            ]
+            legacy = smart_card_rect(
+                self.width(),
+                self.height(),
+                anchor[0],
+                anchor[1],
+                card_width=float(card_width),
+                card_height=float(card_height),
+                obstacles=legacy_obstacles,
+                protected_obstacle=(
+                    Rect(
+                        selected_rect.x(), selected_rect.y(),
+                        selected_rect.width(), selected_rect.height(),
+                    ).expanded(8.0, 8.0)
+                    if selected_rect is not None else None
+                ),
             )
+            if legacy is None:
+                self._card_popover_placement = None
+                return None
+            self._card_popover_placement = None
+            return QRectF(*legacy)
+        selected_plant = plant_lookup(plant_id)
+        selected_slot = (
+            int(selected_plant.get("slot_index", -1))
+            if selected_plant is not None else -1
+        )
+        geometry_layout = self._scene_geometry_layout
+        if geometry_layout is None or geometry_layout.bed(selected_slot) is None:
+            self._card_popover_placement = None
+            return None
         # The selected plant is an obstacle too. Prefer a clean side lane; the
         # geometry helper uses the least-obstructive in-scene fallback only for
         # very dense compositions.
-        obstacles = [
-            Rect(hit.x(), hit.y(), hit.width(), hit.height()).expanded(8.0, 8.0)
-            for other_id, hit in self._plant_hit_rects.items()
-            if other_id != plant_id
-        ]
+        obstacles: list[Rect] = []
         if self._status_rect is not None:
             obstacles.append(Rect(
                 self._status_rect.x(), self._status_rect.y(),
@@ -692,7 +851,6 @@ class GardenSceneWidget(QWidget):
         )
         if active_row is not None:
             _active_plant, active_layout = active_row
-            family = self._planter_family_record()
             marker_protected = []
             if self._status_rect is not None:
                 marker_protected.append(Rect(
@@ -701,11 +859,9 @@ class GardenSceneWidget(QWidget):
                     self._status_rect.width(),
                     self._status_rect.height(),
                 ))
-            marker_reservation = nurtured_marker_placement(
-                self.width(),
-                self.height(),
+            marker_reservation = geometry_layout.resolve_watering_can(
+                active_layout.slot_index,
                 active_layout,
-                planter_rect=planter_draw_rect(active_layout, family),
                 obstacles=[
                     layout.visible.expanded(4.0, 4.0)
                     for _plant, layout in layout_rows
@@ -713,28 +869,37 @@ class GardenSceneWidget(QWidget):
                 protected_regions=marker_protected,
             )
             obstacles.append(marker_reservation.pulse_bounds.expanded(4.0, 4.0))
-        geometry = smart_card_rect(
-            self.width(), self.height(), anchor[0], anchor[1],
-            card_width=float(card_width),
-            card_height=float(card_height),
-            obstacles=obstacles,
-            protected_obstacle=(
-                Rect(
-                    selected_rect.x(), selected_rect.y(),
-                    selected_rect.width(), selected_rect.height(),
-                ).expanded(8.0, 8.0)
-                if selected_rect is not None else None
+        placement = geometry_layout.resolve_popover(
+            selected_slot,
+            (float(card_width), float(card_height)),
+            (
+                min(
+                    float(card_width),
+                    float(minimum_width)
+                    if minimum_width is not None else
+                    PLANT_POPOVER_MIN_WIDTH,
+                ),
+                min(
+                    float(card_height),
+                    float(minimum_height)
+                    if minimum_height is not None else
+                    PLANT_POPOVER_MIN_HEIGHT,
+                ),
             ),
+            obstacles,
         )
-        if geometry is None:
-            self._card_connector_rect = None
-            return None
-        x, y, width, height = geometry
-        result = QRectF(x, y, width, height)
+        self._card_popover_placement = placement
+        box = placement.rectangle
+        result = QRectF(box.x, box.y, box.width, box.height)
         self._card_connector_rect = result
         self._card_connector_plant_id = plant_id
         self.update()
         return result
+
+    def card_popover_placement(self) -> PopoverPlacement | None:
+        """Return the most recently resolved placement for the selected card."""
+
+        return self._card_popover_placement
 
     def plant_geometry(self, plant_id: str) -> QRectF | None:
         """Return current in-scene plant geometry for anchored native overlays."""
@@ -742,6 +907,14 @@ class GardenSceneWidget(QWidget):
         self._layout_plants(self.width(), self.height())
         geometry = self._plant_hit_rects.get(str(plant_id))
         return QRectF(geometry) if geometry is not None else None
+
+    def geometry_layout(self) -> SceneGeometryLayout:
+        """Return freshly projected logical geometry for external panels."""
+
+        self._layout_plants(self.width(), self.height())
+        if self._scene_geometry_layout is None:
+            raise RuntimeError("garden scene geometry is unavailable")
+        return self._scene_geometry_layout
 
     def nurtured_marker_geometry(self) -> dict[str, Any] | None:
         """Expose the resolved marker lane for capture and runtime diagnostics."""
@@ -793,6 +966,26 @@ class GardenSceneWidget(QWidget):
             "used_fallback": placement.used_fallback,
         }
 
+    def nurtured_marker_protected_regions(self) -> tuple[QRectF, ...]:
+        """Return scene-world overlays that the watering can must avoid.
+
+        A bottom-docked plant panel is interface chrome layered above the scene,
+        not an object within the garden. Its connector relationship remains
+        visible, but reserving the panel's full rectangle would make every
+        underlying accessory lane impossible. Side/above/below popovers and
+        the scene status panel remain genuine marker obstacles.
+        """
+
+        regions: list[QRectF] = []
+        popover = self._card_popover_placement
+        if self._card_connector_rect is not None and not bool(
+            getattr(popover, "docked", False)
+        ):
+            regions.append(QRectF(self._card_connector_rect))
+        if self._status_rect is not None:
+            regions.append(QRectF(self._status_rect))
+        return tuple(regions)
+
     def set_card_connector_geometry(self, geometry: QRectF | None, plant_id: str = "") -> None:
         self._card_connector_rect = QRectF(geometry) if geometry is not None else None
         self._card_connector_plant_id = str(plant_id) if geometry is not None else ""
@@ -825,6 +1018,7 @@ class GardenSceneWidget(QWidget):
         changed = self._interaction.pinned_id != plant_id
         if plant_id in self._plant_ids():
             self._interaction.pinned_id = plant_id
+            self.set_keyboard_hint_suppressed(True)
         self._inline_message = message
         if changed and self._interaction.pinned_id == plant_id:
             self.selectionChanged.emit(plant_id)
@@ -845,19 +1039,38 @@ class GardenSceneWidget(QWidget):
             background_placement if isinstance(background_placement, dict) else None,
             composition_count=max(1, len(plants)),
             protected_status=bool(self.scene.get("show_status_overlay", True)),
-            reserve_move_controls=self._interaction.placing and self.width() >= 900,
+            reserve_move_controls=self._interaction.placing,
         )
         result: list[tuple[dict[str, Any], PlantPlacement]] = []
         self._plant_hit_rects = {}
         self._plant_anchors = {}
         self._slot_placements = {row.slot_index: row for row in rows}
+        family = self._planter_family_record()
+        dpr_getter = getattr(self, "devicePixelRatioF", None)
+        dpr = float(dpr_getter()) if callable(dpr_getter) else 1.0
+        self._scene_geometry_layout = SceneGeometryLayout.from_placements(
+            width,
+            height,
+            rows,
+            device_pixel_ratio=dpr,
+            planter_family=family,
+        )
         for row in rows:
             plant = by_slot.get(row.slot_index, {})
             plant_id = str(plant.get("plant_id", ""))
-            hit_rect = QRectF(row.hit.x, row.hit.y, row.hit.width, row.hit.height)
+            bed_geometry = self._scene_geometry_layout.bed(row.slot_index)
+            hit = bed_geometry.selection_region if bed_geometry is not None else row.hit
+            hit_rect = QRectF(hit.x, hit.y, hit.width, hit.height)
             if plant_id:
                 self._plant_hit_rects[plant_id] = hit_rect
-                self._plant_anchors[plant_id] = (row.smart_card_anchor.x + row.smart_card_anchor.width / 2, row.smart_card_anchor.y)
+                self._plant_anchors[plant_id] = (
+                    bed_geometry.popover_anchor
+                    if bed_geometry is not None else
+                    (
+                        row.smart_card_anchor.x + row.smart_card_anchor.width / 2,
+                        row.smart_card_anchor.y,
+                    )
+                )
             if plant_id:
                 result.append((plant, row))
         return result
@@ -926,6 +1139,7 @@ class GardenSceneWidget(QWidget):
                 self._draw_surface_occlusion_asset(painter, r)
 
             plant_rows = self._layout_plants(r.width(), r.height())
+            self._nurtured_marker_placement = None
             self._draw_physical_beds(painter)
             focused_id = self._interaction.focused_id(self._plant_ids()) if self.hasFocus() else None
             dragged_rows = [row for row in plant_rows if str(row[0].get("plant_id", "")) == self._interaction.dragged_id and self._drag_started]
@@ -1038,6 +1252,21 @@ class GardenSceneWidget(QWidget):
                         self._draw_foreground_growth(painter, x, base_y, idx, selected)
                     painter.restore()
 
+                # The watering can belongs to the nurtured plant's depth band.
+                # Paint it after the plant but before that band's foreground
+                # planter/foliage layer so near artwork can still occlude it.
+                if not self._interaction.placing:
+                    for plant, layout in row_items:
+                        if bool(plant.get("is_active")):
+                            self._draw_nurtured_marker(
+                                painter,
+                                layout,
+                                plant,
+                                scene_layouts=[
+                                    row_layout for _row, row_layout in plant_rows
+                                ],
+                            )
+
                 if planter_family:
                     self._draw_planter_family_band(
                         painter,
@@ -1078,7 +1307,6 @@ class GardenSceneWidget(QWidget):
                 )
                 painter.restore()
 
-            self._nurtured_marker_placement = None
             if bool(self.scene.get("debug_placement", False)):
                 self._draw_placement_debug(painter, plant_rows)
 
@@ -1088,18 +1316,6 @@ class GardenSceneWidget(QWidget):
                 self._draw_weather_motion(painter, r, str(weather), density)
 
             self._draw_landmark_affordances(painter)
-            # The can is noninteractive UI: above every scene-artwork layer,
-            # including weather, but below move controls, status, cards, and
-            # toasts. Moving a plant suppresses it until the placement commits.
-            if not self._interaction.placing:
-                for plant, layout in plant_rows:
-                    if bool(plant.get("is_active")):
-                        self._draw_nurtured_marker(
-                            painter,
-                            layout,
-                            plant,
-                            scene_layouts=[row_layout for _row, row_layout in plant_rows],
-                        )
             if self._interaction.placing:
                 # Move choices sit above a uniform 15% scene dimmer. This keeps
                 # the artwork legible while making destination states dominant.
@@ -1206,7 +1422,11 @@ class GardenSceneWidget(QWidget):
         painter.restore()
 
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
-        if not bool(self.scene.get("show_status_overlay", True)) or rect.width() < 520:
+        status_geometry = status_overlay_rect(
+            rect.width(),
+            protected=bool(self.scene.get("show_status_overlay", True)),
+        )
+        if status_geometry is None:
             self._status_rect = None
             self._stats_help_button.hide()
             return
@@ -1223,10 +1443,12 @@ class GardenSceneWidget(QWidget):
         else:
             streak_label = f"{streak_days}-day Anki streak"
         labels = [streak_label, f"{format_percent(growth)} Growth today"]
-        panel_width = min(430.0, max(1.0, rect.width() - 32.0))
-        narrow = rect.width() < 440
-        panel_height = 78 if narrow else 68
-        panel = QRectF(16, 14, panel_width, panel_height)
+        panel = QRectF(
+            status_geometry.x,
+            status_geometry.y,
+            status_geometry.width,
+            status_geometry.height,
+        )
         self._status_rect = panel
         help_x = int(panel.right() - SCENE_HELP_BUTTON_SIZE - 10)
         help_y = int(panel.top() + 8)
@@ -1430,26 +1652,32 @@ class GardenSceneWidget(QWidget):
             item.visible.expanded(4.0, 4.0)
             for item in occupied_layouts
         ]
-        protected: list[Rect] = []
-        for qt_rect in (
-            getattr(self, "_card_connector_rect", None),
-            getattr(self, "_status_rect", None),
-        ):
-            if qt_rect is not None:
-                protected.append(Rect(
-                    qt_rect.x(),
-                    qt_rect.y(),
-                    qt_rect.width(),
-                    qt_rect.height(),
-                ).expanded(4.0, 4.0))
-        resolved = nurtured_marker_placement(
-            self.width(),
-            self.height(),
-            layout,
-            planter_rect=planter,
-            obstacles=obstacles,
-            protected_regions=protected,
-        )
+        protected = [
+            Rect(
+                qt_rect.x(),
+                qt_rect.y(),
+                qt_rect.width(),
+                qt_rect.height(),
+            ).expanded(4.0, 4.0)
+            for qt_rect in self.nurtured_marker_protected_regions()
+        ]
+        geometry_layout = getattr(self, "_scene_geometry_layout", None)
+        if geometry_layout is not None and geometry_layout.bed(layout.slot_index) is not None:
+            resolved = geometry_layout.resolve_watering_can(
+                layout.slot_index,
+                layout,
+                obstacles=obstacles,
+                protected_regions=protected,
+            )
+        else:
+            resolved = nurtured_marker_placement(
+                self.width(),
+                self.height(),
+                layout,
+                planter_rect=planter,
+                obstacles=obstacles,
+                protected_regions=protected,
+            )
         self._nurtured_marker_placement = resolved
         marker = QRectF(
             resolved.rect.x,
@@ -1651,11 +1879,6 @@ class GardenSceneWidget(QWidget):
                 valid_destination_slots=valid_destinations,
                 unlocked_slots=unlocked,
             )
-            # Locked and otherwise unavailable spaces stay part of the artwork
-            # until the learner actually points at one. Move mode should reveal
-            # choices, not draw a control on every garden bed.
-            if target_state not in {"current", "valid"} and slot != hovered_slot:
-                continue
             label, semantic_state = move_badge_label(
                 slot,
                 origin_slot=origin,
@@ -1670,6 +1893,8 @@ class GardenSceneWidget(QWidget):
             )
             current = target_state == "current"
             blocked = target_state in {"locked", "unavailable"}
+            occupied_target = slot in occupied and not current
+            swap_target = target_state == "valid" and occupied_target
             active = (
                 target_state == "valid"
                 and (
@@ -1678,21 +1903,37 @@ class GardenSceneWidget(QWidget):
                 )
             )
             if target_state == "unavailable":
-                label = "Unavailable"
+                label = (
+                    f"Occupied by {occupant_names.get(slot, 'plant')}; invalid destination"
+                    if occupied_target else
+                    "Invalid destination"
+                )
             elif target_state == "locked":
                 label = "Locked"
             visual_label = (
                 "Current"
                 if current else
-                "Unavailable"
+                "Occupied"
+                if target_state == "unavailable" and occupied_target else
+                "Invalid"
                 if target_state == "unavailable" else
                 "Locked"
                 if target_state == "locked" else
                 "Swap"
-                if label.startswith("Swap with ") else
+                if swap_target else
                 "Move"
                 if semantic_state in {"active", "available"} else
                 label
+            )
+            if getattr(self, "_starter_placement", False) and target_state == "valid":
+                label = "Place here"
+                visual_label = "Place"
+            cue = (
+                "•" if current else
+                "×" if target_state == "locked" else
+                "!" if target_state == "unavailable" else
+                "↔" if swap_target else
+                "+"
             )
             footprint = QRectF(
                 layout.bed_footprint.x,
@@ -1702,9 +1943,15 @@ class GardenSceneWidget(QWidget):
             )
             painter.save()
             if blocked:
-                pen_color, fill_color = QColor(145, 156, 153, 62), QColor(35, 42, 42, 48)
+                if target_state == "locked":
+                    pen_color, fill_color = QColor(145, 156, 153, 128), QColor(35, 42, 42, 64)
+                else:
+                    pen_color, fill_color = QColor(211, 151, 111, 176), QColor(73, 43, 34, 72)
             elif current:
-                pen_color, fill_color = QColor(126, 190, 201, 118), QColor(49, 93, 101, 48)
+                pen_color, fill_color = QColor(126, 190, 201, 205), QColor(49, 93, 101, 70)
+            elif swap_target:
+                pen_color = QColor(224, 190, 111, 245 if active else 205)
+                fill_color = QColor(111, 80, 35, 118 if active else 54)
             else:
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
                 pen_color.setAlpha(245 if active else 190)
@@ -1736,37 +1983,48 @@ class GardenSceneWidget(QWidget):
                         vertical_padding,
                     )
                 painter.drawEllipse(move_footprint)
-            if target_state == "valid":
-                painter.setPen(QColor(244, 255, 248, 255 if active else 220))
-                plus_font = painter.font()
-                plus_font.setPointSizeF(max(16.0, plus_font.pointSizeF() + 4.0))
-                plus_font.setBold(True)
-                painter.setFont(plus_font)
-                painter.drawText(
-                    footprint,
-                    Qt.AlignmentFlag.AlignCenter,
-                    "+",
+            painter.setPen(
+                QColor(
+                    244,
+                    255,
+                    248,
+                    255 if active or current else 210 if not blocked else 168,
                 )
+            )
+            cue_font = painter.font()
+            cue_font.setPointSizeF(max(16.0, cue_font.pointSizeF() + 4.0))
+            cue_font.setBold(True)
+            painter.setFont(cue_font)
+            painter.drawText(
+                footprint,
+                Qt.AlignmentFlag.AlignCenter,
+                cue,
+            )
+            if target_state == "valid":
                 preview = getattr(self, "_draw_move_preview", None)
                 if active and callable(preview):
                     preview(painter, slot)
-            # The rings carry the complete destination map. A short label is
-            # reserved for the current, hovered, or keyboard-selected space.
-            if not (current or active or slot == hovered_slot):
-                painter.restore()
-                continue
             obstacles = [obstacle for _obstacle_slot, obstacle in obstacle_rows] + placed_badges
             badge = bed_badge_rect(layout, visual_label, self.width(), self.height(), obstacles)
             placed_badges.append(badge)
             badge_rect = QRectF(badge.x, badge.y, badge.width, badge.height)
             if blocked:
-                badge_pen = QColor(158, 169, 164, 70)
-                badge_fill = QColor(26, 34, 33, 138)
-                badge_text = QColor(195, 205, 201, 112)
+                if target_state == "locked":
+                    badge_pen = QColor(158, 169, 164, 128)
+                    badge_fill = QColor(26, 34, 33, 210)
+                    badge_text = QColor(218, 225, 222, 210)
+                else:
+                    badge_pen = QColor(220, 165, 129, 190)
+                    badge_fill = QColor(61, 34, 31, 220)
+                    badge_text = QColor(255, 223, 205, 230)
             elif active:
                 badge_pen = QColor(239, 247, 184, 235)
                 badge_fill = QColor(50, 78, 47, 232)
                 badge_text = QColor(250, 253, 223)
+            elif swap_target:
+                badge_pen = QColor(224, 190, 111, 210)
+                badge_fill = QColor(71, 55, 31, 220)
+                badge_text = QColor(255, 238, 194, 235)
             elif current:
                 badge_pen = QColor(164, 211, 219, 126)
                 badge_fill = QColor(32, 63, 69, 188)
@@ -1779,6 +2037,10 @@ class GardenSceneWidget(QWidget):
             painter.setBrush(badge_fill)
             painter.drawRoundedRect(badge_rect, 10, 10)
             painter.setPen(badge_text)
+            badge_font = painter.font()
+            badge_font.setPointSizeF(11.0)
+            badge_font.setBold(True)
+            painter.setFont(badge_font)
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, visual_label)
             painter.restore()
 
@@ -1808,8 +2070,42 @@ class GardenSceneWidget(QWidget):
         return event.position() if hasattr(event, "position") else event.pos()
 
     def _plant_at(self, position: Any) -> str | None:
-        for plant_id, hit_rect in reversed(list(self._plant_hit_rects.items())):
-            if hit_rect.contains(position):
+        candidates: list[tuple[float, str]] = []
+        for plant_id, hit_rect in self._plant_hit_rects.items():
+            if not hit_rect.contains(position):
+                continue
+            plant = self._plant_for_id(plant_id)
+            slot = int(plant.get("slot_index", -1)) if plant is not None else -1
+            layout = self._slot_placements.get(slot)
+            candidates.append((float(layout.z_depth) if layout is not None else -1.0, plant_id))
+        for _depth, plant_id in sorted(candidates, reverse=True):
+            plant = self._plant_for_id(plant_id)
+            slot = int(plant.get("slot_index", -1)) if plant is not None else -1
+            layout = self._slot_placements.get(slot)
+            if plant is None or layout is None:
+                continue
+            geometry = getattr(self, "_scene_geometry_layout", None)
+            bed = geometry.bed(slot) if geometry is not None else None
+            if bed is not None and bed.move_target.contains(
+                float(position.x()), float(position.y())
+            ):
+                return plant_id
+            path, _placement = self._asset_record(
+                "plant", plant.get("asset") or plant.get("image_path")
+            )
+            pixmap = self._pixmap_for(path) if path else None
+            if pixmap is None or pixmap.isNull():
+                return plant_id
+            box = self._plant_draw_box(layout, plant)
+            if not box.contains(position):
+                continue
+            source_x = int(
+                max(0, min(pixmap.width() - 1, (position.x() - box.x()) / max(1.0, box.width()) * pixmap.width()))
+            )
+            source_y = int(
+                max(0, min(pixmap.height() - 1, (position.y() - box.y()) / max(1.0, box.height()) * pixmap.height()))
+            )
+            if pixmap.toImage().pixelColor(source_x, source_y).alpha() >= 24:
                 return plant_id
         return None
 
@@ -1851,6 +2147,16 @@ class GardenSceneWidget(QWidget):
         self.setAccessibleDescription(description)
 
     def _slot_at(self, position: Any) -> int | None:
+        geometry = getattr(self, "_scene_geometry_layout", None)
+        if geometry is not None and hasattr(geometry, "beds"):
+            matches = [
+                bed for bed in geometry.beds
+                if bed.hotspot.contains(float(position.x()), float(position.y()))
+            ]
+            if matches:
+                # Foreground beds win the only possible clipped-envelope edge
+                # ambiguity, matching the scene's paint order at every DPR.
+                return max(matches, key=lambda bed: bed.depth).bed_id
         for slot, layout in self._slot_placements.items():
             target = QRectF(
                 layout.bed_footprint.x,
@@ -1868,7 +2174,11 @@ class GardenSceneWidget(QWidget):
 
     def _valid_slots(self) -> list[int]:
         unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", 0))))
-        valid = [slot for slot in sorted(self._slot_placements) if slot < unlocked]
+        # Slot validity is state, not paint timing. A persistence rollback can
+        # refresh the scene payload and restart move mode before the next paint
+        # has rebuilt ``_slot_placements``; the unlocked count remains the
+        # authoritative source for all six deterministic bed IDs.
+        valid = list(range(unlocked))
         if self._allowed_move_slots is not None:
             valid = [slot for slot in valid if slot in self._allowed_move_slots]
         return valid
@@ -1877,12 +2187,123 @@ class GardenSceneWidget(QWidget):
         origin = self._interaction.drag_origin_slot
         return [slot for slot in self._valid_slots() if slot != origin]
 
+    def _placement_target_descriptions(self) -> list[str]:
+        """Expose the complete six-bed state map to assistive technology."""
+
+        origin = self._interaction.drag_origin_slot
+        destinations = set(self._destination_slots())
+        unlocked = max(0, min(6, int(self.scene.get("unlocked_slots", 0))))
+        occupants = {
+            int(plant.get("slot_index", -1)): str(
+                plant.get("name") or plant.get("species") or "plant"
+            )
+            for plant in self.scene.get("plants", [])
+        }
+        descriptions: list[str] = []
+        for slot in range(6):
+            state = move_target_state(
+                slot,
+                origin_slot=origin,
+                valid_destination_slots=destinations,
+                unlocked_slots=unlocked,
+            )
+            occupant = occupants.get(slot, "")
+            if state == "current":
+                label = "current bed"
+            elif state == "locked":
+                label = "locked bed"
+            elif state == "unavailable" and occupant:
+                label = f"occupied by {occupant}; invalid destination"
+            elif state == "unavailable":
+                label = "invalid destination"
+            elif occupant:
+                label = f"swap with {occupant}"
+            elif self._starter_placement:
+                label = "eligible; place here"
+            else:
+                label = "eligible; move here"
+            descriptions.append(f"Garden space {slot + 1}: {label}")
+        return descriptions
+
+    def _placement_accessible_description(self, introduction: str) -> str:
+        target_map = "; ".join(self._placement_target_descriptions())
+        return (
+            f"{introduction} {target_map}. Use the arrow keys to move among eligible beds, "
+            "then press Enter. Press Escape to cancel."
+        )
+
     def _cycle_destination(self, direction: int) -> int | None:
         destination = self._interaction.cycle_destination(self._valid_slots(), direction)
         if destination == self._interaction.drag_origin_slot and self._destination_slots():
             destination = self._interaction.cycle_destination(self._valid_slots(), direction)
         self._announce_destination(destination)
         return destination
+
+    def _spatial_destination(self, key: Any) -> int | None:
+        """Choose the nearest valid bed in the pressed visual direction."""
+
+        destinations = self._destination_slots()
+        if not destinations:
+            return None
+        current_slot = self._interaction.destination_slot
+        current_bed = (
+            self._scene_geometry_layout.bed(current_slot)
+            if self._scene_geometry_layout is not None and current_slot is not None
+            else None
+        )
+        if current_bed is None:
+            chosen = destinations[0]
+            self._interaction.choose_destination(chosen, destinations)
+            self._announce_destination(chosen)
+            return chosen
+        origin_x = current_bed.move_target.x + current_bed.move_target.width / 2
+        origin_y = current_bed.move_target.y + current_bed.move_target.height / 2
+        direction = {
+            Qt.Key.Key_Left: (-1.0, 0.0),
+            Qt.Key.Key_Right: (1.0, 0.0),
+            Qt.Key.Key_Up: (0.0, -1.0),
+            Qt.Key.Key_Down: (0.0, 1.0),
+        }.get(key)
+        if direction is None:
+            return None
+        dx_direction, dy_direction = direction
+        candidates: list[tuple[float, float, int]] = []
+        for slot in destinations:
+            if slot == current_slot or self._scene_geometry_layout is None:
+                continue
+            bed = self._scene_geometry_layout.bed(slot)
+            if bed is None:
+                continue
+            x = bed.move_target.x + bed.move_target.width / 2
+            y = bed.move_target.y + bed.move_target.height / 2
+            dx = x - origin_x
+            dy = y - origin_y
+            primary = dx * dx_direction + dy * dy_direction
+            if primary <= 0:
+                continue
+            cross = abs(dx * dy_direction - dy * dx_direction)
+            candidates.append((cross * 2.0 + primary, primary, slot))
+        if candidates:
+            chosen = min(candidates)[2]
+        else:
+            # Wrap to the far edge in the requested direction while keeping
+            # perpendicular travel as small as possible.
+            edge_candidates: list[tuple[float, float, int]] = []
+            for slot in destinations:
+                if self._scene_geometry_layout is None:
+                    continue
+                bed = self._scene_geometry_layout.bed(slot)
+                if bed is None:
+                    continue
+                x = bed.move_target.x + bed.move_target.width / 2
+                y = bed.move_target.y + bed.move_target.height / 2
+                primary = x * dx_direction + y * dy_direction
+                cross = abs((x - origin_x) * dy_direction - (y - origin_y) * dx_direction)
+                edge_candidates.append((-primary, cross, slot))
+            chosen = min(edge_candidates)[2] if edge_candidates else destinations[0]
+        self._interaction.choose_destination(chosen, destinations)
+        self._announce_destination(chosen)
+        return chosen
 
     def _announce_destination(self, slot: int | None) -> None:
         if slot is None:
@@ -1903,15 +2324,30 @@ class GardenSceneWidget(QWidget):
             occupied_slots=occupied,
             occupant_names=occupant_names,
         )
+        if getattr(self, "_starter_placement", False) and label == "Move here":
+            label = "Place here"
         self.setAccessibleName(f"Garden space {slot + 1}: {label}")
         self.setAccessibleDescription(
-            f"Garden space {slot + 1} selected. Press Enter to {label.lower()} this plant, "
-            "or Escape to cancel."
+            f"Garden space {slot + 1} selected: {label}. "
+            "Press Enter to confirm, or Escape to cancel. "
+            + "; ".join(self._placement_target_descriptions())
         )
 
     def _finish_move_accessibility(self, message: str) -> None:
         self.setAccessibleName("Interactive garden")
         self.setAccessibleDescription(message)
+        normalized = str(message or "").lower()
+        self.accessibility_announcer.announce(
+            message,
+            priority=(
+                AnnouncementPriority.ASSERTIVE
+                if any(
+                    token in normalized
+                    for token in ("failed", "could not", "unavailable", "error")
+                )
+                else AnnouncementPriority.POLITE
+            ),
+        )
 
     def _begin_move(self, plant_id: str, *, keyboard: bool) -> bool:
         origin = self._slot_for_plant(plant_id)
@@ -1923,8 +2359,10 @@ class GardenSceneWidget(QWidget):
             self._inline_message = f"Moving {name}. Choose a new location."
             self.setAccessibleName(f"Moving {name}. Choose a new location.")
             self.setAccessibleDescription(
-                "Six garden spaces are shown. Choose an unlocked space with the arrow keys "
-                "and press Enter, or click one. Locked spaces cannot be selected."
+                self._placement_accessible_description(
+                    "Six garden spaces are shown. Empty eligible beds move the plant; "
+                    "occupied eligible beds swap plants."
+                )
             )
         return started
 
@@ -1952,33 +2390,22 @@ class GardenSceneWidget(QWidget):
             )
             hover_changed = hover_slot != self._hovered_move_slot
             self._hovered_move_slot = hover_slot
+            # Destination meaning is painted in the scene and announced to
+            # assistive technology. Native tooltips obscure neighboring beds,
+            # so they are intentionally suppressed for the complete move mode.
+            QToolTip.hideText()
             if target_state == "locked":
-                QToolTip.showText(
-                    self.mapToGlobal(position.toPoint()),
-                    "This garden space has not been unlocked yet.",
-                    self,
-                )
+                self._inline_message = "That garden space has not been unlocked yet."
             elif target_state == "unavailable":
-                occupied = {
-                    int(plant.get("slot_index", -1)): str(
-                        plant.get("name") or plant.get("species") or "A plant"
-                    )
-                    for plant in self.scene.get("plants", [])
-                }
-                explanation = (
-                    f"{occupied[hover_slot]} occupies this garden space."
-                    if hover_slot in occupied else
-                    "This garden space cannot be used for this move."
-                )
-                QToolTip.showText(self.mapToGlobal(position.toPoint()), explanation, self)
+                self._inline_message = "That garden space is unavailable for this move."
             elif target_state == "current":
-                QToolTip.showText(
-                    self.mapToGlobal(position.toPoint()),
-                    "Current location. Click to cancel moving.",
-                    self,
+                self._inline_message = "Current location. Click to cancel moving."
+            elif target_state == "valid":
+                self._inline_message = (
+                    "Place your starter here."
+                    if getattr(self, "_starter_placement", False) else
+                    "Move or swap here."
                 )
-            else:
-                QToolTip.hideText()
             if self._press_plant_id and self._press_position is not None:
                 delta = position - self._press_position
                 if not self._drag_started and (abs(delta.x()) + abs(delta.y())) >= 8:
@@ -2055,13 +2482,15 @@ class GardenSceneWidget(QWidget):
                         occupied_slots=occupied,
                         occupant_names=occupant_names,
                     )
+                    if getattr(self, "_starter_placement", False) and label == "Move here":
+                        label = "Place here"
                     request = self._interaction.complete_placement()
                     if request is not None:
                         self._inline_message = f"Saving {label.lower()}…"
                         self.setAccessibleDescription(
                             f"{label} selected for garden space {slot + 1}. Saving move."
                         )
-                        self.placementRequested.emit(request[0], request[1])
+                        self._emit_placement_request(request)
                 else:
                     state = move_target_state(
                         slot,
@@ -2073,6 +2502,20 @@ class GardenSceneWidget(QWidget):
                         "That garden space is locked"
                         if state == "locked" else
                         "That garden space is unavailable for this move"
+                    )
+                    self.setAccessibleName(
+                        f"Garden space {slot + 1}: "
+                        + ("Locked" if state == "locked" else "Invalid destination")
+                    )
+                    self.setAccessibleDescription(
+                        f"{self._inline_message}. "
+                        + "; ".join(self._placement_target_descriptions())
+                        + ". Press Escape to cancel."
+                    )
+                    self.accessibility_announcer.announce(
+                        self._inline_message,
+                        priority=AnnouncementPriority.POLITE,
+                        target=self,
                     )
                 self.update()
                 return
@@ -2091,6 +2534,8 @@ class GardenSceneWidget(QWidget):
             self._interaction.cancel_placement()
             was_selected = self._interaction.pinned_id is not None
             self._interaction.dismiss()
+            if was_selected:
+                self.set_keyboard_hint_suppressed(False)
             self._inline_message = ""
             if was_selected:
                 self._announce_focused_plant()
@@ -2116,7 +2561,7 @@ class GardenSceneWidget(QWidget):
             if request is not None and request[1] != origin:
                 self._inline_message = "Saving move…"
                 self.setAccessibleDescription("Saving the selected plant move.")
-                self.placementRequested.emit(request[0], request[1])
+                self._emit_placement_request(request)
             else:
                 self.cancel_move()
         elif self._press_plant_id:
@@ -2129,8 +2574,10 @@ class GardenSceneWidget(QWidget):
                 if plant_id in ids:
                     self._interaction.focused_index = ids.index(plant_id)
                 if not was_pinned and self._interaction.pinned_id:
+                    self.set_keyboard_hint_suppressed(True)
                     self._announce_focused_plant(selected=True)
                 elif was_pinned and not self._interaction.pinned_id:
+                    self.set_keyboard_hint_suppressed(False)
                     self._announce_focused_plant()
                 self.selectionChanged.emit(self._interaction.pinned_id or "")
         self._press_position = None
@@ -2150,19 +2597,21 @@ class GardenSceneWidget(QWidget):
             self.update()
             return
         if self._interaction.move_mode:
-            if event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Up):
+            if event.key() in (
+                Qt.Key.Key_Left,
+                Qt.Key.Key_Right,
+                Qt.Key.Key_Up,
+                Qt.Key.Key_Down,
+            ):
                 self._hovered_move_slot = None
-                self._cycle_destination(-1)
-            elif event.key() in (Qt.Key.Key_Right, Qt.Key.Key_Down):
-                self._hovered_move_slot = None
-                self._cycle_destination(1)
+                self._spatial_destination(event.key())
             elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
                 origin = self._interaction.drag_origin_slot
                 request = self._interaction.complete_placement()
                 if request is not None and request[1] != origin:
                     self._inline_message = "Saving move…"
                     self.setAccessibleDescription("Saving the selected plant move.")
-                    self.placementRequested.emit(request[0], request[1])
+                    self._emit_placement_request(request)
                 else:
                     self.cancel_move()
             elif event.key() == Qt.Key.Key_Escape:
@@ -2182,13 +2631,17 @@ class GardenSceneWidget(QWidget):
                 self._interaction.toggle_pin(focused)
                 self._inline_message = ""
                 if self._interaction.pinned_id:
+                    self.set_keyboard_hint_suppressed(True)
                     self._announce_focused_plant(selected=True)
                 else:
+                    self.set_keyboard_hint_suppressed(False)
                     self._announce_focused_plant()
                 self.selectionChanged.emit(self._interaction.pinned_id or "")
         elif event.key() == Qt.Key.Key_Escape:
             was_selected = self._interaction.pinned_id is not None
             self._interaction.dismiss()
+            if was_selected:
+                self.set_keyboard_hint_suppressed(False)
             self._inline_message = ""
             if was_selected:
                 self._announce_focused_plant()
@@ -2225,6 +2678,25 @@ class GardenSceneWidget(QWidget):
         self._sync_landmark_hotspot()
         QTimer.singleShot(0, self.cardGeometryChanged.emit)
 
+    def changeEvent(self, event: Any) -> None:
+        event_type = event.type() if hasattr(event, "type") else None
+        type_enum = getattr(QEvent, "Type", None)
+        geometry_events = {
+            value
+            for value in (
+                getattr(type_enum, "DevicePixelRatioChange", None),
+                getattr(type_enum, "ScreenChangeInternal", None),
+                getattr(type_enum, "ApplicationFontChange", None),
+            )
+            if value is not None
+        }
+        if event_type in geometry_events:
+            self._scene_geometry_layout = None
+            self._clear_hit_targets()
+            self.update()
+            QTimer.singleShot(0, self.cardGeometryChanged.emit)
+        super().changeEvent(event)
+
     def _position_keyboard_hint(self) -> None:
         if not hasattr(self, "_keyboard_hint"):
             return
@@ -2239,6 +2711,12 @@ class GardenSceneWidget(QWidget):
         )
 
     def _show_keyboard_hint(self) -> None:
+        if (
+            getattr(self, "_keyboard_hint_suppressed", False)
+            or self._interaction.pinned_id is not None
+        ):
+            self._hide_keyboard_hint()
+            return
         self._position_keyboard_hint()
         self._keyboard_hint.show()
         self._keyboard_hint.raise_()

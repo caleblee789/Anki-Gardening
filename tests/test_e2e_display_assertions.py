@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ankigarden.models.state import DailyStats, GardenState, Plant
+from ankigarden.models.state import DailyStats, GardenLoadoutState, GardenState, Plant
 
 
 class _Signal:
@@ -104,13 +104,12 @@ def _install_fake_aqt(monkeypatch, *, review_count: int):
 def _seed_state(_unused: int = 50) -> GardenState:
     return GardenState(
         streak_days=8,
-        selected_weather="gentle_rain",
+        loadout=GardenLoadoutState(weather_id="gentle_rain"),
         daily_stats=DailyStats(
             reviewed=12,
             base_growth=30,
             streak_bonus_growth=6,
-            bonus_growth=6,
-            growth_earned=36,
+            plant_nurtured_growth={"p-1": 36},
         ),
         active_plant_id="p-1",
         currency_balance=35,
@@ -146,8 +145,8 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in html
-    assert "Aster, Seed stage, 250 of 500 Growth; 8-day streak; 35 Garden Coins" in html
+    assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in html
+    assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in html
     assert 'data-testid="home-weather"' not in html
 
 
@@ -156,12 +155,11 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     before = app._build_home_garden_html()
     assert 'data-testid="home-reviews"' not in before
-    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in before
+    assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in before
 
     app.storage.state.daily_stats.base_growth = 54
     app.storage.state.daily_stats.streak_bonus_growth = 6
-    app.storage.state.daily_stats.bonus_growth = 6
-    app.storage.state.daily_stats.growth_earned = 60
+    app.storage.state.daily_stats.plant_nurtured_growth = {"p-1": 60}
     app.storage.state.plants[0].growth_points = 310
     app.storage.state.streak_days = 9
     app.storage.state.selected_weather = "cloudy"
@@ -169,12 +167,12 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in updated
-    assert "9-day streak" in updated
+    assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in updated
+    assert "9-day Anki streak" in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in refreshed
-    assert "9-day streak" in refreshed
+    assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in refreshed
+    assert "9-day Anki streak" in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -195,5 +193,5 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'data-testid="home-reviews"' not in rendered
-        assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in rendered
-        assert "Aster, Seed stage, 250 of 500 Growth; 8-day streak; 35 Garden Coins" in rendered
+        assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in rendered
+        assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in rendered

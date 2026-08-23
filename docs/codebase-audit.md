@@ -1,7 +1,7 @@
 # Anki Garden 2.1 codebase audit
 
 This ledger records the comprehensive stabilization and product rework. The
-schema 16 / Verdant Twilight V6 section is current; later dated sections are
+schema-21 / Verdant Twilight V6 section is current; later dated sections are
 historical evidence for older packages and do not describe the present UI or
 progression contract.
 
@@ -9,16 +9,17 @@ progression contract.
 
 | Area | Current resolution | Verification |
 |---|---|---|
-| Progression | One answer produces 10 base Growth for one answer-time nurtured unfinished plant; Nurture changes only future routing, with no split, movement, regression, or Rare overflow. | Engine routing, threshold, terminology, bonus-rounding, and balance-profile tests. |
-| Streak Growth | Review history reconstructs the current consecutive Anki-day run; it adds 0/5/10/15/20/25% at days 1/7/14/30/100/365 and claims reached Coin milestones once. | Retrospective query/reconciliation, tier-boundary, reset, fractional-rounding, and UI tests. |
-| All due | Live collection-wide Anki due tree plus introduced learning/relearning through cutoff; unseen new and unavailable suspended/buried excluded; filtered decks included; one answer required; once/day and no revoke. | Due-tree/SQL semantics and reward tests; exact-package runtime scenario required. |
+| Progression | One eligible answer produces 10 base Growth plus active modifiers for the answer-time nurtured unfinished plant; every other planted unfinished plant receives an exact 20% allocation carried in fifths. Nurture changes only future full-award routing, with no movement, regression, or Rare overflow. Direct Garden Find Growth is the no-fan-out exception. | Engine routing, threshold, terminology, modifier, exact-fifths, direct-Find, and balance-profile tests. |
+| Streak Growth | Review history reconstructs the current consecutive Anki-day run and 0/5/10/15/20/25% Growth tiers at days 1/7/14/30/100/365. The first eligible answer each active day grants 2 Coins; every seventh day grants 10, with day 7 integrated into its one-time achievement. | History reconciliation, tier boundaries, daily/seventh-day idempotency, day-7 integration, reset, fractional-rounding, and UI tests. |
+| All due | Live collection-wide Anki due tree plus introduced learning/relearning through cutoff; unseen new and unavailable suspended/buried excluded; filtered decks included; one eligible answer required; once/day and no revoke. | Due-tree/SQL semantics and reward tests; exact-package runtime scenario required. |
 | Supplements | Plant-specific Fertilizer adds +1/+2/+3 under its interval contract. Booster Potions add +5 per answer and stack/extend. Small/Standard/Grand Charges add 100/500/2,000 direct Growth atomically. | Price/tier/stacking/timer/sync/expiry/Charge transition/cap/rollback/restart tests. |
-| Economy and drops | The Garden Coin ledger records every reason/balance. One ordered deterministic reward band grants at most one environment, Charge, Booster, or 50-Coin cache; exact odds, tier fallbacks, duplicate safety, and stepped Ultra pity are persisted. | Exact-band/priority/determinism/deduplication/fallback/pity/debit/rollback tests. |
-| Information architecture | Home is compact/noninteractive. Full Garden integrates its name/actions; metric buttons open focused details; header/cottage Progress opens Today/Achievements/Collection/Weather & Scenery/How it grows. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
-| Nursery | The shaped manifest landmark opens a four-tab catalog including Weather & Scenery. Environment purchases are one-time/no-auto-equip; Charges live with Supplements; plant stock remains derived from complete V6 lines. | Landmark, starter, tab, environment/Charge transaction, catalog-readiness, preview, and accessibility tests. |
-| Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
+| Economy and Garden Finds | The schema-21 reward ledger records every grant and Garden Coin balance change. A centralized Standard Find registry uses configured drought bands, a guaranteed answer 75, and a three-per-day cap; an independent unowned-environment pool keeps rare-tier odds and stepped Ultra pity. The pools may stack, while stable answer/pool identities prevent replay and reroll. | Registry validation, chance boundaries, cap/pause, deterministic selection, independent-pool stacking, idempotency, pity, debit, economy simulation, and rollback tests. |
+| Information architecture | Home is compact/noninteractive and shares one preview snapshot with Settings. Full Garden promotes its name; metric buttons and Garden Progress open focused details, while Collection and the cottage route directly to the Collection page in the same window. | Home/Garden/dialog/source contracts, content ownership, focus, and render tests. |
+| Nursery | The shaped manifest landmark opens a four-tab catalog with non-shrinking tabs, normalized art/fallbacks, textual ownership states, direct actions, sequential Garden Spaces, and shared Weather/Scenery mechanics. Environment purchases are one-time/no-auto-equip; Charges live with Supplements; stock remains derived from complete V6 lines. | Landmark, starter, tab, shared-descriptor, vocabulary, environment/Charge transaction, catalog-readiness, preview/fallback, empty-state, responsive, and accessibility tests. |
+| Purchase transactions | Schema 21 quotes and confirms every species, Growth Charge, Fertilizer, Weather, Scenery, and next-bed Coin purchase. Revalidation, debit, grant/application/unlock, feedback, and a bounded idempotency record commit in one state transaction; failures roll back and exact request replay cannot duplicate work. | Migration/serialization, all purchase kinds, stale/error matrix, rollback/retry, double-submit, replay/conflict, bounded-history, receipt, and confirmation-shell tests. |
+| Interaction | Restrained artwork-bound hover, one selected card, Nurture/Fertilize/Growth Charge/Move/Story, direct scene placement, immediate save, and temporary Undo. No destination dropdown or Done action remains. | Interaction, hitbox, card geometry, placement, rollback, source-contract, and responsive tests. |
 | Story and Settings | Story separates name/species/stage with enlarged art and relative Growth. Production Settings removes environment, art-quality/detail/performance, animation, Fine tune, and state-mutation controls; explicit backup/populate/restore tools exist only in isolated capture builds. | Story ordering/progress/accessibility tests and production/capture capability, config, dev-tool, and responsive tests. |
-| State boundary | Schema 16 stores environment entitlements/loadout/visibility, Growth Charges, daily passive claims, Ultra pity, and separate Growth sources alongside schema-15 state. | Schema-15 migration, environment/Charge/drop round-trip, malformed-state, rollback, and package tests. |
+| State boundary | Schema 21 preserves onboarding, loadout, environment, exact-fifths Growth, and bounded purchase/Charge replay state while moving reward events, answer identities, Find outcomes, finalized days, and the materialized state snapshot into a verified SQLite authority. | Schemas 10-20 migration, pre-SQLite backup, ledger import/integrity/restart, onboarding, environment/Charge/Find/purchase round-trip, malformed-state, rollback, and package tests. |
 | V6 environment | Verdant Twilight V6 provides the unchanged six-space geometry, responsive masters, occlusion, landmarks, and plant lines. Eight Scenery reskins reuse exact masks/placement/hotspots; seven balanced transparent Weather overlays compose with every one. | Asset alpha/count/mask, placement-ref, scenery resolution, geometry/layout, responsive render, and package checks. |
 
 ## Historical stabilization findings
@@ -65,11 +66,13 @@ terminology, test counts, and progression models are not current requirements.
 
 ## Current product focus
 
-The supported experience is review-driven single-plant Growth, Nurture routing,
-retrospective streak bonuses, all-due/streak/stage/drop Garden Coins,
-time-based Fertilizer and Booster Potions, one-use Growth Charges, stacked
-Weather/Scenery passives, a tabbed Nursery, six fixed direct-soil spaces, local
-Plant Stories, direct Move and Undo, same-day catch-up, and a calm named Garden.
+The supported experience is review-driven nurtured Growth with exact-fifths
+passive fan-out, Nurture routing, retrospective streak status and derivable
+one-time achievements, daily/seventh-day/all-due/stage/achievement/Find Garden
+Coins, independent Garden Find pools, time-based Fertilizer and Booster Potions,
+one-use Growth Charges, stacked Weather/Scenery passives, a tabbed Nursery, six
+fixed direct-soil spaces, local Plant Stories, direct Move and Undo, same-day
+catch-up, and a calm named Garden.
 The roster contains ten species, but
 the UI shows only computed collected and available-now counts. Focus timers,
 exam mode, deck mapping, extra currencies, plant death/regression, daily-login
@@ -81,7 +84,9 @@ systems are absent.
 The manifest contains one canonical Verdant Twilight V6 environment, eight
 geometry-compatible Scenery reskins, 60 current plant sprites, seven balanced
 Weather overlays, one lantern, seven transparent catalog UI assets, two
-Nurtured-marker orientations, and six geometry-matched planter layers.
+Nurtured-marker orientations, six geometry-matched planter layers, and three
+perspective-row opaque planter/soil exclusion records used by the shared
+watering-can resolver.
 `scripts/audit_assets.py` is the
 count and validity source of truth and rejects unreferenced runtime files.
 Nursery readiness applies a strict complete-six-stage V6 rule, while a

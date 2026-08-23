@@ -14,9 +14,17 @@ from ankigarden.models.state import (
     Fertilizer,
     GardenState,
     HISTORICAL_PLANT_SPECIES_ORDER,
+    MAX_COMPLETED_PURCHASE_REQUESTS,
+    OnboardingStep,
     Plant,
     PlantMemory,
     STATE_VERSION,
+)
+from ankigarden.purchases import (
+    CompletedPurchaseRequest,
+    PurchaseDisposition,
+    PurchaseOutcome,
+    PurchaseStatus,
 )
 from ankigarden.storage import (
     DueObligationStatus,
@@ -34,6 +42,184 @@ def storage_at(path):
     storage = object.__new__(GardenStorage)
     storage.data_path = path
     return storage
+
+
+def _completed_request(index: int) -> CompletedPurchaseRequest:
+    return CompletedPurchaseRequest(
+        request_id=f"00000000-0000-4000-8000-{index:012d}",
+        request_fingerprint=f"{index:064x}"[-64:],
+        outcome=PurchaseOutcome(
+            status=PurchaseStatus.SUCCESS,
+            item_id="growth_charge_small",
+            item_name="Small Growth Charge",
+            category="Growth Charge",
+            quantity=1,
+            amount_spent=30,
+            new_balance=max(0, 1_000 - index),
+            disposition=PurchaseDisposition.INVENTORY,
+            message="Small Growth Charge added to Supplements & Boosters.",
+            next_actions=("Use Growth Charge",),
+        ),
+        occurred_at="2026-08-16T12:00:00+00:00",
+    )
+
+
+def test_schema18_purchase_request_history_round_trips_and_is_bounded() -> None:
+    records = [
+        _completed_request(index)
+        for index in range(MAX_COMPLETED_PURCHASE_REQUESTS + 5)
+    ]
+    state = GardenState(completed_purchase_requests=records)
+
+    payload = state.to_dict()
+    restored = GardenState.from_dict(payload)
+
+    assert len(payload["completed_purchase_requests"]) == MAX_COMPLETED_PURCHASE_REQUESTS
+    assert len(restored.completed_purchase_requests) == MAX_COMPLETED_PURCHASE_REQUESTS
+    assert restored.completed_purchase_requests[0].request_id == records[5].request_id
+    assert restored.completed_purchase_requests[-1] == records[-1]
+
+
+def test_schema18_purchase_history_discards_malformed_and_duplicate_records() -> None:
+    valid = _completed_request(1).to_dict()
+    duplicate = _completed_request(1).to_dict()
+    invalid_fingerprint = {
+        **_completed_request(2).to_dict(),
+        "request_fingerprint": "not-a-fingerprint",
+    }
+    invalid_request_id = {
+        **_completed_request(3).to_dict(),
+        "request_id": "not-a-uuid",
+    }
+    noncanonical_request_id = {
+        **_completed_request(4).to_dict(),
+        "request_id": "{aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa}",
+    }
+    noncanonical_fingerprint = {
+        **_completed_request(5).to_dict(),
+        "request_fingerprint": "A" * 64,
+    }
+    invalid_outcome = _completed_request(6).to_dict()
+    invalid_outcome["outcome"]["amount_spent"] = -1
+    invalid_timestamp = {
+        **_completed_request(7).to_dict(),
+        "occurred_at": "2026-08-16T12:00:00",
+    }
+    payload = GardenState().to_dict()
+    payload["completed_purchase_requests"] = [
+        valid,
+        duplicate,
+        invalid_fingerprint,
+        invalid_request_id,
+        noncanonical_request_id,
+        noncanonical_fingerprint,
+        invalid_outcome,
+        invalid_timestamp,
+    ]
+
+    restored = GardenState.from_dict(payload)
+
+    assert restored.completed_purchase_requests == [_completed_request(1)]
+
+
+def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        currency_balance=777,
+        plants=[Plant("starter", "bonsai", "Moss", 0)],
+        active_plant_id="starter",
+    ).to_dict()
+    payload["version"] = 17
+    payload.pop("completed_purchase_requests", None)
+    payload["onboarding"] = {
+        "version": 1,
+        "step": "nurture",
+        "pending_species": None,
+        "starter_plant_id": "starter",
+    }
+    payload["processed_revlog_floor"] = 100
+    payload["processed_revlog_ids"] = [101, 105]
+    payload["revlog_ledger_migration_pending"] = False
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    migrated = storage_at(state_path)._load()
+
+    assert migrated.version == 21
+    assert migrated.currency_balance == 777
+    assert migrated.completed_purchase_requests == []
+    assert migrated.onboarding.step is OnboardingStep.NURTURE
+    assert migrated.onboarding.starter_plant_id == "starter"
+    assert migrated.processed_revlog_floor == 100
+    assert migrated.processed_revlog_ids == [101, 105]
+    assert migrated.revlog_ledger_migration_pending is False
+    assert state_path.with_suffix(".schema-17.legacy.json").exists()
+
+
+def test_schema18_migration_preserves_purchase_replay_history_and_collapses_loadout() -> None:
+    completed = _completed_request(7)
+    payload = GardenState(completed_purchase_requests=[completed]).to_dict()
+    payload["version"] = 18
+    payload["selected_weather"] = "breeze"
+    payload["selected_background"] = "spring"
+    payload["environment_visibility"] = {"weather": False, "scenery": True}
+    payload["equipped"] = {"weather": "breeze", "background": "spring", "decoration": "lantern"}
+    payload["inventory"]["weather"].append("breeze")
+    payload["inventory"]["scenery"].append("spring")
+    payload["inventory"]["backgrounds"] = ["default", "spring"]
+
+    migrated = migrate_modern_state(payload)
+
+    assert migrated.completed_purchase_requests == [completed]
+    assert migrated.selected_weather == "breeze"
+    assert migrated.selected_background == "spring"
+    assert migrated.loadout.decoration_id == "lantern"
+    assert migrated.environment_visibility == {"weather": False, "scenery": True}
+    assert "backgrounds" not in migrated.inventory
+    assert not {"selected_weather", "selected_background", "equipped", "environment_visibility"} & migrated.to_dict().keys()
+
+
+def test_schema19_growth_migration_preserves_unattributed_day_and_backup(tmp_path) -> None:
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        plants=[Plant("p", "bonsai", "Moss", 0, growth_points=777)],
+        active_plant_id="p",
+    ).to_dict()
+    payload["version"] = 19
+    payload["daily_stats"].update({
+        "day": "2026-08-17",
+        "base_growth": 30,
+        "streak_bonus_growth": 2,
+        "fertilizer_growth": 5,
+        "growth_earned": 37,
+        "plant_growth": {"p": 37},
+    })
+    for key in (
+        "plant_nurtured_growth",
+        "plant_passive_growth_fifths",
+        "plant_passive_growth_credited",
+        "plant_charge_growth",
+        "plant_direct_reward_growth",
+        "legacy_unattributed_growth",
+        "legacy_plant_growth",
+        "growth_accounting_stale",
+    ):
+        payload["daily_stats"].pop(key, None)
+    payload["plants"][0].pop("passive_growth_remainder_fifths", None)
+    payload.pop("completed_growth_charge_requests", None)
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    migrated = storage_at(state_path)._load()
+
+    assert migrated.version == STATE_VERSION
+    assert migrated.plants[0].growth_points == 777
+    assert migrated.plants[0].passive_growth_remainder_fifths == 0
+    assert migrated.daily_stats.legacy_unattributed_growth == 37
+    assert migrated.daily_stats.legacy_plant_growth == {"p": 37}
+    assert migrated.daily_stats.growth_accounting_stale
+    assert migrated.daily_stats.study_growth_generated == 0
+    assert migrated.daily_stats.growth_earned == 37
+    assert migrated.completed_growth_charge_requests == []
+    assert state_path.with_suffix(".schema-19.legacy.json").exists()
 
 
 def legacy_state_payload() -> dict:
@@ -305,7 +491,7 @@ def test_modern_migration_preserves_every_historical_species_story_and_progress(
         )
 
 
-def test_modern_migration_marks_even_an_empty_preexisting_garden_complete():
+def test_modern_migration_resumes_an_empty_preexisting_garden_at_introduction():
     payload = GardenState().to_dict()
     payload["version"] = 12
     payload.pop("starter_selection_complete")
@@ -314,7 +500,8 @@ def test_modern_migration_marks_even_an_empty_preexisting_garden_complete():
 
     assert state.plants == []
     assert state.unlocked_species == []
-    assert state.starter_selection_complete
+    assert state.starter_selection_complete is False
+    assert state.onboarding.step is OnboardingStep.INTRODUCTION
 
 
 def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor():
@@ -339,6 +526,53 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     assert fertilizer.active(1_000.0)
     assert not fertilizer.active(2_000.0)
     assert state.revlog_ledger_migration_pending
+
+
+@pytest.mark.parametrize(
+    ("fixture", "legacy_preference", "expected_step"),
+    [
+        ("empty", 0, OnboardingStep.INTRODUCTION),
+        ("planted-incomplete", 0, OnboardingStep.NURTURE),
+        ("planted-legacy-complete", 3, OnboardingStep.DONE),
+        ("active", 0, OnboardingStep.DONE),
+        ("setup-complete", 0, OnboardingStep.DONE),
+        ("shelved-collection", 0, OnboardingStep.DONE),
+    ],
+)
+def test_schema16_onboarding_migration_matrix(
+    fixture,
+    legacy_preference,
+    expected_step,
+):
+    state = GardenState()
+    if fixture != "empty":
+        plant = Plant(
+            "legacy-starter",
+            "bonsai",
+            "Moss",
+            None if fixture == "shelved-collection" else 0,
+            memories=[PlantMemory("planted", "planted", "2026-08-08")],
+        )
+        state.plants = [plant]
+        state.unlocked_species = [plant.species]
+        state.starter_selection_complete = True
+        if fixture == "active":
+            state.active_plant_id = plant.plant_id
+        if fixture == "setup-complete":
+            state.garden_setup_version = 1
+    payload = state.to_dict()
+    payload["version"] = 16
+    payload.pop("onboarding", None)
+    if fixture in {"planted-incomplete", "planted-legacy-complete", "active", "shelved-collection"}:
+        payload["garden_setup_version"] = 0
+
+    migrated = migrate_modern_state(
+        payload,
+        onboarding_version=legacy_preference,
+    )
+
+    assert migrated.onboarding.step is expected_step
+    assert migrated.version == STATE_VERSION
 
 
 @pytest.mark.parametrize("saved_version", [11, 12, 13, 14, 15, STATE_VERSION])

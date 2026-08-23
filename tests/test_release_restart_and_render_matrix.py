@@ -11,7 +11,11 @@ from typing import Any
 
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import DailyStats, GardenState
+from ankigarden.models.state import (
+    DailyStats,
+    GardenState,
+    OnboardingStep,
+)
 from ankigarden.storage import DueObligationStatus, GardenStorage
 from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
@@ -149,23 +153,62 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     )
     engine = _engine(storage)
 
-    ok, _message, starter = engine.choose_starter("rose")
+    assert storage.state.onboarding.step is OnboardingStep.INTRODUCTION
+    assert engine.enter_starter_nursery()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.NURSERY
+
+    before_failed_choice = storage.state.to_dict()
+    original_save = storage.save
+    storage.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
+    try:
+        assert engine.select_starter_species("rose")[0] is False
+    finally:
+        storage.save = original_save
+    assert storage.state.to_dict() == before_failed_choice
+
+    assert engine.select_starter_species("rose")[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.CONFIRMATION
+    assert storage.state.onboarding.pending_species == "rose"
+    assert storage.state.plants == []
+
+    assert engine.confirm_starter_species()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
+    assert storage.state.onboarding.pending_species == "rose"
+    assert storage.state.plants == []
+
+    ok, _message, starter = engine.place_starter(0)
     assert ok and starter is not None
     starter_id = starter.plant_id
+    repeated_ok, _repeated_message, repeated_starter = engine.place_starter(0)
+    assert repeated_ok and repeated_starter is starter
+    assert [plant.plant_id for plant in storage.state.plants] == [starter_id]
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     assert storage.state.starter_selection_complete is True
     assert [plant.species for plant in storage.state.plants] == ["rose"]
     assert storage.state.active_plant_id is None
+    assert storage.state.onboarding.step is OnboardingStep.NURTURE
     assert onboarding_state_display(storage.state, 0).state is (
         OnboardingState.STARTER_PLANTED_NOT_NURTURED
     )
 
+    assert engine.set_active_plant(starter_id)[0]
     assert engine.set_active_plant(starter_id)[0]
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     starter = engine.plant_story(starter_id)
     assert starter is not None
     assert storage.state.active_plant_id == starter_id
     assert [memory.memory_id for memory in starter.memories].count("nurture:first") == 1
+    assert onboarding_state_display(storage.state, 0).state is (
+        OnboardingState.NURTURED_PLANT_ASSIGNED
+    )
+    assert storage.state.onboarding.step is OnboardingStep.COMPLETION
+
+    assert engine.finish_onboarding()[0]
+    engine, storage = _restart(engine, storage)
+    assert storage.state.onboarding.step is OnboardingStep.DONE
     assert onboarding_state_display(storage.state, 0).state is (
         OnboardingState.ONBOARDING_COMPLETE
     )
@@ -185,10 +228,18 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert starter is not None and starter.fertilizer is not None
     assert starter.fertilizer.tier == "quality"
     assert storage.state.currency_balance == fertilizer_balance
+    fertilizer_requests = [
+        record
+        for record in storage.state.completed_purchase_requests
+        if record.outcome.item_id == "quality"
+        and record.outcome.category == "Fertilizer"
+    ]
+    assert len(fertilizer_requests) == 1
     assert len([
         transaction
         for transaction in storage.state.currency_transactions
-        if transaction.event_key.startswith("purchase:fertilizer:")
+        if transaction.event_key
+        == f"purchase-request:{fertilizer_requests[0].request_id}"
     ]) == 1
 
     assert engine.purchase_environment("scenery", "spring")[0]
@@ -197,10 +248,18 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert "spring" in storage.state.inventory["scenery"]
     assert storage.state.selected_background == "default"
     assert storage.state.currency_balance == purchase_balance
+    scenery_requests = [
+        record
+        for record in storage.state.completed_purchase_requests
+        if record.outcome.item_id == "spring"
+        and record.outcome.category == "Scenery"
+    ]
+    assert len(scenery_requests) == 1
     assert len([
         transaction
         for transaction in storage.state.currency_transactions
-        if transaction.event_key == "purchase:environment:scenery:spring"
+        if transaction.event_key
+        == f"purchase-request:{scenery_requests[0].request_id}"
     ]) == 1
 
     assert engine.equip_environment("scenery", "spring")[0]
@@ -287,7 +346,20 @@ class _Point:
 
 
 class _RectF:
-    def __init__(self, x: float, y: float, width: float, height: float) -> None:
+    def __init__(
+        self,
+        x: float | _RectF,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> None:
+        if isinstance(x, _RectF):
+            self._x = x._x
+            self._y = x._y
+            self._width = x._width
+            self._height = x._height
+            return
+        assert y is not None and width is not None and height is not None
         self._x = float(x)
         self._y = float(y)
         self._width = float(width)
@@ -486,6 +558,10 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     background, assets = _manifest_rows()
     selected_ring = _compiled_scene_method("_draw_selected_bed_ring", _SCENE_NAMESPACE)
     nurtured_marker = _compiled_scene_method("_draw_nurtured_marker", _SCENE_NAMESPACE)
+    marker_protected_regions = _compiled_scene_method(
+        "nurtured_marker_protected_regions",
+        _SCENE_NAMESPACE,
+    )
     draw_connector = _compiled_scene_method("_draw_card_connector", _SCENE_NAMESPACE)
     animate_move = _compiled_scene_method("animate_plant_move", _SCENE_NAMESPACE)
     paint_source = _method_source("paintEvent")
@@ -496,9 +572,24 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     assert "if not self._interaction.placing:" in paint_source
     assert 'if bool(self.scene.get("motion_enabled", True)):' in paint_source
     assert "self._draw_weather_motion(" in paint_source
-    assert paint_source.index("self._draw_weather_motion(") < paint_source.index(
-        "self._draw_nurtured_marker("
+    assert paint_source.index("self._draw_nurtured_marker(") < paint_source.index(
+        "self._draw_weather_motion("
     ) < paint_source.index("self._draw_status_overlay(")
+
+    docked_overlay = SimpleNamespace(
+        _card_connector_rect=_RectF(12, 180, 1_069, 420),
+        _status_rect=_RectF(16, 14, 430, 68),
+        _card_popover_placement=SimpleNamespace(docked=True),
+    )
+    docked_regions = marker_protected_regions(docked_overlay)
+    assert [region.as_rect() for region in docked_regions] == [
+        Rect(16, 14, 430, 68)
+    ]
+    docked_overlay._card_popover_placement = SimpleNamespace(docked=False)
+    assert [region.as_rect() for region in marker_protected_regions(docked_overlay)] == [
+        Rect(12, 180, 1_069, 420),
+        Rect(16, 14, 430, 68),
+    ]
 
     assets_by_species_stage = {
         (str(asset["slot"]["species"]), str(asset["slot"]["stage"])): asset
@@ -666,9 +757,13 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                     _RectF(*card) if card is not None else None
                                 ),
                                 _status_rect=None,
+                                _card_popover_placement=SimpleNamespace(docked=False),
                                 _asset_path=lambda _key: None,
                                 width=lambda: SCENE_WIDTH,
                                 height=lambda: SCENE_HEIGHT,
+                            )
+                            marker_scene.nurtured_marker_protected_regions = (
+                                lambda: marker_protected_regions(marker_scene)
                             )
                             nurtured_marker(
                                 marker_scene,

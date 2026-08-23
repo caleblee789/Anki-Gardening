@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ankigarden.ui.home_widget import (
@@ -14,10 +16,13 @@ from ankigarden.ui.home_widget import (
     build_home_widget_success_data,
     render_home_widget,
 )
+from ankigarden.models.state import Achievement
+from ankigarden.terminology import PASSIVE_GROWTH_EXPLANATION
 from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
 )
+from ankigarden.ui.state import garden_preview_from_values
 
 
 def _sample_data(reviews_today: int = 12, growth_earned: int = 30, weather: str = "sunny") -> HomeWidgetData:
@@ -59,8 +64,14 @@ def test_loading_state_renders_spinner_placeholder() -> None:
     assert 'data-state="loading"' in html
     assert 'data-testid="home-loading"' in html
     assert 'role="status" aria-live="polite"' in html
+    assert 'aria-busy="true"' in html
+    assert 'role="progressbar" aria-label="Loading garden preview"' in html
     assert 'class="ag-home__state"' in html
-    assert "Loading overview…" in html
+    assert "Loading garden preview…" in html
+    assert 'data-testid="home-open"' in html
+    assert 'data-testid="home-retry"' in html
+    assert "Open Garden" in html
+    assert "Retry preview" in html
 
 
 def test_empty_state_renders_empty_message() -> None:
@@ -82,9 +93,23 @@ def test_recoverable_error_renders_retry_action() -> None:
 
     assert 'data-state="error"' in html
     assert "Network timeout" in html
+    assert "Garden preview unavailable" in html
+    assert "The preview could not be generated, but your garden is still available." in html
+    assert 'data-testid="home-open"' in html
     assert 'data-testid="home-retry"' in html
     assert 'role="alert"' in html
-    assert 'aria-label="Retry loading overview"' in html
+    assert 'aria-label="Retry garden preview"' in html
+    assert 'class="ag-home__secondary"' in html
+
+
+def test_missing_preview_payload_keeps_open_and_retry_recovery_paths() -> None:
+    html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success"))
+
+    assert 'data-state="error"' in html
+    assert "Garden preview unavailable" in html
+    assert html.count('data-testid="home-open"') == 1
+    assert html.count('data-testid="home-retry"') == 1
+    assert "The preview could not be generated, but your garden is still available." in html
 
 
 def test_partial_state_renders_available_data_and_error_banner() -> None:
@@ -100,8 +125,8 @@ def test_partial_state_renders_available_data_and_error_banner() -> None:
     assert 'data-state="partial"' in html
     assert 'data-testid="home-partial-error"' in html
     assert 'class="ag-home__partial-message"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
-    assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
+    assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
+    assert "Moss, Seed stage, 30 of 500 Growth; 7-day Anki streak; 35 Garden Coins" in html
     assert 'data-testid="home-reviews"' not in html
     assert "Weather: Cloudy" not in html
 
@@ -112,17 +137,24 @@ def test_success_state_renders_key_fields() -> None:
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Moss · Seed · 30 / 500 Growth"' in html
+    assert 'data-testid="home-support" title="Moss, Seed — 30 / 500 Growth"' in html
     assert 'data-testid="home-active-name"' not in html
     assert 'data-testid="home-growth"' not in html
-    assert 'data-testid="home-currency"' not in html
-    assert 'data-testid="home-streak"' not in html
+    assert 'data-testid="home-currency">35 Garden Coins</span>' in html
+    assert 'data-testid="home-streak">7-day Anki streak</span>' in html
     assert html.count('data-testid="home-open"') == 1
     assert 'data-testid="home-refresh"' not in html
     assert 'data-testid="home-accessible-summary"' in html
-    assert "Moss, Seed stage, 30 of 500 Growth; 7-day streak; 35 Garden Coins" in html
-    assert 'role="button" tabindex="0"' in html
-    assert 'aria-label="Open My Garden. Moss · Seed · 30 / 500 Growth"' in html
+    assert "Moss, Seed stage, 30 of 500 Growth; 7-day Anki streak; 35 Garden Coins" in html
+    assert 'id="ag-home-root"' in html
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
+    assert (
+        'aria-label="My Garden Anki Garden summary. Moss, Seed — 30 / 500 Growth. 12 answers today. '
+        '7-day Anki streak. 35 Garden Coins"'
+        in html
+    )
+    assert 'aria-label="Open My Garden"' in html
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "max-width:720px" in html
@@ -197,7 +229,8 @@ def test_home_scene_layers_theme_terrace_and_readable_seedling_cue() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
     assert 'class="ag-home__terrace"' not in html
-    assert "terrace.svg" not in html
+    assert 'class="ag-home__scenery-layer"' in html
+    assert "terrace.svg" in html
     assert 'class="ag-home__seedling-cue"' not in html
     assert "🌱" not in html
 
@@ -251,8 +284,8 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=data))
 
-    assert f'title="{name} · Flowering · 30 / 500 Growth"' in html
-    assert f'>{name} · Flowering · 30 / 500 Growth</span>' in html
+    assert f'title="{name}, Flowering — 30 / 500 Growth"' in html
+    assert f'>{name}, Flowering — 30 / 500 Growth</span>' in html
     assert "text-overflow:ellipsis; white-space:nowrap" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 469px)" in html
@@ -270,14 +303,16 @@ def test_success_state_renders_stage_transition_message() -> None:
     assert "overflow-wrap: anywhere" in html
 
 
-def test_home_card_and_explicit_action_are_keyboard_reachable() -> None:
+def test_home_summary_has_one_keyboard_reachable_explicit_action() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
 
     assert 'data-tooltip=' not in html
     assert 'role="tooltip"' not in html
-    assert 'role="button" tabindex="0"' in html
-    assert "event.key==='Enter'||event.key===' '" in html
-    assert html.count("onclick=") == 2
+    assert 'role="region"' in html
+    assert 'role="button" tabindex="0"' not in html
+    assert "event.key==='Enter'||event.key===' '" not in html
+    assert html.count("onclick=") == 1
+    assert html.count('data-testid="home-open"') == 1
 
 
 def test_home_surface_occlusion_is_behind_plants() -> None:
@@ -398,11 +433,11 @@ def test_success_state_is_garden_wide_and_does_not_duplicate_selected_plant_deta
     assert "white-space:nowrap" in html
 
 
-def test_streak_is_available_to_accessibility_without_visual_metric_chrome() -> None:
+def test_streak_is_visible_and_available_to_accessibility() -> None:
     base = _sample_data()
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=base))
-    assert "7-day streak" in html
-    assert 'data-testid="home-streak"' not in html
+    assert "7-day Anki streak" in html
+    assert 'data-testid="home-streak">7-day Anki streak</span>' in html
     assert "data-tooltip" not in html
     assert html.count('data-testid="home-open"') == 1
 
@@ -419,7 +454,7 @@ def test_zero_day_streak_invites_study_without_a_zero_bonus_badge() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-    assert "0-day streak" in html
+    assert "0-day Anki streak" in html
     assert "+0% Growth" not in html
     assert "at day 1" not in html
 
@@ -436,14 +471,14 @@ def test_day_one_streak_points_to_the_first_real_bonus() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-    assert "1-day streak" in html
+    assert "1-day Anki streak" in html
     assert "+0% Growth" not in html
 
 
 def test_large_streak_and_coin_values_keep_number_units_and_balances_atomic() -> None:
     base = _sample_data()
 
-    for streak_days, coins in ((749, 0), (1_234, 9_999), (9_999, 54_321)):
+    for streak_days, coins in ((1, 1), (749, 0), (1_234, 9_999), (9_999, 54_321)):
         data = HomeWidgetData(**{
             **base.__dict__,
             "streak_days": streak_days,
@@ -451,10 +486,13 @@ def test_large_streak_and_coin_values_keep_number_units_and_balances_atomic() ->
         })
         html = render_home_widget(HomeWidgetSnapshot(request_id=6, phase="success", data=data))
 
-        assert f"{streak_days:,}-day streak" in html
+        assert f"{streak_days:,}-day Anki streak" in html
         assert "white-space:nowrap" in html
         assert "font-variant-numeric:tabular-nums" in html
-        assert f"{coins:,} Garden Coins" in html
+        coin_unit = "Garden Coin" if coins == 1 else "Garden Coins"
+        assert f'data-testid="home-currency">{coins:,} {coin_unit}</span>' in html
+        if coins == 1:
+            assert "1 Garden Coins" not in html
 
 
 def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() -> None:
@@ -475,8 +513,8 @@ def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() ->
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
 
     assert f'aria-label="{garden_name}"' in html
-    assert f'title="{plant_name} · Rare · 50,000 / 50,000 Growth"' in html
-    assert "365-day streak" in html
+    assert f'title="{plant_name}, Rare — 50,000 / 50,000 Growth"' in html
+    assert "365-day Anki streak" in html
     assert "54,321 Garden Coins" in html
     assert "text-overflow:ellipsis" in html
 
@@ -534,10 +572,24 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
         )],
         active_plant_id="plant-1",
         selected_weather="breeze",
-        streak_days=7,
+        streak_days=6,
         currency_balance=25,
         total_reviews=50,
         unlocked_slots=2,
+        achievements={
+            "streak_7": Achievement(
+                achievement_id="streak_7",
+                name="7-Day Anki Streak",
+                description="Reach a 7-day active Anki streak.",
+                progress=6 / 7,
+            ),
+            "retention_90": Achievement(
+                achievement_id="retention_90",
+                name="Clear Recall",
+                description="Finalized compound achievement",
+                progress=1.0,
+            ),
+        },
     )
 
     data = build_home_widget_success_data(state=state, reviews_today=3, scene_items=[])
@@ -547,8 +599,13 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert data.active_stage_points == 100
     assert data.active_stage_goal == 2_000
     assert data.active_next_stage == "young"
-    assert 'data-testid="home-support" title="Briar · Sprout · 100 / 2,000 Growth"' in html
+    assert 'data-testid="home-support" title="Briar, Sprout — 100 / 2,000 Growth"' in html
     assert "Briar, Sprout stage, 100 of 2000 Growth" in html
+    assert 'data-testid="home-today-answers">3 answers today</span>' in html
+    assert html.count('data-testid="home-nearest-achievement"') == 1
+    assert "7-Day Anki Streak · 6 of 7" in html
+    assert "Clear Recall" not in html
+    assert "Reward: +10 Garden Coins" in html
 
 
 def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured() -> None:
@@ -595,7 +652,7 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert data.planted_starter_stage == "seed"
     assert (
         'data-testid="home-support" '
-        'title="Briar · Seed · Planted starter"'
+        'title="Briar, Seed. Planted starter."'
     ) in html
     assert "Briar, Seed stage, planted starter" in html
     assert "No nurtured plant" not in html
@@ -617,7 +674,7 @@ def test_home_handles_no_nurtured_plant_without_inventing_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=10, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="No nurtured plant · Open the garden to choose one"' in html
+    assert 'data-testid="home-support" title="No nurtured plant. Open the garden to choose one."' in html
     assert 'data-testid="home-growth-bar"' not in html
 
 
@@ -636,7 +693,7 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=11, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="Clover · Rare · 50,000 Growth"' in html
+    assert 'data-testid="home-support" title="Clover, Rare — 50,000 Growth"' in html
     assert "Clover, Rare stage, fully grown at 50,000 Growth" in html
 
 
@@ -666,8 +723,8 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert 'data-testid="home-nurturing-marker"' in html
     assert 'data-testid="home-nurturing-marker-fallback"' in html
     assert 'class="ag-home__marker-layer"' in html
-    assert html.index('class="ag-home__details home-summary-panel"') < html.index(
-        'class="ag-home__marker-layer"'
+    assert html.index('class="ag-home__marker-layer"') < html.index(
+        'class="ag-home__details home-summary-panel"'
     )
     assert "/_addons/123/assets/nurtured_marker_spout_right.webp" in html
     assert 'data-marker-slot="0"' in html
@@ -676,7 +733,8 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert "if(f){f.style.display='block';}" in html
     assert "display:none" in html
     assert (
-        "Watering can: Rose is nurtured and receives Growth from future Anki card answers"
+        "Watering can: Rose is nurtured and receives full Growth from future Anki card "
+        f"answers. {PASSIVE_GROWTH_EXPLANATION}"
         in html
     )
 
@@ -737,7 +795,14 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
         )
         assert len(markers) == 1
         marker = markers[0]
-        expected_side = "left" if active_slot % 2 == 0 else "right"
+        marker_band = ("far", "middle", "near")[active_slot // 2]
+        assert f'data-marker-band="{marker_band}"' in html
+        assert html.index(f'data-marker-band="{marker_band}"') < html.index(
+            f'ag-home__planter-fallback--foreground" data-fallback-planter-band="{marker_band}"'
+        )
+        expected_side = re.search(
+            r'data-marker-side="(left|right)"', marker
+        ).group(1)
         expected_orientation = (
             "spout-right" if expected_side == "left" else "spout-left"
         )
@@ -769,11 +834,38 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
                 r'data-marker-planter-rect="([^"]+)"', marker
             ).group(1).split(",")
         ]
+        planter_exclusions = [
+            [float(value) for value in bounds.split(",")]
+            for bounds in re.search(
+                r'data-marker-planter-exclusions="([^"]+)"', marker
+            ).group(1).split(";")
+            if bounds
+        ]
+        expected_clearance = (
+            "center-left-marker"
+            if pulse[0] < 340 and pulse[1] + pulse[3] > 300
+            else "none"
+        )
+        assert f'data-summary-clearance="{expected_clearance}"' in html
+        if expected_clearance != "none":
+            assert (
+                '#ag-home-root[data-summary-clearance="center-left-marker"] '
+                ".ag-home__support"
+            ) in html
+            assert "-webkit-line-clamp:2" in html
         assert 44 <= rect[2] <= 88
         assert rect[2] == rect[3]
         assert pulse[0] >= 0 and pulse[1] >= 0
         assert pulse[0] + pulse[2] <= 1000
         assert pulse[1] + pulse[3] <= 420
+        assert planter_exclusions
+        for exclusion in planter_exclusions:
+            assert (
+                pulse[0] + pulse[2] <= exclusion[0]
+                or exclusion[0] + exclusion[2] <= pulse[0]
+                or pulse[1] + pulse[3] <= exclusion[1]
+                or exclusion[1] + exclusion[3] <= pulse[1]
+            )
         marker_center_x = rect[0] + rect[2] / 2
         marker_ground_y = rect[1] + rect[3] * 0.916
         if active_slot == 4:
@@ -859,8 +951,59 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert stale_applied is False
     assert fresh_applied is True
     assert 'data-testid="home-reviews"' not in html
-    assert 'data-testid="home-support" title="Moss · Seed · 14 / 500 Growth"' in html
-    assert "Moss · Seed · 99 / 500 Growth" not in html
+    assert 'data-testid="home-support" title="Moss, Seed — 14 / 500 Growth"' in html
+    assert "Moss, Seed — 99 / 500 Growth" not in html
+
+    refresh_request = controller.begin_request()
+    assert refresh_request > request_2
+    stale_html = render_home_widget(controller.snapshot)
+    assert 'data-state="stale"' in stale_html
+    assert 'data-testid="home-preview-status"' in stale_html
+    assert "Moss, Seed — 14 / 500 Growth" in stale_html
+    assert "--ag-scene-opacity:0.720" in stale_html
+
+
+@pytest.mark.parametrize(
+    ("consumer", "phase", "enabled", "expected_opacity"),
+    (
+        ("deck-browser", "loading", True, 1.0),
+        ("overview", "empty", True, 1.0),
+        ("first-run", "success", True, 1.0),
+        ("active-plant", "stale", True, 0.72),
+        ("settings", "error", True, 1.0),
+        ("settings", "success", False, 0.46),
+    ),
+)
+def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
+    consumer,
+    phase,
+    enabled,
+    expected_opacity,
+):
+    scene_items = ({"plant_id": "moss", "slot_index": 2, "is_active": True},)
+    preview = garden_preview_from_values(
+        consumer=consumer,
+        phase=phase,
+        garden_name="The Long Moss and Moon Garden",
+        active_plant_name="Moss",
+        active_stage="young",
+        selected_weather="gentle_rain",
+        selected_scenery="spring",
+        scene_items=scene_items,
+        unlocked_slots=6,
+        enabled=enabled,
+        motion_enabled=False,
+        status_text="Refreshing…" if phase == "stale" else "",
+    )
+
+    assert preview.consumer == consumer
+    assert preview.phase == ("disabled" if not enabled else phase)
+    assert preview.scene_items == scene_items
+    assert preview.selected_weather == "gentle_rain"
+    assert preview.selected_scenery == "spring"
+    assert preview.scene_opacity == expected_opacity
+    assert preview.motion_enabled is False
+    assert preview.summary.count("Young") <= 1
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
@@ -881,5 +1024,5 @@ def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:
 
     assert 'data-state="success"' in success_html
     assert 'data-testid="home-reviews"' not in success_html
-    assert 'data-testid="home-support" title="Moss · Seed · 33 / 500 Growth"' in success_html
+    assert 'data-testid="home-support" title="Moss, Seed — 33 / 500 Growth"' in success_html
     assert "Temporary backend failure" not in success_html
