@@ -166,8 +166,8 @@ def test_settings_troubleshooting_actions_reflow_from_their_own_viewport() -> No
 
     assert '"settings.troubleshooting-actions"' in settings
     assert "self.troubleshooting_scroll.viewport()" in settings
-    assert "QBoxLayout.Direction.TopToBottom" in settings
     assert "QBoxLayout.Direction.LeftToRight" in settings
+    assert "QBoxLayout.Direction.TopToBottom" not in settings
     assert '"refresh-diagnostics"' in settings
     assert '"copy-report"' in settings
     assert '"technical-details"' in settings

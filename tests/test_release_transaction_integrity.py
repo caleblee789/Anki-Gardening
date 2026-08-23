@@ -952,7 +952,7 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     )
 
     assert status.visible is False
-    assert toast_result["message"] == "Soft Breeze unlocked"
+    assert toast_result["message"] == "Soft Breeze unlocked."
     assert toast_result["action_text"] == "Open Collection"
     assert toast_result["duration_ms"] == 6_000
     assert toast_result["dismissible"] is True

@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import json
 import logging
 import sys
@@ -411,6 +412,58 @@ def test_reviewer_starter_notice_is_once_per_reviewer_session_and_clears_on_sele
     aqt_mod.mw.reviewer = object()
     handler.on_question()
     assert shown == ["shown", "shown"]
+
+
+def test_reviewer_overlay_uses_reviewer_webview_and_centers_above_controls(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+
+    reviewer_web = SimpleNamespace(width=lambda: 667, height=lambda: 570)
+    main_web = SimpleNamespace(width=lambda: 900, height=lambda: 700)
+    aqt_mod.mw.reviewer = SimpleNamespace(web=reviewer_web)
+    aqt_mod.mw.web = main_web
+
+    assert reviewer_module.reviewer_overlay_parent(aqt_mod.mw) is reviewer_web
+    assert reviewer_module.reviewer_reward_overlay_position(
+        667,
+        570,
+        360,
+        88,
+    ) == (153, 370)
+
+    x, y = reviewer_module.reviewer_reward_overlay_position(
+        667,
+        570,
+        400,
+        104,
+    )
+    assert (x, y) == (133, 354)
+    assert x == (667 - 400) // 2
+    assert x + 400 <= 667
+    assert y + 104 <= 570
+    assert y + 104 <= 570 - 112
+
+
+def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
+    monkeypatch,
+):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    source = inspect.getsource(reviewer_module.ReviewerHookHandler._show_reward_toast)
+
+    assert "reviewer_overlay_parent(mw)" in source
+    assert "WA_ShowWithoutActivating" in source
+    assert "WA_TransparentForMouseEvents" in source
+    assert "Qt.FocusPolicy.NoFocus" in source
+    assert "preferred_width = 380" in source
+    assert "else 360" in source
+    assert "min(96" in source
+    assert "reviewer_reward_overlay_position(" in source
+    assert '"reviewer-webview-centered-above-controls"' in source
+    assert '"reviewerControlClearance", 112' in source
+    assert ".setFocus(" not in source
 
 
 def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(

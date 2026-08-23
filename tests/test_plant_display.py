@@ -1107,13 +1107,13 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
         "Planted date",
         "Current bed",
         "Total Growth",
-        "Growth source",
         "Fertilizer",
     ):
         assert f'"{label}"' in story
+    assert '"Growth source"' not in story
     assert '"Allocation"' not in story
     assert '"Stored passive fraction"' not in story
-    assert "plant_snapshot.allocation_type" in story
+    assert "plant_snapshot.allocation_type" not in story
     assert "self.fertilizer_status" not in story
     assert "self.booster_status" not in story
     assert "configure_close_policy(" in story
@@ -1220,7 +1220,9 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert '"dashboard.rearrange-actions"' in dashboard
     assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "84 if guided else (176 if metrics_compact else 84)" in dashboard
+    assert "0 if guided else (108 if metrics_compact else 54)" in dashboard
+    assert "164 if self._header_narrow_layout and metrics_compact" in dashboard
+    assert "156 if self._header_compact_layout and metrics_compact" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "ONBOARDING_COACHMARK_MAX_WIDTH = 360" in dashboard

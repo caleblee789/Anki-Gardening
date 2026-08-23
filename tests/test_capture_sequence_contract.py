@@ -446,7 +446,89 @@ def test_collection_preview_capture_tracks_the_registry_derived_effects_tab() ->
     assert "dialog._reset_preview()" in preview
     assert '"reset_path_invoked": reset_path_invoked' in preview
     assert '"committed_state_unchanged": committed_state_unchanged' in preview
+    assert 'preview_feedback_text' in preview
+    assert '"Preview restored"' in preview
+    assert '"restored_preview_visual"' in preview
+    assert '"restored_preview_dirty_cleared"' in preview
+    assert "_widget_bounds_evidence" in preview
+    assert '"captureEvidenceKey"' in preview
+    assert '"restored-preview-banner"' in preview
     assert '0: "loadout", 1: "loadout", 2: "loadout", 3: "preview"' in semantic
+
+
+def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> None:
+    full_garden = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_full_garden",
+    )
+    owned_item = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_nursery_owned_item",
+    )
+    mechanics = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_collection_environment_mechanics",
+    )
+    home_dom = _method_source(
+        "_UiFaceCaptureRunner",
+        "_wait_for_home_surface",
+    )
+    postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+
+    assert "OnboardingStep.DONE" in full_garden
+    assert "dismiss_selection" in full_garden
+    assert "toast_region" in full_garden
+    assert '"overlay_free"' in full_garden
+    assert '"scene_contained"' in full_garden
+    assert '"page_scroll_value"' in full_garden
+    assert '"steady_state_visual"' in full_garden
+    assert '"captureEvidenceKey", "full-garden-scene"' in full_garden
+
+    assert 'candidate.property("catalogItemId")' in owned_item
+    assert "dialog.scroll.ensureWidgetVisible(card, 0, 24)" in owned_item
+    assert 'str(item.text()).strip() == "Owned"' in owned_item
+    assert '"owned_item_visual"' in owned_item
+    assert '"captureEvidenceKey", "owned-item-card"' in owned_item
+    for bounds_key in ("card", "title", "status", "action_bounds"):
+        assert f'"{bounds_key}"' in owned_item
+
+    assert '"environment_mechanics_visual"' in mechanics
+    for required_key in (
+        "summary_title",
+        "summary_values",
+        "item_title",
+        "item_status",
+        "effect",
+        "mechanics",
+        "inspect",
+        "unequip",
+    ):
+        assert f'"{required_key}"' in mechanics
+    assert "_widget_bounds_evidence(" in mechanics
+    assert 'bool(row.get("contained", False))' in mechanics
+    assert '"captureEvidenceKey"' in mechanics
+
+    assert "const accessibilityCopy" in home_dom
+    assert "root.querySelectorAll('[aria-label]')" in home_dom
+    assert "root.querySelectorAll('.ag-home__sr-only')" in home_dom
+    assert "const renderedCopy" in home_dom
+    for banned_term in (
+        "today",
+        "streak",
+        "garden coins",
+        "coins",
+        "closest",
+        "planted starter",
+    ):
+        assert f"'{banned_term}'" in home_dom
+    assert "bannedTerms.length === 0" in home_dom
+    assert '"compact_home_copy"' in postcondition
+    assert '"steady_state_visual"' in postcondition
+    assert '"owned_item_visual"' in postcondition
+    assert '"environment_mechanics_visual"' in postcondition
 
 
 def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
@@ -461,6 +543,15 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     assert 'label = "progress-overview-redirect-growth"' in redirect
     assert 'dialog.open_page("overview")' in redirect
     assert 'current_page == "growth"' in redirect
+    assert "self._prepare_growth_capture_fixture(" in redirect
+    assert "populated=True" in redirect
+    assert '"Direct Growth"' in redirect
+    assert '"direct_growth_visual"' in redirect
+    assert 'direct_amount > 0' in redirect
+    assert '"label_contained"' in redirect
+    assert '"value_contained"' in redirect
+    assert '"direct-growth-label"' in redirect
+    assert '"direct-growth-value"' in redirect
     for label in (
         "fertilizer-unaffordable",
         "fertilizer-affordable",
@@ -590,6 +681,18 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
         "_UiFaceCaptureRunner",
         "_find_geometry_layout_warnings",
     )
+    visual_audit = _method_source(
+        "_UiFaceCaptureRunner",
+        "_visual_contract_audit",
+    )
+    icon_pixels = _method_source(
+        "_UiFaceCaptureRunner",
+        "_icon_has_visible_pixels",
+    )
+    capture_pixels = _method_source(
+        "_UiFaceCaptureRunner",
+        "_audit_capture_pixel_contracts",
+    )
 
     for field in (
         '"window_family"',
@@ -609,6 +712,7 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
         '"layout_mode"',
         '"transition_path"',
         '"geometry_layout_warnings"',
+        '"visual_contract_audit"',
     ):
         assert field in capture_now
     assert "exact_size_reached" in capture_now
@@ -619,6 +723,24 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
     assert '"canonical-open"' in capture_now
     assert "forbidden-horizontal-overflow" in geometry_audit
     assert "painted-frame-outside-root" in geometry_audit
+    for proof in (
+        "control_sizes_passed",
+        "close_icons_passed",
+        "primary_action_count",
+        "visible_horizontal_scrollbars",
+        "largest_unexplained_gap",
+        "screen_contained",
+        "contained_in_scene",
+        "page_scroll_value",
+    ):
+        assert proof in visual_audit
+    assert "visible >= 3" in icon_pixels
+    assert '"capture_pixels_present"' in capture_pixels
+    assert "RENDERED_PIXEL_EVIDENCE_KEYS.get(label" in capture_pixels
+    assert '"rendered_pixel_evidence"' in capture_pixels
+    assert "_pixmap_contains_overlay(pixmap, root, target)" in capture_pixels
+    assert "_audit_capture_pixel_contracts(" in capture_now
+    assert 'annotation["visual_contract"]' in capture_now
 
 
 def test_resize_geometry_accepts_only_explained_safe_drift() -> None:
@@ -925,6 +1047,14 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
         "_UiFaceCaptureRunner",
         "_capture_reviewer_find_feedback",
     )
+    reviewer_geometry = _method_source(
+        "_UiFaceCaptureRunner",
+        "_reviewer_overlay_geometry_audit",
+    )
+    overlay_pixels = _method_source(
+        "_UiFaceCaptureRunner",
+        "_pixmap_contains_overlay",
+    )
     reviewer_wait = _method_source(
         "_UiFaceCaptureRunner",
         "_with_capture_reviewer",
@@ -1087,6 +1217,16 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert 'method += "-with-overlays"' in capture_home
     assert 'annotation["required_overlay_pixels_present"]' in capture_now
     assert "Reviewer reward toast was not present in the captured pixels" in capture_now
+    assert "_reviewer_overlay_geometry_audit(" in reviewer_capture
+    assert '"reviewer_overlay_geometry"' in reviewer_capture
+    assert 'overlay_geometry.get("passed", False)' in reviewer_capture
+    assert '"parent_is_reviewer_webview"' in reviewer_geometry
+    assert '"viewport_contained"' in reviewer_geometry
+    assert '"size_in_range"' in reviewer_geometry
+    assert '"minimum_control_clearance"' in reviewer_geometry
+    assert 'minimum_clearance >= 16' in reviewer_geometry
+    assert "reviewer-answer-and-toolbar-reserved-band" in reviewer_geometry
+    assert "int(origin.x()) + int(overlay.width()) > int(root.width())" in overlay_pixels
     assert 'ACHIEVEMENTS_BY_ID["retention_90"]' in capture_source
     assert 'annotation.get("expected_feedback_message", "")' in capture_source
     assert "canonical_feedback_message" in capture_source
@@ -1916,22 +2056,28 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
     assert "button.mapTo(viewport" in footer_audit
     assert "footer.mapTo(dialog" in footer_audit
 
-    assert 'lambda _item_id: None' in missing_artwork
-    assert "dialog._preview_environment_item(item)" in missing_artwork
-    assert "not pixmap.isNull()" in missing_artwork
+    assert "MISSING_ARTWORK_CAPTURE_TYPES" in missing_artwork
+    assert "dialog.environment_layout.insertWidget(0, matrix)" in missing_artwork
+    assert "dialog.environment_scroll.ensureWidgetVisible(matrix, 0, 16)" in missing_artwork
+    assert 'status = QLabel("Artwork unavailable")' in missing_artwork
+    assert 'f"missing-art-{artwork_type}"' in missing_artwork
     assert "_asset_preview_label(" in missing_artwork
     assert "_item_preview_label(" in missing_artwork
+    assert "dialog._environment_artwork(" in missing_artwork
+    assert '"resolve_weather_preview_asset"' in missing_artwork
+    assert '"resolve_scenery_preview_asset"' in missing_artwork
     assert '"resolve_plant_asset"' in missing_artwork
     assert '"resolve_plant_image"' in missing_artwork
     assert '"resolve_item_asset"' in missing_artwork
     for audit_field in (
-        "environment_text_placeholder_absent",
-        "plant_graphical_pixmap_present",
-        "plant_text_placeholder_absent",
-        "plant_geometry_stable",
-        "item_graphical_pixmap_present",
-        "item_text_placeholder_absent",
-        "item_geometry_stable",
+        "missing_artwork_matrix",
+        "missing_source_paths",
+        "diagnostic_log_fingerprints",
+        "diagnostic_path_logged",
+        "semantic_role",
+        "graphic_present",
+        "aspect_ratio_preserved",
+        "accessible_description",
     ):
         assert audit_field in missing_artwork
 
@@ -2271,7 +2417,8 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
     assert '"settings_tab"' in postcondition
     assert 'kind == "resize"' not in postcondition
     assert '"collection_no_results_visible"' in postcondition
-    assert '"restored_preview_status_cleared"' in postcondition
+    assert '"restored_preview_dirty_cleared"' in postcondition
+    assert '"restored_preview_visual"' in postcondition
     assert '"restored_preview_transition"' in postcondition
     assert 'annotation.get("persisted_visibility"' in postcondition
     assert '"stale_purchase_updated_terms"' in postcondition

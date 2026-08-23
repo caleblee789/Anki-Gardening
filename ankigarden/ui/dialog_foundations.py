@@ -22,6 +22,9 @@ class DialogSizeClass(str, Enum):
     NURSERY = "nursery"
     PROGRESS = "progress"
     LOADOUT = "loadout"
+    PLANT_STORY = "plant-story"
+    SPECIES_DETAIL = "species-detail"
+    GROWTH_CHARGE = "growth-charge"
     GARDEN_WORKSPACE = "garden-workspace"
 
     # Compatibility families remain available while feature call sites move
@@ -212,26 +215,55 @@ class DialogSizePolicy:
     preserve_transition_height: bool = False
 
 
+@dataclass(frozen=True)
+class DialogHeightProfile:
+    """Content-fit geometry range for one view within a dialog family."""
+
+    min_height: int
+    preferred_height: int
+    max_height: int
+    min_width: int | None = None
+    preferred_width: int | None = None
+    max_width: int | None = None
+
+    def __post_init__(self) -> None:
+        if not (
+            0 < self.min_height <= self.preferred_height <= self.max_height
+        ):
+            raise ValueError("dialog height profiles must be ordered and positive")
+        widths = (self.min_width, self.preferred_width, self.max_width)
+        if any(value is not None for value in widths):
+            if not all(value is not None for value in widths):
+                raise ValueError("dialog view width profiles must be complete")
+            if not (
+                0
+                < int(self.min_width or 0)
+                <= int(self.preferred_width or 0)
+                <= int(self.max_width or 0)
+            ):
+                raise ValueError("dialog view width profiles must be ordered and positive")
+
+
 DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     DialogSizeClass.COMPACT_STATUS: DialogSizePolicy(
-        520,
-        260,
-        560,
-        320,
-        600,
-        380,
+        500,
+        220,
+        540,
+        250,
+        580,
+        280,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.TRANSACTION: DialogSizePolicy(
-        640,
-        380,
-        680,
-        460,
-        700,
-        520,
+        580,
+        200,
+        620,
+        290,
+        660,
+        350,
         1.0,
         1.0,
         False,
@@ -240,60 +272,102 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         True,
     ),
     DialogSizeClass.FERTILIZER: DialogSizePolicy(
+        700,
+        420,
         720,
-        360,
-        760,
+        480,
+        740,
         520,
-        800,
-        620,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.SETTINGS: DialogSizePolicy(
-        960,
-        620,
-        1020,
-        690,
-        1040,
-        720,
+        940,
+        440,
+        980,
+        525,
+        1000,
+        660,
         1.0,
         1.0,
         False,
+        True,
     ),
     DialogSizeClass.NURSERY: DialogSizePolicy(
-        980,
-        640,
+        1040,
+        400,
+        1080,
+        660,
         1100,
-        720,
+        700,
+        1.0,
+        1.0,
+        False,
+        True,
+    ),
+    DialogSizeClass.PROGRESS: DialogSizePolicy(
+        1040,
+        520,
+        1080,
+        650,
         1120,
         740,
         1.0,
         1.0,
         False,
-    ),
-    DialogSizeClass.PROGRESS: DialogSizePolicy(
-        1000,
-        700,
-        1120,
-        800,
-        1140,
-        820,
-        1.0,
-        1.0,
-        False,
+        True,
     ),
     DialogSizeClass.LOADOUT: DialogSizePolicy(
         1040,
-        700,
-        1160,
-        810,
-        1180,
-        840,
+        600,
+        1080,
+        630,
+        1120,
+        660,
         1.0,
         1.0,
         False,
+        True,
+    ),
+    DialogSizeClass.PLANT_STORY: DialogSizePolicy(
+        800,
+        540,
+        840,
+        570,
+        860,
+        600,
+        1.0,
+        1.0,
+        False,
+        True,
+    ),
+    DialogSizeClass.SPECIES_DETAIL: DialogSizePolicy(
+        880,
+        580,
+        920,
+        620,
+        940,
+        650,
+        1.0,
+        1.0,
+        False,
+        True,
+    ),
+    DialogSizeClass.GROWTH_CHARGE: DialogSizePolicy(
+        500,
+        220,
+        620,
+        380,
+        640,
+        410,
+        1.0,
+        1.0,
+        False,
+        True,
+        24,
+        True,
     ),
     DialogSizeClass.GARDEN_WORKSPACE: DialogSizePolicy(
         900,
@@ -344,6 +418,80 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         False,
     ),
 }
+
+
+DIALOG_VIEW_HEIGHT_PROFILES: dict[
+    DialogSizeClass,
+    dict[str, DialogHeightProfile],
+] = {
+    DialogSizeClass.COMPACT_STATUS: {
+        "default": DialogHeightProfile(220, 250, 260, 500, 520, 540),
+    },
+    DialogSizeClass.TRANSACTION: {
+        "simple": DialogHeightProfile(240, 265, 290, 580, 600, 620),
+        "complex": DialogHeightProfile(280, 315, 350, 600, 630, 660),
+        "error": DialogHeightProfile(200, 235, 270, 500, 540, 580),
+    },
+    DialogSizeClass.FERTILIZER: {
+        "default": DialogHeightProfile(420, 480, 520, 700, 720, 740),
+    },
+    DialogSizeClass.SETTINGS: {
+        "display": DialogHeightProfile(500, 525, 550, 940, 980, 1000),
+        "advanced": DialogHeightProfile(580, 610, 640, 940, 980, 1000),
+        "diagnostics-clean": DialogHeightProfile(440, 470, 500, 900, 930, 960),
+        "diagnostics-expanded": DialogHeightProfile(580, 620, 660, 940, 980, 1000),
+    },
+    DialogSizeClass.NURSERY: {
+        "starter": DialogHeightProfile(560, 590, 620, 1040, 1080, 1100),
+        "plants": DialogHeightProfile(660, 680, 700),
+        "fertilizer": DialogHeightProfile(600, 620, 640),
+        "spaces": DialogHeightProfile(470, 495, 520),
+        "weather": DialogHeightProfile(600, 625, 650),
+        "empty": DialogHeightProfile(400, 430, 460),
+    },
+    DialogSizeClass.PROGRESS: {
+        "growth": DialogHeightProfile(620, 660, 700),
+        "streak": DialogHeightProfile(680, 710, 740),
+        "currency": DialogHeightProfile(520, 560, 600),
+        "achievements": DialogHeightProfile(700, 720, 740),
+        "collection": DialogHeightProfile(680, 710, 740),
+    },
+    DialogSizeClass.LOADOUT: {
+        "default": DialogHeightProfile(600, 630, 650, 1040, 1080, 1120),
+    },
+    DialogSizeClass.PLANT_STORY: {
+        "default": DialogHeightProfile(540, 570, 600, 800, 840, 860),
+    },
+    DialogSizeClass.SPECIES_DETAIL: {
+        "default": DialogHeightProfile(580, 620, 650, 880, 920, 940),
+    },
+    DialogSizeClass.GROWTH_CHARGE: {
+        "ready": DialogHeightProfile(340, 380, 410, 600, 620, 640),
+        "empty": DialogHeightProfile(220, 250, 280, 500, 530, 560),
+        "loading": DialogHeightProfile(340, 380, 410, 600, 620, 640),
+        "error": DialogHeightProfile(220, 270, 330, 500, 540, 580),
+        "success": DialogHeightProfile(320, 365, 410, 600, 620, 640),
+    },
+}
+
+
+def dialog_height_profile(
+    size_class: DialogSizeClass,
+    view_key: str | None = None,
+) -> DialogHeightProfile:
+    """Resolve a view-specific content-fit range with a family fallback."""
+
+    policy = DIALOG_SIZE_POLICIES[size_class]
+    fallback = DialogHeightProfile(
+        policy.min_height,
+        policy.preferred_height,
+        policy.max_height,
+    )
+    profiles = DIALOG_VIEW_HEIGHT_PROFILES.get(size_class, {})
+    if not profiles:
+        return fallback
+    key = str(view_key or "default").strip().lower()
+    return profiles.get(key) or profiles.get("default") or fallback
 
 
 def resolved_dialog_size(

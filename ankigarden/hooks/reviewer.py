@@ -17,6 +17,82 @@ from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 logger = logging.getLogger(__name__)
 
 
+def bounded_reviewer_overlay_position(
+    viewport_width: int,
+    viewport_height: int,
+    overlay_width: int,
+    overlay_height: int,
+    *,
+    preferred_y: int = 16,
+    margin: int = 16,
+) -> tuple[int, int]:
+    """Clamp one reviewer overlay wholly inside the reviewer viewport."""
+
+    viewport_width = max(1, int(viewport_width))
+    viewport_height = max(1, int(viewport_height))
+    overlay_width = max(1, int(overlay_width))
+    overlay_height = max(1, int(overlay_height))
+    margin = max(0, int(margin))
+    maximum_x = max(0, viewport_width - overlay_width)
+    maximum_y = max(0, viewport_height - overlay_height)
+    return (
+        max(0, min(maximum_x, viewport_width - overlay_width - margin)),
+        max(0, min(maximum_y, max(margin, int(preferred_y)))),
+    )
+
+
+def reviewer_reward_overlay_position(
+    viewport_width: int,
+    viewport_height: int,
+    overlay_width: int,
+    overlay_height: int,
+    *,
+    margin: int = 16,
+    reviewer_controls_clearance: int = 112,
+) -> tuple[int, int]:
+    """Center a reward above reviewer controls with explicit clearance."""
+
+    viewport_width = max(1, int(viewport_width))
+    viewport_height = max(1, int(viewport_height))
+    overlay_width = max(1, int(overlay_width))
+    overlay_height = max(1, int(overlay_height))
+    margin = max(0, int(margin))
+    maximum_x = max(0, viewport_width - overlay_width)
+    maximum_y = max(0, viewport_height - overlay_height)
+    centered_x = (viewport_width - overlay_width) // 2
+    preferred_y = (
+        viewport_height
+        - max(margin, int(reviewer_controls_clearance))
+        - overlay_height
+    )
+    return (
+        max(0, min(maximum_x, centered_x)),
+        max(0, min(maximum_y, max(margin, preferred_y))),
+    )
+
+
+def reviewer_overlay_parent(main_window: Any) -> Any:
+    """Resolve the visible Reviewer webview, never an add-on dashboard child."""
+
+    reviewer = getattr(main_window, "reviewer", None)
+    for candidate in (
+        getattr(reviewer, "web", None),
+        getattr(main_window, "web", None),
+    ):
+        if (
+            candidate is not None
+            and callable(getattr(candidate, "width", None))
+            and callable(getattr(candidate, "height", None))
+        ):
+            return candidate
+    central_widget = getattr(main_window, "centralWidget", None)
+    if callable(central_widget):
+        candidate = central_widget()
+        if candidate is not None:
+            return candidate
+    return main_window
+
+
 @dataclass(frozen=True)
 class ReviewerRewardFeedback:
     """One focus-safe reviewer projection for all currently pending rewards."""
@@ -93,11 +169,12 @@ class ReviewerHookHandler:
         try:
             from aqt.qt import QFrame, QLabel, QTimer, Qt
 
+            parent = reviewer_overlay_parent(mw)
             previous = self._reviewer_notice
             if previous is not None:
                 previous.hide()
                 previous.deleteLater()
-            notice = QFrame(mw)
+            notice = QFrame(parent)
             notice.setObjectName("ankiGardenReviewerStarterNotice")
             notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -111,10 +188,22 @@ class ReviewerHookHandler:
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             label.setAccessibleName(REVIEWER_NO_STARTER_NOTICE)
             notice.adjustSize()
-            width_attr = getattr(mw, "width", None)
-            parent_width = int(width_attr()) if callable(width_attr) else int(width_attr or 720)
-            parent_width = max(parent_width, notice.width())
-            notice.move(max(12, parent_width - notice.width() - 18), 18)
+            parent_width = max(1, int(parent.width()))
+            parent_height = max(1, int(parent.height()))
+            notice_width = min(
+                max(1, int(notice.width())),
+                max(1, parent_width - 24),
+            )
+            notice.setFixedWidth(notice_width)
+            x, y = bounded_reviewer_overlay_position(
+                parent_width,
+                parent_height,
+                notice.width(),
+                notice.height(),
+                preferred_y=16,
+                margin=12,
+            )
+            notice.move(x, y)
             notice.show()
             notice.raise_()
             self._reviewer_notice = notice
@@ -727,7 +816,7 @@ class ReviewerHookHandler:
                 Qt,
             )
 
-            parent = mw
+            parent = reviewer_overlay_parent(mw)
             previous = self._reward_toast
             if previous is not None:
                 try:
@@ -862,19 +951,39 @@ class ReviewerHookHandler:
                 copy.addWidget(message)
             row.addLayout(copy, 1)
 
-            toast.setFixedWidth(360)
+            preferred_width = 380 if len(tuple(getattr(event, "event_ids", ()) or ())) > 1 else 360
+            viewport_width = max(1, int(parent.width()))
+            viewport_height = max(1, int(parent.height()))
+            toast.setFixedWidth(min(preferred_width, max(1, viewport_width - 32)))
             toast.adjustSize()
-            toast.setFixedHeight(max(80, min(96, toast.sizeHint().height())))
-            parent_width = max(toast.width(), int(parent.width()))
-            notice = self._reviewer_notice
-            notice_bottom = (
-                int(notice.y()) + int(notice.height()) + 16
-                if notice is not None and notice.isVisible()
-                else 18
+            preferred_height = max(80, min(96, toast.sizeHint().height()))
+            toast.setFixedHeight(
+                min(preferred_height, max(1, viewport_height - 32))
             )
-            toast.move(
-                max(16, parent_width - toast.width() - 20),
-                max(18, notice_bottom),
+            x, y = reviewer_reward_overlay_position(
+                viewport_width,
+                viewport_height,
+                toast.width(),
+                toast.height(),
+                margin=16,
+            )
+            toast.move(x, y)
+            toast.setProperty("reviewerOverlay", True)
+            toast.setProperty(
+                "reviewerOverlayAnchor",
+                "reviewer-webview-centered-above-controls",
+            )
+            toast.setProperty("reviewerControlClearance", 112)
+            toast.setProperty("reviewerViewportWidth", viewport_width)
+            toast.setProperty("reviewerViewportHeight", viewport_height)
+            toast.setProperty(
+                "reviewerViewportBounded",
+                bool(
+                    x >= 0
+                    and y >= 0
+                    and x + toast.width() <= viewport_width
+                    and y + toast.height() <= viewport_height
+                ),
             )
             toast.show()
             toast.raise_()

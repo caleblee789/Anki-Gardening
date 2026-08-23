@@ -22,9 +22,9 @@ GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose your starter"
 NURSERY_STARTER_RATIONALE = (
-    "All starters grow at the same rate; choose the artwork and name you like."
+    "Each starter is free and creates one permanent plant after placement."
 )
-NURSERY_STARTER_COUNT = "10 starter choices available."
+NURSERY_STARTER_COUNT = "4 starter choices available."
 DISABLED_STARTER_TABS = "Items and Garden spaces are available after choosing a starter."
 COST_FREE = "Cost: Free"
 PAID_COST_TEMPLATE = "Cost: {amount} Garden Coins"
@@ -60,7 +60,7 @@ NURTURED_STATUS = "Nurtured"
 NO_DISPLAY_ISSUES = "No display issues detected"
 GROWTH_BREAKDOWN = "Growth breakdown"
 
-REDUCED_MOTION_LABEL = "Reduce motion"
+REDUCED_MOTION_LABEL = "Reduce animations"
 REDUCED_MOTION_DESCRIPTION = (
     "Minimizes ambient animation, pulsing effects, and animated transitions."
 )

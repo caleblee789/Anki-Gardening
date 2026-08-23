@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from ankigarden.ui.dialog_foundations import (
-    DIALOG_VIEW_POLICIES,
     DIALOG_SIZE_POLICIES,
+    DIALOG_VIEW_HEIGHT_PROFILES,
+    DIALOG_VIEW_POLICIES,
     DialogCloseBlocker,
     DialogClosePolicy,
     DialogCloseReason,
     DialogSizeClass,
     DialogViewState,
     InitialFocusPolicy,
+    dialog_height_profile,
     dialog_view_policy,
     resolve_dialog_close,
     resolved_dialog_size,
@@ -30,7 +32,7 @@ def test_compact_confirmation_does_not_expand_with_a_large_screen() -> None:
         DialogSizeClass.COMPACT_CONFIRMATION,
         2560,
         1440,
-    ) == (560, 320)
+    ) == (540, 250)
 
 
 def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> None:
@@ -38,7 +40,7 @@ def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> No
         DialogSizeClass.COMPARISON,
         2560,
         1440,
-    ) == (680, 460)
+    ) == (620, 290)
 
 
 def test_preview_dialog_uses_large_screen_without_exceeding_policy() -> None:
@@ -50,22 +52,79 @@ def test_dialog_size_clamps_to_small_available_geometry() -> None:
     assert resolved_dialog_size(DialogSizeClass.CATALOG, 500, 360) == (452, 312)
 
 
-def test_release_dialog_families_use_locked_content_fit_geometry() -> None:
+def test_release_dialog_families_use_authoritative_content_fit_geometry() -> None:
     expected = {
-        DialogSizeClass.COMPACT_STATUS: (560, 320),
-        DialogSizeClass.TRANSACTION: (680, 460),
-        DialogSizeClass.FERTILIZER: (760, 520),
-        DialogSizeClass.SETTINGS: (1020, 690),
-        DialogSizeClass.NURSERY: (1100, 720),
-        DialogSizeClass.PROGRESS: (1120, 800),
-        DialogSizeClass.LOADOUT: (1160, 810),
+        DialogSizeClass.COMPACT_STATUS: (540, 250),
+        DialogSizeClass.TRANSACTION: (620, 290),
+        DialogSizeClass.FERTILIZER: (720, 480),
+        DialogSizeClass.SETTINGS: (980, 525),
+        DialogSizeClass.NURSERY: (1080, 660),
+        DialogSizeClass.PROGRESS: (1080, 650),
+        DialogSizeClass.LOADOUT: (1080, 630),
+        DialogSizeClass.PLANT_STORY: (840, 570),
+        DialogSizeClass.SPECIES_DETAIL: (920, 620),
+        DialogSizeClass.GROWTH_CHARGE: (620, 380),
         DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
         assert resolved_dialog_size(family, 2560, 1440) == size
-    assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].content_fit is True
+
+    content_fit_families = set(expected) - {DialogSizeClass.GARDEN_WORKSPACE}
+    assert all(
+        DIALOG_SIZE_POLICIES[family].content_fit
+        for family in content_fit_families
+    )
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].screen_margin == 24
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].preserve_transition_height is True
+
+
+def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() -> None:
+    expected = {
+        DialogSizeClass.SETTINGS: {
+            "display": (940, 980, 1000, 500, 525, 550),
+            "advanced": (940, 980, 1000, 580, 610, 640),
+            "diagnostics-clean": (900, 930, 960, 440, 470, 500),
+            "diagnostics-expanded": (940, 980, 1000, 580, 620, 660),
+        },
+        DialogSizeClass.NURSERY: {
+            "plants": (1040, 1080, 1100, 660, 680, 700),
+            "fertilizer": (1040, 1080, 1100, 600, 620, 640),
+            "spaces": (1040, 1080, 1100, 470, 495, 520),
+            "weather": (1040, 1080, 1100, 600, 625, 650),
+            "empty": (1040, 1080, 1100, 400, 430, 460),
+        },
+        DialogSizeClass.PROGRESS: {
+            "growth": (1040, 1080, 1120, 620, 660, 700),
+            "streak": (1040, 1080, 1120, 680, 710, 740),
+            "currency": (1040, 1080, 1120, 520, 560, 600),
+            "achievements": (1040, 1080, 1120, 700, 720, 740),
+            "collection": (1040, 1080, 1120, 680, 710, 740),
+        },
+        DialogSizeClass.LOADOUT: {
+            "default": (1040, 1080, 1120, 600, 630, 650),
+        },
+        DialogSizeClass.PLANT_STORY: {
+            "default": (800, 840, 860, 540, 570, 600),
+        },
+        DialogSizeClass.SPECIES_DETAIL: {
+            "default": (880, 920, 940, 580, 620, 650),
+        },
+    }
+
+    for family, views in expected.items():
+        policy = DIALOG_SIZE_POLICIES[family]
+        assert set(views) <= set(DIALOG_VIEW_HEIGHT_PROFILES[family])
+        for view_key, dimensions in views.items():
+            profile = dialog_height_profile(family, view_key)
+            actual = (
+                profile.min_width or policy.min_width,
+                profile.preferred_width or policy.preferred_width,
+                profile.max_width or policy.max_width,
+                profile.min_height,
+                profile.preferred_height,
+                profile.max_height,
+            )
+            assert actual == dimensions
 
 
 def test_dialog_state_and_focus_values_are_stable_contracts() -> None:

@@ -92,6 +92,7 @@ def test_runtime_copy_outside_dialog_views_never_uses_middle_dot_separators() ->
         ROOT / "ankigarden" / "ui" / "dashboard.py",
         ROOT / "ankigarden" / "ui" / "garden_studio.py",
         ROOT / "ankigarden" / "ui" / "home_widget.py",
+        ROOT / "ankigarden" / "ui" / "state.py",
     }
     offenders: list[str] = []
     for path in sorted((ROOT / "ankigarden").rglob("*.py")):

@@ -51,9 +51,35 @@ def test_dialog_shell_owns_focus_escape_restoration_and_scroll_contracts() -> No
     assert "QApplication.focusWidget()" in shell
     assert "def register_scroll_region" in shell
     assert "def register_pinned_footer" in shell
+    assert "clearance = 0" in shell
     assert "base[3] + clearance" in shell
     assert "def active_vertical_scroll_regions" in shell
+    assert "scroll.isVisibleTo(self)" in shell
     assert shell.count("scroll.window()") >= 3
+
+
+def test_dialog_shell_applies_every_view_profile_through_one_central_path() -> None:
+    apply_view = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "apply_view_size_profile",
+    )
+    fit_content = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "fit_content_to_family",
+    )
+
+    assert "dialog_height_profile(size_class, view_key)" in apply_view
+    assert "self._dialog_view_key" in apply_view
+    assert "self.setMinimumSize(minimum_width, minimum)" in apply_view
+    assert "self.setMaximumSize(maximum_width, max(minimum, maximum))" in apply_view
+    assert "self.fit_content_to_family(preserve_transition=False)" in apply_view
+    assert "QTimer.singleShot(0, self._recenter_over_parent)" in apply_view
+    assert "dialog_height_profile(" in fit_content
+    assert "self._dialog_view_key" in fit_content
+    assert "height_profile.min_height" in fit_content
+    assert "height_profile.max_height" in fit_content
 
 
 def test_shared_dialog_state_supports_transaction_states_and_retry() -> None:
@@ -100,6 +126,12 @@ def test_dialog_close_policy_is_opt_in_and_preserves_reject_overrides() -> None:
 
 
 def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() -> None:
+    settings = _class_source(DASHBOARD, "GardenSettingsDialog")
+    shell_active = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "active_vertical_scroll_regions",
+    )
     studio = _class_source(STUDIO, "GardenStudioWidget")
     customize = _class_source(DASHBOARD, "CollectibleDetailDialog")
     option_page = _method_source(DASHBOARD, "CollectibleDetailDialog", "_option_page")
@@ -109,6 +141,9 @@ def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() 
     assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in studio
     assert "self.controls_scroll.verticalScrollBar()" not in studio_scroll
     assert "parent is not self.controls_scroll" in studio_scroll
+    assert 'self.tabs.addTab(self.behavior_scroll, "Display")' in settings
+    assert "self.tabs.addTab(advanced," in settings
+    assert "scroll.isVisibleTo(self)" in shell_active
     assert "self.body_scroll = QScrollArea()" in customize
     assert "QScrollArea" not in option_page
     assert "host = QWidget()" in option_page
@@ -166,11 +201,11 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     source = DASHBOARD.read_text("utf-8")
     expected = {
         "PurchaseConfirmationDialog": "DialogSizeClass.TRANSACTION",
-        "PlantStoryDialog": "DialogSizeClass.STANDARD_TEXT",
+        "PlantStoryDialog": "DialogSizeClass.PLANT_STORY",
         "StarterConfirmationDialog": "DialogSizeClass.COMPACT_STATUS",
         "NurseryDialog": "DialogSizeClass.NURSERY",
         "GardenProgressDialog": "DialogSizeClass.PROGRESS",
-            "CollectibleDetailDialog": "DialogSizeClass.LOADOUT",
+        "CollectibleDetailDialog": "DialogSizeClass.LOADOUT",
     }
     for class_name, size_class in expected.items():
         assert size_class in _class_source(DASHBOARD, class_name)
@@ -183,13 +218,14 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     assert 'floor=64' in starter
     assert 'floor=240' in starter
     assert "compact_direction=QBoxLayout.Direction.LeftToRight" in starter
-    assert 'f"{species_name} · {COST_FREE}\\n"' in starter
-    assert '"• Permanent species choice\\n"' in starter
-    assert '"• Can be moved later\\n"' in starter
+    assert '"Free permanent starter species.\\n"' in starter
+    assert '"Plant it in any open bed.\\n"' in starter
+    assert '"It can be moved later.\\n"' in starter
+    assert '"Other species remain available in Nursery."' in starter
     assert 'self.choose_action = QPushButton("Choose starter")' in starter
 
 
-def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None:
+def test_named_detail_dialogs_use_content_fit_classes_and_view_profiles() -> None:
     shell = _method_source(
         DASHBOARD,
         "DialogShell",
@@ -207,11 +243,56 @@ def test_short_detail_dialogs_use_targeted_content_bounded_height_caps() -> None
     assert 'self.setProperty("contentBoundedMaximumHeight", bounded)' in shell
     assert "self.fit_content_to_family(" in purchase
     assert "breathing_room=8" in purchase
-    assert "compact = comparison.mode == COMPACT_MODE" in purchase
+    assert "self.comparison_responsive.evaluate(available)" in purchase
+    assert 'self.setProperty("comparisonMode", comparison.mode)' in purchase
+    assert 'self.setProperty("decisionSummaryCondensed", False)' in purchase
+    assert "self.content_scroll.show()" in purchase
     assert "preserve_transition=not self.presentation.terminal" in purchase
-    assert "preferred_width=920" in species
-    assert "preferred_height=720" in species
+    assert "DialogSizeClass.SPECIES_DETAIL" in species
+    assert 'dialog.apply_view_size_profile("default")' in species
+    assert "preferred_height=720" not in species
     assert "dialog.set_content_bounded_maximum_height" not in species
+
+
+def test_multi_view_dialogs_route_view_changes_through_shared_profiles() -> None:
+    settings_tab = _method_source(
+        DASHBOARD,
+        "GardenSettingsDialog",
+        "_sync_settings_tab",
+    )
+    diagnostics = _method_source(
+        DASHBOARD,
+        "GardenSettingsDialog",
+        "_toggle_debug_report",
+    )
+    nursery = _method_source(DASHBOARD, "NurseryDialog", "_sync_catalog_intro")
+    progress = _method_source(DASHBOARD, "GardenProgressDialog", "_page_changed")
+    loadout = _method_source(DASHBOARD, "CollectibleDetailDialog", "__init__")
+    plant_story = _method_source(DASHBOARD, "PlantStoryDialog", "__init__")
+    species = _method_source(
+        DASHBOARD,
+        "GardenDashboard",
+        "_build_species_overview_dialog",
+    )
+
+    for view_key in (
+        "display",
+        "advanced",
+        "diagnostics-clean",
+        "diagnostics-expanded",
+    ):
+        assert f'"{view_key}"' in settings_tab + diagnostics
+    assert "self.apply_view_size_profile(" in settings_tab
+    assert "self.apply_view_size_profile(" in diagnostics
+    for view_key in ("starter", "plants", "fertilizer", "spaces", "weather", "empty"):
+        assert f'"{view_key}"' in nursery
+    assert "self.apply_view_size_profile(view_key)" in nursery
+    assert "self.apply_view_size_profile(str(key))" in progress
+    assert 'self.apply_view_size_profile("default")' in loadout
+    assert "DialogSizeClass.PLANT_STORY" in plant_story
+    assert 'self.apply_view_size_profile("default")' in plant_story
+    assert "DialogSizeClass.SPECIES_DETAIL" in species
+    assert 'dialog.apply_view_size_profile("default")' in species
 
 
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:

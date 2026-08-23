@@ -30,12 +30,14 @@ from aqt.qt import (
     QFont,
     QFontMetricsF,
     QGuiApplication,
+    QHBoxLayout,
     QLabel,
     QPainter,
     QScrollArea,
     QTabWidget,
     QTimer,
     Qt,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -919,6 +921,48 @@ _REVIEWER_CAPTURE_LABELS = frozenset({
     "reviewer-find-environment",
     "reviewer-find-stacked-sync",
 })
+
+COMPACT_HOME_BANNED_COPY: tuple[str, ...] = (
+    "today",
+    "streak",
+    "garden coins",
+    "coins",
+    "closest",
+    "planted starter",
+)
+
+MISSING_ARTWORK_CAPTURE_TYPES: tuple[str, ...] = (
+    "plant",
+    "fertilizer",
+    "weather",
+    "scenery",
+    "growth-charge",
+)
+
+RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
+    "full-garden": ("full-garden-scene",),
+    "progress-overview-redirect-growth": (
+        "direct-growth-label",
+        "direct-growth-value",
+    ),
+    "collection-preview-restored": ("restored-preview-banner",),
+    "nursery-item-owned": ("owned-item-card",),
+    "missing-artwork-graphical-fallback": tuple(
+        f"missing-art-{artwork_type}"
+        for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES
+    ),
+    "collection-environment-mechanics": (
+        "environment-summary-title",
+        "environment-summary-values",
+        "environment-item-title",
+        "environment-item-status",
+        "environment-effect",
+        "environment-mechanics",
+        "environment-inspect",
+        "environment-unequip",
+    ),
+}
+
 
 def expected_capture_window_family(label: str) -> str:
     """Return the exact renderer family required for one manifest fixture."""
@@ -2331,6 +2375,32 @@ class _UiFaceCaptureRunner:
               const loadingPresent = !!root.querySelector(
                 '[data-testid="home-loading"]'
               );
+              const accessibilityCopy = [
+                root.getAttribute('aria-label') || '',
+                ...[...root.querySelectorAll('[aria-label]')].map(
+                  candidate => candidate.getAttribute('aria-label') || ''
+                ),
+                ...[...root.querySelectorAll('.ag-home__sr-only')].map(
+                  candidate => candidate.textContent || ''
+                ),
+              ].join(' ');
+              const renderedCopy = `${root.innerText || ''} ${accessibilityCopy}`
+                .replace(/\\s+/g, ' ')
+                .trim();
+              const normalizedCopy = renderedCopy.toLocaleLowerCase('en-US');
+              const bannedTerms = [
+                'today',
+                'streak',
+                'garden coins',
+                'coins',
+                'closest',
+                'planted starter',
+              ].filter(term => normalizedCopy.includes(term));
+              const compactFieldsPresent = !!(
+                root.querySelector('[data-testid="home-title"]')
+                && root.querySelector('[data-testid="home-support"]')
+                && homeAction
+              );
               const fixtureState = __FIXTURE_STATE__;
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
@@ -2367,7 +2437,7 @@ class _UiFaceCaptureRunner:
               );
               return {
                 ready: paintedState && imagesComplete && canonicalSettled
-                  && fixtureMatches,
+                  && fixtureMatches && bannedTerms.length === 0,
                 reason: !paintedState ? 'unpainted-state'
                   : !imagesComplete ? 'images-pending'
                   : !canonicalSettled ? 'canonical-preview-unsettled'
@@ -2389,6 +2459,9 @@ class _UiFaceCaptureRunner:
                 failedImageCount,
                 previewStatusPresent,
                 loadingPresent,
+                renderedCopy,
+                bannedTerms,
+                compactFieldsPresent,
                 plantedSummaryPresent: !!root.querySelector('.planted-starter-summary'),
                 nurturedSummaryPresent: !!root.querySelector('.nurtured-plant-summary'),
                 growthText,
@@ -3016,6 +3089,13 @@ class _UiFaceCaptureRunner:
             if target_image.isNull() or overlay_image.isNull():
                 return False
             origin = overlay.mapTo(root, overlay.rect().topLeft())
+            if (
+                int(origin.x()) < 0
+                or int(origin.y()) < 0
+                or int(origin.x()) + int(overlay.width()) > int(root.width())
+                or int(origin.y()) + int(overlay.height()) > int(root.height())
+            ):
+                return False
             scale_x = target_image.width() / max(1, int(root.width()))
             scale_y = target_image.height() / max(1, int(root.height()))
             matches = 0
@@ -3054,9 +3134,581 @@ class _UiFaceCaptureRunner:
                         abs(source_color.blue() - target_color.blue()),
                     ) <= 48:
                         matches += 1
-            return compared >= 8 and matches / compared >= 0.45
+            if compared >= 8 and matches / compared >= 0.45:
+                return True
+
+            # Text, SVG strokes, and transparent icon buttons can have too few
+            # opaque pixels at the coarse grid points above. Inspect their
+            # actual painted pixels densely while keeping work bounded.
+            dense_compared = 0
+            dense_matches = 0
+            dense_step = max(
+                1,
+                min(4, min(overlay_image.width(), overlay_image.height()) // 28),
+            )
+            for source_y in range(0, overlay_image.height(), dense_step):
+                for source_x in range(0, overlay_image.width(), dense_step):
+                    source_color = overlay_image.pixelColor(source_x, source_y)
+                    if source_color.alpha() < 96:
+                        continue
+                    logical_x = (
+                        source_x
+                        * int(overlay.width())
+                        / max(1, overlay_image.width())
+                    )
+                    logical_y = (
+                        source_y
+                        * int(overlay.height())
+                        / max(1, overlay_image.height())
+                    )
+                    target_x = round(
+                        (int(origin.x()) + logical_x) * scale_x
+                    )
+                    target_y = round(
+                        (int(origin.y()) + logical_y) * scale_y
+                    )
+                    if not (
+                        0 <= target_x < target_image.width()
+                        and 0 <= target_y < target_image.height()
+                    ):
+                        continue
+                    target_color = target_image.pixelColor(target_x, target_y)
+                    dense_compared += 1
+                    if max(
+                        abs(source_color.red() - target_color.red()),
+                        abs(source_color.green() - target_color.green()),
+                        abs(source_color.blue() - target_color.blue()),
+                    ) <= 64:
+                        dense_matches += 1
+            return bool(
+                dense_compared >= 3
+                and dense_matches / dense_compared >= 0.50
+            )
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return False
+
+    @staticmethod
+    def _widget_bounds_evidence(
+        widget: Any,
+        container: Any,
+    ) -> dict[str, Any]:
+        """Return fail-closed logical bounds for one painted child."""
+
+        if widget is None or container is None:
+            return {
+                "bounds": [],
+                "container_size": [],
+                "visible": False,
+                "intersects": False,
+                "contained": False,
+            }
+        try:
+            origin = widget.mapTo(container, widget.rect().topLeft())
+            bounds = [
+                int(origin.x()),
+                int(origin.y()),
+                int(widget.width()),
+                int(widget.height()),
+            ]
+            container_size = [int(container.width()), int(container.height())]
+            left, top, width, height = bounds
+            intersects = bool(
+                width > 0
+                and height > 0
+                and left < container_size[0]
+                and top < container_size[1]
+                and left + width > 0
+                and top + height > 0
+            )
+            contained = bool(
+                intersects
+                and left >= 0
+                and top >= 0
+                and left + width <= container_size[0]
+                and top + height <= container_size[1]
+            )
+            return {
+                "bounds": bounds,
+                "container_size": container_size,
+                "visible": bool(widget.isVisibleTo(container)),
+                "intersects": intersects,
+                "contained": contained,
+            }
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return {
+                "bounds": [],
+                "container_size": [],
+                "visible": False,
+                "intersects": False,
+                "contained": False,
+            }
+
+    @staticmethod
+    def _rectangle_clearance(
+        first: list[int],
+        second: list[int],
+    ) -> int:
+        """Return the minimum axis clearance, or zero for overlapping rects."""
+
+        if len(first) != 4 or len(second) != 4:
+            return 0
+        first_left, first_top, first_width, first_height = first
+        second_left, second_top, second_width, second_height = second
+        first_right = first_left + first_width
+        first_bottom = first_top + first_height
+        second_right = second_left + second_width
+        second_bottom = second_top + second_height
+        horizontal_overlap = first_left < second_right and second_left < first_right
+        vertical_overlap = first_top < second_bottom and second_top < first_bottom
+        if horizontal_overlap and vertical_overlap:
+            return 0
+        horizontal_gap = max(
+            0,
+            second_left - first_right,
+            first_left - second_right,
+        )
+        vertical_gap = max(
+            0,
+            second_top - first_bottom,
+            first_top - second_bottom,
+        )
+        if horizontal_overlap:
+            return vertical_gap
+        if vertical_overlap:
+            return horizontal_gap
+        return min(horizontal_gap, vertical_gap)
+
+    def _reviewer_overlay_geometry_audit(
+        self,
+        label: str,
+        toast: Any,
+    ) -> dict[str, Any]:
+        """Prove Reviewer feedback is bounded and clear of answer controls."""
+
+        reviewer = getattr(mw, "reviewer", None)
+        expected_parent = (
+            getattr(reviewer, "web", None)
+            or getattr(mw, "web", None)
+        )
+        parent = toast.parentWidget() if toast is not None else None
+        evidence = self._widget_bounds_evidence(toast, parent)
+        bounds = list(evidence.get("bounds", ()) or ())
+        viewport_size = list(evidence.get("container_size", ()) or ())
+        stacked = label == "reviewer-find-stacked-sync"
+        width = bounds[2] if len(bounds) == 4 else 0
+        height = bounds[3] if len(bounds) == 4 else 0
+        size_in_range = bool(
+            (360 <= width <= 400 if stacked else 340 <= width <= 380)
+            and (72 <= height <= 104 if stacked else 72 <= height <= 88)
+        )
+
+        # Reviewer answer buttons live inside WebEngine and are not QWidgets.
+        # Reserve the complete lower control band in logical viewport pixels;
+        # any discovered Qt-owned reviewer controls are added as stricter bounds.
+        control_rects: list[dict[str, Any]] = []
+        if len(viewport_size) == 2:
+            reserved_height = min(128, max(88, viewport_size[1] // 5))
+            control_rects.append({
+                "name": "reviewer-answer-and-toolbar-reserved-band",
+                "bounds": [
+                    0,
+                    max(0, viewport_size[1] - reserved_height),
+                    viewport_size[0],
+                    reserved_height,
+                ],
+                "source": "reviewer-viewport-contract",
+            })
+        if parent is not None:
+            for control in mw.findChildren(QAbstractButton):
+                try:
+                    copy = " ".join((
+                        _displayed_button_text(control),
+                        str(control.accessibleName() or ""),
+                        str(control.objectName() or ""),
+                    )).casefold()
+                    if not any(
+                        marker in copy
+                        for marker in (
+                            "show answer", "again", "hard", "good", "easy",
+                            "edit", "more",
+                        )
+                    ):
+                        continue
+                    control_evidence = self._widget_bounds_evidence(control, parent)
+                    if not (
+                        control_evidence.get("visible", False)
+                        and control_evidence.get("intersects", False)
+                    ):
+                        continue
+                    control_rects.append({
+                        "name": copy.strip(),
+                        "bounds": list(control_evidence["bounds"]),
+                        "source": "qt-control",
+                    })
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    continue
+        clearances = [
+            self._rectangle_clearance(bounds, list(control["bounds"]))
+            for control in control_rects
+        ]
+        minimum_clearance = min(clearances) if clearances else 0
+        parent_is_reviewer_webview = bool(
+            parent is not None and parent is expected_parent
+        )
+        passed = bool(
+            toast is not None
+            and toast.isVisible()
+            and parent_is_reviewer_webview
+            and evidence.get("contained", False)
+            and size_in_range
+            and control_rects
+            and minimum_clearance >= 16
+        )
+        return {
+            "parent_is_reviewer_webview": parent_is_reviewer_webview,
+            "overlay_bounds": bounds,
+            "viewport_size": viewport_size,
+            "viewport_contained": bool(evidence.get("contained", False)),
+            "width": width,
+            "height": height,
+            "size_in_range": size_in_range,
+            "control_rects": control_rects,
+            "minimum_control_clearance": minimum_clearance,
+            "passed": passed,
+        }
+
+    @staticmethod
+    def _icon_has_visible_pixels(button: Any) -> bool:
+        try:
+            icon = button.icon()
+            icon_size = button.iconSize()
+            if icon is None or icon.isNull():
+                return False
+            pixmap = icon.pixmap(
+                max(1, int(icon_size.width())),
+                max(1, int(icon_size.height())),
+            )
+            if pixmap.isNull():
+                return False
+            image = pixmap.toImage()
+            visible = 0
+            for y in range(int(image.height())):
+                for x in range(int(image.width())):
+                    if image.pixelColor(x, y).alpha() >= 64:
+                        visible += 1
+                        if visible >= 3:
+                            return True
+            return False
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+
+    def _visual_contract_audit(
+        self,
+        root: QWidget,
+        label: str,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Measure release geometry that warning lists alone cannot prove."""
+
+        if root is mw:
+            return ({
+                "applicable": False,
+                "controls": [],
+                "close_icons": [],
+                "primary_action_count": 0,
+                "visible_horizontal_scrollbars": [],
+                "largest_unexplained_gap": 0,
+                "screen_contained": True,
+                "popover": {"applicable": False, "passed": True},
+                "issues": [],
+                "passed": True,
+            }, [])
+
+        issue_codes: list[str] = []
+        controls: list[dict[str, Any]] = []
+        close_icons: list[dict[str, Any]] = []
+        primary_actions: list[str] = []
+        for button in root.findChildren(QAbstractButton):
+            if button.window() is not root or not button.isVisibleTo(root):
+                continue
+            painted = self._widget_bounds_evidence(button, root)
+            if not painted.get("intersects", False):
+                continue
+            text = _displayed_button_text(button).strip()
+            component = str(button.property("gardenComponent") or "")
+            icon_only = bool(
+                component == "icon-button"
+                or button.property("iconButton")
+                or (not text and not button.icon().isNull())
+            )
+            visual_size = int(
+                button.property("visualControlSize")
+                or max(int(button.width()), int(button.height()))
+            )
+            icon_size = [
+                int(button.iconSize().width()),
+                int(button.iconSize().height()),
+            ]
+            size_passed = bool(
+                28 <= visual_size <= 30
+                and 14 <= icon_size[0] <= 16
+                and 14 <= icon_size[1] <= 16
+                if icon_only else
+                int(button.height()) <= 40
+            )
+            controls.append({
+                "text": text,
+                "accessible_name": str(button.accessibleName() or ""),
+                "bounds": list(painted.get("bounds", ()) or ()),
+                "icon_only": icon_only,
+                "visual_size": visual_size,
+                "icon_size": icon_size,
+                "size_passed": size_passed,
+            })
+            if not size_passed:
+                issue_codes.append(
+                    "icon-control-size" if icon_only else "standard-button-height"
+                )
+            if str(button.property("variant") or "") == "primary":
+                primary_actions.append(
+                    text or str(button.accessibleName() or type(button).__name__)
+                )
+            accessible_name = str(button.accessibleName() or "").casefold()
+            if icon_only and "close" in accessible_name:
+                glyph_present = self._icon_has_visible_pixels(button)
+                close_passed = bool(size_passed and glyph_present)
+                close_icons.append({
+                    "accessible_name": str(button.accessibleName() or ""),
+                    "bounds": list(painted.get("bounds", ()) or ()),
+                    "glyph_pixels_present": glyph_present,
+                    "passed": close_passed,
+                })
+                if not close_passed:
+                    issue_codes.append("close-icon-glyph-or-size")
+
+        if not close_icons:
+            issue_codes.append("missing-inline-close-icon")
+
+        if len(primary_actions) > 1:
+            issue_codes.append("multiple-filled-primary-actions")
+
+        horizontal_scrollbars: list[str] = []
+        for scroll in root.findChildren(QAbstractScrollArea):
+            try:
+                bar = scroll.horizontalScrollBar()
+                if (
+                    scroll.window() is root
+                    and scroll.isVisibleTo(root)
+                    and bar is not None
+                    and bar.maximum() > bar.minimum()
+                    and bar.isVisibleTo(root)
+                ):
+                    horizontal_scrollbars.append(
+                        str(scroll.accessibleName() or scroll.objectName() or type(scroll).__name__)
+                    )
+            except (AttributeError, RuntimeError):
+                continue
+        if horizontal_scrollbars:
+            issue_codes.append("visible-horizontal-scrollbar")
+
+        direct_children: list[list[int]] = []
+        for child in root.findChildren(QWidget):
+            try:
+                if child.parentWidget() is not root or not child.isVisibleTo(root):
+                    continue
+                evidence = self._widget_bounds_evidence(child, root)
+                if evidence.get("intersects", False):
+                    direct_children.append(list(evidence["bounds"]))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                continue
+        direct_children.sort(key=lambda bounds: (bounds[1], bounds[0]))
+        vertical_gaps = [
+            max(0, following[1] - (current[1] + current[3]))
+            for current, following in zip(direct_children, direct_children[1:])
+            if current[0] < following[0] + following[2]
+            and following[0] < current[0] + current[2]
+        ]
+        largest_gap = max(vertical_gaps, default=0)
+        if largest_gap > max(64, round(int(root.height()) * 0.20)):
+            issue_codes.append("unexplained-large-vertical-gap")
+
+        screen_contained = True
+        try:
+            screen = root.screen()
+            available = screen.availableGeometry() if screen is not None else None
+            frame = root.frameGeometry()
+            screen_contained = bool(
+                available is not None and available.contains(frame)
+            )
+        except (AttributeError, RuntimeError, TypeError):
+            screen_contained = False
+        if not screen_contained:
+            issue_codes.append("window-outside-available-screen")
+
+        popover: dict[str, Any] = {"applicable": False, "passed": True}
+        if label.startswith("popover-plot-"):
+            scene = getattr(root, "scene", None)
+            card = getattr(root, "plant_card", None)
+            evidence = self._widget_bounds_evidence(card, scene)
+            page_scroll = getattr(root, "dashboard_scroll", None)
+            page_scroll_value = (
+                int(page_scroll.verticalScrollBar().value())
+                if page_scroll is not None else -1
+            )
+            popover = {
+                "applicable": True,
+                "bounds": list(evidence.get("bounds", ()) or ()),
+                "scene_size": list(evidence.get("container_size", ()) or ()),
+                "contained_in_scene": bool(evidence.get("contained", False)),
+                "page_scroll_value": page_scroll_value,
+                "passed": bool(
+                    evidence.get("contained", False) and page_scroll_value == 0
+                ),
+            }
+            if not popover["passed"]:
+                issue_codes.append("popover-outside-scene-or-page-scrolled")
+
+        unique_issues = list(dict.fromkeys(issue_codes))
+        audit = {
+            "applicable": True,
+            "controls": controls,
+            "control_sizes_passed": not any(
+                issue in unique_issues
+                for issue in ("icon-control-size", "standard-button-height")
+            ),
+            "close_icons": close_icons,
+            "close_icons_passed": all(
+                bool(item.get("passed", False)) for item in close_icons
+            ),
+            "primary_actions": primary_actions,
+            "primary_action_count": len(primary_actions),
+            "visible_horizontal_scrollbars": horizontal_scrollbars,
+            "largest_unexplained_gap": largest_gap,
+            "screen_contained": screen_contained,
+            "popover": popover,
+            "issues": unique_issues,
+            "passed": not unique_issues,
+        }
+        warnings = [
+            {"kind": issue, "visual_contract": True}
+            for issue in unique_issues
+        ]
+        return audit, warnings
+
+    def _audit_capture_pixel_contracts(
+        self,
+        label: str,
+        root: QWidget,
+        pixmap: Any,
+        visual_contract: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Bind measured controls and high-risk fixture widgets to PNG pixels."""
+
+        warnings: list[dict[str, Any]] = []
+        annotation = self._capture_annotations.setdefault(label, {})
+        if visual_contract.get("applicable") is True:
+            close_buttons = [
+                button
+                for button in root.findChildren(QAbstractButton)
+                if button.window() is root
+                and button.isVisibleTo(root)
+                and "close" in str(button.accessibleName() or "").casefold()
+            ]
+            close_rows = list(visual_contract.get("close_icons", ()) or ())
+            for row in close_rows:
+                accessible_name = str(row.get("accessible_name", ""))
+                button = next(
+                    (
+                        candidate for candidate in close_buttons
+                        if str(candidate.accessibleName() or "") == accessible_name
+                    ),
+                    None,
+                )
+                pixels_present = bool(
+                    button is not None
+                    and self._pixmap_contains_overlay(pixmap, root, button)
+                )
+                row["capture_pixels_present"] = pixels_present
+                row["passed"] = bool(row.get("passed", False) and pixels_present)
+            close_pixels_passed = bool(
+                close_rows
+                and all(
+                    row.get("capture_pixels_present") is True
+                    for row in close_rows
+                )
+            )
+            visual_contract["close_icons_passed"] = bool(
+                visual_contract.get("close_icons_passed", False)
+                and close_pixels_passed
+            )
+            if not close_pixels_passed:
+                issues = list(visual_contract.get("issues", ()) or ())
+                issues.append("close-icon-absent-from-captured-pixels")
+                visual_contract["issues"] = list(dict.fromkeys(issues))
+                visual_contract["passed"] = False
+                warnings.append({
+                    "kind": "close-icon-absent-from-captured-pixels",
+                    "visual_contract": True,
+                })
+            annotation["visual_contract"] = dict(visual_contract)
+            annotation["passed"] = bool(
+                annotation.get("passed", True)
+                and visual_contract.get("passed", False)
+            )
+
+        required_keys = RENDERED_PIXEL_EVIDENCE_KEYS.get(label, ())
+        if not required_keys:
+            return warnings
+        candidates = (root, *tuple(root.findChildren(QWidget)))
+        results: list[dict[str, Any]] = []
+        for key in required_keys:
+            target = next(
+                (
+                    candidate for candidate in candidates
+                    if str(candidate.property("captureEvidenceKey") or "") == key
+                    and (
+                        candidate is root
+                        or candidate.isVisibleTo(root)
+                    )
+                ),
+                None,
+            )
+            bounds = self._widget_bounds_evidence(target, root)
+            pixels_present = bool(
+                target is not None
+                and bounds.get("contained", False)
+                and self._pixmap_contains_overlay(pixmap, root, target)
+            )
+            results.append({
+                "key": key,
+                "bounds": list(bounds.get("bounds", ()) or ()),
+                "visible": bool(bounds.get("visible", False)),
+                "contained": bool(bounds.get("contained", False)),
+                "capture_pixels_present": pixels_present,
+                "passed": bool(
+                    bounds.get("visible", False)
+                    and bounds.get("contained", False)
+                    and pixels_present
+                ),
+            })
+        rendered = {
+            "required_keys": list(required_keys),
+            "results": results,
+            "passed": bool(
+                [row["key"] for row in results] == list(required_keys)
+                and all(row["passed"] for row in results)
+            ),
+        }
+        annotation["rendered_pixel_evidence"] = rendered
+        annotation["passed"] = bool(
+            annotation.get("passed", True) and rendered["passed"]
+        )
+        if not rendered["passed"]:
+            warnings.append({
+                "kind": "required-rendered-pixels-absent",
+                "visual_contract": True,
+                "required_keys": list(required_keys),
+            })
+        return warnings
 
     def _capture_home_pixmap(
         self,
@@ -3871,6 +4523,30 @@ class _UiFaceCaptureRunner:
                     ),
                 },
             )
+            reviewer_geometry = dict(
+                annotation.get("reviewer_overlay_geometry", {}) or {}
+            )
+            require(
+                "reviewer_overlay_geometry",
+                bool(
+                    reviewer_geometry.get("passed", False)
+                    and reviewer_geometry.get(
+                        "parent_is_reviewer_webview",
+                        False,
+                    )
+                    and reviewer_geometry.get("viewport_contained", False)
+                    and reviewer_geometry.get("size_in_range", False)
+                    and reviewer_geometry.get("control_rects")
+                    and int(
+                        reviewer_geometry.get(
+                            "minimum_control_clearance",
+                            0,
+                        )
+                        or 0
+                    ) >= 16
+                ),
+                reviewer_geometry,
+            )
             if state_name == "reviewer-find-stacked-sync":
                 expected_message = str(
                     annotation.get("expected_feedback_message", "")
@@ -3928,6 +4604,36 @@ class _UiFaceCaptureRunner:
                     "sun_layer_present": bool(dom.get("sunLayerPresent", False)),
                 },
             )
+            banned_terms = [
+                str(term) for term in list(dom.get("bannedTerms", ()) or ())
+            ]
+            compact_fields_required = expected_fixture in {
+                "starter-planted-not-nurtured",
+                "nurtured-active",
+                "starter-complete-without-plant",
+            }
+            require(
+                "compact_home_copy",
+                not banned_terms
+                and (
+                    not compact_fields_required
+                    or bool(dom.get("compactFieldsPresent", False))
+                ),
+                {
+                    "rendered_text": str(dom.get("renderedCopy", "")),
+                    "banned_terms": banned_terms,
+                    "compact_fields_present": bool(
+                        dom.get("compactFieldsPresent", False)
+                    ),
+                    "passed": bool(
+                        not banned_terms
+                        and (
+                            not compact_fields_required
+                            or bool(dom.get("compactFieldsPresent", False))
+                        )
+                    ),
+                },
+            )
             if "active_slot" in expectation:
                 expected_slot = int(expectation["active_slot"])
                 actual_slot = int(getattr(active_plant, "slot_index", -1) or 0)
@@ -3973,6 +4679,20 @@ class _UiFaceCaptureRunner:
                     "starter_complete",
                     bool(getattr(garden_state, "starter_selection_complete", False)),
                     bool(getattr(garden_state, "starter_selection_complete", False)),
+                )
+                steady_state = dict(
+                    annotation.get("steady_state_visual", {}) or {}
+                )
+                require(
+                    "steady_state_visual",
+                    bool(
+                        steady_state.get("passed", False)
+                        and steady_state.get("overlay_free", False)
+                        and steady_state.get("scene_contained", False)
+                        and steady_state.get("onboarding_step") == "done"
+                        and steady_state.get("page_scroll_value") == 0
+                    ),
+                    steady_state,
                 )
             elif state_name == "hover-outline":
                 require(
@@ -4336,6 +5056,22 @@ class _UiFaceCaptureRunner:
                     and not bool(annotation.get("overview_registered", True)),
                     annotation,
                 )
+                direct_growth = dict(
+                    annotation.get("direct_growth_visual", {}) or {}
+                )
+                require(
+                    "direct_growth_visual",
+                    bool(
+                        direct_growth.get("passed", False)
+                        and int(direct_growth.get("amount", 0) or 0) > 0
+                        and "Direct Growth" in str(
+                            direct_growth.get("label", "")
+                        )
+                        and direct_growth.get("label_contained", False)
+                        and direct_growth.get("value_contained", False)
+                    ),
+                    direct_growth,
+                )
             elif state_name == "collection-several-discovered":
                 require(
                     "several_collected_audit",
@@ -4363,6 +5099,9 @@ class _UiFaceCaptureRunner:
                     annotation,
                 )
             elif state_name == "collection-environment-mechanics":
+                mechanics_visual = dict(
+                    annotation.get("environment_mechanics_visual", {}) or {}
+                )
                 require(
                     "environment_mechanics_and_collection_loadout",
                     bool(annotation.get("passed", False))
@@ -4375,6 +5114,30 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("scroll_at_end", False))
                     and not bool(annotation.get("direct_mutation_controls", True)),
                     annotation,
+                )
+                require(
+                    "environment_mechanics_visual",
+                    bool(
+                        mechanics_visual.get("passed", False)
+                        and set(mechanics_visual.get("required_keys", ()))
+                        == {
+                            "summary_title",
+                            "summary_values",
+                            "item_title",
+                            "item_status",
+                            "effect",
+                            "mechanics",
+                            "inspect",
+                            "unequip",
+                        }
+                        and all(
+                            bool(dict(row).get("contained", False))
+                            for row in list(
+                                mechanics_visual.get("required_bounds", ()) or ()
+                            )
+                        )
+                    ),
+                    mechanics_visual,
                 )
             elif state_name == "achievement-completed":
                 from .achievements import ACHIEVEMENT_DEFINITIONS
@@ -4581,6 +5344,34 @@ class _UiFaceCaptureRunner:
                         "unlocked_species": sorted(unlocked),
                     },
                 )
+                owned_visual = dict(
+                    annotation.get("owned_item_visual", {}) or {}
+                )
+                require(
+                    "owned_item_visual",
+                    bool(
+                        annotation.get("passed", False)
+                        and owned_visual.get("passed", False)
+                        and owned_visual.get("item_id")
+                        and owned_visual.get("item_name")
+                        and owned_visual.get("owned_label") == "Owned"
+                        and all(
+                            bool(
+                                dict(owned_visual.get(key, {}) or {}).get(
+                                    "contained",
+                                    False,
+                                )
+                            )
+                            for key in (
+                                "card",
+                                "title",
+                                "status",
+                                "action_bounds",
+                            )
+                        )
+                    ),
+                    owned_visual,
+                )
             elif state_name == "nursery-item-locked":
                 disabled_catalog_actions = [
                     _displayed_button_text(button)
@@ -4695,10 +5486,53 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("preview_signatures_distinct", False)),
                     annotation,
                 )
+            elif state_name == "missing-artwork-graphical-fallback":
+                missing_matrix = dict(
+                    annotation.get("missing_artwork_matrix", {}) or {}
+                )
+                require(
+                    "missing_artwork_matrix",
+                    bool(
+                        annotation.get("passed", False)
+                        and missing_matrix.get("passed", False)
+                        and list(missing_matrix.get("types", ()))
+                        == list(MISSING_ARTWORK_CAPTURE_TYPES)
+                        and len(list(missing_matrix.get("entries", ()) or ()))
+                        == len(MISSING_ARTWORK_CAPTURE_TYPES)
+                        and len(
+                            list(
+                                missing_matrix.get(
+                                    "diagnostic_log_fingerprints",
+                                    (),
+                                )
+                                or ()
+                            )
+                        ) == len(MISSING_ARTWORK_CAPTURE_TYPES)
+                        and all(
+                            bool(dict(entry).get("passed", False))
+                            and bool(dict(entry).get("graphic_present", False))
+                            and bool(
+                                dict(entry).get(
+                                    "aspect_ratio_preserved",
+                                    False,
+                                )
+                            )
+                            and bool(
+                                dict(entry).get(
+                                    "diagnostic_path_logged",
+                                    False,
+                                )
+                            )
+                            for entry in list(
+                                missing_matrix.get("entries", ()) or ()
+                            )
+                        )
+                    ),
+                    missing_matrix,
+                )
             elif state_name in {
                 "starter-action-above-footer",
                 "nursery-final-row-above-footer",
-                "missing-artwork-graphical-fallback",
             }:
                 require("fixture_audit", bool(annotation.get("passed", False)), annotation)
         elif kind == "settings":
@@ -4808,16 +5642,30 @@ class _UiFaceCaptureRunner:
                         ),
                         annotation,
                     )
+                    restored_visual = dict(
+                        annotation.get("restored_preview_visual", {}) or {}
+                    )
                     require(
-                        "restored_preview_status_cleared",
+                        "restored_preview_dirty_cleared",
                         bool(
-                            widget.unsaved.isHidden()
+                            annotation.get("restored_preview_dirty_cleared", False)
+                            and widget.unsaved.isHidden()
                             and not str(widget.unsaved.text()).strip()
                         ),
                         {
                             "hidden": widget.unsaved.isHidden(),
                             "text": str(widget.unsaved.text()),
                         },
+                    )
+                    require(
+                        "restored_preview_visual",
+                        bool(
+                            restored_visual.get("passed", False)
+                            and restored_visual.get("visible", False)
+                            and restored_visual.get("contained", False)
+                            and restored_visual.get("text") == "Preview restored"
+                        ),
+                        restored_visual,
                     )
         elif kind == "dialog":
             title = str(widget.windowTitle() or "")
@@ -5195,6 +6043,27 @@ class _UiFaceCaptureRunner:
             )
             family = str(widget.property("windowFamily") or type(widget).__name__)
             expected_family = expected_capture_window_family(label)
+            if label in _HOME_CAPTURE_LABELS:
+                dom_audit = dict(
+                    getattr(self, "_active_home_dom_audit", {}) or {}
+                )
+                banned_terms = [
+                    str(term)
+                    for term in list(dom_audit.get("bannedTerms", ()) or ())
+                ]
+                compact_copy = {
+                    "rendered_text": str(dom_audit.get("renderedCopy", "")),
+                    "banned_terms": banned_terms,
+                    "compact_fields_present": bool(
+                        dom_audit.get("compactFieldsPresent", False)
+                    ),
+                    "passed": not banned_terms,
+                }
+                home_annotation = self._capture_annotations.setdefault(label, {})
+                home_annotation["compact_home_copy"] = compact_copy
+                home_annotation["passed"] = bool(
+                    home_annotation.get("passed", True)
+                ) and bool(compact_copy["passed"])
             try:
                 postcondition = self._capture_fixture_postcondition(
                     label,
@@ -5307,6 +6176,15 @@ class _UiFaceCaptureRunner:
             )
             geometry_layout_warnings.extend(responsive_warnings)
             self._audit_nurtured_marker_capture(label, widget)
+            visual_contract_audit, visual_contract_warnings = (
+                self._visual_contract_audit(widget, label)
+            )
+            geometry_layout_warnings.extend(visual_contract_warnings)
+            annotation = self._capture_annotations.setdefault(label, {})
+            annotation["visual_contract"] = dict(visual_contract_audit)
+            annotation["passed"] = bool(
+                annotation.get("passed", True)
+            ) and bool(visual_contract_audit.get("passed", False))
             if widget is mw:
                 reward_toast = None
                 if label in _REVIEWER_CAPTURE_LABELS:
@@ -5386,6 +6264,14 @@ class _UiFaceCaptureRunner:
                 if pixmap.isNull():
                     self._failures.append({"label": label, "reason": "Captured pixmap was null"})
                     return
+            geometry_layout_warnings.extend(
+                self._audit_capture_pixel_contracts(
+                    label,
+                    widget,
+                    pixmap,
+                    visual_contract_audit,
+                )
+            )
             if widget is mw and label in _HOME_CAPTURE_LABELS:
                 self._audit_home_pixmap(
                     label,
@@ -5487,6 +6373,7 @@ class _UiFaceCaptureRunner:
                     ),
                     "responsive_semantics": responsive_semantics,
                     "dialog_scroll_audit": dialog_scroll_audit,
+                    "visual_contract_audit": dict(visual_contract_audit),
                     "text_layout_warnings": text_layout_warnings,
                     "geometry_layout_warnings": geometry_layout_warnings,
                     "fixture_source": fixture_source,
@@ -7304,12 +8191,90 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_full_garden(self) -> None:
-        self._with_dashboard(lambda: self._capture_and_advance(
-            "full-garden",
-            self.app.dashboard,
-            capture_delay_ms=500,
-            next_ms=900,
-        ))
+        label = "full-garden"
+
+        def ready() -> None:
+            from .models.state import OnboardingStep
+
+            dashboard = self.app.dashboard
+            state = self.app.storage.state
+            state.starter_selection_complete = True
+            state.onboarding.step = OnboardingStep.DONE
+            state.onboarding.pending_species = None
+            if not state.onboarding.starter_plant_id and state.plants:
+                state.onboarding.starter_plant_id = state.plants[0].plant_id
+            page_scroll = getattr(dashboard, "dashboard_scroll", None)
+            if page_scroll is not None:
+                page_scroll.verticalScrollBar().setValue(0)
+            scene = getattr(dashboard, "scene", None)
+            if scene is not None:
+                scene.setProperty("captureEvidenceKey", "full-garden-scene")
+                dismiss = getattr(scene, "dismiss_selection", None)
+                if callable(dismiss):
+                    dismiss()
+            toast = getattr(dashboard, "toast_region", None)
+            clear_toast = getattr(toast, "clear", None)
+            if callable(clear_toast):
+                clear_toast()
+            dashboard.refresh_all()
+            refresh_onboarding = getattr(dashboard, "_refresh_onboarding", None)
+            if callable(refresh_onboarding):
+                refresh_onboarding()
+            QApplication.processEvents()
+
+            overlays = {
+                name: getattr(dashboard, name, None)
+                for name in (
+                    "onboarding_panel",
+                    "onboarding_error_banner",
+                    "plant_card",
+                    "plant_card_dock",
+                    "rearrange_bar",
+                    "toast_region",
+                )
+            }
+            visible_overlays = [
+                name
+                for name, overlay in overlays.items()
+                if overlay is not None and overlay.isVisibleTo(dashboard)
+            ]
+            scene_container = (
+                page_scroll.viewport() if page_scroll is not None else dashboard
+            )
+            scene_evidence = self._widget_bounds_evidence(
+                scene,
+                scene_container,
+            )
+            page_scroll_value = (
+                int(page_scroll.verticalScrollBar().value())
+                if page_scroll is not None else 0
+            )
+            audit = {
+                "onboarding_step": str(state.onboarding.step.value),
+                "visible_overlays": visible_overlays,
+                "overlay_free": not visible_overlays,
+                "scene_bounds": list(scene_evidence.get("bounds", ()) or ()),
+                "scene_contained": bool(scene_evidence.get("contained", False)),
+                "page_scroll_value": page_scroll_value,
+            }
+            audit["passed"] = bool(
+                audit["onboarding_step"] == "done"
+                and audit["overlay_free"]
+                and audit["scene_contained"]
+                and page_scroll_value == 0
+            )
+            self._capture_annotations[label] = {
+                "steady_state_visual": audit,
+                "passed": bool(audit["passed"]),
+            }
+            self._capture_and_advance(
+                label,
+                dashboard,
+                capture_delay_ms=500,
+                next_ms=900,
+            )
+
+        self._with_dashboard(ready, failure_label=label)
 
     def _capture_hover_outline(self) -> None:
         self._with_dashboard(self._capture_hover_outline_after)
@@ -8714,8 +9679,28 @@ class _UiFaceCaptureRunner:
 
     def _capture_progress_today(self) -> None:
         label = "progress-overview-redirect-growth"
+        cleanup_holder: dict[str, Callable[[], None]] = {
+            "callback": lambda: None,
+        }
+
+        def cleanup() -> None:
+            cleanup_holder["callback"]()
 
         def after() -> None:
+            snapshot, _plant_id = self._prepare_growth_capture_fixture(
+                populated=True,
+            )
+            restored = False
+
+            def restore_once() -> None:
+                nonlocal restored
+                if restored:
+                    return
+                restored = True
+                self._restore_growth_capture_fixture(snapshot)
+
+            cleanup_holder["callback"] = restore_once
+            self._refresh_capture_dashboard()
             dashboard = getattr(self.app, "dashboard", None)
             dialog = getattr(dashboard, "progress_dialog", None)
             navigation = getattr(dialog, "navigation", None)
@@ -8724,6 +9709,7 @@ class _UiFaceCaptureRunner:
                     "label": label,
                     "reason": "Garden Progress was unavailable for the stale Overview redirect",
                 })
+                restore_once()
                 self._next_after(200)
                 return
             dialog.setWindowModality(Qt.WindowModality.NonModal)
@@ -8737,11 +9723,87 @@ class _UiFaceCaptureRunner:
                     keys[current_index]
                     if 0 <= current_index < len(keys) else ""
                 )
-                passed = current_page == "growth" and "overview" not in keys
+                growth_scroll = navigation.stack.currentWidget()
+                viewport = (
+                    growth_scroll.viewport()
+                    if isinstance(growth_scroll, QAbstractScrollArea) else
+                    growth_scroll
+                )
+                visible_labels = [
+                    candidate
+                    for candidate in dialog.findChildren(QLabel)
+                    if candidate.isVisibleTo(dialog)
+                    and self._widget_bounds_evidence(
+                        candidate,
+                        viewport,
+                    ).get("intersects", False)
+                ]
+                direct_label = next(
+                    (
+                        candidate for candidate in visible_labels
+                        if "Direct Growth" in str(candidate.text())
+                    ),
+                    None,
+                )
+                stats = self.app.storage.state.daily_stats
+                direct_amount = sum(
+                    int(value or 0)
+                    for mapping in (
+                        stats.plant_charge_growth,
+                        stats.plant_direct_reward_growth,
+                    )
+                    for value in dict(mapping or {}).values()
+                )
+                direct_value = next(
+                    (
+                        candidate for candidate in visible_labels
+                        if str(candidate.text()).strip().replace(",", "")
+                        == str(direct_amount)
+                    ),
+                    None,
+                )
+                if direct_label is not None:
+                    direct_label.setProperty(
+                        "captureEvidenceKey",
+                        "direct-growth-label",
+                    )
+                if direct_value is not None:
+                    direct_value.setProperty(
+                        "captureEvidenceKey",
+                        "direct-growth-value",
+                    )
+                label_evidence = self._widget_bounds_evidence(
+                    direct_label,
+                    viewport,
+                )
+                value_evidence = self._widget_bounds_evidence(
+                    direct_value,
+                    viewport,
+                )
+                direct_visual = {
+                    "label": str(direct_label.text()) if direct_label is not None else "",
+                    "amount": direct_amount,
+                    "label_bounds": list(label_evidence.get("bounds", ()) or ()),
+                    "value_bounds": list(value_evidence.get("bounds", ()) or ()),
+                    "label_contained": bool(label_evidence.get("contained", False)),
+                    "value_contained": bool(value_evidence.get("contained", False)),
+                }
+                direct_visual["passed"] = bool(
+                    direct_amount > 0
+                    and "Direct Growth" in direct_visual["label"]
+                    and direct_visual["label_contained"]
+                    and direct_visual["value_contained"]
+                )
+                passed = bool(
+                    current_page == "growth"
+                    and "overview" not in keys
+                    and direct_visual["passed"]
+                )
                 self._capture_annotations[label] = {
                     "requested_route": "overview",
                     "normalized_page": current_page,
                     "overview_registered": "overview" in keys,
+                    "direct_growth_visual": direct_visual,
                     "passed": passed,
                 }
                 if not passed:
@@ -8753,7 +9815,10 @@ class _UiFaceCaptureRunner:
                     label,
                     dialog,
                     capture_delay_ms=360,
-                    close_callback=lambda: self._close_widget(dialog),
+                    close_callback=lambda: (
+                        self._close_widget(dialog),
+                        restore_once(),
+                    ),
                     close_ms=760,
                     next_ms=1100,
                 )
@@ -8768,9 +9833,14 @@ class _UiFaceCaptureRunner:
                 tries=80,
                 failure_label=label,
                 failure_reason="The stale Overview route did not render Plant Growth",
+                on_error=restore_once,
             )
 
-        self._with_dashboard(after, failure_label=label)
+        self._with_dashboard(
+            after,
+            failure_label=label,
+            on_error=cleanup,
+        )
 
     def _capture_progress_achievements(self) -> None:
         self._capture_progress_page("achievements", "progress-achievements")
@@ -9954,10 +11024,14 @@ class _UiFaceCaptureRunner:
                     == {"Inspect", "Unequip"}
                     and all(row["contained"] for row in route_button_bounds)
                 )
-                labels = [
-                    str(label_widget.text())
+                visible_label_widgets = [
+                    label_widget
                     for label_widget in dashboard.collection_list.findChildren(QLabel)
                     if label_widget.isVisible()
+                ]
+                labels = [
+                    str(label_widget.text())
+                    for label_widget in visible_label_widgets
                 ]
                 mechanics_visible = any(
                     all(
@@ -9965,6 +11039,121 @@ class _UiFaceCaptureRunner:
                         for marker in ("Duration:", "Stacking:", "Replacement:")
                     )
                     for text in labels
+                )
+                required_widgets: dict[str, Any] = {
+                    "summary_title": next(
+                        (
+                            item for item in visible_label_widgets
+                            if str(item.text()).strip() == "Equipped appearance"
+                        ),
+                        None,
+                    ),
+                    "summary_values": next(
+                        (
+                            item for item in visible_label_widgets
+                            if all(
+                                marker in str(item.text())
+                                for marker in (
+                                    "Scenery:",
+                                    "Weather:",
+                                    "Decoration:",
+                                )
+                            )
+                        ),
+                        None,
+                    ),
+                    "item_title": next(
+                        (
+                            item for item in visible_label_widgets
+                            if str(item.text()).strip()
+                            == WEATHER_CATALOG["breeze"].name
+                        ),
+                        None,
+                    ),
+                    "item_status": next(
+                        (
+                            item for item in visible_label_widgets
+                            if all(
+                                marker in str(item.text())
+                                for marker in ("Weather", "Common", "Equipped")
+                            )
+                        ),
+                        None,
+                    ),
+                    "effect": next(
+                        (
+                            item for item in visible_label_widgets
+                            if "Effect:" in str(item.text())
+                        ),
+                        None,
+                    ),
+                    "mechanics": next(
+                        (
+                            item for item in visible_label_widgets
+                            if all(
+                                marker in str(item.text())
+                                for marker in (
+                                    "Duration:",
+                                    "Stacking:",
+                                    "Replacement:",
+                                )
+                            )
+                        ),
+                        None,
+                    ),
+                    "inspect": next(
+                        (
+                            button for button in loadout_buttons
+                            if str(button.text()) == "Inspect"
+                        ),
+                        None,
+                    ),
+                    "unequip": next(
+                        (
+                            button for button in loadout_buttons
+                            if str(button.text()) == "Unequip"
+                        ),
+                        None,
+                    ),
+                }
+                required_bounds: list[dict[str, Any]] = []
+                for key, required_widget in required_widgets.items():
+                    if required_widget is not None:
+                        required_widget.setProperty(
+                            "captureEvidenceKey",
+                            f"environment-{key.replace('_', '-')}",
+                        )
+                    evidence = self._widget_bounds_evidence(
+                        required_widget,
+                        viewport,
+                    )
+                    evidence.update({
+                        "key": key,
+                        "text": (
+                            _displayed_button_text(required_widget)
+                            if isinstance(required_widget, QAbstractButton)
+                            else str(required_widget.text())
+                            if required_widget is not None
+                            else ""
+                        ),
+                    })
+                    required_bounds.append(evidence)
+                environment_mechanics_visual = {
+                    "required_keys": list(required_widgets),
+                    "required_bounds": required_bounds,
+                    "viewport_size": [
+                        int(viewport.width()),
+                        int(viewport.height()),
+                    ],
+                }
+                environment_mechanics_visual["passed"] = bool(
+                    len(required_bounds) == len(required_widgets)
+                    and all(
+                        bool(row.get("visible", False))
+                        and bool(row.get("contained", False))
+                        and bool(str(row.get("text", "")).strip())
+                        for row in required_bounds
+                    )
                 )
                 annotation = {
                     "collection_category": str(dashboard._collection_category),
@@ -10011,6 +11200,9 @@ class _UiFaceCaptureRunner:
                         and str(button.text()) in {"Show Weather", "Show Scenery"}
                         for button in button_widgets
                     ),
+                    "environment_mechanics_visual": (
+                        environment_mechanics_visual
+                    ),
                 }
                 annotation["passed"] = bool(
                     annotation["collection_category"] == "weather"
@@ -10022,6 +11214,7 @@ class _UiFaceCaptureRunner:
                     and annotation["loadout_route_visible"]
                     and annotation["loadout_routes_enabled"]
                     and annotation["action_buttons_fully_visible"]
+                    and environment_mechanics_visual["passed"]
                     and annotation["scroll_at_end"]
                     and not annotation["direct_mutation_controls"]
                 )
@@ -10493,6 +11686,40 @@ class _UiFaceCaptureRunner:
                 == "committed-state"
             )
             committed_state_unchanged = committed_after == committed_before
+            preview_feedback = getattr(dialog, "preview_feedback", None)
+            if (
+                label == "collection-preview-restored"
+                and preview_feedback is not None
+            ):
+                preview_feedback.setProperty(
+                    "captureEvidenceKey",
+                    "restored-preview-banner",
+                )
+            preview_feedback_text = str(
+                getattr(getattr(preview_feedback, "message", None), "text", lambda: "")()
+                if preview_feedback is not None else ""
+            ).strip()
+            preview_feedback_bounds = self._widget_bounds_evidence(
+                preview_feedback,
+                dialog.body_scroll.viewport(),
+            )
+            restored_preview_visual = {
+                "text": preview_feedback_text,
+                "visible": bool(
+                    preview_feedback is not None
+                    and preview_feedback.isVisible()
+                ),
+                "bounds": preview_feedback_bounds.get("bounds", []),
+                "contained": bool(preview_feedback_bounds.get("contained", False)),
+            }
+            restored_preview_visual["passed"] = bool(
+                label != "collection-preview-restored"
+                or (
+                    restored_preview_visual["text"] == "Preview restored"
+                    and restored_preview_visual["visible"]
+                    and restored_preview_visual["contained"]
+                )
+            )
             transition_passed = bool(
                 label != "collection-preview-restored"
                 or (
@@ -10500,6 +11727,7 @@ class _UiFaceCaptureRunner:
                     and reset_path_invoked
                     and draft_restored
                     and committed_state_unchanged
+                    and restored_preview_visual["passed"]
                 )
             )
             self._capture_annotations[label] = {
@@ -10511,6 +11739,11 @@ class _UiFaceCaptureRunner:
                     persisted_weather_visible,
                     persisted_scenery_visible,
                 ],
+                "restored_preview_visual": restored_preview_visual,
+                "restored_preview_dirty_cleared": bool(
+                    dialog.unsaved.isHidden()
+                    and not str(dialog.unsaved.text()).strip()
+                ),
                 "passed": transition_passed,
             }
 
@@ -12067,6 +13300,7 @@ class _UiFaceCaptureRunner:
 
     def _capture_nursery_owned_item(self) -> None:
         label = "nursery-item-owned"
+        fixture: dict[str, str] = {}
 
         def setup(_dashboard: Any) -> Callable[[], None]:
             if not self._ensure_development_stress_state():
@@ -12079,18 +13313,95 @@ class _UiFaceCaptureRunner:
             ]
             state.active_plant_id = state.plants[0].plant_id
             state.onboarding.starter_plant_id = state.active_plant_id
+            fixture["plant_id"] = str(state.plants[0].plant_id)
+            fixture["plant_name"] = str(state.plants[0].name)
             self._refresh_capture_dashboard()
             return lambda: self._restore_capture_fixture_state(snapshot)
 
-        def reveal_owned_rows(dialog: Any) -> None:
-            scrollbar = dialog.scroll.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+        def reveal_owned_item(dialog: Any) -> None:
+            target_id = fixture.get("plant_id", "")
+            target_name = fixture.get("plant_name", "")
+            cards = dialog.scroll.findChildren(QFrame)
+            card = next(
+                (
+                    candidate for candidate in cards
+                    if str(candidate.property("catalogItemId") or "") == target_id
+                ),
+                None,
+            )
+            if card is not None:
+                card.setProperty("captureEvidenceKey", "owned-item-card")
+                dialog.scroll.ensureWidgetVisible(card, 0, 24)
+            QApplication.processEvents()
+            labels = card.findChildren(QLabel) if card is not None else []
+            buttons = (
+                card.findChildren(QAbstractButton) if card is not None else []
+            )
+            owned_label = next(
+                (item for item in labels if str(item.text()).strip() == "Owned"),
+                None,
+            )
+            title_label = next(
+                (
+                    item for item in labels
+                    if str(item.text()).strip() == target_name
+                ),
+                None,
+            )
+            action = next(
+                (
+                    button for button in buttons
+                    if _displayed_button_text(button)
+                    in {"Store plant", "Plant in garden", "View in garden"}
+                ),
+                None,
+            )
+            viewport = dialog.scroll.viewport()
+            card_bounds = self._widget_bounds_evidence(card, viewport)
+            owned_bounds = self._widget_bounds_evidence(owned_label, viewport)
+            title_bounds = self._widget_bounds_evidence(title_label, viewport)
+            action_bounds = self._widget_bounds_evidence(action, viewport)
+            visual = {
+                "item_id": target_id,
+                "item_name": target_name,
+                "owned_label": (
+                    str(owned_label.text()).strip()
+                    if owned_label is not None else ""
+                ),
+                "action": (
+                    _displayed_button_text(action) if action is not None else ""
+                ),
+                "card": card_bounds,
+                "title": title_bounds,
+                "status": owned_bounds,
+                "action_bounds": action_bounds,
+            }
+            visual["passed"] = bool(
+                target_id
+                and target_name
+                and visual["owned_label"] == "Owned"
+                and visual["action"]
+                in {"Store plant", "Plant in garden", "View in garden"}
+                and all(
+                    bool(evidence.get("contained", False))
+                    for evidence in (
+                        card_bounds,
+                        owned_bounds,
+                        title_bounds,
+                        action_bounds,
+                    )
+                )
+            )
+            self._capture_annotations[label] = {
+                "owned_item_visual": visual,
+                "passed": bool(visual["passed"]),
+            }
 
         self._capture_nursery_tab(
             0,
             label,
             fixture_setup=setup,
-            ready_audit=reveal_owned_rows,
+            ready_audit=reveal_owned_item,
         )
 
     def _capture_custom_nursery(
@@ -12288,15 +13599,26 @@ class _UiFaceCaptureRunner:
         self._capture_custom_nursery(0, label, ready)
 
     def _capture_missing_artwork_fallback(self) -> None:
-        from .environment import SCENERY_CATALOG
-        from .ui.dashboard import _asset_preview_label, _item_preview_label
+        from .environment import (
+            GROWTH_CHARGES,
+            SCENERY_CATALOG,
+            WEATHER_CATALOG,
+        )
+        from .purchases import PurchaseKind
+        from .ui.dashboard import (
+            _LOGGED_MISSING_ARTWORK,
+            _asset_preview_label,
+            _item_preview_label,
+        )
 
         label = "missing-artwork-graphical-fallback"
-        item = next(iter(SCENERY_CATALOG.values()), None)
-        if item is None:
+        weather_item = WEATHER_CATALOG.get("breeze")
+        scenery_item = SCENERY_CATALOG.get("spring")
+        growth_charge = GROWTH_CHARGES.get("growth_charge_small")
+        if weather_item is None or scenery_item is None or growth_charge is None:
             self._failures.append({
                 "label": label,
-                "reason": "No Scenery product was available for fallback capture",
+                "reason": "The complete missing-artwork catalog matrix was unavailable",
             })
             self._next_after(200)
             return
@@ -12304,6 +13626,7 @@ class _UiFaceCaptureRunner:
         def ready(dialog: Any) -> None:
             engine = self.app.engine
             resolver_names = (
+                "resolve_weather_preview_asset",
                 "resolve_scenery_preview_asset",
                 "resolve_plant_asset",
                 "resolve_plant_image",
@@ -12323,6 +13646,19 @@ class _UiFaceCaptureRunner:
 
             restored = False
 
+            class MissingCaptureAsset:
+                def __init__(self, path: str) -> None:
+                    self.path = path
+                    self.placement: dict[str, Any] = {}
+
+            missing_paths = {
+                "plant": "/capture-missing/plant-bonsai-seed.webp",
+                "fertilizer": "/capture-missing/fertilizer-basic.webp",
+                "growth-charge": "/capture-missing/growth-charge-small.webp",
+                "weather": "/capture-missing/weather-breeze.svg",
+                "scenery": "/capture-missing/scenery-spring.webp",
+            }
+
             def restore_resolver() -> None:
                 nonlocal restored
                 if restored:
@@ -12332,66 +13668,248 @@ class _UiFaceCaptureRunner:
                     setattr(engine, name, resolver)
 
             try:
-                setattr(engine, "resolve_scenery_preview_asset", lambda _item_id: None)
-                setattr(engine, "resolve_plant_asset", lambda _species, _stage: None)
-                setattr(engine, "resolve_plant_image", lambda _species, _stage: None)
-                setattr(engine, "resolve_item_asset", lambda _item_key: None)
-                dialog._preview_environment_item(item)
-                pixmap = dialog.environment_feature_art.pixmap()
-                graphical = bool(pixmap is not None and not pixmap.isNull())
-                text_free = not bool(str(dialog.environment_feature_art.text() or "").strip())
-                plant_preview = _asset_preview_label(
-                    engine, "bonsai", "seed", size=84
+                original_scenery_resolver = original_resolvers[
+                    "resolve_scenery_preview_asset"
+                ]
+                setattr(
+                    engine,
+                    "resolve_weather_preview_asset",
+                    lambda _item_id: MissingCaptureAsset(missing_paths["weather"]),
                 )
-                plant_pixmap = plant_preview.pixmap()
-                plant_graphical = bool(
-                    plant_pixmap is not None and not plant_pixmap.isNull()
+
+                def scenery_resolver(item_id: str) -> Any:
+                    if str(item_id) == scenery_item.item_id:
+                        return MissingCaptureAsset(missing_paths["scenery"])
+                    return original_scenery_resolver(item_id)
+
+                setattr(engine, "resolve_scenery_preview_asset", scenery_resolver)
+                setattr(
+                    engine,
+                    "resolve_plant_asset",
+                    lambda _species, _stage: MissingCaptureAsset(
+                        missing_paths["plant"]
+                    ),
                 )
-                plant_text_free = not bool(str(plant_preview.text() or "").strip())
-                plant_geometry_stable = (
-                    int(plant_preview.width()) == 84
-                    and int(plant_preview.height()) == 84
+                setattr(
+                    engine,
+                    "resolve_plant_image",
+                    lambda _species, _stage: missing_paths["plant"],
                 )
-                item_preview = _item_preview_label(
-                    engine, "booster_potion", "Booster Potion", size=76
+
+                def item_resolver(item_key: str) -> MissingCaptureAsset:
+                    path_key = (
+                        "fertilizer"
+                        if "fertilizer" in str(item_key)
+                        else "growth-charge"
+                    )
+                    return MissingCaptureAsset(missing_paths[path_key])
+
+                setattr(engine, "resolve_item_asset", item_resolver)
+
+                matrix = QFrame()
+                matrix.setProperty("missingArtworkMatrix", True)
+                matrix_layout = QHBoxLayout(matrix)
+                matrix_layout.setContentsMargins(6, 6, 6, 6)
+                matrix_layout.setSpacing(8)
+                previews = {
+                    "plant": _asset_preview_label(
+                        engine,
+                        "bonsai",
+                        "seed",
+                        size=84,
+                    ),
+                    "fertilizer": _item_preview_label(
+                        engine,
+                        "fertilizer_basic",
+                        "Rich Compost preview",
+                        size=76,
+                        placeholder_kind=PurchaseKind.FERTILIZER,
+                    ),
+                    "growth-charge": _item_preview_label(
+                        engine,
+                        growth_charge.charge_id,
+                        f"{growth_charge.name} preview",
+                        size=76,
+                        placeholder_kind=PurchaseKind.GROWTH_CHARGE,
+                    ),
+                    "weather": dialog._environment_artwork(
+                        weather_item,
+                        width=124,
+                        height=72,
+                    ),
+                    "scenery": dialog._environment_artwork(
+                        scenery_item,
+                        width=124,
+                        height=72,
+                    ),
+                }
+                display_names = {
+                    "plant": "Bonsai · Seed",
+                    "fertilizer": "Rich Compost",
+                    "growth-charge": growth_charge.name,
+                    "weather": weather_item.name,
+                    "scenery": scenery_item.name,
+                }
+                expected_aspects = {
+                    "plant": 1.0,
+                    "fertilizer": 1.0,
+                    "growth-charge": 1.0,
+                    "weather": 114 / 62,
+                    "scenery": 114 / 62,
+                }
+                tiles: dict[str, tuple[QFrame, QLabel, QLabel]] = {}
+                for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES:
+                    tile = QFrame()
+                    tile.setProperty("missingArtworkType", artwork_type)
+                    tile_layout = QVBoxLayout(tile)
+                    tile_layout.setContentsMargins(5, 5, 5, 5)
+                    tile_layout.setSpacing(4)
+                    title = QLabel(display_names[artwork_type])
+                    title.setWordWrap(True)
+                    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    status = QLabel("Artwork unavailable")
+                    status.setProperty("missingArtworkStatus", True)
+                    status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    status.setWordWrap(True)
+                    preview = previews[artwork_type]
+                    preview.setProperty(
+                        "captureEvidenceKey",
+                        f"missing-art-{artwork_type}",
+                    )
+                    tile_layout.addWidget(title)
+                    tile_layout.addWidget(
+                        preview,
+                        0,
+                        Qt.AlignmentFlag.AlignHCenter,
+                    )
+                    tile_layout.addWidget(status)
+                    matrix_layout.addWidget(tile, 1)
+                    tiles[artwork_type] = (tile, title, status)
+                dialog.environment_layout.insertWidget(0, matrix)
+                dialog.environment_scroll.ensureWidgetVisible(matrix, 0, 16)
+                QApplication.processEvents()
+
+                expected_fingerprints = {
+                    (
+                        "plant",
+                        "bonsai:seed",
+                        missing_paths["plant"],
+                    ),
+                    (
+                        "fertilizer",
+                        "fertilizer_basic",
+                        missing_paths["fertilizer"],
+                    ),
+                    (
+                        "growth_charge",
+                        growth_charge.charge_id,
+                        missing_paths["growth-charge"],
+                    ),
+                    (
+                        "weather",
+                        weather_item.item_id,
+                        missing_paths["weather"],
+                    ),
+                    (
+                        "scenery",
+                        scenery_item.item_id,
+                        missing_paths["scenery"],
+                    ),
+                }
+                viewport = dialog.environment_scroll.viewport()
+                matrix_entries: list[dict[str, Any]] = []
+                for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES:
+                    preview = previews[artwork_type]
+                    tile, title, status = tiles[artwork_type]
+                    pixmap = preview.pixmap()
+                    pixmap_width = int(pixmap.width()) if pixmap is not None else 0
+                    pixmap_height = int(pixmap.height()) if pixmap is not None else 0
+                    actual_aspect = (
+                        pixmap_width / pixmap_height if pixmap_height > 0 else 0.0
+                    )
+                    expected_aspect = expected_aspects[artwork_type]
+                    entry = {
+                        "type": artwork_type,
+                        "display_name": display_names[artwork_type],
+                        "source_path": missing_paths[artwork_type],
+                        "accessible_name": str(preview.accessibleName() or ""),
+                        "accessible_description": str(
+                            preview.accessibleDescription() or ""
+                        ),
+                        "semantic_role": str(
+                            preview.property("gardenRole") or ""
+                        ),
+                        "pixmap_size": [pixmap_width, pixmap_height],
+                        "graphic_present": bool(
+                            pixmap is not None and not pixmap.isNull()
+                        ),
+                        "expected_aspect_ratio": round(expected_aspect, 4),
+                        "actual_aspect_ratio": round(actual_aspect, 4),
+                        "aspect_ratio_preserved": bool(
+                            actual_aspect > 0
+                            and abs(actual_aspect / expected_aspect - 1.0) <= 0.03
+                        ),
+                        "tile": self._widget_bounds_evidence(tile, viewport),
+                        "preview": self._widget_bounds_evidence(preview, viewport),
+                        "title": self._widget_bounds_evidence(title, viewport),
+                        "status": self._widget_bounds_evidence(status, viewport),
+                        "status_text": str(status.text()).strip(),
+                        "diagnostic_path_logged": any(
+                            fingerprint[2] == missing_paths[artwork_type]
+                            for fingerprint in _LOGGED_MISSING_ARTWORK
+                        ),
+                    }
+                    entry["passed"] = bool(
+                        entry["semantic_role"] == "missing-art"
+                        and entry["graphic_present"]
+                        and entry["aspect_ratio_preserved"]
+                        and entry["status_text"] == "Artwork unavailable"
+                        and str(entry["accessible_name"]).strip()
+                        and str(entry["accessible_description"]).startswith(
+                            "Artwork unavailable"
+                        )
+                        and entry["diagnostic_path_logged"]
+                        and all(
+                            bool(dict(entry[key]).get("contained", False))
+                            for key in ("tile", "preview", "title", "status")
+                        )
+                    )
+                    matrix_entries.append(entry)
+                logged_fingerprints = sorted(
+                    [
+                        list(fingerprint)
+                        for fingerprint in expected_fingerprints
+                        if fingerprint in _LOGGED_MISSING_ARTWORK
+                    ]
                 )
-                item_pixmap = item_preview.pixmap()
-                item_graphical = bool(
-                    item_pixmap is not None and not item_pixmap.isNull()
+                matrix_passed = bool(
+                    [entry["type"] for entry in matrix_entries]
+                    == list(MISSING_ARTWORK_CAPTURE_TYPES)
+                    and expected_fingerprints.issubset(_LOGGED_MISSING_ARTWORK)
+                    and all(entry["passed"] for entry in matrix_entries)
+                    and self._widget_bounds_evidence(
+                        matrix,
+                        viewport,
+                    ).get("contained", False)
                 )
-                item_text_free = not bool(str(item_preview.text() or "").strip())
-                item_geometry_stable = (
-                    int(item_preview.width()) == 76
-                    and int(item_preview.height()) == 76
-                )
-                passed = all((
-                    graphical,
-                    text_free,
-                    plant_graphical,
-                    plant_text_free,
-                    plant_geometry_stable,
-                    item_graphical,
-                    item_text_free,
-                    item_geometry_stable,
-                ))
                 self._capture_annotations[label] = {
                     "resolvers_forced_missing": list(resolver_names),
-                    "environment_graphical_pixmap_present": graphical,
-                    "environment_text_placeholder_absent": text_free,
-                    "plant_graphical_pixmap_present": plant_graphical,
-                    "plant_text_placeholder_absent": plant_text_free,
-                    "plant_geometry_stable": plant_geometry_stable,
-                    "item_graphical_pixmap_present": item_graphical,
-                    "item_text_placeholder_absent": item_text_free,
-                    "item_geometry_stable": item_geometry_stable,
-                    "passed": passed,
+                    "missing_artwork_matrix": {
+                        "types": list(MISSING_ARTWORK_CAPTURE_TYPES),
+                        "entries": matrix_entries,
+                        "missing_source_paths": dict(missing_paths),
+                        "diagnostic_log_fingerprints": logged_fingerprints,
+                        "matrix": self._widget_bounds_evidence(matrix, viewport),
+                        "passed": matrix_passed,
+                    },
+                    "passed": matrix_passed,
                 }
-                if not passed:
+                if not matrix_passed:
                     self._failures.append({
                         "label": label,
                         "reason": (
-                            "Missing environment, plant, or item artwork did not "
-                            "render a geometry-stable graphical fallback"
+                            "The mounted plant, Fertilizer, Weather, Scenery, and "
+                            "Growth Charge fallback matrix was incomplete"
                         ),
                     })
             except Exception:
@@ -13114,12 +14632,17 @@ class _UiFaceCaptureRunner:
             except Exception:
                 cleanup()
                 raise
+            overlay_geometry = self._reviewer_overlay_geometry_audit(
+                label,
+                toast,
+            )
             passed = bool(
                 rendered
                 and toast is not None
                 and toast.isVisible()
                 and focus_after is focus_before
                 and focus_after is not toast
+                and overlay_geometry.get("passed", False)
                 and fixture_annotation.get(
                     "canonical_projection_passed",
                     False,
@@ -13137,6 +14660,7 @@ class _UiFaceCaptureRunner:
                     and config_value("reduced_motion", False)
                 ),
                 "toast_visible": bool(toast is not None and toast.isVisible()),
+                "reviewer_overlay_geometry": overlay_geometry,
                 "passed": passed,
             }
             if not passed:

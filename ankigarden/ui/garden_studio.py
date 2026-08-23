@@ -502,7 +502,7 @@ class GardenStudioWidget(QWidget):
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
-            "Show this compact Garden preview in the Deck Browser and Deck Overview.",
+            "Show in Deck Browser and Overview.",
             self.show_home_widget,
         )
         controls_layout.insertWidget(0, self.home_preview_row)

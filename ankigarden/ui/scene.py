@@ -1981,6 +1981,12 @@ class GardenSceneWidget(QWidget):
                 preview = getattr(self, "_draw_move_preview", None)
                 if active and callable(preview):
                     preview(painter, slot)
+            # Destination rings remain visible, but action copy appears only
+            # for the current keyboard/hover target. The origin keeps its
+            # persistent Current chip for orientation.
+            if not current and not active:
+                painter.restore()
+                continue
             obstacles = [obstacle for _obstacle_slot, obstacle in obstacle_rows] + placed_badges
             badge = bed_badge_rect(layout, visual_label, self.width(), self.height(), obstacles)
             placed_badges.append(badge)

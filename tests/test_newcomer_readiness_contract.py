@@ -125,6 +125,10 @@ def test_canonical_copy_inventory_is_centralized() -> None:
     }
     assert all(name in copy for name in expected_names)
     assert GARDEN_SETUP_SECONDARY_ACTION == "Not now"
+    assert NURSERY_STARTER_COUNT == "4 starter choices available."
+    assert STARTER_SAVE_ERROR == (
+        "Your starter could not be saved. No changes were made. Try again."
+    )
     assert starter_confirmation("Rose Plant") == (
         "Rose Plant is planted and ready to nurture. "
         "Nurture it before studying so Anki card answers can add Growth."
@@ -156,9 +160,10 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
     assert "self.catalog_tabs.tabBar().setVisible(not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Choose later" if starter_mode else "Close")' in nursery
+    assert 'self.close_button.setText("Not now" if starter_mode else "Close")' in nursery
     assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
+    assert "available = available[:4]" in nursery
     assert "self.catalog_tabs.setAccessibleDescription" in nursery
     assert "Cost: Free" not in nursery  # the visible label is centralized
     available_card = _method_source(
@@ -223,7 +228,10 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert '"Return to setup"' in refresh_onboarding
     assert 'f"{plant_name}, your {species}, is growing in {bed}. "' in completion
     assert '"Future qualifying Anki card answers now generate Growth."' in completion
-    assert '"The last committed setup state is unchanged."' in failure
+    assert '"No starter, garden bed, or nurture choice was saved."' in failure
+    assert '"Your starter choice is still saved. No garden bed or nurture "' in failure
+    assert '"Your last saved setup is unchanged."' in failure
+    assert "last committed setup state" not in failure
     assert "self._onboarding_save_error = message" in open_starter
     assert "self.toast_region.show_message" not in open_starter
 
@@ -271,7 +279,7 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
     assert "Starter setup could not be saved." in choose_starter
     assert "the last committed Garden setup is unchanged" in choose_starter
     assert "Choose the plant " in choose_starter
-    assert "again to retry, or select Choose later." in choose_starter
+    assert "again to retry, or select Not now." in choose_starter
     assert "except Exception:" in choose_starter
     assert "starter choice save failed unexpectedly" in choose_starter
     assert "if not ok:" in choose_starter

@@ -109,6 +109,259 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _valid_visual_contract(
+    label: str,
+    state_kind: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    if state_kind in {"home", "reviewer"}:
+        visual: dict[str, object] = {
+            "applicable": False,
+            "controls": [],
+            "close_icons": [],
+            "primary_action_count": 0,
+            "visible_horizontal_scrollbars": [],
+            "largest_unexplained_gap": 0,
+            "screen_contained": True,
+            "popover": {"applicable": False, "passed": True},
+            "issues": [],
+            "passed": True,
+        }
+    else:
+        close_control = {
+            "text": "",
+            "accessible_name": "Close dialog",
+            "bounds": [68, 4, 28, 28],
+            "icon_only": True,
+            "visual_size": 28,
+            "icon_size": [14, 14],
+            "size_passed": True,
+        }
+        visual = {
+            "applicable": True,
+            "controls": [close_control],
+            "control_sizes_passed": True,
+            "close_icons": [{
+                "accessible_name": "Close dialog",
+                "bounds": [68, 4, 28, 28],
+                "glyph_pixels_present": True,
+                "capture_pixels_present": True,
+                "passed": True,
+            }],
+            "close_icons_passed": True,
+            "primary_actions": [],
+            "primary_action_count": 0,
+            "visible_horizontal_scrollbars": [],
+            "largest_unexplained_gap": 0,
+            "screen_contained": True,
+            "popover": {
+                "applicable": label.startswith("popover-plot-"),
+                "contained_in_scene": True,
+                "page_scroll_value": 0,
+                "passed": True,
+            },
+            "issues": [],
+            "passed": True,
+        }
+
+    audit: dict[str, object] = {"visual_contract": copy.deepcopy(visual)}
+    if state_kind == "home":
+        audit["compact_home_copy"] = {
+            "rendered_text": (
+                "Garden Moonlit Garden Bonsai Seed Growth 25 of 100 "
+                "Ready to nurture Open Garden"
+            ),
+            "banned_terms": [],
+            "compact_fields_present": True,
+            "passed": True,
+        }
+    if label == "full-garden":
+        audit["steady_state_visual"] = {
+            "overlay_free": True,
+            "visible_overlays": [],
+            "scene_contained": True,
+            "onboarding_step": "done",
+            "page_scroll_value": 0,
+            "passed": True,
+        }
+    if label == "progress-overview-redirect-growth":
+        audit["direct_growth_visual"] = {
+            "label": "Direct Growth",
+            "amount": 31,
+            "label_bounds": [10, 10, 100, 24],
+            "value_bounds": [120, 10, 40, 24],
+            "label_contained": True,
+            "value_contained": True,
+            "passed": True,
+        }
+    if label == "collection-preview-restored":
+        audit["restored_preview_visual"] = {
+            "text": "Preview restored",
+            "visible": True,
+            "bounds": [20, 20, 300, 40],
+            "contained": True,
+            "passed": True,
+        }
+        audit["restored_preview_dirty_cleared"] = True
+    if label == "nursery-item-owned":
+        contained = {
+            "bounds": [10, 10, 300, 80],
+            "container_size": [900, 600],
+            "visible": True,
+            "intersects": True,
+            "contained": True,
+        }
+        audit["owned_item_visual"] = {
+            "item_id": "dev_bonsai",
+            "item_name": "Bonsai Plant",
+            "owned_label": "Owned",
+            "action": "Store plant",
+            "card": copy.deepcopy(contained),
+            "title": copy.deepcopy(contained),
+            "status": copy.deepcopy(contained),
+            "action_bounds": copy.deepcopy(contained),
+            "passed": True,
+        }
+    if state_kind == "reviewer":
+        width = 380 if label == "reviewer-find-stacked-sync" else 360
+        height = 96 if label == "reviewer-find-stacked-sync" else 80
+        audit["reviewer_overlay_geometry"] = {
+            "parent_is_reviewer_webview": True,
+            "overlay_bounds": [604, 16, width, height],
+            "viewport_size": [1000, 700],
+            "viewport_contained": True,
+            "width": width,
+            "height": height,
+            "size_in_range": True,
+            "control_rects": [{
+                "name": "reviewer-answer-and-toolbar-reserved-band",
+                "bounds": [0, 572, 1000, 128],
+                "source": "reviewer-viewport-contract",
+            }],
+            "minimum_control_clearance": 460,
+            "passed": True,
+        }
+        audit["required_overlay_pixels_present"] = True
+    if label == "missing-artwork-graphical-fallback":
+        types = ["plant", "fertilizer", "weather", "scenery", "growth-charge"]
+        contained = {
+            "bounds": [5, 5, 100, 100],
+            "container_size": [900, 600],
+            "visible": True,
+            "intersects": True,
+            "contained": True,
+        }
+        entries = []
+        for artwork_type in types:
+            entries.append({
+                "type": artwork_type,
+                "source_path": f"/capture-missing/{artwork_type}.webp",
+                "accessible_name": f"{artwork_type} preview",
+                "accessible_description": "Artwork unavailable; fallback shown.",
+                "semantic_role": "missing-art",
+                "graphic_present": True,
+                "aspect_ratio_preserved": True,
+                "diagnostic_path_logged": True,
+                "status_text": "Artwork unavailable",
+                "tile": copy.deepcopy(contained),
+                "preview": copy.deepcopy(contained),
+                "title": copy.deepcopy(contained),
+                "status": copy.deepcopy(contained),
+                "passed": True,
+            })
+        audit["missing_artwork_matrix"] = {
+            "types": types,
+            "entries": entries,
+            "missing_source_paths": {
+                artwork_type: f"/capture-missing/{artwork_type}.webp"
+                for artwork_type in types
+            },
+            "diagnostic_log_fingerprints": [
+                [
+                    artwork_type.replace("-", "_"),
+                    artwork_type,
+                    f"/capture-missing/{artwork_type}.webp",
+                ]
+                for artwork_type in types
+            ],
+            "matrix": copy.deepcopy(contained),
+            "passed": True,
+        }
+    if label == "collection-environment-mechanics":
+        keys = [
+            "summary_title",
+            "summary_values",
+            "item_title",
+            "item_status",
+            "effect",
+            "mechanics",
+            "inspect",
+            "unequip",
+        ]
+        audit["environment_mechanics_visual"] = {
+            "required_keys": keys,
+            "required_bounds": [
+                {
+                    "key": key,
+                    "text": key.replace("_", " "),
+                    "bounds": [10, 10, 200, 30],
+                    "container_size": [900, 600],
+                    "visible": True,
+                    "intersects": True,
+                    "contained": True,
+                }
+                for key in keys
+            ],
+            "viewport_size": [900, 600],
+            "passed": True,
+        }
+    rendered_pixel_keys = {
+        "full-garden": ["full-garden-scene"],
+        "progress-overview-redirect-growth": [
+            "direct-growth-label",
+            "direct-growth-value",
+        ],
+        "collection-preview-restored": ["restored-preview-banner"],
+        "nursery-item-owned": ["owned-item-card"],
+        "missing-artwork-graphical-fallback": [
+            f"missing-art-{artwork_type}"
+            for artwork_type in (
+                "plant",
+                "fertilizer",
+                "weather",
+                "scenery",
+                "growth-charge",
+            )
+        ],
+        "collection-environment-mechanics": [
+            "environment-summary-title",
+            "environment-summary-values",
+            "environment-item-title",
+            "environment-item-status",
+            "environment-effect",
+            "environment-mechanics",
+            "environment-inspect",
+            "environment-unequip",
+        ],
+    }.get(label, [])
+    if rendered_pixel_keys:
+        audit["rendered_pixel_evidence"] = {
+            "required_keys": rendered_pixel_keys,
+            "results": [
+                {
+                    "key": key,
+                    "bounds": [10, 10, 100, 30],
+                    "visible": True,
+                    "contained": True,
+                    "capture_pixels_present": True,
+                    "passed": True,
+                }
+                for key in rendered_pixel_keys
+            ],
+            "passed": True,
+        }
+    return visual, audit
+
+
 def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     contract = load_capture_contract(CAPTURE_SOURCE)
     renderer_families = load_expected_renderer_families(
@@ -240,9 +493,14 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 "issues": [],
                 "passed": True,
             }
+        visual_contract, visual_audit = _valid_visual_contract(
+            label,
+            str(postcondition_kind),
+        )
         records.append({
             "audit": {
                 "fixture_identity": fixture_validation,
+                **visual_audit,
                 "passed": True,
             },
             "actual_client_size": list(logical_size),
@@ -276,6 +534,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 if label in resize_layout_modes
                 else "canonical-open"
             ),
+            "visual_contract_audit": visual_contract,
             "width": logical_size[0],
             "window_family": family,
         })
@@ -739,6 +998,81 @@ def test_manifest_rejects_incomplete_warning_and_fixture_identity_drift(
     assert "reports 1 failure" in message
     assert "reports 1 text-layout warning" in message
     assert "fixture validation did not pass" in message
+
+
+def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    by_label = {
+        str(record["label"]): record
+        for record in records
+        if isinstance(record, dict)
+    }
+
+    by_label["full-garden"]["audit"]["steady_state_visual"][
+        "overlay_free"
+    ] = False
+    by_label["full-garden"]["audit"]["rendered_pixel_evidence"][
+        "results"
+    ][0]["capture_pixels_present"] = False
+    by_label["progress-overview-redirect-growth"]["audit"][
+        "direct_growth_visual"
+    ]["amount"] = 0
+    by_label["collection-preview-restored"]["audit"][
+        "restored_preview_visual"
+    ]["visible"] = False
+    by_label["nursery-item-owned"]["audit"]["owned_item_visual"][
+        "status"
+    ]["contained"] = False
+    by_label["reviewer-find-environment"]["audit"][
+        "reviewer_overlay_geometry"
+    ]["viewport_contained"] = False
+    by_label["reviewer-find-environment"]["audit"][
+        "required_overlay_pixels_present"
+    ] = False
+    by_label["missing-artwork-graphical-fallback"]["audit"][
+        "missing_artwork_matrix"
+    ]["entries"][0]["diagnostic_path_logged"] = False
+    by_label["collection-environment-mechanics"]["audit"][
+        "environment_mechanics_visual"
+    ]["required_bounds"][-1]["contained"] = False
+    by_label["deck-browser-home"]["audit"]["compact_home_copy"][
+        "rendered_text"
+    ] += " Hidden Garden Coins 999"
+
+    generic = by_label["starter-garden-onboarding"]
+    generic_visual = generic["visual_contract_audit"]
+    assert isinstance(generic_visual, dict)
+    generic_visual["primary_action_count"] = 2
+    generic_visual["close_icons"][0]["glyph_pixels_present"] = False
+    generic_visual["close_icons"][0]["passed"] = False
+    generic_audit = generic["audit"]
+    assert isinstance(generic_audit, dict)
+    generic_audit["visual_contract"] = copy.deepcopy(generic_visual)
+
+    _write_json(manifest, payload)
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    for expected in (
+        "full Garden does not prove a clean contained steady state",
+        "required state widgets are absent from captured pixels",
+        "does not visibly prove nonzero Direct Growth",
+        "restored preview does not show a contained result banner",
+        "owned Nursery item is not visibly identified and contained",
+        "Reviewer card lacks full containment or control clearance",
+        "Reviewer card is absent from captured pixels",
+        "missing-artwork matrix is incomplete, clipped, or unlogged",
+        "environment mechanics content is incomplete or clipped",
+        "compact Home rendered or accessibility copy contains banned terms",
+        "at most one filled primary action",
+        "close icon has blank pixels or invalid bounds",
+    ):
+        assert expected in message
 
 
 def test_manifest_rejects_renderer_provenance_not_owned_by_source(

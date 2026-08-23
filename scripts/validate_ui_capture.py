@@ -43,6 +43,44 @@ MEMORY_PROBE_CLASSES = (
     "PlantStoryDialog",
     "GardenDialog",
 )
+COMPACT_HOME_BANNED_COPY = (
+    "today",
+    "streak",
+    "garden coins",
+    "coins",
+    "closest",
+    "planted starter",
+)
+MISSING_ARTWORK_CAPTURE_TYPES = (
+    "plant",
+    "fertilizer",
+    "weather",
+    "scenery",
+    "growth-charge",
+)
+RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
+    "full-garden": ("full-garden-scene",),
+    "progress-overview-redirect-growth": (
+        "direct-growth-label",
+        "direct-growth-value",
+    ),
+    "collection-preview-restored": ("restored-preview-banner",),
+    "nursery-item-owned": ("owned-item-card",),
+    "missing-artwork-graphical-fallback": tuple(
+        f"missing-art-{artwork_type}"
+        for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES
+    ),
+    "collection-environment-mechanics": (
+        "environment-summary-title",
+        "environment-summary-values",
+        "environment-item-title",
+        "environment-item-status",
+        "environment-effect",
+        "environment-mechanics",
+        "environment-inspect",
+        "environment-unequip",
+    ),
+}
 _NO_INFERRED_VALUE = object()
 # These are evidence aliases, not broad duplicate exemptions.  A duplicate hash
 # must match one complete set exactly; subsets and supersets still fail.
@@ -1777,6 +1815,285 @@ def _validate_memory_probe(payload: dict[str, Any], issues: list[str]) -> None:
             )
 
 
+def _visual_contract_record_issues(
+    *,
+    label: str,
+    state_kind: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+) -> list[str]:
+    """Validate source-independent rendered-geometry and high-risk state proof."""
+
+    problems: list[str] = []
+
+    def reject(message: str) -> None:
+        problems.append(message)
+
+    visual = record.get("visual_contract_audit")
+    if not isinstance(visual, dict):
+        return ["visual_contract_audit is missing"]
+    if audit is None or audit.get("visual_contract") != visual:
+        reject("visual contract audit does not match the capture audit")
+    if visual.get("passed") is not True:
+        reject("visual contract audit did not pass")
+    if visual.get("issues") != []:
+        reject("visual contract issues must be empty")
+    applicable = visual.get("applicable")
+    if type(applicable) is not bool:
+        reject("visual contract applicable must be boolean")
+    elif applicable:
+        controls = visual.get("controls")
+        if not isinstance(controls, list):
+            reject("visual contract controls must be a list")
+        elif any(
+            not isinstance(control, dict)
+            or control.get("size_passed") is not True
+            or not isinstance(control.get("bounds"), list)
+            or len(control["bounds"]) != 4
+            for control in controls
+        ):
+            reject("visual contract controls must have passing measured bounds")
+        if visual.get("control_sizes_passed") is not True:
+            reject("visual contract control sizes did not pass")
+        close_icons = visual.get("close_icons")
+        if not isinstance(close_icons, list) or not close_icons:
+            reject("visual contract has no measured inline close icon")
+        elif any(
+            not isinstance(icon, dict)
+            or icon.get("passed") is not True
+            or icon.get("glyph_pixels_present") is not True
+            or icon.get("capture_pixels_present") is not True
+            or not isinstance(icon.get("bounds"), list)
+            or len(icon["bounds"]) != 4
+            for icon in close_icons
+        ):
+            reject("visual contract close icon has blank pixels or invalid bounds")
+        if visual.get("close_icons_passed") is not True:
+            reject("visual contract close icons did not pass")
+        primary_count = visual.get("primary_action_count")
+        if type(primary_count) is not int or primary_count < 0 or primary_count > 1:
+            reject("visual contract must contain at most one filled primary action")
+        if visual.get("visible_horizontal_scrollbars") != []:
+            reject("visual contract contains a visible horizontal scrollbar")
+        largest_gap = visual.get("largest_unexplained_gap")
+        if (
+            isinstance(largest_gap, bool)
+            or not isinstance(largest_gap, (int, float))
+            or largest_gap < 0
+        ):
+            reject("visual contract largest gap must be a nonnegative number")
+        if visual.get("screen_contained") is not True:
+            reject("visual contract window is outside the available screen")
+        popover = visual.get("popover")
+        if not isinstance(popover, dict) or popover.get("passed") is not True:
+            reject("visual contract popover containment did not pass")
+        elif label.startswith("popover-plot-") and not (
+            popover.get("applicable") is True
+            and popover.get("contained_in_scene") is True
+            and popover.get("page_scroll_value") == 0
+        ):
+            reject("visual contract popover is outside the scene or page-scrolled")
+    elif state_kind not in {"home", "reviewer"}:
+        reject("visual contract was inapplicable for a Qt-owned surface")
+
+    if audit is None:
+        return problems
+
+    def audit_object(name: str) -> dict[str, Any]:
+        value = audit.get(name)
+        if not isinstance(value, dict):
+            reject(f"{name} is missing")
+            return {}
+        return value
+
+    required_pixel_keys = RENDERED_PIXEL_EVIDENCE_KEYS.get(label, ())
+    if required_pixel_keys:
+        rendered_pixels = audit_object("rendered_pixel_evidence")
+        pixel_results = rendered_pixels.get("results")
+        if not (
+            rendered_pixels.get("passed") is True
+            and rendered_pixels.get("required_keys")
+            == list(required_pixel_keys)
+            and isinstance(pixel_results, list)
+            and [
+                row.get("key")
+                for row in pixel_results
+                if isinstance(row, dict)
+            ] == list(required_pixel_keys)
+            and all(
+                isinstance(row, dict)
+                and row.get("visible") is True
+                and row.get("contained") is True
+                and row.get("capture_pixels_present") is True
+                and row.get("passed") is True
+                for row in pixel_results
+            )
+        ):
+            reject("required state widgets are absent from captured pixels")
+
+    if state_kind == "home":
+        compact = audit_object("compact_home_copy")
+        rendered = compact.get("rendered_text")
+        banned = compact.get("banned_terms")
+        if compact.get("passed") is not True:
+            reject("compact Home copy audit did not pass")
+        if not isinstance(rendered, str):
+            reject("compact Home rendered copy must be a string")
+        else:
+            normalized = " ".join(rendered.casefold().split())
+            leaked = [term for term in COMPACT_HOME_BANNED_COPY if term in normalized]
+            if leaked:
+                reject("compact Home rendered or accessibility copy contains banned terms")
+        if banned != []:
+            reject("compact Home banned term list must be empty")
+
+    if label == "full-garden":
+        steady = audit_object("steady_state_visual")
+        if not (
+            steady.get("passed") is True
+            and steady.get("overlay_free") is True
+            and steady.get("scene_contained") is True
+            and steady.get("onboarding_step") == "done"
+            and steady.get("page_scroll_value") == 0
+        ):
+            reject("full Garden does not prove a clean contained steady state")
+
+    if label == "progress-overview-redirect-growth":
+        direct = audit_object("direct_growth_visual")
+        amount = direct.get("amount")
+        if not (
+            direct.get("passed") is True
+            and type(amount) is int
+            and amount > 0
+            and "Direct Growth" in str(direct.get("label", ""))
+            and direct.get("label_contained") is True
+            and direct.get("value_contained") is True
+        ):
+            reject("Growth redirect does not visibly prove nonzero Direct Growth")
+
+    if label == "collection-preview-restored":
+        restored = audit_object("restored_preview_visual")
+        if not (
+            restored.get("passed") is True
+            and restored.get("visible") is True
+            and restored.get("contained") is True
+            and restored.get("text") == "Preview restored"
+            and audit.get("restored_preview_dirty_cleared") is True
+        ):
+            reject("restored preview does not show a contained result banner")
+
+    if label == "nursery-item-owned":
+        owned = audit_object("owned_item_visual")
+        if not (
+            owned.get("passed") is True
+            and bool(owned.get("item_id"))
+            and bool(owned.get("item_name"))
+            and owned.get("owned_label") == "Owned"
+            and all(
+                isinstance(owned.get(key), dict)
+                and owned[key].get("contained") is True
+                for key in ("card", "title", "status", "action_bounds")
+            )
+        ):
+            reject("owned Nursery item is not visibly identified and contained")
+
+    if label in {
+        "reviewer-find-environment",
+        "reviewer-find-stacked-sync",
+        "reviewer-find-common-reduced-motion",
+    }:
+        geometry = audit_object("reviewer_overlay_geometry")
+        bounds = geometry.get("overlay_bounds")
+        controls = geometry.get("control_rects")
+        if not (
+            geometry.get("passed") is True
+            and geometry.get("parent_is_reviewer_webview") is True
+            and geometry.get("viewport_contained") is True
+            and geometry.get("size_in_range") is True
+            and isinstance(bounds, list)
+            and len(bounds) == 4
+            and isinstance(controls, list)
+            and bool(controls)
+            and type(geometry.get("minimum_control_clearance")) is int
+            and geometry["minimum_control_clearance"] >= 16
+        ):
+            reject("Reviewer card lacks full containment or control clearance")
+        if audit.get("required_overlay_pixels_present") is not True:
+            reject("Reviewer card is absent from captured pixels")
+
+    if label == "missing-artwork-graphical-fallback":
+        matrix = audit_object("missing_artwork_matrix")
+        entries = matrix.get("entries")
+        missing_paths = matrix.get("missing_source_paths")
+        logged_fingerprints = matrix.get("diagnostic_log_fingerprints")
+        if not (
+            matrix.get("passed") is True
+            and matrix.get("types") == list(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(entries, list)
+            and len(entries) == len(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(missing_paths, dict)
+            and set(missing_paths) == set(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(logged_fingerprints, list)
+            and len(logged_fingerprints) == len(MISSING_ARTWORK_CAPTURE_TYPES)
+            and [entry.get("type") for entry in entries if isinstance(entry, dict)]
+            == list(MISSING_ARTWORK_CAPTURE_TYPES)
+            and all(
+                isinstance(entry, dict)
+                and entry.get("passed") is True
+                and entry.get("semantic_role") == "missing-art"
+                and entry.get("graphic_present") is True
+                and entry.get("aspect_ratio_preserved") is True
+                and entry.get("diagnostic_path_logged") is True
+                and entry.get("status_text") == "Artwork unavailable"
+                and bool(str(entry.get("accessible_name", "")).strip())
+                and str(entry.get("accessible_description", "")).startswith(
+                    "Artwork unavailable"
+                )
+                and str(entry.get("source_path", "")).startswith(
+                    "/capture-missing/"
+                )
+                and all(
+                    isinstance(entry.get(key), dict)
+                    and entry[key].get("contained") is True
+                    for key in ("tile", "preview", "title", "status")
+                )
+                for entry in entries
+            )
+        ):
+            reject("missing-artwork matrix is incomplete, clipped, or unlogged")
+
+    if label == "collection-environment-mechanics":
+        mechanics = audit_object("environment_mechanics_visual")
+        required_keys = {
+            "summary_title",
+            "summary_values",
+            "item_title",
+            "item_status",
+            "effect",
+            "mechanics",
+            "inspect",
+            "unequip",
+        }
+        bounds = mechanics.get("required_bounds")
+        if not (
+            mechanics.get("passed") is True
+            and set(mechanics.get("required_keys", ())) == required_keys
+            and isinstance(bounds, list)
+            and {row.get("key") for row in bounds if isinstance(row, dict)}
+            == required_keys
+            and all(
+                isinstance(row, dict)
+                and row.get("visible") is True
+                and row.get("contained") is True
+                and bool(str(row.get("text", "")).strip())
+                for row in bounds
+            )
+        ):
+            reject("environment mechanics content is incomplete or clipped")
+
+    return problems
+
+
 def validate_capture_manifest(
     manifest_path: Path,
     *,
@@ -2304,6 +2621,15 @@ def validate_capture_manifest(
             issues.append(f"capture {index:03d} {label}: audit fixture identity disagrees")
         if isinstance(audit, dict):
             record_audits[label] = audit
+        for visual_issue in _visual_contract_record_issues(
+            label=label,
+            state_kind=str(state_contract["kind"]),
+            record=record,
+            audit=audit if isinstance(audit, dict) else None,
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: {visual_issue}"
+            )
         if logical_size is not None and dpr is not None:
             record_geometry[label] = (
                 logical_size[0],

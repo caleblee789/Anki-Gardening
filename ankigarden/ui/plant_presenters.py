@@ -158,7 +158,7 @@ def fertilizer_status(
             0,
         )
     if seconds < 60:
-        duration = "Under 1 minute remaining"
+        duration = f"{seconds} {'second' if seconds == 1 else 'seconds'} left"
     else:
         total_minutes = int(ceil(seconds / 60))
         hours, minutes = divmod(total_minutes, 60)

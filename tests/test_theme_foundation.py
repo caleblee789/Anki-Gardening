@@ -164,7 +164,7 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         scope["spacing"](13)
 
 
-def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
+def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
     scope = _theme_scope()
     control_variant = scope["ControlVariant"]
 
@@ -175,9 +175,12 @@ def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
         "destructive",
     }
     assert scope["BUTTON_VARIANT_TERTIARY"] == "tertiary"
-    assert scope["MIN_HIT_TARGET"] == 44
-    assert scope["BUTTON_MIN_HEIGHT"] == 44
-    assert scope["ICON_BUTTON_SIZE"] == 44
+    assert scope["MIN_HIT_TARGET"] == 34
+    assert scope["BUTTON_MIN_HEIGHT"] == 34
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
+    assert scope["INPUT_VISUAL_HEIGHT"] == 40
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
+    assert scope["ICON_BUTTON_SIZE"] == 30
 
     buttons = scope["button_stylesheet"]()
     tools = scope["tool_button_stylesheet"]()
@@ -186,6 +189,7 @@ def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
     assert "QPushButton[variant='destructive']" in buttons
     assert "QPushButton:disabled" in buttons
     assert "QPushButton:focus" in buttons
+    assert "border: 2px solid" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
 
 
@@ -196,7 +200,7 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     normalized = scope["apply_control_variant"](widget, "tertiary")
     assert normalized is scope["ControlVariant"].QUIET
     assert widget.properties["variant"] == "quiet"
-    assert (widget.minimum_width, widget.minimum_height) == (44, 44)
+    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
 
     with pytest.raises(ValueError, match="disabled_reason"):
         scope["set_control_enabled"](widget, False)
@@ -244,7 +248,7 @@ def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> N
     assert widget.tooltip == "Close"
     assert widget.properties["iconButton"] is True
     assert widget.properties["gardenRole"] == "icon-button"
-    assert (widget.minimum_width, widget.minimum_height) == (44, 44)
+    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
 
 
 def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:
@@ -305,7 +309,8 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 44px" in garden
+    assert "min-height: 38px" in garden
+    assert "max-height: 30px" in garden
     assert "QCheckBox:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
     assert scope["GARDEN_THEME"]["raised_surface"] in garden
@@ -409,6 +414,6 @@ def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() ->
     assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") == (
         dashboard.count("set_keyboard_focus_surface(") + 1
     )
-    assert "self.garden_name_edit.setFixedHeight(BUTTON_MIN_HEIGHT)" in dashboard
-    assert 'self.show_weather = ToggleSwitch("Preview weather artwork")' in dashboard
-    assert 'self.show_scenery = ToggleSwitch("Preview scenery artwork")' in dashboard
+    assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in dashboard
+    assert 'self.show_weather = ToggleSwitch("Show weather")' in dashboard
+    assert 'self.show_scenery = ToggleSwitch("Show scenery")' in dashboard

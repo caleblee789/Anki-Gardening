@@ -86,7 +86,7 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
             HomeWidgetSnapshot(1, phase, error_message="Temporary problem")
         )
         state_rule = html.split(".ag-home__state {", 1)[1].split("}", 1)[0]
-        assert "min-height: 160px" in state_rule
+        assert "min-height: 144px" in state_rule
         assert 'class="ag-home__state"' in html
 
 
@@ -349,21 +349,33 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
 
     draw_slots(scene, painter)
 
-    # Current, occupied swap, and empty move targets keep concise labels.
-    # Invalid and locked beds are dimmed without repetitive badges.
+    # Idle move mode keeps only the origin label. Destination rings remain
+    # visible, while action copy waits for hover or keyboard focus.
     assert len(painter.ellipses) == 6
-    assert len(painter.badges) == 3
+    assert len(painter.badges) == 1
     assert painter.labels.count("+") == 0
     assert painter.labels.count("↔") == 0
-    semantic_labels = ("Current", "Swap", "Move here")
-    for label in semantic_labels:
-        assert label in painter.labels
+    assert painter.labels == ["Current"]
     for label in ("Occupied", "Invalid", "Locked"):
         assert label not in painter.labels
-    assert {
-        label: size for label, size in painter.label_font_sizes
-        if label in semantic_labels
-    } == {label: 11.0 for label in semantic_labels}
+    assert painter.label_font_sizes == [("Current", 11.0)]
+
+    scene._hovered_move_slot = 1
+    hover_painter = _FakePainter()
+    draw_slots(scene, hover_painter)
+    assert set(hover_painter.labels) == {"Current", "Swap"}
+    assert len(hover_painter.badges) == 2
+
+    scene._hovered_move_slot = None
+    interaction.destination_slot = 2
+    keyboard_painter = _FakePainter()
+    draw_slots(scene, keyboard_painter)
+    assert set(keyboard_painter.labels) == {"Current", "Move here"}
+    assert len(keyboard_painter.badges) == 2
+    assert dict(keyboard_painter.label_font_sizes) == {
+        "Current": 11.0,
+        "Move here": 11.0,
+    }
 
     accessible_targets = _method_source(
         SCENE_PATH,
@@ -1271,8 +1283,8 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:16px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
-    assert "font-size:22px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
+    assert "font-size:14px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
+    assert "font-size:20px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
 def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boosts() -> None:
@@ -1280,7 +1292,12 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
 
     assert 'self.nurture.setVisible(not active and not fully_grown)' in source
     assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
-    assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
+    assert (
+        "self.fertilize,\n            BUTTON_VARIANT_SECONDARY"
+        in source
+    )
+    assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' not in source
+    assert 'BUTTON_VARIANT_PRIMARY if not active and not fully_grown' in source
     assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
     constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
     assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
@@ -1374,8 +1391,8 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
-    assert '"Total Growth today"' in refresh
-    assert '"No growth recorded today"' in refresh
+    assert 'f"{total_today:,} Growth today"' in refresh
+    assert '"Answer an Anki card to earn Growth."' in refresh
     assert '"View calculation details"' in refresh
     assert '"Study Growth total"' in refresh
     assert '"Nurtured plant allocation"' in refresh

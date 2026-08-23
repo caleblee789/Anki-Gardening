@@ -35,10 +35,38 @@ def garden_icon_svg(name: str, *, color: str = "#F2F5EC") -> str:
         raise KeyError(f"unknown Garden icon: {name!r}")
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {ICON_VIEWBOX} {ICON_VIEWBOX}" '
-        f'fill="none" stroke="{color}" stroke-width="{ICON_STROKE_WIDTH}" '
+        f'style="color:{color}" fill="none" stroke="currentColor" '
+        f'stroke-width="{ICON_STROKE_WIDTH}" '
         'stroke-linecap="round" stroke-linejoin="round">'
         f'{GARDEN_ICON_PATHS[key]}</svg>'
     )
+
+
+def _svg_renderer_type() -> Any | None:
+    """Resolve QtSvg across Anki, PyQt 6, and PyQt 5 export layouts."""
+
+    try:
+        from aqt.qt import QSvgRenderer
+
+        if QSvgRenderer is not None:
+            return QSvgRenderer
+    except Exception:
+        pass
+    try:
+        from PyQt6.QtSvg import QSvgRenderer
+
+        if QSvgRenderer is not None:
+            return QSvgRenderer
+    except Exception:
+        pass
+    try:
+        from PyQt5.QtSvg import QSvgRenderer
+
+        if QSvgRenderer is not None:
+            return QSvgRenderer
+    except Exception:
+        pass
+    return None
 
 
 def garden_icon(name: str, *, color: str = "#F2F5EC") -> Any:
@@ -46,14 +74,22 @@ def garden_icon(name: str, *, color: str = "#F2F5EC") -> Any:
 
     from aqt.qt import QByteArray, QIcon, QPainter, QPixmap, Qt
 
-    try:
-        from aqt.qt import QSvgRenderer
-    except Exception:
+    renderer_type = _svg_renderer_type()
+    if renderer_type is None:
         return QIcon()
-    renderer = QSvgRenderer(QByteArray(garden_icon_svg(name, color=color).encode("utf-8")))
+    renderer = renderer_type(
+        QByteArray(garden_icon_svg(name, color=color).encode("utf-8"))
+    )
+    is_valid = getattr(renderer, "isValid", None)
+    if callable(is_valid) and not is_valid():
+        return QIcon()
     pixmap = QPixmap(40, 40)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
-    renderer.render(painter)
-    painter.end()
+    try:
+        renderer.render(painter)
+    finally:
+        painter.end()
+    if pixmap.isNull():
+        return QIcon()
     return QIcon(pixmap)

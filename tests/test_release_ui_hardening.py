@@ -242,8 +242,8 @@ def test_collection_filter_empty_state_has_exact_recovery_copy_and_clear_hook() 
     refresh = _method_node("GardenDashboard", "_refresh_collection_list")
     refresh_strings = _strings(refresh)
     expected_copy = {
-        "No plants match these filters",
-        "Choose another filter or show the complete collection.",
+        "No matches",
+        "Clear filters to see all collectibles.",
         "Clear filters",
     }
     missing = expected_copy - refresh_strings
@@ -666,14 +666,16 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
         _method_node("GardenDashboard", "_sync_header_minimum_heights")
     )
 
-    assert "cell.setMinimumHeight(84)" in stats
+    assert "cell.setMinimumHeight(54)" in stats
     assert "self.garden_stats_bar.set_onboarding_mode(guided)" in refresh
     assert refresh.index("self.garden_stats_bar.set_onboarding_mode(guided)") < refresh.index(
         "self._sync_header_minimum_heights()"
     )
-    assert "84 if guided else (176 if metrics_compact else 84)" in heights
-    assert "210 if self._header_narrow_layout else" in heights
-    assert "148" in heights
+    assert "self.garden_stats_bar.setVisible(not guided)" in heights
+    assert "0 if guided else (108 if metrics_compact else 54)" in heights
+    assert "minimum = 56" in heights
+    for value in (102, 142, 156, 164):
+        assert str(value) in heights
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 
 
@@ -692,7 +694,7 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
 
     assert "self.effects_advanced_layout = QVBoxLayout(self.effects_advanced)" in constructor
     assert 'QLabel("Preview controls")' in constructor
-    assert "Reset the live preview to your currently equipped appearance." in constructor
+    assert "Restore the currently equipped appearance." in constructor
     assert 'QPushButton("Reset preview")' in constructor
     assert "Discard the local preview and restore the currently equipped appearance." in constructor
     assert "_set_button_variant(restore, BUTTON_VARIANT_SECONDARY)" in constructor
@@ -716,11 +718,12 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert '"Discard preview" if self._loadout_failure' in sync_dirty
     assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
     assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
-    assert "this preview is available to retry or discard." in apply_draft
+    assert "Changes could not be saved. Your current appearance is unchanged." in apply_draft
     assert "if self._loadout_failure:" in cancel_preview
     assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
-        "self.request_close(DialogCloseReason.CANCEL_BUTTON)"
+        "self.request_close(DialogCloseReason.CANCEL_ACTION)"
     )
+    assert "DialogCloseReason.CANCEL_BUTTON" not in cancel_preview
     assert "self.engine.owns_environment(item.kind, item.item_id)" in rebuild_options
     assert "self._browse_nursery_empty_state(kind)" in rebuild_options
     assert "_unavailable_option_tile" not in constructor + rebuild_options
@@ -853,13 +856,14 @@ def test_settings_name_failure_reports_the_split_commit_if_rollback_fails() -> N
     assert "no Settings changes were applied" not in dialog.errors[0]
 
 
-def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_substitution() -> None:
+def test_missing_artwork_uses_intentional_labeled_fallbacks_and_internal_logging() -> None:
+    fallback = _segment(_function_node("_missing_artwork_pixmap"))
+    recorder = _segment(_function_node("_record_missing_artwork"))
     placeholder = _segment(_function_node("_botanical_placeholder_pixmap"))
     source_loader = _segment(_function_node("_preview_source_pixmap"))
     environment_placeholder = _segment(
         _function_node("_environment_placeholder_pixmap")
     )
-    weather_placeholder = _segment(_function_node("_weather_placeholder_overlay"))
     environment_preview = _segment(_function_node("_environment_preview_pixmap"))
     plant_preview = _segment(_function_node("_asset_preview_label"))
     populated_preview = _segment(_function_node("_populate_asset_preview"))
@@ -872,26 +876,39 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     )
     nursery_refresh = _segment(_method_node("NurseryDialog", "refresh"))
     nursery_item = _segment(_method_node("NurseryDialog", "_item_artwork"))
+    nursery_environment = _segment(
+        _method_node("NurseryDialog", "_environment_artwork")
+    )
     plant_card = _segment(_method_node("PlantInfoCard", "set_selected"))
     story = _segment(_method_node("PlantStoryDialog", "refresh"))
 
+    assert "QPixmap(" in fallback
+    assert "QPainter(" in fallback
+    assert "drawLine(" in fallback
+    assert "drawRoundedRect(" in fallback
+    assert "drawEllipse(" in fallback
+    assert "drawPath(" in fallback
+    assert 'label = "Artwork unavailable"' in fallback
+    for category in ("plant", "weather", "scenery", "fertilizer"):
+        assert category in fallback
+    assert "DISPLAY_TELEMETRY.track_fallback(" in recorder
+    assert "logger.warning(" in recorder
+    assert "normalized_path" in recorder
+    assert "fingerprint" in recorder
     assert "QPixmap(" in placeholder
     assert "QPainter(" in placeholder
-    assert "drawEllipse(" in placeholder
-    assert "drawRect(" in placeholder
     assert "QPainter(" in environment_placeholder
-    assert "QPainter(" in weather_placeholder
-    assert "drawEllipse(" in weather_placeholder
-    assert "drawLine(" in weather_placeholder
+    assert "_missing_artwork_pixmap(category, width, height)" in environment_placeholder
     assert "QSvgRenderer" in source_loader
     assert "renderer.render(" in source_loader
     assert "_environment_placeholder_pixmap(" in environment_preview
-    assert "_weather_placeholder_overlay(" in environment_preview
     assert "_preview_source_pixmap(base_path)" in environment_preview
     assert "_preview_source_pixmap(weather_path)" in environment_preview
 
     for source in (plant_preview, populated_preview, item_preview, plant_card):
-        assert "_botanical_placeholder_pixmap(" in source
+        assert "_missing_artwork_pixmap(" in source
+        assert "_record_missing_artwork(" in source
+    assert "undiscovered=True" in plant_preview
     assert "_purchase_placeholder_pixmap(" in item_preview
     assert "placeholder_kind=placeholder_kind" in nursery_item
     assert "PurchaseKind.FERTILIZER" in nursery_item
@@ -901,7 +918,7 @@ def test_missing_artwork_uses_graphical_code_native_fallbacks_without_text_subst
     assert "if missing_art:" in purchase_artwork
     assert "if not artwork_available:" in purchase_artwork
     assert "SemanticRole.MISSING_ART" in purchase_target
-    assert "_environment_placeholder_pixmap(350, 192)" in nursery_refresh
+    assert "_environment_preview_pixmap(" in nursery_environment
 
     assert "label.setText(stage_name)" not in plant_preview
     assert "target.setText(fallback_text)" not in populated_preview

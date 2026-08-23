@@ -119,23 +119,23 @@ BUTTON_VARIANT_DESTRUCTIVE = ControlVariant.DESTRUCTIVE.value
 # new work uses the clearer quiet role.
 BUTTON_VARIANT_TERTIARY = "tertiary"
 
-# Visual chrome follows the compact release geometry. Forty-four pixels remains
-# the effective target, including icon-only, tab, disclosure, filter, and plant
-# actions; a smaller painted control must live inside a 44 px interactive row.
-MIN_HIT_TARGET = 44
+# Desktop controls intentionally remain compact. Keyboard focus, tooltips, and
+# generous row spacing carry the accessibility affordance without turning the
+# interface into a touch-sized control system.
+MIN_HIT_TARGET = 34
 CONTROL_MIN_HIT_TARGET = MIN_HIT_TARGET
 BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
-BUTTON_VISUAL_HEIGHT = 36
-PRIMARY_BUTTON_VISUAL_HEIGHT = 40
-COMPACT_BUTTON_HEIGHT = BUTTON_VISUAL_HEIGHT
-ICON_BUTTON_VISUAL_SIZE = 32
+BUTTON_VISUAL_HEIGHT = 34
+PRIMARY_BUTTON_VISUAL_HEIGHT = 36
+COMPACT_BUTTON_HEIGHT = 30
+ICON_BUTTON_VISUAL_SIZE = 30
 INPUT_VISUAL_HEIGHT = 40
-TAB_VISUAL_HEIGHT = 40
+TAB_VISUAL_HEIGHT = 38
 TOGGLE_VISUAL_WIDTH = 36
 TOGGLE_VISUAL_HEIGHT = 20
 PLANT_ACTION_MIN_HEIGHT = MIN_HIT_TARGET
-ICON_BUTTON_SIZE = MIN_HIT_TARGET
-SCENE_HELP_BUTTON_SIZE = MIN_HIT_TARGET
+ICON_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
+SCENE_HELP_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
 
 
 class ThemeContext(str, Enum):
@@ -669,6 +669,7 @@ def button_stylesheet(
     return f"""
         QPushButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
+            max-height: {BUTTON_VISUAL_HEIGHT}px;
             padding: 0 14px;
             border: 1px solid {t['secondary_border']};
             border-radius: 8px;
@@ -686,6 +687,8 @@ def button_stylesheet(
             border-color: {pressed_border};
         }}
         QPushButton[variant='primary'] {{
+            min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
+            max-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
             background: {t['action_accent']};
             border-color: {t['action_border']};
             color: {t['action_text']};
@@ -722,6 +725,11 @@ def button_stylesheet(
         }}
         QPushButton[variant='destructive']:hover {{ background: #7b3434; }}
         QPushButton[variant='destructive']:pressed {{ background: #562424; }}
+        QPushButton[compactRowAction='true'] {{
+            min-height: {COMPACT_BUTTON_HEIGHT}px;
+            max-height: {COMPACT_BUTTON_HEIGHT}px;
+            padding: 0 10px;
+        }}
         QPushButton:checked, QPushButton[selected='true'] {{
             background: {t['selected_surface']};
             border-color: {t['focus_ring']};
@@ -751,6 +759,7 @@ def tool_button_stylesheet(
     return f"""
         QToolButton {{
             min-height: {BUTTON_MIN_HEIGHT}px;
+            max-height: {BUTTON_VISUAL_HEIGHT}px;
             padding: 0 14px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
@@ -774,6 +783,8 @@ def tool_button_stylesheet(
             font-weight: 700;
         }}
         QToolButton[variant='primary'] {{
+            min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
+            max-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
             background: {t['action_accent']};
             border-color: {t['action_border']};
             color: {t['action_text']};
@@ -804,6 +815,8 @@ def tool_button_stylesheet(
         QToolButton[gardenRole='icon-button'] {{
             min-width: {ICON_BUTTON_SIZE}px;
             min-height: {ICON_BUTTON_SIZE}px;
+            max-width: {ICON_BUTTON_SIZE}px;
+            max-height: {ICON_BUTTON_SIZE}px;
             padding: 0;
             text-align: center;
         }}
@@ -871,7 +884,8 @@ def semantic_component_stylesheet(
     return f"""
         QTabBar[gardenRole='tabs']::tab {{
             min-width: {MIN_HIT_TARGET}px;
-            min-height: {MIN_HIT_TARGET}px;
+            min-height: {TAB_VISUAL_HEIGHT}px;
+            max-height: {TAB_VISUAL_HEIGHT}px;
             padding: 0 {SpacingToken.LG}px;
             color: {t['text_secondary']};
             background: transparent;
@@ -895,7 +909,8 @@ def semantic_component_stylesheet(
         }}
         QPushButton[gardenRole='segmented-filter'] {{
             min-width: {MIN_HIT_TARGET}px;
-            min-height: {MIN_HIT_TARGET}px;
+            min-height: {COMPACT_BUTTON_HEIGHT}px;
+            max-height: {COMPACT_BUTTON_HEIGHT}px;
             padding: 0 {SpacingToken.MD}px;
             color: {t['text_secondary']};
             background: {t['secondary_action']};
