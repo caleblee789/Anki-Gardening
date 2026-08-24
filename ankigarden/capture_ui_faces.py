@@ -6231,15 +6231,19 @@ class _UiFaceCaptureRunner:
                         and result_matches_quote
                     )
                 elif state_name == "growth-charge-invalid-target":
+                    alert_copy = str(widget.alert.text()).strip()
                     state_visible = (
                         widget.alert.isVisible()
-                        and bool(widget.alert.text().strip())
-                        and plant_details_visible
-                        and charge_details_visible
-                        and target_state_visible
-                        and bool(quantity_text)
+                        and "This plant can’t use a Growth Charge." in alert_copy
+                        and "Your charge was not used." in alert_copy
+                        and not plant_details_visible
+                        and not charge_details_visible
+                        and not compact_result_visible
+                        and not target_state_visible
                         and widget._primary_route == "choose_plant"
                         and widget.use_action.isEnabled()
+                        and widget.cancel_action.isVisible()
+                        and widget.cancel_action.isEnabled()
                     )
                 elif state_name == "growth-charge-stale-inventory":
                     state_visible = (
@@ -6288,6 +6292,7 @@ class _UiFaceCaptureRunner:
                         in str(widget.receipt_copy.text())
                         and f"{max(0, int(getattr(outcome, 'inventory_remaining', 0))):,}"
                         in str(widget.receipt_copy.text())
+                        and not compact_result_visible
                         and widget.use_action.isEnabled()
                         and widget.cancel_action.isVisible()
                         and widget.cancel_action.isEnabled()
@@ -11333,8 +11338,6 @@ class _UiFaceCaptureRunner:
                 ledger_count == 0,
             ])
         elif variant == "invalid":
-            from .ui.formatters import format_status_label
-
             target_state = str(
                 getattr(
                     getattr(quote, "target_state", ""),
@@ -11342,20 +11345,19 @@ class _UiFaceCaptureRunner:
                     getattr(quote, "target_state", ""),
                 )
             )
-            target_state_label = format_status_label(target_state)
+            alert_copy = str(dialog.alert.text()).strip()
             conditions.extend([
                 alert_visible,
-                plant_details_visible,
-                charge_details_visible,
-                bool(quantity_text),
-                bool(
-                    target_state_label
-                    and any(
-                        target_state_label.casefold() in text.casefold()
-                        for text in visible_label_text
-                    )
-                ),
+                not plant_details_visible,
+                not charge_details_visible,
+                not compact_result_visible,
+                target_state == "stored",
+                str(dialog.windowTitle()) == "Choose another plant",
+                "This plant can’t use a Growth Charge." in alert_copy,
+                "Your charge was not used." in alert_copy,
                 dialog.use_action.isEnabled(),
+                dialog.cancel_action.isVisible(),
+                dialog.cancel_action.isEnabled(),
                 dialog._primary_route == "choose_plant",
                 not bool(getattr(target, "planted", False)),
                 ledger_count == 0,
@@ -11388,6 +11390,7 @@ class _UiFaceCaptureRunner:
                 reward_total == 5,
                 result_title in visible_label_text,
                 f"+{reward_total:,} Garden Coins" in visible_label_text,
+                not compact_result_visible,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 550,
                 ledger_count == 1,

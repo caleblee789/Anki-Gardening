@@ -348,7 +348,9 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "widget.cancel_action.isVisible()" in fixture_postcondition
     assert "dialog.dialog_in_flight" in growth_charge_annotation
     assert "result_matches_quote" in growth_charge_annotation
-    assert "target_state_label" in growth_charge_annotation
+    assert 'target_state == "stored"' in growth_charge_annotation
+    assert "not plant_details_visible" in growth_charge_annotation
+    assert "not charge_details_visible" in growth_charge_annotation
     assert "result_title in visible_label_text" in growth_charge_annotation
     assert "dialog.cancel_action.isVisible()" in growth_charge_annotation
     assert "scroll_maximum == 0" not in fixture_postcondition
