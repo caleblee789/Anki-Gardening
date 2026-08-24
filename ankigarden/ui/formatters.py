@@ -102,6 +102,33 @@ def format_growth(
     return f"{amount} Growth" if include_unit else amount
 
 
+def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
+    """Format the one visible progress expression used by Garden surfaces."""
+
+    return (
+        f"{format_growth(value, maximum, include_unit=False)} to "
+        f"{format_status_label(destination)}"
+    )
+
+
+def format_balance_after(value: Any) -> str:
+    """Format the standard decision-relevant post-purchase balance."""
+
+    return f"Balance after: {format_integer(value)}"
+
+
+def format_available(value: Any) -> str:
+    """Format a compact owned consumable count without inventory terminology."""
+
+    return f"{format_integer(value)} available"
+
+
+def format_shortfall(value: Any) -> str:
+    """Format the compact Garden Coin shortfall used by commerce surfaces."""
+
+    return f"{format_garden_coins(max(0, int(_to_decimal(value))))} needed"
+
+
 def format_inventory_delta(value: Any) -> str:
     """Format an inventory change without inventing an item label."""
 

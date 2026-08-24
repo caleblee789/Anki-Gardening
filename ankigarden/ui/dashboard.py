@@ -5436,12 +5436,12 @@ class GardenStatusBanner(QFrame):
 
 
 class EmptyState(QFrame):
-    """Compact explanation-first empty state with an optional next action."""
+    """A heading, at most one supporting line, and one primary action."""
 
     def __init__(
         self,
         title: str,
-        description: str,
+        description: str = "",
         *,
         action: QPushButton | None = None,
         parent: QWidget | None = None,
@@ -5454,11 +5454,12 @@ class EmptyState(QFrame):
         layout.setSpacing(4)
         heading = QLabel(title)
         heading.setProperty("emptyTitle", True)
-        body = QLabel(description)
+        body = QLabel(str(description).strip())
         body.setProperty("emptyBody", True)
         body.setWordWrap(True)
         layout.addWidget(heading)
-        layout.addWidget(body)
+        if body.text():
+            layout.addWidget(body)
         if action is not None:
             layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
             action.setProperty("emptyStateAction", True)
