@@ -175,15 +175,8 @@ def test_plant_popover_uses_one_slash_progress_value_and_hides_fully_grown_ferti
     selected_source = _segment(selected)
     layout_actions = _method_node("PlantInfoCard", "_layout_actions")
 
-    fertilizer_visibility = _calls(selected, "self.fertilize.setVisible")
-    assert any(
-        call.args
-        and isinstance(call.args[0], ast.UnaryOp)
-        and isinstance(call.args[0].op, ast.Not)
-        and isinstance(call.args[0].operand, ast.Name)
-        and call.args[0].operand.id == "fully_grown"
-        for call in fertilizer_visibility
-    )
+    assert "self.fertilize.setVisible(active and not fully_grown)" in selected_source
+    assert "self.growth_charge.setVisible(active and not fully_grown)" in selected_source
 
     fully_grown_branch = next(
         node

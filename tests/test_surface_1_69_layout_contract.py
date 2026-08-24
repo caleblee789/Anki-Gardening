@@ -124,6 +124,21 @@ def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
     assert "maximum_columns=3" in nursery
 
 
+def test_plant_popover_is_compact_and_omits_inactive_boost_actions() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    card = source.split("class PlantInfoCard", 1)[1].split(
+        "class GardenStatsStrip", 1
+    )[0]
+
+    assert "self.setMinimumWidth(280)" in card
+    assert "self.setMaximumWidth(300)" in card
+    assert "layout.setContentsMargins(12, 10, 12, 12)" in card
+    assert "self.actions.addWidget(self.fertilize, 1, 0)" not in card
+    assert "self.actions.addWidget(self.growth_charge, 1, 1)" not in card
+    assert "self.fertilize.setVisible(active and not fully_grown)" in card
+    assert "self.growth_charge.setVisible(active and not fully_grown)" in card
+
+
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

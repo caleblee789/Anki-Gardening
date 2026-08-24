@@ -810,7 +810,9 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     assert "self.actions.addWidget(self.nurture, 0, 0, 1, 2)" in card
     assert "self.actions.addWidget(self.fertilize, 0, 0)" in card
     assert "self.actions.addWidget(self.growth_charge, 0, 1)" in card
-    assert "secondary_row = 1 if active else 2" in card
+    assert "self.actions.addWidget(self.fertilize, 1, 0)" not in card
+    assert "self.actions.addWidget(self.growth_charge, 1, 1)" not in card
+    assert "secondary_row = 1" in card
     assert "self.actions.addWidget(self.move, secondary_row, 0)" in card
     assert "self.actions.addWidget(self.story, secondary_row, 1)" in card
     assert 'self.nurture.setText("Nurture")' in card
@@ -818,6 +820,8 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     assert "self.nurture.setChecked(False)" in card
     assert "self.nurture.setVisible(not active and not fully_grown)" in card
     assert "self.nurtured_badge.setVisible(active and not fully_grown)" in card
+    assert "self.fertilize.setVisible(active and not fully_grown)" in card
+    assert "self.growth_charge.setVisible(active and not fully_grown)" in card
     assert "nurture_reason" in card
     assert "fertilizer_reason" in card
     assert "Nurture this plant before using Fertilizer." in card

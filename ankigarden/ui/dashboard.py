@@ -10696,11 +10696,11 @@ class PlantInfoCard(QFrame):
         self.setAccessibleName("Selected plant details")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         set_keyboard_focus_surface(self)
-        self.setMinimumWidth(300)
-        self.setMaximumWidth(340)
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(300)
         self.plant_id = ""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(8)
         self.artwork = QLabel("")
         self.artwork.setFixedSize(52, 52)
@@ -10906,11 +10906,10 @@ class PlantInfoCard(QFrame):
         if active:
             self.actions.addWidget(self.fertilize, 0, 0)
             self.actions.addWidget(self.growth_charge, 0, 1)
+            secondary_row = 1
         else:
             self.actions.addWidget(self.nurture, 0, 0, 1, 2)
-            self.actions.addWidget(self.fertilize, 1, 0)
-            self.actions.addWidget(self.growth_charge, 1, 1)
-        secondary_row = 1 if active else 2
+            secondary_row = 1
         self.actions.addWidget(self.move, secondary_row, 0)
         self.actions.addWidget(self.story, secondary_row, 1)
         self.actions.addWidget(self.choose_another, secondary_row + 1, 0, 1, 2)
@@ -11061,22 +11060,25 @@ class PlantInfoCard(QFrame):
             )
         set_control_enabled(
             self.fertilize,
-            not fully_grown,
-            disabled_reason="This plant is fully grown and cannot use Fertilizer.",
+            active and not fully_grown,
+            disabled_reason=(
+                "This plant is fully grown and cannot use Fertilizer."
+                if fully_grown else "Nurture this plant before using Fertilizer."
+            ),
             enabled_description="Choose Fertilizer for this plant.",
         )
-        self.fertilize.setVisible(not fully_grown)
+        self.fertilize.setVisible(active and not fully_grown)
         self.fertilize.setText("Fertilize")
         set_control_enabled(
             self.growth_charge,
-            not fully_grown,
+            active and not fully_grown,
             disabled_reason=(
                 "This plant is fully grown and cannot use a Growth Charge."
                 if fully_grown else "This plant cannot use a Growth Charge."
             ),
             enabled_description="Choose a stored Growth Charge for this planted plant.",
         )
-        self.growth_charge.setVisible(not fully_grown)
+        self.growth_charge.setVisible(active and not fully_grown)
         _set_button_variant(
             self.fertilize,
             BUTTON_VARIANT_SECONDARY,
