@@ -5306,7 +5306,8 @@ class _UiFaceCaptureRunner:
                         no_results is not None
                         and no_results.isVisible()
                         and "No matches" in empty_text
-                        and annotation.get("empty_state_actions") == ["Clear filters"]
+                        and annotation.get("empty_state_actions") == []
+                        and bool(annotation.get("filter_clear_visible", False))
                         and bool(annotation.get("passed", False))
                     ),
                     annotation,
@@ -9797,6 +9798,19 @@ class _UiFaceCaptureRunner:
                                 for candidate in no_results.findChildren(QAbstractButton)
                                 if candidate.isVisible()
                                 and _displayed_button_text(candidate)
+                            ),
+                            "filter_clear_visible": bool(
+                                getattr(
+                                    getattr(
+                                        dashboard,
+                                        "collection_filter_controls",
+                                        None,
+                                    ),
+                                    "clear",
+                                    None,
+                                ) is not None
+                                and dashboard.collection_filter_controls.clear.isVisible()
+                                and dashboard.collection_filter_controls.clear.isEnabled()
                             ),
                             "empty_state_viewport_bounds": bounds,
                             "empty_state_viewport_size": [

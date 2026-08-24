@@ -234,24 +234,23 @@ def test_fully_grown_action_hint_is_owned_by_the_plant_card_layout() -> None:
 
 def test_collection_filter_empty_state_has_exact_recovery_copy_and_clear_hook() -> None:
     refresh = _method_node("GardenDashboard", "_refresh_collection_list")
-    refresh_strings = _strings(refresh)
-    expected_copy = {
-        "No matches",
-        "Clear filters",
-    }
-    missing = expected_copy - refresh_strings
-    assert not missing, f"Collection empty-state contract is missing: {sorted(missing)}"
+    controls = _method_node("CollectionFilterControls", "__init__")
+    assert "No matches" in _strings(refresh)
+    assert "Clear filters" in _strings(controls)
 
     clear_buttons = [
         call
-        for call in ast.walk(refresh)
+        for node in (controls, refresh)
+        for call in ast.walk(node)
         if isinstance(call, ast.Call)
         and _call_path(call.func).endswith("QPushButton")
         and call.args
         and isinstance(call.args[0], ast.Constant)
         and call.args[0].value == "Clear filters"
     ]
-    assert clear_buttons, "Clear filters must be a real keyboard-operable button."
+    assert len(clear_buttons) == 1, (
+        "Collection must expose one keyboard-operable Clear filters button."
+    )
 
     direct_resets = [
         call
@@ -261,19 +260,14 @@ def test_collection_filter_empty_state_has_exact_recovery_copy_and_clear_hook() 
             for argument in call.args
         )
     ]
-    clear_methods = {
-        node.name
-        for node in _class_node("GardenDashboard").body
-        if isinstance(node, ast.FunctionDef)
-        and "clear" in node.name
-        and "collection" in node.name
-        and "filter" in node.name
-    }
-    refresh_source = _segment(refresh)
-    named_reset_is_connected = any(
-        f"self.{method_name}" in refresh_source for method_name in clear_methods
+    controls_source = _segment(controls)
+    callback_is_connected = "self.clear.clicked.connect(clear_filters)" in controls_source
+    named_callback_is_provided = (
+        "clear_filters=self._clear_collection_filters" in _segment(refresh)
     )
-    assert direct_resets or named_reset_is_connected, (
+    assert direct_resets or (
+        callback_is_connected and named_callback_is_provided
+    ), (
         "Clear filters must reset the collection filter to All."
     )
 
@@ -286,7 +280,7 @@ def test_all_scroll_layers_use_explicit_garden_surfaces() -> None:
 
     # The Collection category-chip scroller is gone; its narrow layout uses
     # native dropdowns, so every remaining scroll owner is vertical content.
-    assert len(scroll_constructors) == 16
+    assert len(scroll_constructors) == 15
     assert len(surface_calls) == len(scroll_constructors)
     assert "scroll.viewport()" in helper
     assert "for widget in (scroll, scroll.viewport(), content)" in helper
@@ -310,9 +304,9 @@ def test_shared_tabs_and_empty_state_action_never_fall_back_to_platform_gray() -
     assert "self.collection_list.add_full_width(no_results)" in collection
     assert "no_results.hide()" in collection
     assert "self.collection_list.finish()" in collection
-    assert "no_results.setVisible(result_count == 0)" in collection
+    assert "no_results.setVisible(is_empty)" in collection
     assert collection.index("self.collection_list.finish()") < collection.index(
-        "no_results.setVisible(result_count == 0)"
+        "no_results.setVisible(is_empty)"
     )
 
     local_style = _segment(_function_node("_pin_empty_state_action_style"))

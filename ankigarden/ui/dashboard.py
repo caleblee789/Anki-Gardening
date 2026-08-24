@@ -13176,7 +13176,22 @@ class GardenProgressDialog(GardenDetailsDialog):
             self.dialog_subtitle.setAccessibleDescription(
                 f"Showing {button.text()} in Garden Progress."
             )
-        self.apply_view_size_profile(str(key))
+        self.apply_view_size_profile(self._view_profile_for_page(str(key)))
+
+    def _view_profile_for_page(self, key: str) -> str:
+        """Use the sparse Collection family only for a true empty result."""
+
+        normalized = str(key)
+        if normalized != "collection" or normalized not in self.navigation.keys:
+            return normalized
+        page = self.navigation.stack.widget(
+            self.navigation.keys.index(normalized)
+        )
+        return (
+            "collection-empty"
+            if page is not None and bool(page.property("emptyResult"))
+            else normalized
+        )
 
     @staticmethod
     def _normalized_page(key: str | None, last_valid: str) -> str:
@@ -17523,16 +17538,9 @@ class GardenDashboard(DialogShell):
         self.collection_filter_controls = filters
         self.collection_list.add_full_width(filters)
 
-        clear_filters = QPushButton("Clear filters")
-        _set_button_variant(clear_filters, BUTTON_VARIANT_PRIMARY)
-        clear_filters.setAccessibleDescription(
-            "Clear the Collection search, status, category, and sort filters."
-        )
-        clear_filters.clicked.connect(self._clear_collection_filters)
         no_results = EmptyState(
             "No matches",
             "",
-            action=clear_filters,
         )
         no_results.setAccessibleName("Collection filters returned no results")
         no_results.hide()
@@ -17704,7 +17712,18 @@ class GardenDashboard(DialogShell):
                     )
             result_count += len(extra)
         self.collection_list.finish()
-        no_results.setVisible(result_count == 0)
+        is_empty = result_count == 0
+        no_results.setVisible(is_empty)
+        self.collection_list.setProperty("emptyResult", is_empty)
+        progress_dialog = getattr(self, "progress_dialog", None)
+        if (
+            progress_dialog is not None
+            and progress_dialog.navigation.stack.currentWidget()
+            is self.collection_list
+        ):
+            progress_dialog.apply_view_size_profile(
+                progress_dialog._view_profile_for_page("collection")
+            )
 
     def _set_collection_filter(self, selected: str) -> None:
         self._collection_filter = (
