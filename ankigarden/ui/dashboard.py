@@ -13658,11 +13658,14 @@ class CollectibleDetailDialog(GardenDialog):
         """Let only the visible loadout tab contribute vertical size hints."""
 
         active_index = max(0, int(current_index))
+        active_page: QWidget | None = None
         for index in range(self.option_tabs.count()):
             page = self.option_tabs.widget(index)
             if page is None:
                 continue
             active = index == active_index
+            if active:
+                active_page = page
             page.setMinimumHeight(0)
             page.setMaximumHeight(16777215 if active else 0)
             policy = page.sizePolicy()
@@ -13673,6 +13676,22 @@ class CollectibleDetailDialog(GardenDialog):
             )
             page.setSizePolicy(policy)
             page.updateGeometry()
+        if active_page is not None:
+            active_layout = active_page.layout()
+            if active_layout is not None:
+                active_layout.invalidate()
+                active_layout.activate()
+            active_height = max(0, int(active_page.sizeHint().height()))
+            tab_bar_height = max(
+                0,
+                int(self.option_tabs.tabBar().sizeHint().height()),
+            )
+            frame_height = max(0, int(self.option_tabs.frameWidth()) * 2)
+            self.option_tabs.setMinimumHeight(0)
+            self.option_tabs.setMaximumHeight(max(
+                tab_bar_height + 80,
+                tab_bar_height + active_height + frame_height,
+            ))
         self.option_tabs.updateGeometry()
         self.library.updateGeometry()
         body = self.body_scroll.widget() if hasattr(self, "body_scroll") else None
@@ -13955,6 +13974,7 @@ class CollectibleDetailDialog(GardenDialog):
                 2,
             )
         self.decoration_grid.setColumnStretch(0, 1)
+        self._sync_option_page_geometry(self.option_tabs.currentIndex())
 
     def prepare_to_show(self) -> None:
         state = self.storage.state

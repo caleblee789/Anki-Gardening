@@ -934,12 +934,15 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     assert "capture_label: str" in source
     assert "visibleRoots[visibleRoots.length - 1]" in source
     assert "command.endsWith(':open')" in source
+    assert "activeSlot === expectedActiveSlot" in source
+    assert '"__EXPECTED_ACTIVE_SLOT__"' in source
+    assert "stale_nurtured_slot" in source
     assert "const canonicalSettled = fixtureState.startsWith('preview-')" in source
     assert "root.dataset.state === 'success'" in source
     assert "failedImageCount === 0" in source
     assert "!previewStatusPresent" in source
     assert "!loadingPresent" in source
-    assert 'if tries in {75, 50, 25}:' in source
+    assert "tries in {75, 50, 25}" in source
     assert 'invalidate(f"capture readiness retry for {capture_label}")' in source
     assert '"last DOM observation"' not in source
     assert "last DOM observation" in source

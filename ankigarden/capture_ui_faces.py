@@ -2343,6 +2343,18 @@ class _UiFaceCaptureRunner:
             getattr(garden_state, "active_plant_id", "") or ""
         )
         plants = list(getattr(garden_state, "plants", ()) or ())
+        active_plant = next((
+            plant for plant in plants
+            if str(getattr(plant, "plant_id", "") or "") == active_plant_id
+        ), None)
+        active_slot_value = (
+            getattr(active_plant, "slot_index", None)
+            if active_plant is not None else None
+        )
+        expected_active_slot = (
+            int(active_slot_value)
+            if active_slot_value is not None else -1
+        )
         if special_fixture_state:
             fixture_state = special_fixture_state
         elif not starter_complete:
@@ -2430,6 +2442,7 @@ class _UiFaceCaptureRunner:
                 && homeAction
               );
               const fixtureState = __FIXTURE_STATE__;
+              const expectedActiveSlot = __EXPECTED_ACTIVE_SLOT__;
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
                 fixtureMatches = command.endsWith(':choose-starter')
@@ -2441,7 +2454,7 @@ class _UiFaceCaptureRunner:
                   && !marker;
               } else if (fixtureState === 'nurtured-active') {
                 fixtureMatches = command.endsWith(':open')
-                  && activeSlot >= 0
+                  && activeSlot === expectedActiveSlot
                   && !!marker;
               } else if (fixtureState === 'preview-loading') {
                 fixtureMatches = root.dataset.state === 'loading'
@@ -2494,11 +2507,18 @@ class _UiFaceCaptureRunner:
                 nurturedSummaryPresent: !!root.querySelector('.nurtured-plant-summary'),
                 growthText,
                 fixtureState,
+                expectedActiveSlot,
                 width: Math.round(rect.width),
                 height: Math.round(rect.height),
               };
             })()
-        """.replace("__FIXTURE_STATE__", repr(fixture_state))
+        """.replace(
+            "__FIXTURE_STATE__",
+            repr(fixture_state),
+        ).replace(
+            "__EXPECTED_ACTIVE_SLOT__",
+            str(expected_active_slot),
+        )
 
         settled = False
 
@@ -2523,7 +2543,13 @@ class _UiFaceCaptureRunner:
                 })
                 self._next_after(120)
             else:
-                if tries in {75, 50, 25}:
+                observed = dict(getattr(self, "_active_home_dom_audit", {}) or {})
+                stale_nurtured_slot = bool(
+                    fixture_state == "nurtured-active"
+                    and int(observed.get("activeSlot", -1))
+                    != expected_active_slot
+                )
+                if tries in {75, 50, 25} or (tries == 100 and stale_nurtured_slot):
                     invalidate = getattr(self.app, "_invalidate_home_cache", None)
                     if callable(invalidate):
                         invalidate(f"capture readiness retry for {capture_label}")
@@ -12012,6 +12038,9 @@ class _UiFaceCaptureRunner:
                 if app is not None:
                     app.processEvents()
                 dialog._refresh_preview()
+                dialog._sync_option_page_geometry(
+                    dialog.option_tabs.currentIndex()
+                )
                 dialog._sync_preview_scene_geometry()
                 body = dialog.body_scroll.widget()
                 for layout in (

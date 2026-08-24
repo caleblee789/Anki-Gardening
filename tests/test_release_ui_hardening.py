@@ -743,7 +743,11 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "self.option_tabs.count()" in option_page_geometry
     assert "page.setMaximumHeight(16777215 if active else 0)" in option_page_geometry
     assert "QSizePolicy.Policy.Ignored" in option_page_geometry
+    assert "active_page.sizeHint().height()" in option_page_geometry
+    assert "self.option_tabs.tabBar().sizeHint().height()" in option_page_geometry
+    assert "self.option_tabs.setMaximumHeight" in option_page_geometry
     assert "self.option_tabs.updateGeometry()" in option_page_geometry
+    assert "self._sync_option_page_geometry(self.option_tabs.currentIndex())" in rebuild_options
     assert "_unavailable_option_tile" not in constructor + rebuild_options
     assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
     assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview
