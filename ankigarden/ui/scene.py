@@ -924,6 +924,7 @@ class GardenSceneWidget(QWidget):
             return None
         rect = placement.rect
         pulse = placement.pulse_bounds
+        contact_shadow = placement.contact_shadow
         active_slot = next(
             (
                 int(plant.get("slot_index", -1))
@@ -952,6 +953,12 @@ class GardenSceneWidget(QWidget):
             "slot_index": active_slot,
             "rect": [rect.x, rect.y, rect.width, rect.height],
             "pulse_bounds": [pulse.x, pulse.y, pulse.width, pulse.height],
+            "contact_shadow": [
+                contact_shadow.x,
+                contact_shadow.y,
+                contact_shadow.width,
+                contact_shadow.height,
+            ],
             "planter_rect": [
                 placement.planter_rect.x,
                 placement.planter_rect.y,
@@ -964,6 +971,7 @@ class GardenSceneWidget(QWidget):
             "orientation": placement.orientation,
             "asset_key": placement.asset_key,
             "used_fallback": placement.used_fallback,
+            "perspective_scale": placement.perspective_scale,
         }
 
     def nurtured_marker_protected_regions(self) -> tuple[QRectF, ...]:
@@ -1681,6 +1689,20 @@ class GardenSceneWidget(QWidget):
                 protected_regions=protected,
             )
         self._nurtured_marker_placement = resolved
+        contact_shadow = QRectF(
+            resolved.contact_shadow.x,
+            resolved.contact_shadow.y,
+            resolved.contact_shadow.width,
+            resolved.contact_shadow.height,
+        )
+        if contact_shadow.width() > 0 and contact_shadow.height() > 0:
+            painter.save()
+            painter.setPen(Qt.PenStyle.NoPen)
+            shadow_color = QColor("#172019")
+            shadow_color.setAlpha(82)
+            painter.setBrush(shadow_color)
+            painter.drawEllipse(contact_shadow)
+            painter.restore()
         marker = QRectF(
             resolved.rect.x,
             resolved.rect.y,

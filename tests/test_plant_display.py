@@ -178,6 +178,13 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
         )
         assert marker.used_fallback is False
         assert marker.orientation == expected_orientation
+        assert marker.perspective_scale == pytest.approx(
+            {
+                "far": 0.78,
+                "middle": 0.90,
+                "near": 1.00,
+            }[layout.depth_band]
+        )
         assert 44 <= marker.rect.width <= 88
         assert marker.rect.height == marker.rect.width
         assert 0 <= marker.pulse_bounds.x
@@ -207,6 +214,13 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
             marker.pulse_bounds.intersects(exclusion)
             for exclusion in bed.planter_exclusions
         )
+        assert marker.contact_shadow.area > 0
+        assert geometry.scene_bounds.contains(
+            marker.contact_shadow.x + marker.contact_shadow.width / 2,
+            marker.contact_shadow.y + marker.contact_shadow.height / 2,
+        )
+        assert marker.contact_shadow.width < marker.rect.width
+        assert marker.contact_shadow.y >= marker.rect.y + marker.rect.height * 0.80
         if expected_side == "left":
             assert marker.pulse_bounds.right <= layout.visible.x - 4
             assert marker_center_x < layout.ground_anchor[0]
@@ -321,6 +335,112 @@ def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
             marker.rect.y + marker.rect.height / 2,
         )
     assert shrunk_popovers
+
+
+def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> None:
+    manifest = json.loads(
+        (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
+            "utf-8"
+        )
+    )
+    background = _release_background(manifest)
+    assets = [
+        row
+        for row in manifest["assets"]
+        if row.get("category") == "plants"
+        and isinstance(row.get("placement"), dict)
+    ][:6]
+    layouts = plant_layout(
+        1_093,
+        615,
+        [
+            {
+                "plant_id": f"popover-{slot}",
+                "slot_index": slot,
+                "placement": asset["placement"],
+                "canvas_aspect": float(asset["width"]) / float(asset["height"]),
+            }
+            for slot, asset in enumerate(assets)
+        ],
+        background["placement"],
+        composition_count=6,
+    )
+    geometry = SceneGeometryLayout.from_placements(1_093, 615, layouts)
+    safe = Rect(16, 16, 1_093 - 32, 615 - 32)
+    preferred = (320.0, 300.0)
+    minimum = (280.0, 220.0)
+
+    def clamped(rect: Rect) -> Rect:
+        return Rect(
+            max(safe.x, min(rect.x, safe.right - rect.width)),
+            max(safe.y, min(rect.y, safe.bottom - rect.height)),
+            rect.width,
+            rect.height,
+        )
+
+    for bed in geometry.beds:
+        resolved = geometry.resolve_popover(
+            bed.bed_id,
+            preferred,
+            minimum,
+        )
+        assert resolved.rectangle.x >= 16
+        assert resolved.rectangle.y >= 16
+        assert resolved.rectangle.right <= 1_093 - 16
+        assert resolved.rectangle.bottom <= 615 - 16
+        assert not resolved.rectangle.intersects(bed.selection_region.expanded(6))
+
+        alternatives: list[Rect] = []
+        anchor_x, anchor_y = bed.popover_anchor
+        for width, height in (preferred, minimum):
+            for side in ("right", "left", "above", "below"):
+                if side == "right":
+                    raw = Rect(
+                        bed.visible_region.right + 12,
+                        anchor_y - height / 2,
+                        width,
+                        height,
+                    )
+                elif side == "left":
+                    raw = Rect(
+                        bed.visible_region.x - 12 - width,
+                        anchor_y - height / 2,
+                        width,
+                        height,
+                    )
+                elif side == "above":
+                    raw = Rect(
+                        anchor_x - width / 2,
+                        bed.visible_region.y - 12 - height,
+                        width,
+                        height,
+                    )
+                else:
+                    raw = Rect(
+                        anchor_x - width / 2,
+                        bed.visible_region.bottom + 12,
+                        width,
+                        height,
+                    )
+                candidate = clamped(raw)
+                if not candidate.intersects(bed.selection_region.expanded(6)):
+                    alternatives.append(candidate)
+
+        assert alternatives
+        chosen_overlap = sum(
+            resolved.rectangle.intersection_area(other.selection_region.expanded(5))
+            for other in geometry.beds
+            if other.bed_id != bed.bed_id
+        )
+        minimum_overlap = min(
+            sum(
+                candidate.intersection_area(other.selection_region.expanded(5))
+                for other in geometry.beds
+                if other.bed_id != bed.bed_id
+            )
+            for candidate in alternatives
+        )
+        assert chosen_overlap == pytest.approx(minimum_overlap)
 
 
 def test_growth_display_sanitizes_invalid_points():

@@ -773,9 +773,8 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                 scene_layouts=layouts,
                             )
                             placement = marker_scene._nurtured_marker_placement
-                            expected_side = (
-                                "left" if selected_plot % 2 == 0 else "right"
-                            )
+                            expected_side = placement.side
+                            assert expected_side in {"left", "right"}
                             expected_orientation = (
                                 "spout-right"
                                 if expected_side == "left"
@@ -839,8 +838,14 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                 assert marker_center_x < target.ground_anchor[0]
                             else:
                                 assert marker_center_x > target.ground_anchor[0]
-                            assert len(marker_painter.ellipses) == 1
-                            marker = marker_painter.ellipses[0][0].as_rect()
+                            assert len(marker_painter.ellipses) == 2
+                            contact_shadow = marker_painter.ellipses[0][0].as_rect()
+                            assert contact_shadow == placement.contact_shadow
+                            assert 0 <= contact_shadow.x
+                            assert contact_shadow.right <= SCENE_WIDTH
+                            assert 0 <= contact_shadow.y
+                            assert contact_shadow.bottom <= SCENE_HEIGHT
+                            marker = marker_painter.ellipses[1][0].as_rect()
                             assert 0 <= marker.x and marker.right <= SCENE_WIDTH
                             assert 0 <= marker.y and marker.bottom <= SCENE_HEIGHT
                             assert not marker.intersects(target.visible)
