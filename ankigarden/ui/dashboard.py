@@ -148,7 +148,11 @@ from ..environment import (
     CatalogItem,
     GrowthChargeSpec,
 )
-from ..growth import GrowthChargeRequest, GrowthChargeStatus
+from ..growth import (
+    GrowthChargeRequest,
+    GrowthChargeStatus,
+    GrowthChargeTargetState,
+)
 from ..config import ConfigError, DEFAULT_CONFIG
 from ..models.state import OnboardingStep
 from ..models.state import (
@@ -1824,6 +1828,8 @@ class ConfirmationDialog:
 class PurchaseConfirmationDialog(DialogShell):
     """One contextual confirmation, retry, and terminal-state purchase shell."""
 
+    _COMMIT_TIMEOUT_MS = 10_000
+
     _REFRESHABLE_FAILURES = {
         PurchaseStatus.STALE_PRICE,
         PurchaseStatus.STALE_BALANCE,
@@ -2133,6 +2139,10 @@ class PurchaseConfirmationDialog(DialogShell):
         self._progress_timer = QTimer(self)
         self._progress_timer.setInterval(140)
         self._progress_timer.timeout.connect(self._advance_progress_indicator)
+        self._commit_watchdog = QTimer(self)
+        self._commit_watchdog.setSingleShot(True)
+        self._commit_watchdog.setInterval(self._COMMIT_TIMEOUT_MS)
+        self._commit_watchdog.timeout.connect(self._transaction_timed_out)
         config = getattr(self.engine, "config", None)
         value = getattr(config, "value", None)
         self._progress_motion_enabled = effective_motion_enabled(
@@ -2142,6 +2152,7 @@ class PurchaseConfirmationDialog(DialogShell):
         )
         self.finished.connect(lambda _result: self._remaining_timer.stop())
         self.finished.connect(lambda _result: self._progress_timer.stop())
+        self.finished.connect(lambda _result: self._commit_watchdog.stop())
         self._apply_quote(quote)
         if quote.replacement_required or quote.disposition is PurchaseDisposition.EXTENDED:
             self._remaining_timer.start()
@@ -2679,7 +2690,9 @@ class PurchaseConfirmationDialog(DialogShell):
         if self._submitting or not (self.quote.ready or self.presentation.retry):
             return
         self._clear_status()
+        self.setProperty("transactionTimedOut", False)
         self._set_submitting(True)
+        self._commit_watchdog.start()
         QTimer.singleShot(0, self._commit)
 
     def _commit(self) -> None:
@@ -2689,12 +2702,14 @@ class PurchaseConfirmationDialog(DialogShell):
             outcome = self.engine.confirm_purchase(self.request)
         except Exception:
             logger.exception("Anki Garden: purchase confirmation failed unexpectedly")
+            self._commit_watchdog.stop()
             self._set_submitting(False)
             self._show_failure(
                 PurchaseStatus.PERSISTENCE_FAILURE,
                 "No Garden Coins were spent.",
             )
             return
+        self._commit_watchdog.stop()
         self.outcome = outcome
         if outcome.success:
             self.presentation = purchase_presentation(
@@ -2752,6 +2767,18 @@ class PurchaseConfirmationDialog(DialogShell):
             return
         self._set_submitting(False)
         self._show_failure(outcome.status, outcome.message)
+
+    def _transaction_timed_out(self) -> None:
+        """Return an uncommitted attempt to the same replay-safe request."""
+
+        if not self._submitting:
+            return
+        self.setProperty("transactionTimedOut", True)
+        self._set_submitting(False)
+        self._show_failure(
+            PurchaseStatus.PERSISTENCE_FAILURE,
+            "No Garden Coins were spent.",
+        )
 
     def _clear_status(self) -> None:
         self.status.setText("")
@@ -2944,6 +2971,8 @@ class FertilizerReplacementDialog(PurchaseConfirmationDialog):
 class GrowthChargeConfirmationDialog(GardenDialog):
     """Target-specific, replay-safe Growth Charge confirmation and receipt."""
 
+    _COMMIT_TIMEOUT_MS = 10_000
+
     _REFRESHABLE_FAILURES = {
         GrowthChargeStatus.STALE_INVENTORY,
         GrowthChargeStatus.STALE_TARGET,
@@ -2968,6 +2997,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.target_id = str(target_id)
         self.open_nursery_callback = open_nursery
         self.quote: Any | None = None
+        self.request: GrowthChargeRequest | None = None
         self.outcome: Any | None = None
         self._submitting = False
         self._completed = False
@@ -3072,10 +3102,11 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.nursery_action.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _set_button_variant(self.nursery_action, BUTTON_VARIANT_PRIMARY)
         self.nursery_action.clicked.connect(self._open_nursery)
+        self._ready_title = self.windowTitle()
+        self._empty_inventory_title = "No Growth Charges available"
         self.empty_inventory = EmptyState(
-            "No Growth Charges available",
+            self._empty_inventory_title,
             "Earn one from rewards or buy one in the Nursery.",
-            action=self.nursery_action,
         )
         self.empty_inventory.hide()
         content.addWidget(self.empty_inventory)
@@ -3167,7 +3198,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
 
         self.cancel_action = QPushButton("Cancel")
         self.use_action = QPushButton("Use Growth Charge")
-        for button in (self.cancel_action, self.use_action):
+        for button in (self.cancel_action, self.nursery_action, self.use_action):
             button.setMinimumHeight(BUTTON_MIN_HEIGHT)
         _set_button_variant(self.cancel_action, BUTTON_VARIANT_SECONDARY)
         _set_button_variant(self.use_action, BUTTON_VARIANT_PRIMARY)
@@ -3181,6 +3212,10 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self._progress_timer = QTimer(self)
         self._progress_timer.setInterval(140)
         self._progress_timer.timeout.connect(self._advance_progress_indicator)
+        self._commit_watchdog = QTimer(self)
+        self._commit_watchdog.setSingleShot(True)
+        self._commit_watchdog.setInterval(self._COMMIT_TIMEOUT_MS)
+        self._commit_watchdog.timeout.connect(self._transaction_timed_out)
         config = getattr(self.engine, "config", None)
         value = getattr(config, "value", None)
         self._progress_motion_enabled = effective_motion_enabled(
@@ -3189,13 +3224,16 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             os_reader=read_system_reduced_motion,
         )
         self.finished.connect(lambda _result: self._progress_timer.stop())
+        self.finished.connect(lambda _result: self._commit_watchdog.stop())
         self.footer_layout.addStretch(1)
         self.footer_layout.addWidget(self.cancel_action)
+        self.footer_layout.addWidget(self.nursery_action)
         self.footer_layout.addWidget(self.use_action)
         self.footer.show()
         self.set_initial_focus(self.cancel_action, InitialFocusPolicy.SAFE_ACTION)
         self.setTabOrder(self.charge_selector, self.cancel_action)
-        self.setTabOrder(self.cancel_action, self.use_action)
+        self.setTabOrder(self.cancel_action, self.nursery_action)
+        self.setTabOrder(self.nursery_action, self.use_action)
         self._populate_inventory()
         self._update_responsive_layout(self.width(), self.height())
 
@@ -3317,7 +3355,11 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.facts_card.setVisible(has_inventory)
         self.outcome_heading.setVisible(has_inventory)
         self.cancel_action.setVisible(True)
+        self.nursery_action.setVisible(not has_inventory)
         self.use_action.setVisible(has_inventory)
+        self.set_dialog_title(
+            self._ready_title if has_inventory else self._empty_inventory_title
+        )
         if has_inventory:
             one_charge = len(available) == 1
             selected_id = available[self.charge_selector.currentIndex()]
@@ -3353,6 +3395,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             )
         else:
             self.quote = None
+            self.request = None
             self._render_target_without_charge()
             self.setProperty("growthChargeState", GrowthChargeStatus.EMPTY_INVENTORY.value)
             self.preview_banner.hide()
@@ -3514,10 +3557,25 @@ class GrowthChargeConfirmationDialog(GardenDialog):
     def _refresh_quote(self, charge_id: str, *, show_status: bool = True) -> None:
         quote = self.engine.quote_growth_charge(charge_id, self.target_id)
         self.quote = quote
+        request = GrowthChargeRequest.from_quote(quote)
+        if (
+            self.request is None
+            or self.request.fingerprint() != request.fingerprint()
+        ):
+            self.request = request
         self._primary_route = ""
         self.setProperty("growthChargeState", quote.status.value)
         self.target_name.setText(quote.target_name)
-        self.target_stage.setText(format_status_label(quote.target_stage))
+        target_state = GrowthChargeTargetState(quote.target_state)
+        target_label = (
+            format_status_label(target_state.value)
+            if target_state is not GrowthChargeTargetState.ELIGIBLE
+            else format_status_label(quote.target_stage)
+        )
+        self.target_stage.setText(target_label)
+        self.target_stage.setAccessibleDescription(
+            f"Target state: {target_state.value.replace('_', ' ')}."
+        )
         _populate_asset_preview(
             self.target_artwork,
             self.engine,
@@ -3586,6 +3644,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             return
         self._submitting = True
         self.set_dialog_in_flight(True)
+        self.setProperty("transactionTimedOut", False)
         self.setProperty("growthChargeState", "loading")
         self.apply_view_size_profile("loading")
         self.progress_indicator.hide()
@@ -3611,18 +3670,20 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             priority=AnnouncementPriority.POLITE,
             target=self.use_action,
         )
+        self._commit_watchdog.start()
         QTimer.singleShot(0, self._commit)
 
     def _commit(self) -> None:
         quote = self.quote
-        if not self._submitting or quote is None:
+        request = self.request
+        if not self._submitting or quote is None or request is None:
             return
-        request = GrowthChargeRequest.from_quote(quote)
         try:
             outcome = self.engine.confirm_growth_charge(request)
         except Exception:
             logger.exception("Anki Garden: Growth Charge confirmation failed unexpectedly")
             outcome = None
+        self._commit_watchdog.stop()
         self._submitting = False
         self.set_dialog_in_flight(False)
         self._progress_timer.stop()
@@ -3659,6 +3720,35 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             return
         self._show_failed_outcome(outcome, selected)
 
+    def _transaction_timed_out(self) -> None:
+        """Restore a retryable view without minting a second request id."""
+
+        quote = self.quote
+        if not self._submitting or quote is None:
+            return
+        self.setProperty("transactionTimedOut", True)
+        self._submitting = False
+        self.set_dialog_in_flight(False)
+        self._progress_timer.stop()
+        self.use_action.setIcon(QIcon())
+        self.progress_indicator.hide()
+        self.charge_selector.setEnabled(True)
+        self.use_action.setProperty("busy", False)
+        set_control_enabled(
+            self.cancel_action,
+            True,
+            enabled_description="Cancel without using a Growth Charge.",
+        )
+        self._populate_inventory(preferred=quote.charge_id, show_status=False)
+        if self.quote is not None and self.quote.ready:
+            self.use_action.setText("Try again")
+            self.use_action.setAccessibleName("Try Growth Charge again")
+        self.apply_view_size_profile("error")
+        self._show_alert(
+            "Could not save this change.\nNo Growth Charge was used.",
+            GrowthChargeStatus.PERSISTENCE_FAILURE,
+        )
+
     def _advance_progress_indicator(self) -> None:
         if not self._submitting:
             self.use_action.setIcon(QIcon())
@@ -3678,7 +3768,17 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         self._populate_inventory(preferred=selected, show_status=False)
         retry_available = bool(self.quote is not None and self.quote.ready)
-        if outcome.status is not GrowthChargeStatus.TARGET_INVALID:
+        if outcome.status in {
+            GrowthChargeStatus.STALE_INVENTORY,
+            GrowthChargeStatus.STALE_TARGET,
+        }:
+            self.hero.setProperty("invalidTarget", False)
+            self.facts_card.setVisible(self.quote is not None)
+            self.outcome_heading.setVisible(self.quote is not None)
+            self.target_artwork.setAccessibleDescription(
+                "The refreshed target and result require confirmation."
+            )
+        elif outcome.status is not GrowthChargeStatus.TARGET_INVALID:
             self._render_committed_target(outcome)
             self.hero.setProperty("invalidTarget", False)
             self.target_artwork.setAccessibleDescription(
@@ -3687,14 +3787,18 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.facts_card.hide()
             self.outcome_heading.hide()
         else:
-            self.target_name.setText(str(outcome.target_name))
-            self.target_stage.setText("Invalid target")
-            self.target_artwork.setPixmap(
-                _botanical_placeholder_pixmap(68, 68)
+            target_state = GrowthChargeTargetState(
+                getattr(
+                    self.quote,
+                    "target_state",
+                    GrowthChargeTargetState.UNAVAILABLE,
+                )
             )
             self.hero.setProperty("invalidTarget", True)
+            self.target_stage.setText(format_status_label(target_state.value))
             self.target_artwork.setAccessibleName(
-                f"{outcome.target_name}, invalid target, no committed change"
+                f"{outcome.target_name}, "
+                f"{target_state.value.replace('_', ' ')}, no committed change"
             )
             self.facts_card.hide()
             self.outcome_heading.hide()
@@ -3734,11 +3838,13 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             empty="No stage reward was earned",
         )
         self._render_committed_target(outcome)
+        self.target_stage.hide()
+        self.charge_heading.hide()
         resulting_stage = format_status_label(str(outcome.resulting_stage))
         self.receipt_title.setText(
             f"{format_status_label(str(outcome.previous_stage))} → {resulting_stage}"
         )
-        self.receipt_title.setStyleSheet("font-size:26px; font-weight:800;")
+        self.receipt_title.setStyleSheet("font-size:22px; font-weight:800;")
         self.receipt_copy.setText(
             self._committed_receipt_copy(outcome, reward_copy)
         )
@@ -3758,17 +3864,9 @@ class GrowthChargeConfirmationDialog(GardenDialog):
                     tone=FeedbackTone.SUCCESS,
                 )
             )
-        for reward in tuple(outcome.rewards or ()):
-            stage_name = format_status_label(
-                str(getattr(reward, "stage", "") or "Stage")
-            )
-            self.reward_chips_layout.addWidget(
-                GardenBadge(
-                    f"{stage_name} reward",
-                    tone=FeedbackTone.INFO,
-                )
-            )
         self.reward_chips_layout.addStretch(1)
+        self.stage_rewards_heading.setVisible(bool(reward_total))
+        self.reward_chips.setVisible(bool(reward_total))
         self.receipt.setAccessibleName("Committed Growth Charge result")
         self.receipt.setAccessibleDescription(
             f"Charge: {self.receipt_copy.text()}. Stage rewards: {reward_copy}."
@@ -3784,9 +3882,8 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.preview_banner.hide()
         self.facts_card.hide()
         self.outcome_heading.hide()
-        self.cancel_action.setText("Close")
-        self.cancel_action.setAccessibleName("Close Growth Charge receipt")
-        self.cancel_action.show()
+        self.cancel_action.hide()
+        self.nursery_action.hide()
         self.use_action.setText("View plant")
         self.use_action.setAccessibleName(f"View {outcome.target_name}")
         set_control_enabled(
