@@ -63,8 +63,10 @@ def _compiled_responsive_method() -> Any:
         "QBoxLayout": SimpleNamespace(Direction=Direction),
         "QSizePolicy": SimpleNamespace(Policy=Policy),
         "Qt": SimpleNamespace(ScrollBarPolicy=ScrollBarPolicy),
-        "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 280,
-        "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 380,
+        "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 210,
+        "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 235,
+        "SETTINGS_SCENERY_WIDE_MIN_WIDTH": 205,
+        "SETTINGS_SCENERY_WIDE_MAX_WIDTH": 230,
         "COMPACT_MODE": "compact",
     }
     exec(textwrap.dedent(_method_source("GardenStudioWidget", "_apply_studio_layout_mode")), scope)
@@ -118,7 +120,7 @@ def test_settings_columns_release_implicit_qt_minimum_widths() -> None:
     assert "note.setMinimumWidth(0)" in toggle_row
 
 
-def test_normal_settings_viewport_stays_two_column_and_narrow_width_stacks() -> None:
+def test_normal_settings_viewport_stays_three_column_and_narrow_width_stacks() -> None:
     apply_layout = _compiled_responsive_method()
     controls = _Recorder()
     root_layout = _Recorder()
@@ -129,18 +131,21 @@ def test_normal_settings_viewport_stays_two_column_and_narrow_width_stacks() -> 
     widget.controls_scroll = _Recorder()
     widget.root_layout = root_layout
     widget.preview_panel = preview_panel
+    widget.theme_card = _Recorder()
 
     # A 980 px dialog leaves roughly 880 px for the scrolled Display body
     # after the shell, tab, and body margins. That is ample for 280 px
-    # controls plus a shrinkable preview, so it should not need horizontal
-    # scrolling or premature stacking.
+    # controls, current scenery, and the shared preview, so it should not need
+    # horizontal scrolling or premature stacking.
     apply_layout(widget, "wide")
     assert ("setDirection", ("columns",)) in root_layout.calls
-    assert ("setMinimumWidth", (280,)) in controls.calls
-    assert ("setMaximumWidth", (380,)) in controls.calls
+    assert ("setMinimumWidth", (210,)) in controls.calls
+    assert ("setMaximumWidth", (235,)) in controls.calls
     assert ("setSizePolicy", ("preferred", "preferred")) in controls.calls
     assert ("setMaximumHeight", (16777215,)) in widget.controls_scroll.calls
     assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
+    assert ("setMinimumWidth", (205,)) in widget.theme_card.calls
+    assert ("setMaximumWidth", (230,)) in widget.theme_card.calls
 
     apply_layout(widget, "compact")
     assert ("setDirection", ("stacked",)) in root_layout.calls

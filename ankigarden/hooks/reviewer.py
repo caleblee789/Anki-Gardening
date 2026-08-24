@@ -836,18 +836,18 @@ class ReviewerHookHandler:
             )
             toast.setStyleSheet(
                 "QFrame#ankiGardenRewardToast {"
-                " background: #13352d; border: 1px solid #5f8c72;"
+                " background: #13352d; border: 1px solid #527966;"
                 " border-radius: 14px; }"
                 "QFrame#ankiGardenRewardToast[findTier=\"rare\"] {"
-                " background: #173b31; border: 2px solid #6f8fb8; }"
+                " background: #173b31; border: 1px solid #647d99; }"
                 "QFrame#ankiGardenRewardToast[findTier=\"exceptional\"] {"
-                " background: #1d3b32; border: 2px solid #9c82c7; }"
+                " background: #1d3b32; border: 1px solid #8773a8; }"
                 "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
-                " font-size: 14px; font-weight: 700; }"
+                " font-size: 15px; font-weight: 700; }"
                 "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
-                " font-size: 12px; }"
+                " font-size: 13px; }"
                 "QLabel#ankiGardenRewardDetail { color: #f5df9a;"
-                " font-size: 13px; font-weight: 700; }"
+                " font-size: 14px; font-weight: 700; }"
                 "QLabel#ankiGardenRewardTier { color: #bad5c3;"
                 " background: #21483d; border: 1px solid #4e7765;"
                 " border-radius: 7px; padding: 1px 6px; font-size: 12px; }"
@@ -856,7 +856,7 @@ class ReviewerHookHandler:
                 " color: #f5df9a; font-size: 24px; }"
             )
             row = QHBoxLayout(toast)
-            row.setContentsMargins(10, 8, 12, 8)
+            row.setContentsMargins(10, 6, 12, 6)
             row.setSpacing(9)
 
             art = QLabel("")
@@ -920,11 +920,19 @@ class ReviewerHookHandler:
             if tier_text:
                 header = QHBoxLayout()
                 header.setSpacing(7)
-                header.addWidget(title, 1)
+                header.addWidget(
+                    title,
+                    1,
+                    Qt.AlignmentFlag.AlignBaseline,
+                )
                 tier = QLabel(tier_text)
                 tier.setObjectName("ankiGardenRewardTier")
                 tier.setAccessibleName(f"Garden Find tier: {tier_text}")
-                header.addWidget(tier)
+                header.addWidget(
+                    tier,
+                    0,
+                    Qt.AlignmentFlag.AlignBaseline,
+                )
                 copy.addLayout(header)
             else:
                 copy.addWidget(title)
@@ -943,15 +951,15 @@ class ReviewerHookHandler:
             row.addLayout(copy, 1)
 
             preferred_width = (
-                360
+                368
                 if len(tuple(getattr(event, "event_ids", ()) or ())) > 1
-                else 344
+                else 352
             )
             viewport_width = max(1, int(parent.width()))
             viewport_height = max(1, int(parent.height()))
             toast.setFixedWidth(min(preferred_width, max(1, viewport_width - 32)))
             toast.adjustSize()
-            preferred_height = max(72, min(80, toast.sizeHint().height()))
+            preferred_height = max(66, min(78, toast.sizeHint().height()))
             toast.setFixedHeight(
                 min(preferred_height, max(1, viewport_height - 32))
             )

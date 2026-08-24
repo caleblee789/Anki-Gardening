@@ -457,9 +457,10 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert "WA_ShowWithoutActivating" in source
     assert "WA_TransparentForMouseEvents" in source
     assert "Qt.FocusPolicy.NoFocus" in source
-    assert "360" in source
-    assert "else 344" in source
-    assert "min(80" in source
+    assert "368" in source
+    assert "else 352" in source
+    assert "max(66, min(78" in source
+    assert "Qt.AlignmentFlag.AlignBaseline" in source
     assert "reviewer_reward_overlay_position(" in source
     assert '"reviewer-webview-centered-above-controls"' in source
     assert '"reviewerControlClearance", 112' in source

@@ -225,7 +225,7 @@ logger = logging.getLogger(__name__)
 UI_TEXT = {
     "settings_window_title": "Garden settings",
     "advanced_hint": "Check again. Copy a report if the issue continues.",
-    "tab_advanced": "Troubleshooting",
+    "tab_advanced": "Diagnostics",
     "app_title": "Anki Garden",
     "title_banner": "Anki Garden",
     "open_settings": "Settings",
@@ -5052,7 +5052,7 @@ def _missing_artwork_pixmap(
     safe_height = max(1, int(height))
     category_key = str(category or "artwork").strip().lower().replace("_", "-")
     preview = QPixmap(safe_width, safe_height)
-    preview.fill(QColor("#14251f"))
+    preview.fill(QColor("#101d19"))
     painter = QPainter(preview)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
@@ -5063,11 +5063,11 @@ def _missing_artwork_pixmap(
     for offset in range(-safe_height, safe_width + safe_height, spacing):
         painter.drawLine(offset, 0, offset - safe_height, safe_height)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(32, 67, 54, 220))
+    painter.setBrush(QColor(25, 54, 44, 220))
     painter.drawRoundedRect(QRectF(4, 4, safe_width - 8, safe_height - 8), 9, 9)
 
     icon_bottom = max(14, safe_height - 4)
-    icon_size = max(12, min(30, min(safe_width - 12, icon_bottom - 8)))
+    icon_size = max(14, min(36, min(safe_width - 12, icon_bottom - 8)))
     center_x = safe_width / 2
     show_label = safe_width >= 100 and safe_height >= 60
     center_y = safe_height * (0.37 if show_label else 0.5)
@@ -7136,6 +7136,7 @@ class GardenSettingsDialog(GardenDialog):
         )
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
             QLabel[saveStatus='true'] {{ padding:5px 8px; border-radius:8px; }}
+            QLabel[unsavedState='true'] {{ color:{GARDEN_THEME['coin_accent']}; font-size:13px; font-weight:650; }}
             QFrame[diagnosticsCard='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:0; border-left:4px solid {GARDEN_THEME['success']}; border-radius:12px; }}
             QFrame[diagnosticsCard='true'][diagnosticState='warning'] {{ background:#332D1D; border-left:4px solid {GARDEN_THEME['warning']}; }}
             QLineEdit[validationState='error'] {{ border:2px solid {GARDEN_THEME['error']}; padding:6px 9px; }}
@@ -7178,7 +7179,7 @@ class GardenSettingsDialog(GardenDialog):
         )
         self.restore_defaults = QPushButton("Reset display settings")
         self.restore_defaults.setAccessibleName("Reset display settings")
-        _set_button_variant(self.restore_defaults, BUTTON_VARIANT_SECONDARY)
+        _set_button_variant(self.restore_defaults, BUTTON_VARIANT_TERTIARY)
         self.restore_defaults.clicked.connect(self._restore_defaults)
         self.behavior.advanced_actions_layout.addWidget(self.restore_defaults)
         self.cancel_settings = QPushButton("Cancel")
@@ -7192,6 +7193,11 @@ class GardenSettingsDialog(GardenDialog):
         set_keyboard_focus_surface(self.save_status)
         self.save_status.setWordWrap(True)
         self.save_status.hide()
+        self.unsaved_count = QLabel("")
+        self.unsaved_count.setProperty("unsavedState", True)
+        self.unsaved_count.setAccessibleName("Unsaved settings changes")
+        self.unsaved_count.setTextFormat(Qt.TextFormat.PlainText)
+        self.unsaved_count.hide()
         self.behavior.persistentChanged.connect(self._update_dirty_state)
         behavior = QWidget()
         # Let the Display page shrink to the live scroll viewport after its
@@ -7284,7 +7290,13 @@ class GardenSettingsDialog(GardenDialog):
         self.settings_footer_grid.setContentsMargins(0, 0, 0, 0)
         self.settings_footer_grid.setHorizontalSpacing(8)
         self.settings_footer_grid.setVerticalSpacing(8)
-        self.footer_layout.addWidget(self.save_status, 1)
+        self.settings_footer_copy = QWidget()
+        settings_footer_copy_layout = QVBoxLayout(self.settings_footer_copy)
+        settings_footer_copy_layout.setContentsMargins(0, 0, 0, 0)
+        settings_footer_copy_layout.setSpacing(2)
+        settings_footer_copy_layout.addWidget(self.unsaved_count)
+        settings_footer_copy_layout.addWidget(self.save_status)
+        self.footer_layout.addWidget(self.settings_footer_copy, 1)
         self.footer_layout.addWidget(self.settings_footer_actions, 0)
         self.footer.show()
         self._settings_footer_compact: bool | None = None
@@ -7316,11 +7328,14 @@ class GardenSettingsDialog(GardenDialog):
         )
 
         advanced = QScrollArea()
-        self.troubleshooting_scroll = advanced
+        self.diagnostics_scroll = advanced
+        # Compatibility alias for integrations that still use the old
+        # internal attribute. User-facing copy and navigation say Diagnostics.
+        self.troubleshooting_scroll = self.diagnostics_scroll
         advanced.setWidgetResizable(True)
         advanced.setFrameShape(QFrame.Shape.NoFrame)
         advanced.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        advanced.setAccessibleName("Troubleshooting")
+        advanced.setAccessibleName("Diagnostics")
         advanced_body = QWidget()
         a_layout = QVBoxLayout(advanced_body)
         a_layout.setContentsMargins(0, 8, 0, 0)
@@ -7390,9 +7405,9 @@ class GardenSettingsDialog(GardenDialog):
         self.debug_report.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.debug_report.setStyleSheet("font-family: Menlo, Monaco, monospace; font-size:13px;")
-        self.debug_report.setMinimumHeight(96)
-        self.debug_report.setMaximumHeight(240)
+        self.debug_report.setStyleSheet("font-family: Menlo, Monaco, monospace; font-size:14px;")
+        self.debug_report.setMinimumHeight(220)
+        self.debug_report.setMaximumHeight(260)
         self.debug_report.hide()
         self.refresh_debug = QPushButton("Check again")
         self.copy_debug = QPushButton("Copy report")
@@ -7418,7 +7433,7 @@ class GardenSettingsDialog(GardenDialog):
         a_layout.addWidget(self.report_actions_panel)
         self._report_actions_compact: bool | None = None
         self.report_actions_responsive = AdaptiveRow(
-            "settings.troubleshooting-actions",
+            "settings.diagnostics-actions",
             (
                 AdaptiveRegion.measured(
                     "refresh-diagnostics",
@@ -7458,12 +7473,12 @@ class GardenSettingsDialog(GardenDialog):
     def _sync_report_actions_layout(self) -> None:
         if not hasattr(self, "report_actions_responsive"):
             return
-        viewport = self.troubleshooting_scroll.viewport()
+        viewport = self.diagnostics_scroll.viewport()
         telemetry = self.report_actions_responsive.evaluate(
             max(0, int(viewport.width()))
         )
         self.report_actions_panel.setProperty(
-            "troubleshootingActionsMode",
+            "diagnosticsActionsMode",
             telemetry.mode,
         )
 
@@ -7485,13 +7500,13 @@ class GardenSettingsDialog(GardenDialog):
         self.report_actions.invalidate()
         self.report_actions.activate()
         self.report_actions_panel.updateGeometry()
-        content = self.troubleshooting_scroll.widget()
+        content = self.diagnostics_scroll.widget()
         content_layout = content.layout() if content is not None else None
         if content_layout is not None:
             content_layout.invalidate()
         if content is not None:
             content.updateGeometry()
-        self.troubleshooting_scroll.updateGeometry()
+        self.diagnostics_scroll.updateGeometry()
 
     def _set_settings_footer_mode(self, mode: str) -> None:
         compact = mode == COMPACT_MODE
@@ -7516,12 +7531,16 @@ class GardenSettingsDialog(GardenDialog):
             self.behavior.fine_tune_toggle.isChecked()
             or self.behavior.advanced_toggle.isChecked()
         )
-        # Troubleshooting is read-only. Keep draft actions reachable only when
+        # Diagnostics is read-only. Keep draft actions reachable only when
         # the user arrived with unsaved Display changes.
-        show_settings_actions = not diagnostics or self._draft_is_dirty()
+        dirty = self._draft_is_dirty()
+        show_settings_actions = not diagnostics or dirty
         self.settings_footer_actions.setVisible(show_settings_actions)
+        self.unsaved_count.setVisible(dirty)
         self.save_status.setVisible(bool(self.save_status.text()))
-        self.footer.setVisible(show_settings_actions or bool(self.save_status.text()))
+        self.footer.setVisible(
+            show_settings_actions or dirty or bool(self.save_status.text())
+        )
         self.setProperty(
             "layoutMode",
             "diagnostics" if diagnostics else "display",
@@ -7529,7 +7548,11 @@ class GardenSettingsDialog(GardenDialog):
         self.apply_view_size_profile(
             "diagnostics-expanded"
             if diagnostics and self.debug_report.isVisible()
-            else "diagnostics-clean" if diagnostics
+            else (
+                "diagnostics-warning"
+                if self.diagnostics_card.property("diagnosticState") == "warning"
+                else "diagnostics-clean"
+            ) if diagnostics
             else "advanced" if display_expanded
             else "display"
         )
@@ -7605,6 +7628,8 @@ class GardenSettingsDialog(GardenDialog):
         self.save_status.setText("")
         self.save_status.setStyleSheet("")
         self.save_status.hide()
+        self.unsaved_count.setText("")
+        self.unsaved_count.hide()
         set_control_enabled(
             self.save_settings,
             False,
@@ -7682,6 +7707,15 @@ class GardenSettingsDialog(GardenDialog):
         self.set_dialog_dirty(dirty)
         self.cancel_settings.setText("Discard" if dirty else "Cancel")
         self.cancel_settings.setAccessibleName(self.cancel_settings.text())
+        self.unsaved_count.setText(
+            "1 unsaved change"
+            if modified_count == 1 else
+            f"{modified_count} unsaved changes"
+            if modified_count > 1 else
+            ""
+        )
+        self.unsaved_count.setAccessibleDescription(self.unsaved_count.text())
+        self.unsaved_count.setVisible(dirty)
         set_control_enabled(
             self.save_settings,
             dirty and valid,
@@ -7997,14 +8031,16 @@ class GardenSettingsDialog(GardenDialog):
             f"Anki Garden {_addon_human_version()} · Build {_addon_build_identifier()} · "
             f"{platform.system() or 'Unknown OS'} · {QGuiApplication.platformName() or 'Qt renderer'}"
         )
+        if self.tabs.currentIndex() == 1:
+            self._sync_settings_tab(1)
 
     def _sync_debug_report_height(self) -> None:
         document = self.debug_report.document()
         document.setTextWidth(max(1, int(self.debug_report.viewport().width())))
         report_height = min(
-            240,
+            260,
             max(
-                96,
+                220,
                 int(document.size().height())
                 + 2 * int(self.debug_report.frameWidth())
                 + 16,
@@ -8840,6 +8876,7 @@ class NurseryDialog(DialogShell):
             QWidget[gardenDialogShell='true'] { background:#071a15; color:#f3f7f2; }
             QFrame[nurseryHero='true'] { background:#0c261f; border:0; border-bottom:1px solid #31594b; border-radius:0; }
             QFrame[nurseryFooter='true'] { background:#071a15; border:0; border-top:1px solid #31594b; }
+            QFrame[nurseryFeedbackHost='true'] { background:transparent; border:0; }
             QFrame[toastRegion='true'] { background:#17342e; border:1px solid #557665; border-radius:12px; }
             QFrame[toastRegion='true'][error='true'] { background:#582f34; border-color:#a85b64; }
             QLabel[toastIcon='true'] { color:#0b211a; background:#82e2ac; border:0; border-radius:12px; font-size:15px; font-weight:900; }
@@ -8858,7 +8895,7 @@ class NurseryDialog(DialogShell):
             QLabel[nurseryTitle='true'] { font-size:24px; font-weight:800; }
             QLabel[nurserySection='true'] { color:#f8e8cf; font-size:16px; font-weight:800; padding:7px 2px 1px 2px; }
             QLabel[nurserySectionNote='true'] { color:#bca991; font-size:13px; padding:0 2px 4px 2px; }
-            QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:16px; font-weight:800; }
+            QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:15px; font-weight:800; }
             QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:13px; }
             QLabel[nurseryOwnership='true'] { color:#d5ad70; font-size:12px; font-weight:800; letter-spacing:.8px; }
             QLabel[nurseryStageName='true'] { color:#fff3da; font-size:14px; font-weight:800; }
@@ -8888,6 +8925,7 @@ class NurseryDialog(DialogShell):
         root = QVBoxLayout(self)
         root.setContentsMargins(14, 10, 14, 10)
         root.setSpacing(10)
+        root.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         hero = QFrame()
         hero.setProperty("nurseryHero", True)
@@ -8949,7 +8987,24 @@ class NurseryDialog(DialogShell):
         )
         self.nursery_toast.dismiss.setText("Keep browsing")
         self.nursery_toast.dismiss.setAccessibleName("Keep browsing")
-        self.nursery_toast.shown.connect(self._position_nursery_overlays)
+        self.nursery_toast.setMaximumHeight(48)
+        self.nursery_toast.shown.connect(self._show_nursery_toast)
+
+        # One normal-flow feedback host moves with the selected page. It sits
+        # below the native tab bar and above the affected catalog viewport, so
+        # receipts and status messages can never cover products or bed maps.
+        self.nursery_feedback_host = QFrame()
+        self.nursery_feedback_host.setProperty("nurseryFeedbackHost", True)
+        self.nursery_feedback_host.setProperty("topAlignedState", True)
+        self.nursery_feedback_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        self.nursery_feedback_layout = QVBoxLayout(self.nursery_feedback_host)
+        self.nursery_feedback_layout.setContentsMargins(0, 0, 0, 0)
+        self.nursery_feedback_layout.setSpacing(0)
+        self.nursery_feedback_layout.addWidget(self.nursery_toast)
+        self.nursery_feedback_host.hide()
 
         self.catalog_tabs = QTabWidget()
         self.catalog_tabs.setProperty("dialogBody", True)
@@ -8971,9 +9026,25 @@ class NurseryDialog(DialogShell):
         self.catalog_layout = QVBoxLayout(self.catalog)
         self.catalog_layout.setContentsMargins(2, 2, 2, 2)
         self.catalog_layout.setSpacing(9)
+        self.catalog_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll.setWidget(self.catalog)
         _set_scroll_surface(self.scroll, self.catalog, "#2f211b")
-        self.catalog_tabs.addTab(self.scroll, "Plants")
+        self.catalog_pages: list[QWidget] = []
+        self.catalog_page_layouts: list[QVBoxLayout] = []
+
+        def catalog_page(scroll_region: QScrollArea) -> QWidget:
+            page = QWidget()
+            page.setProperty("nurseryCatalogPage", True)
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(6)
+            page_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+            page_layout.addWidget(scroll_region, 1)
+            self.catalog_pages.append(page)
+            self.catalog_page_layouts.append(page_layout)
+            return page
+
+        self.catalog_tabs.addTab(catalog_page(self.scroll), "Plants")
 
         self.supplements_scroll = QScrollArea()
         self.supplements_scroll.setWidgetResizable(True)
@@ -8982,20 +9053,24 @@ class NurseryDialog(DialogShell):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.supplements_scroll.setAccessibleName(
-            "Fertilizer and Boosters catalog"
+            "Fertilizers and boosts catalog"
         )
         self.supplements_catalog = QWidget()
         self.supplements_catalog.setProperty("nurseryCatalog", True)
         self.supplements_layout = QVBoxLayout(self.supplements_catalog)
         self.supplements_layout.setContentsMargins(6, 6, 6, 6)
         self.supplements_layout.setSpacing(9)
+        self.supplements_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.supplements_scroll.setWidget(self.supplements_catalog)
         _set_scroll_surface(
             self.supplements_scroll,
             self.supplements_catalog,
             "#2f211b",
         )
-        self.catalog_tabs.addTab(self.supplements_scroll, "Fertilizer and boosts")
+        self.catalog_tabs.addTab(
+            catalog_page(self.supplements_scroll),
+            "Fertilizers and boosts",
+        )
 
         self.upgrades_scroll = QScrollArea()
         self.upgrades_scroll.setWidgetResizable(True)
@@ -9009,13 +9084,14 @@ class NurseryDialog(DialogShell):
         self.upgrades_layout = QVBoxLayout(self.upgrades_catalog)
         self.upgrades_layout.setContentsMargins(6, 6, 6, 6)
         self.upgrades_layout.setSpacing(9)
+        self.upgrades_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.upgrades_scroll.setWidget(self.upgrades_catalog)
         _set_scroll_surface(
             self.upgrades_scroll,
             self.upgrades_catalog,
             "#2f211b",
         )
-        self.catalog_tabs.addTab(self.upgrades_scroll, "Garden beds")
+        self.catalog_tabs.addTab(catalog_page(self.upgrades_scroll), "Garden beds")
 
         self.environment_scroll = QScrollArea()
         self.environment_scroll.setWidgetResizable(True)
@@ -9031,13 +9107,17 @@ class NurseryDialog(DialogShell):
         self.environment_layout = QVBoxLayout(self.environment_catalog)
         self.environment_layout.setContentsMargins(6, 6, 6, 6)
         self.environment_layout.setSpacing(9)
+        self.environment_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.environment_scroll.setWidget(self.environment_catalog)
         _set_scroll_surface(
             self.environment_scroll,
             self.environment_catalog,
             "#2f211b",
         )
-        self.catalog_tabs.addTab(self.environment_scroll, "Weather and Scenery")
+        self.catalog_tabs.addTab(
+            catalog_page(self.environment_scroll),
+            "Weather and Scenery",
+        )
         self.starter_tab_note = QLabel(DISABLED_STARTER_TABS)
         self.starter_tab_note.setWordWrap(True)
         self.starter_tab_note.setProperty("nurseryMeta", True)
@@ -9048,19 +9128,20 @@ class NurseryDialog(DialogShell):
         self.catalog_tabs.setTabToolTip(3, DISABLED_STARTER_TABS)
         self.catalog_tabs.tabBar().setUsesScrollButtons(True)
         self.catalog_tabs.currentChanged.connect(self._sync_catalog_intro)
+        self.catalog_tabs.currentChanged.connect(self._move_nursery_feedback_host)
         root.addWidget(self.starter_tab_note)
         root.addWidget(self.catalog_tabs, 1)
 
-        self.status = QLabel("", self)
-        self.status.setTextFormat(Qt.TextFormat.PlainText)
-        self.status.setWordWrap(True)
+        self.status = GardenStatusBanner(self.nursery_feedback_host)
         self.status.setAccessibleName("Nursery status")
         self.status.setProperty("liveRegion", "polite")
         self.status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         set_keyboard_focus_surface(self.status)
-        apply_tabular_numerals(self.status)
+        apply_tabular_numerals(self.status.message)
+        self.nursery_feedback_layout.addWidget(self.status)
         self._status_generation = 0
         self.status.hide()
+        self._move_nursery_feedback_host(0)
         self.nursery_footer = QFrame()
         self.nursery_footer.setProperty("nurseryFooter", True)
         self.nursery_footer.setProperty("dialogFooter", True)
@@ -9074,6 +9155,7 @@ class NurseryDialog(DialogShell):
         self._starter_choice_pending = False
         self._placement_transaction_pending = False
         self._receipt_outcome: PurchaseOutcome | None = None
+        self._pending_purchase_result: PurchaseOutcome | None = None
         self.purchase_dialog: PurchaseConfirmationDialog | None = None
         self._recently_unlocked_bed: int | None = None
         _set_button_variant(self.bed_button, BUTTON_VARIANT_SECONDARY)
@@ -9120,23 +9202,40 @@ class NurseryDialog(DialogShell):
         )
         self.refresh()
 
-    def _position_nursery_overlays(self) -> None:
-        """Clamp Nursery feedback inside its active catalog, below the tabs."""
+    def _move_nursery_feedback_host(self, index: int) -> None:
+        """Place the one feedback host above the selected catalog viewport."""
 
-        if not hasattr(self, "catalog_tabs"):
+        if not hasattr(self, "catalog_page_layouts"):
             return
-        tab_rect = self.catalog_tabs.geometry()
-        inset = 12
-        available_width = max(1, tab_rect.width() - (inset * 2))
-        overlay_width = min(520, available_width)
-        x = tab_rect.left() + max(inset, (tab_rect.width() - overlay_width) // 2)
-        y = tab_rect.top() + self.catalog_tabs.tabBar().height() + inset
-        for overlay in (self.nursery_toast, self.status):
-            if not overlay.isVisible():
-                continue
-            overlay_height = min(84, max(44, overlay.sizeHint().height()))
-            overlay.setGeometry(x, y, overlay_width, overlay_height)
-            overlay.raise_()
+        target_index = max(
+            0,
+            min(int(index), len(self.catalog_page_layouts) - 1),
+        )
+        for page_layout in self.catalog_page_layouts:
+            page_layout.removeWidget(self.nursery_feedback_host)
+        target_layout = self.catalog_page_layouts[target_index]
+        target_layout.insertWidget(0, self.nursery_feedback_host)
+        self.nursery_feedback_host.setParent(self.catalog_pages[target_index])
+        self._sync_nursery_feedback_host()
+
+    def _show_nursery_toast(self) -> None:
+        self.status.set_status("")
+        self._sync_nursery_feedback_host()
+
+    def _sync_nursery_feedback_host(self) -> None:
+        visible = bool(self.nursery_toast.isVisible() or self.status.isVisible())
+        self.nursery_feedback_host.setVisible(visible)
+        self.nursery_feedback_host.updateGeometry()
+        self.schedule_content_fit(
+            "nursery-feedback",
+            preserve_transition=False,
+        )
+        if visible:
+            QTimer.singleShot(0, self._refit_nursery_feedback)
+
+    def _refit_nursery_feedback(self) -> None:
+        self._sync_catalog_intro(self.catalog_tabs.currentIndex())
+        self.fit_content_to_family(preserve_transition=False)
 
     def resizeEvent(self, event: Any) -> None:
         margins = self.layout().contentsMargins()
@@ -9166,7 +9265,6 @@ class NurseryDialog(DialogShell):
             )
             self.setProperty("heroMode", hero.mode)
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._position_nursery_overlays)
 
     def _clear_catalog(self) -> None:
         while self.catalog_layout.count():
@@ -9441,7 +9539,7 @@ class NurseryDialog(DialogShell):
         copy.addWidget(title)
         row.addLayout(copy, 1)
         action = QPushButton(
-            "Store" if plant.planted else "Place"
+            "Store plant" if plant.planted else "Place in Garden"
         )
         _set_button_variant(action, BUTTON_VARIANT_SECONDARY)
         action.setAccessibleName(
@@ -9494,7 +9592,7 @@ class NurseryDialog(DialogShell):
         bed_number = max(1, int(getattr(plant, "slot_index", 0) or 0) + 1)
         box.setInformativeText(f"Bed {bed_number} will become empty.")
         confirm = box.addButton(
-            "Store",
+            "Store plant",
             QMessageBox.ButtonRole.AcceptRole,
         )
         keep = box.addButton(
@@ -9523,9 +9621,9 @@ class NurseryDialog(DialogShell):
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(9)
+        card_layout.setSpacing(7)
         card_layout.addWidget(
-            self._plant_artwork(species, GROWTH_STAGES[0], 84),
+            self._plant_artwork(species, GROWTH_STAGES[0], 68),
             0,
             Qt.AlignmentFlag.AlignHCenter,
         )
@@ -9535,6 +9633,13 @@ class NurseryDialog(DialogShell):
         title.setProperty("nurseryPlantName", True)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(title)
+        permanent = QLabel("Permanent")
+        permanent.setProperty("nurseryOwnership", True)
+        permanent.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        permanent.setAccessibleDescription(
+            "Purchasing this seed permanently unlocks the species."
+        )
+        card_layout.addWidget(permanent)
         stages = self._plant_stage_strip(species)
         stages.hide()
         card_layout.addWidget(stages)
@@ -9543,26 +9648,22 @@ class NurseryDialog(DialogShell):
         meta.setWordWrap(True)
         apply_tabular_numerals(meta)
         affordability_label = QLabel(
-            _compact_affordability_status(
-                price,
-                balance,
-                ready_text="Ready to buy",
-            )
-            if not affordable
-            else ""
+            f"Need {max(0, int(price) - balance):,} more Garden Coins"
+            if not affordable else
+            ""
         )
         affordability_label.setProperty("nurseryShortfall", True)
         affordability_label.setWordWrap(True)
         affordability_label.setVisible(not affordable)
         apply_tabular_numerals(affordability_label)
-        details = QPushButton("Details")
+        details = QPushButton("View stages")
         details.setCheckable(True)
         _set_button_variant(details, BUTTON_VARIANT_TERTIARY)
         _set_compact_row_action(details)
 
         def toggle_stages(checked: bool) -> None:
             stages.setVisible(checked)
-            details.setText("Hide details" if checked else "Details")
+            details.setText("Hide stages" if checked else "View stages")
 
         details.toggled.connect(toggle_stages)
         action = QPushButton("Buy")
@@ -9729,12 +9830,11 @@ class NurseryDialog(DialogShell):
         copy = QVBoxLayout(copy_widget)
         copy.setContentsMargins(0, 0, 0, 0)
         title = QLabel(spec.name)
-        title.setStyleSheet("font-weight:700;")
+        title.setProperty("nurseryPlantName", True)
         title.setWordWrap(True)
         duration = str(quote.descriptor.duration or "").strip().rstrip(".")
         meta = QLabel(
-            f"+{spec.growth_per_answer:,} Growth per card · "
-            f"{duration} · {cost_label(spec.price)}"
+            f"+{spec.growth_per_answer:,} Growth per card · {duration}"
         )
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
@@ -9791,18 +9891,38 @@ class NurseryDialog(DialogShell):
         action.clicked.connect(
             lambda _checked=False, selected=tier: self._purchase_fertilizer(selected)
         )
+        _set_compact_row_action(action)
         if active is not None and not affordable:
-            helper = QLabel(f"{shortfall:,} more Garden Coins needed")
+            helper = QLabel(f"Need {shortfall:,} more Garden Coins")
             helper.setProperty("nurseryShortfall", True)
             helper.setWordWrap(True)
             apply_tabular_numerals(helper)
             copy.addWidget(helper)
+        elif active is None:
+            helper = QLabel("Nurture a plant first.")
+            helper.setProperty("nurseryMeta", True)
+            helper.setWordWrap(True)
+            copy.addWidget(helper)
+        purchase = QWidget()
+        purchase.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Preferred,
+        )
+        purchase_layout = QVBoxLayout(purchase)
+        purchase_layout.setContentsMargins(0, 0, 0, 0)
+        purchase_layout.setSpacing(4)
+        price = QLabel(cost_label(spec.price))
+        price.setProperty("nurseryMeta", True)
+        price.setAlignment(Qt.AlignmentFlag.AlignRight)
+        apply_tabular_numerals(price)
+        purchase_layout.addWidget(price)
+        purchase_layout.addWidget(action, 0, Qt.AlignmentFlag.AlignRight)
         card = self._catalog_action_card(
             summary,
-            action,
+            purchase,
             semantic_id=f"nursery.fertilizer-{tier}",
             summary_floor=205,
-            action_floor=96,
+            action_floor=150,
         )
         # Qt's compact-button size hint leaves the first and final glyphs with
         # almost no paint clearance at the canonical Nursery scale. Reserve a
@@ -9961,13 +10081,15 @@ class NurseryDialog(DialogShell):
         copy = QVBoxLayout(copy_widget)
         copy.setContentsMargins(0, 0, 0, 0)
         title = QLabel(spec.name)
-        title.setStyleSheet("font-weight:700;")
+        title.setProperty("nurseryPlantName", True)
         title.setWordWrap(True)
         apply_tabular_numerals(title)
         effect = f"+{spec.growth:,} Growth"
         meta = QLabel(" · ".join((
             effect,
-            cost_label(spec.price) if spec.price is not None else "Unavailable",
+            cost_label(spec.price)
+            if spec.price is not None else
+            spec.how_to_earn,
         )))
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
@@ -10001,7 +10123,10 @@ class NurseryDialog(DialogShell):
             action = QPushButton("Buy")
             enabled = affordable
             if not affordable:
-                helper_text = f"{spec.price - self.storage.state.currency_balance:,} more needed"
+                helper_text = (
+                    f"Need {spec.price - self.storage.state.currency_balance:,} "
+                    "more Garden Coins"
+                )
                 show_helper = True
             action.setAccessibleName(
                 presentation.primary_accessible_name
@@ -10020,8 +10145,9 @@ class NurseryDialog(DialogShell):
                 self._purchase_growth_charge(charge_id)
             )
         else:
-            action = QWidget()
-            action.hide()
+            action = QPushButton("Not for sale")
+            action.setAccessibleName(f"{spec.name} is not for sale")
+            action.setAccessibleDescription(spec.how_to_earn)
             enabled = False
         if isinstance(action, QPushButton):
             _set_button_variant(
@@ -10122,12 +10248,21 @@ class NurseryDialog(DialogShell):
             0,
             Qt.AlignmentFlag.AlignHCenter,
         )
-        item_status = "Equipped" if equipped else "Owned" if owned else ""
-        title = QLabel(
-            " · ".join(part for part in (item.name, item_status) if part)
-        )
-        title.setStyleSheet("font-weight:700;")
+        heading = QHBoxLayout()
+        heading.setSpacing(6)
+        title = QLabel(item.name)
+        title.setProperty("nurseryPlantName", True)
         title.setWordWrap(True)
+        heading.addWidget(title, 1)
+        if owned:
+            owned_chip = GardenBadge(
+                "Equipped" if equipped else "Owned",
+                tone=FeedbackTone.SUCCESS if equipped else FeedbackTone.INFO,
+            )
+            owned_chip.setAccessibleName(
+                f"{item.name} is {'equipped' if equipped else 'owned'}"
+            )
+            heading.addWidget(owned_chip, 0, Qt.AlignmentFlag.AlignTop)
         meta = QLabel(" · ".join(filter(None, (
             item.rarity,
             "" if owned else
@@ -10136,11 +10271,11 @@ class NurseryDialog(DialogShell):
         meta.setWordWrap(True)
         meta.setProperty("nurseryMeta", True)
         apply_tabular_numerals(meta)
-        layout.addWidget(title)
+        layout.addLayout(heading)
         layout.addWidget(meta)
         actions = QHBoxLayout()
         details = QPushButton("Preview")
-        _set_button_variant(details, BUTTON_VARIANT_TERTIARY)
+        _set_button_variant(details, BUTTON_VARIANT_SECONDARY)
         _set_compact_row_action(details)
         details.clicked.connect(
             lambda _checked=False, selected=item: self._preview_environment_item(selected)
@@ -10164,48 +10299,46 @@ class NurseryDialog(DialogShell):
             shortfall.setWordWrap(True)
             apply_tabular_numerals(shortfall)
             layout.addWidget(shortfall)
-        action = QPushButton(
-            "View in Collection" if owned else
-            "Buy" if item.purchasable else
-            "Garden Find only" if item.drop_only else
-            "Included"
-        )
-        action.setAccessibleName(
-            f"Open Collection for {item.name}"
-            if owned else
-            presentation.primary_accessible_name
-            if item.purchasable else
-            f"How to earn {item.name}"
-        )
-        _set_button_variant(
-            action, BUTTON_VARIANT_PRIMARY if owned or affordable else BUTTON_VARIANT_SECONDARY
-        )
-        _set_compact_row_action(action)
-        action.setAccessibleDescription(
-            f"Open Collection to preview or equip {item.name}."
-            if owned else
-            f"{cost_label(int(item.price or 0))}. {affordability} {presentation.outcome}"
-            if item.purchasable else
-            item.how_to_earn
-        )
-        set_control_enabled(
-            action,
-            owned or affordable,
-            disabled_reason=(
-                f"{item.name} is not affordable yet. {affordability}"
+        if not owned:
+            action = QPushButton(
+                "Buy" if item.purchasable else
+                "Garden Find only" if item.drop_only else
+                "Included"
+            )
+            action.setAccessibleName(
+                presentation.primary_accessible_name
+                if item.purchasable else
+                f"How to earn {item.name}"
+            )
+            _set_button_variant(
+                action,
+                BUTTON_VARIANT_PRIMARY
+                if affordable else
+                BUTTON_VARIANT_SECONDARY,
+            )
+            _set_compact_row_action(action)
+            action.setAccessibleDescription(
+                f"{cost_label(int(item.price or 0))}. {affordability} {presentation.outcome}"
                 if item.purchasable else
                 item.how_to_earn
-            ),
-            enabled_description=action.accessibleDescription(),
-        )
-        if owned:
-            action.clicked.connect(self._open_customize_from_nursery)
-        elif item.purchasable:
+            )
+            set_control_enabled(
+                action,
+                affordable,
+                disabled_reason=(
+                    f"{item.name} is not affordable yet. {affordability}"
+                    if item.purchasable else
+                    item.how_to_earn
+                ),
+                enabled_description=action.accessibleDescription(),
+            )
+        if not owned and item.purchasable:
             action.clicked.connect(
                 lambda _checked=False, kind=item.kind, item_id=item.item_id:
                 self._purchase_environment(kind, item_id)
             )
-        actions.addWidget(action)
+        if not owned:
+            actions.addWidget(action)
         layout.addLayout(actions)
         return card
 
@@ -10329,13 +10462,19 @@ class NurseryDialog(DialogShell):
         state = self.storage.state
         unlocked_count = max(0, min(6, int(state.unlocked_slots)))
         host = QWidget()
-        layout = QVBoxLayout(host)
+        layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, host)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
+
+        bed_map = QFrame()
+        bed_map.setProperty("sectionCard", True)
+        bed_map_layout = QVBoxLayout(bed_map)
+        bed_map_layout.setContentsMargins(12, 10, 12, 10)
+        bed_map_layout.setSpacing(8)
         summary = QLabel(f"{unlocked_count} of 6 beds unlocked")
         summary.setProperty("nurserySection", True)
         summary.setAccessibleName(summary.text())
-        layout.addWidget(summary)
+        bed_map_layout.addWidget(summary)
         beds = ResponsiveTileGrid(
             breakpoint=568,
             minimum_tile_width=84,
@@ -10380,12 +10519,15 @@ class NurseryDialog(DialogShell):
                 f"{'newly unlocked' if newly_unlocked else 'unlocked' if unlocked else 'next expansion' if next_bed else 'locked'}"
             )
             beds.add_tile(cell)
-        layout.addWidget(beds)
+        bed_map_layout.addWidget(beds)
+
         next_index = unlocked_count
         price = self.engine.BED_PRICES.get(next_index)
-        copy_widget = QWidget()
-        copy = QVBoxLayout(copy_widget)
-        copy.setContentsMargins(0, 0, 0, 0)
+        details_panel = SectionCard()
+        details_panel.setProperty("selectedBedDetails", True)
+        copy = QVBoxLayout(details_panel)
+        copy.setContentsMargins(14, 12, 14, 12)
+        copy.setSpacing(7)
         title = QLabel(
             "All beds unlocked"
             if price is None else
@@ -10396,20 +10538,26 @@ class NurseryDialog(DialogShell):
         details = QLabel("")
         details.setProperty("nurseryMeta", True)
         details.setWordWrap(True)
+        details.setText(
+            "Your Garden has all six planting spaces."
+            if price is None else
+            "Adds one permanent planting space."
+        )
         copy.addWidget(title)
         copy.addWidget(details)
-        details.setVisible(bool(details.text()))
         if price is not None:
             price_label = QLabel(cost_label(price))
             price_label.setProperty("nurseryMeta", True)
+            price_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+            apply_tabular_numerals(price_label)
             copy.addWidget(price_label)
-        if price is not None:
             affordable = int(state.currency_balance) >= int(price)
             self.bed_button = QPushButton("Unlock")
             _set_button_variant(
                 self.bed_button,
                 BUTTON_VARIANT_PRIMARY if affordable else BUTTON_VARIANT_SECONDARY,
             )
+            _set_compact_row_action(self.bed_button)
             self.bed_button.setAccessibleDescription(
                 f"{cost_label(price)}. Unlocks bed {next_index + 1}. "
                 + (
@@ -10434,29 +10582,31 @@ class NurseryDialog(DialogShell):
             self.bed_button.clicked.connect(self._unlock_bed)
             if not affordable:
                 shortfall = QLabel(
-                    f"{int(price) - int(state.currency_balance):,} more needed"
+                    f"Need {int(price) - int(state.currency_balance):,} more Garden Coins"
                 )
                 shortfall.setProperty("nurseryShortfall", True)
                 shortfall.setWordWrap(True)
+                apply_tabular_numerals(shortfall)
                 copy.addWidget(shortfall)
-            expansion = ResponsiveActionCard(
-                copy_widget,
+            copy.addWidget(
                 self.bed_button,
-                semantic_id="nursery.garden-space-expansion",
-                summary_floor=205,
-                action_floor=96,
-                spacing=12,
-                margins=(14, 12, 14, 12),
+                0,
+                Qt.AlignmentFlag.AlignRight,
             )
-            expansion.setProperty("sectionCard", True)
-            self._catalog_responsive_controllers.append(expansion.responsive)
-        else:
-            expansion = SectionCard()
-            expansion_layout = QVBoxLayout(expansion)
-            expansion_layout.setContentsMargins(14, 12, 14, 12)
-            expansion_layout.addWidget(copy_widget)
-        layout.addWidget(expansion)
-        layout.addStretch(1)
+
+        layout.addWidget(bed_map, 1)
+        layout.addWidget(details_panel, 0)
+        split = AdaptiveSplit.for_box_layout(
+            "nursery.garden-bed-details",
+            AdaptiveRegion.measured("six-bed-map", bed_map, floor=520),
+            AdaptiveRegion.measured("selected-bed", details_panel, floor=250),
+            layout=layout,
+            wide_direction=QBoxLayout.Direction.LeftToRight,
+            compact_direction=QBoxLayout.Direction.TopToBottom,
+            spacing=14,
+            telemetry_target=host,
+        )
+        self._catalog_responsive_controllers.append(split)
         return host
 
     def _purchase_fertilizer(self, tier: str) -> None:
@@ -10623,10 +10773,20 @@ class NurseryDialog(DialogShell):
         )
         dialog = dialog_type(self, self.engine, quote)
         self.purchase_dialog = dialog
+        self._pending_purchase_result = None
+        purchase_result_signal = getattr(dialog, "purchase_result", None)
+        connect_purchase_result = getattr(purchase_result_signal, "connect", None)
+        if callable(connect_purchase_result):
+            # D emits while the modal event loop is active. Stage only the
+            # authoritative value here; rebuilding Nursery widgets must wait
+            # until exec() unwinds and the confirmation is closed.
+            connect_purchase_result(self._stage_purchase_result)
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            self._pending_purchase_result = None
             self._handle_purchase_dialog_route(dialog.requested_route)
             return None
-        outcome = dialog.outcome
+        outcome = self._pending_purchase_result or dialog.outcome
+        self._pending_purchase_result = None
         if outcome is None or not outcome.success:
             return None
         if outcome.disposition is PurchaseDisposition.UNLOCKED:
@@ -10634,16 +10794,33 @@ class NurseryDialog(DialogShell):
                 self._recently_unlocked_bed = int(outcome.result_id)
             except (TypeError, ValueError):
                 self._recently_unlocked_bed = None
+        self.handle_purchase_result(outcome, dialog.presentation)
+        return outcome
+
+    def _stage_purchase_result(self, outcome: object) -> None:
+        """Capture D's signal without touching widgets inside the live modal."""
+
+        if isinstance(outcome, PurchaseOutcome):
+            self._pending_purchase_result = outcome
+
+    def handle_purchase_result(
+        self,
+        outcome: PurchaseOutcome,
+        presentation: PurchasePresentation | None = None,
+    ) -> None:
+        """Refresh, publish, refit, and focus one committed Nursery result."""
+
+        if not outcome.success:
+            return
         try:
             self._refresh_parent()
             self.refresh()
-            self._show_purchase_receipt(outcome, dialog.presentation)
+            self._show_purchase_receipt(outcome, presentation)
         except Exception:
             self._show_catalog_transaction_exception(
                 f"{outcome.category} purchase",
                 committed=True,
             )
-        return outcome
 
     def _handle_purchase_dialog_route(self, route: str) -> None:
         """Honor one explicit terminal-state route after the modal closes."""
@@ -10718,7 +10895,8 @@ class NurseryDialog(DialogShell):
         self._status_generation += 1
         self._receipt_outcome = None
         self.nursery_toast.clear()
-        self.status.hide()
+        self.status.set_status("")
+        self._sync_nursery_feedback_host()
         self.catalog_tabs.setFocus()
 
     def _show_purchase_receipt(
@@ -10737,8 +10915,8 @@ class NurseryDialog(DialogShell):
                 item_name
             )
             message = f"{species_name} added."
-            primary = "Plant now"
-            secondary = "View collection"
+            primary = "Place in Garden"
+            secondary = "View Collection"
             secondary_callback = self._open_customize_from_nursery
         elif outcome.disposition is PurchaseDisposition.INVENTORY:
             message = f"{item_name} added."
@@ -10751,7 +10929,7 @@ class NurseryDialog(DialogShell):
                 if bool(outcome.equipped) else
                 f"{item_name} added to your collection."
             )
-            primary = "View in Collection"
+            primary = "View Collection"
             secondary = "Keep browsing"
             secondary_callback = self._dismiss_product_receipt
         elif outcome.disposition in {
@@ -10772,7 +10950,7 @@ class NurseryDialog(DialogShell):
                 "Garden Bed", "Bed"
             )
             message = f"{bed_name} unlocked."
-            primary = "View garden"
+            primary = "View Garden"
             secondary = "Keep browsing"
             secondary_callback = self._dismiss_product_receipt
         else:
@@ -10787,7 +10965,7 @@ class NurseryDialog(DialogShell):
             if primary
             else None
         )
-        self.status.hide()
+        self.status.set_status("")
         _set_button_variant(self.nursery_toast.action, BUTTON_VARIANT_PRIMARY)
         self.nursery_toast.show_message(
             message,
@@ -10798,9 +10976,21 @@ class NurseryDialog(DialogShell):
             dismiss_text=secondary,
             dismiss_callback=secondary_callback,
         )
+        self._sync_nursery_feedback_host()
+        QTimer.singleShot(0, self._refit_nursery_feedback)
+        QTimer.singleShot(6100, self._sync_nursery_feedback_host)
         QTimer.singleShot(0, lambda: self._focus_purchase_result(outcome))
 
     def _focus_purchase_result(self, outcome: PurchaseOutcome) -> None:
+        if self.nursery_toast.isVisible():
+            if (
+                self.nursery_toast.action.isVisible()
+                and self.nursery_toast.action.isEnabled()
+            ):
+                self.nursery_toast.action.setFocus()
+                return
+            self.nursery_toast.setFocus()
+            return
         identifiers = {
             str(outcome.item_id or ""),
             str(outcome.result_id or ""),
@@ -10989,13 +11179,18 @@ class NurseryDialog(DialogShell):
             if active is None or plant.plant_id != active.plant_id
         ]
         if collection_plants and not starter_mode and not self._no_new_plants:
-            self._section_label("Your plants")
+            self._section_label("Plants in your Garden")
             for plant in sorted(collection_plants, key=lambda item: (item.slot_index is None, item.name.lower())):
                 self.catalog_layout.addWidget(self._owned_card(plant))
         if available:
+            if not starter_mode:
+                self._section_label(
+                    "Seeds",
+                    "Purchased seeds permanently unlock a species. Plant them to begin earning Growth.",
+                )
             available_grid_host = ResponsiveTileGrid(
                 breakpoint=600,
-                minimum_tile_width=270,
+                minimum_tile_width=240,
                 maximum_columns=(
                     2
                     if starter_mode
@@ -11008,7 +11203,7 @@ class NurseryDialog(DialogShell):
                 )
             self.catalog_layout.addWidget(available_grid_host)
         else:
-            view_collection = QPushButton("View collection")
+            view_collection = QPushButton("View Collection")
             _set_button_variant(view_collection, BUTTON_VARIANT_PRIMARY)
             view_collection.clicked.connect(self._open_customize_from_nursery)
             empty = EmptyState(
@@ -11016,11 +11211,15 @@ class NurseryDialog(DialogShell):
                 if starter_mode else "All plants collected",
                 "The Nursery is stocking new plants. More will appear when their complete artwork is ready."
                 if starter_mode else
-                f"{owned_count:,} of {max(owned_count, release_ready_count):,}",
+                f"{owned_count:,} of {max(owned_count, release_ready_count):,} species collected",
                 action=None if starter_mode else view_collection,
             )
-            self.catalog_layout.addWidget(empty)
-        self.catalog_layout.addStretch(1)
+            empty.setMaximumWidth(520)
+            self.catalog_layout.addWidget(
+                empty,
+                0,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter,
+            )
         if not starter_mode:
             active_plant = self.engine.active_plant()
             active_status = (
@@ -11064,14 +11263,10 @@ class NurseryDialog(DialogShell):
             self.supplements_layout.addWidget(charge_heading)
             for spec in GROWTH_CHARGES.values():
                 self.supplements_layout.addWidget(self._growth_charge_card(spec))
-            self.supplements_layout.addStretch(1)
-
             self.upgrades_layout.addWidget(self._space_progression())
 
             self.environment_feature_art = QLabel()
-            self.environment_feature_art.setMinimumSize(180, 101)
-            self.environment_feature_art.setMaximumSize(220, 124)
-            self.environment_feature_art.resize(220, 124)
+            self.environment_feature_art.setFixedSize(180, 101)
             self.environment_feature_art.setSizePolicy(
                 QSizePolicy.Policy.Preferred,
                 QSizePolicy.Policy.Preferred,
@@ -11096,7 +11291,6 @@ class NurseryDialog(DialogShell):
             self.environment_feature_meta.setWordWrap(True)
             feature_copy.addWidget(self.environment_feature_title)
             feature_copy.addWidget(self.environment_feature_meta)
-            feature_copy.addStretch(1)
             feature = ResponsiveActionCard(
                 self.environment_feature_art,
                 feature_copy_widget,
@@ -11105,12 +11299,25 @@ class NurseryDialog(DialogShell):
                 action_floor=180,
                 spacing=12,
                 margins=(12, 11, 12, 11),
+                wide_maximum_height=130,
             )
             feature.setProperty("nurseryPlant", True)
             feature.setProperty("nurseryCatalogCard", True)
             self.environment_feature_card = feature
             self._catalog_responsive_controllers.append(feature.responsive)
             self.environment_layout.addWidget(feature)
+            manage_owned = QPushButton("Manage owned weather in Collection")
+            _set_button_variant(manage_owned, BUTTON_VARIANT_SECONDARY)
+            _set_compact_row_action(manage_owned)
+            manage_owned.setAccessibleDescription(
+                "Open Collection to preview or equip owned Weather and Scenery."
+            )
+            manage_owned.clicked.connect(self._open_customize_from_nursery)
+            self.environment_layout.addWidget(
+                manage_owned,
+                0,
+                Qt.AlignmentFlag.AlignLeft,
+            )
             equipped_item = (
                 WEATHER_CATALOG.get(str(state.selected_weather))
                 or SCENERY_CATALOG.get(str(state.selected_background))
@@ -11137,20 +11344,20 @@ class NurseryDialog(DialogShell):
                 self.environment_layout.addWidget(grid)
                 if self.environment_feature_title.text() == "Preview" and first_item is not None:
                     self._preview_environment_item(first_item)
-            self.environment_layout.addStretch(1)
         self.catalog_content_responsive = tuple(
             self._catalog_responsive_controllers
         )
+        self.schedule_content_fit(
+            "nursery-refresh",
+            preserve_transition=False,
+        )
 
     def _show_result(self, ok: bool, message: str) -> None:
-        # Nursery feedback is one overlay lane. Replace any purchase receipt
-        # before showing a direct-action result so the two surfaces can never
-        # cover one another at the shared catalog anchor.
+        # Replace the receipt inside the one normal-flow feedback host.
         self.nursery_toast.clear()
         self._status_generation += 1
         generation = self._status_generation
         message = _learner_text(message)
-        self.status.setText(message)
         lower_message = message.casefold()
         persistence_failure = bool(
             not ok
@@ -11172,16 +11379,7 @@ class NurseryDialog(DialogShell):
             )
             else FeedbackTone.WARNING
         )
-        style = {
-            FeedbackTone.SUCCESS: "color:#baf3c6; background:#1d4931; border:1px solid #3c7653;",
-            FeedbackTone.INFO: "color:#d8eee5; background:#17352c; border:1px solid #416b5d;",
-            FeedbackTone.WARNING: "color:#f4e5aa; background:#3b3420; border:1px solid #7d6f3d;",
-            FeedbackTone.ERROR: "color:#ffd0d0; background:#582f34; border:1px solid #92515a;",
-        }[tone]
-        self.status.setStyleSheet(
-            style + " padding:7px 9px; border-radius:7px;"
-        )
-        set_semantic_role(self.status, SemanticRole.BANNER, tone=tone)
+        self.status.set_status(message, tone=tone)
         self.status.setProperty(
             "transactionState",
             "success"
@@ -11200,11 +11398,7 @@ class NurseryDialog(DialogShell):
             if persistence_failure
             else "attempt-result",
         )
-        self.status.setAccessibleDescription(message)
-        self.status.show()
-        position_overlays = getattr(self, "_position_nursery_overlays", None)
-        if callable(position_overlays):
-            position_overlays()
+        self._sync_nursery_feedback_host()
         announcer = getattr(self, "accessibility_announcer", None)
         if announcer is not None:
             announcer.announce(
@@ -11226,7 +11420,8 @@ class NurseryDialog(DialogShell):
 
     def _hide_status_if_current(self, generation: int) -> None:
         if int(generation) == self._status_generation:
-            self.status.hide()
+            self.status.set_status("")
+            self._sync_nursery_feedback_host()
 
     def _refresh_parent(self) -> None:
         parent = self.parent()

@@ -34,7 +34,7 @@ from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .scene import GardenSceneWidget
 from .plant_display import growth_display
 from .state import GardenPreviewSnapshot, garden_preview_from_values
-from .responsive import AdaptiveRegion, AdaptiveSplit, COMPACT_MODE
+from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE
 from .theme import (
     BUTTON_MIN_HEIGHT,
     GARDEN_THEME,
@@ -44,18 +44,20 @@ from .theme import (
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
-    "animations_label": "Reduce motion",
+    "animations_label": "Reduce animations",
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
     "animation_label": "Weather motion",
     "particle_label": "Weather detail",
     "home_widget_label": "Show home preview",
-    "progress_notifications_label": "Show review rewards",
+    "progress_notifications_label": "Show reviewer rewards",
 }
 
-SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 280
-SETTINGS_CONTROLS_WIDE_MAX_WIDTH = 380
+SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 210
+SETTINGS_CONTROLS_WIDE_MAX_WIDTH = 235
+SETTINGS_SCENERY_WIDE_MIN_WIDTH = 205
+SETTINGS_SCENERY_WIDE_MAX_WIDTH = 230
 
 
 def _describe_control(widget: QWidget, text: str) -> None:
@@ -416,21 +418,27 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        theme_layout = QHBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(10, 8, 10, 8)
+        theme_layout = QVBoxLayout(self.theme_card)
+        theme_layout.setContentsMargins(10, 10, 10, 10)
+        theme_layout.setSpacing(6)
+        theme_heading = QLabel("Current scenery")
+        theme_heading.setProperty("settingsHeading", True)
         self.theme_thumbnail = QLabel()
-        self.theme_thumbnail.setFixedSize(84, 48)
+        self.theme_thumbnail.setFixedSize(160, 90)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
-        theme_copy = QVBoxLayout()
-        theme_title = QLabel("Scenery: Verdant Twilight")
-        theme_title.setProperty("settingsHeading", True)
-        theme_title.setWordWrap(True)
-        theme_title.setMinimumWidth(0)
-        theme_copy.addWidget(theme_title)
-        theme_layout.addWidget(self.theme_thumbnail)
-        theme_layout.addLayout(theme_copy, 1)
+        self.theme_title = QLabel("Verdant Twilight")
+        self.theme_title.setProperty("settingsHeading", True)
+        self.theme_title.setWordWrap(True)
+        self.theme_title.setMinimumWidth(0)
+        theme_layout.addWidget(theme_heading)
+        theme_layout.addWidget(
+            self.theme_thumbnail,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+        theme_layout.addWidget(self.theme_title)
         self.manage_environment = QToolButton()
         self.manage_environment.setText("Edit appearance")
         self.manage_environment.setAccessibleDescription(
@@ -438,7 +446,6 @@ class GardenStudioWidget(QWidget):
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         theme_layout.addWidget(self.manage_environment)
-        controls_layout.addWidget(self.theme_card)
 
         self.reduced_motion = QCheckBox()
         self.reduced_motion.setAccessibleName(STUDIO_TEXT["animations_label"])
@@ -600,23 +607,32 @@ class GardenStudioWidget(QWidget):
         self.controls_scroll.setWidget(self.controls)
 
         self.root_layout.addWidget(self.controls_scroll, 0)
+        self.root_layout.addWidget(self.theme_card, 0)
         self.root_layout.addWidget(self.preview_panel, 1)
         self.root_layout.setAlignment(
             self.controls_scroll,
             Qt.AlignmentFlag.AlignTop,
         )
+        self.root_layout.setAlignment(self.theme_card, Qt.AlignmentFlag.AlignTop)
         self.root_layout.setAlignment(self.preview_panel, Qt.AlignmentFlag.AlignTop)
-        self.studio_responsive = AdaptiveSplit(
-            "settings.display-studio",
-            AdaptiveRegion.fixed(
-                "display-controls",
-                SETTINGS_CONTROLS_WIDE_MIN_WIDTH,
-                target=self.controls_scroll,
-            ),
-            AdaptiveRegion.measured(
-                "home-preview",
-                self.preview_panel,
-                floor=360,
+        self.studio_responsive = AdaptiveRow(
+            "settings.home-preview-row",
+            (
+                AdaptiveRegion.fixed(
+                    "home-preview-toggle",
+                    SETTINGS_CONTROLS_WIDE_MIN_WIDTH,
+                    target=self.controls_scroll,
+                ),
+                AdaptiveRegion.fixed(
+                    "current-scenery",
+                    SETTINGS_SCENERY_WIDE_MIN_WIDTH,
+                    target=self.theme_card,
+                ),
+                AdaptiveRegion.measured(
+                    "shared-home-preview",
+                    self.preview_panel,
+                    floor=340,
+                ),
             ),
             spacing=16,
             apply_mode=self._apply_studio_layout_mode,
@@ -830,7 +846,9 @@ class GardenStudioWidget(QWidget):
         self.controls.setMinimumWidth(
             0 if compact else SETTINGS_CONTROLS_WIDE_MIN_WIDTH
         )
-        self.controls.setMaximumWidth(16777215 if compact else 380)
+        self.controls.setMaximumWidth(
+            16777215 if compact else SETTINGS_CONTROLS_WIDE_MAX_WIDTH
+        )
         self.controls.setSizePolicy(
             QSizePolicy.Policy.Expanding if compact else QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Preferred,
@@ -852,6 +870,17 @@ class GardenStudioWidget(QWidget):
         )
         self.controls_scroll.updateGeometry()
         self.controls.updateGeometry()
+        self.theme_card.setMinimumWidth(
+            0 if compact else SETTINGS_SCENERY_WIDE_MIN_WIDTH
+        )
+        self.theme_card.setMaximumWidth(
+            16777215 if compact else SETTINGS_SCENERY_WIDE_MAX_WIDTH
+        )
+        self.theme_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding if compact else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.theme_card.updateGeometry()
         self.preview_panel.updateGeometry()
         self.updateGeometry()
 

@@ -1100,11 +1100,11 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
             self.focused = False
             self.visible = False
 
-        def setText(self, value: str) -> None:
+        def set_status(self, value: str, *, tone: Any = None) -> None:
+            del tone
             self.text = value
-
-        def setStyleSheet(self, _value: str) -> None:
-            return None
+            self.description = value
+            self.visible = bool(value)
 
         def setAccessibleDescription(self, value: str) -> None:
             self.description = value
@@ -1140,6 +1140,7 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
                 (message, priority)
             )
         ),
+        _sync_nursery_feedback_host=lambda: None,
     )
     nursery._hide_status_if_current = lambda generation: hide_status(
         nursery,

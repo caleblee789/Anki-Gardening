@@ -135,7 +135,7 @@ def test_loadout_preview_feedback_is_normal_flow_above_aspect_fitted_scene() -> 
     assert "duration_ms=0 if error else duration_ms" in loadout
 
 
-def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
+def test_nursery_uses_compact_cards_normal_flow_feedback_and_starter_only_footer() -> None:
     source = _source("ankigarden/ui/dashboard.py")
     nursery = source.split("class NurseryDialog", 1)[1].split(
         "class PlantInfoCard", 1
@@ -146,11 +146,13 @@ def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
     assert "self.coins.setMinimumWidth(0)" in nursery
     assert "root.addWidget(self.nursery_toast)" not in nursery
     assert "root.addWidget(self.status)" not in nursery
-    assert "def _position_nursery_overlays(self)" in nursery
+    assert "self.nursery_feedback_host = QFrame()" in nursery
+    assert "target_layout.insertWidget(0, self.nursery_feedback_host)" in nursery
+    assert "def _position_nursery_overlays(self)" not in nursery
     assert "self.nursery_footer.setVisible(starter_mode)" in nursery
-    assert "self._plant_artwork(species, GROWTH_STAGES[0], 84)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 68)" in nursery
     assert "self._environment_artwork(item, width=180, height=101)" in nursery
-    assert "self.environment_feature_art.setMaximumSize(220, 124)" in nursery
+    assert "self.environment_feature_art.setFixedSize(180, 101)" in nursery
     assert "maximum_columns=3" in nursery
     result = nursery.split("def _show_result", 1)[1].split(
         "def _hide_status_if_current", 1
@@ -159,7 +161,7 @@ def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
         "def _focus_purchase_result", 1
     )[0]
     assert "self.nursery_toast.clear()" in result
-    assert "self.status.hide()" in receipt
+    assert 'self.status.set_status("")' in receipt
 
 
 def test_plant_popover_is_compact_and_omits_inactive_boost_actions() -> None:

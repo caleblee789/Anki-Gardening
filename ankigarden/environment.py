@@ -272,7 +272,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Unavailable",
+        "Temporarily unavailable",
     ),
 }
 

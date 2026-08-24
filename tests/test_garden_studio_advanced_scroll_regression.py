@@ -140,7 +140,7 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
     for name in (
         "Plants catalog",
-        "Fertilizer and Boosters catalog",
+        "Fertilizers and boosts catalog",
         "Garden beds catalog",
         "Weather and Scenery catalog",
     ):
@@ -161,11 +161,11 @@ def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
     assert "self.set_initial_focus(self.top_close)" not in dialog
 
 
-def test_settings_troubleshooting_actions_reflow_from_their_own_viewport() -> None:
+def test_settings_diagnostics_actions_reflow_from_their_own_viewport() -> None:
     settings = _class_source(DASHBOARD_PATH, "GardenSettingsDialog")
 
-    assert '"settings.troubleshooting-actions"' in settings
-    assert "self.troubleshooting_scroll.viewport()" in settings
+    assert '"settings.diagnostics-actions"' in settings
+    assert "self.diagnostics_scroll.viewport()" in settings
     assert "QBoxLayout.Direction.LeftToRight" in settings
     assert "QBoxLayout.Direction.TopToBottom" not in settings
     assert '"refresh-diagnostics"' in settings
@@ -493,7 +493,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         )
     ) == (
         "Plants catalog",
-        "Fertilizer and Boosters catalog",
+        "Fertilizers and boosts catalog",
         "Garden Spaces catalog",
         "Weather and Scenery catalog",
     )
@@ -1185,7 +1185,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     for index, expected_name in enumerate(
         (
             "Plants catalog",
-            "Fertilizer and Boosters catalog",
+            "Fertilizers and boosts catalog",
             "Garden Spaces catalog",
             "Weather and Scenery catalog",
         )

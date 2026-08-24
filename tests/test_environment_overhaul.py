@@ -489,13 +489,14 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text("utf-8")
     studio = (root / "ankigarden/ui/garden_studio.py").read_text("utf-8")
 
-    assert dashboard.index('addTab(self.upgrades_scroll, "Garden beds")') < dashboard.index(
-        'addTab(self.environment_scroll, "Weather and Scenery")'
+    assert dashboard.index('catalog_page(self.upgrades_scroll), "Garden beds"') < dashboard.index(
+        'catalog_page(self.environment_scroll),'
     )
-    assert 'addTab(self.supplements_scroll, "Fertilizer and boosts")' in dashboard
+    assert 'catalog_page(self.supplements_scroll),' in dashboard
+    assert '"Fertilizers and boosts"' in dashboard
     assert "self.collectible_detail_dialog = CollectibleDetailDialog(" in dashboard
     assert "self._settings_scene_snapshot," in dashboard
-    assert 'self.catalog_tabs.addTab(self.environment_scroll, "Weather and Scenery")' in dashboard
+    assert 'catalog_page(self.environment_scroll),' in dashboard
     assert 'self.option_tabs.addTab(self.scenery_page, "Scenery")' in dashboard
     assert 'self.option_tabs.addTab(self.weather_page, "Weather")' in dashboard
     assert 'self.option_tabs.addTab(self.decoration_page, "Decorations")' in dashboard

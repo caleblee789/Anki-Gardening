@@ -71,13 +71,13 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     assert "self.engine.catalog_summary()" in nursery
     assert "self.engine.select_starter_species(species)" in nursery
     assert "self._currently_growing_strip(active)" in nursery
-    assert '"Your plants"' in nursery
+    assert '"Plants in your Garden"' in nursery
     assert '"Build your collection"' in nursery
     assert '"Botanical catalog"' not in nursery
     assert "self._plant_stage_strip(species)" in nursery
-    assert "self._plant_artwork(species, GROWTH_STAGES[0], 84)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 68)" in nursery
     assert "starter_selection_complete" in nursery
-    assert '"Store" if plant.planted else "Place"' in owned_card
+    assert '"Store plant" if plant.planted else "Place in Garden"' in owned_card
     assert '"Move to Collection"' not in owned_card
     for consequence in ("Store", "Collection", "Bed", "will become empty"):
         assert consequence in return_copy
@@ -140,16 +140,16 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
-    assert 'ready_text="Ready to buy"' in available_card
+    assert 'f"Need {max(0, int(price) - balance):,} more Garden Coins"' in available_card
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
     assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
-    assert 'GardenBadge("Permanent"' not in available_card
+    assert 'permanent = QLabel("Permanent")' in available_card
     assert 'ownership = QLabel("Not collected")' not in available_card
     assert "COST_FREE" not in available_card
     assert "{amount} Garden Coins" in _source("ankigarden/ui/copy.py")
     assert '"Starts as Seed"' not in available_card
-    assert "_compact_affordability_status(" in available_card
+    assert "_compact_affordability_status(" not in available_card
 
 
 def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> None:
@@ -264,7 +264,7 @@ def test_nursery_cards_use_compact_readable_type() -> None:
     )[0]
 
     assert "QLabel[nurseryTitle='true'] { font-size:24px" in nursery
-    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:16px" in nursery
+    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:15px" in nursery
     assert "QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:13px" in nursery
     assert 'title.setProperty("nurseryPlantName", True)' in nursery
 
@@ -279,7 +279,7 @@ def test_nursery_tabs_use_available_width_without_cutting_off_labels() -> None:
     assert "self.catalog_tabs.tabBar().setUsesScrollButtons(True)" in nursery
     assert "self.catalog_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)" in nursery
     assert "button.setFixedSize(84, COMPACT_BUTTON_HEIGHT)" in nursery
-    assert "minimum_tile_width=270" in nursery
+    assert "minimum_tile_width=240" in nursery
     assert "else min(3, max(1, len(available)))" in nursery
     assert '"Only one weather can be equipped at a time. Preview before "' not in nursery
     assert '3: "Weather and Scenery"' in nursery
@@ -306,6 +306,48 @@ def test_nursery_success_toast_has_a_compact_semantic_icon() -> None:
     assert "self.dismiss.clicked.connect(self._run_dismiss)" in toast
 
 
+def test_nursery_feedback_is_one_normal_flow_host_and_purchase_refresh_is_deferred() -> None:
+    nursery = _class_source("ankigarden/ui/dashboard.py", "NurseryDialog")
+    move_host = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_move_nursery_feedback_host",
+    )
+    execute = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_execute_purchase",
+    )
+    stage = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_stage_purchase_result",
+    )
+    handle = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "handle_purchase_result",
+    )
+    receipt = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_show_purchase_receipt",
+    )
+
+    assert "self.nursery_feedback_host = QFrame()" in nursery
+    assert "self.nursery_feedback_layout.addWidget(self.nursery_toast)" in nursery
+    assert "self.nursery_feedback_layout.addWidget(self.status)" in nursery
+    assert "target_layout.insertWidget(0, self.nursery_feedback_host)" in move_host
+    assert "setGeometry(" not in move_host
+    assert "connect_purchase_result(self._stage_purchase_result)" in execute
+    assert "self._pending_purchase_result = outcome" in stage
+    assert execute.index("dialog.exec()") < execute.index("self.handle_purchase_result")
+    assert "self.refresh()" in handle
+    assert "self._show_purchase_receipt(outcome, presentation)" in handle
+    assert 'primary = "Place in Garden"' in receipt
+    assert "self._refit_nursery_feedback" in receipt
+
+
 def test_available_plants_fill_space_with_an_auto_fit_catalog() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
@@ -317,15 +359,15 @@ def test_available_plants_fill_space_with_an_auto_fit_catalog() -> None:
     assert "card_layout = QVBoxLayout(card)" in available_card
     assert '"Growth begins when planted."' not in available_card
     assert '_purchase_fact(presentation, "planting")' not in available_card
-    assert 'details = QPushButton("Details")' in available_card
+    assert 'details = QPushButton("View stages")' in available_card
     assert "footer = QHBoxLayout()" in available_card
     assert "Qt.AlignmentFlag.AlignHCenter" in available_card
     assert "available_grid_host = ResponsiveTileGrid(" in refresh
-    assert "minimum_tile_width=270" in refresh
+    assert "minimum_tile_width=240" in refresh
     assert "else min(3, max(1, len(available)))" in refresh
     assert "available_grid_host.add_tile(" in refresh
-    assert "Purchased seeds permanently unlock a species." not in refresh
-    assert "Plant them in any open bed to begin earning Growth." not in refresh
+    assert "Purchased seeds permanently unlock a species." in refresh
+    assert "Plant them to begin earning Growth." in refresh
 
 
 def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
@@ -929,7 +971,8 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     hide_saved = _method_source("ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_hide_saved_status")
 
     assert "self.theme_combo" not in studio
-    assert 'theme_title = QLabel("Scenery: Verdant Twilight")' in theme_card
+    assert 'theme_heading = QLabel("Current scenery")' in theme_card
+    assert 'self.theme_title = QLabel("Verdant Twilight")' in theme_card
     assert "self.theme_thumbnail = QLabel()" in theme_card
     assert 'self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")' in theme_card
     assert "QComboBox" not in theme_card
@@ -968,6 +1011,11 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     assert 'self.save_status.text() == "Saved"' in hide_saved
     assert "self.save_status.hide()" in hide_saved
     assert 'self.tabs.addTab(advanced, UI_TEXT["tab_advanced"])' in settings
+    assert '"tab_advanced": "Diagnostics"' in dashboard
+    assert 'advanced.setAccessibleName("Diagnostics")' in settings
+    assert '"Troubleshooting"' not in settings
+    assert "self.debug_report.setMinimumHeight(220)" in settings
+    assert "self.debug_report.setMaximumHeight(260)" in settings
     assert "DEVELOPMENT_MUTATION_ENABLED" not in dashboard
     assert "Unlock development tools" not in settings
     assert "Populate test garden" not in settings
@@ -1012,7 +1060,10 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
     assert 'self.home_preview = GardenHomePreview(self.scene)' in studio
     assert "preview_layout.addWidget(self.home_preview)" in studio
     assert "self.root_layout.addWidget(self.preview_panel, 1)" in studio
-    assert "self.controls.setMaximumWidth(16777215 if compact else 380)" in studio
+    assert "SETTINGS_CONTROLS_WIDE_MAX_WIDTH" in studio
+    assert '"settings.home-preview-row"' in studio
+    assert '"current-scenery"' in studio
+    assert '"shared-home-preview"' in studio
     assert "self.advanced_panel.setSizePolicy(" in studio
     assert "self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)" in studio
     assert "controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)" in studio
@@ -1025,14 +1076,15 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
         "class HomeGardenPreview", 1
     )[0]
     assert "QSizePolicy.Policy.Maximum" in toggle_row
-    assert "self.footer_layout.addWidget(self.save_status, 1)" in settings
+    assert "settings_footer_copy_layout.addWidget(self.unsaved_count)" in settings
+    assert "settings_footer_copy_layout.addWidget(self.save_status)" in settings
     assert "def _apply_settings_footer_layout" in settings
     assert "self.behavior.advanced_actions_layout.addWidget(self.restore_defaults)" in settings
     assert "self.settings_footer_grid.addWidget(self.cancel_settings, 0, 0)" in settings
     sync_tab = _method_source(
         "ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_sync_settings_tab"
     )
-    assert "show_settings_actions = not diagnostics or self._draft_is_dirty()" in sync_tab
+    assert "show_settings_actions = not diagnostics or dirty" in sync_tab
     assert "self.settings_footer_actions.setVisible(show_settings_actions)" in sync_tab
     restore_persistent = _method_source(
         "ankigarden/ui/garden_studio.py",
@@ -1405,9 +1457,10 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert '"Inventory:' not in charge
     assert "helper_text = spec.how_to_earn" not in charge
     assert 'action = QPushButton("Locked")' not in charge
-    assert 'f"{spec.price - self.storage.state.currency_balance:,} more needed"' in charge
-    assert '"Equipped" if equipped else' in environment
-    assert '"View in Collection" if owned else' in environment
+    assert 'f"Need {spec.price - self.storage.state.currency_balance:,} "' in charge
+    assert '"Equipped" if equipped else "Owned"' in environment
+    assert '"View in Collection" if owned else' not in environment
+    assert 'if not owned:' in environment
     assert '"Garden Find only"' in environment
     assert "item.purchasable" in environment
     assert "item.drop_only" in environment
@@ -1418,6 +1471,12 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "Earn while reviewing" not in environment + collection_environment
     assert "discovery reward" not in collection_option
     assert 'QPushButton("Unlock")' in spaces
+    assert '"nursery.garden-bed-details"' in spaces
+    assert 'AdaptiveRegion.measured("six-bed-map"' in spaces
+    assert 'AdaptiveRegion.measured("selected-bed"' in spaces
+    assert 'QPushButton("Manage owned weather in Collection")' in _method_source(
+        "ankigarden/ui/dashboard.py", "NurseryDialog", "refresh"
+    )
     assert "class FertilizerReplacementDialog(PurchaseConfirmationDialog)" in replacement
     assert "DialogSizeClass.TRANSACTION" in confirmation
     assert "self.register_scroll_region(self.content_scroll)" in confirmation

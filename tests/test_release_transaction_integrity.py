@@ -919,8 +919,8 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     assert observed["released"] is True
 
     class _Status:
-        def hide(self) -> None:
-            self.visible = False
+        def set_status(self, message: str) -> None:
+            self.visible = bool(message)
 
     status = _Status()
     toast_result: dict[str, Any] = {}
@@ -955,6 +955,9 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             _follow_receipt_action=lambda: None,
             _dismiss_product_receipt=lambda: None,
             _open_customize_from_nursery=lambda: None,
+            _sync_nursery_feedback_host=lambda: None,
+            _refit_nursery_feedback=lambda: None,
+            _focus_purchase_result=lambda _outcome: None,
         ),
         outcome,
         SimpleNamespace(facts=(), target_name=""),
@@ -962,7 +965,7 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
 
     assert status.visible is False
     assert toast_result["message"] == "Soft Breeze added to your collection."
-    assert toast_result["action_text"] == "View in Collection"
+    assert toast_result["action_text"] == "View Collection"
     assert toast_result["dismiss_text"] == "Keep browsing"
     assert callable(toast_result["dismiss_callback"])
     assert toast_result["duration_ms"] == 6_000
