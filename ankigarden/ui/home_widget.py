@@ -556,6 +556,10 @@ HOME_WIDGET_STYLE = """
   text-align:left;
 }
 .ag-home__stage-up + .ag-home__partial-message { top:48px; }
+#ag-home-root[data-state="stale"] .ag-home__partial-message {
+  top:52px;
+  right:16px;
+}
 #ag-home-root button,.ag-home__open {
   min-height:32px !important;
   max-height:32px !important;

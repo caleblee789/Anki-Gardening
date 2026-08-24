@@ -1031,6 +1031,8 @@ def test_state_transitions_ignore_stale_requests_and_replace_displayed_data() ->
     assert "Moss · Seed · 14 / 500" in stale_html
     assert "Updating…" in stale_html
     assert "--ag-scene-opacity:0.720" in stale_html
+    assert '#ag-home-root[data-state="stale"] .ag-home__partial-message' in stale_html
+    assert "top:52px" in stale_html
 
 
 @pytest.mark.parametrize(
