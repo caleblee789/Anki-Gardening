@@ -301,6 +301,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__scenery-layer { z-index:2; }
 .ag-home__marker-layer { position:absolute; z-index:84; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
+.ag-home__nurtured-marker-shadow { position:absolute; border-radius:50%; background:radial-gradient(ellipse,rgba(18,28,21,.42),rgba(18,28,21,.18) 58%,transparent 82%); filter:blur(1px); pointer-events:none; }
 .ag-home__nurtured-marker { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__nurtured-marker-fallback { position:absolute; display:none; box-sizing:border-box; border:1px solid #4c3e18; border-radius:50%; background:#dfbd57; pointer-events:none; }
 .ag-home__nurtured-marker-fallback::after { content:""; position:absolute; left:29%; top:28%; width:42%; height:34%; border-radius:70% 25% 70% 25%; background:#fff; transform:rotate(-12deg); }
@@ -404,7 +405,7 @@ HOME_WIDGET_STYLE = """
   align-items:center;
   justify-content:center;
   min-width:108px;
-  min-height:36px;
+  min-height:32px;
   box-sizing:border-box;
   line-height:1.2;
   flex:none;
@@ -430,7 +431,7 @@ HOME_WIDGET_STYLE = """
   outline-offset: 2px;
   box-shadow:0 0 0 4px #071A15;
 }
-.ag-home__open { flex:none; min-width:108px !important; min-height:36px !important; padding:0 14px !important; border-radius:8px !important; font-size:13px !important; }
+.ag-home__open { flex:none; min-width:100px !important; min-height:32px !important; padding:0 12px !important; border-radius:8px !important; font-size:13px !important; }
 .ag-home__state-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 #ag-home-root button.ag-home__secondary {
   border-color:#4F806E;
@@ -447,7 +448,7 @@ HOME_WIDGET_STYLE = """
   position:relative;
   width:min(calc(100% - 32px), 720px);
   max-width:720px;
-  height:144px;
+  height:152px;
   margin:24px auto 18px;
   border-color:rgba(128,178,155,.28);
   border-radius:12px;
@@ -467,7 +468,7 @@ HOME_WIDGET_STYLE = """
   box-shadow:0 0 0 4px #071A15,0 14px 34px rgba(0,0,0,.3);
 }
 .ag-home__state {
-  min-height:144px;
+  min-height:152px;
   padding:16px;
   background:linear-gradient(90deg,rgba(5,20,16,.97),rgba(7,27,20,.86) 66%,rgba(7,27,20,.62));
 }
@@ -478,13 +479,15 @@ HOME_WIDGET_STYLE = """
   height:100%;
 }
 .ag-home__scene-frame {
-  top:var(--ag-preview-y,50%);
+  top:var(--ag-home-focal-y,var(--ag-preview-y,50%));
   background-position:var(--ag-preview-x,50%) var(--ag-preview-y,50%);
-  filter:brightness(1.15);
+  filter:brightness(1.12);
 }
 .ag-home__scene::after {
   z-index:88;
-  background:linear-gradient(90deg,rgba(4,14,11,.96) 0%,rgba(4,14,11,.76) 54%,rgba(4,14,11,.18) 100%);
+  background:
+    linear-gradient(90deg,rgba(4,14,11,.88) 0%,rgba(4,14,11,.54) 34%,rgba(4,14,11,.12) 60%,rgba(4,14,11,.03) 100%),
+    linear-gradient(180deg,rgba(4,14,11,.18) 0%,transparent 58%,rgba(4,14,11,.08) 100%);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
 }
 .ag-home__details {
@@ -492,25 +495,26 @@ HOME_WIDGET_STYLE = """
   z-index:100;
   inset:0;
   min-height:0;
-  padding:16px;
+  padding:14px 16px;
   display:flex;
   flex-direction:column;
-  justify-content:center;
+  justify-content:flex-start;
   background:none;
 }
 .ag-home__details::before { display:none; }
 .ag-home__identity-row {
   display:grid;
-  grid-template-columns:minmax(0,1fr) 120px;
-  gap:20px;
-  align-items:center;
+  grid-template-columns:minmax(0,280px) 100px;
+  justify-content:space-between;
+  gap:16px;
+  align-items:start;
 }
-.ag-home__identity { max-width:460px; }
+.ag-home__identity { width:100%; max-width:280px; }
 .ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:12px; }
-.ag-home__focus-name { font-size:20px; line-height:1.15; }
+.ag-home__focus-name { font-size:19px; line-height:1.12; }
 .ag-home__support {
   display:block;
-  max-width:520px;
+  max-width:280px;
   margin-top:4px;
   overflow:hidden;
   color:#D3DDD8;
@@ -522,12 +526,12 @@ HOME_WIDGET_STYLE = """
   white-space:nowrap;
 }
 .ag-home__growth-track {
-  width:min(100%,460px);
+  width:min(100%,280px);
   height:4px;
   margin-top:7px;
   overflow:hidden;
   border-radius:4px;
-  background:rgba(199,210,201,.22);
+  background:rgba(199,210,201,.34);
 }
 .ag-home__growth-track > span {
   display:block;
@@ -553,11 +557,12 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__stage-up + .ag-home__partial-message { top:48px; }
 #ag-home-root button,.ag-home__open {
-  min-height:36px !important;
-  max-height:36px !important;
-  min-width:104px !important;
-  width:116px;
-  padding:0 14px !important;
+  min-height:32px !important;
+  max-height:32px !important;
+  min-width:96px !important;
+  width:auto;
+  max-width:132px;
+  padding:0 12px !important;
   border-color:#5CC58B;
   background:#5CC58B;
   color:#062017;
@@ -580,7 +585,7 @@ HOME_WIDGET_STYLE = """
 }
 @container (max-width: 469px) {
   .ag-home__details { padding:14px; }
-  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 112px; gap:12px; }
+  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 96px; gap:12px; }
   .ag-home__support { max-width:100%; }
   .ag-home--no-starter .ag-home__support {
     overflow:visible;
@@ -594,7 +599,7 @@ HOME_WIDGET_STYLE = """
   .ag-home__support { max-width:100%; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
-#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity { max-width:390px; }
+#ag-home-root[data-summary-clearance="center-left-marker"] .ag-home__identity { max-width:260px; }
 </style>
 """
 
@@ -847,12 +852,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         layout.visible.expanded(4.0, 4.0)
         for layout in layouts
     ]
-    # The scenic Home card paints its identity and action rail over the bottom
-    # of the scene. Keep the marker clear of both visible text lanes.
-    marker_protected_regions = (
-        Rect(0.0, 300.0, 700.0, 120.0),
-        Rect(760.0, 300.0, 240.0, 120.0),
-    )
     plant_markup: dict[str, list[str]] = {
         "far": [],
         "middle": [],
@@ -934,38 +933,53 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             tint = ""
         marker_markup = ""
         if bool(item.get("is_active")):
-            placement_protected_regions = marker_protected_regions
-            center_left_summary_region: Rect | None = None
-            marker_needs_center_left_clearance = (
-                layout.depth_band == "near"
-                and float(layout.ground_anchor[0]) < 500.0
+            # The row-aware focal crop moves the top summary rail through a
+            # different logical Y range for each perspective band. Reserve the
+            # identity and CTA lanes while leaving a bright central corridor.
+            overlay_top, overlay_bottom = {
+                "far": (30.0, 185.0),
+                "middle": (105.0, 255.0),
+                "near": (180.0, 330.0),
+            }.get(layout.depth_band, (105.0, 255.0))
+            identity_region = Rect(
+                0.0,
+                overlay_top,
+                450.0,
+                overlay_bottom - overlay_top,
             )
-            if marker_needs_center_left_clearance:
-                # Derive the summary gap from the front-left soil region, not
-                # a plot-number exception. This keeps the same collision-safe
-                # placement if the scene metadata reorders its plots.
-                center_left_summary_region = Rect(0.0, 300.0, 340.0, 120.0)
-                placement_protected_regions = (
-                    center_left_summary_region,
-                    marker_protected_regions[1],
-                )
+            action_region = Rect(
+                780.0,
+                overlay_top,
+                220.0,
+                overlay_bottom - overlay_top,
+            )
             marker_placement = home_geometry.resolve_watering_can(
                 layout.slot_index,
                 layout,
                 obstacles=marker_obstacles,
-                protected_regions=placement_protected_regions,
+                protected_regions=(identity_region, action_region),
             )
-            if (
-                center_left_summary_region is not None
-                and marker_placement.pulse_bounds.intersects(
-                    center_left_summary_region
-                )
-            ):
+            if marker_placement.pulse_bounds.intersects(identity_region):
                 summary_clearance = "center-left-marker"
             marker_box = marker_placement.rect
             marker_common = (
                 f"left:{marker_box.x / 10:.3f}%;top:{marker_box.y / 4.2:.3f}%;"
                 f"width:{marker_box.width / 10:.3f}%;height:{marker_box.height / 4.2:.3f}%"
+            )
+            marker_shadow = marker_placement.contact_shadow
+            marker_shadow_common = (
+                f"left:{marker_shadow.x / 10:.3f}%;top:{marker_shadow.y / 4.2:.3f}%;"
+                f"width:{marker_shadow.width / 10:.3f}%;"
+                f"height:{marker_shadow.height / 4.2:.3f}%"
+            )
+            marker_shadow_data = ",".join(
+                f"{value:.3f}"
+                for value in (
+                    marker_shadow.x,
+                    marker_shadow.y,
+                    marker_shadow.width,
+                    marker_shadow.height,
+                )
             )
             marker_rect_data = ",".join(
                 f"{value:.3f}"
@@ -1029,12 +1043,20 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 else "block"
             )
             marker_markup = (
+                '<span class="ag-home__nurtured-marker-shadow" '
+                'data-testid="home-nurturing-marker-shadow" aria-hidden="true" '
+                f'data-marker-slot="{layout.slot_index}" '
+                f'data-marker-scale="{marker_placement.perspective_scale:.2f}" '
+                f'data-marker-shadow="{marker_shadow_data}" '
+                f'style="{marker_shadow_common}"></span>'
+            ) + (
                 (
                     '<img class="ag-home__nurtured-marker" '
                     'data-testid="home-nurturing-marker" aria-hidden="true" alt="" '
                     f'data-marker-slot="{layout.slot_index}" '
                     f'data-marker-side="{marker_placement.side}" '
                     f'data-marker-orientation="{marker_placement.orientation}" '
+                    f'data-marker-scale="{marker_placement.perspective_scale:.2f}" '
                     f'data-marker-rect="{marker_rect_data}" '
                     f'data-marker-pulse="{marker_pulse_data}" '
                     f'data-marker-target-ground="{marker_target_ground_data}" '
@@ -1051,6 +1073,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
                 'data-testid="home-nurturing-marker-fallback" aria-hidden="true" '
                 f'data-marker-slot="{layout.slot_index}" '
                 f'data-marker-side="{marker_placement.side}" '
+                f'data-marker-scale="{marker_placement.perspective_scale:.2f}" '
                 f'data-marker-rect="{marker_rect_data}" '
                 f'data-marker-pulse="{marker_pulse_data}" '
                 f'data-marker-target-ground="{marker_target_ground_data}" '
@@ -1252,10 +1275,37 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         None,
     )
     marker_slot = int(marker_plant.get("slot_index", -1)) if marker_plant else -1
+    active_layout = next(
+        (layout for layout in layouts if layout.slot_index == marker_slot),
+        None,
+    )
+    active_band = (
+        active_layout.depth_band
+        if active_layout is not None
+        and active_layout.depth_band in {"far", "middle", "near"}
+        else "none"
+    )
+    active_side = (
+        "left"
+        if active_layout is not None and active_layout.ground_anchor[0] < 500.0
+        else "right"
+        if active_layout is not None
+        else "none"
+    )
+    focal_y = {
+        "far": 70.0,
+        "middle": 40.0,
+        "near": 10.0,
+    }.get(active_band)
+    focal_style = (
+        f' style="--ag-home-focal-y:{focal_y:.1f}%"'
+        if focal_y is not None
+        else ""
+    )
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-summary-clearance=\"{summary_clearance}\" role=\"region\"
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{marker_slot}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
   aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}\">
   <div class=\"ag-home__body\">
     {stage_up_html}

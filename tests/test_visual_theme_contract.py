@@ -83,12 +83,11 @@ def test_home_and_native_actions_share_the_same_visual_roles() -> None:
     )
     assert cta_rules is not None
     rules = cta_rules.group("rules")
-    assert "min-height:36px !important" in rules
-    assert "max-height:36px !important" in rules
-    assert "min-width:104px !important" in rules
-    width = re.search(r"(?:^|;)\s*width:(\d+)px", rules)
-    assert width is not None
-    assert 104 <= int(width.group(1)) <= 124
+    assert "min-height:32px !important" in rules
+    assert "max-height:32px !important" in rules
+    assert "min-width:96px !important" in rules
+    assert "width:auto" in rules
+    assert "max-width:132px" in rules
     assert "background:#5CC58B" in home
     assert "background:#71D39C" in home
     assert "outline: 2px solid #82E2AC" in home

@@ -70,7 +70,7 @@ def test_loading_state_preserves_preview_geometry_without_actions() -> None:
     assert "Loading garden preview…" not in html
     assert 'data-testid="home-open"' not in html
     assert 'data-testid="home-retry"' not in html
-    assert "height:144px" in html
+    assert "height:152px" in html
 
 
 def test_empty_state_renders_empty_message() -> None:
@@ -163,15 +163,15 @@ def test_success_state_renders_key_fields() -> None:
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
     assert "max-width:720px" in html
-    assert "height:144px" in html
+    assert "height:152px" in html
     assert "@container (max-width:420px)" in html
     assert '<aside class="ag-home__details home-summary-panel">' in html
     assert '<header class="ag-home__identity-row summary-header">' in html
     assert '<div class="ag-home__metrics"' not in html
     assert ".ag-home__garden-context,.ag-home__status-notice { display:none; }" in html
-    assert "min-height:36px" in html
-    assert "max-height:36px" in html
-    assert "min-width:104px" in html
+    assert "min-height:32px" in html
+    assert "max-height:32px" in html
+    assert "min-width:96px" in html
     assert "outline: 2px solid #82E2AC" in html
     assert "outline-offset: 2px" in html
     assert "box-shadow:0 0 0 4px #071A15" in html
@@ -193,8 +193,8 @@ def test_home_preview_never_renders_weather_or_sun_and_uses_compact_action() -> 
     assert "ag-home__weather-layer" not in html
     assert "home-weather-layer" not in html
     assert "weather/sun.webp" not in html
-    assert "min-height:36px !important" in html
-    assert "max-height:36px !important" in html
+    assert "min-height:32px !important" in html
+    assert "max-height:32px !important" in html
     assert 'data-testid="home-open"' in html
 
 
@@ -290,15 +290,18 @@ def test_home_does_not_draw_a_duplicate_soil_ellipse_over_empty_beds() -> None:
 def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
 
-    assert "grid-template-columns:minmax(0,1fr) 120px" in html
-    assert "gap:20px" in html
+    assert "grid-template-columns:minmax(0,280px) 100px" in html
+    assert "justify-content:space-between" in html
+    assert "gap:16px" in html
     assert "#ag-home-root button,.ag-home__open" in html
     assert '<div class="ag-home__metrics"' not in html
-    assert "height:144px" in html
+    assert "height:152px" in html
     assert "height:4px" in html
-    assert "width:min(100%,460px)" in html
-    assert "filter:brightness(1.15)" in html
-    assert "linear-gradient(90deg,rgba(4,14,11,.96)" in html
+    assert "width:min(100%,280px)" in html
+    assert "filter:brightness(1.12)" in html
+    assert "linear-gradient(90deg,rgba(4,14,11,.88)" in html
+    assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
+    assert "top:var(--ag-home-focal-y,var(--ag-preview-y,50%))" in html
     assert "@container (max-width:420px)" in html
 
 
@@ -858,6 +861,44 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
             ).group(1).split(",")
         ]
         assert f'data-active-slot="{active_slot}"' in html
+        assert f'data-active-band="{marker_band}"' in html
+        assert (
+            f'data-active-side="{"left" if active_slot % 2 == 0 else "right"}"'
+            in html
+        )
+        assert (
+            f'--ag-home-focal-y:{("70.0", "40.0", "10.0")[active_slot // 2]}%'
+            in html
+        )
+        expected_scale = ("0.78", "0.90", "1.00")[active_slot // 2]
+        assert f'data-marker-scale="{expected_scale}"' in marker
+        shadows = re.findall(
+            r'<span[^>]*data-testid="home-nurturing-marker-shadow"[^>]*>',
+            html,
+        )
+        assert len(shadows) == 1
+        assert f'data-marker-slot="{active_slot}"' in shadows[0]
+        assert f'data-marker-scale="{expected_scale}"' in shadows[0]
+        shadow_rect = [
+            float(value)
+            for value in re.search(
+                r'data-marker-shadow="([^"]+)"', shadows[0]
+            ).group(1).split(",")
+        ]
+        assert shadow_rect[2] < rect[2]
+        assert shadow_rect[1] >= rect[1] + rect[3] * 0.80
+        canonical_scale = 635 / 1000
+        frame_top = (
+            float(("70.0", "40.0", "10.0")[active_slot // 2]) / 100 * 152
+            - 420 * canonical_scale / 2
+        )
+        marker_top = frame_top + rect[1] * canonical_scale
+        marker_bottom = frame_top + (rect[1] + rect[3]) * canonical_scale
+        shadow_bottom = frame_top + (
+            shadow_rect[1] + shadow_rect[3]
+        ) * canonical_scale
+        assert 0 <= marker_top < marker_bottom <= 152
+        assert shadow_bottom <= 152
         target_ground = [
             float(value)
             for value in re.search(
@@ -877,18 +918,12 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
             ).group(1).split(";")
             if bounds
         ]
-        expected_clearance = (
-            "center-left-marker"
-            if pulse[0] < 340 and pulse[1] + pulse[3] > 300
-            else "none"
+        root_clearance = re.search(
+            r'<div id="ag-home-root"[^>]*data-summary-clearance="([^"]+)"',
+            html,
         )
-        assert f'data-summary-clearance="{expected_clearance}"' in html
-        if expected_clearance != "none":
-            assert (
-                '#ag-home-root[data-summary-clearance="center-left-marker"] '
-                ".ag-home__support"
-            ) in html
-            assert "-webkit-line-clamp:2" in html
+        assert root_clearance is not None
+        assert root_clearance.group(1) == "none"
         assert 44 <= rect[2] <= 88
         assert rect[2] == rect[3]
         assert pulse[0] >= 0 and pulse[1] >= 0
@@ -904,8 +939,6 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
             )
         marker_center_x = rect[0] + rect[2] / 2
         marker_ground_y = rect[1] + rect[3] * 0.916
-        if active_slot == 4:
-            assert abs(marker_ground_y - target_ground[1]) <= 1.0
         plant_distance = math.hypot(
             marker_center_x - target_ground[0],
             marker_ground_y - target_ground[1],
