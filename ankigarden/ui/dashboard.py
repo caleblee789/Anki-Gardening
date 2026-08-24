@@ -18630,15 +18630,14 @@ class GardenDashboard(DialogShell):
             str(getattr(current_fertilizer, "tier", "") or "").lower()
             if current_fertilizer is not None else ""
         )
-        current_status = FertilizerStatusBlock()
-        current_status.set_status(
-            fertilizer_status(
-                self.engine,
-                plant,
-                now=current_time,
-                description=FERTILIZER_EXPLANATION,
-            )
+        current_projection = fertilizer_status(
+            self.engine,
+            plant,
+            now=current_time,
+            description=FERTILIZER_EXPLANATION,
         )
+        current_status = FertilizerStatusBlock()
+        current_status.set_status(current_projection)
         countdown_timer = QTimer(dialog)
         countdown_timer.setInterval(1_000)
         extend_current: QPushButton | None = None
@@ -18685,7 +18684,7 @@ class GardenDashboard(DialogShell):
             _set_compact_row_action(extend_current)
             _set_button_variant(extend_current, BUTTON_VARIANT_PRIMARY)
             extend_current.setAccessibleName(
-                f"Extend {current_status.name_label.text()} on {plant.name}"
+                f"Extend {current_projection.name} on {plant.name}"
             )
             extend_current.clicked.connect(
                 lambda _checked=False, selected_tier=current_tier, target=dialog:

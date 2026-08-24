@@ -1074,6 +1074,9 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in fertilizer
     assert "current_status = FertilizerStatusBlock()" in fertilizer
+    assert "current_projection = fertilizer_status(" in fertilizer
+    assert "current_status.name_label" not in fertilizer
+    assert "current_projection.name" in fertilizer
     assert "fertilizer_status(" in fertilizer
     assert '"Buy and replace"' in fertilizer
     assert 'else presentation.primary_label.split(" ·", 1)[0]' in fertilizer
