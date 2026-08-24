@@ -982,6 +982,10 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
         "environment-effect",
         "environment-mechanics",
     ),
+    "collection-loadout-persistence-error": (
+        "loadout-preview-scene",
+        "loadout-persistence-error",
+    ),
 }
 
 
@@ -5853,13 +5857,17 @@ class _UiFaceCaptureRunner:
             if state_name == "collection-loadout-detail":
                 require("collection_loadout_tab", tab == 0, tab)
             elif state_name == "collection-loadout-persistence-error":
+                rendered_state = dict(
+                    annotation.get("rendered_state", {}) or {}
+                )
                 require(
                     "loadout_rollback",
                     bool(annotation.get("passed", False))
                     and bool(annotation.get("error_visible", False))
                     and bool(annotation.get("single_banner", False))
                     and bool(annotation.get("normal_width_actions", False))
-                    and bool(annotation.get("actions_right_aligned", False)),
+                    and bool(annotation.get("actions_right_aligned", False))
+                    and bool(rendered_state.get("passed", False)),
                     annotation,
                 )
             else:
@@ -11974,6 +11982,88 @@ class _UiFaceCaptureRunner:
                 "actions_right_aligned": actions_right_aligned,
             }
 
+            def bind_final_pixel_evidence() -> None:
+                """Prove the settled rollback state is painted, not just owned."""
+
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.DeferredDelete,
+                )
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+                dialog._refresh_preview()
+                dialog._sync_preview_scene_geometry()
+                body = dialog.body_scroll.widget()
+                for layout in (
+                    dialog.main_grid,
+                    dialog.library.layout(),
+                    dialog.preview_panel.layout(),
+                    body.layout() if body is not None else None,
+                ):
+                    if layout is None:
+                        continue
+                    layout.invalidate()
+                    layout.activate()
+                if body is not None:
+                    body.setMinimumHeight(0)
+                    body.updateGeometry()
+                dialog.body_scroll.verticalScrollBar().setValue(0)
+                dialog.preview_scene.setProperty(
+                    "captureEvidenceKey",
+                    "loadout-preview-scene",
+                )
+                dialog.preview_feedback.setProperty(
+                    "captureEvidenceKey",
+                    "loadout-persistence-error",
+                )
+                dialog.preview_scene.update()
+                dialog._position_preview_feedback()
+                dialog.preview_feedback.raise_()
+                if app is not None:
+                    app.processEvents()
+                dialog.preview_scene.repaint()
+                if app is not None:
+                    app.processEvents()
+
+                scene_bounds = self._widget_bounds_evidence(
+                    dialog.preview_scene,
+                    dialog,
+                )
+                feedback_bounds = self._widget_bounds_evidence(
+                    dialog.preview_feedback,
+                    dialog,
+                )
+                scene_metrics = self._home_pixmap_metrics(
+                    dialog.preview_scene.grab(),
+                    expected_width=dialog.preview_scene.width(),
+                    expected_height=dialog.preview_scene.height(),
+                )
+                rendered_state = {
+                    "scene_bounds": scene_bounds,
+                    "scene_metrics": scene_metrics,
+                    "feedback_bounds": feedback_bounds,
+                    "feedback_text": str(dialog.preview_feedback.message.text()),
+                    "scroll_maximum": int(
+                        dialog.body_scroll.verticalScrollBar().maximum()
+                    ),
+                    "passed": bool(
+                        scene_bounds.get("visible", False)
+                        and scene_bounds.get("contained", False)
+                        and scene_metrics.get("generic_content_passed", False)
+                        and feedback_bounds.get("visible", False)
+                        and feedback_bounds.get("contained", False)
+                        and "Couldn’t save changes"
+                        in str(dialog.preview_feedback.message.text())
+                    ),
+                }
+                annotation = self._capture_annotations[label]
+                annotation["rendered_state"] = rendered_state
+                annotation["passed"] = bool(
+                    annotation.get("passed", False)
+                    and rendered_state["passed"]
+                )
+
             def close_dialog() -> None:
                 self._close_widget(dialog)
                 self._restore_purchase_capture(snapshot)
@@ -11982,6 +12072,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=460,
+                before_capture=bind_final_pixel_evidence,
                 close_callback=close_dialog,
                 close_ms=800,
                 next_ms=1120,

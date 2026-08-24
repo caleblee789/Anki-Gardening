@@ -676,6 +676,9 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     rebuild_options = _segment(
         _method_node("CollectibleDetailDialog", "_rebuild_options")
     )
+    clear_grid = _segment(
+        _method_node("CollectibleDetailDialog", "_clear_grid")
+    )
     refresh_preview = _segment(
         _method_node("CollectibleDetailDialog", "_refresh_preview")
     )
@@ -727,6 +730,10 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "DialogCloseReason.CANCEL_BUTTON" not in cancel_preview
     assert "self.engine.owns_environment(item.kind, item.item_id)" in rebuild_options
     assert "self._browse_nursery_empty_state(kind)" in rebuild_options
+    assert clear_grid.index("widget.hide()") < clear_grid.index(
+        "widget.setParent(None)"
+    ) < clear_grid.index("widget.deleteLater()")
+    assert "grid.invalidate()" in clear_grid
     assert "_unavailable_option_tile" not in constructor + rebuild_options
     assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
     assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview

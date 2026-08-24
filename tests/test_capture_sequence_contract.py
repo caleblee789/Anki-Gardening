@@ -470,6 +470,10 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
         "_UiFaceCaptureRunner",
         "_capture_collection_environment_mechanics",
     )
+    loadout_rollback = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_collection_loadout_persistence_error",
+    )
     home_dom = _method_source(
         "_UiFaceCaptureRunner",
         "_wait_for_home_surface",
@@ -513,6 +517,13 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
     assert "_widget_bounds_evidence(" in mechanics
     assert 'bool(row.get("contained", False))' in mechanics
     assert '"captureEvidenceKey"' in mechanics
+
+    assert "QEvent.Type.DeferredDelete" in loadout_rollback
+    assert '"loadout-preview-scene"' in loadout_rollback
+    assert '"loadout-persistence-error"' in loadout_rollback
+    assert "_home_pixmap_metrics(" in loadout_rollback
+    assert '"rendered_state"' in loadout_rollback
+    assert "before_capture=bind_final_pixel_evidence" in loadout_rollback
 
     assert "const accessibilityCopy" in home_dom
     assert "root.querySelectorAll('[aria-label]')" in home_dom

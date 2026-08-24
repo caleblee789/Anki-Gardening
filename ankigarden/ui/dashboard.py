@@ -13705,7 +13705,18 @@ class CollectibleDetailDialog(GardenDialog):
             item = grid.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Rebuilding a hidden tab can happen several times in one
+                # transaction (prepare, select, then rollback). A widget that
+                # only has deleteLater() queued can keep contributing its old
+                # size hint until the event loop reaches DeferredDelete, which
+                # temporarily makes the shared loadout body hundreds of pixels
+                # taller and pushes the live preview below the viewport.
+                # Detach it immediately; deferred destruction remains the safe
+                # ownership boundary for Qt signal delivery.
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
+        grid.invalidate()
 
     @staticmethod
     def _asset_payload(asset: Any) -> Any:
