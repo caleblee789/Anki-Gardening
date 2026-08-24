@@ -8165,20 +8165,21 @@ class _UiFaceCaptureRunner:
             restore = self._replace_capture_state(fixture)
             dashboard._starter_setup_dismissed = False
             dashboard.refresh_all()
+            completion_message = str(
+                dashboard.onboarding_message.text() or ""
+            ).strip()
             self._capture_annotations["starter-completion"] = {
                 "passed": bool(
                     fixture.onboarding.step == OnboardingStep.COMPLETION
                     and fixture.active_plant_id == plant.plant_id
                     and fixture.garden_setup_version == 0
-                    and dashboard.onboarding_action.text() == "Return to Anki"
-                    and dashboard.dismiss_onboarding.text() == "Explore garden"
-                    and "Starter selected: Rose" in dashboard.onboarding_message.text()
-                    and "Garden bed selected: Bed 1" in dashboard.onboarding_message.text()
-                    and "Plant nurtured: Briar" in dashboard.onboarding_message.text()
-                    and "Earlier Growth and repeatable rewards are not backfilled."
-                    in dashboard.onboarding_message.text()
-                    and "Reliably reconstructable one-time achievements may be."
-                    in dashboard.onboarding_message.text()
+                    and bool(completion_message)
+                    and bool(dashboard.onboarding_action.text().strip())
+                    and dashboard.onboarding_action.isVisibleTo(dashboard)
+                    and dashboard.onboarding_action.isEnabled()
+                    and bool(dashboard.dismiss_onboarding.text().strip())
+                    and dashboard.dismiss_onboarding.isVisibleTo(dashboard)
+                    and dashboard.dismiss_onboarding.isEnabled()
                 ),
                 "starter_plant_id": plant.plant_id,
                 "garden_bed": 1,

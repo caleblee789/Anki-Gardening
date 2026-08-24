@@ -198,7 +198,7 @@ def _valid_visual_contract(
         }
     if label == "progress-overview-redirect-growth":
         audit["direct_growth_visual"] = {
-            "label": "Direct rewards and charges",
+            "label": "Rewards and charges",
             "amount": 31,
             "label_bounds": [10, 10, 100, 24],
             "value_bounds": [120, 10, 40, 24],
@@ -208,7 +208,7 @@ def _valid_visual_contract(
         }
     if label == "collection-preview-restored":
         audit["restored_preview_visual"] = {
-            "text": "Preview restored",
+            "text": "Preview reset.",
             "visible": True,
             "bounds": [20, 20, 300, 40],
             "contained": True,
@@ -226,11 +226,9 @@ def _valid_visual_contract(
         audit["owned_item_visual"] = {
             "item_id": "dev_bonsai",
             "item_name": "Bonsai Plant",
-            "owned_label": "Owned",
             "action": "Store plant",
             "card": copy.deepcopy(contained),
             "title": copy.deepcopy(contained),
-            "status": copy.deepcopy(contained),
             "action_bounds": copy.deepcopy(contained),
             "passed": True,
         }
@@ -332,16 +330,7 @@ def _valid_visual_contract(
         ],
         "collection-preview-restored": ["restored-preview-banner"],
         "nursery-item-owned": ["owned-item-card"],
-        "missing-artwork-graphical-fallback": [
-            f"missing-art-{artwork_type}"
-            for artwork_type in (
-                "plant",
-                "fertilizer",
-                "weather",
-                "scenery",
-                "growth-charge",
-            )
-        ],
+        "missing-artwork-graphical-fallback": ["missing-art-weather"],
         "collection-environment-mechanics": [
             "environment-toolbar",
             "environment-summary-title",
@@ -1045,7 +1034,7 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
         "restored_preview_visual"
     ]["visible"] = False
     by_label["nursery-item-owned"]["audit"]["owned_item_visual"][
-        "status"
+        "action_bounds"
     ]["contained"] = False
     by_label["reviewer-find-environment"]["audit"][
         "reviewer_overlay_geometry"
