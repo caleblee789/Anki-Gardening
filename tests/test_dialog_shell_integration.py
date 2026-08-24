@@ -287,7 +287,10 @@ def test_multi_view_dialogs_route_view_changes_through_shared_profiles() -> None
     for view_key in ("starter", "plants", "fertilizer", "spaces", "weather", "empty"):
         assert f'"{view_key}"' in nursery
     assert "self.apply_view_size_profile(view_key)" in nursery
-    assert "self.apply_view_size_profile(str(key))" in progress
+    assert (
+        "self.apply_view_size_profile(self._view_profile_for_page(str(key)))"
+        in progress
+    )
     assert 'self.apply_view_size_profile("default")' in loadout
     assert "DialogSizeClass.PLANT_STORY" in plant_story
     assert 'self.apply_view_size_profile("default")' in plant_story
