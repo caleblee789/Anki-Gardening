@@ -153,7 +153,7 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     assert 'GardenBadge("Permanent"' in available_card
     assert 'ownership = QLabel("Not collected")' not in available_card
     assert "COST_FREE" not in available_card
-    assert "Cost: {amount} Garden Coins" in _source("ankigarden/ui/copy.py")
+    assert "{amount} Garden Coins" in _source("ankigarden/ui/copy.py")
     assert '"Starts as Seed"' not in available_card
     assert "_compact_affordability_status(" in available_card
 
@@ -361,7 +361,7 @@ def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
     assert 'self.scene.focus_landmark("garden.nursery.open")' in dashboard
     assert 'anki-garden:choose-starter' in home
     assert "CHOOSE_STARTER_ACTION" in home
-    assert 'CHOOSE_STARTER_ACTION = "Choose plant"' in _source("ankigarden/ui/copy.py")
+    assert 'CHOOSE_STARTER_ACTION = "Choose starter"' in _source("ankigarden/ui/copy.py")
     assert "_open_starter_nursery()" in dashboard
     assert "not self.interactive" in activate_landmark
     assert "self._interaction.placing" in activate_landmark
@@ -921,24 +921,25 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     hide_saved = _method_source("ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_hide_saved_status")
 
     assert "self.theme_combo" not in studio
-    assert 'theme_title = QLabel("Current scenery")' in theme_card
+    assert 'theme_title = QLabel("Scenery: Verdant Twilight")' in theme_card
     assert "self.theme_thumbnail = QLabel()" in theme_card
     assert 'self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")' in theme_card
     assert "QComboBox" not in theme_card
     assert 'self.manage_environment = QToolButton()' in theme_card
-    assert 'self.manage_environment.setText("Manage appearance")' in theme_card
+    assert 'self.manage_environment.setText("Edit appearance")' in theme_card
     assert 'background_asset = asset_paths.get("background")' in apply_preview
     assert "self.theme_thumbnail.setPixmap(background_pixmap.scaled(" in apply_preview
     assert "dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))" in apply_preview
     assert '"sprout": 500' not in apply_preview
     assert 'self.fine_tune_toggle.setText("Fine tune")' in studio
     assert "self.fine_tune_section.hide()" in studio
-    assert 'QPushButton("Save changes")' in settings
+    assert 'QPushButton("Save")' in settings
     assert 'QPushButton("Cancel")' in settings
-    assert 'QPushButton("Restore display defaults")' in settings
+    assert 'QPushButton("Reset display settings")' in settings
     assert "self.garden_name_edit = QLineEdit()" in settings
     assert "self.garden_name_edit.setMaxLength(MAX_GARDEN_NAME_LENGTH + 80)" in settings
-    assert 'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in settings
+    assert '"Enter a garden name."' in settings
+    assert 'f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."' in settings
     assert 'self.garden_name_error.setProperty("fieldError", True)' in settings
     assert "self.garden_name_error.setVisible(not valid)" in settings
     assert "behavior.setMinimumWidth(0)" in settings
@@ -999,7 +1000,7 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
     )[0]
 
     assert 'self.preview_panel.setProperty("previewPanel", True)' in studio
-    assert 'preview_title = QLabel("Home preview")' in studio
+    assert 'preview_title = QLabel("Preview")' in studio
     assert 'self.home_preview = GardenHomePreview(self.scene)' in studio
     assert "preview_layout.addWidget(self.home_preview)" in studio
     assert "self.root_layout.addWidget(self.preview_panel, 1)" in studio
@@ -1023,9 +1024,8 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
     sync_tab = _method_source(
         "ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_sync_settings_tab"
     )
-    assert "self.settings_footer_actions.show()" in sync_tab
-    assert "self.footer.show()" in sync_tab
-    assert "setVisible(not troubleshooting)" not in sync_tab
+    assert "show_settings_actions = not diagnostics or self._draft_is_dirty()" in sync_tab
+    assert "self.settings_footer_actions.setVisible(show_settings_actions)" in sync_tab
     restore_persistent = _method_source(
         "ankigarden/ui/garden_studio.py",
         "GardenStudioWidget",
@@ -1096,9 +1096,7 @@ def test_move_guidance_uses_only_the_scene_popup_after_commit() -> None:
 
 def test_compact_identity_copy_uses_middle_dots_but_runtime_notices_are_normalized() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
-    studio = _source("ankigarden/ui/garden_studio.py")
     assert " · " in dashboard
-    assert " · " in studio
     assert "chr(0xB7)" in dashboard
     assert "_learner_text(event.message)" in dashboard
     scope = {"Any": object}
@@ -1191,9 +1189,9 @@ def test_troubleshooting_copy_reports_visible_keyboard_feedback() -> None:
     assert "self.troubleshooting_status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in settings
     assert 'self.diagnostics_checked.setText("Report copied to clipboard")' in copy_report
     assert "self.diagnostics_card.setFocus()" in copy_report
-    assert 'status = "Garden display may be incomplete"' in refresh_report
+    assert 'status = "Some artwork is missing"' in refresh_report
     assert 'self.diagnostics_card.setProperty("diagnosticState", "warning")' in refresh_report
-    assert 'status = "No display issues detected"' in refresh_report
+    assert 'status = "No display issues found"' in refresh_report
 
 
 def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
@@ -1469,7 +1467,7 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "cost_label(item.price)" in environment
     assert "price_label = QLabel(cost_label(price))" in spaces
     assert 'f"{presentation.price:,} Garden Coins"' in confirmation
-    assert 'f"Balance: {presentation.balance_before:,} → "' in confirmation
+    assert "format_balance_after(" in confirmation
     for source in (available, supplement, charge, environment, spaces, confirmation):
         assert "Garden Coins" in source, "accessible purchase copy must retain the full unit"
 
@@ -1576,8 +1574,9 @@ def test_diagnostics_has_one_copy_action_and_one_details_toggle() -> None:
     )
 
     assert settings.count('QPushButton("Copy report")') == 1
-    assert 'QPushButton("View details")' in settings
-    assert 'self.copy_debug.setText("Copy details" if expanded else "Copy report")' in settings
+    assert 'QPushButton("Technical details")' in settings
+    assert '"Hide technical details" if expanded else "Technical details"' in toggle
+    assert 'self.copy_debug.setText("Copy report")' in toggle
     assert "self.debug_report.setVisible(bool(expanded))" in toggle
 
 

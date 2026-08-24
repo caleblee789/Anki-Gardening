@@ -44,14 +44,14 @@ from .theme import (
 
 STUDIO_TEXT = {
     "preview_plant_name": "Preview Plant",
-    "animations_label": "Reduce animations",
+    "animations_label": "Reduce motion",
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
     "animation_label": "Weather motion",
     "particle_label": "Weather detail",
-    "home_widget_label": "Show garden preview on home screens",
-    "progress_notifications_label": "Show reviewer reward notices",
+    "home_widget_label": "Show home preview",
+    "progress_notifications_label": "Show review rewards",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 280
@@ -173,7 +173,7 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
-        self.support = QLabel("No nurtured plant · Open the garden to choose one")
+        self.support = QLabel("")
         self.support.setProperty("previewSupport", True)
         self.support.setTextFormat(Qt.TextFormat.PlainText)
         self.support.setWordWrap(True)
@@ -424,22 +424,17 @@ class GardenStudioWidget(QWidget):
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
         theme_copy = QVBoxLayout()
-        theme_title = QLabel("Current scenery")
+        theme_title = QLabel("Scenery: Verdant Twilight")
         theme_title.setProperty("settingsHeading", True)
         theme_title.setWordWrap(True)
         theme_title.setMinimumWidth(0)
-        theme_value = QLabel("Verdant Twilight")
-        theme_value.setStyleSheet("font-weight:600;")
-        theme_value.setWordWrap(True)
-        theme_value.setMinimumWidth(0)
         theme_copy.addWidget(theme_title)
-        theme_copy.addWidget(theme_value)
         theme_layout.addWidget(self.theme_thumbnail)
         theme_layout.addLayout(theme_copy, 1)
         self.manage_environment = QToolButton()
-        self.manage_environment.setText("Manage appearance")
+        self.manage_environment.setText("Edit appearance")
         self.manage_environment.setAccessibleDescription(
-            "Open Collection to manage Weather, Scenery, and the garden loadout."
+            "Open Garden appearance in Collection."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         theme_layout.addWidget(self.manage_environment)
@@ -502,7 +497,7 @@ class GardenStudioWidget(QWidget):
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
-            "Show in Deck Browser and Overview.",
+            "Deck Browser and Overview",
             self.show_home_widget,
         )
         controls_layout.insertWidget(0, self.home_preview_row)
@@ -545,7 +540,7 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(
             STUDIO_TEXT["progress_notifications_label"],
-            "Show brief Growth and reward notices after studying.",
+            "Show brief reward notices while reviewing.",
             self.show_progress_notifications,
         )
         self.advanced_actions_layout.addWidget(self.motion_row)
@@ -565,7 +560,7 @@ class GardenStudioWidget(QWidget):
         preview_layout = QVBoxLayout(self.preview_panel)
         preview_layout.setContentsMargins(14, 14, 14, 14)
         preview_layout.setSpacing(10)
-        preview_title = QLabel("Home preview")
+        preview_title = QLabel("Preview")
         preview_title.setProperty("settingsHeading", True)
         preview_title.setMinimumWidth(0)
         self.home_preview = GardenHomePreview(self.scene)

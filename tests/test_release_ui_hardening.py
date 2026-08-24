@@ -766,10 +766,10 @@ def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_fi
     save = _method_node("GardenSettingsDialog", "_save_visual_settings")
 
     assert _module_constant(STATE_PATH, "MAX_GARDEN_NAME_LENGTH") == 40
+    assert '"Enter a garden name."' in settings_source
     assert (
-        'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."'
-        in settings_source
-    ), "Garden name validation must resolve to the exact 1-to-40 message."
+        'f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."' in settings_source
+    )
     assert "Fix 1 error before saving." not in _strings(settings)
 
     assert re.search(

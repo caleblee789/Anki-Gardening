@@ -1045,7 +1045,8 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
 
 def test_dashboard_is_garden_first_with_one_progress_architecture():
     dashboard = (Path(__file__).resolve().parents[1] / "ankigarden/ui/dashboard.py").read_text()
-    assert "format_growth_fifths, format_status_label" in dashboard
+    assert "format_growth_fifths" in dashboard
+    assert "format_status_label" in dashboard
     assert "root.addWidget(hero_card, 1)" in dashboard
     assert 'self.garden_stats_bar = GardenStatsStrip(self.engine)' in dashboard
     assert '("growth", "Plant Growth"' in dashboard
@@ -1282,8 +1283,8 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert 'self.behavior_scroll.setObjectName("gardenSettingsDisplayScroll")' in dashboard
     assert "self.behavior_scroll.setWidgetResizable(True)" in dashboard
     assert "self.behavior_scroll.setHorizontalScrollBarPolicy(" in dashboard
-    assert 'QPushButton("Save changes")' in dashboard
-    assert 'QPushButton("Restore display defaults")' in dashboard
+    assert 'QPushButton("Save")' in dashboard
+    assert 'QPushButton("Reset display settings")' in dashboard
     assert 'self.tabs.addTab(self.behavior_scroll, "Display")' in dashboard
     assert "except ConfigError as exc:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
@@ -1301,10 +1302,12 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert "create_development_backup" not in settings_block
     assert "restore_development_backup" not in settings_block
     assert 'self.save_status.setText("Saved")' in dashboard
-    assert 'self.cancel_settings.setText("Discard changes" if dirty else "Cancel")' in dashboard
-    assert 'else f"{modified_count} unsaved changes"' in dashboard
+    assert 'self.cancel_settings.setText("Discard" if dirty else "Cancel")' in dashboard
+    assert '"1 unsaved change"' not in settings_block
+    assert 'f"{modified_count} unsaved changes"' not in settings_block
     assert 'f"{count} / {MAX_GARDEN_NAME_LENGTH}"' in dashboard
-    assert 'f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in dashboard
+    assert '"Enter a garden name."' in dashboard
+    assert 'f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."' in dashboard
     assert 'self.garden_name_error.setProperty("fieldError", True)' in dashboard
     assert "self.garden_name_error.setVisible(not valid)" in dashboard
     assert "self.garden_name_edit.setFocus()" in dashboard
@@ -1379,7 +1382,7 @@ def test_every_weather_has_procedural_motion_and_respects_motion_toggle():
 
 def test_settings_sections_and_preview_only_controls_match_persistence_contract():
     studio = (Path(__file__).resolve().parents[1] / "ankigarden/ui/garden_studio.py").read_text()
-    for title in ("Current scenery", "Advanced", "Home preview", "Fine tune"):
+    for title in ("Scenery: Verdant Twilight", "Advanced", "Preview", "Fine tune"):
         assert f'"{title}"' in studio
     assert "one-option" not in studio
     assert "self.theme_combo" not in studio
@@ -1387,7 +1390,7 @@ def test_settings_sections_and_preview_only_controls_match_persistence_contract(
     assert '"Artwork detail"' in studio  # retained only for config compatibility
     assert '"weather"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
     assert '"growth_stage"' not in studio.split("def build_theme_payload", 1)[1].split("def _normalize_theme", 1)[0]
-    assert '"animations_label": "Reduce animations"' in studio
+    assert '"animations_label": "Reduce motion"' in studio
     assert '"reduced_motion_description": REDUCED_MOTION_DESCRIPTION' in studio
     assert 'self.reduced_motion = QCheckBox()' in studio
     assert 'self.advanced_actions_layout.addWidget(self.motion_row)' in studio

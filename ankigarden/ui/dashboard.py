@@ -214,9 +214,9 @@ from .copy import (
 logger = logging.getLogger(__name__)
 
 UI_TEXT = {
-    "settings_window_title": "Anki Garden Settings",
-    "advanced_hint": "Start with the plain-language status below. Copy the report if you need help diagnosing a display issue.",
-    "tab_advanced": "Diagnostics",
+    "settings_window_title": "Garden settings",
+    "advanced_hint": "Check again. Copy a report if the issue continues.",
+    "tab_advanced": "Troubleshooting",
     "app_title": "Anki Garden",
     "title_banner": "Anki Garden",
     "open_settings": "Settings",
@@ -6319,7 +6319,7 @@ class GardenSettingsDialog(GardenDialog):
         self._persisted_name = str(
             getattr(self.engine.state, "garden_name", "My Garden") or "My Garden"
         )
-        self.save_settings = QPushButton("Save changes")
+        self.save_settings = QPushButton("Save")
         self.save_settings.setAccessibleName("Save Anki Garden settings")
         _set_button_variant(self.save_settings, BUTTON_VARIANT_PRIMARY)
         self.save_settings.clicked.connect(self._save_visual_settings)
@@ -6328,8 +6328,8 @@ class GardenSettingsDialog(GardenDialog):
             False,
             disabled_reason="No unsaved settings changes.",
         )
-        self.restore_defaults = QPushButton("Restore display defaults")
-        self.restore_defaults.setAccessibleName("Restore display defaults")
+        self.restore_defaults = QPushButton("Reset display settings")
+        self.restore_defaults.setAccessibleName("Reset display settings")
         _set_button_variant(self.restore_defaults, BUTTON_VARIANT_SECONDARY)
         self.restore_defaults.clicked.connect(self._restore_defaults)
         self.behavior.advanced_actions_layout.addWidget(self.restore_defaults)
@@ -6391,18 +6391,12 @@ class GardenSettingsDialog(GardenDialog):
         garden_name_header.addWidget(self.garden_name_counter)
         garden_name_copy.addLayout(garden_name_header)
         garden_name_copy.addWidget(self.garden_name_edit)
-        self.garden_name_error = QLabel(
-            f"Garden name must contain 1 to {MAX_GARDEN_NAME_LENGTH} characters."
-        )
+        self.garden_name_error = QLabel("")
         self.garden_name_error.setProperty("fieldError", True)
         self.garden_name_error.setWordWrap(True)
         self.garden_name_error.setAccessibleName("Garden name error")
         self.garden_name_error.hide()
         garden_name_copy.addWidget(self.garden_name_error)
-        garden_name_help = QLabel("Shown in the Garden header and home-screen preview.")
-        garden_name_help.setWordWrap(True)
-        garden_name_help.setProperty("dialogSubtitle", True)
-        garden_name_copy.addWidget(garden_name_help)
         self.garden_name_edit.textChanged.connect(self._update_dirty_state)
         self.garden_name_edit.textChanged.connect(self._preview_garden_name)
         self.garden_name_edit.returnPressed.connect(self._save_visual_settings)
@@ -6478,7 +6472,7 @@ class GardenSettingsDialog(GardenDialog):
         advanced.setWidgetResizable(True)
         advanced.setFrameShape(QFrame.Shape.NoFrame)
         advanced.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        advanced.setAccessibleName("Diagnostics settings")
+        advanced.setAccessibleName("Troubleshooting")
         advanced_body = QWidget()
         a_layout = QVBoxLayout(advanced_body)
         a_layout.setContentsMargins(0, 8, 0, 0)
@@ -6502,7 +6496,7 @@ class GardenSettingsDialog(GardenDialog):
         self.diagnostics_icon.setAccessibleName("Diagnostics passed")
         diagnostics_copy = QVBoxLayout()
         diagnostics_copy.setSpacing(3)
-        self.troubleshooting_status = QLabel("No display issues detected")
+        self.troubleshooting_status = QLabel("No display issues found")
         self.troubleshooting_status.setProperty("diagnosticsTitle", True)
         self.troubleshooting_status.setWordWrap(True)
         self.troubleshooting_status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -6511,13 +6505,14 @@ class GardenSettingsDialog(GardenDialog):
         self.diagnostics_summary = QLabel("")
         self.diagnostics_summary.setWordWrap(True)
         self.diagnostics_summary.setProperty("dialogSubtitle", True)
-        self.diagnostics_checked = QLabel("Last checked just now")
+        self.diagnostics_checked = QLabel("Checked just now")
         self.diagnostics_checked.setProperty("diagnosticsMeta", True)
         self.diagnostics_version = QLabel(
             f"Anki Garden {_addon_human_version()} · Build {_addon_build_identifier()} · "
             f"{platform.system() or 'Unknown OS'} · {QGuiApplication.platformName() or 'Qt renderer'}"
         )
         self.diagnostics_version.setProperty("diagnosticsMeta", True)
+        self.diagnostics_version.hide()
         self.diagnostics_build = QLabel(
             f"Packaged build {_addon_build_identifier()}"
         )
@@ -6533,6 +6528,9 @@ class GardenSettingsDialog(GardenDialog):
         diagnostics_layout.addWidget(self.diagnostics_icon, 0, Qt.AlignmentFlag.AlignTop)
         diagnostics_layout.addLayout(diagnostics_copy, 1)
         a_layout.addWidget(self.diagnostics_card)
+        self.debug_report_heading = QLabel("Technical details")
+        self.debug_report_heading.setProperty("settingsHeading", True)
+        self.debug_report_heading.hide()
         self.debug_report = QTextEdit()
         self.debug_report.setReadOnly(True)
         self.debug_report.setPlaceholderText("Display telemetry report appears here.")
@@ -6548,7 +6546,7 @@ class GardenSettingsDialog(GardenDialog):
         self.debug_report.setMinimumHeight(96)
         self.debug_report.setMaximumHeight(240)
         self.debug_report.hide()
-        self.refresh_debug = QPushButton("Refresh diagnostics")
+        self.refresh_debug = QPushButton("Check again")
         self.copy_debug = QPushButton("Copy report")
         _set_button_variant(self.refresh_debug, BUTTON_VARIANT_SECONDARY)
         _set_button_variant(self.copy_debug, BUTTON_VARIANT_SECONDARY)
@@ -6563,7 +6561,7 @@ class GardenSettingsDialog(GardenDialog):
         self.report_actions.setSpacing(12)
         self.report_actions.addWidget(self.refresh_debug)
         self.report_actions.addWidget(self.copy_debug)
-        self.report_details_toggle = QPushButton("View details")
+        self.report_details_toggle = QPushButton("Technical details")
         self.report_details_toggle.setCheckable(True)
         _set_button_variant(self.report_details_toggle, BUTTON_VARIANT_TERTIARY)
         self.report_details_toggle.toggled.connect(self._toggle_debug_report)
@@ -6595,6 +6593,7 @@ class GardenSettingsDialog(GardenDialog):
             telemetry_target=self.report_actions_panel,
         )
         self._sync_report_actions_layout()
+        a_layout.addWidget(self.debug_report_heading)
         a_layout.addWidget(self.debug_report)
         self._refresh_debug_report()
 
@@ -6669,11 +6668,12 @@ class GardenSettingsDialog(GardenDialog):
             self.behavior.fine_tune_toggle.isChecked()
             or self.behavior.advanced_toggle.isChecked()
         )
-        # Save and discard remain available while inspecting diagnostics so a
-        # dirty Display draft never becomes invisible or unreachable.
-        self.settings_footer_actions.show()
+        # Troubleshooting is read-only. Keep draft actions reachable only when
+        # the user arrived with unsaved Display changes.
+        show_settings_actions = not diagnostics or self._draft_is_dirty()
+        self.settings_footer_actions.setVisible(show_settings_actions)
         self.save_status.setVisible(bool(self.save_status.text()))
-        self.footer.show()
+        self.footer.setVisible(show_settings_actions or bool(self.save_status.text()))
         self.setProperty(
             "layoutMode",
             "diagnostics" if diagnostics else "display",
@@ -6759,6 +6759,7 @@ class GardenSettingsDialog(GardenDialog):
     def _update_garden_name_counter(self, text: str) -> None:
         count = len(str(text))
         self.garden_name_counter.setText(f"{count} / {MAX_GARDEN_NAME_LENGTH}")
+        self.garden_name_counter.setVisible(count >= MAX_GARDEN_NAME_LENGTH - 5)
         self.garden_name_counter.setAccessibleDescription(
             f"{count} of {MAX_GARDEN_NAME_LENGTH} characters used."
         )
@@ -6778,6 +6779,13 @@ class GardenSettingsDialog(GardenDialog):
         return changed + int(draft_name != self._persisted_name)
 
     def _set_garden_name_validation(self, valid: bool) -> None:
+        draft_name = " ".join(self.garden_name_edit.text().split())
+        if not valid:
+            self.garden_name_error.setText(
+                "Enter a garden name."
+                if not draft_name
+                else f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."
+            )
         self.garden_name_edit.setProperty(
             "validationState", "valid" if valid else "error"
         )
@@ -6805,7 +6813,7 @@ class GardenSettingsDialog(GardenDialog):
         dirty = modified_count > 0
         self._set_garden_name_validation(valid)
         self.set_dialog_dirty(dirty)
-        self.cancel_settings.setText("Discard changes" if dirty else "Cancel")
+        self.cancel_settings.setText("Discard" if dirty else "Cancel")
         self.cancel_settings.setAccessibleName(self.cancel_settings.text())
         set_control_enabled(
             self.save_settings,
@@ -6817,23 +6825,12 @@ class GardenSettingsDialog(GardenDialog):
             ),
             enabled_description="Save the current Anki Garden settings.",
         )
-        if dirty:
-            self.save_status.show()
-            change_label = (
-                "1 unsaved change"
-                if modified_count == 1
-                else f"{modified_count} unsaved changes"
-            )
-            self.save_status.setText(change_label)
-            self.save_status.setStyleSheet(
-                f"color:{GARDEN_THEME['text_muted']}; background:transparent; padding:0;"
-            )
-            self.save_status.setAccessibleDescription(self.save_status.text())
-        elif self.save_status.text() != "Saved":
+        if self.save_status.text() != "Saved":
             self.save_status.setText("")
             self.save_status.setStyleSheet("")
             self.save_status.setAccessibleDescription("")
             self.save_status.hide()
+        self._sync_settings_tab(self.tabs.currentIndex())
 
     def _draft_is_dirty(self) -> bool:
         draft_name = " ".join(self.garden_name_edit.text().split())
@@ -7099,10 +7096,9 @@ class GardenSettingsDialog(GardenDialog):
         contract_failures = issue_count("total_api_contract_failures", "API contract failures:")
         parsing_exceptions = issue_count("total_parsing_exceptions", "Parsing/formatting exceptions:")
         if contract_failures or parsing_exceptions:
-            status = "Garden display may be incomplete"
+            status = "Some artwork is missing"
             self.diagnostics_summary.setText(
-                "Some artwork may not display correctly. Refresh diagnostics or "
-                "copy the report for support."
+                "Check again. Copy a report if the issue continues."
             )
             self.diagnostics_summary.show()
             self.diagnostics_icon.setText("!")
@@ -7112,7 +7108,7 @@ class GardenSettingsDialog(GardenDialog):
             )
             self.diagnostics_card.setProperty("diagnosticState", "warning")
         else:
-            status = "No display issues detected"
+            status = "No display issues found"
             self.diagnostics_summary.setText("")
             self.diagnostics_summary.hide()
             self.diagnostics_icon.setText("✓")
@@ -7126,7 +7122,7 @@ class GardenSettingsDialog(GardenDialog):
         self.troubleshooting_status.setText(status)
         self.troubleshooting_status.setAccessibleDescription(status)
         self.diagnostics_checked.setText(
-            f"Last checked {datetime.now().strftime('%-I:%M %p')}"
+            f"Checked {datetime.now().strftime('%-I:%M %p')}"
         )
         self.diagnostics_version.setText(
             f"Anki Garden {_addon_human_version()} · Build {_addon_build_identifier()} · "
@@ -7151,12 +7147,14 @@ class GardenSettingsDialog(GardenDialog):
         if expanded:
             self._refresh_debug_report()
         self.debug_report.setVisible(bool(expanded))
+        self.debug_report_heading.setVisible(bool(expanded))
+        self.diagnostics_version.setVisible(bool(expanded))
         if expanded:
             QTimer.singleShot(0, self._sync_debug_report_height)
         self.report_details_toggle.setText(
-            "Hide details" if expanded else "View details"
+            "Hide technical details" if expanded else "Technical details"
         )
-        self.copy_debug.setText("Copy details" if expanded else "Copy report")
+        self.copy_debug.setText("Copy report")
         self.report_details_toggle.setAccessibleName(self.report_details_toggle.text())
         self.setProperty(
             "layoutMode",

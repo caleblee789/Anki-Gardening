@@ -1327,11 +1327,11 @@ def test_troubleshooting_copy_confirmation_is_visible_and_refresh_resets_it() ->
     assert "QGuiApplication.clipboard().setText" in copy_report
     assert 'self.diagnostics_checked.setText("Report copied to clipboard")' in copy_report
     assert "self.diagnostics_card.setFocus()" in copy_report
-    assert 'status = "No display issues detected"' in refresh_report
-    assert 'status = "Garden display may be incomplete"' in refresh_report
+    assert 'status = "No display issues found"' in refresh_report
+    assert 'status = "Some artwork is missing"' in refresh_report
     assert "contract_failures" in refresh_report
     assert "parsing_exceptions" in refresh_report
-    assert 'f"Last checked {datetime.now().strftime' in refresh_report
+    assert 'f"Checked {datetime.now().strftime' in refresh_report
 
 
 def test_today_growth_row_is_neutral_information_not_a_completion_requirement() -> None:
