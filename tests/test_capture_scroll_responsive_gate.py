@@ -207,7 +207,6 @@ def test_scroll_geometry_requires_exact_clearance_and_no_footer_overlap() -> Non
     })
     assert check(**geometry) == (
         "footer-clearance-mismatch",
-        "footer-layout-clearance-mismatch",
         "footer-viewport-overlap",
     )
 

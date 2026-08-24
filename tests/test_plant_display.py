@@ -1226,7 +1226,8 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
     assert "ONBOARDING_COACHMARK_MAX_WIDTH = 360" in dashboard
-    assert "self.onboarding_message.heightForWidth(" in dashboard
+    assert "active_message.heightForWidth(message_width)" in dashboard
+    assert "self.onboarding_error_banner.message" in dashboard
     assert "self.onboarding_layout.activate()" in dashboard
     assert "self.onboarding_layout.sizeHint().height()" in dashboard
     assert 'card.setProperty("achievementId", projection.achievement_id)' in dashboard

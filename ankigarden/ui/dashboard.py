@@ -457,6 +457,7 @@ class DialogShell(QWidget):
         self._initial_focus_target: QWidget | None = None
         self._state_focus_target: QWidget | None = None
         self._close_policy = DialogClosePolicy()
+        self._close_policy_disabled_top_close = False
         self._dialog_dirty = False
         self._dialog_in_flight = False
         self._dirty_close_confirmation: (
@@ -517,6 +518,31 @@ class DialogShell(QWidget):
 
         super().setWindowTitle(str(title))
         self.setAccessibleName(str(title))
+        top_close = getattr(self, "top_close", None)
+        if top_close is not None:
+            top_close.setAccessibleName(f"Close {title}")
+            if not bool(top_close.property("closeBlockedInFlight")):
+                top_close.setToolTip(f"Close {title}")
+                top_close.setAccessibleDescription(f"Close {title}")
+
+    def create_inline_close_button(
+        self,
+        parent: QWidget,
+        *,
+        title: str | None = None,
+    ) -> "GardenIconButton":
+        """Create the canonical visible close control for a dialog header."""
+
+        close_title = str(title or self.windowTitle() or "dialog")
+        button = GardenIconButton("close", f"Close {close_title}", parent)
+        button.clicked.connect(
+            lambda _checked=False: self.request_close(
+                DialogCloseReason.CLOSE_BUTTON
+            )
+        )
+        self.top_close = button
+        self.close_policy_changed()
+        return button
 
     def set_initial_focus(
         self,
@@ -585,7 +611,30 @@ class DialogShell(QWidget):
         return self._last_close_decision
 
     def close_policy_changed(self) -> None:
-        """Hook for subclasses that reflect close safety in their controls."""
+        """Reflect shared close safety in the canonical inline control."""
+
+        top_close = getattr(self, "top_close", None)
+        if top_close is None:
+            return
+        protected = bool(
+            self.close_policy.protect_in_flight and self.dialog_in_flight
+        )
+        top_close.setProperty("closeBlockedInFlight", protected)
+        if protected:
+            if top_close.isEnabled():
+                self._close_policy_disabled_top_close = True
+                top_close.setEnabled(False)
+            top_close.setToolTip("Close is unavailable while this action finishes")
+            top_close.setAccessibleDescription(
+                "Close is unavailable while this action finishes."
+            )
+            return
+        if self._close_policy_disabled_top_close:
+            top_close.setEnabled(True)
+            self._close_policy_disabled_top_close = False
+        title = self.windowTitle() or "dialog"
+        top_close.setToolTip(f"Close {title}")
+        top_close.setAccessibleDescription(f"Close {title}")
 
     def confirm_dirty_close(self, reason: DialogCloseReason) -> bool:
         """Hook for a discard confirmation; absence means keep the dialog open."""
@@ -1498,14 +1547,11 @@ class GardenDialog(DialogShell):
         self.dialog_subtitle.setVisible(bool(subtitle))
         title_copy.addWidget(self.dialog_subtitle)
         self.header_layout.addLayout(title_copy, 1)
-        self.top_close = GardenIconButton("close", f"Close {title}", self.header)
-        self.top_close.setVisible(show_close)
-        self._close_policy_disabled_top_close = False
-        self.top_close.clicked.connect(
-            lambda _checked=False: self.request_close(
-                DialogCloseReason.CLOSE_BUTTON
-            )
+        self.top_close = self.create_inline_close_button(
+            self.header,
+            title=title,
         )
+        self.top_close.setVisible(show_close)
         self.header_layout.addWidget(self.top_close, 0, Qt.AlignmentFlag.AlignTop)
         self._shell_layout.addWidget(self.header)
 
@@ -1561,33 +1607,6 @@ class GardenDialog(DialogShell):
         self.footer.hide()
         self._shell_layout.addWidget(self.footer)
         self.register_pinned_footer(self.footer)
-
-    def close_policy_changed(self) -> None:
-        """Make an unsafe in-flight close visibly and accessibly unavailable."""
-
-        super().close_policy_changed()
-        top_close = getattr(self, "top_close", None)
-        if top_close is None:
-            return
-        protected = bool(
-            self.close_policy.protect_in_flight and self.dialog_in_flight
-        )
-        top_close.setProperty("closeBlockedInFlight", protected)
-        if protected:
-            if top_close.isEnabled():
-                self._close_policy_disabled_top_close = True
-                top_close.setEnabled(False)
-            top_close.setToolTip("Close is unavailable while this action finishes")
-            top_close.setAccessibleDescription(
-                "Close is unavailable while this action finishes."
-            )
-        else:
-            if self._close_policy_disabled_top_close:
-                top_close.setEnabled(True)
-                self._close_policy_disabled_top_close = False
-            title = self.windowTitle()
-            top_close.setToolTip(f"Close {title}")
-            top_close.setAccessibleDescription(f"Close {title}")
 
     def set_dialog_title(self, title: str) -> None:
         self.setWindowTitle(title)
@@ -1838,11 +1857,25 @@ class PurchaseConfirmationDialog(DialogShell):
         self.purchase_root_layout = root
         root.setContentsMargins(22, 20, 22, 18)
         root.setSpacing(10)
+        self.header = GardenDialogHeader(self)
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(12)
         self.title_label = QLabel("")
         self.title_label.setProperty("dialogTitle", True)
         self.title_label.setProperty("dialogHeader", True)
         self.title_label.setWordWrap(True)
-        root.addWidget(self.title_label)
+        header_layout.addWidget(self.title_label, 1)
+        self.top_close = self.create_inline_close_button(
+            self.header,
+            title="purchase",
+        )
+        header_layout.addWidget(
+            self.top_close,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
+        root.addWidget(self.header)
 
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -3673,11 +3706,14 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         self._populate_inventory(preferred=selected, show_status=False)
         retry_available = bool(self.quote is not None and self.quote.ready)
-        if outcome.status not in {
-            GrowthChargeStatus.TARGET_INVALID,
-            GrowthChargeStatus.PERSISTENCE_FAILURE,
-        }:
+        if outcome.status is not GrowthChargeStatus.TARGET_INVALID:
             self._render_committed_target(outcome)
+            self.hero.setProperty("invalidTarget", False)
+            self.target_artwork.setAccessibleDescription(
+                "The target is unchanged because no Growth Charge was committed."
+            )
+            self.facts_card.hide()
+            self.outcome_heading.hide()
         else:
             self.target_name.setText(str(outcome.target_name))
             self.target_stage.setText("Invalid target")
@@ -3908,8 +3944,11 @@ class ToastRegion(QFrame):
         layout.addWidget(self.action)
         layout.addWidget(self.dismiss)
         self.dismiss.hide()
-        self.setMinimumHeight(40)
-        self.setMaximumHeight(48)
+        # A 36 px action plus 16 px vertical margins needs at least 52 px.
+        # The former 48 px cap squeezed one- and two-line messages down to a
+        # few pixels whenever an action was present.
+        self.setMinimumHeight(56)
+        self.setMaximumHeight(104)
         self.hide()
 
     def show_message(
@@ -5882,6 +5921,7 @@ class ResponsiveActionCard(QFrame):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setProperty("decisionGroup", True)
         self.summary = summary
         self.action = action
         self._compact_layout: bool | None = None
@@ -5951,6 +5991,7 @@ class CollectionFilterControls(QWidget):
     def __init__(
         self,
         *,
+        count: QLabel,
         query: str,
         status: str,
         category: str,
@@ -5965,8 +6006,10 @@ class CollectionFilterControls(QWidget):
         super().__init__(parent)
         self.setProperty("collectionFilters", True)
         self.setAccessibleName("Collection filters")
+        self.count = count
+        self.count.setProperty("collectionCount", True)
         self.grid = QGridLayout(self)
-        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setContentsMargins(14, 11, 14, 11)
         self.grid.setHorizontalSpacing(8)
         self.grid.setVerticalSpacing(6)
 
@@ -6121,12 +6164,13 @@ class CollectionFilterControls(QWidget):
     def _wide_content_width(self) -> int:
         spacing = self.grid.horizontalSpacing()
         return (
-            self._minimum_width(self.search, 180)
-            + self._minimum_width(self.status, 110)
-            + self._minimum_width(self.category, 140)
-            + self._minimum_width(self.sort_order, 120)
+            self._minimum_width(self.count, 180)
+            + self._minimum_width(self.search, 220)
+            + self._minimum_width(self.status, 130)
+            + self._minimum_width(self.category, 150)
+            + self._minimum_width(self.sort_order, 140)
             + self._minimum_width(self.clear, 100)
-            + (spacing * 4)
+            + (spacing * 5)
         )
 
     def _apply_responsive_mode(self, mode: str) -> None:
@@ -6135,6 +6179,7 @@ class CollectionFilterControls(QWidget):
             return
         self._compact_layout = compact
         controls = (
+            self.count,
             self.search,
             self.status,
             self.category,
@@ -6143,23 +6188,42 @@ class CollectionFilterControls(QWidget):
         )
         for control in controls:
             self.grid.removeWidget(control)
-        for column in range(5):
+        for column in range(6):
             self.grid.setColumnStretch(column, 0)
         if compact:
-            for row, control in enumerate(controls):
-                self.grid.addWidget(control, row, 0, 1, 5)
+            # At the canonical progress width the toolbar uses two concise
+            # rows, never a tall right-hand filter stack. The first row keeps
+            # identity and search together; the second holds all filters.
+            self.grid.addWidget(self.count, 0, 0, 1, 2)
+            self.grid.addWidget(self.search, 0, 2, 1, 4)
+            self.grid.addWidget(self.status, 1, 0, 1, 2)
+            self.grid.addWidget(self.category, 1, 2, 1, 2)
+            self.grid.addWidget(self.sort_order, 1, 4)
+            self.grid.addWidget(
+                self.clear,
+                1,
+                5,
+                alignment=Qt.AlignmentFlag.AlignBottom,
+            )
+            self.grid.setColumnStretch(2, 1)
             QWidget.setTabOrder(self.search, self.status_combo)
             QWidget.setTabOrder(self.status_combo, self.category_combo)
             QWidget.setTabOrder(self.category_combo, self.sort_combo)
             QWidget.setTabOrder(self.sort_combo, self.clear)
         else:
             # Desktop keeps every Collection filter in one predictable toolbar.
-            self.grid.addWidget(self.search, 0, 0)
-            self.grid.addWidget(self.status, 0, 1)
-            self.grid.addWidget(self.category, 0, 2)
-            self.grid.addWidget(self.sort_order, 0, 3)
-            self.grid.addWidget(self.clear, 0, 4)
-            self.grid.setColumnStretch(0, 1)
+            self.grid.addWidget(self.count, 0, 0)
+            self.grid.addWidget(self.search, 0, 1)
+            self.grid.addWidget(self.status, 0, 2)
+            self.grid.addWidget(self.category, 0, 3)
+            self.grid.addWidget(self.sort_order, 0, 4)
+            self.grid.addWidget(
+                self.clear,
+                0,
+                5,
+                alignment=Qt.AlignmentFlag.AlignBottom,
+            )
+            self.grid.setColumnStretch(1, 1)
             QWidget.setTabOrder(self.search, self.status_combo)
             QWidget.setTabOrder(self.status_combo, self.category_combo)
             QWidget.setTabOrder(self.category_combo, self.sort_combo)
@@ -7847,6 +7911,12 @@ class StarterConfirmationDialog(DialogShell):
         copy.addWidget(title)
         copy.addWidget(body)
         heading.addWidget(copy_widget, 1)
+        self.top_close = self.create_inline_close_button(content_host)
+        heading.addWidget(
+            self.top_close,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
         content.addLayout(heading)
         self.content_scroll.setWidget(content_host)
         _set_scroll_surface(
@@ -8050,6 +8120,12 @@ class NurseryDialog(DialogShell):
         resource_layout.addWidget(coin_label)
         resource_layout.addWidget(self.coins)
         self.hero_layout.addWidget(self.coin_resource, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.top_close = self.create_inline_close_button(hero)
+        self.hero_layout.addWidget(
+            self.top_close,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
         root.addWidget(hero)
 
         self.nursery_toast = GardenToast(self)
@@ -11952,6 +12028,7 @@ class GardenDetailsDialog(GardenDialog):
             QScrollArea { background:transparent; border:0; }
             QPushButton[detailDisclosure='true'] { text-align:left; min-height:44px; background:transparent; border:0; border-bottom:1px solid #345348; color:#c8d8cd; }
             QPushButton[detailDisclosure='true']:hover { background:#17342e; }
+            QPushButton[detailDisclosure='true'][achievementFilter='true'] { min-height:38px; max-height:38px; }
         """)
 
         self.tabs = GardenTabs("Garden detail sections")
@@ -13504,27 +13581,19 @@ class CollectibleDetailDialog(GardenDialog):
 
     def _set_loadout_footer_mode(self, mode: str) -> None:
         compact = mode == COMPACT_MODE
-        if compact == self._loadout_footer_compact:
-            return
-        self._loadout_footer_compact = compact
-        self.footer_layout.setDirection(
-            QBoxLayout.Direction.TopToBottom
-            if compact else
-            QBoxLayout.Direction.LeftToRight
-        )
-        self.footer_layout.setAlignment(
-            Qt.AlignmentFlag.AlignTop
-            if compact else
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        for button in (self.cancel_preview, self.apply_changes):
-            button.setMaximumWidth(
-                max(88, int(button.sizeHint().width()) + 24)
+        if compact != self._loadout_footer_compact:
+            self._loadout_footer_compact = compact
+            self.footer_layout.setDirection(
+                QBoxLayout.Direction.TopToBottom
+                if compact else
+                QBoxLayout.Direction.LeftToRight
             )
-            button.setSizePolicy(
-                QSizePolicy.Policy.Preferred,
-                QSizePolicy.Policy.Preferred,
+            self.footer_layout.setAlignment(
+                Qt.AlignmentFlag.AlignTop
+                if compact else
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
+        self._sync_loadout_footer_button_geometry()
         self.unsaved.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
@@ -13532,6 +13601,23 @@ class CollectibleDetailDialog(GardenDialog):
         self.footer_layout.invalidate()
         self.footer_layout.activate()
         self.footer.updateGeometry()
+
+    def _sync_loadout_footer_button_geometry(self) -> None:
+        """Re-measure state-dependent action copy without stretching it."""
+
+        for button in (self.cancel_preview, self.apply_changes):
+            copy_width = int(
+                button.fontMetrics().horizontalAdvance(
+                    str(button.text()).replace("&&", "&")
+                )
+            )
+            target_width = max(96, min(220, copy_width + 40))
+            button.setMinimumWidth(target_width)
+            button.setMaximumWidth(target_width)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Fixed,
+            )
 
     def _option_page(self, accessible_name: str) -> tuple[QWidget, QGridLayout]:
         host = QWidget()
@@ -13923,6 +14009,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.cancel_preview.setText(
             "Discard preview" if self._loadout_failure else "Cancel"
         )
+        self._sync_loadout_footer_button_geometry()
         status_text = (
             "Saving appearance changes…"
             if self._loadout_save_pending
@@ -15213,6 +15300,8 @@ class GardenDashboard(DialogShell):
             button.setCheckable(True)
             button.setChecked(self._achievement_filter == key)
             button.setProperty("detailDisclosure", True)
+            button.setProperty("achievementFilter", True)
+            button.setFixedHeight(38)
             button.setAccessibleDescription(
                 f"Show {label.lower()} achievements."
             )
@@ -15675,20 +15764,16 @@ class GardenDashboard(DialogShell):
         page = getattr(self, "dashboard_page", None)
         if root is None or page is None:
             return
+        # Do not feed live descendant geometry back into the page minimum.
+        # The scene expands to the available viewport, so using its current
+        # bottom edge here made each relayout preserve an obsolete oversized
+        # page and forced the full Garden out of view. The root layout already
+        # owns every reachable content region; its minimum is the canonical
+        # scroll requirement.
+        page.setMinimumHeight(0)
         root.invalidate()
         root.activate()
         required = max(1, int(root.minimumSize().height()))
-        # Overlay and responsive children can legitimately extend beyond the
-        # root layout's minimum hint. Include their live bottom edge so the
-        # sole dashboard scroll owner can reach every rendered pixel.
-        for descendant in page.findChildren(QWidget):
-            if descendant.isHidden():
-                continue
-            origin = descendant.mapTo(page, descendant.rect().topLeft())
-            required = max(
-                required,
-                int(origin.y()) + int(descendant.height()),
-            )
         page.setMinimumHeight(required)
         page.setProperty("minimumReachableContentHeight", required)
 
@@ -15761,11 +15846,22 @@ class GardenDashboard(DialogShell):
                 max(0, width - margins.left() - margins.right())
             )
         margins = self.onboarding_layout.contentsMargins()
+        active_message = self.onboarding_message
         message_width = max(1, width - margins.left() - margins.right())
+        if self.onboarding_error_banner.isVisible():
+            active_message = self.onboarding_error_banner.message
+            banner_layout = self.onboarding_error_banner.layout()
+            if banner_layout is not None:
+                banner_margins = banner_layout.contentsMargins()
+                message_width = max(
+                    1,
+                    message_width
+                    - banner_margins.left()
+                    - banner_margins.right(),
+                )
         self.onboarding_message.setMinimumHeight(0)
-        wrapped_message_height = self.onboarding_message.heightForWidth(
-            message_width
-        )
+        self.onboarding_error_banner.message.setMinimumHeight(0)
+        wrapped_message_height = active_message.heightForWidth(message_width)
         if wrapped_message_height > 0:
             # QLabel.heightForWidth() can report the exact text block height
             # without the small amount of vertical breathing room needed by
@@ -15775,9 +15871,9 @@ class GardenDashboard(DialogShell):
             # receipts (notably setup completion) render in full.
             message_vertical_allowance = max(
                 8,
-                int(self.onboarding_message.fontMetrics().height()),
+                int(active_message.fontMetrics().height()),
             )
-            self.onboarding_message.setMinimumHeight(
+            active_message.setMinimumHeight(
                 wrapped_message_height + message_vertical_allowance
             )
         self.onboarding_layout.invalidate()
@@ -17441,6 +17537,7 @@ class GardenDashboard(DialogShell):
         count.setProperty("rowTitle", True)
         count.setWordWrap(True)
         filters = CollectionFilterControls(
+            count=count,
             query=self._collection_query,
             status=self._collection_filter,
             category=self._collection_category,
@@ -17451,20 +17548,11 @@ class GardenDashboard(DialogShell):
             set_sort_order=self._set_collection_sort,
             clear_filters=self._clear_collection_filters,
         )
-        header = ResponsiveActionCard(
-            count,
-            filters,
-            semantic_id="progress.collection-filters",
-            summary_floor=120,
-            action_floor=470,
-            spacing=10,
-            margins=(14, 11, 14, 11),
-        )
-        header.setProperty("sectionCard", True)
-        self.collection_filter_header_responsive = header.responsive
+        filters.setProperty("sectionCard", True)
+        self.collection_filter_header_responsive = filters.responsive
         self.collection_filter_responsive = filters.responsive
         self.collection_filter_controls = filters
-        self.collection_list.add_full_width(header)
+        self.collection_list.add_full_width(filters)
 
         clear_filters = QPushButton("Clear filters")
         _set_button_variant(clear_filters, BUTTON_VARIANT_PRIMARY)
@@ -17576,6 +17664,7 @@ class GardenDashboard(DialogShell):
             environment_copy = self._collection_appearance_summary()
             customize = QPushButton("Manage loadout")
             _set_button_variant(customize, BUTTON_VARIANT_PRIMARY)
+            customize.setFixedHeight(36)
             customize.setAccessibleDescription(
                 "Inspect, preview, equip, unequip, or restore the current garden loadout."
             )
@@ -17690,7 +17779,7 @@ class GardenDashboard(DialogShell):
         self._refresh_collection_list()
 
     def _collection_appearance_summary(self) -> QWidget:
-        """Show one compact persisted appearance summary without item mechanics."""
+        """Show one compact persisted appearance summary and optional mechanics help."""
 
         state = self.storage.state
         scenery = SCENERY_CATALOG.get(str(state.selected_background))
@@ -17710,30 +17799,97 @@ class GardenDashboard(DialogShell):
 
         summary = QFrame()
         summary.setProperty("appearanceCard", True)
+        summary.setProperty("collectionAppearanceSummary", True)
+        summary.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         summary_layout = QVBoxLayout(summary)
-        summary_layout.setContentsMargins(12, 10, 12, 10)
-        summary_layout.setSpacing(6)
+        summary_layout.setContentsMargins(12, 8, 12, 8)
+        summary_layout.setSpacing(5)
         title = QLabel("Equipped appearance")
         title.setProperty("rowTitle", True)
+        title.setProperty("appearanceSummaryTitle", True)
         summary_layout.addWidget(title)
         facts = QGridLayout()
-        facts.setHorizontalSpacing(14)
+        facts.setHorizontalSpacing(10)
         facts.setVerticalSpacing(3)
-        for row, (label_text, value_text) in enumerate((
-            ("Scenery", scenery.name),
-            ("Weather", weather.name),
-            ("Decoration", decoration_name),
-            ("Active effect", active_effect),
-        )):
+
+        def add_fact(
+            key: str,
+            label_text: str,
+            value_text: str,
+            row: int,
+            label_column: int,
+            *,
+            value_span: int = 1,
+        ) -> None:
             label = QLabel(label_text)
             label.setProperty("summaryLabel", True)
             value = QLabel(value_text)
             value.setProperty("rowCriteria", True)
+            value.setProperty("appearanceFact", key)
             value.setWordWrap(True)
-            facts.addWidget(label, row, 0, Qt.AlignmentFlag.AlignTop)
-            facts.addWidget(value, row, 1)
+            facts.addWidget(label, row, label_column, Qt.AlignmentFlag.AlignTop)
+            facts.addWidget(value, row, label_column + 1, 1, value_span)
+
+        add_fact("scenery", "Scenery", scenery.name, 0, 0)
+        add_fact("weather", "Weather", weather.name, 0, 2)
+        add_fact("decoration", "Decoration", decoration_name, 1, 0, value_span=3)
+        add_fact("active-effect", "Active effect", active_effect, 2, 0, value_span=3)
         facts.setColumnStretch(1, 1)
+        facts.setColumnStretch(3, 1)
         summary_layout.addLayout(facts)
+
+        mechanics = QWidget()
+        mechanics.setProperty("environmentMechanicsHelp", True)
+        mechanics_layout = QVBoxLayout(mechanics)
+        mechanics_layout.setContentsMargins(0, 1, 0, 0)
+        mechanics_layout.setSpacing(4)
+        mechanics_toggle = QPushButton("How environment effects work")
+        mechanics_toggle.setCheckable(True)
+        mechanics_toggle.setProperty("disclosureRow", True)
+        mechanics_toggle.setProperty("environmentMechanicsDisclosure", True)
+        mechanics_toggle.setAccessibleName("How environment effects work")
+        mechanics_toggle.setAccessibleDescription(
+            "Show duration, stacking, and replacement rules for the equipped Weather and Scenery."
+        )
+        mechanics_details = QLabel("\n".join((
+            f"Weather · {weather.name}",
+            f"Duration: {weather.descriptor.duration}",
+            f"Stacking: {weather.descriptor.stacking}",
+            f"Replacement: {weather.descriptor.replacement}",
+            f"Scenery · {scenery.name}",
+            f"Duration: {scenery.descriptor.duration}",
+            f"Stacking: {scenery.descriptor.stacking}",
+            f"Replacement: {scenery.descriptor.replacement}",
+        )))
+        mechanics_details.setTextFormat(Qt.TextFormat.PlainText)
+        mechanics_details.setWordWrap(True)
+        mechanics_details.setProperty("rowCriteria", True)
+        mechanics_details.setProperty("environmentMechanicsDetails", True)
+        mechanics_details.setAccessibleName("Equipped environment mechanics")
+        mechanics_details.hide()
+
+        def set_mechanics_expanded(expanded: bool) -> None:
+            mechanics_details.setVisible(bool(expanded))
+            mechanics_toggle.setText(
+                "Hide environment effect details"
+                if expanded else
+                "How environment effects work"
+            )
+            mechanics_toggle.setAccessibleDescription(
+                "Hide duration, stacking, and replacement rules."
+                if expanded else
+                "Show duration, stacking, and replacement rules for the equipped Weather and Scenery."
+            )
+            mechanics.updateGeometry()
+            summary.updateGeometry()
+
+        mechanics_toggle.toggled.connect(set_mechanics_expanded)
+        mechanics_layout.addWidget(mechanics_toggle)
+        mechanics_layout.addWidget(mechanics_details)
+        summary_layout.addWidget(mechanics)
         summary.setAccessibleName(
             f"Equipped appearance. Scenery {scenery.name}. Weather {weather.name}. "
             f"Decoration {decoration_name}. Active effect: {active_effect}."
@@ -18488,10 +18644,21 @@ class GardenDashboard(DialogShell):
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(12)
+        title_header = GardenDialogHeader(dialog)
+        title_layout = QHBoxLayout(title_header)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(12)
         title = QLabel(f"Fertilize {plant.name}")
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
         title.setStyleSheet("font-size:22px; font-weight:800;")
+        title_layout.addWidget(title, 1)
+        dialog.top_close = dialog.create_inline_close_button(title_header)
+        title_layout.addWidget(
+            dialog.top_close,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
         hero = QFrame()
         hero.setProperty("fertilizerHero", True)
         hero_layout = QHBoxLayout(hero)
@@ -18572,7 +18739,7 @@ class GardenDashboard(DialogShell):
         balance = QLabel(f"{balance_value:,} Garden Coins")
         balance.setProperty("fertilizerBalance", True)
         apply_tabular_numerals(balance)
-        layout.addWidget(title)
+        layout.addWidget(title_header)
         hero_layout.addWidget(balance, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(hero)
         current_status_row = QHBoxLayout()

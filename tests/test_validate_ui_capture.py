@@ -112,6 +112,7 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 def _valid_visual_contract(
     label: str,
     state_kind: str,
+    window_family: str,
 ) -> tuple[dict[str, object], dict[str, object]]:
     if state_kind in {"home", "reviewer"}:
         visual: dict[str, object] = {
@@ -127,6 +128,7 @@ def _valid_visual_contract(
             "passed": True,
         }
     else:
+        requires_inline_close = window_family != "GardenDashboard"
         close_control = {
             "text": "",
             "accessible_name": "Close dialog",
@@ -138,18 +140,21 @@ def _valid_visual_contract(
         }
         visual = {
             "applicable": True,
-            "controls": [close_control],
+            "controls": [close_control] if requires_inline_close else [],
             "control_sizes_passed": True,
+            "requires_inline_close": requires_inline_close,
             "close_icons": [{
                 "accessible_name": "Close dialog",
                 "bounds": [68, 4, 28, 28],
                 "glyph_pixels_present": True,
                 "capture_pixels_present": True,
                 "passed": True,
-            }],
+            }] if requires_inline_close else [],
             "close_icons_passed": True,
             "primary_actions": [],
             "primary_action_count": 0,
+            "primary_action_groups": [],
+            "max_primary_actions_per_group": 0,
             "visible_horizontal_scrollbars": [],
             "largest_unexplained_gap": 0,
             "screen_contained": True,
@@ -185,7 +190,7 @@ def _valid_visual_contract(
         }
     if label == "progress-overview-redirect-growth":
         audit["direct_growth_visual"] = {
-            "label": "Direct Growth",
+            "label": "Direct rewards and charges",
             "amount": 31,
             "label_bounds": [10, 10, 100, 24],
             "value_bounds": [120, 10, 40, 24],
@@ -288,14 +293,14 @@ def _valid_visual_contract(
         }
     if label == "collection-environment-mechanics":
         keys = [
+            "toolbar",
             "summary_title",
-            "summary_values",
-            "item_title",
-            "item_status",
-            "effect",
+            "scenery",
+            "weather",
+            "decoration",
+            "active_effect",
+            "manage_loadout",
             "mechanics",
-            "inspect",
-            "unequip",
         ]
         audit["environment_mechanics_visual"] = {
             "required_keys": keys,
@@ -333,14 +338,14 @@ def _valid_visual_contract(
             )
         ],
         "collection-environment-mechanics": [
+            "environment-toolbar",
             "environment-summary-title",
-            "environment-summary-values",
-            "environment-item-title",
-            "environment-item-status",
-            "environment-effect",
+            "environment-scenery",
+            "environment-weather",
+            "environment-decoration",
+            "environment-active-effect",
+            "environment-manage-loadout",
             "environment-mechanics",
-            "environment-inspect",
-            "environment-unequip",
         ],
     }.get(label, [])
     if rendered_pixel_keys:
@@ -481,8 +486,8 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 "viewport_top": 100,
                 "viewport_height": 300,
                 "viewport_bottom": 400,
-                "declared_clearance": 64,
-                "layout_clearance": 64,
+                "declared_clearance": 0,
+                "layout_clearance": 0,
                 "content_height": 300,
                 "content_size_hint_height": 280,
                 "content_minimum_size_hint_height": 260,
@@ -496,6 +501,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         visual_contract, visual_audit = _valid_visual_contract(
             label,
             str(postcondition_kind),
+            family,
         )
         records.append({
             "audit": {
@@ -1043,10 +1049,18 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
         "rendered_text"
     ] += " Hidden Garden Coins 999"
 
-    generic = by_label["starter-garden-onboarding"]
+    generic = by_label["starter-selection-confirmation"]
     generic_visual = generic["visual_contract_audit"]
     assert isinstance(generic_visual, dict)
+    generic_visual["primary_actions"] = ["Confirm", "Purchase"]
     generic_visual["primary_action_count"] = 2
+    generic_visual["primary_action_groups"] = [{
+        "scope": "actionFooter-1",
+        "actions": ["Confirm", "Purchase"],
+        "count": 2,
+        "passed": False,
+    }]
+    generic_visual["max_primary_actions_per_group"] = 2
     generic_visual["close_icons"][0]["glyph_pixels_present"] = False
     generic_visual["close_icons"][0]["passed"] = False
     generic_audit = generic["audit"]
@@ -1061,7 +1075,7 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
     for expected in (
         "full Garden does not prove a clean contained steady state",
         "required state widgets are absent from captured pixels",
-        "does not visibly prove nonzero Direct Growth",
+        "does not visibly prove nonzero direct reward or charge Growth",
         "restored preview does not show a contained result banner",
         "owned Nursery item is not visibly identified and contained",
         "Reviewer card lacks full containment or control clearance",

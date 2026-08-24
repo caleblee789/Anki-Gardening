@@ -71,14 +71,14 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
         for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES
     ),
     "collection-environment-mechanics": (
+        "environment-toolbar",
         "environment-summary-title",
-        "environment-summary-values",
-        "environment-item-title",
-        "environment-item-status",
-        "environment-effect",
+        "environment-scenery",
+        "environment-weather",
+        "environment-decoration",
+        "environment-active-effect",
+        "environment-manage-loadout",
         "environment-mechanics",
-        "environment-inspect",
-        "environment-unequip",
     ),
 }
 _NO_INFERRED_VALUE = object()
@@ -1535,15 +1535,15 @@ def dialog_scroll_audit_issue_codes(
     if scroll_maximum < scroll_minimum:
         issues.append("invalid-scroll-range")
 
-    expected_footer_height = footer_height if footer_visible else 0
     if footer_visible and footer_height <= 0:
         issues.append("visible-footer-height")
     if not footer_visible and footer_height != 0:
         issues.append("hidden-footer-height")
-    if declared_clearance != expected_footer_height:
+    # The footer is a sibling below the viewport, not an overlay. Its height
+    # must not be duplicated as artificial content padding; the capture and
+    # layout measurements only need to agree with each other.
+    if declared_clearance != layout_clearance:
         issues.append("footer-clearance-mismatch")
-    if layout_clearance != expected_footer_height:
-        issues.append("footer-layout-clearance-mismatch")
     if viewport_bottom != viewport_top + viewport_height:
         issues.append("viewport-bottom-mismatch")
     if footer_visible and viewport_bottom > footer_top:
@@ -1855,10 +1855,17 @@ def _visual_contract_record_issues(
             reject("visual contract controls must have passing measured bounds")
         if visual.get("control_sizes_passed") is not True:
             reject("visual contract control sizes did not pass")
+        requires_inline_close = visual.get("requires_inline_close")
+        if type(requires_inline_close) is not bool:
+            reject("visual contract close requirement must be boolean")
+            requires_inline_close = True
         close_icons = visual.get("close_icons")
-        if not isinstance(close_icons, list) or not close_icons:
+        if not isinstance(close_icons, list):
+            reject("visual contract close icons must be a list")
+            close_icons = []
+        elif requires_inline_close and not close_icons:
             reject("visual contract has no measured inline close icon")
-        elif any(
+        if close_icons and any(
             not isinstance(icon, dict)
             or icon.get("passed") is not True
             or icon.get("glyph_pixels_present") is not True
@@ -1871,8 +1878,38 @@ def _visual_contract_record_issues(
         if visual.get("close_icons_passed") is not True:
             reject("visual contract close icons did not pass")
         primary_count = visual.get("primary_action_count")
-        if type(primary_count) is not int or primary_count < 0 or primary_count > 1:
-            reject("visual contract must contain at most one filled primary action")
+        if type(primary_count) is not int or primary_count < 0:
+            reject("visual contract primary action count must be nonnegative")
+        primary_groups = visual.get("primary_action_groups")
+        if not isinstance(primary_groups, list) or any(
+            not isinstance(group, dict)
+            or not isinstance(group.get("scope"), str)
+            or not isinstance(group.get("actions"), list)
+            or type(group.get("count")) is not int
+            or group.get("count") != len(group.get("actions", []))
+            or group.get("passed") is not True
+            for group in (primary_groups if isinstance(primary_groups, list) else [])
+        ):
+            reject("visual contract primary decision groups are invalid")
+            primary_groups = []
+        maximum_group_count = visual.get("max_primary_actions_per_group")
+        independently_maximum = max(
+            (
+                int(group.get("count", 0))
+                for group in primary_groups
+                if isinstance(group, dict)
+                and type(group.get("count")) is int
+            ),
+            default=0,
+        )
+        if (
+            type(maximum_group_count) is not int
+            or maximum_group_count != independently_maximum
+            or maximum_group_count > 1
+        ):
+            reject(
+                "visual contract must contain at most one filled primary action per decision group"
+            )
         if visual.get("visible_horizontal_scrollbars") != []:
             reject("visual contract contains a visible horizontal scrollbar")
         largest_gap = visual.get("largest_unexplained_gap")
@@ -1965,11 +2002,11 @@ def _visual_contract_record_issues(
             direct.get("passed") is True
             and type(amount) is int
             and amount > 0
-            and "Direct Growth" in str(direct.get("label", ""))
+            and "Direct rewards and charges" in str(direct.get("label", ""))
             and direct.get("label_contained") is True
             and direct.get("value_contained") is True
         ):
-            reject("Growth redirect does not visibly prove nonzero Direct Growth")
+            reject("Growth redirect does not visibly prove nonzero direct reward or charge Growth")
 
     if label == "collection-preview-restored":
         restored = audit_object("restored_preview_visual")
@@ -2065,14 +2102,14 @@ def _visual_contract_record_issues(
     if label == "collection-environment-mechanics":
         mechanics = audit_object("environment_mechanics_visual")
         required_keys = {
+            "toolbar",
             "summary_title",
-            "summary_values",
-            "item_title",
-            "item_status",
-            "effect",
+            "scenery",
+            "weather",
+            "decoration",
+            "active_effect",
+            "manage_loadout",
             "mechanics",
-            "inspect",
-            "unequip",
         }
         bounds = mechanics.get("required_bounds")
         if not (

@@ -23,6 +23,7 @@ from aqt.qt import (
     QAbstractButton,
     QAbstractScrollArea,
     QApplication,
+    QComboBox,
     QCoreApplication,
     QDialog,
     QEvent,
@@ -32,6 +33,7 @@ from aqt.qt import (
     QGuiApplication,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPainter,
     QScrollArea,
     QTabWidget,
@@ -725,15 +727,15 @@ def dialog_scroll_geometry_issue_codes(
     if int(scroll_maximum) < int(scroll_minimum):
         issues.append("invalid-scroll-range")
 
-    visible_footer_height = int(footer_height) if bool(footer_visible) else 0
     if bool(footer_visible) and int(footer_height) <= 0:
         issues.append("visible-footer-height")
     if not bool(footer_visible) and int(footer_height) != 0:
         issues.append("hidden-footer-height")
-    if int(declared_clearance) != visible_footer_height:
+    # DialogShell pins the footer as a normal sibling below the scroll owner.
+    # Its content margin therefore stays at the layout's original value
+    # (normally zero); adding the footer height would manufacture a blank tail.
+    if int(declared_clearance) != int(layout_clearance):
         issues.append("footer-clearance-mismatch")
-    if int(layout_clearance) != visible_footer_height:
-        issues.append("footer-layout-clearance-mismatch")
     viewport_bottom = int(viewport_top) + int(viewport_height)
     if bool(footer_visible) and viewport_bottom > int(footer_top):
         issues.append("footer-viewport-overlap")
@@ -952,14 +954,14 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
         for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES
     ),
     "collection-environment-mechanics": (
+        "environment-toolbar",
         "environment-summary-title",
-        "environment-summary-values",
-        "environment-item-title",
-        "environment-item-status",
-        "environment-effect",
+        "environment-scenery",
+        "environment-weather",
+        "environment-decoration",
+        "environment-active-effect",
+        "environment-manage-loadout",
         "environment-mechanics",
-        "environment-inspect",
-        "environment-unequip",
     ),
 }
 
@@ -3188,6 +3190,62 @@ class _UiFaceCaptureRunner:
             return False
 
     @staticmethod
+    def _pixmap_icon_region_has_detail(
+        pixmap: Any,
+        root: QWidget,
+        button: QAbstractButton,
+    ) -> bool:
+        """Prove a compact icon left visible contrast in the final PNG."""
+
+        try:
+            target = pixmap.toImage()
+            if target.isNull() or not button.isVisibleTo(root):
+                return False
+            origin = button.mapTo(root, button.rect().topLeft())
+            icon_size = button.iconSize()
+            logical_width = max(1, int(icon_size.width()))
+            logical_height = max(1, int(icon_size.height()))
+            logical_left = int(origin.x()) + max(
+                0,
+                (int(button.width()) - logical_width) // 2,
+            )
+            logical_top = int(origin.y()) + max(
+                0,
+                (int(button.height()) - logical_height) // 2,
+            )
+            scale_x = target.width() / max(1, int(root.width()))
+            scale_y = target.height() / max(1, int(root.height()))
+            left = max(0, round(logical_left * scale_x))
+            top = max(0, round(logical_top * scale_y))
+            right = min(
+                target.width(),
+                round((logical_left + logical_width) * scale_x),
+            )
+            bottom = min(
+                target.height(),
+                round((logical_top + logical_height) * scale_y),
+            )
+            if right - left < 3 or bottom - top < 3:
+                return False
+            luminance: list[int] = []
+            quantized: set[tuple[int, int, int]] = set()
+            for y in range(top, bottom):
+                for x in range(left, right):
+                    color = target.pixelColor(x, y)
+                    if color.alpha() < 64:
+                        continue
+                    red, green, blue = color.red(), color.green(), color.blue()
+                    luminance.append((red * 3 + green * 6 + blue) // 10)
+                    quantized.add((red // 8, green // 8, blue // 8))
+            return bool(
+                len(luminance) >= 12
+                and len(quantized) >= 3
+                and max(luminance) - min(luminance) >= 16
+            )
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _widget_bounds_evidence(
         widget: Any,
         container: Any,
@@ -3427,6 +3485,70 @@ class _UiFaceCaptureRunner:
         controls: list[dict[str, Any]] = []
         close_icons: list[dict[str, Any]] = []
         primary_actions: list[str] = []
+        primary_scope_widgets: list[QWidget] = []
+        primary_action_groups: list[dict[str, Any]] = []
+
+        def primary_scope(button: QAbstractButton) -> QWidget:
+            current = button.parentWidget()
+            while current is not None and current is not root:
+                if any(
+                    bool(current.property(marker))
+                    for marker in (
+                        "decisionGroup",
+                        "actionFooter",
+                        "dialogFooter",
+                        "toastRegion",
+                        "emptyState",
+                        "nurseryCatalogCard",
+                        "catalogCard",
+                        "environmentTile",
+                        "sectionCard",
+                    )
+                ):
+                    return current
+                current = current.parentWidget()
+            return root
+
+        def record_primary(button: QAbstractButton, action_name: str) -> None:
+            scope = primary_scope(button)
+            index = next(
+                (
+                    item_index
+                    for item_index, candidate in enumerate(primary_scope_widgets)
+                    if candidate is scope
+                ),
+                -1,
+            )
+            if index < 0:
+                primary_scope_widgets.append(scope)
+                marker = next(
+                    (
+                        name
+                        for name in (
+                            "decisionGroup",
+                            "actionFooter",
+                            "dialogFooter",
+                            "toastRegion",
+                            "emptyState",
+                            "nurseryCatalogCard",
+                            "catalogCard",
+                            "environmentTile",
+                            "sectionCard",
+                        )
+                        if bool(scope.property(name))
+                    ),
+                    "window",
+                )
+                primary_action_groups.append({
+                    "scope": (
+                        str(scope.objectName())
+                        or f"{marker}-{len(primary_scope_widgets)}"
+                    ),
+                    "actions": [],
+                })
+                index = len(primary_action_groups) - 1
+            primary_action_groups[index]["actions"].append(action_name)
+
         for button in root.findChildren(QAbstractButton):
             if button.window() is not root or not button.isVisibleTo(root):
                 continue
@@ -3448,12 +3570,18 @@ class _UiFaceCaptureRunner:
                 int(button.iconSize().width()),
                 int(button.iconSize().height()),
             ]
+            standard_button = bool(
+                component == "button"
+                or str(button.property("variant") or "")
+            )
             size_passed = bool(
                 28 <= visual_size <= 30
                 and 14 <= icon_size[0] <= 16
                 and 14 <= icon_size[1] <= 16
                 if icon_only else
                 int(button.height()) <= 40
+                if standard_button else
+                True
             )
             controls.append({
                 "text": text,
@@ -3462,6 +3590,7 @@ class _UiFaceCaptureRunner:
                 "icon_only": icon_only,
                 "visual_size": visual_size,
                 "icon_size": icon_size,
+                "standard_button": standard_button,
                 "size_passed": size_passed,
             })
             if not size_passed:
@@ -3469,9 +3598,11 @@ class _UiFaceCaptureRunner:
                     "icon-control-size" if icon_only else "standard-button-height"
                 )
             if str(button.property("variant") or "") == "primary":
-                primary_actions.append(
+                action_name = (
                     text or str(button.accessibleName() or type(button).__name__)
                 )
+                primary_actions.append(action_name)
+                record_primary(button, action_name)
             accessible_name = str(button.accessibleName() or "").casefold()
             if icon_only and "close" in accessible_name:
                 glyph_present = self._icon_has_visible_pixels(button)
@@ -3485,10 +3616,20 @@ class _UiFaceCaptureRunner:
                 if not close_passed:
                     issue_codes.append("close-icon-glyph-or-size")
 
-        if not close_icons:
+        requires_inline_close = bool(
+            expected_capture_window_family(label) != "GardenDashboard"
+        )
+        if requires_inline_close and not close_icons:
             issue_codes.append("missing-inline-close-icon")
 
-        if len(primary_actions) > 1:
+        for group in primary_action_groups:
+            group["count"] = len(group["actions"])
+            group["passed"] = group["count"] <= 1
+        max_primary_actions_per_group = max(
+            (int(group["count"]) for group in primary_action_groups),
+            default=0,
+        )
+        if max_primary_actions_per_group > 1:
             issue_codes.append("multiple-filled-primary-actions")
 
         horizontal_scrollbars: list[str] = []
@@ -3576,11 +3717,15 @@ class _UiFaceCaptureRunner:
                 for issue in ("icon-control-size", "standard-button-height")
             ),
             "close_icons": close_icons,
-            "close_icons_passed": all(
-                bool(item.get("passed", False)) for item in close_icons
+            "requires_inline_close": requires_inline_close,
+            "close_icons_passed": bool(
+                (close_icons or not requires_inline_close)
+                and all(bool(item.get("passed", False)) for item in close_icons)
             ),
             "primary_actions": primary_actions,
             "primary_action_count": len(primary_actions),
+            "primary_action_groups": primary_action_groups,
+            "max_primary_actions_per_group": max_primary_actions_per_group,
             "visible_horizontal_scrollbars": horizontal_scrollbars,
             "largest_unexplained_gap": largest_gap,
             "screen_contained": screen_contained,
@@ -3625,12 +3770,22 @@ class _UiFaceCaptureRunner:
                 )
                 pixels_present = bool(
                     button is not None
-                    and self._pixmap_contains_overlay(pixmap, root, button)
+                    and (
+                        self._pixmap_contains_overlay(pixmap, root, button)
+                        or self._pixmap_icon_region_has_detail(
+                            pixmap,
+                            root,
+                            button,
+                        )
+                    )
                 )
                 row["capture_pixels_present"] = pixels_present
                 row["passed"] = bool(row.get("passed", False) and pixels_present)
+            requires_inline_close = bool(
+                visual_contract.get("requires_inline_close", True)
+            )
             close_pixels_passed = bool(
-                close_rows
+                (close_rows or not requires_inline_close)
                 and all(
                     row.get("capture_pixels_present") is True
                     for row in close_rows
@@ -4096,11 +4251,9 @@ class _UiFaceCaptureRunner:
         panel = getattr(dashboard, "onboarding_panel", None)
         ordinary_message = getattr(dashboard, "onboarding_message", None)
         error_banner = getattr(dashboard, "onboarding_error_banner", None)
-        message = (
-            error_banner
-            if error_banner is not None and error_banner.isVisible()
-            else ordinary_message
-        )
+        message = ordinary_message
+        if error_banner is not None and error_banner.isVisible():
+            message = getattr(error_banner, "message", error_banner)
         actions = [
             getattr(dashboard, "onboarding_action", None),
             getattr(dashboard, "dismiss_onboarding", None),
@@ -4968,8 +5121,8 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("passed", False))
                     and "No Garden Coins earned yet" in visible_label_texts
                     and any(
-                        "Study on an Anki day" in text
-                        and "reach a new plant stage" in text
+                        "Earn Garden Coins from daily rewards" in text
+                        and "Garden Finds" in text
                         for text in visible_label_texts
                     ),
                     {
@@ -5064,7 +5217,7 @@ class _UiFaceCaptureRunner:
                     bool(
                         direct_growth.get("passed", False)
                         and int(direct_growth.get("amount", 0) or 0) > 0
-                        and "Direct Growth" in str(
+                        and "Direct rewards and charges" in str(
                             direct_growth.get("label", "")
                         )
                         and direct_growth.get("label_contained", False)
@@ -5093,7 +5246,8 @@ class _UiFaceCaptureRunner:
                     bool(
                         no_results is not None
                         and no_results.isVisible()
-                        and "No collectibles match" in empty_text
+                        and "No matches" in empty_text
+                        and "Clear filters to see all collectibles" in empty_text
                         and bool(annotation.get("passed", False))
                     ),
                     annotation,
@@ -5111,7 +5265,8 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("loadout_route_visible", False))
                     and bool(annotation.get("loadout_routes_enabled", False))
                     and bool(annotation.get("action_buttons_fully_visible", False))
-                    and bool(annotation.get("scroll_at_end", False))
+                    and bool(annotation.get("filter_toolbar_visible", False))
+                    and bool(annotation.get("scroll_at_top", False))
                     and not bool(annotation.get("direct_mutation_controls", True)),
                     annotation,
                 )
@@ -5121,14 +5276,14 @@ class _UiFaceCaptureRunner:
                         mechanics_visual.get("passed", False)
                         and set(mechanics_visual.get("required_keys", ()))
                         == {
+                            "toolbar",
                             "summary_title",
-                            "summary_values",
-                            "item_title",
-                            "item_status",
-                            "effect",
+                            "scenery",
+                            "weather",
+                            "decoration",
+                            "active_effect",
+                            "manage_loadout",
                             "mechanics",
-                            "inspect",
-                            "unequip",
                         }
                         and all(
                             bool(dict(row).get("contained", False))
@@ -5425,7 +5580,7 @@ class _UiFaceCaptureRunner:
                     "purchased_item_preview",
                     bool(title)
                     and bool(toast is not None and toast.isVisible())
-                    and toast_text == "Soft Breeze unlocked"
+                    and toast_text == "Soft Breeze unlocked."
                     and primary == "Open Collection"
                     and secondary == "Continue shopping",
                     {
@@ -5451,9 +5606,9 @@ class _UiFaceCaptureRunner:
                     "purchase-success-garden-bed-unlocked": "View garden",
                 }[state_name]
                 expected_outcome = {
-                    "purchase-success-inventory-collection": "Sunflower Seed added to your collection",
-                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant",
-                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked",
+                    "purchase-success-inventory-collection": "Sunflower Seed added to your collection.",
+                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant.",
+                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked.",
                 }[state_name]
                 require(
                     "typed_purchase_receipt",
@@ -5784,7 +5939,6 @@ class _UiFaceCaptureRunner:
                         for reward in rewards
                     )
                     expected_reward_chips = {
-                        f"+{max(0, int(outcome.growth_granted)):,} Growth",
                         *{
                             f"{format_status_label(str(getattr(reward, 'stage', '') or 'Stage'))} reward"
                             for reward in rewards
@@ -5797,6 +5951,12 @@ class _UiFaceCaptureRunner:
                     state_visible = (
                         not widget.receipt.isHidden()
                         and expected_reward_chips.issubset(reward_chips)
+                        and widget.receipt_copy.isVisible()
+                        and str(widget.receipt_copy.text()).strip()
+                        == (
+                            f"+{max(0, int(outcome.growth_granted)):,} Growth · "
+                            f"{max(0, int(outcome.inventory_remaining)):,} remaining"
+                        )
                         and _displayed_button_text(widget.use_action) == "View plant"
                         and _displayed_button_text(widget.cancel_action) == "Close"
                     )
@@ -7968,8 +8128,8 @@ class _UiFaceCaptureRunner:
                     and error_banner.isVisible()
                     and dashboard.onboarding_title.text()
                     == "Starter setup was not saved"
-                    and "No species" in error_copy
-                    and "committed" in error_copy
+                    and "No starter, garden bed, or nurture choice was saved." in error_copy
+                    and "Garden setup could not be saved. Try again." in error_copy
                     and dashboard.onboarding_action.text() == "Try again"
                     and dashboard.dismiss_onboarding.text() == "Return to setup"
                     and bool(dashboard._onboarding_save_error)
@@ -8306,6 +8466,7 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(self._capture_selected_card_after)
 
     def _capture_selected_card_after(self) -> None:
+        from .models.state import OnboardingStep
         from .ui.state_contracts import OnboardingState, onboarding_state_display
 
         plant_id = self._select_plant(activate=False)
@@ -8314,13 +8475,18 @@ class _UiFaceCaptureRunner:
             self._close_dashboard()
             self._next_after(250)
             return
+        state = self.app.storage.state
+        state.starter_selection_complete = True
+        state.onboarding.step = OnboardingStep.NURTURE
+        state.onboarding.starter_plant_id = plant_id
+        state.onboarding.pending_species = None
         config = getattr(self.app, "config", None)
         onboarding_version = (
             config.value("onboarding_version", 0)
             if config is not None and hasattr(config, "value") else 0
         )
         onboarding = onboarding_state_display(
-            self.app.storage.state,
+            state,
             onboarding_version,
         )
         if onboarding.state != OnboardingState.STARTER_PLANTED_NOT_NURTURED:
@@ -9741,7 +9907,7 @@ class _UiFaceCaptureRunner:
                 direct_label = next(
                     (
                         candidate for candidate in visible_labels
-                        if "Direct Growth" in str(candidate.text())
+                        if "Direct rewards and charges" in str(candidate.text())
                     ),
                     None,
                 )
@@ -9790,7 +9956,7 @@ class _UiFaceCaptureRunner:
                 }
                 direct_visual["passed"] = bool(
                     direct_amount > 0
-                    and "Direct Growth" in direct_visual["label"]
+                    and "Direct rewards and charges" in direct_visual["label"]
                     and direct_visual["label_contained"]
                     and direct_visual["value_contained"]
                 )
@@ -10632,7 +10798,7 @@ class _UiFaceCaptureRunner:
         elif variant == "persistence":
             conditions.extend([
                 alert_visible,
-                "could not be saved" in dialog.alert.text(),
+                "could not save" in dialog.alert.text().casefold(),
                 inventory == 2,
                 int(getattr(target, "growth_points", -1)) == 1_250,
                 ledger_count == 0,
@@ -10954,168 +11120,73 @@ class _UiFaceCaptureRunner:
             dialog.raise_()
 
             def finalize_fixture() -> None:
-                button_widgets = dashboard.collection_list.findChildren(
-                    QAbstractButton
-                )
-                mechanics_button = next(
-                    (
-                        button for button in button_widgets
-                        if str(button.accessibleName())
-                        == f"More details for {WEATHER_CATALOG['breeze'].name}"
-                    ),
-                    None,
-                )
+                app = QApplication.instance()
+                button_widgets = dashboard.collection_list.findChildren(QAbstractButton)
+                mechanics_button = next((
+                    button for button in button_widgets
+                    if bool(button.property("environmentMechanicsDisclosure"))
+                ), None)
                 if mechanics_button is not None:
                     mechanics_button.setChecked(True)
-                app = QApplication.instance()
                 if app is not None:
                     app.processEvents()
                 scroll = dashboard.collection_list.scroll
-                if mechanics_button is not None:
-                    scroll.ensureWidgetVisible(mechanics_button, 0, 80)
-                if app is not None:
-                    app.processEvents()
-
-                # Expanded mechanics end with the learner's route actions.
-                # Reveal the final row so the canonical face contains both
-                # complete controls instead of cutting through their bottoms.
                 scrollbar = scroll.verticalScrollBar()
-                scrollbar.setValue(scrollbar.maximum())
+                scrollbar.setValue(0)
                 if app is not None:
                     app.processEvents()
 
-                button_widgets = dashboard.collection_list.findChildren(
-                    QAbstractButton
+                viewport = scroll.viewport()
+                filter_controls = getattr(
+                    dashboard,
+                    "collection_filter_controls",
+                    None,
                 )
-                buttons = [
-                    str(button.text()) for button in button_widgets
-                    if button.isVisible()
-                ]
-                loadout_buttons = [
+                manage_loadout = next((
                     button for button in button_widgets
                     if button.isVisible()
-                    and str(button.text())
-                    in {"Manage loadout", "Preview", "Inspect", "Unequip"}
-                ]
-                viewport = scroll.viewport()
-                route_button_bounds: list[dict[str, Any]] = []
-                for button in loadout_buttons:
-                    if str(button.text()) not in {"Inspect", "Unequip"}:
-                        continue
-                    origin = button.mapTo(viewport, button.rect().topLeft())
-                    contained = bool(
-                        origin.x() >= 0
-                        and origin.y() >= 0
-                        and origin.x() + button.width() <= viewport.width()
-                        and origin.y() + button.height() <= viewport.height()
-                    )
-                    route_button_bounds.append({
-                        "text": str(button.text()),
-                        "bounds": [
-                            int(origin.x()),
-                            int(origin.y()),
-                            int(button.width()),
-                            int(button.height()),
-                        ],
-                        "contained": contained,
-                    })
-                action_buttons_fully_visible = bool(
-                    {row["text"] for row in route_button_bounds}
-                    == {"Inspect", "Unequip"}
-                    and all(row["contained"] for row in route_button_bounds)
-                )
+                    and str(button.text()) == "Manage loadout"
+                ), None)
                 visible_label_widgets = [
                     label_widget
                     for label_widget in dashboard.collection_list.findChildren(QLabel)
                     if label_widget.isVisible()
                 ]
-                labels = [
-                    str(label_widget.text())
-                    for label_widget in visible_label_widgets
-                ]
-                mechanics_visible = any(
-                    all(
-                        marker in text
-                        for marker in ("Duration:", "Stacking:", "Replacement:")
-                    )
-                    for text in labels
-                )
-                required_widgets: dict[str, Any] = {
-                    "summary_title": next(
-                        (
-                            item for item in visible_label_widgets
-                            if str(item.text()).strip() == "Equipped appearance"
-                        ),
-                        None,
-                    ),
-                    "summary_values": next(
-                        (
-                            item for item in visible_label_widgets
-                            if all(
-                                marker in str(item.text())
-                                for marker in (
-                                    "Scenery:",
-                                    "Weather:",
-                                    "Decoration:",
-                                )
-                            )
-                        ),
-                        None,
-                    ),
-                    "item_title": next(
-                        (
-                            item for item in visible_label_widgets
-                            if str(item.text()).strip()
-                            == WEATHER_CATALOG["breeze"].name
-                        ),
-                        None,
-                    ),
-                    "item_status": next(
-                        (
-                            item for item in visible_label_widgets
-                            if all(
-                                marker in str(item.text())
-                                for marker in ("Weather", "Common", "Equipped")
-                            )
-                        ),
-                        None,
-                    ),
-                    "effect": next(
-                        (
-                            item for item in visible_label_widgets
-                            if "Effect:" in str(item.text())
-                        ),
-                        None,
-                    ),
-                    "mechanics": next(
-                        (
-                            item for item in visible_label_widgets
-                            if all(
-                                marker in str(item.text())
-                                for marker in (
-                                    "Duration:",
-                                    "Stacking:",
-                                    "Replacement:",
-                                )
-                            )
-                        ),
-                        None,
-                    ),
-                    "inspect": next(
-                        (
-                            button for button in loadout_buttons
-                            if str(button.text()) == "Inspect"
-                        ),
-                        None,
-                    ),
-                    "unequip": next(
-                        (
-                            button for button in loadout_buttons
-                            if str(button.text()) == "Unequip"
-                        ),
-                        None,
-                    ),
+                summary_title = next((
+                    item for item in visible_label_widgets
+                    if bool(item.property("appearanceSummaryTitle"))
+                ), None)
+                summary_facts = {
+                    str(item.property("appearanceFact") or ""): item
+                    for item in visible_label_widgets
+                    if str(item.property("appearanceFact") or "")
                 }
+                mechanics_details = next((
+                    item for item in visible_label_widgets
+                    if bool(item.property("environmentMechanicsDetails"))
+                ), None)
+                required_widgets: dict[str, Any] = {
+                    "toolbar": filter_controls,
+                    "summary_title": summary_title,
+                    "scenery": summary_facts.get("scenery"),
+                    "weather": summary_facts.get("weather"),
+                    "decoration": summary_facts.get("decoration"),
+                    "active_effect": summary_facts.get("active-effect"),
+                    "manage_loadout": manage_loadout,
+                    "mechanics": mechanics_details,
+                }
+
+                def evidence_text(key: str, widget: Any) -> str:
+                    if widget is None:
+                        return ""
+                    if isinstance(widget, QAbstractButton):
+                        return _displayed_button_text(widget)
+                    if isinstance(widget, QLabel):
+                        return str(widget.text()).strip()
+                    if key == "toolbar":
+                        return str(widget.accessibleName() or "Collection filters")
+                    return str(widget.accessibleName() or "").strip()
+
                 required_bounds: list[dict[str, Any]] = []
                 for key, required_widget in required_widgets.items():
                     if required_widget is not None:
@@ -11123,21 +11194,68 @@ class _UiFaceCaptureRunner:
                             "captureEvidenceKey",
                             f"environment-{key.replace('_', '-')}",
                         )
-                    evidence = self._widget_bounds_evidence(
-                        required_widget,
-                        viewport,
-                    )
+                    evidence = self._widget_bounds_evidence(required_widget, viewport)
                     evidence.update({
                         "key": key,
-                        "text": (
-                            _displayed_button_text(required_widget)
-                            if isinstance(required_widget, QAbstractButton)
-                            else str(required_widget.text())
-                            if required_widget is not None
-                            else ""
-                        ),
+                        "text": evidence_text(key, required_widget),
                     })
                     required_bounds.append(evidence)
+
+                toolbar_controls: list[tuple[str, Any]] = []
+                if filter_controls is not None:
+                    toolbar_controls = [
+                        ("count", getattr(filter_controls, "count", None)),
+                        ("search", getattr(filter_controls, "search", None)),
+                        ("status", getattr(filter_controls, "status_combo", None)),
+                        ("category", getattr(filter_controls, "category_combo", None)),
+                        ("sort", getattr(filter_controls, "sort_combo", None)),
+                        ("clear", getattr(filter_controls, "clear", None)),
+                    ]
+                toolbar_bounds: list[dict[str, Any]] = []
+                for key, control in toolbar_controls:
+                    evidence = self._widget_bounds_evidence(control, viewport)
+                    if isinstance(control, QComboBox):
+                        copy = str(control.currentText()).strip()
+                    elif isinstance(control, QLineEdit):
+                        copy = str(control.text()).strip()
+                    elif isinstance(control, QAbstractButton):
+                        copy = _displayed_button_text(control)
+                    elif isinstance(control, QLabel):
+                        copy = str(control.text()).strip()
+                    else:
+                        copy = ""
+                    evidence.update({"key": key, "text": copy})
+                    toolbar_bounds.append(evidence)
+                toolbar_mode = str(
+                    filter_controls.property("layoutMode")
+                    if filter_controls is not None else ""
+                )
+                toolbar_visual = {
+                    "layout_mode": toolbar_mode,
+                    "row_count": 1 if toolbar_mode == "wide" else 2,
+                    "controls": toolbar_bounds,
+                    "toolbar": self._widget_bounds_evidence(
+                        filter_controls,
+                        viewport,
+                    ),
+                }
+                toolbar_box = list(
+                    toolbar_visual["toolbar"].get("bounds", ()) or ()
+                )
+                toolbar_visual["passed"] = bool(
+                    toolbar_mode in {"wide", "compact"}
+                    and toolbar_visual["row_count"] <= 2
+                    and len(toolbar_bounds) == 6
+                    and all(
+                        bool(row.get("visible", False))
+                        and bool(row.get("contained", False))
+                        and bool(str(row.get("text", "")).strip())
+                        for row in toolbar_bounds
+                    )
+                    and bool(toolbar_visual["toolbar"].get("contained", False))
+                    and len(toolbar_box) == 4
+                    and int(toolbar_box[3]) <= 150
+                )
                 environment_mechanics_visual = {
                     "required_keys": list(required_widgets),
                     "required_bounds": required_bounds,
@@ -11145,6 +11263,7 @@ class _UiFaceCaptureRunner:
                         int(viewport.width()),
                         int(viewport.height()),
                     ],
+                    "toolbar_visual": toolbar_visual,
                 }
                 environment_mechanics_visual["passed"] = bool(
                     len(required_bounds) == len(required_widgets)
@@ -11154,6 +11273,12 @@ class _UiFaceCaptureRunner:
                         and bool(str(row.get("text", "")).strip())
                         for row in required_bounds
                     )
+                    and toolbar_visual["passed"]
+                )
+                mechanics_text = evidence_text("mechanics", mechanics_details)
+                manage_evidence = next(
+                    row for row in required_bounds
+                    if row.get("key") == "manage_loadout"
                 )
                 annotation = {
                     "collection_category": str(dashboard._collection_category),
@@ -11163,38 +11288,52 @@ class _UiFaceCaptureRunner:
                         and mechanics_button.isChecked()
                     ),
                     "selected_environment_visible": (
-                        WEATHER_CATALOG["breeze"].name in labels
+                        evidence_text("weather", summary_facts.get("weather"))
+                        == WEATHER_CATALOG["breeze"].name
                     ),
                     "complete_effects_visible": (
-                        any("Effect:" in text for text in labels)
-                        and mechanics_visible
+                        "Growth" in evidence_text(
+                            "active_effect",
+                            summary_facts.get("active-effect"),
+                        )
+                        and all(
+                            marker in mechanics_text
+                            for marker in ("Duration:", "Stacking:", "Replacement:")
+                        )
+                        and WEATHER_CATALOG["breeze"].name in mechanics_text
                     ),
                     "loadout_summary_visible": (
-                        "Equipped appearance" in labels
-                        and any(
-                            all(
-                                f"{category}:" in text
-                                for category in (
-                                    "Scenery",
-                                    "Weather",
-                                    "Decoration",
-                                )
+                        evidence_text("summary_title", summary_title)
+                        == "Equipped appearance"
+                        and all(
+                            summary_facts.get(key) is not None
+                            for key in (
+                                "scenery",
+                                "weather",
+                                "decoration",
+                                "active-effect",
                             )
-                            for text in labels
                         )
                     ),
-                    "equipment_state_visible": any(
-                        "Equipped" in text for text in labels + buttons
+                    "equipment_state_visible": bool(
+                        summary_title is not None
+                        and summary_title.isVisible()
                     ),
-                    "loadout_route_visible": any(
-                        text in {"Manage loadout", "Preview", "Inspect", "Unequip"}
-                        for text in buttons
+                    "loadout_route_visible": bool(
+                        manage_loadout is not None
+                        and manage_loadout.isVisible()
                     ),
-                    "loadout_routes_enabled": bool(loadout_buttons)
-                    and all(button.isEnabled() for button in loadout_buttons),
-                    "action_buttons_fully_visible": action_buttons_fully_visible,
-                    "route_button_bounds": route_button_bounds,
-                    "scroll_at_end": bool(scrollbar.value() == scrollbar.maximum()),
+                    "loadout_routes_enabled": bool(
+                        manage_loadout is not None
+                        and manage_loadout.isEnabled()
+                    ),
+                    "action_buttons_fully_visible": bool(
+                        manage_evidence.get("contained", False)
+                        and 34 <= int(manage_loadout.height()) <= 36
+                    ),
+                    "route_button_bounds": [manage_evidence],
+                    "filter_toolbar_visible": toolbar_visual["passed"],
+                    "scroll_at_top": bool(scrollbar.value() == 0),
                     "direct_mutation_controls": any(
                         button.isCheckable()
                         and str(button.text()) in {"Show Weather", "Show Scenery"}
@@ -11214,8 +11353,9 @@ class _UiFaceCaptureRunner:
                     and annotation["loadout_route_visible"]
                     and annotation["loadout_routes_enabled"]
                     and annotation["action_buttons_fully_visible"]
+                    and annotation["filter_toolbar_visible"]
                     and environment_mechanics_visual["passed"]
-                    and annotation["scroll_at_end"]
+                    and annotation["scroll_at_top"]
                     and not annotation["direct_mutation_controls"]
                 )
                 self._capture_annotations[label] = annotation
@@ -11279,7 +11419,7 @@ class _UiFaceCaptureRunner:
             error_visible = bool(
                 dialog.preview_feedback.isVisible()
                 and dialog.preview_panel.isAncestorOf(dialog.preview_feedback)
-                and "Changes were not applied" in error_copy
+                and "Changes could not be saved" in error_copy
                 and "unchanged" in error_copy
             )
             actions = {
@@ -12498,6 +12638,11 @@ class _UiFaceCaptureRunner:
             dashboard = self.app.dashboard
             dashboard.scene.keep_card_open(plant.plant_id)
             dashboard._on_scene_selection(plant.plant_id)
+            # Opening an in-scene card must not move the page-level Dashboard
+            # scroll owner or clip the header. The card is clamped by the
+            # scene itself, so surface evidence is captured from scroll zero.
+            dashboard.dashboard_scroll.verticalScrollBar().setValue(0)
+            QApplication.processEvents()
             if not bool(dashboard.plant_card.isVisible()):
                 self._failures.append({
                     "label": label,
@@ -12508,7 +12653,7 @@ class _UiFaceCaptureRunner:
             label,
             mutate,
             delay_ms=520,
-            reveal_plant_card=True,
+            reveal_plant_card=False,
         )
 
     def _capture_move_mixed_destinations(self) -> None:
@@ -12528,7 +12673,7 @@ class _UiFaceCaptureRunner:
             dashboard._begin_move(active.plant_id)
             QApplication.processEvents()
             scrollbar = dashboard.dashboard_scroll.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            scrollbar.setValue(0)
             QApplication.processEvents()
 
             def cleanup() -> None:
@@ -13313,8 +13458,12 @@ class _UiFaceCaptureRunner:
             ]
             state.active_plant_id = state.plants[0].plant_id
             state.onboarding.starter_plant_id = state.active_plant_id
-            fixture["plant_id"] = str(state.plants[0].plant_id)
-            fixture["plant_name"] = str(state.plants[0].name)
+            # The active plant lives in the dedicated "Currently growing"
+            # strip. Target another owned plant so this fixture visibly proves
+            # the reusable owned catalog-card state.
+            owned_catalog_plant = state.plants[1]
+            fixture["plant_id"] = str(owned_catalog_plant.plant_id)
+            fixture["plant_name"] = str(owned_catalog_plant.name)
             self._refresh_capture_dashboard()
             return lambda: self._restore_capture_fixture_state(snapshot)
 
@@ -13786,7 +13935,7 @@ class _UiFaceCaptureRunner:
                     matrix_layout.addWidget(tile, 1)
                     tiles[artwork_type] = (tile, title, status)
                 dialog.environment_layout.insertWidget(0, matrix)
-                dialog.environment_scroll.ensureWidgetVisible(matrix, 0, 16)
+                dialog.environment_scroll.verticalScrollBar().setValue(0)
                 QApplication.processEvents()
 
                 expected_fingerprints = {

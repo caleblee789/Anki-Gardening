@@ -353,17 +353,19 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert '"inventory",' in fixture_postcondition
     assert '"Growth Charge applied"' in fixture_postcondition
     assert "scroll_maximum == 0" not in fixture_postcondition
-    assert '"loadout_routes_enabled": bool(loadout_buttons)' in collection_fixture
-    assert '"action_buttons_fully_visible": action_buttons_fully_visible' in collection_fixture
-    assert "scrollbar.setValue(scrollbar.maximum())" in collection_fixture
+    assert '"loadout_routes_enabled": bool(' in collection_fixture
+    assert '"action_buttons_fully_visible": bool(' in collection_fixture
+    assert "scrollbar.setValue(0)" in collection_fixture
     assert '"complete_effects_visible"' in collection_fixture
     assert '"loadout_summary_visible"' in collection_fixture
     assert 'dashboard._collection_category = "weather"' in collection_fixture
     assert 'dashboard._collection_query = WEATHER_CATALOG["breeze"].name' in collection_fixture
     assert 'mechanics_button.setChecked(True)' in collection_fixture
-    assert 'scroll.ensureWidgetVisible(mechanics_button, 0, 80)' in collection_fixture
-    assert '"Equipped appearance" in labels' in collection_fixture
-    assert 'all(button.isEnabled() for button in loadout_buttons)' in collection_fixture
+    assert 'property("environmentMechanicsDisclosure")' in collection_fixture
+    assert '== "Equipped appearance"' in collection_fixture
+    assert 'manage_loadout.isEnabled()' in collection_fixture
+    assert '"filter_toolbar_visible"' in collection_fixture
+    assert '"scroll_at_top"' in collection_fixture
     assert "devicePixelRatio()" in prepare_capture_window
     assert "self._capture_force_primary = True" in prepare_capture_window
     assert "if widget is not mw:" in capture_now
@@ -497,14 +499,14 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
 
     assert '"environment_mechanics_visual"' in mechanics
     for required_key in (
+        "toolbar",
         "summary_title",
-        "summary_values",
-        "item_title",
-        "item_status",
-        "effect",
+        "scenery",
+        "weather",
+        "decoration",
+        "active_effect",
+        "manage_loadout",
         "mechanics",
-        "inspect",
-        "unequip",
     ):
         assert f'"{required_key}"' in mechanics
     assert "_widget_bounds_evidence(" in mechanics
@@ -545,7 +547,7 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     assert 'current_page == "growth"' in redirect
     assert "self._prepare_growth_capture_fixture(" in redirect
     assert "populated=True" in redirect
-    assert '"Direct Growth"' in redirect
+    assert '"Direct rewards and charges"' in redirect
     assert '"direct_growth_visual"' in redirect
     assert 'direct_amount > 0' in redirect
     assert '"label_contained"' in redirect
@@ -982,7 +984,8 @@ def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() 
     assert "on_error=registered_cleanup" in expiring
     assert "on_error=registered_cleanup" in replacement
     assert "dashboard.plant_card.isVisible()" in popover
-    assert "reveal_plant_card=True" in popover
+    assert "reveal_plant_card=False" in popover
+    assert "dashboard.dashboard_scroll.verticalScrollBar().setValue(0)" in popover
     assert "scroll.ensureWidgetVisible(card, 0, 24)" in reveal
     assert '"plant_card_fully_visible": contained' in reveal
 
@@ -2058,7 +2061,7 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
 
     assert "MISSING_ARTWORK_CAPTURE_TYPES" in missing_artwork
     assert "dialog.environment_layout.insertWidget(0, matrix)" in missing_artwork
-    assert "dialog.environment_scroll.ensureWidgetVisible(matrix, 0, 16)" in missing_artwork
+    assert "dialog.environment_scroll.verticalScrollBar().setValue(0)" in missing_artwork
     assert 'status = QLabel("Artwork unavailable")' in missing_artwork
     assert 'f"missing-art-{artwork_type}"' in missing_artwork
     assert "_asset_preview_label(" in missing_artwork
@@ -2086,7 +2089,7 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
     assert "dashboard.plant_card.choose_another.isVisible()" in fully_grown
     assert "reveal_plant_card=True" in fully_grown
 
-    assert "scrollbar.setValue(scrollbar.maximum())" in move_destinations
+    assert "scrollbar.setValue(0)" in move_destinations
     assert "scrollbar.setValue(0)" in move_destinations
     assert "close_callback=cleanup" in move_destinations
     assert "scroll_child_bounds(" in postcondition

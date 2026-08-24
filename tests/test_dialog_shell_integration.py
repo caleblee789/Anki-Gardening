@@ -120,8 +120,9 @@ def test_dialog_close_policy_is_opt_in_and_preserves_reject_overrides() -> None:
         "DialogShell",
         "keyPressEvent",
     )
-    assert "DialogCloseReason.CLOSE_BUTTON" in dialog
-    assert 'top_close.setProperty("closeBlockedInFlight", protected)' in dialog
+    assert "DialogCloseReason.CLOSE_BUTTON" in shell
+    assert 'top_close.setProperty("closeBlockedInFlight", protected)' in shell
+    assert "create_inline_close_button" in shell
     assert "self.register_pinned_footer(self.footer)" in dialog
 
 

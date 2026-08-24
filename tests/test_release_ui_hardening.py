@@ -581,7 +581,8 @@ def test_dialog_shell_construction_never_shows_parentless_widgets_on_macos() -> 
 
     assert "self.hide()" in shell_init
     assert 'QLabel(subtitle, self.header)' in garden_dialog_source
-    assert 'GardenIconButton("close", f"Close {title}", self.header)' in garden_dialog_source
+    assert "self.create_inline_close_button(" in garden_dialog_source
+    assert "self.header" in garden_dialog_source
 
     assigned_parents: dict[str, str] = {}
     for statement in garden_dialog_init.body:
@@ -704,9 +705,19 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     footer_mode = _segment(
         _method_node("CollectibleDetailDialog", "_set_loadout_footer_mode")
     )
+    footer_geometry = _segment(
+        _method_node(
+            "CollectibleDetailDialog",
+            "_sync_loadout_footer_button_geometry",
+        )
+    )
     assert "QBoxLayout.Direction.TopToBottom" in footer_mode
     assert "QBoxLayout.Direction.LeftToRight" in footer_mode
     assert "QSizePolicy.Policy.Expanding" in footer_mode
+    assert "self._sync_loadout_footer_button_geometry()" in footer_mode
+    assert "fontMetrics().horizontalAdvance" in footer_geometry
+    assert "button.setMinimumWidth(target_width)" in footer_geometry
+    assert "button.setMaximumWidth(target_width)" in footer_geometry
     assert "effects_advanced_layout.setDirection" not in responsive
     assert "self.loadout_footer_responsive.evaluate(content_width)" in responsive
     assert "Changes were not applied." not in sync_dirty
@@ -716,6 +727,7 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert 'else "Try again"' in sync_dirty
     assert "if self._loadout_failure" in sync_dirty
     assert '"Discard preview" if self._loadout_failure' in sync_dirty
+    assert "self._sync_loadout_footer_button_geometry()" in sync_dirty
     assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
     assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
     assert "Changes could not be saved. Your current appearance is unchanged." in apply_draft
@@ -733,6 +745,18 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert '"resolve_decoration_asset"' in refresh_preview
     assert '"decoration": self._asset_payload(decoration)' in refresh_preview
     assert "def resolve_preview_asset(" in refresh_preview
+
+
+def test_dashboard_scroll_minimum_comes_from_the_root_layout_without_feedback() -> None:
+    sync = _segment(
+        _method_node("GardenDashboard", "_sync_dashboard_content_minimum_height")
+    )
+
+    assert "page.setMinimumHeight(0)" in sync
+    assert "root.minimumSize().height()" in sync
+    assert 'page.setProperty("minimumReachableContentHeight", required)' in sync
+    assert "findChildren" not in sync
+    assert "descendant.mapTo" not in sync
 
 
 def test_settings_garden_name_validation_is_inline_accessible_and_focuses_the_field() -> None:

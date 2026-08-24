@@ -299,8 +299,8 @@ def test_nursery_success_toast_has_a_compact_semantic_icon() -> None:
     assert "self.icon.setFixedSize(24, 24)" in toast
     assert 'self.icon.setText("!" if error else "✓")' in toast
     assert 'self.icon.setAccessibleName("Error" if error else "Success")' in toast
-    assert "self.setMinimumHeight(40)" in toast
-    assert "self.setMaximumHeight(48)" in toast
+    assert "self.setMinimumHeight(56)" in toast
+    assert "self.setMaximumHeight(104)" in toast
     assert "self._clear_timer = QTimer(self)" in toast
     assert "self._clear_timer.setSingleShot(True)" in toast
     assert "self._clear_timer.timeout.connect(self._clear_scheduled_message)" in toast
@@ -1252,9 +1252,11 @@ def test_collection_filters_and_inventory_cards_reflow_without_chip_scrolling() 
         assert copy in filters
     assert "All categories" not in filters
     assert "QScrollArea" not in refresh
-    assert "self.grid.addWidget(self.search, 0, 0)" in filters
-    assert "self.grid.addWidget(self.clear, 0, 4)" in filters
-    assert "for row, control in enumerate(controls)" in filters
+    assert "self.grid.addWidget(self.count, 0, 0)" in filters
+    assert "self.grid.addWidget(self.search, 0, 1)" in filters
+    assert "self.grid.addWidget(\n                self.clear," in filters
+    assert "self.grid.addWidget(self.status, 1, 0, 1, 2)" in filters
+    assert "self.grid.addWidget(self.category, 1, 2, 1, 2)" in filters
     assert "QWidget.setTabOrder" in filters
     assert 'for category_key in ("decorations", "garden_beds", "growth_items")' in refresh
     for label in ("Owned quantity", "Effect", "Eligibility", "Acquisition"):
