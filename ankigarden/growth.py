@@ -58,6 +58,15 @@ class GrowthChargeStatus(str, Enum):
     REQUEST_ID_CONFLICT = "request_id_conflict"
 
 
+class GrowthChargeTargetState(str, Enum):
+    """Renderer-neutral eligibility state for the quoted target plant."""
+
+    ELIGIBLE = "eligible"
+    UNAVAILABLE = "unavailable"
+    STORED = "stored"
+    FULLY_GROWN = "fully_grown"
+
+
 @dataclass(frozen=True)
 class GrowthChargeQuote:
     status: GrowthChargeStatus
@@ -67,6 +76,7 @@ class GrowthChargeQuote:
     target_name: str
     target_species: str
     target_stage: str
+    target_state: GrowthChargeTargetState
     current_growth: int
     requested_growth: int
     granted_growth: int

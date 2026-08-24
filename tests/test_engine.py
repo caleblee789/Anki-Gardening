@@ -15,7 +15,11 @@ from ankigarden.garden_finds import (
     consumption_id,
     stable_answer_event_identity,
 )
-from ankigarden.growth import GrowthChargeRequest, GrowthChargeStatus
+from ankigarden.growth import (
+    GrowthChargeRequest,
+    GrowthChargeStatus,
+    GrowthChargeTargetState,
+)
 from ankigarden.models.state import (
     ActivePlantPeriod,
     CURRENT_CATALOG_SPECIES_ORDER,
@@ -806,6 +810,34 @@ def test_growth_charge_rejects_stale_invalid_and_rolls_back_failed_save():
     assert failed.status is GrowthChargeStatus.PERSISTENCE_FAILURE
     assert storage.state.to_dict() == state_before
     assert engine.peek_stage_transitions() == transitions_before
+
+
+def test_growth_charge_quote_exposes_authoritative_target_state() -> None:
+    engine, storage = make_engine()
+    storage.state.consumables["growth_charge_small"] = 2
+
+    ready = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert ready.target_state is GrowthChargeTargetState.ELIGIBLE
+
+    storage.state.plants[1].slot_index = None
+    stored = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert stored.status is GrowthChargeStatus.TARGET_INVALID
+    assert stored.target_state is GrowthChargeTargetState.STORED
+    assert stored.quote_token != ready.quote_token
+
+    storage.state.plants[1].slot_index = 1
+    storage.state.plants[1].growth_points = GROWTH_THRESHOLDS[-1]
+    fully_grown = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert fully_grown.status is GrowthChargeStatus.TARGET_INVALID
+    assert fully_grown.target_state is GrowthChargeTargetState.FULLY_GROWN
+    assert fully_grown.quote_token != stored.quote_token
+
+    unavailable = engine.quote_growth_charge(
+        "growth_charge_small",
+        "not-owned",
+    )
+    assert unavailable.status is GrowthChargeStatus.TARGET_INVALID
+    assert unavailable.target_state is GrowthChargeTargetState.UNAVAILABLE
 
 
 def test_same_day_events_route_by_active_period_timestamp():

@@ -58,6 +58,7 @@ from .growth import (
     GrowthChargeQuote,
     GrowthChargeRequest,
     GrowthChargeStatus,
+    GrowthChargeTargetState,
     StageRewardProjection,
 )
 from .models.state import (
@@ -4159,12 +4160,15 @@ class GardenGameEngine:
             0,
             int(self.state.consumables.get(normalized_charge, 0) or 0),
         )
-        valid_target = bool(
-            plant is not None
-            and plant in self.state.plants
-            and plant.planted
-            and not plant.fully_grown
-        )
+        if plant is None or plant not in self.state.plants:
+            target_state = GrowthChargeTargetState.UNAVAILABLE
+        elif not plant.planted:
+            target_state = GrowthChargeTargetState.STORED
+        elif plant.fully_grown:
+            target_state = GrowthChargeTargetState.FULLY_GROWN
+        else:
+            target_state = GrowthChargeTargetState.ELIGIBLE
+        valid_target = target_state is GrowthChargeTargetState.ELIGIBLE
         current_growth = max(0, int(getattr(plant, "growth_points", 0) or 0))
         requested = max(0, int(getattr(spec, "growth", 0) or 0))
         granted = (
@@ -4203,6 +4207,7 @@ class GardenGameEngine:
             "planted": bool(getattr(plant, "planted", False)),
             "fully_grown": bool(getattr(plant, "fully_grown", False)),
             "eligible": valid_target,
+            "target_state": target_state.value,
             "scenery": self.state.selected_background,
             "granted": granted,
             "rewards": [reward.to_dict() for reward in rewards],
@@ -4221,6 +4226,7 @@ class GardenGameEngine:
             target_name=str(getattr(plant, "name", "Plant") or "Plant"),
             target_species=str(getattr(plant, "species", "") or ""),
             target_stage=self._growth_stage_for_points(current_growth),
+            target_state=target_state,
             current_growth=current_growth,
             requested_growth=requested,
             granted_growth=granted,
