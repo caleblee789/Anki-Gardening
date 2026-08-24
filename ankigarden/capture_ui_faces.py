@@ -13575,9 +13575,6 @@ class _UiFaceCaptureRunner:
             return
         self._close_top_level_dialogs()
         self._close_dashboard()
-        reset = getattr(mw, "reset", None)
-        if callable(reset):
-            reset()
         restore_fixture: Callable[[], None] | None = None
         opposite = "overview" if surface == "deckBrowser" else "deckBrowser"
         self._switch_surface(opposite)
@@ -13587,27 +13584,38 @@ class _UiFaceCaptureRunner:
             if callable(invalidate):
                 invalidate(f"capture transition for {label}")
             self._switch_surface(surface)
-            self._wait_for_home_surface(
-                surface,
-                label,
-                lambda: self._capture_and_advance(
+            QTimer.singleShot(
+                420,
+                lambda: self._wait_for_home_surface(
+                    surface,
                     label,
-                    mw,
-                    capture_delay_ms=650,
-                    close_callback=restore_fixture,
-                    close_ms=760 if restore_fixture is not None else 0,
-                    next_ms=1200,
+                    lambda: self._capture_and_advance(
+                        label,
+                        mw,
+                        capture_delay_ms=650,
+                        close_callback=restore_fixture,
+                        close_ms=760 if restore_fixture is not None else 0,
+                        next_ms=1200,
+                    ),
                 ),
             )
 
+        def opposite_surface_settled() -> None:
+            # ``mw.state`` changes before WebEngine finishes the corresponding
+            # navigation. Let that real page load settle before requesting the
+            # target state, otherwise repeated Home fixtures can strand the
+            # renderer with every subsequent JavaScript callback discarded.
+            QTimer.singleShot(420, enter_surface)
+
         # Consecutive Home fixtures alternate through the opposite Anki state
         # so WebEngine must construct a new source-backed root. A fixed delay
-        # can race moveToState() under capture load, leaving the old active-slot
-        # DOM in place even though the model has advanced. Wait for the state
-        # transition itself before returning to the requested surface.
+        # alone can race moveToState() under capture load, leaving the old
+        # active-slot DOM in place even though the model has advanced. Wait for
+        # the state transition, then give the matching WebEngine navigation one
+        # bounded settle interval before returning to the requested surface.
         self._wait_for(
             lambda: str(getattr(mw, "state", "")) == opposite,
-            enter_surface,
+            opposite_surface_settled,
             tries=80,
             failure_label=label,
             failure_reason=(
