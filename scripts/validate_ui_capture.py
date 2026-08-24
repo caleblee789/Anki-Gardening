@@ -2106,6 +2106,8 @@ def _visual_contract_record_issues(
         entries = matrix.get("entries")
         missing_paths = matrix.get("missing_source_paths")
         logged_fingerprints = matrix.get("diagnostic_log_fingerprints")
+        visible_card = matrix.get("visible_card")
+        visible_preview = matrix.get("visible_preview")
         if not (
             matrix.get("passed") is True
             and matrix.get("types") == list(MISSING_ARTWORK_CAPTURE_TYPES)
@@ -2124,7 +2126,6 @@ def _visual_contract_record_issues(
                 and entry.get("graphic_present") is True
                 and entry.get("aspect_ratio_preserved") is True
                 and entry.get("diagnostic_path_logged") is True
-                and entry.get("status_text") == "Artwork unavailable"
                 and bool(str(entry.get("accessible_name", "")).strip())
                 and str(entry.get("accessible_description", "")).startswith(
                     "Artwork unavailable"
@@ -2132,15 +2133,15 @@ def _visual_contract_record_issues(
                 and str(entry.get("source_path", "")).startswith(
                     "/capture-missing/"
                 )
-                and all(
-                    isinstance(entry.get(key), dict)
-                    and entry[key].get("contained") is True
-                    for key in ("tile", "preview", "title", "status")
-                )
                 for entry in entries
             )
+            and isinstance(visible_card, dict)
+            and visible_card.get("contained") is True
+            and isinstance(visible_preview, dict)
+            and visible_preview.get("contained") is True
+            and matrix.get("visible_missing_preview_count") == 1
         ):
-            reject("missing-artwork matrix is incomplete, clipped, or unlogged")
+            reject("missing-artwork fallback evidence is incomplete, clipped, or unlogged")
 
     if label == "collection-environment-mechanics":
         mechanics = audit_object("environment_mechanics_visual")

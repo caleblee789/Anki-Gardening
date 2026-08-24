@@ -971,10 +971,7 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "collection-preview-restored": ("restored-preview-banner",),
     "nursery-item-owned": ("owned-item-card",),
-    "missing-artwork-graphical-fallback": tuple(
-        f"missing-art-{artwork_type}"
-        for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES
-    ),
+    "missing-artwork-graphical-fallback": ("missing-art-weather",),
     "collection-environment-mechanics": (
         "environment-toolbar",
         "environment-summary-title",
@@ -13842,7 +13839,7 @@ class _UiFaceCaptureRunner:
         )
 
         label = "missing-artwork-graphical-fallback"
-        weather_item = WEATHER_CATALOG.get("breeze")
+        weather_item = WEATHER_CATALOG.get("sunny")
         scenery_item = SCENERY_CATALOG.get("spring")
         growth_charge = GROWTH_CHARGES.get("growth_charge_small")
         if weather_item is None or scenery_item is None or growth_charge is None:
@@ -13936,11 +13933,8 @@ class _UiFaceCaptureRunner:
 
                 setattr(engine, "resolve_item_asset", item_resolver)
 
-                matrix = QFrame()
-                matrix.setProperty("missingArtworkMatrix", True)
-                matrix_layout = QHBoxLayout(matrix)
-                matrix_layout.setContentsMargins(6, 6, 6, 6)
-                matrix_layout.setSpacing(8)
+                # Exercise every fallback renderer without injecting a
+                # cross-category diagnostics strip into the product UI.
                 previews = {
                     "plant": _asset_preview_label(
                         engine,
@@ -13973,13 +13967,6 @@ class _UiFaceCaptureRunner:
                         height=72,
                     ),
                 }
-                display_names = {
-                    "plant": "Bonsai · Seed",
-                    "fertilizer": "Rich Compost",
-                    "growth-charge": growth_charge.name,
-                    "weather": weather_item.name,
-                    "scenery": scenery_item.name,
-                }
                 expected_aspects = {
                     "plant": 1.0,
                     "fertilizer": 1.0,
@@ -13987,37 +13974,50 @@ class _UiFaceCaptureRunner:
                     "weather": 114 / 62,
                     "scenery": 114 / 62,
                 }
-                tiles: dict[str, tuple[QFrame, QLabel, QLabel]] = {}
-                for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES:
-                    tile = QFrame()
-                    tile.setProperty("missingArtworkType", artwork_type)
-                    tile_layout = QVBoxLayout(tile)
-                    tile_layout.setContentsMargins(5, 5, 5, 5)
-                    tile_layout.setSpacing(4)
-                    title = QLabel(display_names[artwork_type])
-                    title.setWordWrap(True)
-                    title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    status = QLabel("Artwork unavailable")
-                    status.setProperty("missingArtworkStatus", True)
-                    status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    status.setWordWrap(True)
-                    preview = previews[artwork_type]
-                    preview.setProperty(
-                        "captureEvidenceKey",
-                        f"missing-art-{artwork_type}",
-                    )
-                    tile_layout.addWidget(title)
-                    tile_layout.addWidget(
-                        preview,
-                        0,
-                        Qt.AlignmentFlag.AlignHCenter,
-                    )
-                    tile_layout.addWidget(status)
-                    matrix_layout.addWidget(tile, 1)
-                    tiles[artwork_type] = (tile, title, status)
-                dialog.environment_layout.insertWidget(0, matrix)
+                original_weather_resolver = original_resolvers[
+                    "resolve_weather_preview_asset"
+                ]
+                original_scenery_resolver = original_resolvers[
+                    "resolve_scenery_preview_asset"
+                ]
+                setattr(
+                    engine,
+                    "resolve_weather_preview_asset",
+                    lambda item_id: (
+                        MissingCaptureAsset(missing_paths["weather"])
+                        if str(item_id) == weather_item.item_id
+                        else original_weather_resolver(item_id)
+                    ),
+                )
+                setattr(
+                    engine,
+                    "resolve_scenery_preview_asset",
+                    original_scenery_resolver,
+                )
+                dialog.refresh()
+                dialog.catalog_tabs.setCurrentIndex(3)
                 dialog.environment_scroll.verticalScrollBar().setValue(0)
                 QApplication.processEvents()
+
+                normal_card = next((
+                    card
+                    for card in dialog.environment_catalog.findChildren(QFrame)
+                    if str(card.property("catalogItemId") or "")
+                    == weather_item.item_id
+                ), None)
+                visible_preview = (
+                    next((
+                        child
+                        for child in normal_card.findChildren(QLabel)
+                        if bool(child.property("nurseryArtwork"))
+                    ), None)
+                    if normal_card is not None else None
+                )
+                if visible_preview is not None:
+                    visible_preview.setProperty(
+                        "captureEvidenceKey",
+                        "missing-art-weather",
+                    )
 
                 expected_fingerprints = {
                     (
@@ -14050,7 +14050,6 @@ class _UiFaceCaptureRunner:
                 matrix_entries: list[dict[str, Any]] = []
                 for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES:
                     preview = previews[artwork_type]
-                    tile, title, status = tiles[artwork_type]
                     pixmap = preview.pixmap()
                     pixmap_width = int(pixmap.width()) if pixmap is not None else 0
                     pixmap_height = int(pixmap.height()) if pixmap is not None else 0
@@ -14060,7 +14059,6 @@ class _UiFaceCaptureRunner:
                     expected_aspect = expected_aspects[artwork_type]
                     entry = {
                         "type": artwork_type,
-                        "display_name": display_names[artwork_type],
                         "source_path": missing_paths[artwork_type],
                         "accessible_name": str(preview.accessibleName() or ""),
                         "accessible_description": str(
@@ -14079,11 +14077,6 @@ class _UiFaceCaptureRunner:
                             actual_aspect > 0
                             and abs(actual_aspect / expected_aspect - 1.0) <= 0.03
                         ),
-                        "tile": self._widget_bounds_evidence(tile, viewport),
-                        "preview": self._widget_bounds_evidence(preview, viewport),
-                        "title": self._widget_bounds_evidence(title, viewport),
-                        "status": self._widget_bounds_evidence(status, viewport),
-                        "status_text": str(status.text()).strip(),
                         "diagnostic_path_logged": any(
                             fingerprint[2] == missing_paths[artwork_type]
                             for fingerprint in _LOGGED_MISSING_ARTWORK
@@ -14093,16 +14086,11 @@ class _UiFaceCaptureRunner:
                         entry["semantic_role"] == "missing-art"
                         and entry["graphic_present"]
                         and entry["aspect_ratio_preserved"]
-                        and entry["status_text"] == "Artwork unavailable"
                         and str(entry["accessible_name"]).strip()
                         and str(entry["accessible_description"]).startswith(
                             "Artwork unavailable"
                         )
                         and entry["diagnostic_path_logged"]
-                        and all(
-                            bool(dict(entry[key]).get("contained", False))
-                            for key in ("tile", "preview", "title", "status")
-                        )
                     )
                     matrix_entries.append(entry)
                 logged_fingerprints = sorted(
@@ -14112,15 +14100,28 @@ class _UiFaceCaptureRunner:
                         if fingerprint in _LOGGED_MISSING_ARTWORK
                     ]
                 )
+                visible_card_evidence = self._widget_bounds_evidence(
+                    normal_card,
+                    viewport,
+                )
+                visible_preview_evidence = self._widget_bounds_evidence(
+                    visible_preview,
+                    viewport,
+                )
+                visible_missing_previews = [
+                    child
+                    for child in dialog.environment_catalog.findChildren(QLabel)
+                    if child.isVisibleTo(dialog)
+                    and str(child.property("gardenRole") or "") == "missing-art"
+                ]
                 matrix_passed = bool(
                     [entry["type"] for entry in matrix_entries]
                     == list(MISSING_ARTWORK_CAPTURE_TYPES)
                     and expected_fingerprints.issubset(_LOGGED_MISSING_ARTWORK)
                     and all(entry["passed"] for entry in matrix_entries)
-                    and self._widget_bounds_evidence(
-                        matrix,
-                        viewport,
-                    ).get("contained", False)
+                    and visible_card_evidence.get("contained", False)
+                    and visible_preview_evidence.get("contained", False)
+                    and len(visible_missing_previews) == 1
                 )
                 self._capture_annotations[label] = {
                     "resolvers_forced_missing": list(resolver_names),
@@ -14129,7 +14130,11 @@ class _UiFaceCaptureRunner:
                         "entries": matrix_entries,
                         "missing_source_paths": dict(missing_paths),
                         "diagnostic_log_fingerprints": logged_fingerprints,
-                        "matrix": self._widget_bounds_evidence(matrix, viewport),
+                        "visible_card": visible_card_evidence,
+                        "visible_preview": visible_preview_evidence,
+                        "visible_missing_preview_count": len(
+                            visible_missing_previews
+                        ),
                         "passed": matrix_passed,
                     },
                     "passed": matrix_passed,
@@ -14138,8 +14143,8 @@ class _UiFaceCaptureRunner:
                     self._failures.append({
                         "label": label,
                         "reason": (
-                            "The mounted plant, Fertilizer, Weather, Scenery, and "
-                            "Growth Charge fallback matrix was incomplete"
+                            "The normal Nursery card or offscreen fallback contract "
+                            "was incomplete"
                         ),
                     })
             except Exception:

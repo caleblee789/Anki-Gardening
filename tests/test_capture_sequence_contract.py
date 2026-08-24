@@ -2060,10 +2060,12 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
     assert "footer.mapTo(dialog" in footer_audit
 
     assert "MISSING_ARTWORK_CAPTURE_TYPES" in missing_artwork
-    assert "dialog.environment_layout.insertWidget(0, matrix)" in missing_artwork
+    assert "dialog.environment_layout.insertWidget(0, matrix)" not in missing_artwork
+    assert "dialog.refresh()" in missing_artwork
     assert "dialog.environment_scroll.verticalScrollBar().setValue(0)" in missing_artwork
-    assert 'status = QLabel("Artwork unavailable")' in missing_artwork
-    assert 'f"missing-art-{artwork_type}"' in missing_artwork
+    assert 'status = QLabel("Artwork unavailable")' not in missing_artwork
+    assert '"missing-art-weather"' in missing_artwork
+    assert 'card.property("catalogItemId")' in missing_artwork
     assert "_asset_preview_label(" in missing_artwork
     assert "_item_preview_label(" in missing_artwork
     assert "dialog._environment_artwork(" in missing_artwork
@@ -2081,6 +2083,9 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
         "graphic_present",
         "aspect_ratio_preserved",
         "accessible_description",
+        "visible_card",
+        "visible_preview",
+        "visible_missing_preview_count",
     ):
         assert audit_field in missing_artwork
 

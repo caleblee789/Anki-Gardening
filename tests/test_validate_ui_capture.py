@@ -274,11 +274,6 @@ def _valid_visual_contract(
                 "graphic_present": True,
                 "aspect_ratio_preserved": True,
                 "diagnostic_path_logged": True,
-                "status_text": "Artwork unavailable",
-                "tile": copy.deepcopy(contained),
-                "preview": copy.deepcopy(contained),
-                "title": copy.deepcopy(contained),
-                "status": copy.deepcopy(contained),
                 "passed": True,
             })
         audit["missing_artwork_matrix"] = {
@@ -296,7 +291,9 @@ def _valid_visual_contract(
                 ]
                 for artwork_type in types
             ],
-            "matrix": copy.deepcopy(contained),
+            "visible_card": copy.deepcopy(contained),
+            "visible_preview": copy.deepcopy(contained),
+            "visible_missing_preview_count": 1,
             "passed": True,
         }
     if label == "collection-environment-mechanics":
@@ -1097,7 +1094,7 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
         "owned Nursery item is not visibly identified and contained",
         "Reviewer card lacks full containment or control clearance",
         "Reviewer card is absent from captured pixels",
-        "missing-artwork matrix is incomplete, clipped, or unlogged",
+        "missing-artwork fallback evidence is incomplete, clipped, or unlogged",
         "environment mechanics content is incomplete or clipped",
         "compact Home rendered or accessibility copy contains banned terms",
         "at most one filled primary action",
