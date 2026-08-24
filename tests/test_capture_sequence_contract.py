@@ -119,7 +119,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 20
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 21
 
     assert groups["First run"] == (
             "starter-deck-browser-home",
@@ -338,7 +338,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "on_error=registered_cleanup" in purchase_fixture
     assert '"unavailable_terminal"' in purchase_fixture
     assert 'if variant == "invalid-target"' in purchase_fixture
-    for owned_action in ("Store", "Place", "View in garden"):
+    for owned_action in ("Store plant", "Place in Garden", "View Garden"):
         assert f'"{owned_action}"' in fixture_postcondition
     assert "nursery_action_in_footer" in fixture_postcondition
     assert "result_matches_quote" in fixture_postcondition
@@ -361,8 +361,9 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert '"loadout_summary_visible"' in collection_fixture
     assert 'dashboard._collection_category = "weather"' in collection_fixture
     assert 'dashboard._collection_query = WEATHER_CATALOG["breeze"].name' in collection_fixture
-    assert 'mechanics_button.setChecked(True)' in collection_fixture
-    assert 'property("environmentMechanicsDisclosure")' in collection_fixture
+    assert 'property("collectionEnvironmentMetadata")' in collection_fixture
+    assert '"Available every day" in mechanics_text' in collection_fixture
+    assert '"Only one weather can be equipped" in mechanics_text' in collection_fixture
     assert '== "Garden appearance"' in collection_fixture
     assert 'edit_appearance.isEnabled()' in collection_fixture
     assert '"filter_toolbar_visible"' in collection_fixture

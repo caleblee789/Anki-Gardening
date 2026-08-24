@@ -33,6 +33,10 @@ CONTACT_SHEET_PREVIEW_TOP = 110
 CONTACT_SHEET_PREVIEW_SIDE = 22
 CONTACT_SHEET_PREVIEW_BOTTOM = 40
 CONTACT_SHEET_PREVIEW_INSET = 8
+CONTACT_SHEET_PREVIEW_FRAME_FILL = (216, 209, 190)  # #d8d1be
+CONTACT_SHEET_PREVIEW_FRAME_OUTLINE = (158, 148, 124)  # #9e947c
+CONTACT_SHEET_SCREENSHOT_OUTLINE = (73, 102, 92)  # #49665c
+CONTACT_SHEET_OUTLINE_WIDTH = 3
 MIN_LOGICAL_CAPTURE_DIMENSION = 100
 MAX_PNG_PIXELS = 100_000_000
 CAPTURE_SCALE_FACTOR = 1.0
@@ -76,6 +80,10 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
         "environment-item-status",
         "environment-effect",
         "environment-mechanics",
+    ),
+    "collection-loadout-persistence-error": (
+        "loadout-preview-scene",
+        "loadout-persistence-error",
     ),
 }
 _NO_INFERRED_VALUE = object()
@@ -388,6 +396,66 @@ def _static_renderer_value(
     raise CaptureValidationError(
         (f"unsupported renderer declaration syntax: {type(expression).__name__}",)
     )
+
+
+def load_capture_layout_contract(
+    source_path: Path = DEFAULT_CAPTURE_SOURCE,
+) -> tuple[dict[str, float | int], dict[str, int], frozenset[str]]:
+    """Load the shell telemetry thresholds without importing Anki or Qt."""
+
+    module = _source_module(source_path)
+    try:
+        raw_limits = ast.literal_eval(
+            _assignment_value(module, "CAPTURE_LAYOUT_LIMITS")
+        )
+        raw_heights = ast.literal_eval(
+            _assignment_value(module, "CAPTURE_BUTTON_HEIGHTS")
+        )
+        raw_tabular = _static_renderer_value(
+            _assignment_value(module, "TABULAR_NUMERAL_CAPTURE_LABELS"),
+            module,
+        )
+    except (SyntaxError, ValueError) as error:
+        raise CaptureValidationError(
+            (f"capture layout telemetry contract is not literal: {error}",)
+        ) from error
+    expected_limit_keys = {
+        "maximum_client_gutter_px",
+        "maximum_content_footer_gap_px",
+        "maximum_nursery_root_offset_px",
+        "maximum_action_width_ratio",
+        "minimum_rendered_text_px",
+        "maximum_overflow_owner_count",
+    }
+    expected_height_keys = {
+        "compact-row",
+        "secondary",
+        "primary",
+        "onboarding",
+        "icon",
+    }
+    issues: list[str] = []
+    if not isinstance(raw_limits, dict) or set(raw_limits) != expected_limit_keys:
+        issues.append("CAPTURE_LAYOUT_LIMITS has an invalid schema")
+    elif any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0
+        for value in raw_limits.values()
+    ):
+        issues.append("CAPTURE_LAYOUT_LIMITS values must be finite and nonnegative")
+    if not isinstance(raw_heights, dict) or set(raw_heights) != expected_height_keys:
+        issues.append("CAPTURE_BUTTON_HEIGHTS has an invalid schema")
+    elif any(type(value) is not int or value <= 0 for value in raw_heights.values()):
+        issues.append("CAPTURE_BUTTON_HEIGHTS values must be positive integers")
+    if not isinstance(raw_tabular, frozenset) or any(
+        not isinstance(label, str) or not label for label in raw_tabular
+    ):
+        issues.append("TABULAR_NUMERAL_CAPTURE_LABELS must be a static label set")
+    if issues:
+        raise CaptureValidationError(issues)
+    return dict(raw_limits), dict(raw_heights), frozenset(raw_tabular)
 
 
 def _branch_labels(test: ast.expr, module: ast.Module) -> frozenset[str]:
@@ -1301,7 +1369,7 @@ def _contact_preview_issues(
     page_groups: Sequence[tuple[str, Sequence[str]]],
     capture_paths: dict[str, Path],
 ) -> list[str]:
-    """Bind every rendered tile preview to its exact manifest screenshot."""
+    """Bind review-aid tiles to raw, geometry-authoritative screenshots."""
 
     issues: list[str] = []
     cell_width = (
@@ -1353,10 +1421,7 @@ def _contact_preview_issues(
                     preview_box[0]
                     + (preview_box[2] - preview_box[0] - preview.width) // 2
                 )
-                preview_y = (
-                    preview_box[1]
-                    + (preview_box[3] - preview_box[1] - preview.height) // 2
-                )
+                preview_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
                 actual = page_image.crop((
                     preview_x,
                     preview_y,
@@ -1366,6 +1431,69 @@ def _contact_preview_issues(
                 if ImageChops.difference(actual, preview).getbbox() is not None:
                     issues.append(
                         f"contact preview {label}: pixels do not match manifest screenshot"
+                    )
+                frame_mid_x = (preview_box[0] + preview_box[2]) // 2
+                frame_mid_y = (preview_box[1] + preview_box[3]) // 2
+                frame_outline_points = [
+                    (frame_mid_x, preview_box[1] + offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (frame_mid_x, preview_box[3] - offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_box[0] + offset, frame_mid_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_box[2] - offset, frame_mid_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ]
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_PREVIEW_FRAME_OUTLINE
+                    for point in frame_outline_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: light preview frame outline is missing"
+                    )
+                frame_fill_points = (
+                    (frame_mid_x, preview_box[1] + CONTACT_SHEET_OUTLINE_WIDTH + 1),
+                    (frame_mid_x, preview_box[3] - CONTACT_SHEET_OUTLINE_WIDTH - 1),
+                    (preview_box[0] + CONTACT_SHEET_OUTLINE_WIDTH + 1, frame_mid_y),
+                    (preview_box[2] - CONTACT_SHEET_OUTLINE_WIDTH - 1, frame_mid_y),
+                )
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_PREVIEW_FRAME_FILL
+                    for point in frame_fill_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: unused frame is not the distinct light fill"
+                    )
+
+                outline_left = preview_x - CONTACT_SHEET_OUTLINE_WIDTH
+                outline_top = preview_y - CONTACT_SHEET_OUTLINE_WIDTH
+                outline_right = preview_x + preview.width + CONTACT_SHEET_OUTLINE_WIDTH - 1
+                outline_bottom = preview_y + preview.height + CONTACT_SHEET_OUTLINE_WIDTH - 1
+                screenshot_outline_points = [
+                    (preview_x, outline_top + offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_x, outline_bottom - offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (outline_left + offset, preview_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (outline_right - offset, preview_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ]
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_SCREENSHOT_OUTLINE
+                    for point in screenshot_outline_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: explicit screenshot outline is missing"
                     )
             y += (
                 math.ceil(len(labels) / CONTACT_SHEET_COLUMNS)
@@ -2023,6 +2151,31 @@ def _visual_contract_record_issues(
                 reject("compact Home rendered or accessibility copy contains banned terms")
         if banned != []:
             reject("compact Home banned term list must be empty")
+        support = str(compact.get("support_text", ""))
+        action = str(compact.get("action_text", ""))
+        if not (
+            compact.get("information_model_passed") is True
+            and compact.get("geometry_passed") is True
+        ):
+            reject("compact Home information model or CTA geometry did not pass")
+        if label == "home-preview-loading":
+            if "loading garden" not in str(rendered).casefold():
+                reject("Home loading state copy is missing")
+        elif label == "home-preview-error":
+            if not (
+                "garden preview unavailable" in str(rendered).casefold()
+                and action == "Open Garden"
+            ):
+                reject("Home error state must retain the Open Garden action")
+        elif not label.startswith("starter-"):
+            if not (
+                "Growth" in support
+                and action == "Open Garden"
+                and type(compact.get("action_width")) is int
+                and 104 <= compact["action_width"] <= 120
+                and compact.get("action_height") == 36
+            ):
+                reject("compact Home must show Growth and a 104-120 by 36 Open Garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -2167,8 +2320,231 @@ def _visual_contract_record_issues(
             )
         ):
             reject("environment mechanics content is incomplete or clipped")
+        mechanics_row = next(
+            (
+                row for row in bounds
+                if isinstance(row, dict) and row.get("key") == "mechanics"
+            ),
+            {},
+        ) if isinstance(bounds, list) else {}
+        mechanics_copy = str(mechanics_row.get("text", ""))
+        if not (
+            "Available every day" in mechanics_copy
+            and "Only one weather can be equipped" in mechanics_copy
+            and audit.get("mechanics_always_visible") is True
+            and audit.get("compact_environment_actions") is True
+        ):
+            reject(
+                "environment mechanics must stay visible with compact Preview and Unequip actions"
+            )
+
+    if label == "collection-loadout-persistence-error":
+        rendered_state = audit_object("rendered_state")
+        feedback_text = str(rendered_state.get("feedback_text", ""))
+        if not (
+            str(audit.get("error_copy", "")).startswith(
+                "Could not save changes."
+            )
+            and feedback_text.startswith("Could not save changes.")
+            and rendered_state.get("feedback_outside_artwork") is True
+            and rendered_state.get("passed") is True
+        ):
+            reject(
+                "loadout persistence feedback must say Could not and remain outside the artwork"
+            )
 
     return problems
+
+
+def _native_layout_telemetry_record_issues(
+    *,
+    label: str,
+    window_family: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+    limits: dict[str, float | int],
+    button_heights: dict[str, int],
+    tabular_labels: frozenset[str],
+) -> list[str]:
+    """Independently validate shell-owned client, control, and text evidence."""
+
+    problems: list[str] = []
+    telemetry = record.get("native_layout_telemetry")
+    if not isinstance(telemetry, dict):
+        return ["native_layout_telemetry is missing"]
+    if audit is None or audit.get("native_layout_telemetry") != telemetry:
+        problems.append("native layout telemetry does not match the capture audit")
+    if telemetry.get("passed") is not True or telemetry.get("issues") != []:
+        problems.append("native layout telemetry did not pass")
+
+    shell_expected = window_family not in {"AnkiQt", "GardenDashboard"}
+    applicable = telemetry.get("applicable")
+    if type(applicable) is not bool:
+        problems.append("native layout applicable must be boolean")
+        return problems
+    if not shell_expected:
+        if applicable:
+            problems.append("native layout telemetry is unexpectedly applicable")
+        return problems
+    if not applicable:
+        problems.append("DialogShell capture layout telemetry is not applicable")
+        return problems
+    if telemetry.get("source") != "DialogShell.capture_layout_telemetry":
+        problems.append("native layout telemetry source is invalid")
+    if telemetry.get("limits") != limits:
+        problems.append("native layout telemetry limits drifted from source")
+    if telemetry.get("buttonHeights") != button_heights:
+        problems.append("native button height telemetry drifted from source")
+
+    client_width = telemetry.get("clientWidth")
+    fill = _strict_number(telemetry.get("clientSurfaceFill"))
+    gutter = telemetry.get("clientGutterPx")
+    if type(client_width) is not int or client_width <= 0:
+        problems.append("native layout client width is invalid")
+    elif fill is None or not 0.0 <= fill <= 1.0:
+        problems.append("native layout client surface fill is invalid")
+    elif (
+        type(gutter) is not int
+        or gutter != max(0, client_width - round(client_width * fill))
+        or gutter > int(limits["maximum_client_gutter_px"])
+    ):
+        problems.append("native layout client gutter exceeds the compact limit")
+
+    footer_gap = telemetry.get("contentToFooterGap")
+    if footer_gap is not None and (
+        type(footer_gap) is not int
+        or footer_gap < 0
+        or footer_gap > int(limits["maximum_content_footer_gap_px"])
+    ):
+        problems.append("native layout content-to-footer gap exceeds the limit")
+    nursery_offset = telemetry.get("nurseryRootOffset")
+    if window_family == "NurseryDialog":
+        if (
+            type(nursery_offset) is not int
+            or nursery_offset < 0
+            or nursery_offset
+            > int(limits["maximum_nursery_root_offset_px"])
+        ):
+            problems.append("native Nursery root is not top-aligned")
+    elif nursery_offset is not None and (
+        type(nursery_offset) is not int or nursery_offset < 0
+    ):
+        problems.append("native layout Nursery offset is invalid")
+
+    action_ratio = _strict_number(telemetry.get("maximumActionWidthRatio"))
+    if (
+        action_ratio is None
+        or not 0.0 <= action_ratio <= 1.0
+        or action_ratio > float(limits["maximum_action_width_ratio"])
+    ):
+        problems.append("native action width ratio exceeds the normal-dialog limit")
+    minimum_text = _strict_number(telemetry.get("minimumRenderedTextSize"))
+    if minimum_text is None or minimum_text < float(
+        limits["minimum_rendered_text_px"]
+    ):
+        problems.append("native rendered text is below the 12 px floor")
+
+    for count_name in (
+        "tooltipWidgetCount",
+        "elidedWidgetCount",
+        "elisionWithoutTooltipCount",
+    ):
+        value = telemetry.get(count_name)
+        if type(value) is not int or value < 0:
+            problems.append(f"native layout {count_name} is invalid")
+    if telemetry.get("elisionWithoutTooltipCount") != 0:
+        problems.append("native elision is missing tooltip evidence")
+
+    rows = telemetry.get("scrollbars")
+    owner_count = telemetry.get("overflowOwnerCount")
+    if not isinstance(rows, list):
+        problems.append("native scrollbar telemetry must be a list")
+        rows = []
+    if (
+        type(owner_count) is not int
+        or owner_count < 0
+        or owner_count > int(limits["maximum_overflow_owner_count"])
+        or (rows and owner_count != 1)
+    ):
+        problems.append("native overflow owner count is invalid")
+    measured_owners = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            problems.append("native scrollbar record is invalid")
+            continue
+        minimum = row.get("minimum")
+        maximum = row.get("maximum")
+        value = row.get("value")
+        visible = row.get("visible")
+        owner = row.get("overflowOwner")
+        if (
+            type(minimum) is not int
+            or type(maximum) is not int
+            or type(value) is not int
+            or type(visible) is not bool
+            or type(owner) is not bool
+            or maximum < minimum
+            or not minimum <= value <= maximum
+        ):
+            problems.append("native scrollbar record is invalid")
+            continue
+        measured_owners += int(owner)
+        if owner and visible != (maximum > minimum):
+            problems.append("native scrollbar visibility disagrees with its range")
+        if not owner and visible:
+            problems.append("native non-owner scrollbar is visible")
+    if type(owner_count) is int and measured_owners != owner_count:
+        problems.append("native overflow owner record count disagrees")
+
+    button_rows = telemetry.get("buttonRecords")
+    if not isinstance(button_rows, list):
+        problems.append("native button telemetry must be a list")
+        button_rows = []
+    for button in button_rows:
+        if not isinstance(button, dict):
+            problems.append("native button telemetry record is invalid")
+            continue
+        size_name = button.get("buttonSize")
+        expected_height = button_heights.get(size_name)
+        text_size = _strict_number(button.get("renderedTextSize"))
+        if (
+            expected_height is None
+            or button.get("expectedHeight") != expected_height
+            or button.get("height") != expected_height
+            or button.get("passed") is not True
+            or (
+                bool(str(button.get("text", "")).strip())
+                and (
+                    text_size is None
+                    or text_size < float(limits["minimum_rendered_text_px"])
+                )
+            )
+            or (
+                size_name == "icon"
+                and button.get("width") != expected_height
+            )
+        ):
+            problems.append("native button geometry or text size is invalid")
+
+    tabular_rows = telemetry.get("tabularNumeralWidgets")
+    tabular_count = telemetry.get("tabularNumeralWidgetCount")
+    tabular_required = label in tabular_labels
+    if (
+        not isinstance(tabular_rows, list)
+        or type(tabular_count) is not int
+        or tabular_count != len(tabular_rows)
+        or telemetry.get("tabularNumeralsRequired") is not tabular_required
+        or (tabular_required and tabular_count < 1)
+    ):
+        problems.append("native tabular numeral evidence is incomplete")
+    elif any(
+        not isinstance(row, dict)
+        or not bool(str(row.get("widget", "")).strip())
+        or not any(character.isdigit() for character in str(row.get("text", "")))
+        for row in tabular_rows
+    ):
+        problems.append("native tabular numeral record is invalid")
+    return list(dict.fromkeys(problems))
 
 
 def validate_capture_manifest(
@@ -2192,6 +2568,11 @@ def validate_capture_manifest(
         capture_source,
         contract=contract,
     )
+    (
+        layout_limits,
+        button_heights,
+        tabular_labels,
+    ) = load_capture_layout_contract(capture_source)
     dialog_scroll_by_label = {
         label: (surface, semantic)
         for surface, labels in dialog_scroll_coverage.items()
@@ -2698,6 +3079,18 @@ def validate_capture_manifest(
             issues.append(f"capture {index:03d} {label}: audit fixture identity disagrees")
         if isinstance(audit, dict):
             record_audits[label] = audit
+        for telemetry_issue in _native_layout_telemetry_record_issues(
+            label=label,
+            window_family=renderer_families[label],
+            record=record,
+            audit=audit if isinstance(audit, dict) else None,
+            limits=layout_limits,
+            button_heights=button_heights,
+            tabular_labels=tabular_labels,
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: {telemetry_issue}"
+            )
         for visual_issue in _visual_contract_record_issues(
             label=label,
             state_kind=str(state_contract["kind"]),
@@ -3022,7 +3415,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--contact-sheet-set",
         type=Path,
-        help="Optional path to contact-sheet-set.json",
+        help=(
+            "Optional contact-sheet-set.json review aid; raw manifest PNGs "
+            "remain the runtime geometry authority"
+        ),
     )
     return parser
 

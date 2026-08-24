@@ -8,15 +8,21 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageOps, PngImagePlugin
+from PIL import Image, ImageDraw, ImageOps, PngImagePlugin
 
 from scripts.validate_ui_capture import (
+    CONTACT_SHEET_OUTLINE_WIDTH,
+    CONTACT_SHEET_PREVIEW_FRAME_FILL,
+    CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+    CONTACT_SHEET_PREVIEW_INSET,
+    CONTACT_SHEET_SCREENSHOT_OUTLINE,
     CaptureValidationError,
     expected_contact_sheet_pages,
     expected_contact_sheet_dimensions,
     expected_contact_sheet_page_groups,
     expected_resize_geometry_acceptance,
     load_capture_contract,
+    load_capture_layout_contract,
     load_dialog_scroll_capture_coverage,
     load_expected_renderer_families,
     load_expected_resize_layout_modes,
@@ -178,13 +184,27 @@ def _valid_visual_contract(
 
     audit: dict[str, object] = {"visual_contract": copy.deepcopy(visual)}
     if state_kind == "home":
+        rendered_text = (
+            "Anki Garden Loading garden..."
+            if label == "home-preview-loading" else
+            "Anki Garden Garden preview unavailable Open Garden Try again"
+            if label == "home-preview-error" else
+            "Garden Moonlit Garden Bonsai Seed Growth 25 of 100 "
+            "Ready to nurture Open Garden"
+        )
+        normal_open_action = not label.startswith("starter-") and label != (
+            "home-preview-loading"
+        )
         audit["compact_home_copy"] = {
-            "rendered_text": (
-                "Garden Moonlit Garden Bonsai Seed Growth 25 of 100 "
-                "Ready to nurture Open Garden"
-            ),
+            "rendered_text": rendered_text,
             "banned_terms": [],
             "compact_fields_present": True,
+            "support_text": "Bonsai · Seed · 25 / 100 Growth",
+            "action_text": "Open Garden" if normal_open_action else "Choose starter",
+            "action_width": 112 if normal_open_action else None,
+            "action_height": 36 if normal_open_action else None,
+            "information_model_passed": True,
+            "geometry_passed": True,
             "passed": True,
         }
     if label == "full-garden":
@@ -234,7 +254,7 @@ def _valid_visual_contract(
         }
     if state_kind == "reviewer":
         width = 360 if label == "reviewer-find-stacked-sync" else 344
-        height = 80
+        height = 74
         audit["reviewer_overlay_geometry"] = {
             "parent_is_reviewer_webview": True,
             "overlay_bounds": [604, 16, width, height],
@@ -310,7 +330,10 @@ def _valid_visual_contract(
             "required_bounds": [
                 {
                     "key": key,
-                    "text": key.replace("_", " "),
+                    "text": (
+                        "Available every day\nOnly one weather can be equipped"
+                        if key == "mechanics" else key.replace("_", " ")
+                    ),
                     "bounds": [10, 10, 200, 30],
                     "container_size": [900, 600],
                     "visible": True,
@@ -320,6 +343,29 @@ def _valid_visual_contract(
                 for key in keys
             ],
             "viewport_size": [900, 600],
+            "passed": True,
+        }
+        audit["mechanics_always_visible"] = True
+        audit["compact_environment_actions"] = True
+    if label == "collection-loadout-persistence-error":
+        audit["error_copy"] = (
+            "Could not save changes. Your current Garden appearance is unchanged."
+        )
+        audit["rendered_state"] = {
+            "scene_bounds": {
+                "bounds": [10, 100, 600, 300],
+                "visible": True,
+                "contained": True,
+            },
+            "feedback_bounds": {
+                "bounds": [10, 40, 600, 44],
+                "visible": True,
+                "contained": True,
+            },
+            "feedback_text": (
+                "Could not save changes. Your current Garden appearance is unchanged."
+            ),
+            "feedback_outside_artwork": True,
             "passed": True,
         }
     rendered_pixel_keys = {
@@ -341,6 +387,10 @@ def _valid_visual_contract(
             "environment-effect",
             "environment-mechanics",
         ],
+        "collection-loadout-persistence-error": [
+            "loadout-preview-scene",
+            "loadout-persistence-error",
+        ],
     }.get(label, [])
     if rendered_pixel_keys:
         audit["rendered_pixel_evidence"] = {
@@ -359,6 +409,64 @@ def _valid_visual_contract(
             "passed": True,
         }
     return visual, audit
+
+
+def _valid_native_layout_telemetry(
+    *,
+    label: str,
+    window_family: str,
+) -> dict[str, object]:
+    if window_family in {"AnkiQt", "GardenDashboard"}:
+        return {
+            "applicable": False,
+            "source": "",
+            "issues": [],
+            "passed": True,
+        }
+    limits, button_heights, tabular_labels = load_capture_layout_contract(
+        CAPTURE_SOURCE
+    )
+    tabular_required = label in tabular_labels
+    tabular_rows = (
+        [{
+            "widget": "QLabel",
+            "objectName": "metric",
+            "text": "1,250 Growth",
+        }]
+        if tabular_required else []
+    )
+    return {
+        "applicable": True,
+        "source": "DialogShell.capture_layout_telemetry",
+        "clientSurfaceFill": 0.96,
+        "nurseryRootOffset": 8 if window_family == "NurseryDialog" else None,
+        "contentToFooterGap": 12,
+        "maximumActionWidthRatio": 0.32,
+        "scrollbars": [],
+        "minimumRenderedTextSize": 13.0,
+        "tooltipWidgetCount": 1,
+        "elidedWidgetCount": 1,
+        "elisionWithoutTooltipCount": 0,
+        "overflowOwnerCount": 0,
+        "clientWidth": 100,
+        "clientGutterPx": 4,
+        "buttonRecords": [{
+            "text": "",
+            "buttonSize": "icon",
+            "height": 30,
+            "width": 30,
+            "expectedHeight": 30,
+            "renderedTextSize": 13.0,
+            "passed": True,
+        }],
+        "tabularNumeralWidgets": tabular_rows,
+        "tabularNumeralWidgetCount": len(tabular_rows),
+        "tabularNumeralsRequired": tabular_required,
+        "limits": limits,
+        "buttonHeights": button_heights,
+        "issues": [],
+        "passed": True,
+    }
 
 
 def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
@@ -504,9 +612,16 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             str(postcondition_kind),
             family,
         )
+        native_layout_telemetry = _valid_native_layout_telemetry(
+            label=label,
+            window_family=family,
+        )
         records.append({
             "audit": {
                 "fixture_identity": fixture_validation,
+                "native_layout_telemetry": copy.deepcopy(
+                    native_layout_telemetry
+                ),
                 **visual_audit,
                 "passed": True,
             },
@@ -518,6 +633,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "declared_client_size": list(logical_size),
             "device_pixel_ratio": dpr,
             "dialog_scroll_audit": dialog_scroll_audit,
+            "native_layout_telemetry": native_layout_telemetry,
             "exact_size_reached": True,
             "fixture_source": fixture_source,
             "fixture_validation": fixture_validation,
@@ -735,6 +851,7 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
         filename = f"{page:02d}-{slug}.png"
         width, height = expected_contact_sheet_dimensions(topology)
         sheet = Image.new("RGB", (width, height), "#081814")
+        draw = ImageDraw.Draw(sheet)
         cell_width = (3000 - 64 * 2 - 32) // 2
         y = 250
         for _group_name, labels in label_pages[page - 1]:
@@ -750,6 +867,13 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
                     x + cell_width - 22,
                     tile_y + 930 - 40,
                 )
+                draw.rounded_rectangle(
+                    preview_box,
+                    radius=12,
+                    fill=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+                    outline=CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+                    width=CONTACT_SHEET_OUTLINE_WIDTH,
+                )
                 with Image.open(Path(records[label]["path"])) as opened:
                     source = ImageOps.exif_transpose(opened).convert("RGB")
                     max_width = preview_box[2] - preview_box[0] - 16
@@ -762,9 +886,17 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
                 preview_x = preview_box[0] + (
                     preview_box[2] - preview_box[0] - preview.width
                 ) // 2
-                preview_y = preview_box[1] + (
-                    preview_box[3] - preview_box[1] - preview.height
-                ) // 2
+                preview_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
+                draw.rectangle(
+                    (
+                        preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+                        preview_y - CONTACT_SHEET_OUTLINE_WIDTH,
+                        preview_x + preview.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+                        preview_y + preview.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+                    ),
+                    outline=CONTACT_SHEET_SCREENSHOT_OUTLINE,
+                    width=CONTACT_SHEET_OUTLINE_WIDTH,
+                )
                 sheet.paste(preview, (preview_x, preview_y))
             y += ((len(labels) + 1) // 2) * 930 + 30
         metadata = PngImagePlugin.PngInfo()
@@ -1399,6 +1531,55 @@ def test_manifest_rejects_memory_probe_bad_class_delta(tmp_path: Path) -> None:
         validate_capture_manifest(manifest)
 
 
+def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    record = next(
+        item
+        for item in records
+        if isinstance(item, dict)
+        and item.get("label") == "purchase-error-stale-balance"
+    )
+    telemetry = record["native_layout_telemetry"]
+    assert isinstance(telemetry, dict)
+    telemetry.update({
+        "clientSurfaceFill": 0.50,
+        "clientGutterPx": 50,
+        "contentToFooterGap": 49,
+        "maximumActionWidthRatio": 0.51,
+        "minimumRenderedTextSize": 11.9,
+        "elisionWithoutTooltipCount": 1,
+        "tabularNumeralWidgets": [],
+        "tabularNumeralWidgetCount": 0,
+        "passed": True,
+        "issues": [],
+    })
+    buttons = telemetry["buttonRecords"]
+    assert isinstance(buttons, list)
+    button = buttons[0]
+    assert isinstance(button, dict)
+    button["height"] = 35
+    audit = record["audit"]
+    assert isinstance(audit, dict)
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
+    _write_json(manifest, payload)
+
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    assert "client gutter exceeds" in message
+    assert "content-to-footer gap exceeds" in message
+    assert "action width ratio exceeds" in message
+    assert "rendered text is below" in message
+    assert "elision is missing tooltip" in message
+    assert "button geometry or text size" in message
+    assert "tabular numeral evidence is incomplete" in message
+
+
 def test_manifest_rejects_internally_consistent_nursery_retention(
     tmp_path: Path,
 ) -> None:
@@ -1522,6 +1703,92 @@ def test_contact_sheet_set_rejects_blank_and_reordered_preview_pixels(
     with pytest.raises(CaptureValidationError, match="pixels do not match manifest screenshot"):
         validate_contact_sheet_set(index, manifest_path=manifest)
 
+
+def test_contact_sheet_set_rejects_centering_missing_outline_and_dark_frame(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    index = _valid_contact_sheets(tmp_path, manifest)
+    index_payload = json.loads(index.read_text(encoding="utf-8"))
+    first_page = index.parent / index_payload["pages"][0]["file"]
+    with Image.open(first_page) as opened:
+        opened.load()
+        original = opened.convert("RGB")
+        metadata = dict(opened.text)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    first_record = records[0]
+    assert isinstance(first_record, dict)
+    with Image.open(Path(str(first_record["path"]))) as opened_source:
+        source = opened_source.convert("RGB")
+
+    preview_box = (86, 444, 1462, 1224)
+    preview_x = preview_box[0] + (preview_box[2] - preview_box[0] - source.width) // 2
+    top_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
+    centered_y = preview_box[1] + (
+        preview_box[3] - preview_box[1] - source.height
+    ) // 2
+
+    def save(page: Image.Image) -> None:
+        pnginfo = PngImagePlugin.PngInfo()
+        for key, value in metadata.items():
+            pnginfo.add_text(key, value)
+        page.save(first_page, format="PNG", pnginfo=pnginfo)
+
+    centered = original.copy()
+    draw = ImageDraw.Draw(centered)
+    draw.rounded_rectangle(
+        preview_box,
+        radius=12,
+        fill=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+        outline=CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    draw.rectangle(
+        (
+            preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+            centered_y - CONTACT_SHEET_OUTLINE_WIDTH,
+            preview_x + source.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+            centered_y + source.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+        ),
+        outline=CONTACT_SHEET_SCREENSHOT_OUTLINE,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    centered.paste(source, (preview_x, centered_y))
+    save(centered)
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_contact_sheet_set(index, manifest_path=manifest)
+    assert "pixels do not match manifest screenshot" in str(raised.value)
+
+    missing_outline = original.copy()
+    draw = ImageDraw.Draw(missing_outline)
+    draw.rectangle(
+        (
+            preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+            top_y - CONTACT_SHEET_OUTLINE_WIDTH,
+            preview_x + source.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+            top_y + source.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+        ),
+        outline=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    missing_outline.paste(source, (preview_x, top_y))
+    save(missing_outline)
+    with pytest.raises(CaptureValidationError, match="screenshot outline is missing"):
+        validate_contact_sheet_set(index, manifest_path=manifest)
+
+    wrong_frame = original.copy()
+    wrong_frame.putpixel(
+        (
+            (preview_box[0] + preview_box[2]) // 2,
+            preview_box[1] + CONTACT_SHEET_OUTLINE_WIDTH + 1,
+        ),
+        (7, 18, 15),
+    )
+    save(wrong_frame)
+    with pytest.raises(CaptureValidationError, match="distinct light fill"):
+        validate_contact_sheet_set(index, manifest_path=manifest)
+
     reordered_root = tmp_path / "reordered"
     reordered_root.mkdir()
     index = _valid_contact_sheets(reordered_root, manifest)
@@ -1531,8 +1798,8 @@ def test_contact_sheet_set_rejects_blank_and_reordered_preview_pixels(
         opened.load()
         metadata = dict(opened.text)
         reordered = opened.convert("RGB")
-    first_box = (724, 784, 824, 884)
-    second_box = (2176, 784, 2276, 884)
+    first_box = (724, 452, 824, 552)
+    second_box = (2176, 452, 2276, 552)
     first_pixels = reordered.crop(first_box)
     second_pixels = reordered.crop(second_box)
     reordered.paste(second_pixels, first_box[:2])

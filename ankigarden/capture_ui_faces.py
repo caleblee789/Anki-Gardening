@@ -61,7 +61,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 20
+CAPTURE_CONTRACT_VERSION = 21
 CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -955,6 +955,44 @@ COMPACT_HOME_BANNED_COPY: tuple[str, ...] = (
     "planted starter",
 )
 
+# Native Qt layout evidence is produced by ``DialogShell`` and consumed by the
+# existing manifest/validator stream. Keep the thresholds source-owned so the
+# runner and offline validator cannot silently drift apart.
+CAPTURE_LAYOUT_LIMITS: dict[str, float | int] = {
+    "maximum_client_gutter_px": 16,
+    "maximum_content_footer_gap_px": 48,
+    "maximum_nursery_root_offset_px": 16,
+    "maximum_action_width_ratio": 0.50,
+    "minimum_rendered_text_px": 12.0,
+    "maximum_overflow_owner_count": 1,
+}
+
+CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
+    "compact-row": 30,
+    "secondary": 34,
+    "primary": 36,
+    "onboarding": 38,
+    "icon": 30,
+}
+
+TABULAR_NUMERAL_CAPTURE_LABELS = frozenset({
+    "growth-zero",
+    "growth-nonzero",
+    "streak-new",
+    "streak-active",
+    "coins-zero",
+    "coins-activity",
+    "progress-overview-redirect-growth",
+    "streak-at-risk",
+    "streak-missed-day",
+    "streak-achievement-earned-next",
+    "purchase-error-stale-price",
+    "purchase-error-stale-balance",
+    "growth-charge-use-ready",
+    "growth-charge-stale-inventory",
+    "growth-charge-success-stage-reward",
+})
+
 MISSING_ARTWORK_CAPTURE_TYPES: tuple[str, ...] = (
     "plant",
     "fertilizer",
@@ -1151,6 +1189,10 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "state": label,
             "growth_charge_status": growth_charge_status_by_label[label],
         })
+        if label == "growth-charge-stale-inventory":
+            profile["growth_charge_fixture_semantics"] = (
+                "ready_with_stale_inventory_warning"
+            )
         return profile
     if label in _NURSERY_CAPTURE_LABELS:
         tab_by_label = {
@@ -1220,6 +1262,10 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "state": label,
             "purchase_status": purchase_status_by_label[label],
         })
+        if label == "purchase-error-stale-balance":
+            profile["purchase_fixture_semantics"] = (
+                "ready_with_balance_update"
+            )
         return profile
     profile.update({"kind": "dialog", "state": label})
     return profile
@@ -2483,6 +2529,27 @@ class _UiFaceCaptureRunner:
               );
               const fixtureState = __FIXTURE_STATE__;
               const expectedActiveSlot = __EXPECTED_ACTIVE_SLOT__;
+              const support = root.querySelector('[data-testid="home-support"]');
+              const supportText = (support ? support.textContent || '' : '').trim();
+              const homeActionText = (homeAction ? homeAction.textContent || '' : '').trim();
+              const homeActionGeometryPassed = !homeAction
+                || homeActionText !== 'Open Garden'
+                || (
+                  Math.round(homeActionRect.width) >= 104
+                  && Math.round(homeActionRect.width) <= 120
+                  && Math.round(homeActionRect.height) === 36
+                );
+              const conciseInformationModelPassed = (
+                fixtureState === 'preview-loading'
+                  ? normalizedCopy.includes('loading garden')
+                  : fixtureState === 'preview-error'
+                    ? normalizedCopy.includes('garden preview unavailable')
+                      && homeActionText === 'Open Garden'
+                    : fixtureState === 'starter-not-selected'
+                      ? homeActionText.length > 0
+                      : supportText.includes('Growth')
+                        && homeActionText === 'Open Garden'
+              );
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
                 fixtureMatches = command.endsWith(':choose-starter')
@@ -2521,7 +2588,8 @@ class _UiFaceCaptureRunner:
               );
               return {
                 ready: paintedState && imagesComplete && canonicalSettled
-                  && fixtureMatches && bannedTerms.length === 0,
+                  && fixtureMatches && bannedTerms.length === 0
+                  && homeActionGeometryPassed && conciseInformationModelPassed,
                 reason: !paintedState ? 'unpainted-state'
                   : !imagesComplete ? 'images-pending'
                   : !canonicalSettled ? 'canonical-preview-unsettled'
@@ -2556,6 +2624,14 @@ class _UiFaceCaptureRunner:
                   bottom: Math.round(homeActionRect.bottom - rect.top),
                 } : null,
                 homeActionEnabled: !!homeAction && !homeAction.disabled,
+                homeActionText,
+                homeActionWidth: homeActionRect
+                  ? Math.round(homeActionRect.width) : null,
+                homeActionHeight: homeActionRect
+                  ? Math.round(homeActionRect.height) : null,
+                homeActionGeometryPassed,
+                supportText,
+                conciseInformationModelPassed,
                 loadingPresent,
                 renderedCopy,
                 bannedTerms,
@@ -3497,8 +3573,8 @@ class _UiFaceCaptureRunner:
         width = bounds[2] if len(bounds) == 4 else 0
         height = bounds[3] if len(bounds) == 4 else 0
         size_in_range = bool(
-            320 <= width <= 360
-            and 72 <= height <= 80
+            340 <= width <= 370
+            and 66 <= height <= 78
         )
 
         # Reviewer answer buttons live inside WebEngine and are not QWidgets.
@@ -3600,6 +3676,251 @@ class _UiFaceCaptureRunner:
             return False
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return False
+
+    def _native_layout_telemetry_audit(
+        self,
+        root: QWidget,
+        label: str,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Consume the shell-owned telemetry and bind it to release limits."""
+
+        reader = getattr(root, "capture_layout_telemetry", None)
+        if not callable(reader):
+            return ({
+                "applicable": False,
+                "source": "",
+                "issues": [],
+                "passed": True,
+            }, [])
+        issue_codes: list[str] = []
+        try:
+            raw = dict(reader())
+        except Exception as exc:
+            issue = f"native-layout-telemetry-error:{type(exc).__name__}"
+            return ({
+                "applicable": True,
+                "source": "DialogShell.capture_layout_telemetry",
+                "issues": [issue],
+                "passed": False,
+            }, [{"kind": issue, "native_layout_telemetry": True}])
+
+        client_width = max(1, int(root.contentsRect().width()))
+        fill = raw.get("clientSurfaceFill")
+        fill_number = (
+            float(fill)
+            if isinstance(fill, (int, float)) and not isinstance(fill, bool)
+            else -1.0
+        )
+        client_gutter = (
+            max(0, client_width - round(client_width * fill_number))
+            if 0.0 <= fill_number <= 1.0 else -1
+        )
+        if not 0.0 <= fill_number <= 1.0:
+            issue_codes.append("invalid-client-surface-fill")
+        elif client_gutter > int(
+            CAPTURE_LAYOUT_LIMITS["maximum_client_gutter_px"]
+        ):
+            issue_codes.append("client-surface-gutter")
+
+        footer_gap = raw.get("contentToFooterGap")
+        if footer_gap is not None and (
+            type(footer_gap) is not int
+            or footer_gap < 0
+            or footer_gap > int(
+                CAPTURE_LAYOUT_LIMITS["maximum_content_footer_gap_px"]
+            )
+        ):
+            issue_codes.append("content-footer-gap")
+
+        nursery_offset = raw.get("nurseryRootOffset")
+        nursery_expected = expected_capture_window_family(label) == "NurseryDialog"
+        if nursery_expected and (
+            type(nursery_offset) is not int
+            or nursery_offset < 0
+            or nursery_offset > int(
+                CAPTURE_LAYOUT_LIMITS["maximum_nursery_root_offset_px"]
+            )
+        ):
+            issue_codes.append("nursery-root-offset")
+        elif not nursery_expected and nursery_offset is not None and (
+            type(nursery_offset) is not int or nursery_offset < 0
+        ):
+            issue_codes.append("invalid-nursery-root-offset")
+
+        action_ratio = raw.get("maximumActionWidthRatio")
+        action_ratio_number = (
+            float(action_ratio)
+            if isinstance(action_ratio, (int, float))
+            and not isinstance(action_ratio, bool)
+            else -1.0
+        )
+        if not 0.0 <= action_ratio_number <= 1.0:
+            issue_codes.append("invalid-action-width-ratio")
+        elif action_ratio_number > float(
+            CAPTURE_LAYOUT_LIMITS["maximum_action_width_ratio"]
+        ):
+            issue_codes.append("stretched-action")
+
+        minimum_text = raw.get("minimumRenderedTextSize")
+        minimum_text_number = (
+            float(minimum_text)
+            if isinstance(minimum_text, (int, float))
+            and not isinstance(minimum_text, bool)
+            else -1.0
+        )
+        if minimum_text_number < float(
+            CAPTURE_LAYOUT_LIMITS["minimum_rendered_text_px"]
+        ):
+            issue_codes.append("rendered-text-below-floor")
+        if raw.get("elisionWithoutTooltipCount") != 0:
+            issue_codes.append("elision-without-tooltip")
+
+        scrollbars = raw.get("scrollbars")
+        if not isinstance(scrollbars, list):
+            scrollbars = []
+            issue_codes.append("invalid-scrollbar-telemetry")
+        overflow_owner_count = raw.get("overflowOwnerCount")
+        if (
+            type(overflow_owner_count) is not int
+            or overflow_owner_count < 0
+            or overflow_owner_count > int(
+                CAPTURE_LAYOUT_LIMITS["maximum_overflow_owner_count"]
+            )
+        ):
+            issue_codes.append("overflow-owner-count")
+        elif scrollbars and overflow_owner_count != 1:
+            issue_codes.append("missing-overflow-owner")
+        owner_rows = 0
+        for row in scrollbars:
+            if not isinstance(row, dict):
+                issue_codes.append("invalid-scrollbar-record")
+                continue
+            minimum = row.get("minimum")
+            maximum = row.get("maximum")
+            value = row.get("value")
+            visible = row.get("visible")
+            owner = row.get("overflowOwner")
+            if (
+                type(minimum) is not int
+                or type(maximum) is not int
+                or type(value) is not int
+                or type(visible) is not bool
+                or type(owner) is not bool
+                or maximum < minimum
+                or not minimum <= value <= maximum
+            ):
+                issue_codes.append("invalid-scrollbar-record")
+                continue
+            owner_rows += int(owner)
+            if owner and visible is not (maximum > minimum):
+                issue_codes.append("scrollbar-range-visibility")
+            if not owner and visible:
+                issue_codes.append("non-owner-scrollbar-visible")
+        if type(overflow_owner_count) is int and owner_rows != overflow_owner_count:
+            issue_codes.append("overflow-owner-record-mismatch")
+
+        buttons: list[dict[str, Any]] = []
+        for button in root.findChildren(QPushButton):
+            try:
+                if (
+                    button.window() is not root
+                    or not button.isVisibleTo(root)
+                    or bool(button.property("catalogCard"))
+                    or bool(button.property("environmentTile"))
+                ):
+                    continue
+                size_name = str(button.property("buttonSize") or "")
+                height = int(button.height())
+                text = _displayed_button_text(button).strip()
+                measured_text_size = button.property("renderedTextSizePx")
+                if (
+                    isinstance(measured_text_size, (int, float))
+                    and not isinstance(measured_text_size, bool)
+                ):
+                    text_size = round(float(measured_text_size), 2)
+                else:
+                    font = button.font()
+                    pixel_size = int(font.pixelSize())
+                    if pixel_size > 0:
+                        text_size = float(pixel_size)
+                    else:
+                        point_size = float(font.pointSizeF())
+                        screen = root.screen()
+                        dpi = (
+                            float(screen.logicalDotsPerInchY())
+                            if screen is not None else 96.0
+                        )
+                        text_size = round(point_size * dpi / 72.0, 2)
+                expected_height = CAPTURE_BUTTON_HEIGHTS.get(size_name)
+                passed = bool(
+                    expected_height is not None
+                    and height == expected_height
+                    and (
+                        not text
+                        or text_size >= float(
+                            CAPTURE_LAYOUT_LIMITS["minimum_rendered_text_px"]
+                        )
+                    )
+                    and (
+                        size_name != "icon"
+                        or int(button.width()) == expected_height
+                    )
+                )
+                buttons.append({
+                    "text": text,
+                    "buttonSize": size_name,
+                    "height": height,
+                    "width": int(button.width()),
+                    "expectedHeight": expected_height,
+                    "renderedTextSize": text_size,
+                    "passed": passed,
+                })
+                if not passed:
+                    issue_codes.append("button-geometry-or-text-size")
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                issue_codes.append("button-telemetry-error")
+
+        tabular_widgets: list[dict[str, Any]] = []
+        for candidate in root.findChildren(QWidget):
+            try:
+                if candidate.window() is not root or not candidate.isVisibleTo(root):
+                    continue
+                text_getter = getattr(candidate, "text", None)
+                text = str(text_getter()).strip() if callable(text_getter) else ""
+                if not text or not any(character.isdigit() for character in text):
+                    continue
+                if bool(candidate.property("tabularNumerals")):
+                    tabular_widgets.append({
+                        "widget": type(candidate).__name__,
+                        "objectName": str(candidate.objectName() or ""),
+                        "text": text[:120],
+                    })
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                continue
+        if label in TABULAR_NUMERAL_CAPTURE_LABELS and not tabular_widgets:
+            issue_codes.append("missing-tabular-numeral-evidence")
+
+        unique_issues = list(dict.fromkeys(issue_codes))
+        audit = {
+            "applicable": True,
+            "source": "DialogShell.capture_layout_telemetry",
+            **raw,
+            "clientWidth": client_width,
+            "clientGutterPx": client_gutter,
+            "buttonRecords": buttons,
+            "tabularNumeralWidgets": tabular_widgets,
+            "tabularNumeralWidgetCount": len(tabular_widgets),
+            "tabularNumeralsRequired": label in TABULAR_NUMERAL_CAPTURE_LABELS,
+            "limits": dict(CAPTURE_LAYOUT_LIMITS),
+            "buttonHeights": dict(CAPTURE_BUTTON_HEIGHTS),
+            "issues": unique_issues,
+            "passed": not unique_issues,
+        }
+        warnings = [
+            {"kind": issue, "native_layout_telemetry": True}
+            for issue in unique_issues
+        ]
+        return audit, warnings
 
     def _visual_contract_audit(
         self,
@@ -4998,6 +5319,25 @@ class _UiFaceCaptureRunner:
                     ),
                 },
             )
+            require(
+                "home_preview_information_model",
+                bool(
+                    dom.get("conciseInformationModelPassed", False)
+                    and dom.get("homeActionGeometryPassed", False)
+                ),
+                {
+                    "support_text": str(dom.get("supportText", "")),
+                    "action_text": str(dom.get("homeActionText", "")),
+                    "action_width": dom.get("homeActionWidth"),
+                    "action_height": dom.get("homeActionHeight"),
+                    "information_model_passed": bool(
+                        dom.get("conciseInformationModelPassed", False)
+                    ),
+                    "geometry_passed": bool(
+                        dom.get("homeActionGeometryPassed", False)
+                    ),
+                },
+            )
             if state_name == "home-preview-stale":
                 stale_geometry = {
                     "status_bounds": dom.get("previewStatusBounds"),
@@ -5494,6 +5834,8 @@ class _UiFaceCaptureRunner:
                     and bool(annotation.get("loadout_route_visible", False))
                     and bool(annotation.get("loadout_routes_enabled", False))
                     and bool(annotation.get("action_buttons_fully_visible", False))
+                    and bool(annotation.get("compact_environment_actions", False))
+                    and bool(annotation.get("mechanics_always_visible", False))
                     and bool(annotation.get("filter_toolbar_visible", False))
                     and bool(annotation.get("scroll_at_top", False))
                     and not bool(annotation.get("direct_mutation_controls", True)),
@@ -5729,7 +6071,7 @@ class _UiFaceCaptureRunner:
                     and owned_species.issubset(unlocked)
                     and bool(
                         set(visible_buttons)
-                        & {"Store", "Place", "View in garden"}
+                        & {"Store plant", "Place in Garden", "View Garden"}
                     )
                     and bool(
                         self.app.engine.catalog_summary().get(
@@ -5841,7 +6183,7 @@ class _UiFaceCaptureRunner:
                     bool(title)
                     and bool(toast is not None and toast.isVisible())
                     and toast_text == "Soft Breeze added to your collection."
-                    and primary == "View in Collection"
+                    and primary == "View Collection"
                     and secondary == "Keep browsing",
                     {
                         "title": title,
@@ -5861,9 +6203,9 @@ class _UiFaceCaptureRunner:
                     getattr(getattr(toast, "message", None), "text", lambda: "")()
                 )
                 expected_action = {
-                    "purchase-success-inventory-collection": "Plant now",
+                    "purchase-success-inventory-collection": "Place in Garden",
                     "purchase-success-fertilizer-applied": "View plant",
-                    "purchase-success-garden-bed-unlocked": "View garden",
+                    "purchase-success-garden-bed-unlocked": "View Garden",
                 }[state_name]
                 expected_outcome = {
                     "purchase-success-inventory-collection": "Sunflower added.",
@@ -5877,9 +6219,14 @@ class _UiFaceCaptureRunner:
                     and getattr(toast, "action", None) is not None
                     and toast.action.text() == expected_action
                     and toast.dismiss.text() == (
-                        "View collection"
+                        "View Collection"
                         if state_name == "purchase-success-inventory-collection"
                         else "Keep browsing"
+                    )
+                    and bool(
+                        dict(
+                            annotation.get("nursery_feedback_flow", {}) or {}
+                        ).get("passed", False)
                     )
                     and bool(annotation.get("passed", False)),
                     {
@@ -5887,6 +6234,15 @@ class _UiFaceCaptureRunner:
                         "buttons": visible_buttons,
                         "annotation": annotation,
                     },
+                )
+                require(
+                    "normal_flow_transaction_feedback",
+                    bool(
+                        dict(
+                            annotation.get("nursery_feedback_flow", {}) or {}
+                        ).get("passed", False)
+                    ),
+                    annotation.get("nursery_feedback_flow", {}),
                 )
             elif state_name == "nursery-empty-state":
                 require(
@@ -6328,6 +6684,42 @@ class _UiFaceCaptureRunner:
                         "annotation": annotation,
                     },
                 )
+                if state_name == "growth-charge-stale-inventory":
+                    require(
+                        "growth_charge_ready_with_stale_inventory_warning",
+                        bool(
+                            expectation.get("growth_charge_fixture_semantics")
+                            == "ready_with_stale_inventory_warning"
+                            and annotation.get(
+                                "ready_with_stale_inventory_warning",
+                                False,
+                            )
+                            and widget.alert.isVisible()
+                            and "Availability updated"
+                            in str(widget.alert.text())
+                        ),
+                        {
+                            "semantics": expectation.get(
+                                "growth_charge_fixture_semantics",
+                                "",
+                            ),
+                            "alert": str(widget.alert.text()),
+                            "annotation": annotation,
+                        },
+                    )
+                elif state_name == "growth-charge-success-stage-reward":
+                    require(
+                        "growth_charge_seed_to_sprout_receipt",
+                        bool(
+                            annotation.get("seed_to_sprout_receipt", False)
+                            and "Seed → Sprout"
+                            in str(widget.receipt_copy.text())
+                        ),
+                        {
+                            "receipt": str(widget.receipt_copy.text()),
+                            "annotation": annotation,
+                        },
+                    )
             elif state_name.startswith("purchase-confirmation-") or state_name.startswith("purchase-error-"):
                 buttons = [
                     _displayed_button_text(button)
@@ -6407,6 +6799,57 @@ class _UiFaceCaptureRunner:
                             "proposal": widget.proposal_notice.text(),
                             "price": widget.price_label.text(),
                             "balance": widget.balance_label.text(),
+                            "annotation": annotation,
+                        },
+                    )
+                if state_name == "purchase-error-stale-price":
+                    require(
+                        "stale_price_item_identity",
+                        bool(
+                            annotation.get("stale_price_item_identity", False)
+                            and str(widget.windowTitle()) == "Price changed"
+                            and widget.item_name.text().strip()
+                            == widget.quote.item_name
+                        ),
+                        {
+                            "title": str(widget.windowTitle()),
+                            "item_name": widget.item_name.text().strip(),
+                            "annotation": annotation,
+                        },
+                    )
+                elif state_name == "purchase-error-stale-balance":
+                    proposal_message = getattr(
+                        widget.proposal_notice,
+                        "message",
+                        None,
+                    )
+                    proposal_text = str(
+                        proposal_message.text()
+                        if proposal_message is not None else ""
+                    ).strip()
+                    require(
+                        "ready_with_balance_update",
+                        bool(
+                            expectation.get("purchase_fixture_semantics")
+                            == "ready_with_balance_update"
+                            and annotation.get("ready_balance_update", False)
+                            and bool(widget.quote.ready)
+                            and widget.purchase_action.isEnabled()
+                            and widget.status.isHidden()
+                            and not widget.proposal_notice.isHidden()
+                            and proposal_text == "Balance updated"
+                            and str(
+                                widget.property("transactionPresentation")
+                                or ""
+                            ) == "inline-balance-update"
+                        ),
+                        {
+                            "semantics": expectation.get(
+                                "purchase_fixture_semantics",
+                                "",
+                            ),
+                            "proposal": proposal_text,
+                            "quote_ready": bool(widget.quote.ready),
                             "annotation": annotation,
                         },
                     )
@@ -6546,7 +6989,24 @@ class _UiFaceCaptureRunner:
                     "compact_fields_present": bool(
                         dom_audit.get("compactFieldsPresent", False)
                     ),
-                    "passed": not banned_terms,
+                    "support_text": str(dom_audit.get("supportText", "")),
+                    "action_text": str(dom_audit.get("homeActionText", "")),
+                    "action_width": dom_audit.get("homeActionWidth"),
+                    "action_height": dom_audit.get("homeActionHeight"),
+                    "information_model_passed": bool(
+                        dom_audit.get("conciseInformationModelPassed", False)
+                    ),
+                    "geometry_passed": bool(
+                        dom_audit.get("homeActionGeometryPassed", False)
+                    ),
+                    "passed": bool(
+                        not banned_terms
+                        and dom_audit.get(
+                            "conciseInformationModelPassed",
+                            False,
+                        )
+                        and dom_audit.get("homeActionGeometryPassed", False)
+                    ),
                 }
                 home_annotation = self._capture_annotations.setdefault(label, {})
                 home_annotation["compact_home_copy"] = compact_copy
@@ -6665,14 +7125,23 @@ class _UiFaceCaptureRunner:
             )
             geometry_layout_warnings.extend(responsive_warnings)
             self._audit_nurtured_marker_capture(label, widget)
+            native_layout_telemetry, native_layout_warnings = (
+                self._native_layout_telemetry_audit(widget, label)
+            )
+            geometry_layout_warnings.extend(native_layout_warnings)
             visual_contract_audit, visual_contract_warnings = (
                 self._visual_contract_audit(widget, label)
             )
             geometry_layout_warnings.extend(visual_contract_warnings)
             annotation = self._capture_annotations.setdefault(label, {})
+            annotation["native_layout_telemetry"] = dict(
+                native_layout_telemetry
+            )
             annotation["visual_contract"] = dict(visual_contract_audit)
             annotation["passed"] = bool(
                 annotation.get("passed", True)
+            ) and bool(
+                native_layout_telemetry.get("passed", False)
             ) and bool(visual_contract_audit.get("passed", False))
             if widget is mw:
                 reward_toast = None
@@ -6862,6 +7331,9 @@ class _UiFaceCaptureRunner:
                     ),
                     "responsive_semantics": responsive_semantics,
                     "dialog_scroll_audit": dialog_scroll_audit,
+                    "native_layout_telemetry": dict(
+                        native_layout_telemetry
+                    ),
                     "visual_contract_audit": dict(visual_contract_audit),
                     "text_layout_warnings": text_layout_warnings,
                     "geometry_layout_warnings": geometry_layout_warnings,
@@ -8396,7 +8868,7 @@ class _UiFaceCaptureRunner:
         state_events = getattr(self.app, "state_events", None)
         current_revision = int(getattr(state_events, "revision", 0))
         error_message = {
-            "error": "Preview unavailable",
+            "error": "Garden preview unavailable",
             "stale": "Updating…",
         }.get(phase)
         fixture_snapshot = HomeWidgetSnapshot(
@@ -10729,6 +11201,12 @@ class _UiFaceCaptureRunner:
                 engine,
                 quote,
             )
+            original_confirmation = {
+                "title": str(dialog.windowTitle()),
+                "primary_label": _displayed_button_text(dialog.purchase_action),
+                "price": int(dialog.quote.total_price),
+                "ready": bool(dialog.quote.ready),
+            }
 
             if variant == "loading":
                 dialog._progress_motion_enabled = False
@@ -10870,8 +11348,43 @@ class _UiFaceCaptureRunner:
                 "persistence",
                 "invalid-target",
                 "stale-price",
-                "stale-balance",
             }
+            proposal_update_message = getattr(
+                dialog.proposal_notice,
+                "message",
+                None,
+            )
+            proposal_update_text = str(
+                proposal_update_message.text()
+                if proposal_update_message is not None else ""
+            ).strip()
+            ready_balance_update = bool(
+                variant != "stale-balance"
+                or (
+                    original_confirmation["ready"]
+                    and bool(dialog.quote.ready)
+                    and str(dialog.property("transactionPresentation") or "")
+                    == "inline-balance-update"
+                    and proposal_update_text == "Balance updated"
+                    and not dialog.proposal_notice.isHidden()
+                    and dialog.status.isHidden()
+                    and dialog.purchase_action.isEnabled()
+                    and not dialog.cost_summary.isHidden()
+                    and str(dialog.windowTitle()) == original_confirmation["title"]
+                    and _displayed_button_text(dialog.purchase_action)
+                    == original_confirmation["primary_label"]
+                    and actual_status != "insufficient_coins"
+                )
+            )
+            stale_price_item_identity = bool(
+                variant != "stale-price"
+                or (
+                    str(dialog.windowTitle()) == "Price changed"
+                    and bool(dialog.item_name.text().strip())
+                    and dialog.item_name.text().strip() == dialog.quote.item_name
+                    and dialog.category.text().strip()
+                )
+            )
             self._capture_annotations[label] = {
                 "purchase_kind": kind.value,
                 "item_id": item_id,
@@ -10916,6 +11429,10 @@ class _UiFaceCaptureRunner:
                 "refreshed_request_matches_live_terms": (
                     refreshed_request_matches_live_terms
                 ),
+                "original_confirmation": original_confirmation,
+                "proposal_update_text": proposal_update_text,
+                "ready_balance_update": ready_balance_update,
+                "stale_price_item_identity": stale_price_item_identity,
                 "passed": bool(
                     actual_status == expected_status
                     and (
@@ -10940,6 +11457,8 @@ class _UiFaceCaptureRunner:
                     )
                     and stale_terms_visible
                     and refreshed_request_matches_live_terms
+                    and ready_balance_update
+                    and stale_price_item_identity
                 ),
             }
             if not self._capture_annotations[label]["passed"]:
@@ -11123,6 +11642,53 @@ class _UiFaceCaptureRunner:
             self._move_to_capture_display(dialog)
             dialog.show()
 
+            def audit_success_flow() -> None:
+                QApplication.processEvents()
+                host = dialog.nursery_feedback_host
+                page = dialog.catalog_pages[tab_index]
+                page_layout = dialog.catalog_page_layouts[tab_index]
+                scroll = (
+                    dialog.scroll,
+                    dialog.supplements_scroll,
+                    dialog.upgrades_scroll,
+                    dialog.environment_scroll,
+                )[tab_index]
+                host_bounds = self._widget_bounds_evidence(host, dialog)
+                scroll_bounds = self._widget_bounds_evidence(scroll, dialog)
+                tab_bar_bounds = self._widget_bounds_evidence(
+                    dialog.catalog_tabs.tabBar(),
+                    dialog,
+                )
+                host_box = list(host_bounds.get("bounds", ()) or ())
+                scroll_box = list(scroll_bounds.get("bounds", ()) or ())
+                tab_box = list(tab_bar_bounds.get("bounds", ()) or ())
+                normal_flow = bool(
+                    host.parentWidget() is page
+                    and page_layout.indexOf(host) == 0
+                    and page_layout.indexOf(scroll) > page_layout.indexOf(host)
+                    and not host.isHidden()
+                    and not dialog.nursery_toast.isHidden()
+                    and len(host_box) == 4
+                    and len(scroll_box) == 4
+                    and len(tab_box) == 4
+                    and int(host_box[1])
+                    >= int(tab_box[1]) + int(tab_box[3])
+                    and int(host_box[1]) + int(host_box[3])
+                    <= int(scroll_box[1])
+                )
+                annotation = self._capture_annotations[label]
+                annotation["nursery_feedback_flow"] = {
+                    "host_bounds": host_bounds,
+                    "scroll_bounds": scroll_bounds,
+                    "tab_bar_bounds": tab_bar_bounds,
+                    "host_layout_index": page_layout.indexOf(host),
+                    "scroll_layout_index": page_layout.indexOf(scroll),
+                    "passed": normal_flow,
+                }
+                annotation["passed"] = bool(
+                    annotation.get("passed", False) and normal_flow
+                )
+
             def close_dialog() -> None:
                 self._close_widget(dialog)
                 cleanup()
@@ -11131,6 +11697,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=520,
+                before_capture=audit_success_flow,
                 close_callback=close_dialog,
                 close_ms=920,
                 next_ms=1260,
@@ -11282,6 +11849,8 @@ class _UiFaceCaptureRunner:
             str(dialog.static_charge_quantity.text()).strip(),
             str(dialog.charge_selector.currentText()).strip(),
         )))
+        alert_copy = str(dialog.alert.text()).strip()
+        receipt_copy = str(dialog.receipt_copy.text()).strip()
         conditions = [actual_status == expected_status]
         if variant == "ready":
             conditions.extend([
@@ -11334,6 +11903,8 @@ class _UiFaceCaptureRunner:
                 charge_details_visible,
                 result_matches_quote,
                 f"{inventory:,}" in quantity_text,
+                alert_visible,
+                "Availability updated" in alert_copy,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 1_250,
                 ledger_count == 0,
@@ -11391,6 +11962,7 @@ class _UiFaceCaptureRunner:
                 reward_total == 5,
                 result_title in visible_label_text,
                 f"+{reward_total:,} Garden Coins" in visible_label_text,
+                "Seed → Sprout" in receipt_copy,
                 not compact_result_visible,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 550,
@@ -11415,6 +11987,25 @@ class _UiFaceCaptureRunner:
             "result_matches_quote": result_matches_quote,
             "plant_details_visible": plant_details_visible,
             "charge_details_visible": charge_details_visible,
+            "alert_copy": alert_copy,
+            "receipt_copy": receipt_copy,
+            "ready_with_stale_inventory_warning": bool(
+                variant != "stale"
+                or (
+                    alert_visible
+                    and "Availability updated" in alert_copy
+                    and quote is not None
+                    and bool(quote.ready)
+                    and dialog.use_action.isEnabled()
+                )
+            ),
+            "seed_to_sprout_receipt": bool(
+                variant != "success"
+                or (
+                    receipt_visible
+                    and "Seed → Sprout" in receipt_copy
+                )
+            ),
             "single_scroll_region": single_scroll_region,
             "passed": passed,
         })
@@ -11584,7 +12175,7 @@ class _UiFaceCaptureRunner:
             self._move_to_capture_display(dialog)
             dialog.show()
             scrollbar = dialog.scroll.verticalScrollBar()
-            QTimer.singleShot(120, lambda: scrollbar.setValue(scrollbar.maximum()))
+            QTimer.singleShot(120, lambda: scrollbar.setValue(0))
 
             def audit_empty_state() -> None:
                 QApplication.processEvents()
@@ -11607,10 +12198,14 @@ class _UiFaceCaptureRunner:
                 empty_visible = bool(
                     "All plants collected" in visible_labels
                     and any(
-                        re.fullmatch(r"\d[\d,]* of \d[\d,]*", copy.strip())
+                        re.fullmatch(
+                            r"\d[\d,]* of \d[\d,]* species collected",
+                            copy.strip(),
+                        )
                         for copy in visible_labels
                     )
-                    and "View collection" in visible_buttons
+                    and "View Collection" in visible_buttons
+                    and scrollbar.value() == 0
                 )
                 self._capture_annotations[label] = {
                     "empty_state_visible": empty_visible,
@@ -11709,14 +12304,6 @@ class _UiFaceCaptureRunner:
                 if app is not None:
                     app.processEvents()
                 button_widgets = dashboard.collection_list.findChildren(QAbstractButton)
-                mechanics_button = next((
-                    button for button in button_widgets
-                    if bool(button.property("environmentMechanicsDisclosure"))
-                ), None)
-                if mechanics_button is not None:
-                    mechanics_button.setChecked(True)
-                if app is not None:
-                    app.processEvents()
                 scroll = dashboard.collection_list.scroll
                 scrollbar = scroll.verticalScrollBar()
                 scrollbar.setValue(0)
@@ -11773,7 +12360,17 @@ class _UiFaceCaptureRunner:
                 ), None)
                 mechanics_details = next((
                     item for item in visible_label_widgets
-                    if bool(item.property("environmentMechanicsDetails"))
+                    if bool(item.property("collectionEnvironmentMetadata"))
+                ), None)
+                preview_action = next((
+                    button for button in button_widgets
+                    if button.isVisible()
+                    and _displayed_button_text(button) == "Preview"
+                ), None)
+                unequip_action = next((
+                    button for button in button_widgets
+                    if button.isVisible()
+                    and _displayed_button_text(button) == "Unequip"
                 ), None)
                 required_widgets: dict[str, Any] = {
                     "toolbar": filter_controls,
@@ -11894,8 +12491,14 @@ class _UiFaceCaptureRunner:
                     "collection_category": str(dashboard._collection_category),
                     "collection_query": str(dashboard._collection_query),
                     "mechanics_expanded": bool(
-                        mechanics_button is not None
-                        and mechanics_button.isChecked()
+                        mechanics_details is not None
+                        and mechanics_details.isVisible()
+                    ),
+                    "mechanics_always_visible": bool(
+                        mechanics_details is not None
+                        and mechanics_details.isVisible()
+                        and "Available every day" in mechanics_text
+                        and "Only one weather can be equipped" in mechanics_text
                     ),
                     "selected_environment_visible": (
                         evidence_text("item_title", environment_title)
@@ -11906,10 +12509,8 @@ class _UiFaceCaptureRunner:
                             "effect",
                             environment_effect,
                         )
-                        and all(
-                            marker in mechanics_text
-                            for marker in ("Duration:", "Stacking:", "Replacement:")
-                        )
+                        and "Available every day" in mechanics_text
+                        and "Only one weather can be equipped" in mechanics_text
                     ),
                     "loadout_summary_visible": (
                         evidence_text("summary_title", summary_title)
@@ -11933,6 +12534,16 @@ class _UiFaceCaptureRunner:
                         edit_evidence.get("contained", False)
                         and 34 <= int(edit_appearance.height()) <= 38
                     ),
+                    "compact_environment_actions": bool(
+                        preview_action is not None
+                        and unequip_action is not None
+                        and preview_action.isVisible()
+                        and unequip_action.isVisible()
+                        and preview_action.height() == 34
+                        and unequip_action.height() == 34
+                        and preview_action.width() <= int(dialog.width() * 0.50)
+                        and unequip_action.width() <= int(dialog.width() * 0.50)
+                    ),
                     "route_button_bounds": [edit_evidence],
                     "filter_toolbar_visible": toolbar_visual["passed"],
                     "scroll_at_top": bool(scrollbar.value() == 0),
@@ -11948,6 +12559,7 @@ class _UiFaceCaptureRunner:
                 annotation["passed"] = bool(
                     annotation["collection_category"] == "weather"
                     and annotation["mechanics_expanded"]
+                    and annotation["mechanics_always_visible"]
                     and annotation["selected_environment_visible"]
                     and annotation["complete_effects_visible"]
                     and annotation["loadout_summary_visible"]
@@ -11955,6 +12567,7 @@ class _UiFaceCaptureRunner:
                     and annotation["loadout_route_visible"]
                     and annotation["loadout_routes_enabled"]
                     and annotation["action_buttons_fully_visible"]
+                    and annotation["compact_environment_actions"]
                     and annotation["filter_toolbar_visible"]
                     and environment_mechanics_visual["passed"]
                     and annotation["scroll_at_top"]
@@ -11972,13 +12585,6 @@ class _UiFaceCaptureRunner:
                     current_buttons = dashboard.collection_list.findChildren(
                         QAbstractButton
                     )
-                    current_mechanics = next((
-                        button
-                        for button in current_buttons
-                        if bool(button.property("environmentMechanicsDisclosure"))
-                    ), None)
-                    if current_mechanics is not None:
-                        current_mechanics.setChecked(True)
                     scrollbar.setValue(0)
                     if app is not None:
                         app.processEvents()
@@ -12035,7 +12641,7 @@ class _UiFaceCaptureRunner:
                         ), None),
                         "mechanics": next((
                             item for item in current_labels
-                            if bool(item.property("environmentMechanicsDetails"))
+                            if bool(item.property("collectionEnvironmentMetadata"))
                         ), None),
                     }
                     for key, current_widget in current_widgets.items():
@@ -12105,7 +12711,8 @@ class _UiFaceCaptureRunner:
             error_visible = bool(
                 dialog.preview_feedback.isVisible()
                 and dialog.preview_panel.isAncestorOf(dialog.preview_feedback)
-                and "Couldn’t save changes" in error_copy
+                and not dialog.preview_scene.isAncestorOf(dialog.preview_feedback)
+                and "Could not save changes" in error_copy
                 and "unchanged" in error_copy
             )
             actions = {
@@ -12212,11 +12819,20 @@ class _UiFaceCaptureRunner:
                     expected_width=dialog.preview_scene.width(),
                     expected_height=dialog.preview_scene.height(),
                 )
+                scene_box = list(scene_bounds.get("bounds", ()) or ())
+                feedback_box = list(feedback_bounds.get("bounds", ()) or ())
+                feedback_outside_artwork = bool(
+                    len(scene_box) == 4
+                    and len(feedback_box) == 4
+                    and int(feedback_box[1]) + int(feedback_box[3])
+                    <= int(scene_box[1])
+                )
                 rendered_state = {
                     "scene_bounds": scene_bounds,
                     "scene_metrics": scene_metrics,
                     "feedback_bounds": feedback_bounds,
                     "feedback_text": str(dialog.preview_feedback.message.text()),
+                    "feedback_outside_artwork": feedback_outside_artwork,
                     "scroll_maximum": int(
                         dialog.body_scroll.verticalScrollBar().maximum()
                     ),
@@ -12226,7 +12842,8 @@ class _UiFaceCaptureRunner:
                         and scene_metrics.get("generic_content_passed", False)
                         and feedback_bounds.get("visible", False)
                         and feedback_bounds.get("contained", False)
-                        and "Couldn’t save changes"
+                        and feedback_outside_artwork
+                        and "Could not save changes"
                         in str(dialog.preview_feedback.message.text())
                     ),
                 }
