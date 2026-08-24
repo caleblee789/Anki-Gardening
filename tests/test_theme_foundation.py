@@ -448,11 +448,14 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
 def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() -> None:
     dashboard = (ROOT / "ankigarden/ui/dashboard.py").read_text("utf-8")
 
-    # The only StrongFocus target without the non-button ring hook is the
-    # Garden metric QPushButton, which already has its own focused selector.
-    assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") == (
-        dashboard.count("set_keyboard_focus_surface(") + 1
+    # Shared banners may register their focus surface before toggling focus.
+    # The Garden metric QPushButton is the sole intentional non-frame target
+    # and retains its explicit focused selector.
+    assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") <= (
+        dashboard.count("set_keyboard_focus_surface(")
     )
+    assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in dashboard
+    assert "QPushButton[gardenStatCell='true']:focus" in dashboard
     assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in dashboard
     assert 'self.show_weather = ToggleSwitch("Weather effects")' in dashboard
     assert 'self.show_scenery = ToggleSwitch("Scenery effects")' in dashboard

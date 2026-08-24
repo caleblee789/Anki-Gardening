@@ -253,7 +253,8 @@ def test_named_detail_dialogs_use_content_fit_classes_and_view_profiles() -> Non
     assert "self.content_scroll.show()" in purchase
     assert "preserve_transition=not self.presentation.terminal" in purchase
     assert "DialogSizeClass.SPECIES_DETAIL" in species
-    assert 'dialog.apply_view_size_profile("default")' in species
+    assert "dialog.apply_view_size_profile(" in species
+    assert '"collected" if collected else "uncollected"' in species
     assert "preferred_height=720" not in species
     assert "dialog.set_content_bounded_maximum_height" not in species
 
@@ -299,7 +300,8 @@ def test_multi_view_dialogs_route_view_changes_through_shared_profiles() -> None
     assert "DialogSizeClass.PLANT_STORY" in plant_story
     assert 'self.apply_view_size_profile("default")' in plant_story
     assert "DialogSizeClass.SPECIES_DETAIL" in species
-    assert 'dialog.apply_view_size_profile("default")' in species
+    assert "dialog.apply_view_size_profile(" in species
+    assert '"collected" if collected else "uncollected"' in species
 
 
 def test_dialogs_do_not_override_small_screen_clamping_with_hard_window_minima() -> None:
