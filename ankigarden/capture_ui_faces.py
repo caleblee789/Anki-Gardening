@@ -13578,6 +13578,9 @@ class _UiFaceCaptureRunner:
         self._switch_surface(opposite)
 
         def enter_surface() -> None:
+            invalidate = getattr(self.app, "_invalidate_home_cache", None)
+            if callable(invalidate):
+                invalidate(f"capture transition for {label}")
             self._switch_surface(surface)
             self._wait_for_home_surface(
                 surface,
@@ -13592,7 +13595,20 @@ class _UiFaceCaptureRunner:
                 ),
             )
 
-        QTimer.singleShot(500, enter_surface)
+        # Consecutive Home fixtures alternate through the opposite Anki state
+        # so WebEngine must construct a new source-backed root. A fixed delay
+        # can race moveToState() under capture load, leaving the old active-slot
+        # DOM in place even though the model has advanced. Wait for the state
+        # transition itself before returning to the requested surface.
+        self._wait_for(
+            lambda: str(getattr(mw, "state", "")) == opposite,
+            enter_surface,
+            tries=80,
+            failure_label=label,
+            failure_reason=(
+                f"Anki Home did not reach the intermediate {opposite} state"
+            ),
+        )
 
     def _capture_collection_several(self) -> None:
         label = "collection-several-discovered"

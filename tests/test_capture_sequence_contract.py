@@ -1355,6 +1355,11 @@ def test_watering_can_faces_cover_six_native_and_six_home_plot_positions() -> No
     assert 'f"watering-can-garden-plot-{slot + 1}"' in garden
     assert 'surface == "deckBrowser"' in home
     assert 'self._switch_surface(surface)' in home
+    assert 'self._switch_surface(opposite)' in home
+    assert 'str(getattr(mw, "state", "")) == opposite' in home
+    assert "_invalidate_home_cache" in home
+    assert "capture transition for" in home
+    assert "QTimer.singleShot(500, enter_surface)" not in home
     assert "preview_with_phase" not in home
     assert "Updating garden preview" not in home
     assert "data-marker-orientation" in home_audit
