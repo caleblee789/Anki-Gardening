@@ -1271,6 +1271,8 @@ def test_finished_empty_deck_overview_injects_into_congratulations_page(monkeypa
     assert json.dumps(rendered) in script
     assert 'template.content.querySelectorAll("script")' in script
     assert "sourceScript.remove()" in script
+    assert 'template.content.querySelector("#ag-home-root")' in script
+    assert "root.replaceWith(replacement)" in script
     assert 'document.createElement("script")' not in script
     assert 'button.removeAttribute("onclick")' in script
     assert 'button.addEventListener("click"' in script

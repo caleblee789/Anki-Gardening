@@ -702,13 +702,18 @@ class AnkiGardenApp:
         evaluate(
             f"""
 (() => {{
+  const template = document.createElement("template");
+  template.innerHTML = {json.dumps(html)};
+  for (const sourceScript of template.content.querySelectorAll("script")) {{
+    sourceScript.remove();
+  }}
+  const replacement = template.content.querySelector("#ag-home-root");
+  if (!replacement) return;
   let root = document.getElementById("ag-home-root");
-  if (!root) {{
-    const template = document.createElement("template");
-    template.innerHTML = {json.dumps(html)};
-    for (const sourceScript of template.content.querySelectorAll("script")) {{
-      sourceScript.remove();
-    }}
+  if (root) {{
+    root.replaceWith(replacement);
+    root = replacement;
+  }} else {{
     document.body.appendChild(template.content);
     root = document.getElementById("ag-home-root");
   }}
