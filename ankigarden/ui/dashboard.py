@@ -3408,7 +3408,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         plant = self.engine.plant_story(self.target_id)
         if plant is None:
             self.target_name.setText("Plant unavailable")
-            self.target_stage.setText("Invalid target")
+            self.target_stage.setText("Unavailable")
             self.target_artwork.setPixmap(_botanical_placeholder_pixmap(68, 68))
             return
         self.target_name.setText(str(plant.name))
@@ -3574,7 +3574,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         )
         self.target_stage.setText(target_label)
         self.target_stage.setAccessibleDescription(
-            f"Target state: {target_state.value.replace('_', ' ')}."
+            f"Plant status: {target_state.value.replace('_', ' ')}."
         )
         _populate_asset_preview(
             self.target_artwork,
@@ -3621,8 +3621,8 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.use_action.setText("Choose another plant")
             self.use_action.setAccessibleName("Choose another plant")
         else:
-            self.use_action.setText("Apply Growth Charge")
-            self.use_action.setAccessibleName("Apply Growth Charge")
+            self.use_action.setText("Use charge")
+            self.use_action.setAccessibleName("Use charge")
         if (
             show_status
             and not quote.ready
@@ -3696,7 +3696,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             True,
             enabled_description="Cancel without using a Growth Charge.",
         )
-        self.use_action.setText("Apply Growth Charge")
+        self.use_action.setText("Use charge")
         if outcome is not None and outcome.success:
             self._show_receipt(outcome)
             return
@@ -3776,13 +3776,13 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.facts_card.setVisible(self.quote is not None)
             self.outcome_heading.setVisible(self.quote is not None)
             self.target_artwork.setAccessibleDescription(
-                "The refreshed target and result require confirmation."
+                "Review the updated result."
             )
         elif outcome.status is not GrowthChargeStatus.TARGET_INVALID:
             self._render_committed_target(outcome)
             self.hero.setProperty("invalidTarget", False)
             self.target_artwork.setAccessibleDescription(
-                "The target is unchanged because no Growth Charge was committed."
+                "Your plant is unchanged."
             )
             self.facts_card.hide()
             self.outcome_heading.hide()
