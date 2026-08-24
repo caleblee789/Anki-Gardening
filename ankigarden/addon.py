@@ -694,6 +694,11 @@ class AnkiGardenApp:
         if path not in {"/_anki/pages/congrats.html", "/congrats"}:
             return
 
+        self._replace_home_garden_root(webview)
+
+    def _replace_home_garden_root(self, webview: object) -> None:
+        """Replace the Garden root in an already verified main Anki webview."""
+
         evaluate = getattr(webview, "eval", None)
         if not callable(evaluate):
             return

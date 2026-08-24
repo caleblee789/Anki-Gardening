@@ -2326,14 +2326,14 @@ class _UiFaceCaptureRunner:
             # Re-run the production injector before the DOM audit; its
             # replacement path refreshes the one existing root without adding
             # a capture-only rendering implementation.
-            refresh_finished_overview = getattr(
+            replace_overview_root = getattr(
                 self.app,
-                "_inject_home_garden_finished_overview",
+                "_replace_home_garden_root",
                 None,
             )
-            if callable(refresh_finished_overview):
+            if callable(replace_overview_root):
                 try:
-                    refresh_finished_overview(web)
+                    replace_overview_root(web)
                 except Exception:
                     logger.debug(
                         "Anki Garden capture: Overview root refresh failed for %s",
