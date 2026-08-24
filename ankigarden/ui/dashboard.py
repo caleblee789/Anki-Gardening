@@ -92,7 +92,11 @@ from .responsive import (
     responsive_column_count,
     responsive_interpolate,
 )
-from .formatters import format_growth_fifths, format_status_label
+from .formatters import (
+    format_balance_after,
+    format_growth_fifths,
+    format_status_label,
+)
 from .icons import garden_icon
 from .garden_studio import GardenStudioWidget
 from .plant_display import (
@@ -2390,12 +2394,15 @@ class PurchaseConfirmationDialog(DialogShell):
         self.setWindowTitle(presentation.title)
         self.title_label.setText(presentation.title)
         self.item_name.setText(presentation.item_name)
+        self.item_name.setVisible(bool(presentation.show_item_name))
         self.category.setText(presentation.category)
+        self.category.setVisible(bool(presentation.show_category))
         self.outcome_label.setText(
             presentation.outcome
             if display_status in {PurchaseStatus.READY, PurchaseStatus.SUCCESS}
             else ""
         )
+        self.outcome_label.setVisible(bool(self.outcome_label.text()))
         self._populate_artwork(self.quote, presentation)
         self.artwork.setVisible(presentation.show_preview)
         for index, badge in enumerate(self.badges):
@@ -2441,7 +2448,7 @@ class PurchaseConfirmationDialog(DialogShell):
             self.more_details_action.setChecked(False)
             self.more_details_copy.hide()
 
-        replacement = self.quote.replacement_required and not presentation.terminal
+        replacement = False
         self.comparison_host.setVisible(replacement)
         self.discard_warning.setVisible(replacement)
         if replacement:
@@ -2461,62 +2468,22 @@ class PurchaseConfirmationDialog(DialogShell):
 
         self.cost_summary.setVisible(presentation.show_cost)
         if presentation.show_cost:
-            insufficient = (
-                presentation.primary_route == "ways_to_earn"
-                and presentation.balance_after is None
+            self.price_label.setText(f"{presentation.price:,} Garden Coins")
+            self.balance_label.setText(
+                ""
+                if presentation.balance_after is None
+                else format_balance_after(presentation.balance_after)
             )
-            persistence_failure = (
-                display_status is PurchaseStatus.PERSISTENCE_FAILURE
-            )
-            if persistence_failure:
-                committed_balance = (
-                    max(0, int(self.outcome.new_balance))
-                    if self.outcome is not None
-                    else max(0, int(presentation.balance_before))
-                )
-                self.price_label.setText(
-                    f"{presentation.price:,} Garden Coins"
-                )
-                self.balance_label.setText(
-                    f"Current balance: {committed_balance:,}"
-                )
-            elif insufficient:
-                self.price_label.setText("")
-                self.balance_label.setText(
-                    f"Current balance: {presentation.balance_before:,}"
-                )
-            elif display_status in {
-                PurchaseStatus.STALE_PRICE,
-                PurchaseStatus.STALE_BALANCE,
-                PurchaseStatus.STALE_TARGET,
-            }:
-                self.price_label.setText(
-                    f"{presentation.price:,} Garden Coins"
-                )
-                self.balance_label.setText(
-                    f"Balance after purchase: {max(0, int(self.quote.balance_after)):,}"
-                )
-            else:
-                self.price_label.setText(
-                    f"{presentation.price:,} Garden Coins"
-                )
-                self.balance_label.setText(
-                    f"Balance: {presentation.balance_before:,}"
-                    if presentation.balance_after is None
-                    else (
-                        f"Balance: {presentation.balance_before:,} → "
-                        f"{presentation.balance_after:,}"
-                    )
-                )
 
         self.cancel_action.setText(presentation.secondary_label)
         self.cancel_action.setAccessibleName(presentation.secondary_label)
+        self.cancel_action.setVisible(bool(presentation.secondary_label))
         primary_label = presentation.primary_label
         primary_accessible_name = presentation.primary_accessible_name
         if display_status is PurchaseStatus.TARGET_INVALID:
             self._primary_route_override = "garden"
-            primary_label = "Choose another plant"
-            primary_accessible_name = "Return to the Garden and choose another plant"
+            primary_label = "Choose plant"
+            primary_accessible_name = "Choose another plant in the Garden"
         self.purchase_action.setText(_qt_button_text(primary_label))
         self.purchase_action.setMinimumWidth(max(
             96,
@@ -2530,7 +2497,7 @@ class PurchaseConfirmationDialog(DialogShell):
         ))
         self.purchase_action.setAccessibleName(primary_accessible_name)
         self.purchase_action.setAccessibleDescription(
-            f"{presentation.outcome} Current terms are checked again before saving."
+            presentation.outcome
             if not (self._primary_route_override or presentation.primary_route)
             else primary_accessible_name
         )
@@ -2622,11 +2589,8 @@ class PurchaseConfirmationDialog(DialogShell):
             .removesuffix(" left")
             .lower()
         )
-        self.discard_warning.setText(
-            f"Replacing now discards the remaining {remaining_copy}."
-            if seconds > 0
-            else "The current Fertilizer has expired; refresh before purchasing."
-        )
+        self.discard_warning.setText("")
+        self.discard_warning.hide()
 
     def _set_submitting(self, submitting: bool) -> None:
         self._submitting = bool(submitting)
@@ -2659,7 +2623,7 @@ class PurchaseConfirmationDialog(DialogShell):
             self.presentation.processing_label
             if self._submitting
             else _qt_button_text(
-                "Return to Garden"
+                "Choose plant"
                 if self._primary_route_override == "garden"
                 else self.presentation.primary_label
             )
@@ -2668,7 +2632,7 @@ class PurchaseConfirmationDialog(DialogShell):
             self.presentation.processing_label.replace("…", "")
             if self._submitting
             else (
-                "Return to the Garden and choose another plant"
+                "Choose another plant in the Garden"
                 if self._primary_route_override == "garden"
                 else self.presentation.primary_accessible_name
             )
@@ -2728,7 +2692,7 @@ class PurchaseConfirmationDialog(DialogShell):
             self._set_submitting(False)
             self._show_failure(
                 PurchaseStatus.PERSISTENCE_FAILURE,
-                "The purchase could not be completed; no Garden Coins were spent. Try again.",
+                "No Garden Coins were spent.",
             )
             return
         self.outcome = outcome
@@ -2765,6 +2729,13 @@ class PurchaseConfirmationDialog(DialogShell):
             )
             self._set_submitting(False)
             self.quote = refreshed
+            if outcome.status is PurchaseStatus.STALE_BALANCE and refreshed.ready:
+                self._render_presentation(
+                    purchase_presentation(refreshed, ignore_status=True),
+                    status=PurchaseStatus.READY,
+                )
+                self._clear_status()
+                return
             self._render_presentation(
                 purchase_presentation(
                     refreshed,
@@ -2807,8 +2778,7 @@ class PurchaseConfirmationDialog(DialogShell):
         tone = self._failure_tone(status)
         visible_copy = {
             PurchaseStatus.PERSISTENCE_FAILURE: (
-                "Purchase could not be saved. No Garden Coins were spent and "
-                "no item was added."
+                "No Garden Coins were spent."
             ),
             PurchaseStatus.INSUFFICIENT_COINS: (
                 self.presentation.outcome
@@ -2844,7 +2814,7 @@ class PurchaseConfirmationDialog(DialogShell):
             self.setProperty("transactionPresentation", "retry-preview")
         self.status.setText(visible_copy)
         self.status.setAccessibleDescription(
-            f"Purchase {tone.value}: {status.value.replace('_', ' ')}. {visible_copy}"
+            ". ".join(part for part in (self.presentation.title, visible_copy) if part)
         )
         style = {
             FeedbackTone.INFO: (
@@ -2861,18 +2831,20 @@ class PurchaseConfirmationDialog(DialogShell):
             style + "border-radius:8px; padding:8px 10px;"
         )
         set_semantic_role(self.status, SemanticRole.BANNER, tone=tone)
-        self.status.show()
-        self.status.setFocus()
+        self.status.setVisible(bool(visible_copy))
+        if visible_copy:
+            self.status.setFocus()
         self._update_responsive_layout(self.width())
-        self.accessibility_announcer.announce(
-            self.status.accessibleDescription(),
-            priority=(
-                AnnouncementPriority.ASSERTIVE
-                if tone is FeedbackTone.ERROR
-                else AnnouncementPriority.POLITE
-            ),
-            target=self.status,
-        )
+        if visible_copy:
+            self.accessibility_announcer.announce(
+                self.status.accessibleDescription(),
+                priority=(
+                    AnnouncementPriority.ASSERTIVE
+                    if tone is FeedbackTone.ERROR
+                    else AnnouncementPriority.POLITE
+                ),
+                target=self.status,
+            )
 
     def _update_responsive_layout(self, width: int) -> None:
         # These dialogs are intentionally content-fit and therefore shorter
