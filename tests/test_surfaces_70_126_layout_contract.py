@@ -64,6 +64,12 @@ def test_odd_achievement_cards_span_the_category_row_only_when_opted_in() -> Non
     assert '"Achievement progress", span_singleton_rows=True' in source
     assert '"Collectible collection", wide_columns=4' in source
 
+    capture = CAPTURE.read_text("utf-8")
+    assert 'candidate.property("spansSingletonRow")' in capture
+    assert '"singleton_span_cards"' in capture
+    assert '"singleton_spans_passed"' in capture
+    assert 'annotation.get("achievement_grid_columns", 0)' in capture
+
 
 def test_reset_streak_uses_first_positive_bonus_but_keeps_zero_percent_row() -> None:
     streak = _method_source("GardenDetailsDialog", "_refresh_streak")

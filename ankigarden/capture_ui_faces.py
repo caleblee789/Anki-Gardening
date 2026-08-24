@@ -5404,7 +5404,10 @@ class _UiFaceCaptureRunner:
                     and projection.criteria_text in visible_label_texts
                     and projection.value_text in visible_label_texts
                     and projection.reward_summary in visible_label_texts
-                    and bool(annotation.get("target_card_fully_visible", False)),
+                    and bool(annotation.get("target_card_fully_visible", False))
+                    and int(annotation.get("achievement_grid_columns", 0)) == 2
+                    and bool(annotation.get("singleton_spans_passed", False))
+                    and len(annotation.get("singleton_span_cards", ())) == 2,
                     annotation,
                 )
             elif state_name == "streak-at-risk":
@@ -9926,6 +9929,49 @@ class _UiFaceCaptureRunner:
                 annotation = dict(
                     self._capture_annotations.get(label, {}) or {}
                 )
+                layout = getattr(achievement_grid, "grid", None)
+                singleton_cards: list[dict[str, Any]] = []
+                if layout is not None:
+                    for candidate, full_width in entries:
+                        if (
+                            full_width
+                            or candidate.isHidden()
+                            or not bool(candidate.property("spansSingletonRow"))
+                        ):
+                            continue
+                        layout_index = layout.indexOf(candidate)
+                        if layout_index < 0:
+                            continue
+                        grid_row, grid_column, row_span, column_span = (
+                            layout.getItemPosition(layout_index)
+                        )
+                        singleton_cards.append({
+                            "achievement_id": str(
+                                candidate.property("achievementId") or ""
+                            ),
+                            "grid_position": [
+                                int(grid_row),
+                                int(grid_column),
+                            ],
+                            "grid_span": [
+                                int(row_span),
+                                int(column_span),
+                            ],
+                        })
+                annotation.update({
+                    "achievement_grid_columns": int(
+                        getattr(achievement_grid, "_columns", 0) or 0
+                    ),
+                    "singleton_span_cards": singleton_cards,
+                    "singleton_spans_passed": bool(
+                        len(singleton_cards) == 2
+                        and all(
+                            card["grid_position"][1] == 0
+                            and card["grid_span"] == [1, 2]
+                            for card in singleton_cards
+                        )
+                    ),
+                })
                 if target is not None and scroll is not None:
                     container = getattr(achievement_grid, "container", None)
                     if container is not None:
