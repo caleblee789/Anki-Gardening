@@ -745,6 +745,8 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "QSizePolicy.Policy.Ignored" in option_page_geometry
     assert "active_page.sizeHint().height()" in option_page_geometry
     assert "self.option_tabs.tabBar().sizeHint().height()" in option_page_geometry
+    assert "self.option_tabs.contentsMargins()" in option_page_geometry
+    assert "frameWidth" not in option_page_geometry
     assert "self.option_tabs.setMaximumHeight" in option_page_geometry
     assert "self.option_tabs.updateGeometry()" in option_page_geometry
     assert "self._sync_option_page_geometry(self.option_tabs.currentIndex())" in rebuild_options

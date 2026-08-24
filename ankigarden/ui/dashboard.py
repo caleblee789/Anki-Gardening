@@ -13686,7 +13686,11 @@ class CollectibleDetailDialog(GardenDialog):
                 0,
                 int(self.option_tabs.tabBar().sizeHint().height()),
             )
-            frame_height = max(0, int(self.option_tabs.frameWidth()) * 2)
+            tab_margins = self.option_tabs.contentsMargins()
+            frame_height = max(
+                0,
+                int(tab_margins.top()) + int(tab_margins.bottom()),
+            )
             self.option_tabs.setMinimumHeight(0)
             self.option_tabs.setMaximumHeight(max(
                 tab_bar_height + 80,
