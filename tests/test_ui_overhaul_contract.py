@@ -301,6 +301,11 @@ def test_nursery_success_toast_has_a_compact_semantic_icon() -> None:
     assert 'self.icon.setAccessibleName("Error" if error else "Success")' in toast
     assert "self.setMinimumHeight(40)" in toast
     assert "self.setMaximumHeight(48)" in toast
+    assert "self._clear_timer = QTimer(self)" in toast
+    assert "self._clear_timer.setSingleShot(True)" in toast
+    assert "self._clear_timer.timeout.connect(self._clear_scheduled_message)" in toast
+    assert "self._clear_timer.start(duration_ms)" in toast
+    assert "QTimer.singleShot(duration_ms" not in toast
 
 
 def test_available_plants_fill_space_with_an_auto_fit_catalog() -> None:

@@ -3879,7 +3879,11 @@ class ToastRegion(QFrame):
         set_keyboard_focus_surface(self)
         self.accessibility_announcer = AccessibilityAnnouncer(self)
         self._generation = 0
+        self._scheduled_generation = 0
         self._callback: Callable[[], None] | None = None
+        self._clear_timer = QTimer(self)
+        self._clear_timer.setSingleShot(True)
+        self._clear_timer.timeout.connect(self._clear_scheduled_message)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
@@ -3918,6 +3922,7 @@ class ToastRegion(QFrame):
         error: bool = False,
         dismissible: bool | None = None,
     ) -> None:
+        self._clear_timer.stop()
         self._generation += 1
         generation = self._generation
         text = _learner_text(message)
@@ -3961,7 +3966,8 @@ class ToastRegion(QFrame):
         if duration_ms is None:
             duration_ms = 6000 if callback is not None else 3000
         if duration_ms > 0:
-            QTimer.singleShot(duration_ms, lambda: self._clear_generation(generation))
+            self._scheduled_generation = generation
+            self._clear_timer.start(duration_ms)
 
     def _run_action(self) -> None:
         callback = self._callback
@@ -3973,7 +3979,11 @@ class ToastRegion(QFrame):
         if generation == self._generation:
             self.clear()
 
+    def _clear_scheduled_message(self) -> None:
+        self._clear_generation(self._scheduled_generation)
+
     def clear(self) -> None:
+        self._clear_timer.stop()
         self._generation += 1
         self._callback = None
         self.message.setText("")
