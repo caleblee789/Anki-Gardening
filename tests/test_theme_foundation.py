@@ -178,7 +178,7 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert scope["MIN_HIT_TARGET"] == 34
     assert scope["BUTTON_MIN_HEIGHT"] == 34
     assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
-    assert scope["INPUT_VISUAL_HEIGHT"] == 40
+    assert scope["INPUT_VISUAL_HEIGHT"] == 36
     assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
     assert scope["ICON_BUTTON_SIZE"] == 30
 
@@ -190,6 +190,8 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton:disabled" in buttons
     assert "QPushButton:focus" in buttons
     assert "border: 2px solid" in buttons
+    assert f"border-color: {scope['GARDEN_THEME']['coin_accent']}" in buttons
+    assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
 
 

@@ -129,7 +129,7 @@ BUTTON_VISUAL_HEIGHT = 34
 PRIMARY_BUTTON_VISUAL_HEIGHT = 36
 COMPACT_BUTTON_HEIGHT = 30
 ICON_BUTTON_VISUAL_SIZE = 30
-INPUT_VISUAL_HEIGHT = 40
+INPUT_VISUAL_HEIGHT = 36
 TAB_VISUAL_HEIGHT = 38
 TOGGLE_VISUAL_WIDTH = 36
 TOGGLE_VISUAL_HEIGHT = 20
@@ -732,7 +732,7 @@ def button_stylesheet(
         }}
         QPushButton:checked, QPushButton[selected='true'] {{
             background: {t['selected_surface']};
-            border-color: {t['focus_ring']};
+            border-color: {t['coin_accent']};
             color: {t['text_primary']};
             font-weight: 700;
         }}
@@ -779,7 +779,7 @@ def tool_button_stylesheet(
         }}
         QToolButton:checked {{
             background: {t['selected_surface']};
-            border-color: #6d8e70;
+            border-color: {t['coin_accent']};
             font-weight: 700;
         }}
         QToolButton[variant='primary'] {{
@@ -900,7 +900,7 @@ def semantic_component_stylesheet(
         }}
         QTabBar[gardenRole='tabs']::tab:selected {{
             color: {t['text_primary']};
-            border-bottom-color: {t['focus_ring']};
+            border-bottom-color: {t['coin_accent']};
             font-weight: 700;
         }}
         QTabBar[gardenRole='tabs']:focus {{
@@ -921,7 +921,7 @@ def semantic_component_stylesheet(
             padding: 0 {int(SpacingToken.MD) - 1}px;
             color: {t['text_primary']};
             background: {t['selected_surface']};
-            border: 2px solid {t['focus_ring']};
+            border: 2px solid {t['coin_accent']};
             font-weight: 700;
         }}
         QPushButton[gardenRole='segmented-filter']:focus,
