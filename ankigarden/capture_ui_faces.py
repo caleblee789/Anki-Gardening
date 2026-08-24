@@ -2562,6 +2562,21 @@ class _UiFaceCaptureRunner:
                                 "Anki Garden capture: Home retry refresh failed",
                                 exc_info=True,
                             )
+                    surface_controller = getattr(mw, state, None)
+                    refresh_surface = getattr(
+                        surface_controller,
+                        "refresh",
+                        None,
+                    )
+                    if callable(refresh_surface):
+                        try:
+                            refresh_surface()
+                        except Exception:
+                            logger.debug(
+                                "Anki Garden capture: %s controller refresh failed",
+                                state,
+                                exc_info=True,
+                            )
                 QTimer.singleShot(
                     120,
                     lambda: self._wait_for_home_surface(

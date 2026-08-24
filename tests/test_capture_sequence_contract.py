@@ -937,6 +937,9 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     assert "activeSlot === expectedActiveSlot" in source
     assert '"__EXPECTED_ACTIVE_SLOT__"' in source
     assert "stale_nurtured_slot" in source
+    assert 'surface_controller = getattr(mw, state, None)' in source
+    assert '"refresh"' in source
+    assert "refresh_surface()" in source
     assert "const canonicalSettled = fixtureState.startsWith('preview-')" in source
     assert "root.dataset.state === 'success'" in source
     assert "failedImageCount === 0" in source
