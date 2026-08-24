@@ -2729,7 +2729,9 @@ def test_collection_and_canonical_achievement_fixtures_restore_on_close() -> Non
     assert "achievement_progress_display" not in achievement_fixture
     assert "achievement_presentation" in clear_recall
     assert '"canonical_projection": True' in clear_recall
-    assert "restore_callback=lambda:" in clear_recall
+    assert "def restore()" in clear_recall
+    assert "restore_callback=restore" in clear_recall
+    assert "self._restore_reward_capture_fixture(snapshot)" in clear_recall
     assert "_restore_reward_capture_fixture(snapshot)" in clear_recall
     assert "finally:\n                    if restore_callback is not None:" in progress_page
     assert "on_error=restore_callback" in progress_page

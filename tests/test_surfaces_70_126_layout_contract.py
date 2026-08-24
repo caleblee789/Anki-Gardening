@@ -69,6 +69,10 @@ def test_odd_achievement_cards_span_the_category_row_only_when_opted_in() -> Non
     assert '"singleton_span_cards"' in capture
     assert '"singleton_spans_passed"' in capture
     assert 'annotation.get("achievement_grid_columns", 0)' in capture
+    assert 'dashboard._achievement_filter = "completed"' in capture
+    assert 'dashboard._achievement_filter = "in_progress"' in capture
+    assert 'annotation.get("achievement_filter") == "completed"' in capture
+    assert 'annotation.get("achievement_filter") == "in_progress"' in capture
 
 
 def test_reset_streak_uses_first_positive_bonus_but_keeps_zero_percent_row() -> None:

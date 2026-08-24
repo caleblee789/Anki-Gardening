@@ -5367,6 +5367,7 @@ class _UiFaceCaptureRunner:
                     and all(item.completed for item in projections)
                     and all(bool(item.reward_summary) for item in projections)
                     and bool(annotation.get("passed", False))
+                    and annotation.get("achievement_filter") == "completed"
                     and any(
                         projection.reward_summary in visible_label_texts
                         for projection in projections
@@ -5405,6 +5406,7 @@ class _UiFaceCaptureRunner:
                     and projection.value_text in visible_label_texts
                     and projection.reward_summary in visible_label_texts
                     and bool(annotation.get("target_card_fully_visible", False))
+                    and annotation.get("achievement_filter") == "in_progress"
                     and int(annotation.get("achievement_grid_columns", 0)) == 2
                     and bool(annotation.get("singleton_spans_passed", False))
                     and len(annotation.get("singleton_span_cards", ())) == 2,
@@ -9907,6 +9909,17 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def ready() -> None:
+            if label in {
+                "achievement-completed",
+                "clear-recall-canonical-projection",
+            }:
+                annotation = dict(
+                    self._capture_annotations.get(label, {}) or {}
+                )
+                annotation["achievement_filter"] = str(
+                    getattr(dashboard, "_achievement_filter", "") or ""
+                )
+                self._capture_annotations[label] = annotation
             if label == "clear-recall-canonical-projection":
                 achievement_grid = getattr(
                     dashboard,
@@ -9935,7 +9948,7 @@ class _UiFaceCaptureRunner:
                     for candidate, full_width in entries:
                         if (
                             full_width
-                            or candidate.isHidden()
+                            or bool(candidate.property("excludedFromProgressGrid"))
                             or not bool(candidate.property("spansSingletonRow"))
                         ):
                             continue
@@ -13498,11 +13511,23 @@ class _UiFaceCaptureRunner:
                 and all(bool(item.reward_summary) for item in projections)
             ),
         }
+        dashboard = getattr(self.app, "dashboard", None)
+        previous_filter = str(
+            getattr(dashboard, "_achievement_filter", "all") or "all"
+        )
+        if dashboard is not None:
+            dashboard._achievement_filter = "completed"
+
+        def restore() -> None:
+            if dashboard is not None:
+                dashboard._achievement_filter = previous_filter
+            self._restore_reward_capture_fixture(snapshot)
+
         self._refresh_capture_dashboard()
         self._capture_progress_page(
             "achievements",
             "achievement-completed",
-            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+            restore_callback=restore,
         )
 
     def _capture_clear_recall_projection(self) -> None:
@@ -13568,11 +13593,23 @@ class _UiFaceCaptureRunner:
             "canonical_projection": True,
             "passed": passed,
         }
+        dashboard = getattr(self.app, "dashboard", None)
+        previous_filter = str(
+            getattr(dashboard, "_achievement_filter", "all") or "all"
+        )
+        if dashboard is not None:
+            dashboard._achievement_filter = "in_progress"
+
+        def restore() -> None:
+            if dashboard is not None:
+                dashboard._achievement_filter = previous_filter
+            self._restore_reward_capture_fixture(snapshot)
+
         self._refresh_capture_dashboard()
         self._capture_progress_page(
             "achievements",
             "clear-recall-canonical-projection",
-            restore_callback=lambda: self._restore_reward_capture_fixture(snapshot),
+            restore_callback=restore,
         )
 
     def _set_streak_capture_state(
