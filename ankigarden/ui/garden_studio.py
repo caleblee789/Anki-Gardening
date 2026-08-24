@@ -535,7 +535,10 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Preferred,
         )
         self.advanced_actions_layout = QVBoxLayout(self.advanced_panel)
-        self.advanced_actions_layout.setContentsMargins(0, 8, 0, 0)
+        # The Settings shell keeps its footer outside the scrolling body. Leave
+        # a final desktop spacing unit after the reset action so the lowest
+        # keyboard target never lands flush against that footer.
+        self.advanced_actions_layout.setContentsMargins(0, 8, 0, 16)
         self.advanced_actions_layout.setSpacing(8)
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.notifications_row = ToggleSettingRow(

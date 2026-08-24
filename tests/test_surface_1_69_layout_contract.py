@@ -26,3 +26,10 @@ def test_settings_preview_uses_compact_desktop_geometry() -> None:
     assert "QCheckBox {{ min-height:36px; max-height:36px" in source
     assert "width:32px; height:18px; border-radius:9px" in source
 
+
+def test_settings_advanced_actions_reserve_footer_clearance() -> None:
+    source = _source("ankigarden/ui/garden_studio.py")
+
+    assert "self.advanced_actions_layout.setContentsMargins(0, 8, 0, 16)" in source
+    assert "self.controls_scroll.setVerticalScrollBarPolicy(" in source
+    assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in source
