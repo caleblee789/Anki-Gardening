@@ -83,7 +83,7 @@ class ToggleSettingRow(QFrame):
         self.setMinimumWidth(0)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 8)
+        layout.setContentsMargins(0, 6, 0, 6)
         layout.setSpacing(12)
         copy = QVBoxLayout()
         copy.setSpacing(2)
@@ -133,13 +133,13 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
-        self.setMinimumHeight(168)
-        self.setMaximumHeight(180)
+        self.setMinimumHeight(144)
+        self.setMaximumHeight(144)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
-        scene.setMinimumHeight(168)
-        scene.setMaximumHeight(180)
+        scene.setMinimumHeight(144)
+        scene.setMaximumHeight(144)
         scene.setMinimumWidth(0)
         scene.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -158,7 +158,7 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Preferred,
         )
         scrim_layout = QHBoxLayout(self.scrim)
-        scrim_layout.setContentsMargins(16, 22, 16, 12)
+        scrim_layout.setContentsMargins(14, 14, 14, 10)
         scrim_layout.setSpacing(12)
         identity = QVBoxLayout()
         identity.setSpacing(2)
@@ -352,36 +352,36 @@ class GardenStudioWidget(QWidget):
             QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
             QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:1px solid {t['subtle_border']}; border-radius:12px; }}
             QFrame[homeGardenPreview='true']:disabled {{ border-color:{t['disabled_border']}; }}
-            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 rgba(5,20,16,0),stop:.42 rgba(5,20,16,215),stop:1 rgba(5,20,16,248)); border:0; }}
+            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 rgba(5,20,16,238),stop:.58 rgba(5,20,16,112),stop:1 rgba(5,20,16,0)); border:0; }}
             QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:12px; font-weight:700; letter-spacing:1px; }}
             QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:700; }}
             QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
-            QLabel[previewAction='true'] {{ min-height:40px; padding:0 14px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:14px; font-weight:600; }}
+            QLabel[previewAction='true'] {{ min-height:32px; max-height:32px; padding:0 12px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
             QFrame[toggleSettingRow='true'] {{ background:transparent; border:0; }}
-            QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:0 28px 0 8px; min-height:44px; }}
+            QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:0 28px 0 8px; min-height:36px; max-height:36px; }}
             QComboBox:hover {{ border-color:#5b836f; }}
             QComboBox:focus {{ border:2px solid {t['focus_ring']}; padding:0 27px 0 7px; }}
             QComboBox::drop-down {{ border:0; width:24px; }}
             QComboBox QAbstractItemView {{ color:{t['text_primary']}; background:#142c27; selection-background-color:{t['action_accent']}; border:1px solid {t['secondary_border']}; }}
-            QSlider {{ min-height:44px; border:2px solid transparent; border-radius:8px; }}
+            QSlider {{ min-height:36px; max-height:36px; border:2px solid transparent; border-radius:8px; }}
             QSlider:focus {{ border-color:{t['focus_ring']}; }}
             QSlider::groove:horizontal {{ height:6px; background:#203d36; border-radius:3px; }}
             QSlider::sub-page:horizontal {{ background:{t['growth_accent']}; border-radius:3px; }}
             QSlider::handle:horizontal {{ width:18px; height:18px; margin:-6px 0; background:{t['focus_ring']}; border:2px solid {t['action_accent']}; border-radius:10px; }}
             QSlider::handle:horizontal:hover {{ background:#f4f8cf; border-color:{t['growth_accent']}; }}
             QSlider:disabled {{ color:#74877d; }}
-            QCheckBox {{ min-height:44px; color:{t['text_primary']}; border:2px solid transparent; border-radius:6px; padding:0 4px; }}
+            QCheckBox {{ min-height:36px; max-height:36px; color:{t['text_primary']}; border:2px solid transparent; border-radius:6px; padding:0 4px; }}
             QCheckBox:focus {{ border-color:{t['focus_ring']}; }}
-            QCheckBox::indicator {{ width:20px; height:20px; background:#102622; border:1px solid #527563; border-radius:5px; }}
+            QCheckBox::indicator {{ width:18px; height:18px; background:#102622; border:1px solid #527563; border-radius:5px; }}
             QCheckBox::indicator:hover {{ border-color:#78a189; }}
             QCheckBox::indicator:checked {{ background:{t['growth_accent']}; border:4px solid #17342e; }}
             QCheckBox::indicator:disabled {{ background:{t['disabled_surface']}; border-color:{t['disabled_border']}; }}
-            QCheckBox[toggleSwitch='true']::indicator {{ width:38px; height:22px; border-radius:11px; border:1px solid {t['strong_border']}; background:#20312c; }}
+            QCheckBox[toggleSwitch='true']::indicator {{ width:32px; height:18px; border-radius:9px; border:1px solid {t['strong_border']}; background:#20312c; }}
             QCheckBox[toggleSwitch='true']::indicator:checked {{ border:1px solid {t['growth_accent']}; background:{t['action_accent']}; }}
         """ + tool_button_stylesheet())
         self.root_layout = QHBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(20)
+        self.root_layout.setSpacing(16)
         self.controls = QFrame()
         self.controls.setProperty("settingsControls", True)
         self.controls.setMinimumWidth(0)
@@ -392,8 +392,8 @@ class GardenStudioWidget(QWidget):
         )
         controls_layout = QVBoxLayout(self.controls)
         self.controls_layout = controls_layout
-        controls_layout.setContentsMargins(14, 14, 14, 14)
-        controls_layout.setSpacing(12)
+        controls_layout.setContentsMargins(12, 12, 12, 12)
+        controls_layout.setSpacing(10)
         controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         controls_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
 
@@ -417,9 +417,9 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Preferred,
         )
         theme_layout = QHBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(12, 10, 12, 10)
+        theme_layout.setContentsMargins(10, 8, 10, 8)
         self.theme_thumbnail = QLabel()
-        self.theme_thumbnail.setFixedSize(96, 54)
+        self.theme_thumbnail.setFixedSize(84, 48)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
@@ -558,8 +558,8 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Preferred,
         )
         preview_layout = QVBoxLayout(self.preview_panel)
-        preview_layout.setContentsMargins(14, 14, 14, 14)
-        preview_layout.setSpacing(10)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.setSpacing(8)
         preview_title = QLabel("Preview")
         preview_title.setProperty("settingsHeading", True)
         preview_title.setMinimumWidth(0)
@@ -615,7 +615,7 @@ class GardenStudioWidget(QWidget):
                 self.preview_panel,
                 floor=360,
             ),
-            spacing=20,
+            spacing=16,
             apply_mode=self._apply_studio_layout_mode,
             telemetry_target=self,
         )
