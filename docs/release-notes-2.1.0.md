@@ -47,8 +47,10 @@ release.
 
 ## Interface overhaul
 
-- Home preview now has explicit loading, stale, error, and disabled states; Open
-  Garden remains reachable when preview rendering fails.
+- The fixed-height Home preview now keeps only the Garden name, nurtured plant,
+  Growth, and **Open Garden** across ready, loading, stale, error, and disabled
+  states. Today, Anki streak, and Garden Coins remain in the full Garden and
+  Garden Progress, and **Open Garden** stays reachable after render failure.
 - Starter setup shows cost and consequences before confirmation, keeps
   placement transactional, reports unchanged committed state on failure, and
   finishes with a concise setup receipt.
@@ -58,7 +60,8 @@ release.
   protection.
 - Plant Story, Garden Progress, Achievements, reward history, Garden Finds,
   Garden Coins, Collection, Nursery, loadout, Fertilizer, purchase, and Growth
-  Charge surfaces now share responsive dialog, feedback, footer, focus, and
+  Charge surfaces now share scheduled content fitting, one overflow owner,
+  normal-flow feedback/footer, compact button variants, focus, and typed
   transaction-state contracts.
 - Reward surfaces consume committed projections from
   `ankigarden.reward_presentation`; UI components no longer reconstruct reward
@@ -66,9 +69,17 @@ release.
 - Collection search, sort, status, and category controls reflow without a
   horizontal chip scroller. Species, environment, consumable, missing-art, and
   empty-result cards retain structured non-color status cues.
-- Settings uses staged edits, accurate changed-setting counts, Restore defaults,
-  dirty-close protection, validation, diagnostic warnings, and reduced-motion
-  behavior. Production mutation controls remain excluded.
+- Nursery uses a canonical 950 px family width, tab-specific fitted heights,
+  responsive three-to-two-column cards, and one feedback host below the tabs.
+  Purchase receipts use **Place in Garden**, **View Collection**, and
+  **View Garden** without overlaying the catalog.
+- Stale purchase balance refresh keeps the affordable confirmation visible with
+  a **Balance updated** chip; Growth Charges show **Availability updated** and a
+  structured Seed → Sprout receipt without duplicating transaction logic.
+- Settings uses staged edits, an accurate unsaved-change count, compact
+  Discard/Save actions, Restore defaults, dirty-close protection, validation,
+  **Reduce animations**, **Show reviewer rewards**, and a separate read-only
+  **Diagnostics** tab. Production mutation controls remain excluded.
 
 The proposed four-theme system and every downstream palette matrix are outside
 this release. Anki Garden retains its established styling.
@@ -89,10 +100,12 @@ this release. Anki Garden retains its established styling.
 ## Release validation status
 
 Automated source, simulation, and package gates must pass before live capture.
-Exact-package Anki startup, restart, interactive acceptance, the complete
+Exact-package Anki startup, restart, interactive acceptance, the complete v21
 126-surface/17-sheet canonical-100%-scale capture, geometry validation,
 full-resolution visual
 review, final archive path, and SHA-256 belong to the immutable capture report
 for the final combined package. Resize, breakpoint, 150%, and 200% screenshot
-duplicates are excluded; responsive geometry remains automated. This note does
-not substitute for that evidence.
+duplicates are excluded; responsive geometry remains automated. Native
+Windows/Linux, 125%/150%, true OS scaling, forced colors, screen-reader, and
+broader human/device acceptance remain separate unless actually run. This note
+does not substitute for that evidence.

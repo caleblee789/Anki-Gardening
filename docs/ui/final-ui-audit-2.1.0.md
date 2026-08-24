@@ -40,7 +40,7 @@ The canonical set covers:
 - Plant Growth, streak, Garden Coins, achievements, Garden Finds, reward
   history, Reviewer notifications, and Collection;
 - four-tab Nursery, ownership, empty states, all purchase confirmations,
-  typed errors, receipts, Garden spaces, Weather, Scenery, and Growth Charges;
+  typed errors, receipts, Garden beds, Weather, Scenery, and Growth Charges;
 - Settings, diagnostics, production-only capability absence, keyboard focus,
   reduced motion, loading, stale, empty, warning, error, and success states.
 

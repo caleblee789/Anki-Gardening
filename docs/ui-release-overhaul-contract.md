@@ -1,7 +1,7 @@
 # Anki Garden UI release contract
 
 Status: implemented contract for Anki Garden 2.1.0, state schema 21, and UI
-capture contract v19. Source code and persisted behavior are authoritative.
+capture contract v21. Source code and persisted behavior are authoritative.
 
 ## Authority map
 
@@ -28,13 +28,13 @@ states are in `docs/ui/state_scenarios.md`.
 
 | Entry point | Destination and behavior |
 |---|---|
-| Deck Browser or Overview card | Compact, noninteractive preview with Open Garden, starter, loading, stale, partial, and retry states |
+| Deck Browser or Overview card | Fixed-height, noninteractive preview with Garden name, nurtured plant, Growth, Open Garden, starter, loading, stale, partial, and retry states; Today, Anki streak, and Garden Coins are omitted |
 | Open Garden | Full scene-first Garden with its name, three metric buttons, Collection, Settings, and interactive landmarks |
 | Plant selection | Contextual native actions for Nurture, Move, Story, Fertilizer, and Growth Charge when eligible |
 | Garden Progress or a metric | Focused Plant Growth, Anki streak, Garden Coins, Achievements, or Collection page |
 | Cottage or Collection action | Collection page in the existing Garden Progress window |
-| Nursery landmark | Four-tab Nursery for Plants, Supplements, Garden spaces, and Weather/Scenery |
-| Settings action or Anki menu | Staged settings and diagnostics with explicit save/cancel behavior |
+| Nursery landmark | Four-tab Nursery for Plants, Fertilizers and boosts, Garden beds, and Weather and Scenery |
+| Settings action or Anki menu | Staged settings plus read-only Diagnostics with explicit save/discard behavior |
 
 Home and Settings previews expose no scene actions. The full Garden alone owns
 plant selection, move destinations, and landmark activation.
@@ -93,14 +93,17 @@ Nursery purchases never auto-equip an environment item.
 - Verdant Twilight V6, its geometry-compatible Scenery reskins, seven Weather
   overlays, six fixed planter spaces, and the current plant/item art remain the
   visual foundation.
-- Dialogs have one vertical scroll owner, reachable content, stable footer
-  actions, and no hidden horizontal overflow.
+- Dialogs schedule content fitting after layout, visibility, font, style,
+  artwork, and state changes. They have one vertical overflow owner, reachable
+  content, normal-flow feedback/footer actions, terminal-state shrinking, and
+  no hidden horizontal overflow.
 - Shared layout modes reflow content instead of scaling the whole UI. Minimum,
   default, large, breakpoint, 150%, and 200% geometry are automated even though
   they are not duplicate screenshot faces.
-- Controls retain at least 44 px targets, visible keyboard focus, accessible
-  names/descriptions, logical order, focus restoration, and non-color state
-  cues.
+- Text-fit buttons use the shared 30 px compact-row, 34 px secondary, 36 px
+  primary, 38 px onboarding, and 30 px icon variants. Controls retain visible
+  keyboard focus, accessible names/descriptions and tooltips, logical order,
+  focus restoration, and non-color state cues.
 - Reduced motion combines OS and add-on preferences. Hidden widgets stop
   animation; Reviewer feedback preserves focus and does not activate itself.
 - Missing or unreadable artwork preserves the item/plant identity and renders
@@ -108,26 +111,24 @@ Nursery purchases never auto-equip an environment item.
 
 ## Capture and acceptance contract
 
-Capture contract v19 contains 126 distinct functional/state faces in source
+Capture contract v21 contains 126 distinct functional/state faces in source
 order. Each is captured exactly once under `QT_SCALE_FACTOR=1.0`; responsive
 and scaling duplicates are excluded.
 
-The canonical evidence is:
-
-- manifest:
-  `build/ui-face-captures/capture-sequence-20260823-000843/20260823-000847/manifest.json`;
-- contact-sheet index:
-  `build/ui-face-captures/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260823-000843/contact-sheet-set.json`;
-- evidence ZIP: `build/ui-face-captures/anki-garden-ui-faces-20260823-000843.zip`.
-
-The independent validator must report contract 19, 126/126 captures, zero
+The independent validator must report contract 21, 126/126 captures, zero
 failures or text-layout warnings, and 17/17 valid contact sheets. Production and
 capture archives must retain exact shared-payload parity and distinct
 capability identities.
 
-Automated/macOS Qt evidence does not close final-production restart and
-persistence, native Windows/Linux, true OS scale and mixed-DPI transitions,
-screen-reader, contrast, keyboard-walkthrough, human/device visual, or complete
+Raw manifest-owned PNGs are the runtime geometry authority. Contact sheets are
+review aids: their screenshots are top-aligned on a visibly distinct light
+frame and carry an explicit outline so unused sheet space cannot be mistaken
+for an application modal or gutter. The final immutable evidence paths and
+hashes belong in `docs/ui/final-ui-audit-2.1.0.md` after the accepted run.
+
+Automated/macOS Qt evidence does not close native Windows/Linux, 125%/150% or
+true OS scale and mixed-DPI transitions, forced colors, screen-reader,
+contrast, broader keyboard walkthrough, human/device visual, or complete
 end-to-end acceptance. Those gates remain explicit and unrun until separately
 performed and recorded.
 

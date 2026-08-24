@@ -6,9 +6,9 @@ that style as a read-only card beside a live, noninteractive garden preview.
 ## Garden display
 
 - **Show garden on home screens**: Show the compact garden preview in Deck
-  Browser and Overview. The preview displays nurtured-plant Growth, today's
-  answer count, Anki streak, Garden Coins, the closest immediate achievement
-  when useful, and **Open Garden** (or **Choose starter** before setup). Its
+  Browser and Overview. The preview displays the Garden name, nurtured plant,
+  Growth, and **Open Garden** (or **Choose starter** before setup). Today, Anki
+  streak, and Garden Coins stay in the full Garden and Garden Progress. Preview
   plants and Nursery cannot be clicked.
 - **Show progress notifications**: Show quiet, silent, non-modal stage,
   milestone, Garden Coin, environment, and consumable cards with relevant
@@ -21,11 +21,12 @@ two visual-layer switches. Hiding Weather or Scenery does not disable its
 equipped passive. Purchasable choices live in the Nursery's matching tab.
 
 Artwork quality, Weather detail, and animation performance are balanced
-automatically. Anki Garden also honors reduced-motion behavior automatically;
-there is no manual quality, Weather animation, or Fine tune control.
+automatically. Anki Garden honors the operating system's reduced-motion setting,
+and **Reduce animations** can request the same calmer behavior explicitly;
+there is no manual quality, Weather-animation, or Fine tune control.
 
 **Cancel** restores the persisted values. **Restore defaults** selects the
-defaults without saving them. The separate **Troubleshooting** tab retains its
+defaults without saving them. The separate **Diagnostics** tab retains its
 diagnostic report and copy action.
 
 Each card answer Garden can count starts with 10 base Growth for the unfinished
