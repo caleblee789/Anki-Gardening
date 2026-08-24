@@ -1751,6 +1751,9 @@ def _garden_dialog_stylesheet() -> str:
         QFrame[emptyState='true'] QPushButton[emptyStateAction='true'][variant='primary'] {{ background:{t['action_accent']}; border:1px solid {t['action_border']}; color:{t['action_text']}; }}
         QFrame[emptyState='true'] QPushButton[emptyStateAction='true'][variant='primary']:hover {{ background:{t['action_hover']}; }}
         QFrame[emptyState='true'] QPushButton[emptyStateAction='true'][variant='primary']:pressed {{ background:{t['action_pressed']}; }}
+        QPushButton[catalogCard='true'] {{ min-height:214px; max-height:214px; padding:10px; text-align:left; background:#0C261F; border:1px solid #20483C; border-radius:12px; }}
+        QPushButton[catalogCard='true']:hover {{ background:#173B30; border-color:#4F806E; }}
+        QPushButton[catalogCard='true']:focus {{ border:2px solid #82E2AC; padding:9px; }}
         QLabel[fertilizedBadge='true'] {{ color:#d8ecff; background:#18384a; border:1px solid #5686a0; border-radius:8px; padding:4px 8px; font-size:12px; font-weight:700; }}
         QLabel[fullyGrownBadge='true'] {{ color:#f3dda0; background:#3a3220; border:1px solid #817044; border-radius:8px; padding:4px 8px; font-size:12px; font-weight:700; }}
         QPushButton[disclosureRow='true'] {{ min-height:{BUTTON_MIN_HEIGHT}px; text-align:left; padding:0 8px; color:{t['text_secondary']}; background:transparent; border:0; border-bottom:1px solid {t['subtle_border']}; border-radius:0; }}
@@ -6906,7 +6909,7 @@ class GardenSettingsDialog(GardenDialog):
                     visible_bottom,
                     int(child.geometry().bottom()) + 1,
                 )
-            if visible_bottom > int(page.height()):
+            if visible_bottom > 0:
                 page.setMinimumHeight(visible_bottom)
         page.updateGeometry()
 
@@ -17664,7 +17667,7 @@ class GardenDashboard(DialogShell):
                 self._open_species_overview(selected)
             )
             card: QWidget = button
-            card.setMinimumHeight(224)
+            card.setFixedHeight(214)
             card.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
