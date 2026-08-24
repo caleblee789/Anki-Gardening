@@ -1392,6 +1392,8 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert '"Buy and replace"' in supplement
     assert '"Extend"' in supplement
     assert '"Buy and apply"' in supplement
+    assert 'action.setProperty("textFitClearance", 8)' in supplement
+    assert "int(action.sizeHint().width()) + 8" in supplement
     assert 'QPushButton("Buy")' in charge
     assert '"growth_items:fertilizer_basic"' in stored_fertilizer
     assert 'QPushButton("Use")' in stored_fertilizer

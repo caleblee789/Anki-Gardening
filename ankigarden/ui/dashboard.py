@@ -9153,6 +9153,14 @@ class NurseryDialog(DialogShell):
             summary_floor=205,
             action_floor=96,
         )
+        # Qt's compact-button size hint leaves the first and final glyphs with
+        # almost no paint clearance at the canonical Nursery scale. Reserve a
+        # small ink-safe gutter so labels such as Extend remain fully painted.
+        action.setProperty("textFitClearance", 8)
+        action.setMinimumWidth(max(
+            int(action.minimumWidth()),
+            int(action.sizeHint().width()) + 8,
+        ))
         card.setProperty("catalogItemId", str(tier))
         return card
 
