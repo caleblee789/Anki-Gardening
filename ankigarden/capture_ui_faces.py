@@ -2318,6 +2318,28 @@ class _UiFaceCaptureRunner:
             )
             return
         web = getattr(mw, "web", None)
+        if state == "overview" and tries in {100, 75, 50, 25}:
+            # Anki keeps its external Congratulations document alive while
+            # repeated Overview fixtures change underneath it.  That means
+            # ``webview_did_inject_style_into_page`` is not guaranteed to fire
+            # again even though the source-backed Garden HTML has advanced.
+            # Re-run the production injector before the DOM audit; its
+            # replacement path refreshes the one existing root without adding
+            # a capture-only rendering implementation.
+            refresh_finished_overview = getattr(
+                self.app,
+                "_inject_home_garden_finished_overview",
+                None,
+            )
+            if callable(refresh_finished_overview):
+                try:
+                    refresh_finished_overview(web)
+                except Exception:
+                    logger.debug(
+                        "Anki Garden capture: Overview root refresh failed for %s",
+                        capture_label,
+                        exc_info=True,
+                    )
         page_getter = getattr(web, "page", None)
         page = page_getter() if callable(page_getter) else None
         run_javascript = getattr(page, "runJavaScript", None)
