@@ -846,7 +846,8 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "ignore_status=True" in commit
     assert "if refreshed.ready:" in commit
     assert "self._show_status_banner(" in commit
-    assert "PurchaseStatus.STALE_BALANCE and refreshed.ready" in commit
+    assert "status=outcome.status" in commit
+    assert "PurchaseStatus.STALE_BALANCE and refreshed.ready" not in commit
     assert constructor.index("root.addWidget(self.status)") < constructor.index(
         "root.addWidget(self.content_scroll, 1)"
     )
