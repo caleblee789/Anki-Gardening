@@ -4998,7 +4998,7 @@ class _UiFaceCaptureRunner:
                     ),
                 },
             )
-            if expected_fixture == "preview-stale":
+            if state_name == "home-preview-stale":
                 stale_geometry = {
                     "status_bounds": dom.get("previewStatusBounds"),
                     "action_bounds": dom.get("homeActionBounds"),
