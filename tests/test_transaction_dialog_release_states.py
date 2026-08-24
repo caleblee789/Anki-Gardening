@@ -83,14 +83,15 @@ def test_growth_charge_invalid_and_success_states_expose_concrete_semantics() ->
 
     assert "GrowthChargeTargetState(quote.target_state)" in refresh
     assert "self.target_stage.setText(" in refresh
-    assert "self.hero.show()" in refresh
-    assert "self.selector_card.show()" in refresh
+    assert "self.hero.hide()" in refresh
+    assert "self.selector_card.hide()" in refresh
     assert "self.cancel_action.show()" in refresh
     assert 'self.set_dialog_title("Choose another plant")' in failure
     assert 'self.use_action.setText("Choose plant")' in failure
     assert "self.cancel_action.show()" in failure
     assert 'f"{stage_name} reward"' not in receipt
     assert "self.target_stage.hide()" in receipt
+    assert "self.compact_summary_card.hide()" in receipt
     assert 'self.cancel_action.setText("Close")' in receipt
     assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in receipt
     assert "self.receipt_title.hide()" in receipt
@@ -105,6 +106,7 @@ def test_growth_charge_visible_copy_uses_the_canonical_result_structure() -> Non
     receipt = _method("GrowthChargeConfirmationDialog", "_committed_receipt_copy")
 
     assert 'self._empty_inventory_title = "No Growth Charges"' in constructor
+    assert 'self.empty_inventory = EmptyState(\n            "",' in constructor
     assert 'self.use_action = QPushButton("Use charge")' in constructor
     assert 'f"+{max(0, int(quote.granted_growth)):,} Growth"' in preview
     assert "Inventory:" not in preview

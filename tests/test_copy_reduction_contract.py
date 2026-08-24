@@ -253,3 +253,16 @@ def test_shared_copy_surfaces_keep_the_canonical_action_vocabulary() -> None:
         "No Garden Coins were spent.",
     ):
         assert copy in purchases
+
+
+def test_final_visual_audit_states_do_not_repeat_copy() -> None:
+    dashboard = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text("utf-8")
+    scene = (ROOT / "ankigarden" / "ui" / "scene.py").read_text("utf-8")
+    collectibles = (ROOT / "ankigarden" / "collectibles.py").read_text("utf-8")
+
+    assert 'duration=basic_duration' in collectibles
+    assert '"Image unavailable"' in dashboard
+    assert 'self.empty_inventory = EmptyState(\n            "",' in dashboard
+    assert 'self.compact_summary_card.hide()' in dashboard
+    assert 'title=failure_title' in dashboard
+    assert 'or self._interaction.drag_origin_slot is None' in scene

@@ -183,4 +183,4 @@ def test_tabs_and_form_controls_do_not_fall_back_to_platform_gray() -> None:
     assert "background:#10241f" in dashboard
     assert "QLineEdit, QTextEdit" in dashboard
     assert "QScrollBar::handle:vertical" in dashboard
-    assert '"Fertilizer and Boosters"' in dashboard
+    assert '"Fertilizer and boosts"' in dashboard

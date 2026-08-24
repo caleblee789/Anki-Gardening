@@ -137,12 +137,12 @@ def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route(
     assert "_persist_or_restore(snapshot)" in game
     assert "self.refresh_all()" in failed
     assert "begin_placement_draft" in failed
-    assert "self.rearrange_bar.set_failure(failure_copy)" in failed
+    assert "title=failure_title" in failed
     assert "toast_region.show_message" not in failed
     collection_retry = place.split(
         "if self.scene.begin_collection_placement(plant_id, allowed):", 1
     )[1].split("return", 1)[0]
-    assert "self.rearrange_bar.set_failure(failure_copy)" in collection_retry
+    assert "title=failure_title" in collection_retry
     assert "toast_region.show_message" not in collection_retry
 
     background = next(
@@ -1439,7 +1439,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
             self.retry = Retry()
             self.plant_id = ""
 
-        def set_failure(self, message: str) -> None:
+        def set_failure(self, message: str, **_kwargs: Any) -> None:
             self.failure = message
 
     retry_draft = SimpleNamespace(
@@ -1484,7 +1484,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is retry_draft
     assert dashboard._active_placement_token == 17
-    assert rearrange.failure == "Couldn’t move the plant. Your garden is unchanged."
+    assert rearrange.failure == "Your garden is unchanged."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
     assert toast.messages == []
@@ -2094,7 +2094,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         def clear_failure(self) -> None:
             self.failed = False
 
-        def set_failure(self, message: str) -> None:
+        def set_failure(self, message: str, **_kwargs: Any) -> None:
             self.failed = True
             self.failure = message
             self.visible = True

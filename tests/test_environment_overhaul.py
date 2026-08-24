@@ -492,7 +492,7 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     assert dashboard.index('addTab(self.upgrades_scroll, "Garden beds")') < dashboard.index(
         'addTab(self.environment_scroll, "Weather and Scenery")'
     )
-    assert 'addTab(self.supplements_scroll, "Fertilizer and Boosters")' in dashboard
+    assert 'addTab(self.supplements_scroll, "Fertilizer and boosts")' in dashboard
     assert "self.collectible_detail_dialog = CollectibleDetailDialog(" in dashboard
     assert "self._settings_scene_snapshot," in dashboard
     assert 'self.catalog_tabs.addTab(self.environment_scroll, "Weather and Scenery")' in dashboard

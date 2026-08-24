@@ -3114,9 +3114,10 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self._ready_title = self.windowTitle()
         self._empty_inventory_title = "No Growth Charges"
         self.empty_inventory = EmptyState(
-            self._empty_inventory_title,
+            "",
             "Earn one from rewards or buy one in the Nursery.",
         )
+        self.empty_inventory.setAccessibleName(self._empty_inventory_title)
         self.empty_inventory.hide()
         content.addWidget(self.empty_inventory)
 
@@ -3585,8 +3586,8 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.use_action.setText("Choose plant")
             self.use_action.setAccessibleName("Choose plant")
             self.hero.setProperty("invalidTarget", True)
-            self.hero.show()
-            self.selector_card.show()
+            self.hero.hide()
+            self.selector_card.hide()
             self.compact_summary_card.hide()
             self.cancel_action.setText("Cancel")
             self.cancel_action.show()
@@ -3787,8 +3788,8 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.outcome_heading.hide()
         self.apply_view_size_profile("error")
         if display_status is GrowthChargeStatus.TARGET_INVALID:
-            self.hero.show()
-            self.selector_card.show()
+            self.hero.hide()
+            self.selector_card.hide()
             self._primary_route = "choose_plant"
             self.set_dialog_title("Choose another plant")
             self.cancel_action.setText("Cancel")
@@ -3884,6 +3885,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.receipt.show()
         self.selector_card.hide()
         self.empty_inventory.hide()
+        self.compact_summary_card.hide()
         self.preview_banner.hide()
         self.facts_card.hide()
         self.outcome_heading.hide()
@@ -4396,7 +4398,8 @@ def _missing_artwork_pixmap(
     icon_bottom = max(14, safe_height - 4)
     icon_size = max(12, min(30, min(safe_width - 12, icon_bottom - 8)))
     center_x = safe_width / 2
-    center_y = safe_height / 2
+    show_label = safe_width >= 100 and safe_height >= 60
+    center_y = safe_height * (0.37 if show_label else 0.5)
     icon_rect = QRectF(
         center_x - icon_size / 2,
         center_y - icon_size / 2,
@@ -4489,6 +4492,18 @@ def _missing_artwork_pixmap(
         bolt.lineTo(center_x + icon_size * 0.04, center_y - icon_size * 0.04)
         bolt.closeSubpath()
         painter.drawPath(bolt)
+
+    if show_label:
+        painter.setPen(QColor("#f3ead5"))
+        font = painter.font()
+        font.setBold(True)
+        font.setPixelSize(max(9, min(12, safe_height // 8)))
+        painter.setFont(font)
+        painter.drawText(
+            QRectF(8, safe_height - 29, safe_width - 16, 22),
+            Qt.AlignmentFlag.AlignCenter,
+            "Image unavailable",
+        )
 
     painter.end()
     return preview
@@ -5464,12 +5479,13 @@ class EmptyState(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(4)
-        heading = QLabel(title)
+        heading = QLabel(str(title).strip())
         heading.setProperty("emptyTitle", True)
         body = QLabel(str(description).strip())
         body.setProperty("emptyBody", True)
         body.setWordWrap(True)
-        layout.addWidget(heading)
+        if heading.text():
+            layout.addWidget(heading)
         if body.text():
             layout.addWidget(body)
         if action is not None:
@@ -8262,7 +8278,7 @@ class NurseryDialog(DialogShell):
             self.supplements_catalog,
             "#2f211b",
         )
-        self.catalog_tabs.addTab(self.supplements_scroll, "Fertilizer and Boosters")
+        self.catalog_tabs.addTab(self.supplements_scroll, "Fertilizer and boosts")
 
         self.upgrades_scroll = QScrollArea()
         self.upgrades_scroll.setWidgetResizable(True)
@@ -11736,12 +11752,17 @@ class RearrangeBar(QFrame):
         self.bar_layout.addWidget(self.cancel)
         self.hide()
 
-    def set_failure(self, message: str) -> None:
-        self.title.setText("Couldn’t move the plant")
+    def set_failure(
+        self,
+        message: str,
+        *,
+        title: str = "Couldn’t move the plant",
+    ) -> None:
+        self.title.setText(str(title))
         self.instructions.setText(str(message))
-        self.setAccessibleName("Couldn’t move the plant")
+        self.setAccessibleName(str(title))
         self.setAccessibleDescription(
-            f"{message} Try again, or cancel move."
+            f"{title}. {message} Try again, or cancel move."
         )
         self.setProperty("error", True)
         self.setMaximumHeight(16777215)
@@ -13527,7 +13548,7 @@ class CollectibleDetailDialog(GardenDialog):
             message,
             duration_ms=0 if error else duration_ms,
             error=error,
-            dismissible=error,
+            dismissible=False,
         )
         self._position_preview_feedback()
 
@@ -16894,7 +16915,9 @@ class GardenDashboard(DialogShell):
         """Restore persisted slots and expose explicit retry/cancel actions."""
 
         del message
-        failure_copy = "Couldn’t move the plant. Your garden is unchanged."
+        failure_title = "Couldn’t move the plant"
+        failure_body = "Your garden is unchanged."
+        failure_copy = f"{failure_title}. {failure_body}"
         selected_id = str(
             getattr(self._placement_draft, "selected_plant_id", "") or ""
         )
@@ -16933,7 +16956,10 @@ class GardenDashboard(DialogShell):
             self.scene.keep_card_open(selected_id, failure_copy)
             self._refresh_selected_plant_card()
         self.rearrange_bar.plant_id = selected_id
-        self.rearrange_bar.set_failure(failure_copy)
+        self.rearrange_bar.set_failure(
+            failure_body,
+            title=failure_title,
+        )
         self.overlay_manager.move_mode_changed(True)
         self._position_scene_overlays()
         self.rearrange_bar.retry.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -17088,10 +17114,15 @@ class GardenDashboard(DialogShell):
                     and plant is not None
                     and self.engine.slot_accepts_plant(plant, slot)
                 ]
-                failure_copy = "Couldn’t place the plant. Your garden is unchanged."
+                failure_title = "Couldn’t place the plant"
+                failure_body = "Your garden is unchanged."
+                failure_copy = f"{failure_title}. {failure_body}"
                 if self.scene.begin_collection_placement(plant_id, allowed):
                     self._record_active_placement_token()
-                    self.rearrange_bar.set_failure(failure_copy)
+                    self.rearrange_bar.set_failure(
+                        failure_body,
+                        title=failure_title,
+                    )
                     self.rearrange_bar.show()
                     self.rearrange_bar.retry.setFocus(Qt.FocusReason.OtherFocusReason)
                     return

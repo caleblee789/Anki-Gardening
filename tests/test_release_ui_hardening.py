@@ -925,7 +925,8 @@ def test_missing_artwork_uses_graphical_fallbacks_and_internal_logging() -> None
     assert "drawEllipse(" in fallback
     assert "drawPath(" in fallback
     assert 'label = "Artwork unavailable"' not in fallback
-    assert "drawText(" not in fallback
+    assert "drawText(" in fallback
+    assert '"Image unavailable"' in fallback
     for category in ("plant", "weather", "scenery", "fertilizer"):
         assert category in fallback
     assert "DISPLAY_TELEMETRY.track_fallback(" in recorder

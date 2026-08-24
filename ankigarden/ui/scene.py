@@ -1939,7 +1939,13 @@ class GardenSceneWidget(QWidget):
                 if semantic_state in {"active", "available"} else
                 label
             )
-            if getattr(self, "_starter_placement", False) and target_state == "valid":
+            if (
+                (
+                    getattr(self, "_starter_placement", False)
+                    or self._interaction.drag_origin_slot is None
+                )
+                and target_state == "valid"
+            ):
                 label = "Place here"
                 visual_label = "Place here"
             footprint = QRectF(
@@ -2219,7 +2225,7 @@ class GardenSceneWidget(QWidget):
                 label = "invalid destination"
             elif occupant:
                 label = f"occupied by {occupant}"
-            elif self._starter_placement:
+            elif self._starter_placement or origin is None:
                 label = "place here"
             else:
                 label = "move here"
@@ -2325,7 +2331,13 @@ class GardenSceneWidget(QWidget):
             occupied_slots=occupied,
             occupant_names=occupant_names,
         )
-        if getattr(self, "_starter_placement", False) and label == "Move here":
+        if (
+            (
+                getattr(self, "_starter_placement", False)
+                or self._interaction.drag_origin_slot is None
+            )
+            and label == "Move here"
+        ):
             label = "Place here"
         self.setAccessibleName(f"Garden bed {slot + 1}: {label}")
         self.setAccessibleDescription(
@@ -2403,7 +2415,10 @@ class GardenSceneWidget(QWidget):
             elif target_state == "valid":
                 self._inline_message = (
                     "Place here."
-                    if getattr(self, "_starter_placement", False) else
+                    if (
+                        getattr(self, "_starter_placement", False)
+                        or self._interaction.drag_origin_slot is None
+                    ) else
                     "Move here."
                 )
             if self._press_plant_id and self._press_position is not None:
@@ -2482,7 +2497,13 @@ class GardenSceneWidget(QWidget):
                         occupied_slots=occupied,
                         occupant_names=occupant_names,
                     )
-                    if getattr(self, "_starter_placement", False) and label == "Move here":
+                    if (
+                        (
+                            getattr(self, "_starter_placement", False)
+                            or self._interaction.drag_origin_slot is None
+                        )
+                        and label == "Move here"
+                    ):
                         label = "Place here"
                     request = self._interaction.complete_placement()
                     if request is not None:

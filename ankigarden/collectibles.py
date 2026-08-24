@@ -180,10 +180,7 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                 activation_condition=(
                     "Use on a nurtured plant that is still growing."
                 ),
-                duration=(
-                    f"Lasts {basic_duration}; another {basic_fertilizer.name} "
-                    "adds more time."
-                ),
+                duration=basic_duration,
                 stacking="Inventory quantities stack; active duration extends.",
                 replacement=(
                     "A different active Fertilizer is replaced only after "
