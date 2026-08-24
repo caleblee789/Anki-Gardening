@@ -2410,6 +2410,7 @@ class ConfirmationDialog:
 class PurchaseConfirmationDialog(DialogShell):
     """One contextual confirmation, retry, and terminal-state purchase shell."""
 
+    purchase_result = pyqtSignal(object)
     _COMMIT_TIMEOUT_MS = 10_000
 
     _REFRESHABLE_FAILURES = {
@@ -2527,11 +2528,13 @@ class PurchaseConfirmationDialog(DialogShell):
         self.summary_row.addWidget(self.summary_copy, 1)
         content.addLayout(self.summary_row)
 
-        self.proposal_notice = QLabel("")
-        self.proposal_notice.setWordWrap(True)
-        self.proposal_notice.setTextFormat(Qt.TextFormat.PlainText)
+        self.proposal_notice = GardenStatusBanner()
         self.proposal_notice.setAccessibleName("Purchase update")
-        self.proposal_notice.setProperty("summarySupport", True)
+        self.proposal_notice.setProperty("transactionUpdateChip", True)
+        self.proposal_notice.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Maximum,
+        )
         self.proposal_notice.hide()
         content.addWidget(self.proposal_notice)
 
@@ -2975,10 +2978,11 @@ class PurchaseConfirmationDialog(DialogShell):
             "transactionPresentation",
             "retry-preview"
             if display_status is PurchaseStatus.PERSISTENCE_FAILURE
+            else "inline-balance-update"
+            if display_status is PurchaseStatus.STALE_BALANCE
             else "updated-proposal"
             if display_status in {
                 PurchaseStatus.STALE_PRICE,
-                PurchaseStatus.STALE_BALANCE,
                 PurchaseStatus.STALE_TARGET,
             }
             else "committed-state"
@@ -2993,7 +2997,11 @@ class PurchaseConfirmationDialog(DialogShell):
         self.category.setVisible(bool(presentation.show_category))
         self.outcome_label.setText(
             presentation.outcome
-            if display_status in {PurchaseStatus.READY, PurchaseStatus.SUCCESS}
+            if display_status in {
+                PurchaseStatus.READY,
+                PurchaseStatus.SUCCESS,
+                PurchaseStatus.STALE_BALANCE,
+            }
             else ""
         )
         self.outcome_label.setVisible(bool(self.outcome_label.text()))
@@ -3006,11 +3014,13 @@ class PurchaseConfirmationDialog(DialogShell):
         self.badges_host.setVisible(bool(presentation.badges))
         self._populate_target(self.quote, presentation)
 
-        # Stale and failed attempts use the single status banner. The outcome
-        # rows remain authoritative without per-cell Preview/Proposed labels.
-        self.proposal_notice.setText("")
-        self.proposal_notice.setAccessibleDescription("")
-        self.proposal_notice.hide()
+        # An affordable balance refresh remains the original proposal. Its
+        # sole state evidence is this compact normal-flow information chip.
+        self.proposal_notice.set_status(
+            presentation.update_label,
+            tone=FeedbackTone.INFO,
+        )
+        self.proposal_notice.setAccessibleName("Purchase update")
 
         self.fact_value_labels = {}
         for index, (row, label, value) in enumerate(self.fact_rows):
@@ -3109,7 +3119,15 @@ class PurchaseConfirmationDialog(DialogShell):
         )
         view_profile = (
             "error"
-            if display_status is not PurchaseStatus.READY
+            if display_status in {
+                PurchaseStatus.PERSISTENCE_FAILURE,
+                PurchaseStatus.REQUEST_ID_CONFLICT,
+            }
+            else "warning"
+            if display_status not in {
+                PurchaseStatus.READY,
+                PurchaseStatus.STALE_BALANCE,
+            }
             else "complex"
             if (
                 self.quote.replacement_required
@@ -3294,6 +3312,7 @@ class PurchaseConfirmationDialog(DialogShell):
             return
         self._commit_watchdog.stop()
         self.outcome = outcome
+        self.purchase_result.emit(outcome)
         if outcome.success:
             self.presentation = purchase_presentation(
                 self.quote,
@@ -3327,18 +3346,43 @@ class PurchaseConfirmationDialog(DialogShell):
             )
             self._set_submitting(False)
             self.quote = refreshed
+            display_status = (
+                refreshed.status
+                if outcome.status is PurchaseStatus.STALE_BALANCE
+                and not refreshed.ready
+                else outcome.status
+            )
             self._render_presentation(
                 purchase_presentation(
                     refreshed,
-                    status=outcome.status,
+                    status=display_status,
                     message=outcome.message,
                 ),
-                status=outcome.status,
+                status=display_status,
             )
             if refreshed.ready:
+                if outcome.status is PurchaseStatus.STALE_BALANCE:
+                    self._clear_status()
+                    self.proposal_notice.setFocusPolicy(
+                        Qt.FocusPolicy.StrongFocus
+                    )
+                    set_keyboard_focus_surface(self.proposal_notice)
+                    self.proposal_notice.setFocus()
+                    self.accessibility_announcer.announce(
+                        "Balance updated. Review the current balance before buying.",
+                        priority=AnnouncementPriority.POLITE,
+                        target=self.proposal_notice,
+                    )
+                else:
+                    self._show_status_banner(
+                        outcome.status,
+                        outcome.message,
+                    )
+            else:
                 self._show_status_banner(
-                    outcome.status,
-                    outcome.message,
+                    display_status,
+                    self.presentation.outcome,
+                    compact=True,
                 )
             return
         self._set_submitting(False)
@@ -3381,7 +3425,7 @@ class PurchaseConfirmationDialog(DialogShell):
         tone = self._failure_tone(status)
         visible_copy = {
             PurchaseStatus.PERSISTENCE_FAILURE: (
-                "No Garden Coins were spent."
+                self.presentation.outcome
             ),
             PurchaseStatus.INSUFFICIENT_COINS: (
                 self.presentation.outcome
@@ -3421,13 +3465,16 @@ class PurchaseConfirmationDialog(DialogShell):
         )
         style = {
             FeedbackTone.INFO: (
-                "color:#d8eee5; background:#17352c; border:1px solid #416b5d; "
+                "color:#d8eee5; background:#17352c; border:0; "
+                "border-left:3px solid #6ba8cc; "
             ),
             FeedbackTone.WARNING: (
-                "color:#f4e5aa; background:#3b3420; border:1px solid #7d6f3d; "
+                "color:#f4e5aa; background:#3b3420; border:0; "
+                "border-left:3px solid #d2a54f; "
             ),
             FeedbackTone.ERROR: (
-                "color:#ffd7d1; background:#4a2424; border:1px solid #8d4a47; "
+                "color:#ffd7d1; background:#4a2424; border:0; "
+                "border-left:3px solid #d96570; "
             ),
         }[tone]
         self.status.setStyleSheet(
@@ -3485,7 +3532,7 @@ class PurchaseConfirmationDialog(DialogShell):
             bool(self.presentation.facts)
             and not self.quote.replacement_required
         )
-        proposal_copy = self.proposal_notice.text().strip()
+        proposal_copy = self.proposal_notice.message.text().strip()
         self.proposal_notice.setVisible(bool(proposal_copy))
         details_text = self.more_details_copy.text().strip()
         self.more_details_action.setVisible(bool(details_text))
@@ -3681,7 +3728,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         _set_button_variant(self.nursery_action, BUTTON_VARIANT_PRIMARY)
         self.nursery_action.clicked.connect(self._open_nursery)
         self._ready_title = self.windowTitle()
-        self._empty_inventory_title = "No Growth Charges"
+        self._empty_inventory_title = "No Growth Charges available"
         self.empty_inventory = EmptyState(
             "",
             "Earn one from rewards or buy one in the Nursery.",
@@ -3818,7 +3865,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
 
     @staticmethod
     def _compact_preview_copy(quote: Any) -> str:
-        """Show only the Growth result and optional numeric progress."""
+        """Show the exact Growth and remaining-inventory consequence."""
 
         if quote is None or not bool(getattr(quote, "ready", False)):
             return ""
@@ -3827,6 +3874,9 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         projected_growth = max(0, int(quote.projected_growth))
         if current_growth != projected_growth:
             lines.append(f"{current_growth:,} → {projected_growth:,}")
+        lines.append(
+            f"After use: {max(0, int(quote.inventory_after)):,} remaining"
+        )
         return "\n".join(lines)
 
     def _refresh_compact_summary(self) -> None:
@@ -4010,13 +4060,22 @@ class GrowthChargeConfirmationDialog(GardenDialog):
     @staticmethod
     def _uncommitted_quote_copy(quote: Any) -> str:
         if quote.status is GrowthChargeStatus.TARGET_INVALID:
-            return "This plant can’t use a Growth Charge.\nYour charge was not used."
+            return (
+                f"{quote.target_name} cannot use this Growth Charge.\n"
+                "No charge was used."
+            )
         if quote.status is GrowthChargeStatus.STALE_INVENTORY:
-            return ""
+            remaining = max(0, int(quote.inventory_before))
+            unit = (
+                "Growth Charge remains"
+                if remaining == 1
+                else "Growth Charges remain"
+            )
+            return f"Availability updated\n{remaining:,} {unit}."
         if quote.status is GrowthChargeStatus.STALE_TARGET:
-            return ""
+            return "Plant updated\nReview the current Growth result."
         if quote.status is GrowthChargeStatus.PERSISTENCE_FAILURE:
-            return "Your charge was not used."
+            return "The change could not be saved.\nNo charge was used."
         else:
             return str(
                 getattr(quote, "message", "")
@@ -4032,23 +4091,29 @@ class GrowthChargeConfirmationDialog(GardenDialog):
     ) -> str:
         del retry_available, previous_inventory
         if outcome.status is GrowthChargeStatus.PERSISTENCE_FAILURE:
-            return "Your charge was not used."
+            return "The change could not be saved.\nNo charge was used."
         elif outcome.status is GrowthChargeStatus.TARGET_INVALID:
-            return "This plant can’t use a Growth Charge.\nYour charge was not used."
+            target_name = str(
+                getattr(outcome, "target_name", "This plant")
+                or "This plant"
+            )
+            return (
+                f"{target_name} cannot use this Growth Charge.\n"
+                "No charge was used."
+            )
         elif outcome.status in {
             GrowthChargeStatus.STALE_INVENTORY,
             GrowthChargeStatus.STALE_TARGET,
         }:
-            return ""
-        return "Your charge was not used."
+            return "Review the updated result.\nNo charge was used."
+        return "No charge was used."
 
     @staticmethod
     def _committed_receipt_copy(outcome: Any) -> str:
         remaining = max(0, int(outcome.inventory_remaining))
-        charge_label = "charge" if remaining == 1 else "charges"
         return (
             f"+{max(0, int(outcome.growth_granted)):,} Growth · "
-            f"{remaining:,} {charge_label} left"
+            f"{remaining:,} remaining"
         )
 
     def _set_preview_mode(self, mode: str, copy: str) -> None:
@@ -4176,7 +4241,19 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             alert_copy = self._uncommitted_quote_copy(quote)
             if alert_copy:
                 self._show_alert(alert_copy, quote.status)
-        self.apply_view_size_profile("ready" if quote.ready else "error")
+        profile = (
+            "ready"
+            if quote.ready
+            else "stale"
+            if quote.status in {
+                GrowthChargeStatus.STALE_INVENTORY,
+                GrowthChargeStatus.STALE_TARGET,
+            }
+            else "warning"
+            if quote.status is GrowthChargeStatus.TARGET_INVALID
+            else "error"
+        )
+        self.apply_view_size_profile(profile)
         self._refresh_compact_summary()
         self._update_responsive_layout(self.width(), self.height())
 
@@ -4260,13 +4337,13 @@ class GrowthChargeConfirmationDialog(GardenDialog):
                 self.use_action.setText("Try again")
                 self.use_action.setAccessibleName("Try Growth Charge again")
             self.apply_view_size_profile("error")
-            self.set_dialog_title("Couldn’t use the Growth Charge")
+            self.set_dialog_title("Could not use the Growth Charge")
             self.cancel_action.setText("Close")
             self.hero.hide()
             self.selector_card.hide()
             self.compact_summary_card.hide()
             self._show_alert(
-                "Your charge was not used.",
+                "The change could not be saved.\nNo charge was used.",
                 status,
             )
             return
@@ -4296,13 +4373,13 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.use_action.setText("Try again")
             self.use_action.setAccessibleName("Try Growth Charge again")
         self.apply_view_size_profile("error")
-        self.set_dialog_title("Couldn’t use the Growth Charge")
+        self.set_dialog_title("Could not use the Growth Charge")
         self.cancel_action.setText("Close")
         self.hero.hide()
         self.selector_card.hide()
         self.compact_summary_card.hide()
         self._show_alert(
-            "Your charge was not used.",
+            "The change could not be saved.\nNo charge was used.",
             GrowthChargeStatus.PERSISTENCE_FAILURE,
         )
 
@@ -4328,16 +4405,31 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.quote is None
             or self.quote.status is not GrowthChargeStatus.TARGET_INVALID
         ):
-            # Quantity and Growth refreshes do not change the requested effect.
-            # Keep the newly quoted count/result visible without interrupting.
-            self._clear_alert()
+            # Keep the refreshed proposal ready, but make the changed source
+            # state visibly distinct from the original confirmation.
             self.setProperty("growthChargeState", outcome.status.value)
             self.cancel_action.setText(
                 "Cancel" if self.quote is not None else "Close"
             )
             self.cancel_action.show()
+            if self.quote is not None:
+                self.set_dialog_title(f"Use {self.quote.charge_name}?")
+            remaining = max(
+                0,
+                int(getattr(outcome, "inventory_remaining", 0) or 0),
+            )
+            if outcome.status is GrowthChargeStatus.STALE_INVENTORY:
+                unit = (
+                    "Growth Charge remains"
+                    if remaining == 1
+                    else "Growth Charges remain"
+                )
+                alert_copy = f"Availability updated\n{remaining:,} {unit}."
+            else:
+                alert_copy = "Plant updated\nReview the current Growth result."
+            self._show_alert(alert_copy, outcome.status)
             self.apply_view_size_profile(
-                "ready" if self.quote is not None else "empty"
+                "stale" if self.quote is not None else "empty"
             )
             self._refresh_compact_summary()
             return
@@ -4374,7 +4466,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         else:
             self.hero.hide()
             self.selector_card.hide()
-            self.set_dialog_title("Couldn’t use the Growth Charge")
+            self.set_dialog_title("Could not use the Growth Charge")
             self.cancel_action.setText("Close")
             self.cancel_action.show()
             self.use_action.setText("Try again")
@@ -4411,11 +4503,13 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self._render_committed_target(outcome)
         self.hero.hide()
         self.target_stage.hide()
-        self.charge_heading.hide()
+        previous_stage = format_status_label(str(outcome.previous_stage))
         resulting_stage = format_status_label(str(outcome.resulting_stage))
         result_title = f"{outcome.target_name} reached {resulting_stage}"
-        self.receipt_title.setText("")
-        self.receipt_title.hide()
+        self.receipt_title.setText(f"{previous_stage} → {resulting_stage}")
+        self.receipt_title.show()
+        self.charge_heading.setText("Growth Charge")
+        self.charge_heading.show()
         self.receipt_copy.setText(
             self._committed_receipt_copy(outcome)
         )
@@ -4436,12 +4530,14 @@ class GrowthChargeConfirmationDialog(GardenDialog):
                 )
             )
         self.reward_chips_layout.addStretch(1)
-        self.stage_rewards_heading.hide()
+        self.stage_rewards_heading.setText("Stage reward")
+        self.stage_rewards_heading.setVisible(bool(reward_total))
         self.reward_chips.setVisible(bool(reward_total))
         self.receipt.setAccessibleName("Growth Charge result")
         self.receipt.setAccessibleDescription(
             " ".join(part for part in (
                 result_title,
+                self.receipt_title.text(),
                 self.receipt_copy.text(),
                 f"+{reward_total:,} Garden Coins" if reward_total else "",
             ) if part)
@@ -4498,9 +4594,11 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         is_error = status is GrowthChargeStatus.PERSISTENCE_FAILURE
         tone = FeedbackTone.ERROR if is_error else FeedbackTone.WARNING
         alert_palette = (
-            "color:#ffd7d1; background:#4a2424; border:1px solid #8d4a47; "
+            "color:#ffd7d1; background:#4a2424; border:0; "
+            "border-left:3px solid #d96570; "
             if is_error
-            else "color:#ffe0a3; background:#4a3820; border:1px solid #8b6b2e; "
+            else "color:#ffe0a3; background:#4a3820; border:0; "
+            "border-left:3px solid #d2a54f; "
         )
         self.setProperty("growthChargeState", status.value)
         self.alert.setText(copy)
@@ -4515,6 +4613,10 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         set_semantic_role(self.alert, SemanticRole.BANNER, tone=tone)
         self.alert.show()
         self.alert.setFocus()
+        self.schedule_content_fit(
+            "growth-charge-alert",
+            preserve_transition=False,
+        )
         self.accessibility_announcer.announce(
             self.alert.accessibleDescription(),
             priority=(
@@ -19217,6 +19319,7 @@ class GardenDashboard(DialogShell):
         dialog.apply_size_policy(
             DialogSizeClass.FERTILIZER,
         )
+        dialog.apply_view_size_profile("selection")
         dialog.setStyleSheet(foundation_stylesheet() + """
             QWidget[gardenDialogShell='true'] { background:#071a15; color:#f3f7f2; }
             QWidget#fertilizerOptions { background:#071a15; }
@@ -19417,7 +19520,7 @@ class GardenDashboard(DialogShell):
             )
             consequence = str(quote.descriptor.duration or "").strip().rstrip(".")
             detail = QLabel(
-                " · ".join(filter(None, (effect, consequence, cost_label(spec.price))))
+                " · ".join(filter(None, (effect, consequence)))
             )
             detail.setProperty("fertilizerMeta", True)
             detail.setWordWrap(True)
@@ -19427,13 +19530,20 @@ class GardenDashboard(DialogShell):
             if not affordable:
                 shortfall = max(0, int(spec.price) - balance_value)
                 shortfall_label = QLabel(
-                    f"{shortfall:,} more "
-                    f"{'Garden Coin' if shortfall == 1 else 'Garden Coins'} needed"
+                    f"Need {shortfall:,} more "
+                    f"{'Garden Coin' if shortfall == 1 else 'Garden Coins'}"
                 )
                 shortfall_label.setProperty("fertilizerShortfall", True)
                 apply_tabular_numerals(shortfall_label)
                 copy.addWidget(shortfall_label)
             summary_layout.addWidget(copy_widget, 1)
+            price = QLabel(cost_label(spec.price))
+            price.setProperty("fertilizerMeta", True)
+            price.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            apply_tabular_numerals(price)
+            summary_layout.addWidget(price, 0)
             action_label = (
                 "Buy and replace"
                 if quote.replacement_required
@@ -19512,8 +19622,8 @@ class GardenDashboard(DialogShell):
         cancel = QPushButton("Cancel")
         _set_button_variant(cancel, BUTTON_VARIANT_TERTIARY)
         cancel.clicked.connect(dialog.reject)
-        footer.addWidget(browse)
         footer.addStretch(1)
+        footer.addWidget(browse)
         footer.addWidget(cancel)
         layout.addWidget(footer_frame)
         dialog.register_pinned_footer(footer_frame)

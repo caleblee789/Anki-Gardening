@@ -64,16 +64,16 @@ def test_growth_charge_empty_state_owns_its_primary_action_in_the_footer() -> No
     assert "self.nursery_action.setVisible(not has_inventory)" in populate
 
 
-def test_growth_charge_count_and_progress_refresh_without_an_interruption() -> None:
+def test_growth_charge_count_refresh_has_visible_availability_evidence() -> None:
     failure = _method("GrowthChargeConfirmationDialog", "_show_failed_outcome")
 
     assert "GrowthChargeStatus.STALE_INVENTORY" in failure
     assert "GrowthChargeStatus.STALE_TARGET" in failure
-    assert "self._clear_alert()" in failure
+    assert "Availability updated" in failure
+    assert "self._show_alert(alert_copy, outcome.status)" in failure
     assert "self._refresh_compact_summary()" in failure
     assert 'self.setProperty("growthChargeState", outcome.status.value)' in failure
-    assert "Inventory changed" not in failure
-    assert "Review the updated result" not in failure
+    assert 'self.apply_view_size_profile(\n                "stale"' in failure
 
 
 def test_growth_charge_invalid_and_success_states_expose_concrete_semantics() -> None:
@@ -94,7 +94,9 @@ def test_growth_charge_invalid_and_success_states_expose_concrete_semantics() ->
     assert "self.compact_summary_card.hide()" in receipt
     assert 'self.cancel_action.setText("Close")' in receipt
     assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in receipt
-    assert "self.receipt_title.hide()" in receipt
+    assert 'self.receipt_title.setText(f"{previous_stage} → {resulting_stage}")' in receipt
+    assert 'self.charge_heading.setText("Growth Charge")' in receipt
+    assert 'self.stage_rewards_heading.setText("Stage reward")' in receipt
     assert "self.cancel_action.show()" in receipt
     assert 'f"{outcome.target_name} reached {resulting_stage}"' in receipt
 
@@ -105,11 +107,12 @@ def test_growth_charge_visible_copy_uses_the_canonical_result_structure() -> Non
     loading = _method("GrowthChargeConfirmationDialog", "_activate_primary")
     receipt = _method("GrowthChargeConfirmationDialog", "_committed_receipt_copy")
 
-    assert 'self._empty_inventory_title = "No Growth Charges"' in constructor
+    assert 'self._empty_inventory_title = "No Growth Charges available"' in constructor
     assert 'self.empty_inventory = EmptyState(\n            "",' in constructor
     assert 'self.use_action = QPushButton("Use charge")' in constructor
     assert 'f"+{max(0, int(quote.granted_growth)):,} Growth"' in preview
+    assert 'f"After use: {max(0, int(quote.inventory_after)):,} remaining"' in preview
     assert "Inventory:" not in preview
     assert "Stage:" not in preview
     assert 'self.use_action.setText("Using charge…")' in loading
-    assert 'f"{remaining:,} {charge_label} left"' in receipt
+    assert 'f"{remaining:,} remaining"' in receipt

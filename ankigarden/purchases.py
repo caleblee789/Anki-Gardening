@@ -193,6 +193,7 @@ class PurchasePresentation:
     primary_accessible_name: str
     processing_label: str
     secondary_label: str
+    update_label: str = ""
     primary_route: str = ""
     terminal: bool = False
     retry: bool = False
@@ -329,15 +330,17 @@ def purchase_presentation(
     activity_label = f"Purchased {item_name}"
     success_message = f"{item_name} added."
     next_actions = ("Keep browsing",)
+    update_label = ""
 
     if quote.kind is PurchaseKind.SPECIES:
         species_name = item_name[:-5] if item_name.lower().endswith(" seed") else item_name
         title = f"Buy {item_name}?"
         outcome = f"Adds {species_name} to your collection."
         success_message = f"{species_name} added."
-        next_actions = ("Plant now", "View collection")
+        next_actions = ("Place in Garden", "View Collection")
     elif quote.kind is PurchaseKind.GROWTH_CHARGE:
         title = f"Buy {item_name}?"
+        outcome = f"Adds one {item_name} to your inventory."
         success_message = f"{item_name} added."
         next_actions = ("Use charge", "Keep browsing")
     elif quote.kind is PurchaseKind.FERTILIZER:
@@ -351,7 +354,7 @@ def purchase_presentation(
                 quote.current_duration,
             )
             outcome = (
-                f"{item_name} starts now. You will lose {lost_time} of "
+                f"{item_name} starts immediately. You will lose {lost_time} of "
                 f"{current_name}."
             )
             activity_label = f"Replaced Fertilizer with {item_name} on {fertilizer_target}"
@@ -367,7 +370,7 @@ def purchase_presentation(
             success_message = f"{item_name} extended."
         else:
             action = PurchaseAction.PURCHASE_APPLY
-            title = f"Apply {item_name}?"
+            title = f"Buy and apply {item_name}?"
             outcome = (
                 f"{fertilizer_target} · {_compact_effect(quote.descriptor.buff)} "
                 f"for {_without_period(quote.descriptor.duration)}"
@@ -385,7 +388,7 @@ def purchase_presentation(
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
         title = f"Unlock {bed_name}?"
-        outcome = "Adds one planting space."
+        outcome = "Adds one permanent planting space."
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
@@ -418,7 +421,14 @@ def purchase_presentation(
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
         display_title = "Purchase failed"
-        display_outcome = "No Garden Coins were spent."
+        failed_result = (
+            f"{item_name} was not applied."
+            if quote.kind is PurchaseKind.FERTILIZER
+            else f"{item_name} was not unlocked."
+            if quote.kind is PurchaseKind.BED
+            else f"{item_name} was not added."
+        )
+        display_outcome = f"{failed_result}\nNo Garden Coins were spent."
         badges = []
         more_details = []
         visible_facts = ()
@@ -431,17 +441,18 @@ def purchase_presentation(
         processing_label = _priced_action(action, quote.total_price)[2]
         retry = True
     elif effective_status is PurchaseStatus.INSUFFICIENT_COINS:
-        shortfall = max(0, quote.total_price - quote.balance_before)
-        unit = "Garden Coin" if shortfall == 1 else "Garden Coins"
-        display_title = f"{shortfall:,} more {unit} needed"
-        display_outcome = ""
+        display_title = "Not enough Garden Coins"
+        display_outcome = (
+            f"{item_name} costs {quote.total_price:,} Garden Coins.\n"
+            f"Current balance: {max(0, quote.balance_before):,}"
+        )
         visible_facts = ()
         badges = []
         balance_after = None
         show_cost = False
         show_preview = False
         secondary_label = "Close"
-        primary_label = "How to earn Garden Coins"
+        primary_label = "Ways to earn"
         primary_accessible = primary_label
         primary_route = "ways_to_earn"
         terminal = True
@@ -459,7 +470,7 @@ def purchase_presentation(
         show_cost = False
         show_preview = False
         balance_after = None
-        secondary_label = ""
+        secondary_label = "Close"
         primary_label = "Back to Nursery"
         primary_accessible = primary_label
         primary_route = "nursery"
@@ -489,7 +500,7 @@ def purchase_presentation(
             PurchaseStatus.REPLACEMENT_REQUIRED: f"Replace {quote.current_item_name or 'Fertilizer'}?",
         }[effective_status]
         invalid_message = (
-            f"This plant can’t use {item_name}."
+            f"This plant cannot use {item_name}."
             if effective_status is PurchaseStatus.TARGET_INVALID
             else "No Garden Coins were spent."
             if effective_status is PurchaseStatus.REQUEST_ID_CONFLICT
@@ -501,7 +512,7 @@ def purchase_presentation(
         show_cost = False
         show_preview = False
         balance_after = None
-        secondary_label = "" if effective_status is PurchaseStatus.TARGET_INVALID else "Cancel"
+        secondary_label = "Cancel"
         primary_label = (
             "Choose plant"
             if effective_status is PurchaseStatus.TARGET_INVALID
@@ -520,7 +531,7 @@ def purchase_presentation(
     }:
         display_title = {
             PurchaseStatus.STALE_PRICE: "Price changed",
-            PurchaseStatus.STALE_BALANCE: "Balance updated",
+            PurchaseStatus.STALE_BALANCE: title,
             PurchaseStatus.STALE_TARGET: "Item updated",
         }[effective_status]
         stale_outcome = str(
@@ -531,10 +542,16 @@ def purchase_presentation(
         display_outcome = (
             _stale_price_copy(item_name, stale_outcome, quote.total_price)
             if effective_status is PurchaseStatus.STALE_PRICE
-            else f"You now have {max(0, quote.balance_before):,} Garden Coins."
+            else outcome
             if effective_status is PurchaseStatus.STALE_BALANCE
             else "Review the current item."
         )
+        update_label = (
+            "Balance updated"
+            if effective_status is PurchaseStatus.STALE_BALANCE
+            else ""
+        )
+        show_item_name = effective_status is PurchaseStatus.STALE_PRICE
         badges = []
         primary_label = "Buy" if action is PurchaseAction.PURCHASE else primary_label
         primary_accessible = (
@@ -571,6 +588,7 @@ def purchase_presentation(
         primary_accessible_name=primary_accessible,
         processing_label=processing_label,
         secondary_label=secondary_label,
+        update_label=update_label,
         primary_route=primary_route,
         terminal=terminal,
         retry=retry,

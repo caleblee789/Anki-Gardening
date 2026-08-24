@@ -261,7 +261,7 @@ def test_purchase_quotes_share_exact_current_terms(
             PurchaseKind.FERTILIZER,
             "basic",
             "p1",
-            "Apply Basic Fertilizer?",
+            "Buy and apply Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
             set(),
         ),
@@ -364,7 +364,8 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     assert replacement.primary_label == "Buy Magical"
     assert replacement.secondary_label == "Keep Basic"
     assert replacement.outcome == (
-        "Magical Fertilizer starts now. You will lose 45 minutes of Basic Fertilizer."
+        "Magical Fertilizer starts immediately. "
+        "You will lose 45 minutes of Basic Fertilizer."
     )
     assert replacement_quote.current_seconds_remaining == 2_700
 
@@ -390,8 +391,8 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     (
         (
             PurchaseStatus.INSUFFICIENT_COINS,
-            "30 more Garden Coins needed",
-            "How to earn Garden Coins",
+            "Not enough Garden Coins",
+            "Ways to earn",
             False,
             None,
         ),
@@ -435,7 +436,10 @@ def test_purchase_error_presentations_have_distinct_recovery_actions(
     assert presentation.balance_after == balance_after
     assert presentation.terminal is (status is not PurchaseStatus.PERSISTENCE_FAILURE)
     if status is PurchaseStatus.PERSISTENCE_FAILURE:
-        assert presentation.outcome == "No Garden Coins were spent."
+        assert presentation.outcome == (
+            "Small Growth Charge was not added.\n"
+            "No Garden Coins were spent."
+        )
         assert presentation.facts == ()
         assert presentation.more_details == ()
         assert presentation.badges == ()
@@ -493,6 +497,16 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert presentation.balance_after == 4_970
     assert presentation.facts == ()
     assert presentation.primary_label == "Buy"
+    if status is PurchaseStatus.STALE_BALANCE:
+        assert presentation.title == "Buy Small Growth Charge?"
+        assert presentation.update_label == "Balance updated"
+        assert presentation.outcome == (
+            "Adds one Small Growth Charge to your inventory."
+        )
+    else:
+        assert presentation.update_label == ""
+    if status is PurchaseStatus.STALE_PRICE:
+        assert presentation.show_item_name
 
 
 @pytest.mark.parametrize(
@@ -846,8 +860,10 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "ignore_status=True" in commit
     assert "if refreshed.ready:" in commit
     assert "self._show_status_banner(" in commit
-    assert "status=outcome.status" in commit
-    assert "PurchaseStatus.STALE_BALANCE and refreshed.ready" not in commit
+    assert "status=display_status" in commit
+    assert "PurchaseStatus.STALE_BALANCE" in commit
+    assert "and not refreshed.ready" in commit
+    assert "self.purchase_result.emit(outcome)" in commit
     assert constructor.index("root.addWidget(self.status)") < constructor.index(
         "root.addWidget(self.content_scroll, 1)"
     )

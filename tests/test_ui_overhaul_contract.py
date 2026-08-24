@@ -649,8 +649,9 @@ def test_growth_charge_failures_keep_committed_state_separate_from_retry_preview
     )
     assert '"Charge quantity"' not in dialog
     assert '"Earn one from rewards or buy one in the Nursery."' in dialog
-    assert '"This plant can’t use a Growth Charge.\\nYour charge was not used."' in dialog
-    assert '"Your charge was not used."' in dialog
+    assert '"No charge was used."' in dialog
+    assert '"Availability updated\\n' in dialog
+    assert '"The change could not be saved.\\nNo charge was used."' in dialog
     assert 'f"Remains {current_stage}"' not in dialog
     assert "outcome.inventory_remaining" in dialog
     assert "Values marked Preview" not in dialog
@@ -661,6 +662,7 @@ def test_growth_charge_failures_keep_committed_state_separate_from_retry_preview
     assert 'self.use_action.setText("Using charge…")' in dialog
     assert 'f"+{max(0, int(quote.granted_growth)):,} Growth"' in compact_preview
     assert 'f"{current_growth:,} → {projected_growth:,}"' in compact_preview
+    assert 'f"After use: {max(0, int(quote.inventory_after)):,} remaining"' in compact_preview
     for copy in ("Stage:", "Inventory:"):
         assert copy not in compact_preview
     assert "(preview)" not in dialog
@@ -692,9 +694,11 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
     )
     assert "outcome.growth_granted" in receipt_copy
     assert "outcome.inventory_remaining" in receipt_copy
-    assert "outcome.previous_stage" not in show_receipt
+    assert "outcome.previous_stage" in show_receipt
     assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in show_receipt
-    assert "self.receipt_title.hide()" in show_receipt
+    assert 'self.receipt_title.setText(f"{previous_stage} → {resulting_stage}")' in show_receipt
+    assert 'self.charge_heading.setText("Growth Charge")' in show_receipt
+    assert 'self.stage_rewards_heading.setText("Stage reward")' in show_receipt
     assert "GardenBadge(" in show_receipt
     assert 'self.use_action.setText("View plant")' in show_receipt
     assert 'self.cancel_action.setText("Close")' in show_receipt
@@ -1330,7 +1334,7 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert 'else presentation.primary_label.split(" ·", 1)[0]' in fertilizer
     assert "presentation.primary_accessible_name" in fertilizer
     assert "shortfall_label = QLabel(" in fertilizer
-    assert 'f"{shortfall:,} more "' in fertilizer
+    assert 'f"Need {shortfall:,} more "' in fertilizer
     assert "'Garden Coin' if shortfall == 1 else 'Garden Coins'" in fertilizer
     assert 'shortfall_label.setProperty("fertilizerShortfall", True)' in fertilizer
     assert 'action_label = f"Need ' not in fertilizer
@@ -1452,7 +1456,9 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         assert preview_copy not in confirmation
     assert 'self.outcome_heading = QLabel("")' in confirmation
     assert "self.proposal_notice.hide()" in confirmation
-    assert "purchase_presentation(\n                    refreshed,\n                    status=outcome.status" in confirmation
+    assert "purchase_presentation(\n                    refreshed,\n                    status=display_status" in confirmation
+    assert '"inline-balance-update"' in confirmation
+    assert "self.purchase_result.emit(outcome)" in confirmation
     assert "Review the updated terms before continuing." not in confirmation
     button_copy = _function_source(
         "ankigarden/ui/dashboard.py", "_qt_button_text"
