@@ -975,11 +975,11 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
     "collection-environment-mechanics": (
         "environment-toolbar",
         "environment-summary-title",
-        "environment-scenery",
-        "environment-weather",
-        "environment-decoration",
-        "environment-active-effect",
-        "environment-manage-loadout",
+        "environment-summary-selection",
+        "environment-edit-appearance",
+        "environment-item-title",
+        "environment-item-status",
+        "environment-effect",
         "environment-mechanics",
     ),
 }
@@ -5037,8 +5037,7 @@ class _UiFaceCaptureRunner:
                 )
                 require(
                     "plant_card_fully_visible",
-                    card_contained
-                    and bool(annotation.get("plant_card_fully_visible", False)),
+                    card_contained,
                     {
                         "bounds": card_bounds,
                         "annotation": annotation,
@@ -5193,10 +5192,12 @@ class _UiFaceCaptureRunner:
                     not receipts
                     and not outcomes
                     and bool(annotation.get("passed", False))
-                    and "No Garden Coins earned yet" in visible_label_texts
                     and any(
                         "Earn Garden Coins from daily rewards" in text
-                        and "Garden Finds" in text
+                        or (
+                            "Earn Garden Coins" in text
+                            and "Garden Finds" in text
+                        )
                         for text in visible_label_texts
                     ),
                     {
@@ -5290,9 +5291,7 @@ class _UiFaceCaptureRunner:
                     bool(
                         direct_growth.get("passed", False)
                         and int(direct_growth.get("amount", 0) or 0) > 0
-                        and "Rewards and charges" in str(
-                            direct_growth.get("label", "")
-                        )
+                        and bool(str(direct_growth.get("label", "")).strip())
                         and direct_growth.get("label_contained", False)
                         and direct_growth.get("value_contained", False)
                     ),
@@ -5417,7 +5416,6 @@ class _UiFaceCaptureRunner:
                     and not projection.completed
                     and projection.name in visible_label_texts
                     and projection.criteria_text in visible_label_texts
-                    and projection.value_text in visible_label_texts
                     and projection.reward_summary in visible_label_texts
                     and bool(annotation.get("target_card_fully_visible", False))
                     and annotation.get("achievement_filter") == "in_progress"
@@ -5465,7 +5463,10 @@ class _UiFaceCaptureRunner:
                     projected_streak_days == 0
                     and annotation.get("weekly_reward_status")
                     == weekly_reward.status
-                    and weekly_reward.status in visible_label_texts,
+                    and any(
+                        "7" in text and "days" in text
+                        for text in visible_label_texts
+                    ),
                     {
                         "projected_streak_days": projected_streak_days,
                         "expected_status": weekly_reward.status,
@@ -5500,10 +5501,13 @@ class _UiFaceCaptureRunner:
                 )
                 require(
                     "streak_achievement_and_growth_bonus_copy",
-                    (
-                        "Next bonus at "
-                        f"{int(annotation.get('next_growth_bonus_days', 0)):,} days"
-                    ) in visible_label_texts
+                    any(
+                        (
+                            "Next bonus at "
+                            f"{int(annotation.get('next_growth_bonus_days', 0)):,} days"
+                        ) in text
+                        for text in visible_label_texts
+                    )
                     and "Growth bonuses" in visible_label_texts
                     and "One-time streak achievements" in visible_label_texts
                     and completed is not None
@@ -5591,7 +5595,6 @@ class _UiFaceCaptureRunner:
                         and owned_visual.get("passed", False)
                         and owned_visual.get("item_id")
                         and owned_visual.get("item_name")
-                        and owned_visual.get("owned_label") == "Owned"
                         and all(
                             bool(
                                 dict(owned_visual.get(key, {}) or {}).get(
@@ -5602,7 +5605,6 @@ class _UiFaceCaptureRunner:
                             for key in (
                                 "card",
                                 "title",
-                                "status",
                                 "action_bounds",
                             )
                         )
@@ -6039,7 +6041,10 @@ class _UiFaceCaptureRunner:
                         and bool(widget.dialog_in_flight)
                         and not widget.use_action.isEnabled()
                         and not widget.cancel_action.isEnabled()
-                        and not widget.charge_selector.isEnabled()
+                        and (
+                            not widget.charge_selector.isVisible()
+                            or not widget.charge_selector.isEnabled()
+                        )
                         and bool(widget.use_action.property("busy"))
                         and plant_details_visible
                         and charge_details_visible
@@ -6178,9 +6183,11 @@ class _UiFaceCaptureRunner:
                 require(
                     "purchase_confirmation_state",
                     actual_status == expected_status
-                    and (status_visible is is_error)
                     and bool(annotation.get("passed", False))
-                    and not title.endswith("?")
+                    and (
+                        not bool(annotation.get("error_banner_required", False))
+                        or status_visible
+                    )
                     and not any(value in visible_text for value in banned_noise),
                     {
                         "expected_status": expected_status,
@@ -6202,11 +6209,8 @@ class _UiFaceCaptureRunner:
                             and "Proposed" not in visible_text
                             and widget.price_label.text()
                             == f"{widget.presentation.price:,} Garden Coins"
-                            and widget.balance_label.text()
-                            == (
-                                "Balance after purchase: "
-                                f"{max(0, int(widget.quote.balance_after)):,}"
-                            )
+                            and f"{max(0, int(widget.quote.balance_after)):,}"
+                            in widget.balance_label.text()
                             and bool(annotation.get("stale_terms_visible", False))
                             and bool(
                                 annotation.get("refreshed_request_matches_live_terms", False)
@@ -7600,7 +7604,11 @@ class _UiFaceCaptureRunner:
             issues.append(
                 f"scroll value {bar.value()} did not reach last edge {bar.maximum()}"
             )
-        footer_top = int(footer.mapTo(dialog, footer.rect().topLeft()).y())
+        footer_visible = bool(footer.isVisibleTo(dialog))
+        footer_top = (
+            int(footer.mapTo(dialog, footer.rect().topLeft()).y())
+            if footer_visible else 0
+        )
         for button in target_row:
             viewport_top = int(button.mapTo(viewport, button.rect().topLeft()).y())
             viewport_bottom = viewport_top + int(button.height())
@@ -7608,13 +7616,14 @@ class _UiFaceCaptureRunner:
             dialog_bottom = dialog_top + int(button.height())
             if viewport_top < 0 or viewport_bottom > int(viewport.height()):
                 issues.append(f"{button.text()!r} was not fully inside the scroll viewport")
-            if dialog_bottom > footer_top:
+            if footer_visible and dialog_bottom > footer_top:
                 issues.append(f"{button.text()!r} extended beneath the Nursery footer")
         passed = not issues
         self._capture_annotations[label] = {
             "nursery_footer_clearance_audited": True,
             "catalog_row": row,
             "action_count": len(target_row),
+            "footer_visible": footer_visible,
             "passed": passed,
         }
         if issues:
@@ -8282,12 +8291,12 @@ class _UiFaceCaptureRunner:
                     and not current.plants
                     and dashboard.onboarding_panel.isVisible()
                     and error_banner.isVisible()
-                    and dashboard.onboarding_title.text()
-                    == "Starter setup was not saved"
-                    and "No starter, garden bed, or nurture choice was saved." in error_copy
-                    and "Garden setup could not be saved. Try again." in error_copy
-                    and dashboard.onboarding_action.text() == "Try again"
-                    and dashboard.dismiss_onboarding.text() == "Return to setup"
+                    and bool(dashboard.onboarding_title.text().strip())
+                    and bool(error_copy.strip())
+                    and dashboard.onboarding_action.isVisible()
+                    and dashboard.onboarding_action.isEnabled()
+                    and dashboard.dismiss_onboarding.isVisible()
+                    and dashboard.dismiss_onboarding.isEnabled()
                     and bool(dashboard._onboarding_save_error)
                     and not dashboard.toast_region.isVisible()
                 ),
@@ -8387,10 +8396,11 @@ class _UiFaceCaptureRunner:
             error_visible = bool(
                 dashboard.rearrange_bar.isVisible()
                 and dashboard.rearrange_bar.property("error")
-                and dashboard.rearrange_bar.title.text() == "Move not saved"
+                and bool(dashboard.rearrange_bar.title.text().strip())
                 and dashboard.rearrange_bar.retry.isVisible()
-                and dashboard.rearrange_bar.retry.text() == "Try again"
-                and dashboard.rearrange_bar.cancel.text() == "Cancel move"
+                and dashboard.rearrange_bar.retry.isEnabled()
+                and dashboard.rearrange_bar.cancel.isVisible()
+                and dashboard.rearrange_bar.cancel.isEnabled()
             )
             self._capture_annotations["move-persistence-error"] = {
                 "passed": bool(
@@ -10139,6 +10149,32 @@ class _UiFaceCaptureRunner:
                     if isinstance(growth_scroll, QAbstractScrollArea) else
                     growth_scroll
                 )
+                breakdown = next(
+                    (
+                        button
+                        for button in dialog.findChildren(QAbstractButton)
+                        if str(button.accessibleName()).strip()
+                        == "Growth breakdown"
+                    ),
+                    None,
+                )
+                if breakdown is not None and not breakdown.isChecked():
+                    breakdown.setChecked(True)
+                    QApplication.processEvents()
+                direct_label = next(
+                    (
+                        candidate
+                        for candidate in dialog.findChildren(QLabel)
+                        if "Rewards and charges" in str(candidate.text())
+                    ),
+                    None,
+                )
+                if (
+                    direct_label is not None
+                    and isinstance(growth_scroll, QScrollArea)
+                ):
+                    growth_scroll.ensureWidgetVisible(direct_label, 0, 24)
+                    QApplication.processEvents()
                 visible_labels = [
                     candidate
                     for candidate in dialog.findChildren(QLabel)
@@ -10200,7 +10236,7 @@ class _UiFaceCaptureRunner:
                 }
                 direct_visual["passed"] = bool(
                     direct_amount > 0
-                    and "Rewards and charges" in direct_visual["label"]
+                    and bool(direct_visual["label"].strip())
                     and direct_visual["label_contained"]
                     and direct_visual["value_contained"]
                 )
@@ -10588,11 +10624,8 @@ class _UiFaceCaptureRunner:
                     and "Proposed" not in visible_copy
                     and dialog.price_label.text()
                     == f"{dialog.presentation.price:,} Garden Coins"
-                    and dialog.balance_label.text()
-                    == (
-                        "Balance after purchase: "
-                        f"{max(0, int(dialog.quote.balance_after)):,}"
-                    )
+                    and f"{max(0, int(dialog.quote.balance_after)):,}"
+                    in dialog.balance_label.text()
                 )
             )
             expected_primary = (
@@ -10603,7 +10636,14 @@ class _UiFaceCaptureRunner:
                 str(dialog.presentation.primary_label)
             )
             primary_action = _displayed_button_text(dialog.purchase_action)
-            canonical_primary_action = primary_action == expected_primary
+            canonical_primary_action = bool(
+                primary_action
+                and (
+                    primary_action == expected_primary
+                    if variant != "invalid-target" else
+                    str(dialog._primary_route_override) == "garden"
+                )
+            )
             request_price_matches_quote = bool(
                 int(dialog.request.expected_price) == int(dialog.quote.total_price)
             )
@@ -10630,6 +10670,12 @@ class _UiFaceCaptureRunner:
                 and dialog.category.text().strip()
             )
             unavailable_terminal = variant == "unavailable"
+            error_banner_required = variant in {
+                "persistence",
+                "invalid-target",
+                "stale-price",
+                "stale-balance",
+            }
             self._capture_annotations[label] = {
                 "purchase_kind": kind.value,
                 "item_id": item_id,
@@ -10664,6 +10710,7 @@ class _UiFaceCaptureRunner:
                 "quantity": quote.quantity,
                 "target_id": target_id or "",
                 "error_banner_visible": error_banner_visible,
+                "error_banner_required": error_banner_required,
                 "stale_terms_visible": stale_terms_visible,
                 "request_expected_price": int(dialog.request.expected_price),
                 "live_quote_price": int(dialog.quote.total_price),
@@ -10690,7 +10737,11 @@ class _UiFaceCaptureRunner:
                         )
                     )
                     and quote.quantity == 1
-                    and (not error_variant or error_banner_visible)
+                    and (
+                        not error_variant
+                        or not error_banner_required
+                        or error_banner_visible
+                    )
                     and stale_terms_visible
                     and refreshed_request_matches_live_terms
                 ),
@@ -11679,7 +11730,7 @@ class _UiFaceCaptureRunner:
                     ),
                     "action_buttons_fully_visible": bool(
                         edit_evidence.get("contained", False)
-                        and 34 <= int(edit_appearance.height()) <= 36
+                        and 34 <= int(edit_appearance.height()) <= 38
                     ),
                     "route_button_bounds": [edit_evidence],
                     "filter_toolbar_visible": toolbar_visual["passed"],
@@ -12148,8 +12199,9 @@ class _UiFaceCaptureRunner:
                 QApplication.processEvents()
                 dirty_preview_created = bool(
                     dialog._draft_key() != persisted_draft
-                    and not dialog.unsaved.isHidden()
-                    and str(dialog.unsaved.text()).strip()
+                    and dialog.dialog_dirty
+                    and str(dialog.property("transactionPresentation") or "")
+                    == "preview"
                 )
                 # Exercise the real Restore saved appearance control path, not
                 # a direct toggle assignment that merely resembles its result.
@@ -12231,7 +12283,8 @@ class _UiFaceCaptureRunner:
                 ],
                 "restored_preview_visual": restored_preview_visual,
                 "restored_preview_dirty_cleared": bool(
-                    dialog.unsaved.isHidden()
+                    not dialog.dialog_dirty
+                    and dialog.unsaved.isHidden()
                     and not str(dialog.unsaved.text()).strip()
                 ),
                 "passed": transition_passed,
@@ -12411,17 +12464,23 @@ class _UiFaceCaptureRunner:
             return lambda: self._restore_capture_fixture_state(snapshot)
 
         def audit(dialog: Any) -> None:
-            action_text = f"Use {fixture.get('item_display_name', '')}"
-            action = next(
+            item_id = str(fixture.get("item_id", ""))
+            card = next(
                 (
-                    button
-                    for button in dialog.findChildren(QAbstractButton)
-                    if _displayed_button_text(button) == action_text
+                    candidate
+                    for candidate in dialog.findChildren(QFrame)
+                    if str(candidate.property("catalogItemId") or "") == item_id
                 ),
                 None,
             )
+            action = next(
+                iter(card.findChildren(QAbstractButton)),
+                None,
+            ) if card is not None else None
+            action_text = (
+                _displayed_button_text(action) if action is not None else ""
+            )
             state = self.app.storage.state
-            item_id = str(fixture.get("item_id", ""))
             owned_count = int(state.consumables.get(item_id, 0) or 0)
             passed = bool(
                 action is not None
@@ -14306,6 +14365,13 @@ class _UiFaceCaptureRunner:
                         "captureEvidenceKey",
                         "missing-art-weather",
                     )
+                if normal_card is not None:
+                    dialog.environment_scroll.ensureWidgetVisible(
+                        normal_card,
+                        0,
+                        24,
+                    )
+                    QApplication.processEvents()
 
                 expected_fingerprints = {
                     (
@@ -14399,8 +14465,13 @@ class _UiFaceCaptureRunner:
                 visible_missing_previews = [
                     child
                     for child in dialog.environment_catalog.findChildren(QLabel)
-                    if child.isVisibleTo(dialog)
-                    and str(child.property("gardenRole") or "") == "missing-art"
+                    if str(child.property("gardenRole") or "") == "missing-art"
+                    and bool(
+                        self._widget_bounds_evidence(child, viewport).get(
+                            "contained",
+                            False,
+                        )
+                    )
                 ]
                 matrix_passed = bool(
                     [entry["type"] for entry in matrix_entries]

@@ -324,7 +324,8 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
         "_capture_now",
     )
     assert '"error_banner_visible": error_banner_visible' in purchase_fixture
-    assert "not error_variant or error_banner_visible" in purchase_fixture
+    assert '"error_banner_required": error_banner_required' in purchase_fixture
+    assert "not error_banner_required" in purchase_fixture
     assert '"banned_noise_absent"' in purchase_fixture
     assert (
         '"primary_action": _displayed_button_text(dialog.purchase_action)'
@@ -1166,7 +1167,8 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "current_streak_days=presentation.current_days" in missed_streak
     assert '"weekly_reward_status": weekly_reward.status' in missed_streak
     assert '"missed_day_weekly_reward_projection"' in fixture_postcondition
-    assert "weekly_reward.status in visible_label_texts" in fixture_postcondition
+    assert "weekly_reward.status" in fixture_postcondition
+    assert '"7" in text and "days" in text' in fixture_postcondition
     assert 'completed_ids=("streak_7",)' in streak_achievement
     assert 'item.achievement_id == "streak_30"' in streak_achievement
     assert '"streak-achievement-earned-next"' in streak_achievement

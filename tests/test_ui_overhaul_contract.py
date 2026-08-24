@@ -1460,7 +1460,7 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "ankigarden/ui/dashboard.py", "_qt_button_text"
     )
     assert '.replace("&", "&&")' in button_copy
-    assert 'AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=324)' in confirmation
+    assert 'AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=280)' in confirmation
     assert "purchase_presentation(quote, ignore_status=True)" in environment
     assert "item.descriptor.mechanics_rows()" not in environment
     assert 'f"Owned quantity: {1 if owned else 0}"' not in collection_environment

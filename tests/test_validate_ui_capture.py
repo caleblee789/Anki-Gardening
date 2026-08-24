@@ -300,11 +300,11 @@ def _valid_visual_contract(
         keys = [
             "toolbar",
             "summary_title",
-            "scenery",
-            "weather",
-            "decoration",
-            "active_effect",
-            "manage_loadout",
+            "summary_selection",
+            "edit_appearance",
+            "item_title",
+            "item_status",
+            "effect",
             "mechanics",
         ]
         audit["environment_mechanics_visual"] = {
@@ -345,11 +345,11 @@ def _valid_visual_contract(
         "collection-environment-mechanics": [
             "environment-toolbar",
             "environment-summary-title",
-            "environment-scenery",
-            "environment-weather",
-            "environment-decoration",
-            "environment-active-effect",
-            "environment-manage-loadout",
+            "environment-summary-selection",
+            "environment-edit-appearance",
+            "environment-item-title",
+            "environment-item-status",
+            "environment-effect",
             "environment-mechanics",
         ],
     }.get(label, [])

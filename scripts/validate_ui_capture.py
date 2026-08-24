@@ -73,11 +73,11 @@ RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
     "collection-environment-mechanics": (
         "environment-toolbar",
         "environment-summary-title",
-        "environment-scenery",
-        "environment-weather",
-        "environment-decoration",
-        "environment-active-effect",
-        "environment-manage-loadout",
+        "environment-summary-selection",
+        "environment-edit-appearance",
+        "environment-item-title",
+        "environment-item-status",
+        "environment-effect",
         "environment-mechanics",
     ),
 }
@@ -2148,11 +2148,11 @@ def _visual_contract_record_issues(
         required_keys = {
             "toolbar",
             "summary_title",
-            "scenery",
-            "weather",
-            "decoration",
-            "active_effect",
-            "manage_loadout",
+            "summary_selection",
+            "edit_appearance",
+            "item_title",
+            "item_status",
+            "effect",
             "mechanics",
         }
         bounds = mechanics.get("required_bounds")
