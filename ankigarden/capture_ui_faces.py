@@ -3374,12 +3374,11 @@ class _UiFaceCaptureRunner:
         evidence = self._widget_bounds_evidence(toast, parent)
         bounds = list(evidence.get("bounds", ()) or ())
         viewport_size = list(evidence.get("container_size", ()) or ())
-        stacked = label == "reviewer-find-stacked-sync"
         width = bounds[2] if len(bounds) == 4 else 0
         height = bounds[3] if len(bounds) == 4 else 0
         size_in_range = bool(
-            (360 <= width <= 400 if stacked else 340 <= width <= 380)
-            and (72 <= height <= 104 if stacked else 72 <= height <= 88)
+            320 <= width <= 360
+            and 72 <= height <= 80
         )
 
         # Reviewer answer buttons live inside WebEngine and are not QWidgets.

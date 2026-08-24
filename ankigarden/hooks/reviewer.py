@@ -865,12 +865,12 @@ class ReviewerHookHandler:
                 " color: #f5df9a; font-size: 24px; }"
             )
             row = QHBoxLayout(toast)
-            row.setContentsMargins(12, 10, 14, 10)
-            row.setSpacing(11)
+            row.setContentsMargins(10, 8, 12, 8)
+            row.setSpacing(9)
 
             art = QLabel("")
             art.setObjectName("ankiGardenRewardArt")
-            art.setFixedSize(48, 48)
+            art.setFixedSize(44, 44)
             art.setAlignment(Qt.AlignmentFlag.AlignCenter)
             art.setAccessibleName(self._reward_artwork_accessible_name(event))
             pixmap, bounds = self._reward_artwork(event, QPixmap)
@@ -899,8 +899,8 @@ class ReviewerHookHandler:
                         pass
                 art.setText("")
                 art.setPixmap(pixmap.scaled(
-                    42,
-                    42,
+                    38,
+                    38,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 ))
@@ -915,7 +915,7 @@ class ReviewerHookHandler:
                         else "growth"
                     )
                     art.setPixmap(
-                        garden_icon(icon_name, color="#f5df9a").pixmap(42, 42)
+                        garden_icon(icon_name, color="#f5df9a").pixmap(38, 38)
                     )
                 except Exception:
                     pass
@@ -951,12 +951,16 @@ class ReviewerHookHandler:
                 copy.addWidget(message)
             row.addLayout(copy, 1)
 
-            preferred_width = 380 if len(tuple(getattr(event, "event_ids", ()) or ())) > 1 else 360
+            preferred_width = (
+                360
+                if len(tuple(getattr(event, "event_ids", ()) or ())) > 1
+                else 344
+            )
             viewport_width = max(1, int(parent.width()))
             viewport_height = max(1, int(parent.height()))
             toast.setFixedWidth(min(preferred_width, max(1, viewport_width - 32)))
             toast.adjustSize()
-            preferred_height = max(80, min(96, toast.sizeHint().height()))
+            preferred_height = max(72, min(80, toast.sizeHint().height()))
             toast.setFixedHeight(
                 min(preferred_height, max(1, viewport_height - 32))
             )

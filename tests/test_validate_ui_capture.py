@@ -235,8 +235,8 @@ def _valid_visual_contract(
             "passed": True,
         }
     if state_kind == "reviewer":
-        width = 380 if label == "reviewer-find-stacked-sync" else 360
-        height = 96 if label == "reviewer-find-stacked-sync" else 80
+        width = 360 if label == "reviewer-find-stacked-sync" else 344
+        height = 80
         audit["reviewer_overlay_geometry"] = {
             "parent_is_reviewer_webview": True,
             "overlay_bounds": [604, 16, width, height],
