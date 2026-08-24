@@ -2435,8 +2435,22 @@ class _UiFaceCaptureRunner:
                 '[data-testid="home-sun-layer"], .ag-home__sun-layer, .ag-home__sun'
               );
               const sceneryLayer = root.querySelector('[data-testid="home-scenery-layer"]');
-              const previewStatusPresent = !!root.querySelector(
+              const previewStatus = root.querySelector(
                 '[data-testid="home-preview-status"]'
+              );
+              const previewStatusPresent = !!previewStatus;
+              const previewStatusRect = previewStatus
+                ? previewStatus.getBoundingClientRect()
+                : null;
+              const homeActionRect = homeAction
+                ? homeAction.getBoundingClientRect()
+                : null;
+              const previewStatusActionOverlap = !!(
+                previewStatusRect && homeActionRect
+                && previewStatusRect.left < homeActionRect.right
+                && previewStatusRect.right > homeActionRect.left
+                && previewStatusRect.top < homeActionRect.bottom
+                && previewStatusRect.bottom > homeActionRect.top
               );
               const loadingPresent = !!root.querySelector(
                 '[data-testid="home-loading"]'
@@ -2491,7 +2505,10 @@ class _UiFaceCaptureRunner:
               } else if (fixtureState === 'preview-stale') {
                 fixtureMatches = root.dataset.state === 'stale'
                   && command.endsWith(':open')
-                  && !!root.querySelector('[data-testid="home-preview-status"]');
+                  && !!previewStatus
+                  && !!homeAction
+                  && !homeAction.disabled
+                  && !previewStatusActionOverlap;
               }
               const paintedState = fixtureState.startsWith('preview-')
                 ? root.dataset.state === fixtureState.replace('preview-', '')
@@ -2525,6 +2542,20 @@ class _UiFaceCaptureRunner:
                 imagesComplete,
                 failedImageCount,
                 previewStatusPresent,
+                previewStatusActionOverlap,
+                previewStatusBounds: previewStatusRect ? {
+                  left: Math.round(previewStatusRect.left - rect.left),
+                  top: Math.round(previewStatusRect.top - rect.top),
+                  right: Math.round(previewStatusRect.right - rect.left),
+                  bottom: Math.round(previewStatusRect.bottom - rect.top),
+                } : null,
+                homeActionBounds: homeActionRect ? {
+                  left: Math.round(homeActionRect.left - rect.left),
+                  top: Math.round(homeActionRect.top - rect.top),
+                  right: Math.round(homeActionRect.right - rect.left),
+                  bottom: Math.round(homeActionRect.bottom - rect.top),
+                } : null,
+                homeActionEnabled: !!homeAction && !homeAction.disabled,
                 loadingPresent,
                 renderedCopy,
                 bannedTerms,
@@ -3717,8 +3748,13 @@ class _UiFaceCaptureRunner:
                 - horizontal_padding
                 - icon_width,
             )
+            text_fit_clearance = max(
+                0,
+                int(button.property("textFitClearance") or 0),
+            )
             text_fit_passed = bool(
-                not text or text_width <= available_text_width
+                not text
+                or text_width + text_fit_clearance <= available_text_width
             )
             footer_action = bool(
                 pinned_footer is not None
@@ -3749,6 +3785,7 @@ class _UiFaceCaptureRunner:
                 "footer_action": footer_action,
                 "text_width": text_width,
                 "horizontal_padding": horizontal_padding,
+                "text_fit_clearance": text_fit_clearance,
                 "available_text_width": available_text_width,
                 "text_fit_passed": text_fit_passed,
             })
@@ -4961,6 +4998,25 @@ class _UiFaceCaptureRunner:
                     ),
                 },
             )
+            if expected_fixture == "preview-stale":
+                stale_geometry = {
+                    "status_bounds": dom.get("previewStatusBounds"),
+                    "action_bounds": dom.get("homeActionBounds"),
+                    "status_action_overlap": bool(
+                        dom.get("previewStatusActionOverlap", True)
+                    ),
+                    "action_enabled": bool(dom.get("homeActionEnabled", False)),
+                }
+                stale_geometry["passed"] = bool(
+                    dom.get("previewStatusPresent", False)
+                    and not stale_geometry["status_action_overlap"]
+                    and stale_geometry["action_enabled"]
+                )
+                require(
+                    "stale_preview_action_clearance",
+                    bool(stale_geometry["passed"]),
+                    stale_geometry,
+                )
             if "active_slot" in expectation:
                 expected_slot = int(expectation["active_slot"])
                 actual_slot = int(getattr(active_plant, "slot_index", -1) or 0)
@@ -5745,6 +5801,23 @@ class _UiFaceCaptureRunner:
                         "disabled_catalog_actions": disabled_catalog_actions,
                         "helper_text": helper_text,
                     },
+                )
+                locked_geometry = dict(
+                    annotation.get("locked_catalog_geometry", {}) or {}
+                )
+                require(
+                    "locked_catalog_rows_unclipped",
+                    bool(
+                        annotation.get("passed", False)
+                        and locked_geometry.get("passed", False)
+                        and locked_geometry.get("visible_cards")
+                        and not locked_geometry.get("partial_cards")
+                        and dict(locked_geometry.get("heading", {}) or {}).get(
+                            "contained",
+                            False,
+                        )
+                    ),
+                    locked_geometry,
                 )
             elif state_name == "nursery-purchase-success":
                 title = str(
@@ -14340,8 +14413,75 @@ class _UiFaceCaptureRunner:
             self.app.storage.state.consumables[key] = 0
 
         def ready(dialog: Any) -> None:
+            growth_heading = next(
+                (
+                    candidate
+                    for candidate in dialog.supplements_catalog.findChildren(QLabel)
+                    if str(candidate.text()).strip() == "Growth Charges"
+                ),
+                None,
+            )
+            margins = dialog.supplements_layout.contentsMargins()
+            dialog.supplements_layout.setContentsMargins(
+                margins.left(),
+                margins.top(),
+                margins.right(),
+                max(margins.bottom(), 112),
+            )
+            dialog.supplements_layout.activate()
+            QApplication.processEvents()
             scrollbar = dialog.supplements_scroll.verticalScrollBar()
-            scrollbar.setValue(scrollbar.maximum())
+            if growth_heading is not None:
+                scrollbar.setValue(max(
+                    int(scrollbar.minimum()),
+                    min(
+                        int(scrollbar.maximum()),
+                        int(growth_heading.y()) - 8,
+                    ),
+                ))
+            QApplication.processEvents()
+
+            viewport = dialog.supplements_scroll.viewport()
+            viewport_height = int(viewport.height())
+            visible_cards: list[dict[str, Any]] = []
+            partial_cards: list[dict[str, Any]] = []
+            for card in dialog.supplements_catalog.findChildren(QFrame):
+                if not bool(card.property("nurseryCatalogCard")):
+                    continue
+                bounds = self._widget_bounds_evidence(card, viewport)
+                left, top, width, height = list(
+                    bounds.get("bounds", ()) or (0, 0, 0, 0)
+                )
+                bottom = int(top) + int(height)
+                if bottom <= 0 or int(top) >= viewport_height:
+                    continue
+                row = {
+                    "item_id": str(card.property("catalogItemId") or ""),
+                    "bounds": [int(left), int(top), int(width), int(height)],
+                }
+                visible_cards.append(row)
+                if int(top) < 0 or bottom > viewport_height:
+                    partial_cards.append(row)
+            heading_bounds = self._widget_bounds_evidence(
+                growth_heading,
+                viewport,
+            )
+            geometry = {
+                "scroll_value": int(scrollbar.value()),
+                "scroll_maximum": int(scrollbar.maximum()),
+                "heading": heading_bounds,
+                "visible_cards": visible_cards,
+                "partial_cards": partial_cards,
+            }
+            geometry["passed"] = bool(
+                heading_bounds.get("contained", False)
+                and visible_cards
+                and not partial_cards
+            )
+            self._capture_annotations[label] = {
+                "locked_catalog_geometry": geometry,
+                "passed": bool(geometry["passed"]),
+            }
 
             def close_dialog() -> None:
                 self._close_widget(dialog)

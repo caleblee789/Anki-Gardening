@@ -748,6 +748,8 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
         "page_scroll_value",
     ):
         assert proof in visual_audit
+    assert 'button.property("textFitClearance")' in visual_audit
+    assert "text_width + text_fit_clearance <= available_text_width" in visual_audit
     assert "visible >= 3" in icon_pixels
     assert '"capture_pixels_present"' in capture_pixels
     assert "RENDERED_PIXEL_EVIDENCE_KEYS.get(label" in capture_pixels
@@ -935,6 +937,9 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     assert "root.dataset.activeSlot" in source
     assert "root.querySelector('[data-testid=\"home-open\"]')" in source
     assert "homeAction.dataset.ankiGardenCommand" in source
+    assert "const previewStatusActionOverlap" in source
+    assert "!homeAction.disabled" in source
+    assert "!previewStatusActionOverlap" in source
     assert "capture_label: str" in source
     assert "visibleRoots[visibleRoots.length - 1]" in source
     assert "command.endsWith(':open')" in source
@@ -1177,6 +1182,10 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "_capture_fixture_state_snapshot(label)" in nursery_locked
     assert "_restore_capture_fixture_state(snapshot)" in nursery_locked
     assert "on_error=cleanup" in nursery_locked
+    assert 'str(candidate.text()).strip() == "Growth Charges"' in nursery_locked
+    assert "dialog.supplements_layout.setContentsMargins(" in nursery_locked
+    assert '"partial_cards": partial_cards' in nursery_locked
+    assert '"locked_catalog_rows_unclipped"' in fixture_postcondition
 
     assert "ACHIEVEMENT_DEFINITIONS" in achievement
     assert "_prepare_canonical_achievement_capture_fixture" in achievement
