@@ -8126,17 +8126,17 @@ class NurseryDialog(DialogShell):
             QFrame[spaceBed='true'][spaceState='next'] { background:#4a3625; border:2px solid #d5ad70; }
             QLabel[spaceBedIcon='true'] { color:#d5ad70; font-size:26px; font-weight:800; }
             QLabel[nurseryEyebrow='true'] { color:#d5ad70; font-size:12px; font-weight:800; letter-spacing:1.2px; }
-            QLabel[nurseryTitle='true'] { font-size:30px; font-weight:800; }
-            QLabel[nurserySection='true'] { color:#f8e8cf; font-size:19px; font-weight:800; padding:11px 2px 1px 2px; }
+            QLabel[nurseryTitle='true'] { font-size:24px; font-weight:800; }
+            QLabel[nurserySection='true'] { color:#f8e8cf; font-size:16px; font-weight:800; padding:7px 2px 1px 2px; }
             QLabel[nurserySectionNote='true'] { color:#bca991; font-size:13px; padding:0 2px 4px 2px; }
-            QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:19px; font-weight:800; }
-            QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:14px; }
+            QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:16px; font-weight:800; }
+            QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:13px; }
             QLabel[nurseryOwnership='true'] { color:#d5ad70; font-size:12px; font-weight:800; letter-spacing:.8px; }
-            QLabel[nurseryStageName='true'] { color:#fff3da; font-size:16px; font-weight:800; }
+            QLabel[nurseryStageName='true'] { color:#fff3da; font-size:14px; font-weight:800; }
             QLabel[nurseryStageCount='true'] { color:#cdbba5; font-size:13px; }
             QLabel[nurseryShortfall='true'] { color:#f0cf8d; font-size:13px; }
-            QLabel[nurseryCoinLabel='true'] { color:#bca991; font-size:12px; font-weight:800; letter-spacing:.9px; }
-            QLabel[nurseryCoins='true'] { color:#f1c979; font-size:29px; font-weight:800; }
+            QLabel[nurseryCoinLabel='true'] { color:#bca991; font-size:11px; font-weight:800; letter-spacing:.7px; }
+            QLabel[nurseryCoins='true'] { color:#f1c979; font-size:18px; font-weight:800; }
             QLabel[nurseryArtwork='true'] {
                 background:qradialgradient(cx:0.5,cy:0.58,radius:0.78,fx:0.5,fy:0.58,stop:0 #55402e,stop:0.62 #32231d,stop:1 #211713);
                 border:1px solid #795b42;
@@ -8146,7 +8146,7 @@ class NurseryDialog(DialogShell):
                 padding:0;
             }
             QTabWidget::pane { border:1px solid #654936; border-radius:12px; background:#2f211b; top:-1px; }
-            QTabBar::tab { min-height:38px; max-height:38px; padding:0 14px; color:#b8d8c2; background:#0c261f; border:0; border-bottom:3px solid transparent; font-size:14px; font-weight:700; }
+            QTabBar::tab { min-height:36px; max-height:36px; padding:0 12px; color:#b8d8c2; background:#0c261f; border:0; border-bottom:3px solid transparent; font-size:13px; font-weight:700; }
             QTabBar::tab:hover { color:#f3f7f2; background:#123228; border-color:#846044; }
             QTabBar::tab:selected { color:#fff3da; background:#17352c; border-color:#d5ad70; }
             QPushButton[nurseryCarouselNav='true'] { padding:2px 4px; font-size:13px; font-weight:700; }
@@ -8157,14 +8157,14 @@ class NurseryDialog(DialogShell):
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:transparent; }
         """)
         root = QVBoxLayout(self)
-        root.setContentsMargins(18, 14, 18, 14)
-        root.setSpacing(14)
+        root.setContentsMargins(14, 10, 14, 10)
+        root.setSpacing(10)
 
         hero = QFrame()
         hero.setProperty("nurseryHero", True)
         hero.setProperty("dialogHeader", True)
         self.hero_layout = QHBoxLayout(hero)
-        self.hero_layout.setContentsMargins(24, 10, 24, 14)
+        self.hero_layout.setContentsMargins(16, 8, 16, 10)
         copy = QVBoxLayout()
         copy.setSpacing(2)
         eyebrow = QLabel("NURSERY")
@@ -8186,9 +8186,9 @@ class NurseryDialog(DialogShell):
         self.hero_layout.addLayout(copy, 1)
         self.coin_resource = QFrame()
         self.coin_resource.setProperty("nurseryResource", True)
-        resource_layout = QVBoxLayout(self.coin_resource)
-        resource_layout.setContentsMargins(14, 8, 14, 8)
-        resource_layout.setSpacing(0)
+        resource_layout = QHBoxLayout(self.coin_resource)
+        resource_layout.setContentsMargins(10, 6, 10, 6)
+        resource_layout.setSpacing(7)
         coin_label = QLabel("GARDEN COINS")
         coin_label.setProperty("nurseryCoinLabel", True)
         coin_label.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -8197,7 +8197,7 @@ class NurseryDialog(DialogShell):
         self.coins.setProperty("nurseryCoins", True)
         apply_tabular_numerals(self.coins)
         self.coins.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.coins.setMinimumWidth(150)
+        self.coins.setMinimumWidth(0)
         resource_layout.addWidget(coin_label)
         resource_layout.addWidget(self.coins)
         self.hero_layout.addWidget(self.coin_resource, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -8217,7 +8217,7 @@ class NurseryDialog(DialogShell):
         )
         self.nursery_toast.dismiss.setText("Keep browsing")
         self.nursery_toast.dismiss.setAccessibleName("Keep browsing")
-        root.addWidget(self.nursery_toast)
+        self.nursery_toast.shown.connect(self._position_nursery_overlays)
 
         self.catalog_tabs = QTabWidget()
         self.catalog_tabs.setProperty("dialogBody", True)
@@ -8319,7 +8319,7 @@ class NurseryDialog(DialogShell):
         root.addWidget(self.starter_tab_note)
         root.addWidget(self.catalog_tabs, 1)
 
-        self.status = QLabel("")
+        self.status = QLabel("", self)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         self.status.setAccessibleName("Nursery status")
@@ -8329,12 +8329,12 @@ class NurseryDialog(DialogShell):
         apply_tabular_numerals(self.status)
         self._status_generation = 0
         self.status.hide()
-        root.addWidget(self.status)
         self.nursery_footer = QFrame()
         self.nursery_footer.setProperty("nurseryFooter", True)
         self.nursery_footer.setProperty("dialogFooter", True)
         footer = QHBoxLayout(self.nursery_footer)
-        footer.setContentsMargins(0, 10, 0, 0)
+        footer.setContentsMargins(0, 6, 0, 0)
+        self.nursery_footer.setMaximumHeight(48)
         self.bed_button = QPushButton("")
         self._bed_purchase_pending = False
         self._bed_button_restore_enabled = False
@@ -8373,12 +8373,12 @@ class NurseryDialog(DialogShell):
             AdaptiveRegion.measured(
                 "nursery-introduction",
                 copy,
-                floor=400,
+                floor=360,
             ),
             AdaptiveRegion.measured(
                 "garden-coins",
                 self.coin_resource,
-                floor=200,
+                floor=160,
             ),
             layout=self.hero_layout,
             wide_direction=QBoxLayout.Direction.LeftToRight,
@@ -8387,6 +8387,24 @@ class NurseryDialog(DialogShell):
             telemetry_target=self,
         )
         self.refresh()
+
+    def _position_nursery_overlays(self) -> None:
+        """Clamp Nursery feedback inside its active catalog, below the tabs."""
+
+        if not hasattr(self, "catalog_tabs"):
+            return
+        tab_rect = self.catalog_tabs.geometry()
+        inset = 12
+        available_width = max(1, tab_rect.width() - (inset * 2))
+        overlay_width = min(520, available_width)
+        x = tab_rect.left() + max(inset, (tab_rect.width() - overlay_width) // 2)
+        y = tab_rect.top() + self.catalog_tabs.tabBar().height() + inset
+        for overlay in (self.nursery_toast, self.status):
+            if not overlay.isVisible():
+                continue
+            overlay_height = min(84, max(44, overlay.sizeHint().height()))
+            overlay.setGeometry(x, y, overlay_width, overlay_height)
+            overlay.raise_()
 
     def resizeEvent(self, event: Any) -> None:
         margins = self.layout().contentsMargins()
@@ -8397,7 +8415,7 @@ class NurseryDialog(DialogShell):
         if hasattr(self, "hero_responsive"):
             hero = self.hero_responsive.evaluate(available)
             hero_compact = hero.mode == COMPACT_MODE
-            self.coin_resource.setMaximumWidth(240)
+            self.coin_resource.setMaximumWidth(190)
             self.coin_resource.setSizePolicy(
                 QSizePolicy.Policy.Maximum,
                 QSizePolicy.Policy.Preferred,
@@ -8409,13 +8427,14 @@ class NurseryDialog(DialogShell):
                 else Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             )
             self.hero_layout.setContentsMargins(
-                12 if hero_compact else 24,
-                6 if hero_compact else 10,
-                12 if hero_compact else 24,
-                8 if hero_compact else 14,
+                12 if hero_compact else 16,
+                6 if hero_compact else 8,
+                12 if hero_compact else 16,
+                8 if hero_compact else 10,
             )
             self.setProperty("heroMode", hero.mode)
         super().resizeEvent(event)
+        QTimer.singleShot(0, self._position_nursery_overlays)
 
     def _clear_catalog(self) -> None:
         while self.catalog_layout.count():
@@ -8870,10 +8889,10 @@ class NurseryDialog(DialogShell):
         card.setAccessibleName(f"{item_name} starter plant")
         card.setAccessibleDescription(f"{item_name}. Free starter.")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(9)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(7)
         layout.addWidget(
-            self._plant_artwork(species, GROWTH_STAGES[0], 112),
+            self._plant_artwork(species, GROWTH_STAGES[0], 84),
             0,
             Qt.AlignmentFlag.AlignHCenter,
         )
@@ -9364,7 +9383,7 @@ class NurseryDialog(DialogShell):
         layout.setContentsMargins(12, 11, 12, 11)
         layout.setSpacing(8)
         layout.addWidget(
-            self._environment_artwork(item, width=240, height=135),
+            self._environment_artwork(item, width=180, height=101),
             0,
             Qt.AlignmentFlag.AlignHCenter,
         )
@@ -10145,6 +10164,7 @@ class NurseryDialog(DialogShell):
         self.catalog_tabs.tabBar().setVisible(not starter_mode)
         self.starter_tab_note.hide()
         self.coin_resource.setVisible(not starter_mode)
+        self.nursery_footer.setVisible(starter_mode)
         self.close_button.setText("Later" if starter_mode else "Close")
         _set_button_variant(
             self.close_button,
@@ -10292,9 +10312,9 @@ class NurseryDialog(DialogShell):
             self.upgrades_layout.addWidget(self._space_progression())
 
             self.environment_feature_art = QLabel()
-            self.environment_feature_art.setMinimumSize(240, 135)
-            self.environment_feature_art.setMaximumSize(360, 202)
-            self.environment_feature_art.resize(360, 202)
+            self.environment_feature_art.setMinimumSize(180, 101)
+            self.environment_feature_art.setMaximumSize(220, 124)
+            self.environment_feature_art.resize(220, 124)
             self.environment_feature_art.setSizePolicy(
                 QSizePolicy.Policy.Preferred,
                 QSizePolicy.Policy.Preferred,
@@ -10303,7 +10323,7 @@ class NurseryDialog(DialogShell):
             self.environment_feature_art.setProperty("nurseryArtwork", True)
             self.environment_feature_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.environment_feature_art.setPixmap(
-                _environment_placeholder_pixmap(350, 192)
+                _environment_placeholder_pixmap(220, 124)
             )
             self.environment_feature_art.setAccessibleName(
                 "Weather or Scenery preview"
@@ -10324,7 +10344,7 @@ class NurseryDialog(DialogShell):
                 self.environment_feature_art,
                 feature_copy_widget,
                 semantic_id="nursery.environment-feature",
-                summary_floor=240,
+                summary_floor=220,
                 action_floor=180,
                 spacing=12,
                 margins=(12, 11, 12, 11),
@@ -10347,9 +10367,9 @@ class NurseryDialog(DialogShell):
                 label.setProperty("nurserySection", True)
                 self.environment_layout.addWidget(label)
                 grid = ResponsiveTileGrid(
-                    breakpoint=620,
-                    minimum_tile_width=270,
-                    maximum_columns=2,
+                    breakpoint=520,
+                    minimum_tile_width=240,
+                    maximum_columns=3,
                 )
                 first_item: CatalogItem | None = None
                 for item in catalog.values():
@@ -10419,6 +10439,9 @@ class NurseryDialog(DialogShell):
         )
         self.status.setAccessibleDescription(message)
         self.status.show()
+        position_overlays = getattr(self, "_position_nursery_overlays", None)
+        if callable(position_overlays):
+            position_overlays()
         announcer = getattr(self, "accessibility_announcer", None)
         if announcer is not None:
             announcer.announce(

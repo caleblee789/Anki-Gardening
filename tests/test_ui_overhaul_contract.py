@@ -264,15 +264,15 @@ def test_nursery_stage_carousel_uses_clear_bounded_navigation() -> None:
     assert "button.setFixedSize(84, COMPACT_BUTTON_HEIGHT)" in carousel
 
 
-def test_nursery_cards_use_larger_readable_type() -> None:
+def test_nursery_cards_use_compact_readable_type() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     nursery = dashboard.split("class NurseryDialog", 1)[1].split(
         "class PlantInfoCard", 1
     )[0]
 
-    assert "QLabel[nurseryTitle='true'] { font-size:30px" in nursery
-    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:19px" in nursery
-    assert "QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:14px" in nursery
+    assert "QLabel[nurseryTitle='true'] { font-size:24px" in nursery
+    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:16px" in nursery
+    assert "QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:13px" in nursery
     assert 'title.setProperty("nurseryPlantName", True)' in nursery
 
 

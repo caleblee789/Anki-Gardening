@@ -105,6 +105,25 @@ def test_loadout_preview_feedback_is_an_aspect_fitted_scene_overlay() -> None:
     assert "duration_ms=0 if error else duration_ms" in loadout
 
 
+def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    nursery = source.split("class NurseryDialog", 1)[1].split(
+        "class PlantInfoCard", 1
+    )[0]
+
+    assert "root.setContentsMargins(14, 10, 14, 10)" in nursery
+    assert "resource_layout = QHBoxLayout(self.coin_resource)" in nursery
+    assert "self.coins.setMinimumWidth(0)" in nursery
+    assert "root.addWidget(self.nursery_toast)" not in nursery
+    assert "root.addWidget(self.status)" not in nursery
+    assert "def _position_nursery_overlays(self)" in nursery
+    assert "self.nursery_footer.setVisible(starter_mode)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 84)" in nursery
+    assert "self._environment_artwork(item, width=180, height=101)" in nursery
+    assert "self.environment_feature_art.setMaximumSize(220, 124)" in nursery
+    assert "maximum_columns=3" in nursery
+
+
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
