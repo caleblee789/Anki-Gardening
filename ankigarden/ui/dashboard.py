@@ -2112,7 +2112,7 @@ class PurchaseConfirmationDialog(DialogShell):
         self.summary_responsive = AdaptiveSplit.for_box_layout(
             "purchase-confirmation.summary",
             AdaptiveRegion.measured("artwork", self.artwork, floor=180),
-            AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=324),
+            AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=280),
             layout=self.summary_row,
             wide_direction=QBoxLayout.Direction.LeftToRight,
             compact_direction=QBoxLayout.Direction.TopToBottom,
@@ -2756,13 +2756,6 @@ class PurchaseConfirmationDialog(DialogShell):
             )
             self._set_submitting(False)
             self.quote = refreshed
-            if outcome.status is PurchaseStatus.STALE_BALANCE and refreshed.ready:
-                self._render_presentation(
-                    purchase_presentation(refreshed, ignore_status=True),
-                    status=PurchaseStatus.READY,
-                )
-                self._clear_status()
-                return
             self._render_presentation(
                 purchase_presentation(
                     refreshed,
@@ -6896,6 +6889,25 @@ class GardenSettingsDialog(GardenDialog):
         page.setMaximumWidth(viewport_width)
         if int(page.width()) != viewport_width:
             page.resize(viewport_width, page.height())
+        # An expanded studio panel can overrun the resizable host by the
+        # layout spacing delta. Promote that settled direct-child edge into
+        # the host minimum so the final control is genuinely reachable.
+        page.setMinimumHeight(0)
+        page_layout = page.layout()
+        if page_layout is not None:
+            page_layout.invalidate()
+            page_layout.activate()
+            visible_bottom = 0
+            for index in range(page_layout.count()):
+                child = page_layout.itemAt(index).widget()
+                if child is None or not child.isVisibleTo(page):
+                    continue
+                visible_bottom = max(
+                    visible_bottom,
+                    int(child.geometry().bottom()) + 1,
+                )
+            if visible_bottom > int(page.height()):
+                page.setMinimumHeight(visible_bottom)
         page.updateGeometry()
 
     def resizeEvent(self, event: Any) -> None:
@@ -8250,6 +8262,9 @@ class NurseryDialog(DialogShell):
         coin_label = QLabel("GARDEN COINS")
         coin_label.setProperty("nurseryCoinLabel", True)
         coin_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        coin_label.setMinimumWidth(
+            coin_label.fontMetrics().horizontalAdvance(coin_label.text()) + 6
+        )
         self.coins = QLabel("")
         self.coins.setAccessibleName("Garden Coins balance")
         self.coins.setProperty("nurseryCoins", True)
@@ -8473,7 +8488,7 @@ class NurseryDialog(DialogShell):
         if hasattr(self, "hero_responsive"):
             hero = self.hero_responsive.evaluate(available)
             hero_compact = hero.mode == COMPACT_MODE
-            self.coin_resource.setMaximumWidth(190)
+            self.coin_resource.setMaximumWidth(210)
             self.coin_resource.setSizePolicy(
                 QSizePolicy.Policy.Maximum,
                 QSizePolicy.Policy.Preferred,
@@ -9260,13 +9275,15 @@ class NurseryDialog(DialogShell):
             enabled_description=action.accessibleDescription(),
         )
         action.clicked.connect(self._use_basic_fertilizer)
-        return self._catalog_action_card(
+        card = self._catalog_action_card(
             summary,
             action,
             semantic_id="nursery.fertilizer-basic-inventory",
             summary_floor=205,
             action_floor=150,
         )
+        card.setProperty("catalogItemId", "fertilizer_basic")
+        return card
 
     def _growth_charge_card(self, spec: GrowthChargeSpec) -> QFrame:
         count = max(0, int(self.storage.state.consumables.get(spec.charge_id, 0)))
@@ -9537,6 +9554,15 @@ class NurseryDialog(DialogShell):
         if not hasattr(self, "environment_feature_art"):
             return
         replacement = self._environment_artwork(item, width=360, height=202)
+        missing_artwork = (
+            str(replacement.property("gardenRole") or "") == "missing-art"
+        )
+        feature_card = getattr(self, "environment_feature_card", None)
+        if feature_card is not None:
+            # The standardized fallback belongs in the item's normal catalog
+            # card. Suppress the larger feature treatment so one missing asset
+            # never creates a duplicate, diagnostic-looking presentation.
+            feature_card.setVisible(not missing_artwork)
         pixmap = replacement.pixmap()
         self.environment_feature_art.setText("")
         self.environment_feature_art.setPixmap(
@@ -10426,6 +10452,7 @@ class NurseryDialog(DialogShell):
             )
             feature.setProperty("nurseryPlant", True)
             feature.setProperty("nurseryCatalogCard", True)
+            self.environment_feature_card = feature
             self._catalog_responsive_controllers.append(feature.responsive)
             self.environment_layout.addWidget(feature)
             equipped_item = (
@@ -18846,7 +18873,7 @@ class GardenDashboard(DialogShell):
             )
             options_layout.addWidget(card)
         dialog.fertilizer_option_responsive = tuple(option_responsive)
-        options_scroll.setMinimumHeight(220)
+        options_scroll.setMinimumHeight(180)
         options_scroll.setMaximumHeight(340)
         layout.addWidget(options_scroll, 0)
         dialog.register_scroll_region(options_scroll)

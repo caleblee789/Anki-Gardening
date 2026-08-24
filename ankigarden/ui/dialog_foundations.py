@@ -428,9 +428,9 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "default": DialogHeightProfile(220, 250, 260, 500, 520, 540),
     },
     DialogSizeClass.TRANSACTION: {
-        "simple": DialogHeightProfile(250, 280, 320, 520, 540, 560),
+        "simple": DialogHeightProfile(290, 300, 330, 520, 540, 560),
         "complex": DialogHeightProfile(280, 320, 340, 560, 580, 600),
-        "error": DialogHeightProfile(210, 245, 280, 520, 540, 560),
+        "error": DialogHeightProfile(230, 270, 300, 520, 540, 560),
     },
     DialogSizeClass.FERTILIZER: {
         "default": DialogHeightProfile(420, 480, 520, 700, 720, 740),
@@ -469,7 +469,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     DialogSizeClass.GROWTH_CHARGE: {
         "ready": DialogHeightProfile(300, 340, 380, 540, 560, 580),
         "empty": DialogHeightProfile(230, 250, 270, 540, 560, 580),
-        "loading": DialogHeightProfile(300, 340, 380, 540, 560, 580),
+        "loading": DialogHeightProfile(310, 340, 380, 540, 560, 580),
         "error": DialogHeightProfile(220, 250, 280, 540, 560, 580),
         "success": DialogHeightProfile(300, 340, 380, 540, 560, 580),
     },
