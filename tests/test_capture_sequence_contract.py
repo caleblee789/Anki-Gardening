@@ -924,8 +924,9 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     assert 'page_getter = getattr(web, "page", None)' in source
     assert 'run_javascript = getattr(page, "runJavaScript", None)' in source
     assert 'state == "overview" and tries in {100, 75, 50, 25}' in source
-    assert '"_replace_home_garden_root"' in source
-    assert "replace_overview_root(web)" in source
+    assert '"_home_garden_root_replacement_script"' in source
+    assert "build_overview_root_script()" in source
+    assert 'script = f"{overview_root_script}\\n{script}"' in source
     assert "run_javascript(script, 0, resolved_once)" in source
     assert "evaluate(script, resolved_once)" in source
     assert 'fixture_state = "starter-not-selected"' in source

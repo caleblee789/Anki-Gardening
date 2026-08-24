@@ -702,10 +702,13 @@ class AnkiGardenApp:
         evaluate = getattr(webview, "eval", None)
         if not callable(evaluate):
             return
+        evaluate(self._home_garden_root_replacement_script())
+
+    def _home_garden_root_replacement_script(self) -> str:
+        """Build the production script that replaces and rebinds one Home root."""
 
         html = self._home_garden_html_for_injection()
-        evaluate(
-            f"""
+        return f"""
 (() => {{
   const template = document.createElement("template");
   template.innerHTML = {json.dumps(html)};
@@ -809,7 +812,6 @@ class AnkiGardenApp:
   }}
 }})();
 """
-        )
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""

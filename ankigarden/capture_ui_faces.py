@@ -2318,22 +2318,26 @@ class _UiFaceCaptureRunner:
             )
             return
         web = getattr(mw, "web", None)
+        overview_root_script = ""
         if state == "overview" and tries in {100, 75, 50, 25}:
             # Anki keeps its external Congratulations document alive while
             # repeated Overview fixtures change underneath it.  That means
             # ``webview_did_inject_style_into_page`` is not guaranteed to fire
             # again even though the source-backed Garden HTML has advanced.
-            # Re-run the production injector before the DOM audit; its
-            # replacement path refreshes the one existing root without adding
-            # a capture-only rendering implementation.
-            replace_overview_root = getattr(
+            # Prefix the DOM audit with the production replacement script so
+            # both operations run in one current-frame WebEngine transaction.
+            # A navigation can discard a separate asynchronous eval between
+            # these operations during a full 126-face run.
+            build_overview_root_script = getattr(
                 self.app,
-                "_replace_home_garden_root",
+                "_home_garden_root_replacement_script",
                 None,
             )
-            if callable(replace_overview_root):
+            if callable(build_overview_root_script):
                 try:
-                    replace_overview_root(web)
+                    overview_root_script = str(
+                        build_overview_root_script() or ""
+                    )
                 except Exception:
                     logger.debug(
                         "Anki Garden capture: Overview root refresh failed for %s",
@@ -2541,6 +2545,8 @@ class _UiFaceCaptureRunner:
             "__EXPECTED_ACTIVE_SLOT__",
             str(expected_active_slot),
         )
+        if overview_root_script:
+            script = f"{overview_root_script}\n{script}"
 
         settled = False
 
