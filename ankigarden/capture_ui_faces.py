@@ -11523,6 +11523,12 @@ class _UiFaceCaptureRunner:
 
             def finalize_fixture() -> None:
                 app = QApplication.instance()
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.DeferredDelete,
+                )
+                if app is not None:
+                    app.processEvents()
                 button_widgets = dashboard.collection_list.findChildren(QAbstractButton)
                 mechanics_button = next((
                     button for button in button_widgets
