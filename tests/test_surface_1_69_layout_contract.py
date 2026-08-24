@@ -134,6 +134,14 @@ def test_nursery_uses_compact_cards_overlays_and_starter_only_footer() -> None:
     assert "self._environment_artwork(item, width=180, height=101)" in nursery
     assert "self.environment_feature_art.setMaximumSize(220, 124)" in nursery
     assert "maximum_columns=3" in nursery
+    result = nursery.split("def _show_result", 1)[1].split(
+        "def _hide_status_if_current", 1
+    )[0]
+    receipt = nursery.split("def _show_purchase_receipt", 1)[1].split(
+        "def _focus_purchase_result", 1
+    )[0]
+    assert "self.nursery_toast.clear()" in result
+    assert "self.status.hide()" in receipt
 
 
 def test_plant_popover_is_compact_and_omits_inactive_boost_actions() -> None:

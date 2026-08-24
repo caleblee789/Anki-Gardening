@@ -10459,6 +10459,10 @@ class NurseryDialog(DialogShell):
         )
 
     def _show_result(self, ok: bool, message: str) -> None:
+        # Nursery feedback is one overlay lane. Replace any purchase receipt
+        # before showing a direct-action result so the two surfaces can never
+        # cover one another at the shared catalog anchor.
+        self.nursery_toast.clear()
         self._status_generation += 1
         generation = self._status_generation
         message = _learner_text(message)
@@ -10527,8 +10531,6 @@ class NurseryDialog(DialogShell):
                 ),
                 target=self.status,
             )
-        if not ok:
-            self.nursery_toast.clear()
         if ok:
             QTimer.singleShot(
                 3500,
