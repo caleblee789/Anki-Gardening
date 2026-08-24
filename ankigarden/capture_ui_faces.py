@@ -11784,6 +11784,89 @@ class _UiFaceCaptureRunner:
                 )
                 self._capture_annotations[label] = annotation
 
+                def bind_final_pixel_evidence() -> None:
+                    QCoreApplication.sendPostedEvents(
+                        None,
+                        QEvent.Type.DeferredDelete,
+                    )
+                    if app is not None:
+                        app.processEvents()
+                    current_buttons = dashboard.collection_list.findChildren(
+                        QAbstractButton
+                    )
+                    current_mechanics = next((
+                        button
+                        for button in current_buttons
+                        if bool(button.property("environmentMechanicsDisclosure"))
+                    ), None)
+                    if current_mechanics is not None:
+                        current_mechanics.setChecked(True)
+                    scrollbar.setValue(0)
+                    if app is not None:
+                        app.processEvents()
+                    current_labels = [
+                        label_widget
+                        for label_widget in dashboard.collection_list.findChildren(QLabel)
+                        if label_widget.isVisible()
+                    ]
+                    current_summary = next((
+                        item
+                        for item in dashboard.collection_list.findChildren(QWidget)
+                        if bool(item.property("collectionAppearanceSummary"))
+                    ), None)
+                    current_summary_selection = next((
+                        item
+                        for item in (
+                            current_summary.findChildren(QLabel)
+                            if current_summary is not None else ()
+                        )
+                        if bool(item.property("rowCriteria"))
+                    ), None)
+                    current_widgets: dict[str, Any] = {
+                        "toolbar": getattr(
+                            dashboard,
+                            "collection_filter_controls",
+                            None,
+                        ),
+                        "summary_title": next((
+                            item for item in current_labels
+                            if bool(item.property("appearanceSummaryTitle"))
+                        ), None),
+                        "summary_selection": current_summary_selection,
+                        "edit_appearance": next((
+                            button for button in current_buttons
+                            if button.isVisible()
+                            and str(button.text()) == "Edit appearance"
+                        ), None),
+                        "item_title": next((
+                            item for item in current_labels
+                            if bool(item.property("rowTitle"))
+                            and str(item.text()).strip()
+                            == WEATHER_CATALOG["breeze"].name
+                        ), None),
+                        "item_status": next((
+                            item for item in current_labels
+                            if bool(item.property("catalogStatus"))
+                            and "Weather" in str(item.text())
+                        ), None),
+                        "effect": next((
+                            item for item in current_labels
+                            if bool(item.property("rowCriteria"))
+                            and "Growth" in str(item.text())
+                            and item is not current_summary_selection
+                        ), None),
+                        "mechanics": next((
+                            item for item in current_labels
+                            if bool(item.property("environmentMechanicsDetails"))
+                        ), None),
+                    }
+                    for key, current_widget in current_widgets.items():
+                        if current_widget is not None:
+                            current_widget.setProperty(
+                                "captureEvidenceKey",
+                                f"environment-{key.replace('_', '-')}",
+                            )
+
                 def close_dialog() -> None:
                     self._close_widget(dialog)
                     restore()
@@ -11792,6 +11875,7 @@ class _UiFaceCaptureRunner:
                     label,
                     dialog,
                     capture_delay_ms=560,
+                    before_capture=bind_final_pixel_evidence,
                     close_callback=close_dialog,
                     close_ms=940,
                     next_ms=1280,
