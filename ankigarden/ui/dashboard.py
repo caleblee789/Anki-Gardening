@@ -3986,6 +3986,7 @@ class ToastRegion(QFrame):
         self._generation = 0
         self._scheduled_generation = 0
         self._callback: Callable[[], None] | None = None
+        self._dismiss_callback: Callable[[], None] | None = None
         self._clear_timer = QTimer(self)
         self._clear_timer.setSingleShot(True)
         self._clear_timer.timeout.connect(self._clear_scheduled_message)
@@ -4007,7 +4008,7 @@ class ToastRegion(QFrame):
         self.dismiss.setAccessibleName("Dismiss Garden update")
         _set_button_variant(self.dismiss, BUTTON_VARIANT_SECONDARY)
         _set_compact_row_action(self.dismiss)
-        self.dismiss.clicked.connect(self.clear)
+        self.dismiss.clicked.connect(self._run_dismiss)
         layout.addWidget(self.icon, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.message, 1)
         layout.addWidget(self.action)
@@ -4029,18 +4030,25 @@ class ToastRegion(QFrame):
         duration_ms: int | None = None,
         error: bool = False,
         dismissible: bool | None = None,
+        dismiss_text: str = "",
+        dismiss_callback: Callable[[], None] | None = None,
     ) -> None:
         self._clear_timer.stop()
         self._generation += 1
         generation = self._generation
         text = _learner_text(message)
         self._callback = callback
+        self._dismiss_callback = dismiss_callback
         self.message.setText(text)
         self.setAccessibleDescription(text)
         self.action.setText(action_text)
         self.action.setVisible(bool(action_text and callback is not None))
         if dismissible is None:
             dismissible = bool(error and duration_ms is not None and duration_ms <= 0)
+        self.dismiss.setText(str(dismiss_text or "Dismiss"))
+        self.dismiss.setAccessibleName(
+            str(dismiss_text or "Dismiss Garden update")
+        )
         self.dismiss.setVisible(bool(dismissible))
         self.setProperty("error", bool(error))
         self.icon.setText("!" if error else "✓")
@@ -4083,6 +4091,12 @@ class ToastRegion(QFrame):
         if callback is not None:
             callback()
 
+    def _run_dismiss(self) -> None:
+        callback = self._dismiss_callback
+        self.clear()
+        if callback is not None:
+            callback()
+
     def _clear_generation(self, generation: int) -> None:
         if generation == self._generation:
             self.clear()
@@ -4094,6 +4108,7 @@ class ToastRegion(QFrame):
         self._clear_timer.stop()
         self._generation += 1
         self._callback = None
+        self._dismiss_callback = None
         self.message.setText("")
         self.setAccessibleDescription("")
         self.dismiss.hide()
@@ -8761,16 +8776,17 @@ class NurseryDialog(DialogShell):
             self._set_placement(str(plant.plant_id), False)
             return
         box = QMessageBox(self)
-        box.setWindowTitle("Store plant in Collection?")
+        box.setWindowTitle(UI_TEXT["app_title"])
         box.setIcon(QMessageBox.Icon.Question)
-        box.setText(f"Store {plant.name} in Collection?")
-        box.setInformativeText(self._return_to_collection_copy(plant))
+        box.setText(f"Store {plant.name}?")
+        bed_number = max(1, int(getattr(plant, "slot_index", 0) or 0) + 1)
+        box.setInformativeText(f"Bed {bed_number} will become empty.")
         confirm = box.addButton(
-            "Store plant",
+            "Store",
             QMessageBox.ButtonRole.AcceptRole,
         )
         keep = box.addButton(
-            "Keep in garden",
+            "Cancel",
             QMessageBox.ButtonRole.RejectRole,
         )
         box.setDefaultButton(keep)
@@ -9998,9 +10014,13 @@ class NurseryDialog(DialogShell):
             )
             message = f"{species_name} added."
             primary = "Plant now"
+            secondary = "View collection"
+            secondary_callback = self._open_customize_from_nursery
         elif outcome.disposition is PurchaseDisposition.INVENTORY:
             message = f"{item_name} added."
             primary = "Use charge"
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         elif outcome.disposition is PurchaseDisposition.OWNED_NOT_EQUIPPED:
             message = (
                 f"{item_name} equipped."
@@ -10008,24 +10028,34 @@ class NurseryDialog(DialogShell):
                 f"{item_name} added to your collection."
             )
             primary = "View in Collection"
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         elif outcome.disposition in {
             PurchaseDisposition.APPLIED,
             PurchaseDisposition.REPLACED,
         }:
             message = f"{item_name} applied."
             primary = "View plant"
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         elif outcome.disposition is PurchaseDisposition.EXTENDED:
             message = f"{item_name} extended."
             primary = "View plant"
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         elif outcome.disposition is PurchaseDisposition.UNLOCKED:
             bed_name = item_name.replace("Garden bed", "Bed").replace(
                 "Garden Bed", "Bed"
             )
             message = f"{bed_name} unlocked."
             primary = "View garden"
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         else:
             message = _learner_text(outcome.message)
             primary = outcome.next_actions[0] if outcome.next_actions else ""
+            secondary = "Keep browsing"
+            secondary_callback = self._dismiss_product_receipt
         if message and message[-1] not in ".?!":
             message += "."
         callback = (
@@ -10041,6 +10071,8 @@ class NurseryDialog(DialogShell):
             callback=callback,
             duration_ms=6000,
             dismissible=True,
+            dismiss_text=secondary,
+            dismiss_callback=secondary_callback,
         )
         QTimer.singleShot(0, lambda: self._focus_purchase_result(outcome))
 

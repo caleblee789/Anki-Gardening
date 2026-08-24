@@ -337,7 +337,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "on_error=registered_cleanup" in purchase_fixture
     assert '"unavailable_terminal"' in purchase_fixture
     assert 'if variant == "invalid-target"' in purchase_fixture
-    for owned_action in ("Store plant", "Plant in garden", "View in garden"):
+    for owned_action in ("Store", "Place", "View in garden"):
         assert f'"{owned_action}"' in fixture_postcondition
     assert "nursery_action_in_footer" in fixture_postcondition
     assert "result_matches_quote" in fixture_postcondition
@@ -489,10 +489,12 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
 
     assert 'candidate.property("catalogItemId")' in owned_item
     assert "dialog.scroll.ensureWidgetVisible(card, 0, 24)" in owned_item
-    assert 'str(item.text()).strip() == "Owned"' in owned_item
+    assert 'item.property("nurseryPlantName")' in owned_item
+    assert 'startswith(f"{target_name} ·")' in owned_item
+    assert '== "Owned"' not in owned_item
     assert '"owned_item_visual"' in owned_item
     assert '"captureEvidenceKey", "owned-item-card"' in owned_item
-    for bounds_key in ("card", "title", "status", "action_bounds"):
+    for bounds_key in ("card", "title", "action_bounds"):
         assert f'"{bounds_key}"' in owned_item
 
     assert '"environment_mechanics_visual"' in mechanics

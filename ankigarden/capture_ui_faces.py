@@ -5547,7 +5547,7 @@ class _UiFaceCaptureRunner:
                     and owned_species.issubset(unlocked)
                     and bool(
                         set(visible_buttons)
-                        & {"Store plant", "Plant in garden", "View in garden"}
+                        & {"Store", "Place", "View in garden"}
                     )
                     and bool(
                         self.app.engine.catalog_summary().get(
@@ -5642,9 +5642,9 @@ class _UiFaceCaptureRunner:
                     "purchased_item_preview",
                     bool(title)
                     and bool(toast is not None and toast.isVisible())
-                    and toast_text == "Soft Breeze unlocked."
-                    and primary == "Open Collection"
-                    and secondary == "Continue shopping",
+                    and toast_text == "Soft Breeze added to your collection."
+                    and primary == "View in Collection"
+                    and secondary == "Keep browsing",
                     {
                         "title": title,
                         "toast": toast_text,
@@ -5663,14 +5663,14 @@ class _UiFaceCaptureRunner:
                     getattr(getattr(toast, "message", None), "text", lambda: "")()
                 )
                 expected_action = {
-                    "purchase-success-inventory-collection": "Plant in garden",
+                    "purchase-success-inventory-collection": "Plant now",
                     "purchase-success-fertilizer-applied": "View plant",
                     "purchase-success-garden-bed-unlocked": "View garden",
                 }[state_name]
                 expected_outcome = {
-                    "purchase-success-inventory-collection": "Sunflower Seed added to your collection.",
-                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied to Bonsai Plant.",
-                    "purchase-success-garden-bed-unlocked": "Garden Bed 3 unlocked.",
+                    "purchase-success-inventory-collection": "Sunflower added.",
+                    "purchase-success-fertilizer-applied": "Basic Fertilizer applied.",
+                    "purchase-success-garden-bed-unlocked": "Bed 3 unlocked.",
                 }[state_name]
                 require(
                     "typed_purchase_receipt",
@@ -5678,7 +5678,11 @@ class _UiFaceCaptureRunner:
                     and toast_text == expected_outcome
                     and getattr(toast, "action", None) is not None
                     and toast.action.text() == expected_action
-                    and toast.dismiss.text() == "Continue shopping"
+                    and toast.dismiss.text() == (
+                        "View collection"
+                        if state_name == "purchase-success-inventory-collection"
+                        else "Keep browsing"
+                    )
                     and bool(annotation.get("passed", False)),
                     {
                         "toast": toast_text,
@@ -13730,14 +13734,11 @@ class _UiFaceCaptureRunner:
             buttons = (
                 card.findChildren(QAbstractButton) if card is not None else []
             )
-            owned_label = next(
-                (item for item in labels if str(item.text()).strip() == "Owned"),
-                None,
-            )
             title_label = next(
                 (
                     item for item in labels
-                    if str(item.text()).strip() == target_name
+                    if bool(item.property("nurseryPlantName"))
+                    and str(item.text()).strip().startswith(f"{target_name} ·")
                 ),
                 None,
             )
@@ -13745,41 +13746,36 @@ class _UiFaceCaptureRunner:
                 (
                     button for button in buttons
                     if _displayed_button_text(button)
-                    in {"Store plant", "Plant in garden", "View in garden"}
+                    in {"Store", "Place", "View in garden"}
                 ),
                 None,
             )
             viewport = dialog.scroll.viewport()
             card_bounds = self._widget_bounds_evidence(card, viewport)
-            owned_bounds = self._widget_bounds_evidence(owned_label, viewport)
             title_bounds = self._widget_bounds_evidence(title_label, viewport)
             action_bounds = self._widget_bounds_evidence(action, viewport)
             visual = {
                 "item_id": target_id,
                 "item_name": target_name,
-                "owned_label": (
-                    str(owned_label.text()).strip()
-                    if owned_label is not None else ""
-                ),
                 "action": (
                     _displayed_button_text(action) if action is not None else ""
                 ),
                 "card": card_bounds,
                 "title": title_bounds,
-                "status": owned_bounds,
                 "action_bounds": action_bounds,
             }
             visual["passed"] = bool(
                 target_id
                 and target_name
-                and visual["owned_label"] == "Owned"
+                and str(getattr(title_label, "text", lambda: "")()).startswith(
+                    f"{target_name} ·"
+                )
                 and visual["action"]
-                in {"Store plant", "Plant in garden", "View in garden"}
+                in {"Store", "Place", "View in garden"}
                 and all(
                     bool(evidence.get("contained", False))
                     for evidence in (
                         card_bounds,
-                        owned_bounds,
                         title_bounds,
                         action_bounds,
                     )

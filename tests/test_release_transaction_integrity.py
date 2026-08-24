@@ -936,6 +936,8 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             status=status,
             nursery_toast=toast,
             _follow_receipt_action=lambda: None,
+            _dismiss_product_receipt=lambda: None,
+            _open_customize_from_nursery=lambda: None,
         ),
         outcome,
         SimpleNamespace(facts=(), target_name=""),
@@ -944,6 +946,8 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     assert status.visible is False
     assert toast_result["message"] == "Soft Breeze added to your collection."
     assert toast_result["action_text"] == "View in Collection"
+    assert toast_result["dismiss_text"] == "Keep browsing"
+    assert callable(toast_result["dismiss_callback"])
     assert toast_result["duration_ms"] == 6_000
     assert toast_result["dismissible"] is True
 

@@ -3914,9 +3914,9 @@ class GardenGameEngine:
             self._queue_feedback(
                 event_key,
                 "unlock",
-                f"{plant.name} joined your plant collection.",
+                message,
                 plant.plant_id,
-                title=f"{quote.item_name} purchased",
+                title=message.rstrip("."),
                 asset_category="plant",
                 asset_key=species,
                 amount=1,
@@ -3930,7 +3930,7 @@ class GardenGameEngine:
                 event_key,
                 "charge_purchase",
                 message,
-                title=f"{quote.item_name} purchased",
+                title=message.rstrip("."),
                 asset_category="ui",
                 asset_key=quote.item_id,
                 amount=quote.quantity,
@@ -3944,8 +3944,8 @@ class GardenGameEngine:
             self._queue_feedback(
                 event_key,
                 "environment_purchase",
-                f"{message} Open Collection when you want to preview or equip it.",
-                title=f"{quote.item_name} unlocked",
+                message,
+                title=message.rstrip("."),
                 asset_category=quote.artwork_category,
                 asset_key=quote.artwork_key,
                 amount=1,
@@ -3970,7 +3970,7 @@ class GardenGameEngine:
                 "fertilizer",
                 message,
                 plant.plant_id,
-                title=f"{spec.name} {action}",
+                title=message.rstrip("."),
                 asset_category="ui",
                 asset_key=f"fertilizer_{spec.tier}",
                 amount=1,
@@ -3983,7 +3983,7 @@ class GardenGameEngine:
                 event_key,
                 "unlock",
                 message,
-                title="Garden bed unlocked",
+                title=message.rstrip("."),
                 asset_category="ui",
                 asset_key="garden_bed",
                 amount=1,
@@ -4365,17 +4365,14 @@ class GardenGameEngine:
                     0,
                     int(self.state.consumables.get(quote.charge_id, 0) or 0),
                 ),
-                message=(
-                    f"{quote.charge_name} gave {quote.target_name} "
-                    f"{awarded:,} Growth."
-                ),
+                message=f"{quote.target_name} gained {awarded:,} Growth.",
             )
             self._queue_feedback(
                 f"growth-charge-use:{request.request_id}",
                 "growth_charge",
                 outcome.message,
                 plant.plant_id,
-                title=f"{quote.charge_name} used",
+                title=f"{quote.target_name} gained {awarded:,} Growth",
                 asset_category="ui",
                 asset_key=quote.charge_id,
                 amount=awarded,
@@ -4410,7 +4407,7 @@ class GardenGameEngine:
             return self._growth_charge_failure(
                 refreshed,
                 GrowthChargeStatus.PERSISTENCE_FAILURE,
-                "The Growth Charge could not be saved, so it was not used.",
+                "Your charge was not used.",
             )
 
     def use_growth_charge(
@@ -4599,7 +4596,7 @@ class GardenGameEngine:
     def finish_onboarding(self) -> tuple[bool, str]:
         progress = self.state.onboarding
         if progress.step == OnboardingStep.DONE:
-            return True, "Garden setup is complete."
+            return True, "Your garden is ready."
         if progress.step != OnboardingStep.COMPLETION:
             return False, "Finish nurturing your starter before completing setup."
         snapshot = self._state_snapshot()
@@ -4611,8 +4608,8 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "Garden setup could not be completed because it was not saved."
-        return True, "Garden setup is complete."
+            return False, "Couldn’t save your garden. Nothing was changed."
+        return True, "Your garden is ready."
 
     def purchase_fertilizer(self, plant_id: str, tier: str, *, replace_active: bool = False) -> tuple[bool, str]:
         outcome = self._compat_purchase(
@@ -4658,10 +4655,7 @@ class GardenGameEngine:
             self._queue_feedback(
                 event_id,
                 "fertilizer",
-                (
-                    f"Basic Fertilizer {action} on {plant.name} for "
-                    f"{self._duration_label(spec.duration_seconds)}."
-                ),
+                f"Basic Fertilizer {action}.",
                 plant.plant_id,
                 title=f"Basic Fertilizer {action}",
                 asset_category="ui",
@@ -4672,8 +4666,8 @@ class GardenGameEngine:
             self._persist_or_restore(snapshot)
         except Exception:
             self._restore_state(snapshot)
-            return False, "Basic Fertilizer could not be used because it was not saved."
-        return True, f"Basic Fertilizer {action} on {plant.name} for 1 hour."
+            return False, "Couldn’t use Basic Fertilizer."
+        return True, f"Basic Fertilizer {action}."
 
     def use_basic_fertilizer(
         self,
