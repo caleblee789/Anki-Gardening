@@ -3577,11 +3577,15 @@ class _UiFaceCaptureRunner:
                 continue
             text = _displayed_button_text(button).strip()
             component = str(button.property("gardenComponent") or "")
+            composite_button = bool(
+                button.property("catalogCard")
+                or button.property("environmentTile")
+            )
             icon_only = bool(
                 component == "icon-button"
                 or button.property("iconButton")
                 or (not text and not button.icon().isNull())
-            )
+            ) and not composite_button
             visual_size = int(
                 button.property("visualControlSize")
                 or max(int(button.width()), int(button.height()))
@@ -3600,9 +3604,18 @@ class _UiFaceCaptureRunner:
                 else 0
             )
             text_width = int(button.fontMetrics().horizontalAdvance(text))
+            horizontal_padding = (
+                20
+                if button.property("compactRowAction")
+                else 16
+                if button.property("disclosureRow")
+                else 28
+            )
             available_text_width = max(
                 0,
-                int(button.contentsRect().width()) - 24 - icon_width,
+                int(button.contentsRect().width())
+                - horizontal_padding
+                - icon_width,
             )
             text_fit_passed = bool(
                 not text or text_width <= available_text_width
@@ -3635,6 +3648,7 @@ class _UiFaceCaptureRunner:
                 "contained": bool(painted.get("contained", False)),
                 "footer_action": footer_action,
                 "text_width": text_width,
+                "horizontal_padding": horizontal_padding,
                 "available_text_width": available_text_width,
                 "text_fit_passed": text_fit_passed,
             })

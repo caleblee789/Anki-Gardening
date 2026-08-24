@@ -13324,7 +13324,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.setStyleSheet(_garden_dialog_stylesheet() + f"""
             QFrame[collectionLibrary='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:0; border-radius:12px; }}
             QFrame[collectionPreview='true'] {{ background:#0a211b; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:12px; }}
-            QPushButton[environmentTile='true'] {{ min-height:132px; text-align:left; padding:8px; color:{GARDEN_THEME['text_primary']}; background:#102a22; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:11px; }}
+            QPushButton[environmentTile='true'] {{ min-height:132px; max-height:16777215px; text-align:left; padding:8px; color:{GARDEN_THEME['text_primary']}; background:#102a22; border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:11px; }}
             QPushButton[environmentTile='true']:hover {{ background:#173b30; border-color:{GARDEN_THEME['strong_border']}; }}
             QPushButton[environmentTile='true']:checked {{ background:#173b30; border:2px solid {GARDEN_THEME['focus_ring']}; padding:9px; }}
             QPushButton[environmentTile='true']:disabled {{ color:{GARDEN_THEME['text_secondary']}; background:#10231f; border-color:#344b43; }}
@@ -14540,7 +14540,7 @@ class GardenDashboard(DialogShell):
             QTabBar::tab:selected {{ color:#F4F7F5; border-bottom:2px solid #5CC58B; }}
             QScrollArea {{ background:transparent; border:0; }}
             {foundation_stylesheet()}
-            QPushButton[catalogCard='true'] {{ min-height:214px; padding:10px; text-align:left; background:#0C261F; border:1px solid #20483C; border-radius:12px; }}
+            QPushButton[catalogCard='true'] {{ min-height:214px; max-height:16777215px; padding:10px; text-align:left; background:#0C261F; border:1px solid #20483C; border-radius:12px; }}
             QPushButton[catalogCard='true']:hover {{ background:#173B30; border-color:#4F806E; }}
             QPushButton[catalogCard='true']:focus {{ border:2px solid #82E2AC; padding:9px; }}
             QPushButton[headerAction='true'] {{ min-height:36px; max-height:36px; min-width:36px; font-size:13px; }}
