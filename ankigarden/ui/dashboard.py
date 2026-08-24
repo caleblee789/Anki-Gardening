@@ -12668,19 +12668,19 @@ class GardenDetailsDialog(GardenDialog):
         except (AttributeError, OSError, TypeError, ValueError):
             pass
 
-        visible_bonus_tiers = tuple(
+        positive_bonus_tiers = tuple(
             (day, percent)
             for day, percent in STREAK_BONUS_TIERS
             if percent > 0
         )
         next_tier = next(
-            ((day, percent) for day, percent in visible_bonus_tiers if days < day),
+            ((day, percent) for day, percent in positive_bonus_tiers if days < day),
             None,
         )
         next_day = (
             next_tier[0]
             if next_tier is not None else
-            visible_bonus_tiers[-1][0]
+            positive_bonus_tiers[-1][0]
         )
 
         hero = QFrame()
@@ -12709,7 +12709,7 @@ class GardenDetailsDialog(GardenDialog):
         if days > 0 and bonus > 0:
             bonus_label = self._label(f"+{bonus}% Growth", "detailSection")
             hero_layout.addWidget(bonus_label)
-        if days > 0 and days_to_next > 0:
+        if days_to_next > 0:
             hero_layout.addWidget(self._label(
                 f"Next bonus at {next_day:,} days · {_day_count(days_to_next)} left",
                 "detailSupport",
@@ -12820,14 +12820,15 @@ class GardenDetailsDialog(GardenDialog):
         for column, heading in enumerate(("Streak", "Growth bonus")):
             header = self._label(heading, "detailTableHeader")
             milestone_grid.addWidget(header, 0, column)
+        display_bonus_tiers = tuple(STREAK_BONUS_TIERS)
         reached_indexes = [
-            index for index, (threshold, _percent) in enumerate(visible_bonus_tiers)
+            index for index, (threshold, _percent) in enumerate(display_bonus_tiers)
             if days >= threshold
         ]
         current_index = reached_indexes[-1] if reached_indexes else None
         next_index = next(
             (
-                index for index, (threshold, _percent) in enumerate(visible_bonus_tiers)
+                index for index, (threshold, _percent) in enumerate(display_bonus_tiers)
                 if days < threshold
             ),
             None,
@@ -12837,13 +12838,13 @@ class GardenDetailsDialog(GardenDialog):
             milestone_indexes.append(current_index)
         if next_index is not None:
             milestone_indexes.append(next_index)
-            if next_index + 1 < len(visible_bonus_tiers):
+            if next_index + 1 < len(display_bonus_tiers):
                 milestone_indexes.append(next_index + 1)
         for row, tier_index in enumerate(dict.fromkeys(milestone_indexes), start=1):
-            day, percent = visible_bonus_tiers[tier_index]
+            day, percent = display_bonus_tiers[tier_index]
             next_threshold = (
-                visible_bonus_tiers[tier_index + 1][0]
-                if tier_index + 1 < len(visible_bonus_tiers) else
+                display_bonus_tiers[tier_index + 1][0]
+                if tier_index + 1 < len(display_bonus_tiers) else
                 None
             )
             tier_end = next_threshold - 1 if next_threshold is not None else None
@@ -12855,7 +12856,10 @@ class GardenDetailsDialog(GardenDialog):
                 f"Day {day:,}+"
             )
             milestone = self._label(tier_label, "detailBody")
-            reward = self._label(f"+{percent}% Growth", "detailBody")
+            reward = self._label(
+                f"{'+' if percent > 0 else ''}{percent}% Growth",
+                "detailBody",
+            )
             apply_tabular_numerals(milestone)
             apply_tabular_numerals(reward)
             for cell in (milestone, reward):
