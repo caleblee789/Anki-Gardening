@@ -1240,7 +1240,7 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert "self.fertilizer_status" not in story
     assert "self.booster_status" not in story
     assert "configure_close_policy(" in story
-    assert "size = 136 if mode == COMPACT_MODE else 176" in story
+    assert "size = 112 if mode == COMPACT_MODE else 132" in story
     for stage_state in ("reached", "current", "preview", "undiscovered"):
         assert f'"{stage_state}"' in story
 

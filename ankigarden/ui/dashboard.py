@@ -8164,7 +8164,7 @@ class NurseryDialog(DialogShell):
             QLabel[nurseryStageName='true'] { color:#fff3da; font-size:14px; font-weight:800; }
             QLabel[nurseryStageCount='true'] { color:#cdbba5; font-size:13px; }
             QLabel[nurseryShortfall='true'] { color:#f0cf8d; font-size:13px; }
-            QLabel[nurseryCoinLabel='true'] { color:#bca991; font-size:11px; font-weight:800; letter-spacing:.7px; }
+            QLabel[nurseryCoinLabel='true'] { color:#bca991; font-size:12px; font-weight:800; letter-spacing:.7px; }
             QLabel[nurseryCoins='true'] { color:#f1c979; font-size:18px; font-weight:800; }
             QLabel[nurseryArtwork='true'] {
                 background:qradialgradient(cx:0.5,cy:0.58,radius:0.78,fx:0.5,fy:0.58,stop:0 #55402e,stop:0.62 #32231d,stop:1 #211713);
