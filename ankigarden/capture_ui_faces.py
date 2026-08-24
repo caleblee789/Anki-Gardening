@@ -8305,6 +8305,7 @@ class _UiFaceCaptureRunner:
                 return
             plant_id = "capture_move_rose"
             fixture = GardenState(
+                unlocked_slots=3,
                 plants=[
                     Plant(plant_id, "rose", "Briar", 0, growth_points=500),
                     Plant(
@@ -8327,7 +8328,19 @@ class _UiFaceCaptureRunner:
                 []
             )
             origin = draft.current.get(plant_id) if draft is not None else None
-            destination = next((slot for slot in destinations if slot != origin), None)
+            occupied_slots = {
+                int(plant.slot_index)
+                for plant in fixture.plants
+                if plant.slot_index is not None
+            }
+            destination = next(
+                (
+                    slot
+                    for slot in destinations
+                    if slot != origin and int(slot) not in occupied_slots
+                ),
+                None,
+            )
             if destination is None:
                 self._failures.append({
                     "label": "move-persistence-error",
@@ -8368,12 +8381,14 @@ class _UiFaceCaptureRunner:
             self._capture_annotations["move-persistence-error"] = {
                 "passed": bool(
                     before == after
+                    and int(destination) not in occupied_slots
                     and retry_active
                     and retry_selected
                     and error_visible
                 ),
                 "selected_plant_id": plant_id,
                 "destination_slot": int(destination),
+                "destination_was_empty": int(destination) not in occupied_slots,
                 "state_restored": before == after,
                 "retry_active": retry_active,
                 "retry_selected": retry_selected,

@@ -2753,6 +2753,18 @@ def test_collection_and_canonical_achievement_fixtures_restore_on_close() -> Non
     assert "self._next_after(200)" in no_matches
 
 
+def test_move_persistence_fixture_uses_an_empty_bed_without_swap_prompt() -> None:
+    capture = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_move_persistence_error",
+    )
+
+    assert "unlocked_slots=3" in capture
+    assert "occupied_slots =" in capture
+    assert "int(slot) not in occupied_slots" in capture
+    assert '"destination_was_empty": int(destination) not in occupied_slots' in capture
+
+
 def test_capture_scope_matches_the_pixel_acquisition_method() -> None:
     capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
 
