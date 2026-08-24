@@ -679,6 +679,12 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     clear_grid = _segment(
         _method_node("CollectibleDetailDialog", "_clear_grid")
     )
+    option_page_geometry = _segment(
+        _method_node(
+            "CollectibleDetailDialog",
+            "_sync_option_page_geometry",
+        )
+    )
     refresh_preview = _segment(
         _method_node("CollectibleDetailDialog", "_refresh_preview")
     )
@@ -734,6 +740,10 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
         "widget.setParent(None)"
     ) < clear_grid.index("widget.deleteLater()")
     assert "grid.invalidate()" in clear_grid
+    assert "self.option_tabs.count()" in option_page_geometry
+    assert "page.setMaximumHeight(16777215 if active else 0)" in option_page_geometry
+    assert "QSizePolicy.Policy.Ignored" in option_page_geometry
+    assert "self.option_tabs.updateGeometry()" in option_page_geometry
     assert "_unavailable_option_tile" not in constructor + rebuild_options
     assert 'f"{format_status_label(self._draft_weather)} (Unavailable)"' in refresh_preview
     assert 'f"{format_status_label(self._draft_scenery)} (Unavailable)"' in refresh_preview

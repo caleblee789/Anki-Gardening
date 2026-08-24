@@ -13453,7 +13453,7 @@ class CollectibleDetailDialog(GardenDialog):
             InitialFocusPolicy.SELECTED_ROUTE,
         )
         self.option_tabs.currentChanged.connect(
-            lambda _index: self.library.updateGeometry()
+            self._sync_option_page_geometry
         )
         library_layout.addWidget(self.option_tabs, 1)
 
@@ -13554,6 +13554,7 @@ class CollectibleDetailDialog(GardenDialog):
             telemetry_target=self.footer,
         )
         self.footer.show()
+        self._sync_option_page_geometry(self.option_tabs.currentIndex())
         self.prepare_to_show()
         self.apply_view_size_profile("default")
         QTimer.singleShot(0, self._sync_preview_scene_geometry)
@@ -13652,6 +13653,32 @@ class CollectibleDetailDialog(GardenDialog):
                 QSizePolicy.Policy.Preferred,
                 QSizePolicy.Policy.Fixed,
             )
+
+    def _sync_option_page_geometry(self, current_index: int) -> None:
+        """Let only the visible loadout tab contribute vertical size hints."""
+
+        active_index = max(0, int(current_index))
+        for index in range(self.option_tabs.count()):
+            page = self.option_tabs.widget(index)
+            if page is None:
+                continue
+            active = index == active_index
+            page.setMinimumHeight(0)
+            page.setMaximumHeight(16777215 if active else 0)
+            policy = page.sizePolicy()
+            policy.setVerticalPolicy(
+                QSizePolicy.Policy.Preferred
+                if active else
+                QSizePolicy.Policy.Ignored
+            )
+            page.setSizePolicy(policy)
+            page.updateGeometry()
+        self.option_tabs.updateGeometry()
+        self.library.updateGeometry()
+        body = self.body_scroll.widget() if hasattr(self, "body_scroll") else None
+        if body is not None:
+            body.setMinimumHeight(0)
+            body.updateGeometry()
 
     def _option_page(self, accessible_name: str) -> tuple[QWidget, QGridLayout]:
         host = QWidget()
