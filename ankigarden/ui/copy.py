@@ -12,32 +12,26 @@ GARDEN_SETUP_BODY = "Pick a free plant for your garden."
 GARDEN_SETUP_SECONDARY_ACTION = "Later"
 GARDEN_NURTURE_TITLE = "Nurture your first plant"
 GARDEN_NURTURE_BODY = (
-    "Nurture this plant so future Anki card answers add Growth here."
+    "Nurture this plant to send card Growth here."
 )
 GARDEN_NURTURE_ACTION = "Open plant"
 
 NURSERY_STARTER_TITLE = "Choose a starter"
 NURSERY_STARTER_RATIONALE = "Your first plant is free."
 NURSERY_STARTER_COUNT = ""
-DISABLED_STARTER_TABS = "Items and Garden spaces are available after choosing a starter."
+DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."
 COST_FREE = "Free"
 PAID_COST_TEMPLATE = "{amount} Garden Coins"
 
 STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name}?"
-REVIEWER_NO_STARTER_NOTICE = (
-    "Choose a starter before studying to earn Growth. "
-    "Earlier Growth and repeatable rewards are not backfilled; reliably "
-    "reconstructable one-time achievements may be."
-)
+REVIEWER_NO_STARTER_NOTICE = "Choose a starter to earn Growth."
 STARTER_READY_TEMPLATE = "{plant_name} is now nurtured."
 ACTIVE_GROWTH_TITLE = "Nurtured"
 ACTIVE_GROWTH_GUIDANCE = ""
 
 FULLY_GROWN_MESSAGE = "Nurture another plant."
 FULLY_GROWN_ACTION = "Nurture another plant"
-ALL_PLANTS_COMPLETE = (
-    "All of your current plants are fully grown. Add another plant to continue growing."
-)
+ALL_PLANTS_COMPLETE = "All plants are fully grown."
 
 METRIC_AFFORDANCE = "Open details"
 KEYBOARD_HINT = "Use the arrow keys to explore plants. Press Enter to open the selected item."

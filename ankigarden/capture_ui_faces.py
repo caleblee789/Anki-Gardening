@@ -5247,10 +5247,9 @@ class _UiFaceCaptureRunner:
                     and all(
                         heading in visible_label_texts
                         for heading in (
-                            "Date",
                             "Source",
                             "Change",
-                            "Resulting balance",
+                            "Balance",
                         )
                     )
                     and "Garden Find" in visible_label_texts
@@ -5277,7 +5276,7 @@ class _UiFaceCaptureRunner:
                     bool(
                         direct_growth.get("passed", False)
                         and int(direct_growth.get("amount", 0) or 0) > 0
-                        and "Direct rewards and charges" in str(
+                        and "Rewards and charges" in str(
                             direct_growth.get("label", "")
                         )
                         and direct_growth.get("label_contained", False)
@@ -5307,7 +5306,7 @@ class _UiFaceCaptureRunner:
                         no_results is not None
                         and no_results.isVisible()
                         and "No matches" in empty_text
-                        and "Clear filters to see all collectibles" in empty_text
+                        and annotation.get("empty_state_actions") == ["Clear filters"]
                         and bool(annotation.get("passed", False))
                     ),
                     annotation,
@@ -5338,11 +5337,11 @@ class _UiFaceCaptureRunner:
                         == {
                             "toolbar",
                             "summary_title",
-                            "scenery",
-                            "weather",
-                            "decoration",
-                            "active_effect",
-                            "manage_loadout",
+                            "summary_selection",
+                            "edit_appearance",
+                            "item_title",
+                            "item_status",
+                            "effect",
                             "mechanics",
                         }
                         and all(
@@ -5368,8 +5367,8 @@ class _UiFaceCaptureRunner:
                     and all(bool(item.reward_summary) for item in projections)
                     and bool(annotation.get("passed", False))
                     and any(
-                        text.startswith("Reward: ")
-                        for text in visible_label_texts
+                        projection.reward_summary in visible_label_texts
+                        for projection in projections
                     ),
                     {
                         "reviewed": getattr(stats, "reviewed", None),
@@ -5402,10 +5401,8 @@ class _UiFaceCaptureRunner:
                     and not projection.completed
                     and projection.name in visible_label_texts
                     and projection.criteria_text in visible_label_texts
-                    and "Progress" in visible_label_texts
                     and projection.value_text in visible_label_texts
-                    and f"Reward: {projection.reward_summary}"
-                    in visible_label_texts
+                    and projection.reward_summary in visible_label_texts
                     and bool(annotation.get("target_card_fully_visible", False)),
                     annotation,
                 )
@@ -5484,10 +5481,10 @@ class _UiFaceCaptureRunner:
                 require(
                     "streak_achievement_and_growth_bonus_copy",
                     (
-                        "Next Growth bonus: Day "
-                        f"{int(annotation.get('next_growth_bonus_days', 0)):,}"
+                        "Next bonus at "
+                        f"{int(annotation.get('next_growth_bonus_days', 0)):,} days"
                     ) in visible_label_texts
-                    and "Growth bonus thresholds" in visible_label_texts
+                    and "Growth bonuses" in visible_label_texts
                     and "One-time streak achievements" in visible_label_texts
                     and completed is not None
                     and completed.name in visible_label_texts
@@ -5883,7 +5880,7 @@ class _UiFaceCaptureRunner:
                             restored_visual.get("passed", False)
                             and restored_visual.get("visible", False)
                             and restored_visual.get("contained", False)
-                            and restored_visual.get("text") == "Preview restored"
+                            and restored_visual.get("text") == "Preview reset."
                         ),
                         restored_visual,
                     )
@@ -5897,8 +5894,9 @@ class _UiFaceCaptureRunner:
                 require(
                     "starter_confirmation",
                     title.startswith("Choose ")
-                    and "Choose starter" in buttons
-                    and "Go back" in buttons,
+                    and title.endswith("?")
+                    and "Back" in buttons
+                    and any(button.startswith("Choose ") for button in buttons),
                     {"title": title, "buttons": buttons},
                 )
             elif state_name == "plant-story":
@@ -5929,9 +5927,10 @@ class _UiFaceCaptureRunner:
                 ]
                 require(
                     "fertilizer_replacement",
-                    title.startswith("Replace with ")
-                    and "Keep current" in buttons
-                    and "Purchase and replace" in buttons,
+                    title.startswith("Replace ")
+                    and title.endswith("?")
+                    and any(button.startswith("Keep ") for button in buttons)
+                    and any(button.startswith("Buy ") for button in buttons),
                     {"title": title, "buttons": buttons},
                 )
             elif state_name in _GROWTH_CHARGE_CAPTURE_LABELS:
@@ -8176,8 +8175,8 @@ class _UiFaceCaptureRunner:
         state_events = getattr(self.app, "state_events", None)
         current_revision = int(getattr(state_events, "revision", 0))
         error_message = {
-            "error": "Garden preview is unavailable. Retry to refresh.",
-            "stale": "Updating garden preview…",
+            "error": "Preview unavailable",
+            "stale": "Updating…",
         }.get(phase)
         fixture_snapshot = HomeWidgetSnapshot(
             request_id=original_snapshot.request_id + 1,
@@ -9789,6 +9788,12 @@ class _UiFaceCaptureRunner:
                                 for candidate in no_results.findChildren(QLabel)
                                 if str(candidate.text()).strip()
                             ),
+                            "empty_state_actions": sorted(
+                                _displayed_button_text(candidate)
+                                for candidate in no_results.findChildren(QAbstractButton)
+                                if candidate.isVisible()
+                                and _displayed_button_text(candidate)
+                            ),
                             "empty_state_viewport_bounds": bounds,
                             "empty_state_viewport_size": [
                                 int(viewport.width()),
@@ -10040,7 +10045,7 @@ class _UiFaceCaptureRunner:
                 direct_label = next(
                     (
                         candidate for candidate in visible_labels
-                        if "Direct rewards and charges" in str(candidate.text())
+                        if "Rewards and charges" in str(candidate.text())
                     ),
                     None,
                 )
@@ -10089,7 +10094,7 @@ class _UiFaceCaptureRunner:
                 }
                 direct_visual["passed"] = bool(
                     direct_amount > 0
-                    and "Direct rewards and charges" in direct_visual["label"]
+                    and "Rewards and charges" in direct_visual["label"]
                     and direct_visual["label_contained"]
                     and direct_visual["value_contained"]
                 )
@@ -11248,15 +11253,12 @@ class _UiFaceCaptureRunner:
                     )
                 )
                 empty_visible = bool(
-                    "No new plants available" in visible_labels
+                    "All plants collected" in visible_labels
                     and any(
-                        "Every currently available species is already in your collection."
-                        in copy
+                        re.fullmatch(r"\d[\d,]* of \d[\d,]*", copy.strip())
                         for copy in visible_labels
                     )
-                    and {"View collection", "Return to garden"}.issubset(
-                        visible_buttons
-                    )
+                    and "View collection" in visible_buttons
                 )
                 self._capture_annotations[label] = {
                     "empty_state_visible": empty_visible,
@@ -11369,10 +11371,10 @@ class _UiFaceCaptureRunner:
                     "collection_filter_controls",
                     None,
                 )
-                manage_loadout = next((
+                edit_appearance = next((
                     button for button in button_widgets
                     if button.isVisible()
-                    and str(button.text()) == "Manage loadout"
+                    and str(button.text()) == "Edit appearance"
                 ), None)
                 visible_label_widgets = [
                     label_widget
@@ -11383,11 +11385,34 @@ class _UiFaceCaptureRunner:
                     item for item in visible_label_widgets
                     if bool(item.property("appearanceSummaryTitle"))
                 ), None)
-                summary_facts = {
-                    str(item.property("appearanceFact") or ""): item
-                    for item in visible_label_widgets
-                    if str(item.property("appearanceFact") or "")
-                }
+                appearance_summary = next((
+                    item
+                    for item in dashboard.collection_list.findChildren(QWidget)
+                    if bool(item.property("collectionAppearanceSummary"))
+                ), None)
+                summary_selection = next((
+                    item for item in (
+                        appearance_summary.findChildren(QLabel)
+                        if appearance_summary is not None else ()
+                    )
+                    if bool(item.property("rowCriteria"))
+                ), None)
+                environment_title = next((
+                    item for item in visible_label_widgets
+                    if bool(item.property("rowTitle"))
+                    and str(item.text()).strip() == WEATHER_CATALOG["breeze"].name
+                ), None)
+                environment_status = next((
+                    item for item in visible_label_widgets
+                    if bool(item.property("catalogStatus"))
+                    and "Weather" in str(item.text())
+                ), None)
+                environment_effect = next((
+                    item for item in visible_label_widgets
+                    if bool(item.property("rowCriteria"))
+                    and "Growth" in str(item.text())
+                    and item is not summary_selection
+                ), None)
                 mechanics_details = next((
                     item for item in visible_label_widgets
                     if bool(item.property("environmentMechanicsDetails"))
@@ -11395,11 +11420,11 @@ class _UiFaceCaptureRunner:
                 required_widgets: dict[str, Any] = {
                     "toolbar": filter_controls,
                     "summary_title": summary_title,
-                    "scenery": summary_facts.get("scenery"),
-                    "weather": summary_facts.get("weather"),
-                    "decoration": summary_facts.get("decoration"),
-                    "active_effect": summary_facts.get("active-effect"),
-                    "manage_loadout": manage_loadout,
+                    "summary_selection": summary_selection,
+                    "edit_appearance": edit_appearance,
+                    "item_title": environment_title,
+                    "item_status": environment_status,
+                    "effect": environment_effect,
                     "mechanics": mechanics_details,
                 }
 
@@ -11503,9 +11528,9 @@ class _UiFaceCaptureRunner:
                     and toolbar_visual["passed"]
                 )
                 mechanics_text = evidence_text("mechanics", mechanics_details)
-                manage_evidence = next(
+                edit_evidence = next(
                     row for row in required_bounds
-                    if row.get("key") == "manage_loadout"
+                    if row.get("key") == "edit_appearance"
                 )
                 annotation = {
                     "collection_category": str(dashboard._collection_category),
@@ -11515,50 +11540,42 @@ class _UiFaceCaptureRunner:
                         and mechanics_button.isChecked()
                     ),
                     "selected_environment_visible": (
-                        evidence_text("weather", summary_facts.get("weather"))
+                        evidence_text("item_title", environment_title)
                         == WEATHER_CATALOG["breeze"].name
                     ),
                     "complete_effects_visible": (
                         "Growth" in evidence_text(
-                            "active_effect",
-                            summary_facts.get("active-effect"),
+                            "effect",
+                            environment_effect,
                         )
                         and all(
                             marker in mechanics_text
                             for marker in ("Duration:", "Stacking:", "Replacement:")
                         )
-                        and WEATHER_CATALOG["breeze"].name in mechanics_text
                     ),
                     "loadout_summary_visible": (
                         evidence_text("summary_title", summary_title)
-                        == "Equipped appearance"
-                        and all(
-                            summary_facts.get(key) is not None
-                            for key in (
-                                "scenery",
-                                "weather",
-                                "decoration",
-                                "active-effect",
-                            )
-                        )
+                        == "Garden appearance"
+                        and WEATHER_CATALOG["breeze"].name
+                        in evidence_text("summary_selection", summary_selection)
                     ),
                     "equipment_state_visible": bool(
-                        summary_title is not None
-                        and summary_title.isVisible()
+                        environment_status is not None
+                        and "Equipped" in str(environment_status.text())
                     ),
                     "loadout_route_visible": bool(
-                        manage_loadout is not None
-                        and manage_loadout.isVisible()
+                        edit_appearance is not None
+                        and edit_appearance.isVisible()
                     ),
                     "loadout_routes_enabled": bool(
-                        manage_loadout is not None
-                        and manage_loadout.isEnabled()
+                        edit_appearance is not None
+                        and edit_appearance.isEnabled()
                     ),
                     "action_buttons_fully_visible": bool(
-                        manage_evidence.get("contained", False)
-                        and 34 <= int(manage_loadout.height()) <= 36
+                        edit_evidence.get("contained", False)
+                        and 34 <= int(edit_appearance.height()) <= 36
                     ),
-                    "route_button_bounds": [manage_evidence],
+                    "route_button_bounds": [edit_evidence],
                     "filter_toolbar_visible": toolbar_visual["passed"],
                     "scroll_at_top": bool(scrollbar.value() == 0),
                     "direct_mutation_controls": any(
@@ -11646,7 +11663,7 @@ class _UiFaceCaptureRunner:
             error_visible = bool(
                 dialog.preview_feedback.isVisible()
                 and dialog.preview_panel.isAncestorOf(dialog.preview_feedback)
-                and "Changes could not be saved" in error_copy
+                and "Couldn’t save changes" in error_copy
                 and "unchanged" in error_copy
             )
             actions = {
@@ -11679,7 +11696,7 @@ class _UiFaceCaptureRunner:
                 "passed": bool(
                     before == after
                     and error_visible
-                    and actions == {"Try again", "Discard preview"}
+                    and actions == {"Try again", "Discard changes"}
                     and single_banner
                     and normal_width_actions
                     and actions_right_aligned
@@ -12082,7 +12099,7 @@ class _UiFaceCaptureRunner:
             restored_preview_visual["passed"] = bool(
                 label != "collection-preview-restored"
                 or (
-                    restored_preview_visual["text"] == "Preview restored"
+                    restored_preview_visual["text"] == "Preview reset."
                     and restored_preview_visual["visible"]
                     and restored_preview_visual["contained"]
                 )
@@ -13041,7 +13058,7 @@ class _UiFaceCaptureRunner:
                 replace = next(
                     (
                         button for button in dialog.findChildren(QAbstractButton)
-                        if _displayed_button_text(button) == "Purchase and replace"
+                        if _displayed_button_text(button) == "Buy and replace"
                         and button.isEnabled()
                     ),
                     None,
@@ -14776,7 +14793,7 @@ class _UiFaceCaptureRunner:
                 all_receipts,
                 achievement_ids=achievement_ids,
                 plant_id=active.plant_id,
-                title="Synced review rewards",
+                title="Garden rewards added",
             ):
                 raise RuntimeError(
                     "canonical Reviewer sync reward feedback was not queued"
@@ -14794,9 +14811,9 @@ class _UiFaceCaptureRunner:
                     "canonical Reviewer reward feedback could not be projected"
                 )
             expected_title = (
-                f"Garden Find: {presentations[0].display_name}"
+                presentations[0].display_name
                 if len(presentations) == 1
-                else f"{len(presentations):,} Garden Finds and rewards synced"
+                else f"{len(presentations):,} Garden rewards added"
             )
             receipt_correlations = {
                 receipt.correlation_id for receipt in all_receipts
@@ -14832,13 +14849,9 @@ class _UiFaceCaptureRunner:
             )
             expected_parts = []
             if expected_coins:
-                expected_parts.append(f"+{expected_coins:,} coins")
+                expected_parts.append(f"+{expected_coins:,} Garden Coins")
             if expected_growth:
-                expected_parts.append(f"+{expected_growth:,} growth")
-            if expected_environments:
-                expected_parts.append(
-                    f"{expected_environments:,} environment"
-                )
+                expected_parts.append(f"+{expected_growth:,} Growth")
             if (
                 len(presentations) == 1
                 and presentations[0].pool_id == ENVIRONMENT_POOL_ID
@@ -14850,7 +14863,7 @@ class _UiFaceCaptureRunner:
             elif len(presentations) == 1:
                 expected_message = str(presentations[0].description)
             else:
-                expected_message = "Rewards synced"
+                expected_message = "Garden rewards added"
             annotation = {
                 "canonical_find_ids": [
                     presentation.reward_id for presentation in presentations

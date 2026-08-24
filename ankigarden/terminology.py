@@ -7,7 +7,7 @@ from .models.state import STREAK_BONUS_TIERS
 PASSIVE_GROWTH_PERCENT = 100 // GardenGameEngine.PASSIVE_GROWTH_DENOMINATOR
 MAX_STREAK_BONUS_PERCENT = max(percent for _day, percent in STREAK_BONUS_TIERS)
 PASSIVE_GROWTH_EXPLANATION = (
-    "Other eligible planted plants receive "
+    "Other planted plants receive "
     f"{PASSIVE_GROWTH_PERCENT} percent of that Growth after bonuses."
 )
 

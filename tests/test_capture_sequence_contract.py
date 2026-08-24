@@ -360,8 +360,8 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert 'dashboard._collection_query = WEATHER_CATALOG["breeze"].name' in collection_fixture
     assert 'mechanics_button.setChecked(True)' in collection_fixture
     assert 'property("environmentMechanicsDisclosure")' in collection_fixture
-    assert '== "Equipped appearance"' in collection_fixture
-    assert 'manage_loadout.isEnabled()' in collection_fixture
+    assert '== "Garden appearance"' in collection_fixture
+    assert 'edit_appearance.isEnabled()' in collection_fixture
     assert '"filter_toolbar_visible"' in collection_fixture
     assert '"scroll_at_top"' in collection_fixture
     assert "devicePixelRatio()" in prepare_capture_window
@@ -447,7 +447,7 @@ def test_collection_preview_capture_tracks_the_registry_derived_effects_tab() ->
     assert '"reset_path_invoked": reset_path_invoked' in preview
     assert '"committed_state_unchanged": committed_state_unchanged' in preview
     assert 'preview_feedback_text' in preview
-    assert '"Preview restored"' in preview
+    assert '"Preview reset."' in preview
     assert '"restored_preview_visual"' in preview
     assert '"restored_preview_dirty_cleared"' in preview
     assert "_widget_bounds_evidence" in preview
@@ -499,11 +499,11 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
     for required_key in (
         "toolbar",
         "summary_title",
-        "scenery",
-        "weather",
-        "decoration",
-        "active_effect",
-        "manage_loadout",
+        "summary_selection",
+        "edit_appearance",
+        "item_title",
+        "item_status",
+        "effect",
         "mechanics",
     ):
         assert f'"{required_key}"' in mechanics
@@ -545,7 +545,7 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     assert 'current_page == "growth"' in redirect
     assert "self._prepare_growth_capture_fixture(" in redirect
     assert "populated=True" in redirect
-    assert '"Direct rewards and charges"' in redirect
+    assert '"Rewards and charges"' in redirect
     assert '"direct_growth_visual"' in redirect
     assert 'direct_amount > 0' in redirect
     assert '"label_contained"' in redirect
@@ -969,7 +969,7 @@ def test_capture_binds_to_branded_replacement_and_keeps_every_popover_visible() 
     assert "FertilizerReplacementDialog" in finder
     assert "QMessageBox" not in finder
     assert "_visible_fertilizer_replacement_dialog" in replacement
-    assert '"Purchase and replace"' in replacement
+    assert '"Buy and replace"' in replacement
     assert '"Purchase & Replace"' not in replacement
     assert "purchase_fertilizer" not in fertilize
     assert "purchase_fertilizer" not in prepare_expiring
@@ -1201,7 +1201,7 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "self.app.engine._queue_reward_feedback(" in reviewer_feedback
     assert reviewer_feedback.count("self.app.engine._queue_reward_feedback(") == 1
     assert 'sync_correlation = f"sync:capture-reviewer:{day_value}"' in reviewer_feedback
-    assert 'title="Synced review rewards"' in reviewer_feedback
+    assert 'title="Garden rewards added"' in reviewer_feedback
     assert 'feedback.message == expected_message' in reviewer_feedback
     assert "feedback.amount == 0" in reviewer_feedback
     assert "expected_total = sum" not in reviewer_feedback

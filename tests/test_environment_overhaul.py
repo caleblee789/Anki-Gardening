@@ -187,7 +187,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     assert GardenGameEngine._duration_label(
         basic_fertilizer.duration_seconds
     ) in compost.descriptor.duration
-    assert "Garden Find" in compost.descriptor.unlock_requirement
+    assert compost.descriptor.unlock_requirement == "Found while reviewing."
     compost_view = next(
         view
         for view in collectible_views(GardenState(
@@ -198,7 +198,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     assert compost_view.owned
     assert compost_view.quantity == 2
     assert booster.descriptor.unlock_requirement == (
-        "Earn from a Garden Find or an eligible daily Scenery reward."
+        "Earn from a Garden Find or daily Scenery reward."
     )
     assert booster.descriptor.buff == (
         f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per Anki card "
@@ -427,7 +427,7 @@ def test_growth_charges_purchase_apply_normal_transitions_cap_at_rare_and_fail_s
     assert storage.state.consumables["growth_charge_small"] == 1
     grand_purchase = engine.purchase_growth_charge("growth_charge_grand")
     assert not grand_purchase[0]
-    assert grand_purchase[1] == "Grand Growth Charge is not currently obtainable."
+    assert grand_purchase[1] == "This item is unavailable right now."
 
 
 def test_equipped_weather_and_scenery_extend_booster_duration_additively(monkeypatch):
@@ -490,7 +490,7 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     dashboard = (root / "ankigarden/ui/dashboard.py").read_text("utf-8")
     studio = (root / "ankigarden/ui/garden_studio.py").read_text("utf-8")
 
-    assert dashboard.index('addTab(self.upgrades_scroll, "Garden Spaces")') < dashboard.index(
+    assert dashboard.index('addTab(self.upgrades_scroll, "Garden beds")') < dashboard.index(
         'addTab(self.environment_scroll, "Weather and Scenery")'
     )
     assert 'addTab(self.supplements_scroll, "Fertilizer and Boosters")' in dashboard
@@ -501,8 +501,8 @@ def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_co
     assert 'self.option_tabs.addTab(self.weather_page, "Weather")' in dashboard
     assert 'self.option_tabs.addTab(self.decoration_page, "Decorations")' in dashboard
     assert 'self.option_tabs.addTab(self.effects_page, "Effects")' in dashboard
-    assert "Show Weather" in dashboard
-    assert "Show Scenery" in dashboard
+    assert "Weather effects" in dashboard
+    assert "Scenery effects" in dashboard
     assert "self.advanced_actions_layout.addWidget(self.motion_row)" in studio
     assert "controls_layout.addWidget(self.fine_tune_toggle)" not in studio
     assert "controls_layout.addWidget(self.fine_tune_section)" not in studio

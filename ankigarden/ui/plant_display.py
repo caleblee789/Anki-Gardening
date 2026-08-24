@@ -2594,8 +2594,8 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if just_completed:
         return OnboardingDisplay(
             True,
-            "Starter selected",
-            "Your starter is now your nurtured plant. Your next Anki card answer will give it Growth.",
+            "Your garden is ready",
+            "",
         )
     try:
         version = int(onboarding_version)
@@ -2610,13 +2610,13 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if reviews == 0:
         return OnboardingDisplay(
             True,
-            "Choose your starter",
-            "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+            "Choose a starter",
+            "Pick a free plant for your garden.",
             "Choose starter",
         )
     return OnboardingDisplay(
         True,
-        "Choose your starter",
-        "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+        "Choose a starter",
+        "Pick a free plant for your garden.",
         "Choose starter",
     )

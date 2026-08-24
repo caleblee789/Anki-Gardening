@@ -64,7 +64,7 @@ def test_loading_state_preserves_preview_geometry_without_actions() -> None:
     assert 'data-testid="home-loading"' in html
     assert 'role="status" aria-live="polite"' in html
     assert 'aria-busy="true"' in html
-    assert 'role="progressbar" aria-label="Loading garden preview"' in html
+    assert 'class="ag-home__loading-track" aria-hidden="true"' in html
     assert 'class="ag-home__state"' in html
     assert "Loading garden…" in html
     assert "Loading garden preview…" not in html

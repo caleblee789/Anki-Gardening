@@ -624,7 +624,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div class="ag-home__eyebrow">Anki Garden</div>'
             '<div class="ag-home__state-title" role="status" aria-live="polite">'
             'Loading garden…</div>'
-            '<div class="ag-home__loading-track" role="progressbar" aria-label="Loading garden preview"></div>'
+            '<div class="ag-home__loading-track" aria-hidden="true"></div>'
             '</div>'
             "</div>"
         )

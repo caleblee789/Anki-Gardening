@@ -163,7 +163,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     projection = next(item for item in achievement_presentations(state) if item.achievement_id == "streak_7")
 
     assert projection.name == "7-Day Anki Streak"
-    assert projection.description == "Reach a 7-day active Anki streak."
+    assert projection.description == "Reach a 7-day Anki streak."
     assert projection.progress == 0.75
     assert projection.progress_target == 7
     assert projection.unlocked is True

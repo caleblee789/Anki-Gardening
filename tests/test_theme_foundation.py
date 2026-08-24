@@ -383,7 +383,6 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(self.coins)",
         "apply_tabular_numerals(support)",
         "apply_tabular_numerals(metric)",
-        "apply_tabular_numerals(bonus_value)",
         "apply_tabular_numerals(cutoff_value)",
         "apply_tabular_numerals(milestone)",
         "apply_tabular_numerals(reward)",
@@ -417,5 +416,5 @@ def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() ->
         dashboard.count("set_keyboard_focus_surface(") + 1
     )
     assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in dashboard
-    assert 'self.show_weather = ToggleSwitch("Show weather")' in dashboard
-    assert 'self.show_scenery = ToggleSwitch("Show scenery")' in dashboard
+    assert 'self.show_weather = ToggleSwitch("Weather effects")' in dashboard
+    assert 'self.show_scenery = ToggleSwitch("Scenery effects")' in dashboard

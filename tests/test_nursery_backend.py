@@ -336,7 +336,7 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
         "breeze", "spring", {"weather": False, "scenery": True}
     )
 
-    assert ok and message == "Garden loadout saved."
+    assert ok and message == "Garden appearance saved."
     assert storage.state.selected_weather == "breeze"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
@@ -349,7 +349,7 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
         "sunny", "default", {"weather": True, "scenery": False}
     )
 
-    assert not ok and message == "Those appearance changes could not be saved."
+    assert not ok and message == "Couldn’t save changes. Your garden is unchanged."
     assert storage.state.selected_weather == "breeze"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {

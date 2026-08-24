@@ -75,11 +75,11 @@ def _species_definition(species: str) -> CollectibleDefinition:
         category="plants",
         rarity="Collectible",
         descriptor=EffectDescriptor(
-            function="A plant species with six persistent Growth stages.",
-            buff="The nurtured planted instance receives Growth from Anki card answers.",
-            activation_condition="Plant an owned instance and select it as nurtured.",
-            duration="Growth and collection ownership are permanent.",
-            stacking="Each collected instance keeps its own Growth and care state.",
+            function="A plant species with six Growth stages.",
+            buff="The nurtured plant receives Growth from card answers.",
+            activation_condition="Place the plant in a garden bed and nurture it.",
+            duration="Growth stays with the plant.",
+            stacking="Each plant keeps its own Growth and care state.",
             replacement="Moving or removing a plant never erases its Growth.",
             unlock_requirement="Choose a starter or obtain another instance from the Nursery.",
         ),
@@ -130,9 +130,9 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
             rarity="Common",
             descriptor=EffectDescriptor(
                 function="Adds a warm lantern to the garden scene.",
-                buff="Visual effect only; no gameplay bonus.",
+                buff="Adds a warm light to your garden.",
                 activation_condition="Active while equipped.",
-                duration="Owned permanently; active until unequipped.",
+                duration="Shown until unequipped.",
                 stacking="One Decoration at a time.",
                 replacement="Another Decoration replaces it; ownership stays.",
                 unlock_requirement="Included with Anki Garden.",
@@ -146,12 +146,12 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
             item_id=f"garden_beds:{index}",
             name=f"Garden bed {index + 1}",
             category="garden_beds",
-            rarity="Permanent upgrade",
+            rarity="",
             descriptor=EffectDescriptor(
                 function="Provides one garden location for a collected plant.",
                 buff="Lets one additional plant appear in the garden.",
                 activation_condition="Active after the bed is unlocked.",
-                duration="Permanent.",
+                duration="Stays unlocked.",
                 stacking="Each unlocked bed adds one location, up to six.",
                 replacement="Replaces nothing.",
                 unlock_requirement="Unlock the next bed in the Nursery.",
@@ -174,22 +174,22 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                     "to Growth Items inventory."
                 ),
                 buff=(
-                    f"+{basic_fertilizer.growth_per_answer:,} Growth per eligible "
-                    "Anki card answer while active."
+                    f"+{basic_fertilizer.growth_per_answer:,} Growth per "
+                    "card answer while active."
                 ),
                 activation_condition=(
                     "Use on a nurtured, unfinished planted plant."
                 ),
                 duration=(
                     f"Lasts {basic_duration}; another {basic_fertilizer.name} "
-                    "extends the same active window."
+                    "adds more time."
                 ),
                 stacking="Inventory quantities stack; active duration extends.",
                 replacement=(
                     "A different active Fertilizer is replaced only after "
                     "confirmation; its remaining time is discarded."
                 ),
-                unlock_requirement=f"Garden Find: {rich_compost.display_name}.",
+                unlock_requirement="Found while reviewing.",
             ),
             source_kind="growth_item",
             source_id=rich_compost.inventory_item_id,

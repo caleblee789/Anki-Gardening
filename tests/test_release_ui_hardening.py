@@ -198,10 +198,11 @@ def test_plant_popover_uses_one_slash_progress_value_and_hides_fully_grown_ferti
         if call.args and isinstance(call.args[0], ast.Attribute)
     }
     assert grown_actions == {"choose_another", "move", "story"}
-    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in selected_source
-    assert 'self.growth_summary.setText(f"Fully grown · {growth_points:,} total Growth")' in selected_source
+    assert "value_text=format_stage_progress(stage_points, stage_goal, next_stage)" in selected_source
+    assert 'self.identity.setText(f"{stage} · Fully grown")' in selected_source
+    assert 'self.growth_summary.setText("")' in selected_source
     assert _calls(selected, "self.stage_progress.hide")
-    assert _calls(selected, "self.growth_summary.show")
+    assert _calls(selected, "self.growth_summary.hide")
     assert _calls(selected, "self.growth_remaining.hide")
     assert not _calls(selected, "self.growth_remaining.show")
     assert not _calls(selected, "self.growth_remaining.setText")
@@ -243,7 +244,6 @@ def test_collection_filter_empty_state_has_exact_recovery_copy_and_clear_hook() 
     refresh_strings = _strings(refresh)
     expected_copy = {
         "No matches",
-        "Clear filters to see all collectibles.",
         "Clear filters",
     }
     missing = expected_copy - refresh_strings
@@ -542,7 +542,7 @@ def test_exec_backed_nursery_story_species_and_fertilizer_share_modal_shell() ->
     species_action = _segment(
         _method_node("GardenDashboard", "_collection_plant_action")
     )
-    assert "The committed garden and plant state is unchanged." in species_action
+    assert "Your garden is unchanged." in species_action
 
     synchronous = _segment(_method_node("DialogShell", "exec"))
     assert synchronous.index("Qt.WindowModality.WindowModal") < synchronous.index(
@@ -653,8 +653,8 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
 def test_compact_stats_preserve_the_anki_streak_accessible_name() -> None:
     stats = _segment(_class_node("GardenStatsStrip"))
     compact = _segment(_method_node("GardenStatsStrip", "set_compact"))
-    assert 'self.streak_label.setText("ANKI STREAK")' in compact
-    assert 'self.streak_label.setAccessibleName("ANKI STREAK")' in compact
+    assert 'self.streak_label.setText("")' in compact
+    assert 'self.streak_label.setAccessibleName("Anki streak")' in compact
     assert "self.streak_heading.removeWidget(self.streak_bonus)" in compact
     assert "self.streak_value_row.insertWidget(" in compact
     assert "self.streak_bonus.setMinimumWidth(48)" in stats
@@ -694,10 +694,12 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     )
 
     assert "self.effects_advanced_layout = QVBoxLayout(self.effects_advanced)" in constructor
-    assert 'QLabel("Preview controls")' in constructor
-    assert "Restore the currently equipped appearance." in constructor
+    assert 'advanced_title = QLabel("")' in constructor
+    assert "advanced_title.hide()" in constructor
+    assert 'advanced_copy = QLabel("")' in constructor
+    assert "advanced_copy.hide()" in constructor
     assert 'QPushButton("Reset preview")' in constructor
-    assert "Discard the local preview and restore the currently equipped appearance." in constructor
+    assert "Reset the preview to your saved garden appearance." in constructor
     assert "_set_button_variant(restore, BUTTON_VARIANT_SECONDARY)" in constructor
     assert "self.unsaved.setWordWrap(True)" in constructor
     assert '"collection-loadout.actions"' in constructor
@@ -726,11 +728,11 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert '"preview" if dirty else "committed-state"' in sync_dirty
     assert 'else "Try again"' in sync_dirty
     assert "if self._loadout_failure" in sync_dirty
-    assert '"Discard preview" if self._loadout_failure' in sync_dirty
+    assert '"Discard changes" if self._loadout_failure' in sync_dirty
     assert "self._sync_loadout_footer_button_geometry()" in sync_dirty
     assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
     assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
-    assert "Changes could not be saved. Your current appearance is unchanged." in apply_draft
+    assert "Couldn’t save changes. Your garden is unchanged." in apply_draft
     assert "if self._loadout_failure:" in cancel_preview
     assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
         "self.request_close(DialogCloseReason.CANCEL_ACTION)"
@@ -874,9 +876,9 @@ def test_settings_name_failure_reports_the_split_commit_if_rollback_fails() -> N
     assert dialog._persisted_name == "Old Garden"
     assert dialog.dirty_baselines == [(new_payload, "Old Garden")]
     assert len(dialog.errors) == 1
-    assert "Committed state: your display settings are saved" in dialog.errors[0]
-    assert "your Garden name is unchanged" in dialog.errors[0]
-    assert "Garden name draft is still here to retry" in dialog.errors[0]
+    assert "Display settings were saved" in dialog.errors[0]
+    assert "the garden name wasn’t" in dialog.errors[0]
+    assert "Try saving the name again" in dialog.errors[0]
     assert "no Settings changes were applied" not in dialog.errors[0]
 
 

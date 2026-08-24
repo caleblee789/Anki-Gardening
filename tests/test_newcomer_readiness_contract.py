@@ -151,7 +151,7 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
     assert "self.catalog_tabs.tabBar().setVisible(not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Not now" if starter_mode else "Close")' in nursery
+    assert 'self.close_button.setText("Later" if starter_mode else "Close")' in nursery
     assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
     assert "available = available[:4]" in nursery
@@ -172,7 +172,7 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "COST_FREE" in starter_card
     assert 'QPushButton("Choose")' in starter_card
     assert 'f"Choose {item_name} as your first plant"' in starter_card
-    assert 'QPushButton("View stages")' in starter_card
+    assert 'QPushButton("Preview")' in starter_card
     assert "Free starter" not in available_card
     assert "Included with your free starter" not in available_card
 
@@ -210,18 +210,16 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert '"READY TO NURTURE"' in stats
     assert "self.growth_value.hide()" in stats
     assert 'self.progress["growth"].hide()' in stats
-    assert refresh_onboarding.count('"Not now"') == 3
+    assert refresh_onboarding.count('"Later"') == 3
     assert refresh_onboarding.count('"Back"') == 2
     assert "self._set_onboarding_shield(visible)" in refresh_onboarding
-    assert '"Return to Anki"' in refresh_onboarding
+    assert '"Back to Anki"' in refresh_onboarding
     assert '"Explore garden"' in refresh_onboarding
     assert '"Try again"' in refresh_onboarding
-    assert '"Return to setup"' in refresh_onboarding
-    assert 'f"{plant_name}, your {species}, is growing in {bed}. "' in completion
-    assert '"Future qualifying Anki card answers now generate Growth."' in completion
-    assert '"No starter, garden bed, or nurture choice was saved."' in failure
-    assert '"Your starter choice is still saved. No garden bed or nurture "' in failure
-    assert '"Your last saved setup is unchanged."' in failure
+    assert '"Back to setup"' in refresh_onboarding
+    assert 'return f"{plant_name} is growing in {bed}."' in completion
+    assert "qualifying" not in completion
+    assert 'return "Nothing was changed."' in failure
     assert "last committed setup state" not in failure
     assert "self._onboarding_save_error = message" in open_starter
     assert "self.toast_region.show_message" not in open_starter
@@ -232,12 +230,12 @@ def test_nursery_tab_intros_do_not_repeat_section_details() -> None:
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_sync_catalog_intro"
     )
 
-    assert '2: "Make room for a larger plant collection."' in sync_intro
-    assert '3: "Collect a new look for the garden."' in sync_intro
+    assert '2: ""' in sync_intro
+    assert '3: ""' in sync_intro
     assert "Garden spaces unlock permanently and in order." not in sync_intro
     assert "Preview collectible Weather and Scenery before buying." not in sync_intro
     nursery = _source("ankigarden/ui/dashboard.py")
-    assert '"Unlocks follow the order shown below."' in nursery
+    assert '"Unlocks follow the order shown below."' not in nursery
     assert '"Each unlock adds one permanent planting space."' not in nursery
 
 
@@ -267,10 +265,10 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
     )
     assert "self.engine.select_starter_species(species)" in choose_starter
     assert "self._starter_choice_pending" in choose_starter
-    assert "Starter setup could not be saved." in choose_starter
-    assert "the last committed Garden setup is unchanged" in choose_starter
-    assert "Choose the plant " in choose_starter
-    assert "again to retry, or select Not now." in choose_starter
+    assert '"Couldn’t save your garden. Nothing was changed."' in choose_starter
+    assert "Starter setup could not be saved." not in choose_starter
+    assert "last committed Garden setup" not in choose_starter
+    assert "Not now" not in choose_starter
     assert "except Exception:" in choose_starter
     assert "starter choice save failed unexpectedly" in choose_starter
     assert "if not ok:" in choose_starter
@@ -288,7 +286,7 @@ def test_fully_grown_and_accessibility_copy_are_rendered_at_the_action_site() ->
     assert "self.choose_another = QPushButton(FULLY_GROWN_ACTION)" in dashboard
     assert "self.choose_another.show()" in dashboard
     assert "All_PLANTS_COMPLETE" not in dashboard
-    assert "ALL_PLANTS_COMPLETE" in dashboard
+    assert "ALL_PLANTS_COMPLETE" not in dashboard
     assert KEYBOARD_HINT in scene
     assert "focusInEvent" in scene and "_show_keyboard_hint" in scene
     focus_in = _method_source("ankigarden/ui/scene.py", "GardenSceneWidget", "focusInEvent")

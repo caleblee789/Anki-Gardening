@@ -372,31 +372,24 @@ def recurring_reward_presentations(
             rule_id="daily_activity",
             source="daily_activity",
             title="Daily activity",
-            trigger="First Anki card answer Garden can count each Anki day",
+            trigger="Answer your first card today.",
             reward_coins=daily_coins,
             reward_growth=0,
             awarded_today="daily_activity" in today_sources,
             status=(
-                "Earned today"
-                if "daily_activity" in today_sources else
-                "Available on the first Anki card answer Garden can count"
+                "Earned today" if "daily_activity" in today_sources else "Available"
             ),
         ),
         RecurringRewardPresentation(
             rule_id="all_due",
             source="all_due",
             title="All due cards",
-            trigger=(
-                "Finish a due queue that started with at least one due card, "
-                "after at least one Anki card answer Garden can count"
-            ),
+            trigger="Finish today’s due cards.",
             reward_coins=all_due_coins,
             reward_growth=all_due_growth,
             awarded_today="all_due" in today_sources,
             status=(
-                "Earned today"
-                if "all_due" in today_sources else
-                "Available after a valid all-due completion"
+                "Earned today" if "all_due" in today_sources else "Available"
             ),
         ),
         RecurringRewardPresentation(

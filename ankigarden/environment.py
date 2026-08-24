@@ -41,11 +41,11 @@ class CatalogItem:
         kind_name = "Weather" if self.kind == "weather" else "Scenery"
         other_kind = "Scenery" if self.kind == "weather" else "Weather"
         return EffectDescriptor(
-            function=f"Changes {kind_name} and applies its passive.",
+            function=f"Changes {kind_name}.",
             buff=self.effect,
-            activation_condition="Active while equipped, even if its artwork is hidden.",
-            duration="Owned permanently; active until replaced.",
-            stacking=f"One {kind_name} at a time; stacks with {other_kind} passives.",
+            activation_condition="Applies while equipped.",
+            duration="Stays in your collection.",
+            stacking=f"One {kind_name} at a time; {other_kind} remains equipped.",
             replacement=f"Another {kind_name} takes its place; ownership stays.",
             unlock_requirement=self.how_to_earn,
         )
@@ -84,7 +84,7 @@ WEATHER_CATALOG: dict[str, CatalogItem] = {
         "weather",
         "Common",
         "free",
-        "No gameplay bonus.",
+        "",
         "Included.",
     ),
     "breeze": CatalogItem(
@@ -157,7 +157,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Common",
         "free",
-        "No gameplay bonus.",
+        "",
         "Included.",
     ),
     "spring": CatalogItem(
@@ -272,7 +272,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         2_000,
         None,
         "Very Rare",
-        "Not currently obtainable.",
+        "Unavailable",
     ),
 }
 

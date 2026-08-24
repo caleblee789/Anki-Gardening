@@ -640,10 +640,8 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
     assert len(shown) == 1
     feedback = shown[0]
     assert feedback.event_ids == tuple(event.event_id for event in events)
-    assert feedback.title == "Garden Find: Morning Dew"
-    assert feedback.message == (
-        "+7 coins · +40 growth · A separate Garden notice remains unchanged"
-    )
+    assert feedback.title == "Morning Dew"
+    assert feedback.message == "+7 Garden Coins · +40 Growth"
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (7, 40)
     assert feedback.tier == "Common"
@@ -676,6 +674,63 @@ def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatc
 
     assert consumed == []
     assert handler._last_notified_event == ""
+
+
+def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
+    reviewer_module = importlib.import_module("ankigarden.hooks.reviewer")
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(),
+    )
+    events = [
+        SimpleNamespace(
+            event_id=f"garden-find:{index}",
+            kind="garden_find",
+            title="Garden Find",
+            message="",
+            occurred_at=f"2026-08-10T10:0{index}:00",
+            plant_id="plant:1",
+            asset_category="environment",
+            asset_key="firefly_evening",
+            correlation_id=f"answer:{index}",
+        )
+        for index in range(1, 4)
+    ]
+    environment_find = SimpleNamespace(
+        display_name="Firefly Evening",
+        tier="rare",
+        pool_id="environment",
+        description="",
+        artwork_ref="firefly_evening",
+    )
+    handler._garden_find_presentations = lambda _events: (environment_find,)
+    handler._typed_reward_totals = lambda _events: (0, 0, 1)
+
+    environment = handler._consolidated_reward_feedback(events[:1])
+
+    assert environment is not None
+    assert environment.title == "Firefly Evening"
+    assert environment.tier == "Rare"
+    assert environment.message == "Added to Weather and Scenery"
+
+    grouped_finds = tuple(
+        SimpleNamespace(
+            display_name=name,
+            tier="common",
+            pool_id="standard",
+            description="",
+            artwork_ref="growth",
+        )
+        for name in ("Morning Dew", "Fresh Soil", "Sun Shower")
+    )
+    handler._garden_find_presentations = lambda _events: grouped_finds
+    handler._typed_reward_totals = lambda _events: (6, 80, 0)
+
+    grouped = handler._consolidated_reward_feedback(events)
+
+    assert grouped is not None
+    assert grouped.title == "3 Garden rewards added"
+    assert grouped.message == "+6 Garden Coins · +80 Growth"
 
 
 def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(

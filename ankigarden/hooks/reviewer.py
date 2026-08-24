@@ -516,20 +516,16 @@ class ReviewerHookHandler:
         coins_total, growth_total, environment_total = self._typed_reward_totals(unique)
         reward_parts = []
         if coins_total:
-            reward_parts.append(f"+{coins_total:,} coins")
+            reward_parts.append(f"+{coins_total:,} Garden Coins")
         if growth_total:
-            reward_parts.append(f"+{growth_total:,} growth")
-        if environment_total:
-            reward_parts.append(
-                f"{environment_total:,} environment"
-            )
+            reward_parts.append(f"+{growth_total:,} Growth")
         nonreward_messages = tuple(dict.fromkeys(
             str(getattr(event, "message", "") or "").strip()
             for event in unique
             if not self._is_reward_feedback_event(event)
             and str(getattr(event, "message", "") or "").strip()
         ))
-        if nonreward_messages:
+        if nonreward_messages and not reward_parts:
             reward_parts.append(nonreward_messages[0])
         message = " · ".join(reward_parts)
         title = str(getattr(preferred, "title", "") or "")
@@ -541,14 +537,14 @@ class ReviewerHookHandler:
         if presentations:
             if len(presentations) == 1:
                 find = presentations[0]
-                title = f"Garden Find: {find.display_name}"
+                title = str(find.display_name)
                 tier = self._display_tier(find.tier)
                 if str(find.pool_id) == "environment" and environment_total:
                     message = "Added to Weather and Scenery"
                 elif not message:
                     message = str(find.description)
             else:
-                title = f"{len(presentations):,} Garden Finds and rewards synced"
+                title = f"{len(presentations):,} Garden rewards added"
             first_find = presentations[0]
             asset_key = str(first_find.artwork_ref or asset_key)
             asset_category = (
@@ -557,24 +553,19 @@ class ReviewerHookHandler:
                 else "ui"
             )
         elif find_events:
-            title = title or "Garden Find"
+            title = title.removeprefix("Garden Find:").strip() or "Garden reward"
 
         find_count = max(len(find_events), len(presentations))
         if find_count > 1:
-            title = f"{find_count:,} Garden Finds and rewards synced"
-            message = " · ".join(reward_parts) or "Rewards synced"
+            title = f"{find_count:,} Garden rewards added"
+            message = " · ".join(reward_parts) or "Garden rewards added"
         if not message:
             message = self._aggregate_reward_messages(unique)
 
         if not title:
-            title = (
-                "Synced review rewards"
-                if any(
-                    "sync" in str(getattr(event, "title", "")).lower()
-                    for event in unique
-                )
-                else "Review rewards"
-            )
+            title = "Garden rewards added" if len(unique) > 1 else "Review rewards"
+        elif "sync" in title.casefold():
+            title = "Garden rewards added"
         return ReviewerRewardFeedback(
             event_id=combined_id,
             event_ids=event_ids,

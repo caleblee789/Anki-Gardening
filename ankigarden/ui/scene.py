@@ -436,11 +436,11 @@ class GardenSceneWidget(QWidget):
             return False
         self._activate_placement_session()
         self._starter_placement = True
-        self._inline_message = "Choose a highlighted garden bed for your starter."
+        self._inline_message = "Choose a bed."
         self.setAccessibleName("Place your starter plant")
         self.setAccessibleDescription(
             self._placement_accessible_description(
-                "Choose an eligible unlocked bed for your starter."
+                "Choose an unlocked bed for your starter."
             )
         )
         self.placementStateChanged.emit(True)
@@ -466,11 +466,11 @@ class GardenSceneWidget(QWidget):
             return False
         self._activate_placement_session()
         self._starter_placement = False
-        self._inline_message = "Choose a highlighted garden bed for this plant."
+        self._inline_message = "Choose a bed."
         self.setAccessibleName("Plant from Collection")
         self.setAccessibleDescription(
             self._placement_accessible_description(
-                "Choose an eligible empty bed for this Collection plant."
+                "Choose an empty bed for this Collection plant."
             )
         )
         self.placementStateChanged.emit(True)
@@ -2224,16 +2224,16 @@ class GardenSceneWidget(QWidget):
             elif occupant:
                 label = f"swap with {occupant}"
             elif self._starter_placement:
-                label = "eligible; place here"
+                label = "place here"
             else:
-                label = "eligible; move here"
-            descriptions.append(f"Garden space {slot + 1}: {label}")
+                label = "move here"
+            descriptions.append(f"Garden bed {slot + 1}: {label}")
         return descriptions
 
     def _placement_accessible_description(self, introduction: str) -> str:
         target_map = "; ".join(self._placement_target_descriptions())
         return (
-            f"{introduction} {target_map}. Use the arrow keys to move among eligible beds, "
+            f"{introduction} {target_map}. Use the arrow keys to move among available beds, "
             "then press Enter. Press Escape to cancel."
         )
 
@@ -2331,9 +2331,9 @@ class GardenSceneWidget(QWidget):
         )
         if getattr(self, "_starter_placement", False) and label == "Move here":
             label = "Place here"
-        self.setAccessibleName(f"Garden space {slot + 1}: {label}")
+        self.setAccessibleName(f"Garden bed {slot + 1}: {label}")
         self.setAccessibleDescription(
-            f"Garden space {slot + 1} selected: {label}. "
+            f"Garden bed {slot + 1} selected: {label}. "
             "Press Enter to confirm, or Escape to cancel. "
             + "; ".join(self._placement_target_descriptions())
         )
@@ -2361,12 +2361,12 @@ class GardenSceneWidget(QWidget):
         started = self._interaction.begin_placement(plant_id, origin, self._valid_slots(), keyboard=keyboard)
         if started:
             name = self._plant_for_id(plant_id).get("name", "plant")
-            self._inline_message = f"Moving {name}. Choose a new location."
-            self.setAccessibleName(f"Moving {name}. Choose a new location.")
+            self._inline_message = f"Move {name}. Choose a bed."
+            self.setAccessibleName(f"Move {name}. Choose a bed.")
             self.setAccessibleDescription(
                 self._placement_accessible_description(
-                    "Six garden spaces are shown. Empty eligible beds move the plant; "
-                    "occupied eligible beds swap plants."
+                    "Six garden beds are shown. Empty beds move the plant; "
+                    "occupied beds swap plants."
                 )
             )
         return started
@@ -2400,9 +2400,9 @@ class GardenSceneWidget(QWidget):
             # so they are intentionally suppressed for the complete move mode.
             QToolTip.hideText()
             if target_state == "locked":
-                self._inline_message = "That garden space has not been unlocked yet."
+                self._inline_message = "That garden bed has not been unlocked yet."
             elif target_state == "unavailable":
-                self._inline_message = "That garden space is unavailable for this move."
+                self._inline_message = "That garden bed is unavailable for this move."
             elif target_state == "current":
                 self._inline_message = "Current location. Click to cancel moving."
             elif target_state == "valid":
@@ -2493,7 +2493,7 @@ class GardenSceneWidget(QWidget):
                     if request is not None:
                         self._inline_message = f"Saving {label.lower()}…"
                         self.setAccessibleDescription(
-                            f"{label} selected for garden space {slot + 1}. Saving move."
+                            f"{label} selected for garden bed {slot + 1}. Saving move."
                         )
                         self._emit_placement_request(request)
                 else:
@@ -2504,12 +2504,12 @@ class GardenSceneWidget(QWidget):
                         unlocked_slots=int(self.scene.get("unlocked_slots", 0)),
                     )
                     self._inline_message = (
-                        "That garden space is locked"
+                        "That garden bed is locked"
                         if state == "locked" else
-                        "That garden space is unavailable for this move"
+                        "That garden bed is unavailable for this move"
                     )
                     self.setAccessibleName(
-                        f"Garden space {slot + 1}: "
+                        f"Garden bed {slot + 1}: "
                         + ("Locked" if state == "locked" else "Invalid destination")
                     )
                     self.setAccessibleDescription(
@@ -2526,7 +2526,7 @@ class GardenSceneWidget(QWidget):
                 return
             # Clicking outside a destination is intentionally inert. Escape or
             # the current space remains the explicit cancellation path.
-            self._inline_message = "Choose a highlighted garden space, or press Escape to cancel."
+            self._inline_message = "Choose a bed."
             self.update()
             return
         plant_id = self._plant_at(position)

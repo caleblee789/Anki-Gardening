@@ -942,8 +942,8 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     )
 
     assert status.visible is False
-    assert toast_result["message"] == "Soft Breeze unlocked."
-    assert toast_result["action_text"] == "Open Collection"
+    assert toast_result["message"] == "Soft Breeze added to your collection."
+    assert toast_result["action_text"] == "View in Collection"
     assert toast_result["duration_ms"] == 6_000
     assert toast_result["dismissible"] is True
 
@@ -1055,7 +1055,7 @@ def test_catalog_refresh_exception_reports_saved_change_without_duplicate_use() 
 
 
 def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() -> None:
-    confirmations: list[tuple[str, str]] = []
+    confirmations: list[tuple[str, str, str]] = []
     engine_calls: list[tuple[str, bool]] = []
     scheduled: list[Any] = []
     refreshes: list[str] = []
@@ -1064,8 +1064,15 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
 
     class _Confirmation:
         @staticmethod
-        def confirm(_parent: Any, title: str, message: str) -> bool:
-            confirmations.append((title, message))
+        def confirm(
+            _parent: Any,
+            title: str,
+            message: str,
+            *,
+            confirm_label: str,
+            **_kwargs: Any,
+        ) -> bool:
+            confirmations.append((title, message, confirm_label))
             return True
 
     use_fertilizer = _compiled_method(
@@ -1134,15 +1141,17 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
     assert inventory == {"fertilizer_basic": 1}
     assert refreshes == ["parent", "nursery"]
     assert scheduled == [True, True]
-    assert confirmations[0][0] == "Replace active Fertilizer?"
-    assert "Quality Fertilizer" in confirmations[0][1]
-    assert "3,600 seconds" in confirmations[0][1]
-    assert "cannot be recovered" in confirmations[0][1]
+    assert confirmations[0][0] == "Replace Quality Fertilizer?"
+    assert confirmations[0][1] == (
+        "Basic Fertilizer starts now. You will lose "
+        "1 hour of Quality Fertilizer."
+    )
+    assert confirmations[0][2] == "Use Basic"
     assert results[0] == (True, "Basic Fertilizer applied")
     assert results[1][0] is False
     assert "Rich Compost was not used" in results[1][1]
-    assert "Committed Rich Compost inventory count: 1 (unchanged)" in results[1][1]
-    assert "Active Fertilizer on Moss: Quality Fertilizer (unchanged)" in results[1][1]
+    assert "inventory count" not in results[1][1]
+    assert "(unchanged)" not in results[1][1]
 
 
 @pytest.mark.parametrize(

@@ -1095,7 +1095,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
 
     ok, message = engine.purchase_fertilizer("p1", "quality")
     assert ok
-    assert message == "Quality Fertilizer applied to Moss for 2 hours."
+    assert message == "Quality Fertilizer applied."
     plant = storage.state.plants[0]
     assert plant.fertilizer.tier == "quality"
     assert plant.fertilizer.started_at == 1_000
@@ -1108,7 +1108,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
     assert engine.fertilizer_growth(plant, now=9_000) == 0
     assert any(
         event.message
-        == "Quality Fertilizer applied to Moss for 2 hours."
+        == "Quality Fertilizer applied."
         for event in engine.peek_feedback()
     )
 
@@ -1528,7 +1528,7 @@ def test_collection_planting_rejects_invalid_external_destination_without_mutati
     ok, message = engine.plant_from_collection("p3", invalid_destination)
 
     assert not ok
-    assert message == "Choose an empty unlocked garden space."
+    assert message == "Choose an empty garden bed."
     assert storage.state.to_dict() == before
     assert storage.save_count == saves_before
 

@@ -384,7 +384,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     )
     for description in (
         "current bed",
-        "eligible; move here",
+        'label = "move here"',
         "swap with",
         "locked bed",
         "invalid destination",
@@ -1258,6 +1258,7 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
         streak_bonus=SimpleNamespace(
             setText=lambda value: None,
             setMinimumWidth=lambda value: None,
+            setVisible=lambda value: None,
         ),
         streak_heading=Layout(),
         streak_value_row=Layout(),
@@ -1302,16 +1303,17 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
     assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
-    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
+    assert "value_text=format_stage_progress(stage_points, stage_goal, next_stage)" in source
+    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' not in source
     assert "self.growth_summary.setText(" in source
     assert ".replace('card answer', 'eligible answer')" not in source
-    assert 'forecast = plant.get("growth_forecast", {})' in source
+    assert "growth_forecast" not in source
     assert source.count("self.growth_remaining.hide()") == 2
     assert "self.growth_remaining.setText(" not in source
     assert "self.growth_summary.setAccessibleDescription(" in source
-    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in source
-    assert 'self.status_row.show()' in source
-    assert 'allocation_type = str(plant.get("allocation_type")' in source
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' not in source
+    assert 'self.status_row.setVisible(bool(status_text))' in source
+    assert 'allocation_type = str(plant.get("allocation_type")' not in source
     assert 'Growth today' in source
     assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
@@ -1392,13 +1394,16 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
     assert 'f"{total_today:,} Growth today"' in refresh
-    assert '"Answer an Anki card to earn Growth."' in refresh
-    assert '"View calculation details"' in refresh
-    assert '"Study Growth total"' in refresh
-    assert '"Nurtured plant allocation"' in refresh
-    assert '"Passive Growth credited"' in refresh
+    assert '"Answer a card to start."' in refresh
+    assert '"Growth breakdown"' in refresh
+    assert '"View calculation details"' not in refresh
+    assert '"Study Growth total"' not in refresh
+    assert '"Nurtured plant allocation"' not in refresh
+    assert '"Passive Growth credited"' not in refresh
+    assert '"From cards"' in refresh
+    assert '"Bonuses"' in refresh
+    assert '"Rewards and charges"' in refresh
     assert 'compact=True' in refresh
-    assert '"Nurtured plant allocation"' in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1477,12 +1482,12 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
 
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert scene.message == "The move was not saved. Your garden is unchanged."
+    assert scene.message == "Your garden is unchanged."
     assert dashboard.refreshed is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is retry_draft
     assert dashboard._active_placement_token == 17
-    assert rearrange.failure == "The move was not saved. Your garden is unchanged."
+    assert rearrange.failure == "Your garden is unchanged."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
     assert toast.messages == []
@@ -1491,7 +1496,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
         "class RearrangeBar", 1
     )[1].split("class GardenSideNavigation", 1)[0]
     assert 'self.retry = QPushButton("Try again")' in rearrange_source
-    assert 'self.cancel.setText("Cancel move")' in rearrange_source
+    assert 'self.cancel.setText("Stop moving")' in rearrange_source
     assert "_set_button_variant(self.retry, BUTTON_VARIANT_PRIMARY)" in rearrange_source
 
     place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
@@ -2193,8 +2198,8 @@ def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() ->
         "purchase_presentation",
         "presentation.primary_accessible_name",
         '"effect"',
-        '"duration"',
-        '"remaining"',
+        "quote.descriptor.duration",
+        "fertilizer_status(",
     ):
         assert required in fertilizer_menu
     assert "Garden Coins" in fertilizer_menu

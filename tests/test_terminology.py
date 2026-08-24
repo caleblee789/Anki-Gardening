@@ -70,7 +70,7 @@ def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
     assert f"This is {default_state} by default." in config_doc
     assert "today's answer count" in normalized_config
     assert "closest immediate achievement" in normalized_config
-    for category in ("Consistency", "Study Volume", "Recall", "Completion"):
+    for category in ("Consistency", "Study volume", "Recall", "Completion"):
         assert f'"{category}"' in dashboard
 
 

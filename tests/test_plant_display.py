@@ -462,14 +462,14 @@ def test_onboarding_stages_first_review_and_nurture_without_schema_state():
     confirmation = onboarding_display(1, CURRENT_ONBOARDING_VERSION, just_completed=True)
 
     assert fresh.action_label == "Choose starter"
-    assert fresh.title == "Choose your starter"
-    assert "not be credited later" in fresh.message
-    assert reviewed.title == "Choose your starter"
-    assert "Choose a starter before studying" in reviewed.message
-    assert "not be credited later" in reviewed.message
+    assert fresh.title == "Choose a starter"
+    assert fresh.message == "Pick a free plant for your garden."
+    assert reviewed.title == "Choose a starter"
+    assert reviewed.message == "Pick a free plant for your garden."
     assert updated_existing_user.visible is True
     assert completed.visible is False
-    assert confirmation.title == "Starter selected"
+    assert confirmation.title == "Your garden is ready"
+    assert confirmation.message == ""
 
 
 def test_story_memories_are_chronological_and_stable_within_the_same_day():
@@ -488,7 +488,7 @@ def test_onboarding_handles_malformed_presentation_inputs() -> None:
     display = onboarding_display("not-a-count", "not-a-version")
 
     assert display.visible is True
-    assert display.title == "Choose your starter"
+    assert display.title == "Choose a starter"
 
 
 def test_layout_is_responsive_and_hit_areas_are_generous():
@@ -1036,7 +1036,7 @@ def test_dashboard_uses_scene_cards_instead_of_bottom_roster():
     assert "generation != self._onboarding_confirmation_generation" in dashboard
     assert "self._onboarding_failure_receipt(step)" in dashboard
     assert 'action_text = "Try again"' in dashboard
-    assert 'secondary_text = "Return to setup"' in dashboard
+    assert 'secondary_text = "Back to setup"' in dashboard
     assert 'GARDEN_SETUP_BODY' in dashboard
     assert 'CHOOSE_STARTER_ACTION' in dashboard
     assert "cardOpened.connect" not in dashboard
@@ -1125,7 +1125,7 @@ def test_phase2_copy_states_and_single_scroll_contract_are_explicit():
         "def _achievement_view_state", 1
     )[1].split("def _set_achievement_filter", 1)[0]
     assert "achievement_views = achievement_presentations(state)" in dashboard
-    assert 'reward = QLabel(f"Reward: {projection.reward_summary}")' in dashboard
+    assert 'reward = QLabel(projection.reward_summary)' in dashboard
     assert "_achievement_condition_rows" not in dashboard
     assert "projection.condition_lines" in dashboard
     assert "projection.category" in dashboard
@@ -1173,7 +1173,7 @@ def test_statistics_help_is_explicit_hidden_and_keyboard_focusable():
     assert "self._draw_stats_help(painter, r)" in scene
     assert "self._stats_help_button.clicked.connect(self._focus_stats_help)" in scene
     assert "QEvent.Type.Enter, QEvent.Type.FocusIn" in scene
-    assert "That garden space has not been unlocked yet." in scene
+    assert "That garden bed has not been unlocked yet." in scene
 
 
 def test_scene_landmarks_are_registered_accessible_and_disabled_while_rearranging():
@@ -1216,21 +1216,23 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert "self.story_dialog = PlantStoryDialog" in dashboard
     assert 'setAccessibleName("Plant memory timeline")' in dashboard
     assert 'setAccessibleName("Rename plant")' in dashboard
-    assert 'QLabel("Memories")' in dashboard
-    assert "New memories will appear as this plant grows." in dashboard
+    assert 'QLabel("History")' in dashboard
+    assert "New history will appear as this plant grows." in dashboard
     assert 'QLabel("Up next")' in dashboard
     assert "reverse=True" not in dashboard.split("class PlantStoryDialog", 1)[1].split("class NurseryDialog", 1)[0]
     assert "event.key() == Qt.Key.Key_Escape" in dashboard
     assert "self.engine.rename_plant" in dashboard
     assert "self.plant_card.story.clicked.connect" in dashboard
-    for label in (
+    for removed_label in (
         "Species",
         "Planted date",
         "Current bed",
         "Total Growth",
         "Fertilizer",
     ):
-        assert f'"{label}"' in story
+        assert f'"{removed_label}"' not in story
+    assert 'summary_parts = [stage, bed]' in story
+    assert 'f"Planted {self._local_date(plant.planted_on)}"' in story
     assert '"Growth source"' not in story
     assert '"Allocation"' not in story
     assert '"Stored passive fraction"' not in story
@@ -1286,7 +1288,7 @@ def test_settings_expose_home_visibility_and_transaction_errors():
     assert 'QPushButton("Save")' in dashboard
     assert 'QPushButton("Reset display settings")' in dashboard
     assert 'self.tabs.addTab(self.behavior_scroll, "Display")' in dashboard
-    assert "except ConfigError as exc:" in dashboard
+    assert "except ConfigError:" in dashboard
     settings_block = dashboard.split("class GardenSettingsDialog", 1)[1].split("class PlantStoryDialog", 1)[0]
     assert "DEVELOPMENT_MUTATION_ENABLED" not in dashboard
     assert 'QPushButton("Unlock development tools")' not in settings_block
@@ -1326,11 +1328,12 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert 'self.nurture = QPushButton("Nurture")' in dashboard
     assert 'self.fertilize = QPushButton("Fertilize")' in dashboard
     assert 'self.move = QPushButton("Move")' in dashboard
-    assert 'self.story = QPushButton("Story")' in dashboard
+    assert 'self.story = QPushButton("Plant Story")' in dashboard
     assert 'self.nurture.setText("Nurture")' in dashboard
     assert 'self.fertilize.setText("Fertilize")' in dashboard
     assert "class RearrangeBar(QFrame):" in dashboard
-    assert 'self.title = QLabel("Move plant")' in dashboard
+    assert 'self.title = QLabel("")' in dashboard
+    assert 'self.rearrange_bar.title.setText(f"Move {name}")' in dashboard
     assert 'self.cancel = QPushButton("Cancel")' in dashboard
     assert 'self.done = QPushButton("Done")' not in dashboard
     assert "destination_selector" not in dashboard
@@ -1362,7 +1365,7 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert "self.selectionChanged.emit(\"\")" in scene
     assert "for index in range(6)" in scene
     assert "move_badge_label(" in scene
-    assert 'f"Garden space {slot + 1}: {label}"' in scene
+    assert 'f"Garden bed {slot + 1}: {label}"' in scene
     assert "self._interaction.placing and not self._drag_started" in scene
     assert "valid = list(range(unlocked))" in scene
 
@@ -1406,7 +1409,7 @@ def test_nursery_is_artwork_driven_data_driven_and_not_a_toolbar_menu():
     assert "self._plant_stage_strip(species)" in nursery
     assert 'self._plant_artwork(species, "seed", 132)' in nursery
     assert 'QLabel("Available now")' not in nursery
-    assert '"Botanical catalog"' in nursery
+    assert '"Botanical catalog"' not in nursery
     assert "self._currently_growing_strip(active)" in nursery
     assert "QComboBox" not in nursery
     assert "class GrowthChargeConfirmationDialog" in dashboard

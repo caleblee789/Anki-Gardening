@@ -55,7 +55,7 @@ def growth_forecast(
     state = getattr(engine, "state", None)
     active_plant_id = getattr(state, "active_plant_id", None)
     if str(active_plant_id or "") != str(getattr(plant, "plant_id", "") or ""):
-        text = "Nurture to start earning Growth"
+        text = "Nurture this plant"
         return GrowthForecast(text, text, None, None, 0, False)
 
     stage = str(getattr(plant, "growth_stage", "seed") or "seed").lower()
@@ -124,7 +124,7 @@ def fertilizer_status(
     *,
     now: float,
     description: str = (
-        "Fertilizer temporarily adds Growth to each eligible Anki card answer."
+        "Fertilizer temporarily adds Growth to each card answer."
     ),
 ) -> FertilizerStatus:
     """Project one fertilizer into stable visible and accessible fields."""

@@ -219,11 +219,10 @@ def test_semantic_size_classes_keep_confirmations_compact_and_previews_roomy() -
     assert 'floor=64' in starter
     assert 'floor=240' in starter
     assert "compact_direction=QBoxLayout.Direction.LeftToRight" in starter
-    assert '"Free permanent starter species.\\n"' in starter
-    assert '"Plant it in any open bed.\\n"' in starter
-    assert '"It can be moved later.\\n"' in starter
-    assert '"Other species remain available in Nursery."' in starter
-    assert 'self.choose_action = QPushButton("Choose starter")' in starter
+    assert 'body = QLabel("You can move it later.")' in starter
+    assert 'self.choose_action = QPushButton(f"Choose {species_name}")' in starter
+    assert "Free permanent starter species" not in starter
+    assert "Other species remain available in Nursery" not in starter
 
 
 def test_named_detail_dialogs_use_content_fit_classes_and_view_profiles() -> None:
