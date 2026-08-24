@@ -919,7 +919,7 @@ def test_home_capture_readiness_has_a_webview_callback_watchdog() -> None:
     source = _method_source("_UiFaceCaptureRunner", "_wait_for_home_surface")
 
     assert "callback_watchdog" in source
-    assert "QTimer.singleShot(750, callback_watchdog)" in source
+    assert "QTimer.singleShot(2500, callback_watchdog)" in source
     assert "retry_or_fail()" in source
     assert 'fixture_state = "starter-not-selected"' in source
     assert 'fixture_state = "starter-planted-not-nurtured"' in source

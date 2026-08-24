@@ -2578,7 +2578,12 @@ class _UiFaceCaptureRunner:
         )
         try:
             evaluate(script, resolved_once)
-            QTimer.singleShot(750, callback_watchdog)
+            # A busy WebEngine compositor can legitimately take longer than
+            # one frame budget to return runJavaScript results while native
+            # capture windows are being moved and grabbed.  The old 750 ms
+            # watchdog repeatedly invalidated callbacks that arrived shortly
+            # afterward, so a healthy painted Home face could never settle.
+            QTimer.singleShot(2500, callback_watchdog)
         except Exception:
             settled = True
             retry_or_fail()
