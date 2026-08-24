@@ -7997,14 +7997,8 @@ class StarterConfirmationDialog(DialogShell):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
-        self.content_scroll = QScrollArea()
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.content_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.content_scroll.setAccessibleName("Starter choice details")
         content_host = QWidget()
+        content_host.setAccessibleName("Starter choice details")
         content = QVBoxLayout(content_host)
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(8)
@@ -8041,14 +8035,7 @@ class StarterConfirmationDialog(DialogShell):
             Qt.AlignmentFlag.AlignTop,
         )
         content.addLayout(heading)
-        self.content_scroll.setWidget(content_host)
-        _set_scroll_surface(
-            self.content_scroll,
-            content_host,
-            GARDEN_THEME["dialog_surface"],
-        )
-        layout.addWidget(self.content_scroll, 1)
-        self.register_scroll_region(self.content_scroll)
+        layout.addWidget(content_host, 1)
         self.action_footer = QFrame()
         self.action_footer.setProperty("actionFooter", True)
         self.actions = QHBoxLayout()

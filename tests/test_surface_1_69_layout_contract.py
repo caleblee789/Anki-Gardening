@@ -89,6 +89,18 @@ def test_plant_story_uses_compact_artwork_stages_and_timeline_spacing() -> None:
     assert "size=42" in story
 
 
+def test_starter_confirmation_is_a_non_scrolling_decision_dialog() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    starter = source.split("class StarterConfirmationDialog", 1)[1].split(
+        "class NurseryDialog", 1
+    )[0]
+
+    assert "content_host.setAccessibleName(\"Starter choice details\")" in starter
+    assert "layout.addWidget(content_host, 1)" in starter
+    assert "QScrollArea" not in starter
+    assert "register_scroll_region" not in starter
+
+
 def test_loadout_preview_feedback_is_an_aspect_fitted_scene_overlay() -> None:
     source = _source("ankigarden/ui/dashboard.py")
     loadout = source.split("class CollectibleDetailDialog", 1)[1].split(
