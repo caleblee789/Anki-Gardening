@@ -71,6 +71,24 @@ def test_scene_toasts_use_compact_overlay_geometry() -> None:
     assert "self.scene.height() - toast_height - inset" in position
 
 
+def test_plant_story_uses_compact_artwork_stages_and_timeline_spacing() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    timeline = source.split("class MemoryTimeline", 1)[1].split(
+        "class PlantStoryDialog", 1
+    )[0]
+    story = source.split("class PlantStoryDialog", 1)[1].split(
+        "class StarterConfirmationDialog", 1
+    )[0]
+
+    assert "self.layout.setContentsMargins(6, 0, 6, 0)" in timeline
+    assert "row_layout.setContentsMargins(8, 4, 4, 4)" in timeline
+    assert "self._story_artwork_size = 132" in story
+    assert "node.setMinimumHeight(78)" in story
+    assert "stage_preview.setFixedSize(42, 42)" in story
+    assert "size = 112 if mode == COMPACT_MODE else 132" in story
+    assert "size=42" in story
+
+
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

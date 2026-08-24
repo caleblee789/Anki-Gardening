@@ -7318,7 +7318,7 @@ class MemoryTimeline(QWidget):
         self.setAccessibleName("Plant memory timeline")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 2, 8, 2)
+        self.layout.setContentsMargins(6, 0, 6, 0)
         self.layout.setSpacing(0)
 
     def set_memories(self, memories: list[tuple[str, str]], *, just_beginning: bool = False) -> None:
@@ -7340,8 +7340,8 @@ class MemoryTimeline(QWidget):
                 QSizePolicy.Policy.Preferred,
             )
             row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(8, 6, 4, 6)
-            row_layout.setSpacing(10)
+            row_layout.setContentsMargins(8, 4, 4, 4)
+            row_layout.setSpacing(8)
             marker = QLabel("●")
             marker.setProperty("memoryMarker", True)
             marker.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
@@ -7452,13 +7452,13 @@ class PlantStoryDialog(GardenDialog):
         hero = QFrame()
         hero.setProperty("storyHero", True)
         self.hero_layout = QVBoxLayout(hero)
-        self.hero_layout.setContentsMargins(14, 12, 14, 12)
+        self.hero_layout.setContentsMargins(10, 8, 10, 8)
         self.name_heading = QLabel()
         self.name_heading.setTextFormat(Qt.TextFormat.PlainText)
         self.name_heading.setWordWrap(True)
         self.name_heading.setStyleSheet("font-size:22px; font-weight:800;")
         self.artwork = QLabel()
-        self._story_artwork_size = 176
+        self._story_artwork_size = 132
         self.artwork.setFixedSize(
             self._story_artwork_size,
             self._story_artwork_size,
@@ -7562,18 +7562,18 @@ class PlantStoryDialog(GardenDialog):
         self.stage_path.setAccessibleName("Six plant growth stages")
         self.stage_path_layout = QGridLayout(self.stage_path)
         self.stage_path_layout.setContentsMargins(0, 0, 0, 0)
-        self.stage_path_layout.setHorizontalSpacing(6)
-        self.stage_path_layout.setVerticalSpacing(6)
+        self.stage_path_layout.setHorizontalSpacing(4)
+        self.stage_path_layout.setVerticalSpacing(4)
         self.stage_nodes: dict[str, tuple[QFrame, QLabel]] = {}
         for stage_key in GROWTH_STAGES:
             node = QFrame()
             node.setProperty("storyStage", True)
-            node.setMinimumHeight(96)
+            node.setMinimumHeight(78)
             node_layout = QVBoxLayout(node)
             node_layout.setContentsMargins(5, 5, 5, 5)
             node_layout.setSpacing(1)
             stage_preview = ArtworkThumbnail()
-            stage_preview.setFixedSize(56, 56)
+            stage_preview.setFixedSize(42, 42)
             stage_preview.setProperty("storyStagePreview", True)
             stage_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
             stage_preview.setAccessibleName(
@@ -7592,8 +7592,8 @@ class PlantStoryDialog(GardenDialog):
         story_panel = QFrame()
         story_panel.setProperty("storyTimeline", True)
         story_layout = QVBoxLayout(story_panel)
-        story_layout.setContentsMargins(12, 10, 12, 10)
-        story_layout.setSpacing(5)
+        story_layout.setContentsMargins(10, 8, 10, 8)
+        story_layout.setSpacing(4)
         timeline_label = QLabel("History")
         timeline_label.setStyleSheet("font-size:16px; font-weight:700;")
         story_layout.addWidget(timeline_label)
@@ -7602,7 +7602,7 @@ class PlantStoryDialog(GardenDialog):
         self.up_next = QFrame()
         self.up_next.setProperty("upNext", True)
         up_next_layout = QVBoxLayout(self.up_next)
-        up_next_layout.setContentsMargins(12, 9, 12, 9)
+        up_next_layout.setContentsMargins(10, 7, 10, 7)
         self.up_next_title = QLabel("Up next")
         self.up_next_title.setStyleSheet("font-weight:700; color:#d8b875;")
         self.up_next_text = QLabel("")
@@ -7635,7 +7635,7 @@ class PlantStoryDialog(GardenDialog):
         self.refresh()
 
     def _set_story_hero_mode(self, mode: str) -> None:
-        size = 136 if mode == COMPACT_MODE else 176
+        size = 112 if mode == COMPACT_MODE else 132
         if size == self._story_artwork_size:
             return
         self._story_artwork_size = size
@@ -7876,7 +7876,7 @@ class PlantStoryDialog(GardenDialog):
                 self.engine,
                 plant.species,
                 stage_key,
-                size=56,
+                size=42,
                 fallback_text=format_status_label(stage_key),
                 rare_unlocked=stage_state != "undiscovered",
             )
