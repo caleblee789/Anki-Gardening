@@ -1183,7 +1183,9 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "_restore_capture_fixture_state(snapshot)" in nursery_locked
     assert "on_error=cleanup" in nursery_locked
     assert 'str(candidate.text()).strip() == "Growth Charges"' in nursery_locked
-    assert "dialog.supplements_layout.setContentsMargins(" in nursery_locked
+    assert 'capture_tail.setProperty("captureScrollTail", True)' in nursery_locked
+    assert "dialog.supplements_layout.insertWidget(" in nursery_locked
+    assert "before_capture=align_and_audit" in nursery_locked
     assert '"partial_cards": partial_cards' in nursery_locked
     assert '"locked_catalog_rows_unclipped"' in fixture_postcondition
 

@@ -14421,67 +14421,72 @@ class _UiFaceCaptureRunner:
                 ),
                 None,
             )
-            margins = dialog.supplements_layout.contentsMargins()
-            dialog.supplements_layout.setContentsMargins(
-                margins.left(),
-                margins.top(),
-                margins.right(),
-                max(margins.bottom(), 112),
+            # A short, real layout item gives the final section enough native
+            # scroll range to align as a complete group. Unlike a forged bottom
+            # margin, it remains visible to the shared reachability audit.
+            capture_tail = QWidget(dialog.supplements_catalog)
+            capture_tail.setProperty("captureScrollTail", True)
+            capture_tail.setFixedHeight(48)
+            dialog.supplements_layout.insertWidget(
+                max(0, dialog.supplements_layout.count() - 1),
+                capture_tail,
             )
-            dialog.supplements_layout.activate()
-            QApplication.processEvents()
-            scrollbar = dialog.supplements_scroll.verticalScrollBar()
-            if growth_heading is not None:
-                scrollbar.setValue(max(
-                    int(scrollbar.minimum()),
-                    min(
-                        int(scrollbar.maximum()),
-                        int(growth_heading.y()) - 8,
-                    ),
-                ))
-            QApplication.processEvents()
 
-            viewport = dialog.supplements_scroll.viewport()
-            viewport_height = int(viewport.height())
-            visible_cards: list[dict[str, Any]] = []
-            partial_cards: list[dict[str, Any]] = []
-            for card in dialog.supplements_catalog.findChildren(QFrame):
-                if not bool(card.property("nurseryCatalogCard")):
-                    continue
-                bounds = self._widget_bounds_evidence(card, viewport)
-                left, top, width, height = list(
-                    bounds.get("bounds", ()) or (0, 0, 0, 0)
+            def align_and_audit() -> None:
+                dialog.supplements_layout.activate()
+                QApplication.processEvents()
+                scrollbar = dialog.supplements_scroll.verticalScrollBar()
+                if growth_heading is not None:
+                    scrollbar.setValue(max(
+                        int(scrollbar.minimum()),
+                        min(
+                            int(scrollbar.maximum()),
+                            int(growth_heading.y()) - 8,
+                        ),
+                    ))
+                QApplication.processEvents()
+
+                viewport = dialog.supplements_scroll.viewport()
+                viewport_height = int(viewport.height())
+                visible_cards: list[dict[str, Any]] = []
+                partial_cards: list[dict[str, Any]] = []
+                for card in dialog.supplements_catalog.findChildren(QFrame):
+                    if not bool(card.property("nurseryCatalogCard")):
+                        continue
+                    bounds = self._widget_bounds_evidence(card, viewport)
+                    left, top, width, height = list(
+                        bounds.get("bounds", ()) or (0, 0, 0, 0)
+                    )
+                    bottom = int(top) + int(height)
+                    if bottom <= 0 or int(top) >= viewport_height:
+                        continue
+                    row = {
+                        "item_id": str(card.property("catalogItemId") or ""),
+                        "bounds": [int(left), int(top), int(width), int(height)],
+                    }
+                    visible_cards.append(row)
+                    if int(top) < 0 or bottom > viewport_height:
+                        partial_cards.append(row)
+                heading_bounds = self._widget_bounds_evidence(
+                    growth_heading,
+                    viewport,
                 )
-                bottom = int(top) + int(height)
-                if bottom <= 0 or int(top) >= viewport_height:
-                    continue
-                row = {
-                    "item_id": str(card.property("catalogItemId") or ""),
-                    "bounds": [int(left), int(top), int(width), int(height)],
+                geometry = {
+                    "scroll_value": int(scrollbar.value()),
+                    "scroll_maximum": int(scrollbar.maximum()),
+                    "heading": heading_bounds,
+                    "visible_cards": visible_cards,
+                    "partial_cards": partial_cards,
                 }
-                visible_cards.append(row)
-                if int(top) < 0 or bottom > viewport_height:
-                    partial_cards.append(row)
-            heading_bounds = self._widget_bounds_evidence(
-                growth_heading,
-                viewport,
-            )
-            geometry = {
-                "scroll_value": int(scrollbar.value()),
-                "scroll_maximum": int(scrollbar.maximum()),
-                "heading": heading_bounds,
-                "visible_cards": visible_cards,
-                "partial_cards": partial_cards,
-            }
-            geometry["passed"] = bool(
-                heading_bounds.get("contained", False)
-                and visible_cards
-                and not partial_cards
-            )
-            self._capture_annotations[label] = {
-                "locked_catalog_geometry": geometry,
-                "passed": bool(geometry["passed"]),
-            }
+                geometry["passed"] = bool(
+                    heading_bounds.get("contained", False)
+                    and visible_cards
+                    and not partial_cards
+                )
+                self._capture_annotations[label] = {
+                    "locked_catalog_geometry": geometry,
+                    "passed": bool(geometry["passed"]),
+                }
 
             def close_dialog() -> None:
                 self._close_widget(dialog)
@@ -14491,6 +14496,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=520,
+                before_capture=align_and_audit,
                 close_callback=close_dialog,
                 close_ms=850,
                 next_ms=1200,
