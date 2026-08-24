@@ -699,10 +699,13 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
     )
     assert "outcome.growth_granted" in receipt_copy
     assert "outcome.inventory_remaining" in receipt_copy
-    assert "outcome.previous_stage" not in show_receipt
+    assert "outcome.previous_stage" in show_receipt
+    assert 'stage_transition = f"{previous_stage} → {resulting_stage}"' in show_receipt
+    assert "self.receipt_title.show()" in show_receipt
     assert "GardenBadge(" in show_receipt
     assert 'self.use_action.setText("View plant")' in show_receipt
     assert 'self.cancel_action.setText("Close")' in show_receipt
+    assert "self.cancel_action.hide()" in show_receipt
     assert "self.preview_banner.hide()" in show_receipt
 
 
