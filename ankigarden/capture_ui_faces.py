@@ -3572,6 +3572,14 @@ class _UiFaceCaptureRunner:
         for button in root.findChildren(QAbstractButton):
             if button.window() is not root or not button.isVisibleTo(root):
                 continue
+            if (
+                isinstance(button.parentWidget(), QLineEdit)
+                and not str(button.property("gardenComponent") or "")
+                and not button.property("iconButton")
+            ):
+                # Qt owns the embedded clear affordance and sizes it to the
+                # line edit's contents rect. It is not an app icon control.
+                continue
             painted = self._widget_bounds_evidence(button, root)
             if not painted.get("intersects", False):
                 continue
@@ -10137,130 +10145,135 @@ class _UiFaceCaptureRunner:
             dialog.open_page("overview")
 
             def ready() -> None:
-                keys = list(getattr(navigation, "keys", ()) or ())
-                current_index = int(navigation.stack.currentIndex())
-                current_page = (
-                    keys[current_index]
-                    if 0 <= current_index < len(keys) else ""
-                )
-                growth_scroll = navigation.stack.currentWidget()
-                viewport = (
-                    growth_scroll.viewport()
-                    if isinstance(growth_scroll, QAbstractScrollArea) else
-                    growth_scroll
-                )
-                breakdown = next(
-                    (
-                        button
-                        for button in dialog.findChildren(QAbstractButton)
-                        if str(button.accessibleName()).strip()
-                        == "Growth breakdown"
-                    ),
-                    None,
-                )
-                if breakdown is not None and not breakdown.isChecked():
-                    breakdown.setChecked(True)
-                    QApplication.processEvents()
-                direct_label = next(
-                    (
+                def prepare_capture() -> None:
+                    keys = list(getattr(navigation, "keys", ()) or ())
+                    current_index = int(navigation.stack.currentIndex())
+                    current_page = (
+                        keys[current_index]
+                        if 0 <= current_index < len(keys) else ""
+                    )
+                    growth_scroll = navigation.stack.currentWidget()
+                    viewport = (
+                        growth_scroll.viewport()
+                        if isinstance(growth_scroll, QAbstractScrollArea) else
+                        growth_scroll
+                    )
+                    breakdown = next(
+                        (
+                            button
+                            for button in dialog.findChildren(QAbstractButton)
+                            if button.isVisibleTo(dialog)
+                            and str(button.accessibleName()).strip()
+                            == "Growth breakdown"
+                        ),
+                        None,
+                    )
+                    if breakdown is not None and not breakdown.isChecked():
+                        breakdown.setChecked(True)
+                        QApplication.processEvents()
+                    direct_label = next(
+                        (
+                            candidate
+                            for candidate in dialog.findChildren(QLabel)
+                            if candidate.isVisibleTo(dialog)
+                            and "Rewards and charges" in str(candidate.text())
+                        ),
+                        None,
+                    )
+                    if (
+                        direct_label is not None
+                        and isinstance(growth_scroll, QScrollArea)
+                    ):
+                        growth_scroll.ensureWidgetVisible(direct_label, 0, 24)
+                        QApplication.processEvents()
+                    visible_labels = [
                         candidate
                         for candidate in dialog.findChildren(QLabel)
-                        if "Rewards and charges" in str(candidate.text())
-                    ),
-                    None,
-                )
-                if (
-                    direct_label is not None
-                    and isinstance(growth_scroll, QScrollArea)
-                ):
-                    growth_scroll.ensureWidgetVisible(direct_label, 0, 24)
-                    QApplication.processEvents()
-                visible_labels = [
-                    candidate
-                    for candidate in dialog.findChildren(QLabel)
-                    if candidate.isVisibleTo(dialog)
-                    and self._widget_bounds_evidence(
-                        candidate,
+                        if candidate.isVisibleTo(dialog)
+                        and self._widget_bounds_evidence(
+                            candidate,
+                            viewport,
+                        ).get("intersects", False)
+                    ]
+                    direct_label = next(
+                        (
+                            candidate for candidate in visible_labels
+                            if "Rewards and charges" in str(candidate.text())
+                        ),
+                        None,
+                    )
+                    stats = self.app.storage.state.daily_stats
+                    direct_amount = sum(
+                        int(value or 0)
+                        for mapping in (
+                            stats.plant_charge_growth,
+                            stats.plant_direct_reward_growth,
+                        )
+                        for value in dict(mapping or {}).values()
+                    )
+                    direct_value = next(
+                        (
+                            candidate for candidate in visible_labels
+                            if str(candidate.text()).strip().replace(",", "")
+                            == str(direct_amount)
+                        ),
+                        None,
+                    )
+                    if direct_label is not None:
+                        direct_label.setProperty(
+                            "captureEvidenceKey",
+                            "direct-growth-label",
+                        )
+                    if direct_value is not None:
+                        direct_value.setProperty(
+                            "captureEvidenceKey",
+                            "direct-growth-value",
+                        )
+                    label_evidence = self._widget_bounds_evidence(
+                        direct_label,
                         viewport,
-                    ).get("intersects", False)
-                ]
-                direct_label = next(
-                    (
-                        candidate for candidate in visible_labels
-                        if "Rewards and charges" in str(candidate.text())
-                    ),
-                    None,
-                )
-                stats = self.app.storage.state.daily_stats
-                direct_amount = sum(
-                    int(value or 0)
-                    for mapping in (
-                        stats.plant_charge_growth,
-                        stats.plant_direct_reward_growth,
                     )
-                    for value in dict(mapping or {}).values()
-                )
-                direct_value = next(
-                    (
-                        candidate for candidate in visible_labels
-                        if str(candidate.text()).strip().replace(",", "")
-                        == str(direct_amount)
-                    ),
-                    None,
-                )
-                if direct_label is not None:
-                    direct_label.setProperty(
-                        "captureEvidenceKey",
-                        "direct-growth-label",
+                    value_evidence = self._widget_bounds_evidence(
+                        direct_value,
+                        viewport,
                     )
-                if direct_value is not None:
-                    direct_value.setProperty(
-                        "captureEvidenceKey",
-                        "direct-growth-value",
+                    direct_visual = {
+                        "label": str(direct_label.text()) if direct_label is not None else "",
+                        "amount": direct_amount,
+                        "label_bounds": list(label_evidence.get("bounds", ()) or ()),
+                        "value_bounds": list(value_evidence.get("bounds", ()) or ()),
+                        "label_contained": bool(label_evidence.get("contained", False)),
+                        "value_contained": bool(value_evidence.get("contained", False)),
+                    }
+                    direct_visual["passed"] = bool(
+                        direct_amount > 0
+                        and bool(direct_visual["label"].strip())
+                        and direct_visual["label_contained"]
+                        and direct_visual["value_contained"]
                     )
-                label_evidence = self._widget_bounds_evidence(
-                    direct_label,
-                    viewport,
-                )
-                value_evidence = self._widget_bounds_evidence(
-                    direct_value,
-                    viewport,
-                )
-                direct_visual = {
-                    "label": str(direct_label.text()) if direct_label is not None else "",
-                    "amount": direct_amount,
-                    "label_bounds": list(label_evidence.get("bounds", ()) or ()),
-                    "value_bounds": list(value_evidence.get("bounds", ()) or ()),
-                    "label_contained": bool(label_evidence.get("contained", False)),
-                    "value_contained": bool(value_evidence.get("contained", False)),
-                }
-                direct_visual["passed"] = bool(
-                    direct_amount > 0
-                    and bool(direct_visual["label"].strip())
-                    and direct_visual["label_contained"]
-                    and direct_visual["value_contained"]
-                )
-                passed = bool(
-                    current_page == "growth"
-                    and "overview" not in keys
-                    and direct_visual["passed"]
-                )
-                self._capture_annotations[label] = {
-                    "requested_route": "overview",
-                    "normalized_page": current_page,
-                    "overview_registered": "overview" in keys,
-                    "direct_growth_visual": direct_visual,
-                    "passed": passed,
-                }
-                if not passed:
-                    self._failures.append({
-                        "label": label,
-                        "reason": "The stale Overview route did not normalize to Plant Growth",
-                    })
+                    passed = bool(
+                        current_page == "growth"
+                        and "overview" not in keys
+                        and direct_visual["passed"]
+                    )
+                    self._capture_annotations[label] = {
+                        "requested_route": "overview",
+                        "normalized_page": current_page,
+                        "overview_registered": "overview" in keys,
+                        "direct_growth_visual": direct_visual,
+                        "passed": passed,
+                    }
+                    if not passed:
+                        self._failures.append({
+                            "label": label,
+                            "reason": "The stale Overview route did not normalize to Plant Growth",
+                        })
+
                 self._capture_and_advance(
                     label,
                     dialog,
                     capture_delay_ms=360,
+                    before_capture=prepare_capture,
                     close_callback=lambda: (
                         self._close_widget(dialog),
                         restore_once(),
@@ -14400,7 +14413,6 @@ class _UiFaceCaptureRunner:
                         missing_paths["scenery"],
                     ),
                 }
-                viewport = dialog.environment_scroll.viewport()
                 matrix_entries: list[dict[str, Any]] = []
                 for artwork_type in MISSING_ARTWORK_CAPTURE_TYPES:
                     preview = previews[artwork_type]
@@ -14454,58 +14466,95 @@ class _UiFaceCaptureRunner:
                         if fingerprint in _LOGGED_MISSING_ARTWORK
                     ]
                 )
-                visible_card_evidence = self._widget_bounds_evidence(
-                    normal_card,
-                    viewport,
-                )
-                visible_preview_evidence = self._widget_bounds_evidence(
-                    visible_preview,
-                    viewport,
-                )
-                visible_missing_previews = [
-                    child
-                    for child in dialog.environment_catalog.findChildren(QLabel)
-                    if str(child.property("gardenRole") or "") == "missing-art"
-                    and bool(
-                        self._widget_bounds_evidence(child, viewport).get(
-                            "contained",
-                            False,
-                        )
+
+                def prepare_capture() -> None:
+                    current_card = next((
+                        card
+                        for card in dialog.environment_catalog.findChildren(QFrame)
+                        if str(card.property("catalogItemId") or "")
+                        == weather_item.item_id
+                    ), None)
+                    current_preview = (
+                        next((
+                            child
+                            for child in current_card.findChildren(QLabel)
+                            if bool(child.property("nurseryArtwork"))
+                        ), None)
+                        if current_card is not None else None
                     )
-                ]
-                matrix_passed = bool(
-                    [entry["type"] for entry in matrix_entries]
-                    == list(MISSING_ARTWORK_CAPTURE_TYPES)
-                    and expected_fingerprints.issubset(_LOGGED_MISSING_ARTWORK)
-                    and all(entry["passed"] for entry in matrix_entries)
-                    and visible_card_evidence.get("contained", False)
-                    and visible_preview_evidence.get("contained", False)
-                    and len(visible_missing_previews) == 1
-                )
-                self._capture_annotations[label] = {
-                    "resolvers_forced_missing": list(resolver_names),
-                    "missing_artwork_matrix": {
-                        "types": list(MISSING_ARTWORK_CAPTURE_TYPES),
-                        "entries": matrix_entries,
-                        "missing_source_paths": dict(missing_paths),
-                        "diagnostic_log_fingerprints": logged_fingerprints,
-                        "visible_card": visible_card_evidence,
-                        "visible_preview": visible_preview_evidence,
-                        "visible_missing_preview_count": len(
-                            visible_missing_previews
-                        ),
+                    if current_preview is not None:
+                        current_preview.setProperty(
+                            "captureEvidenceKey",
+                            "missing-art-weather",
+                        )
+                    if current_card is not None:
+                        dialog.environment_scroll.ensureWidgetVisible(
+                            current_card,
+                            0,
+                            24,
+                        )
+                        QApplication.processEvents()
+                    viewport = dialog.environment_scroll.viewport()
+                    visible_card_evidence = self._widget_bounds_evidence(
+                        current_card,
+                        viewport,
+                    )
+                    visible_preview_evidence = self._widget_bounds_evidence(
+                        current_preview,
+                        viewport,
+                    )
+                    visible_missing_previews = [
+                        child
+                        for child in dialog.environment_catalog.findChildren(QLabel)
+                        if str(child.property("gardenRole") or "") == "missing-art"
+                        and bool(
+                            self._widget_bounds_evidence(child, viewport).get(
+                                "visible",
+                                False,
+                            )
+                        )
+                        and bool(
+                            self._widget_bounds_evidence(child, viewport).get(
+                                "contained",
+                                False,
+                            )
+                        )
+                    ]
+                    matrix_passed = bool(
+                        [entry["type"] for entry in matrix_entries]
+                        == list(MISSING_ARTWORK_CAPTURE_TYPES)
+                        and expected_fingerprints.issubset(_LOGGED_MISSING_ARTWORK)
+                        and all(entry["passed"] for entry in matrix_entries)
+                        and visible_card_evidence.get("visible", False)
+                        and visible_card_evidence.get("contained", False)
+                        and visible_preview_evidence.get("visible", False)
+                        and visible_preview_evidence.get("contained", False)
+                        and len(visible_missing_previews) == 1
+                    )
+                    self._capture_annotations[label] = {
+                        "resolvers_forced_missing": list(resolver_names),
+                        "missing_artwork_matrix": {
+                            "types": list(MISSING_ARTWORK_CAPTURE_TYPES),
+                            "entries": matrix_entries,
+                            "missing_source_paths": dict(missing_paths),
+                            "diagnostic_log_fingerprints": logged_fingerprints,
+                            "visible_card": visible_card_evidence,
+                            "visible_preview": visible_preview_evidence,
+                            "visible_missing_preview_count": len(
+                                visible_missing_previews
+                            ),
+                            "passed": matrix_passed,
+                        },
                         "passed": matrix_passed,
-                    },
-                    "passed": matrix_passed,
-                }
-                if not matrix_passed:
-                    self._failures.append({
-                        "label": label,
-                        "reason": (
-                            "The normal Nursery card or offscreen fallback contract "
-                            "was incomplete"
-                        ),
-                    })
+                    }
+                    if not matrix_passed:
+                        self._failures.append({
+                            "label": label,
+                            "reason": (
+                                "The normal Nursery card or offscreen fallback contract "
+                                "was incomplete"
+                            ),
+                        })
             except Exception:
                 restore_resolver()
                 self._failures.append({
@@ -14524,6 +14573,7 @@ class _UiFaceCaptureRunner:
                 label,
                 dialog,
                 capture_delay_ms=520,
+                before_capture=prepare_capture,
                 close_callback=close_capture,
                 close_ms=850,
                 next_ms=1200,
