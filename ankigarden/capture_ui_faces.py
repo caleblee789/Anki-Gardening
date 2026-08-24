@@ -5619,8 +5619,10 @@ class _UiFaceCaptureRunner:
                     projected_streak_days == 0
                     and annotation.get("weekly_reward_status")
                     == weekly_reward.status
-                    and any(
-                        "7" in text and "days" in text
+                    and "Streak ended at 3 days" in visible_label_texts
+                    and "Answer a card to start again." in visible_label_texts
+                    and not any(
+                        text.startswith(("Previous streak", "Next Growth bonus"))
                         for text in visible_label_texts
                     ),
                     {
@@ -5786,7 +5788,7 @@ class _UiFaceCaptureRunner:
                     for label_widget in widget.findChildren(QLabel)
                     if label_widget.isVisible()
                     and (
-                        "more coin" in str(label_widget.text()).lower()
+                        "more needed" in str(label_widget.text()).lower()
                         or "owned" in str(label_widget.text()).lower()
                     )
                 ]

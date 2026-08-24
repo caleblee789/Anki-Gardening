@@ -1203,8 +1203,11 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert "current_streak_days=presentation.current_days" in missed_streak
     assert '"weekly_reward_status": weekly_reward.status' in missed_streak
     assert '"missed_day_weekly_reward_projection"' in fixture_postcondition
+    assert '"Streak ended at 3 days"' in fixture_postcondition
+    assert '"Answer a card to start again."' in fixture_postcondition
+    assert '"Previous streak", "Next Growth bonus"' in fixture_postcondition
+    assert '"more needed"' in fixture_postcondition
     assert "weekly_reward.status" in fixture_postcondition
-    assert '"7" in text and "days" in text' in fixture_postcondition
     assert 'completed_ids=("streak_7",)' in streak_achievement
     assert 'item.achievement_id == "streak_30"' in streak_achievement
     assert '"streak-achievement-earned-next"' in streak_achievement
