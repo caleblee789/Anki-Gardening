@@ -62,8 +62,14 @@ def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
     assert "Vitality" not in combined
     default_state = "on" if DEFAULT_CONFIG["show_progress_notifications"] else "off"
     assert f"This is {default_state} by default." in config_doc
-    assert "today's answer count" in normalized_config
-    assert "closest immediate achievement" in normalized_config
+    assert (
+        "The preview displays the Garden name, nurtured plant, Growth, and "
+        "**Open Garden**" in normalized_config
+    )
+    assert (
+        "Today, Anki streak, and Garden Coins stay in the full Garden and "
+        "Garden Progress" in normalized_config
+    )
     for category in ("Consistency", "Study volume", "Recall", "Completion"):
         assert f'"{category}"' in dashboard
 
