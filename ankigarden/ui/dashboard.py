@@ -3550,13 +3550,25 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.setProperty("growthChargeState", quote.status.value)
         target_state = GrowthChargeTargetState(quote.target_state)
         stage_name = format_status_label(quote.target_stage)
+        target_state_label = format_status_label(target_state.value)
         self.target_name.setText(
             " · ".join(part for part in (quote.target_name, stage_name) if part)
         )
-        self.target_stage.setText("")
-        self.target_stage.hide()
+        self.target_stage.setText(
+            "" if target_state is GrowthChargeTargetState.ELIGIBLE
+            else target_state_label
+        )
+        self.target_stage.setVisible(
+            target_state is not GrowthChargeTargetState.ELIGIBLE
+        )
+        self.target_stage.setAccessibleName("Plant status")
         self.target_stage.setAccessibleDescription(
-            f"{quote.target_name}, {stage_name}."
+            ". ".join(filter(None, (
+                f"{quote.target_name}, {stage_name}",
+                target_state_label
+                if target_state is not GrowthChargeTargetState.ELIGIBLE
+                else "",
+            )))
         )
         _populate_asset_preview(
             self.target_artwork,
@@ -3590,15 +3602,19 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.set_dialog_title("Choose another plant")
             self.use_action.setText("Choose plant")
             self.use_action.setAccessibleName("Choose plant")
-            self.hero.hide()
-            self.selector_card.hide()
+            self.hero.setProperty("invalidTarget", True)
+            self.hero.show()
+            self.selector_card.show()
             self.compact_summary_card.hide()
+            self.cancel_action.hide()
         else:
+            self.hero.setProperty("invalidTarget", False)
             self.set_dialog_title(f"Use {quote.charge_name}?")
             self.use_action.setText("Use charge")
             self.use_action.setAccessibleName(f"Use {quote.charge_name}")
             self.hero.show()
             self.selector_card.show()
+            self.cancel_action.show()
         if (
             show_status
             and not quote.ready
@@ -3694,7 +3710,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             self.set_dialog_title("Couldn’t use the Growth Charge")
             self.cancel_action.setText("Close")
             self.hero.hide()
-            self.selector_card.hide()
+            self.selector_card.show()
             self.compact_summary_card.hide()
             self._show_alert(
                 "Your charge was not used.",
@@ -3730,7 +3746,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.set_dialog_title("Couldn’t use the Growth Charge")
         self.cancel_action.setText("Close")
         self.hero.hide()
-        self.selector_card.hide()
+        self.selector_card.show()
         self.compact_summary_card.hide()
         self._show_alert(
             "Your charge was not used.",
@@ -3762,9 +3778,11 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             # Quantity and Growth refreshes do not change the requested effect.
             # Keep the newly quoted count/result visible without interrupting.
             self._clear_alert()
+            self.setProperty("growthChargeState", outcome.status.value)
             self.cancel_action.setText(
                 "Cancel" if self.quote is not None else "Close"
             )
+            self.cancel_action.show()
             self.apply_view_size_profile(
                 "ready" if self.quote is not None else "empty"
             )
@@ -3781,16 +3799,17 @@ class GrowthChargeConfirmationDialog(GardenDialog):
             "invalidTarget",
             display_status is GrowthChargeStatus.TARGET_INVALID,
         )
-        self.hero.hide()
-        self.selector_card.hide()
         self.compact_summary_card.hide()
         self.facts_card.hide()
         self.outcome_heading.hide()
         self.apply_view_size_profile("error")
         if display_status is GrowthChargeStatus.TARGET_INVALID:
+            self.hero.show()
+            self.selector_card.show()
             self._primary_route = "choose_plant"
             self.set_dialog_title("Choose another plant")
             self.cancel_action.setText("Cancel")
+            self.cancel_action.hide()
             self.use_action.setText("Choose plant")
             self.use_action.setAccessibleName("Choose plant")
             self.use_action.show()
@@ -3800,8 +3819,11 @@ class GrowthChargeConfirmationDialog(GardenDialog):
                 enabled_description="Close this dialog and choose another plant.",
             )
         else:
+            self.hero.hide()
+            self.selector_card.show()
             self.set_dialog_title("Couldn’t use the Growth Charge")
             self.cancel_action.setText("Close")
+            self.cancel_action.show()
             self.use_action.setText("Try again")
             self.use_action.setAccessibleName("Try Growth Charge again")
             self.use_action.setVisible(retry_available)
@@ -3841,8 +3863,12 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.hero.hide()
         self.target_stage.hide()
         self.charge_heading.hide()
+        previous_stage = format_status_label(str(outcome.previous_stage))
         resulting_stage = format_status_label(str(outcome.resulting_stage))
-        self.receipt_title.hide()
+        stage_transition = f"{previous_stage} → {resulting_stage}"
+        self.receipt_title.setText(stage_transition)
+        self.receipt_title.setAccessibleName("Plant stage transition")
+        self.receipt_title.show()
         self.receipt_copy.setText(
             self._committed_receipt_copy(outcome, reward_copy)
         )
@@ -3868,6 +3894,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.receipt.setAccessibleName("Growth Charge result")
         self.receipt.setAccessibleDescription(
             " ".join(part for part in (
+                stage_transition,
                 self.receipt_copy.text(),
                 f"+{reward_total:,} Garden Coins" if reward_total else "",
             ) if part)
@@ -3884,7 +3911,7 @@ class GrowthChargeConfirmationDialog(GardenDialog):
         self.facts_card.hide()
         self.outcome_heading.hide()
         self.cancel_action.setText("Close")
-        self.cancel_action.show()
+        self.cancel_action.hide()
         self.nursery_action.hide()
         self.use_action.setText("View plant")
         self.use_action.setAccessibleName(f"View {outcome.target_name}")
