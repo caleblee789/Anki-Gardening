@@ -113,6 +113,7 @@ class GardenSceneWidget(QWidget):
         self._status_rect: QRectF | None = None
         self._stats_help_visible = False
         self._slot_placements: dict[int, PlantPlacement] = {}
+        self._painted_move_labels: dict[int, str] = {}
         self._scene_geometry_layout: SceneGeometryLayout | None = None
         self._allowed_move_slots: set[int] | None = None
         self._starter_placement = False
@@ -1875,6 +1876,7 @@ class GardenSceneWidget(QWidget):
             painter.restore()
 
     def _draw_slot_placeholders(self, painter: QPainter) -> None:
+        self._painted_move_labels = {}
         if not self._interaction.placing:
             return
         family_resolver = getattr(self, "_planter_family_record", None)
@@ -1943,6 +1945,7 @@ class GardenSceneWidget(QWidget):
                 (
                     getattr(self, "_starter_placement", False)
                     or self._interaction.drag_origin_slot is None
+                    or self._interaction.drag_origin_slot < 0
                 )
                 and target_state == "valid"
             ):
@@ -2049,6 +2052,7 @@ class GardenSceneWidget(QWidget):
             badge_font.setBold(True)
             painter.setFont(badge_font)
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, visual_label)
+            self._painted_move_labels[int(slot)] = visual_label
             painter.restore()
 
     def _draw_move_preview(self, painter: QPainter, destination_slot: int) -> None:
@@ -2335,6 +2339,7 @@ class GardenSceneWidget(QWidget):
             (
                 getattr(self, "_starter_placement", False)
                 or self._interaction.drag_origin_slot is None
+                or self._interaction.drag_origin_slot < 0
             )
             and label == "Move here"
         ):
@@ -2418,6 +2423,7 @@ class GardenSceneWidget(QWidget):
                     if (
                         getattr(self, "_starter_placement", False)
                         or self._interaction.drag_origin_slot is None
+                        or self._interaction.drag_origin_slot < 0
                     ) else
                     "Move here."
                 )
@@ -2501,6 +2507,7 @@ class GardenSceneWidget(QWidget):
                         (
                             getattr(self, "_starter_placement", False)
                             or self._interaction.drag_origin_slot is None
+                            or self._interaction.drag_origin_slot < 0
                         )
                         and label == "Move here"
                     ):

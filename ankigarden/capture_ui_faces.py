@@ -6445,6 +6445,7 @@ class _UiFaceCaptureRunner:
                     and annotation.get("badges_contained", False)
                     and annotation.get("badges_pairwise_non_overlapping", False)
                     and annotation.get("badges_clear_plant_artwork", False)
+                    and annotation.get("placement_labels_correct", False)
                     and bool(annotation.get("passed", False))
                 ),
                 annotation,
@@ -12317,6 +12318,9 @@ class _UiFaceCaptureRunner:
             )
             valid_destinations = set(scene._destination_slots())
             origin_slot = scene._interaction.drag_origin_slot
+            unplaced_placement = bool(
+                origin_slot is None or int(origin_slot) < 0
+            )
             destination_slot = scene._interaction.destination_slot
             hovered_slot = scene._hovered_move_slot
             plant_obstacles = [
@@ -12363,7 +12367,12 @@ class _UiFaceCaptureRunner:
                     if target_state == "unavailable" else
                     "Locked"
                     if target_state == "locked" else
-                    "Move"
+                    "Place here"
+                    if (
+                        unplaced_placement
+                        and semantic_state in {"active", "available"}
+                    ) else
+                    "Move here"
                     if semantic_state in {"active", "available"} else
                     semantic_label
                 )
@@ -12395,6 +12404,7 @@ class _UiFaceCaptureRunner:
                 badge_audits.append({
                     "slot": int(slot),
                     "label": visual_label,
+                    "semantic_state": semantic_state,
                     "rect": [
                         round(float(badge.x), 3),
                         round(float(badge.y), 3),
@@ -12439,6 +12449,24 @@ class _UiFaceCaptureRunner:
                 badge_audits
                 and all(audit["clear_plant_artwork"] for audit in badge_audits)
             )
+            placement_badges = [
+                audit
+                for audit in badge_audits
+                if audit["semantic_state"] in {"active", "available"}
+            ]
+            painted_move_labels = {
+                int(slot): str(painted_label)
+                for slot, painted_label in dict(
+                    getattr(scene, "_painted_move_labels", {})
+                ).items()
+            }
+            placement_labels_correct = bool(
+                unplaced_placement
+                and placement_badges
+                and painted_move_labels
+                and "Place here" in painted_move_labels.values()
+                and "Move here" not in painted_move_labels.values()
+            )
             self._capture_annotations[label] = {
                 "passed": bool(
                     active
@@ -12447,6 +12475,7 @@ class _UiFaceCaptureRunner:
                     and badges_contained
                     and badges_pairwise_non_overlapping
                     and badges_clear_plant_artwork
+                    and placement_labels_correct
                     and scene_fully_visible
                 ),
                 "plant_id": plant.plant_id,
@@ -12462,6 +12491,8 @@ class _UiFaceCaptureRunner:
                     badges_pairwise_non_overlapping
                 ),
                 "badges_clear_plant_artwork": badges_clear_plant_artwork,
+                "painted_move_labels": painted_move_labels,
+                "placement_labels_correct": placement_labels_correct,
                 "scene_viewport_bounds": scene_viewport_bounds,
                 "scene_fully_visible": scene_fully_visible,
             }

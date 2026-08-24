@@ -2502,6 +2502,7 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
         "badges_contained",
         "badges_pairwise_non_overlapping",
         "badges_clear_plant_artwork",
+        "placement_labels_correct",
         "scene_fully_visible",
     ):
         assert proof in postcondition
@@ -2510,6 +2511,8 @@ def test_fixture_postconditions_are_required_for_every_saved_face() -> None:
     assert "badge_metrics.horizontalAdvance" in placement
     assert "badge.intersects(previous)" in placement
     assert "badge.intersects(obstacle)" in placement
+    assert 'getattr(scene, "_painted_move_labels", {})' in placement
+    assert '"Move here" not in painted_move_labels.values()' in placement
     assert "self._capture_fixture_postcondition(" in capture
     assert '"postcondition": postcondition' in capture
     assert "postcondition.get(\"passed\", False)" in capture
