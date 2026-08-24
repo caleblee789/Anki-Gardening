@@ -10158,24 +10158,27 @@ class _UiFaceCaptureRunner:
                         if isinstance(growth_scroll, QAbstractScrollArea) else
                         growth_scroll
                     )
-                    breakdown = next(
-                        (
-                            button
-                            for button in dialog.findChildren(QAbstractButton)
-                            if button.isVisibleTo(dialog)
-                            and str(button.accessibleName()).strip()
-                            == "Growth breakdown"
-                        ),
+                    QCoreApplication.sendPostedEvents(
                         None,
+                        QEvent.Type.DeferredDelete,
                     )
+                    QApplication.processEvents()
+                    breakdowns = [
+                        button
+                        for button in growth_scroll.findChildren(QAbstractButton)
+                        if button.isVisibleTo(growth_scroll)
+                        and str(button.accessibleName()).strip()
+                        == "Growth breakdown"
+                    ]
+                    breakdown = breakdowns[-1] if breakdowns else None
                     if breakdown is not None and not breakdown.isChecked():
                         breakdown.setChecked(True)
                         QApplication.processEvents()
                     direct_label = next(
                         (
                             candidate
-                            for candidate in dialog.findChildren(QLabel)
-                            if candidate.isVisibleTo(dialog)
+                            for candidate in growth_scroll.findChildren(QLabel)
+                            if candidate.isVisibleTo(growth_scroll)
                             and "Rewards and charges" in str(candidate.text())
                         ),
                         None,
@@ -10188,8 +10191,8 @@ class _UiFaceCaptureRunner:
                         QApplication.processEvents()
                     visible_labels = [
                         candidate
-                        for candidate in dialog.findChildren(QLabel)
-                        if candidate.isVisibleTo(dialog)
+                        for candidate in growth_scroll.findChildren(QLabel)
+                        if candidate.isVisibleTo(growth_scroll)
                         and self._widget_bounds_evidence(
                             candidate,
                             viewport,
