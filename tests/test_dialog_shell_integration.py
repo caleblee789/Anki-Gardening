@@ -74,7 +74,8 @@ def test_dialog_shell_applies_every_view_profile_through_one_central_path() -> N
     assert "self._dialog_view_key" in apply_view
     assert "self.setMinimumSize(minimum_width, minimum)" in apply_view
     assert "self.setMaximumSize(maximum_width, max(minimum, maximum))" in apply_view
-    assert "self.fit_content_to_family(preserve_transition=False)" in apply_view
+    assert 'self.schedule_content_fit(' in apply_view
+    assert '"view-profile"' in apply_view
     assert "QTimer.singleShot(0, self._recenter_over_parent)" in apply_view
     assert "dialog_height_profile(" in fit_content
     assert "self._dialog_view_key" in fit_content
@@ -128,10 +129,10 @@ def test_dialog_close_policy_is_opt_in_and_preserves_reject_overrides() -> None:
 
 def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() -> None:
     settings = _class_source(DASHBOARD, "GardenSettingsDialog")
-    shell_active = _method_source(
+    shell_overflow = _method_source(
         DASHBOARD,
         "DialogShell",
-        "active_vertical_scroll_regions",
+        "_sync_overflow_owner",
     )
     studio = _class_source(STUDIO, "GardenStudioWidget")
     customize = _class_source(DASHBOARD, "CollectibleDetailDialog")
@@ -144,7 +145,9 @@ def test_settings_and_collection_detail_have_one_active_vertical_scroll_owner() 
     assert "parent is not self.controls_scroll" in studio_scroll
     assert 'self.tabs.addTab(self.behavior_scroll, "Display")' in settings
     assert "self.tabs.addTab(advanced," in settings
-    assert "scroll.isVisibleTo(self)" in shell_active
+    assert "scroll.isVisibleTo(self)" in shell_overflow
+    assert "Qt.ScrollBarPolicy.ScrollBarAsNeeded" in shell_overflow
+    assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in shell_overflow
     assert "self.body_scroll = QScrollArea()" in customize
     assert "QScrollArea" not in option_page
     assert "host = QWidget()" in option_page
@@ -336,3 +339,54 @@ def test_nursery_open_releases_each_rebuilt_catalog_after_exec() -> None:
     assert "self.nursery_dialog = None" in opener
     assert opener.index("dialog.hide()") < opener.index("dialog.setParent(None)")
     assert opener.index("dialog.setParent(None)") < opener.index("dialog.deleteLater()")
+
+
+def test_content_fit_is_coalesced_and_publishes_native_capture_evidence() -> None:
+    shell = _class_source(DASHBOARD, "DialogShell")
+    schedule = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "schedule_content_fit",
+    )
+    event_filter = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "eventFilter",
+    )
+    fit = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "fit_content_to_family",
+    )
+    telemetry = _method_source(
+        DASHBOARD,
+        "DialogShell",
+        "_publish_capture_telemetry",
+    )
+
+    assert "self._content_fit_timer.setSingleShot(True)" in shell
+    assert "if not self._content_fit_timer.isActive()" in schedule
+    assert "merge_content_fit_preservation(" in schedule
+    for event_name in (
+        "LayoutRequest",
+        "Show",
+        "Hide",
+        "FontChange",
+        "StyleChange",
+        "ContentsRectChange",
+    ):
+        assert f"QEvent.Type.{event_name}" in event_filter
+    assert "watched is not self" in event_filter
+    assert "should_preserve_transition_height(" in fit
+    assert "self._content_fit_running" in fit
+    for evidence in (
+        "clientSurfaceFill",
+        "nurseryRootOffset",
+        "contentToFooterGap",
+        "maximumActionWidthRatio",
+        "scrollRangeMaximum",
+        "scrollbarVisible",
+        "renderedTextSizePx",
+        "tooltipPresent",
+    ):
+        assert evidence in telemetry

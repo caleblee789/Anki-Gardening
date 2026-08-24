@@ -64,6 +64,8 @@ class _Widget:
         self.enabled = True
         self.minimum_width = 0
         self.minimum_height = 0
+        self.maximum_width = 16_777_215
+        self.maximum_height = 16_777_215
         self.accessible_name = ""
         self.accessible_description = "Available action"
         self.tooltip = ""
@@ -86,6 +88,15 @@ class _Widget:
 
     def setMinimumHeight(self, height: int) -> None:
         self.minimum_height = height
+
+    def setMaximumHeight(self, height: int) -> None:
+        self.maximum_height = height
+
+    def setMinimumWidth(self, width: int) -> None:
+        self.minimum_width = width
+
+    def setMaximumWidth(self, width: int) -> None:
+        self.maximum_width = width
 
     def minimumWidth(self) -> int:
         return self.minimum_width
@@ -193,6 +204,33 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert f"border-color: {scope['GARDEN_THEME']['coin_accent']}" in buttons
     assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
+
+
+def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
+    scope = _theme_scope()
+    button_size = scope["ButtonSize"]
+    tokens = scope["BUTTON_SIZE_TOKENS"]
+
+    assert {
+        size.value: (tokens[size].height_px, tokens[size].horizontal_padding_px)
+        for size in button_size
+    } == {
+        "compact-row": (30, 10),
+        "secondary": (34, 14),
+        "primary": (36, 16),
+        "onboarding": (38, 16),
+        "icon": (30, 0),
+    }
+    widget = _Widget()
+    token = scope["apply_button_size"](widget, "onboarding")
+    assert token is tokens[button_size.ONBOARDING]
+    assert widget.properties["buttonSize"] == "onboarding"
+    assert widget.properties["visualControlSize"] == 38
+    assert (widget.minimum_height, widget.maximum_height) == (38, 38)
+    assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
+
+    scope["apply_button_size"](widget, button_size.ICON)
+    assert (widget.minimum_width, widget.maximum_width) == (30, 30)
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:

@@ -7,13 +7,17 @@ from ankigarden.ui.dialog_foundations import (
     DialogCloseBlocker,
     DialogClosePolicy,
     DialogCloseReason,
+    DialogCaptureTelemetryRecord,
     DialogSizeClass,
     DialogViewState,
     InitialFocusPolicy,
+    ScrollbarTelemetryRecord,
     dialog_height_profile,
     dialog_view_policy,
+    merge_content_fit_preservation,
     resolve_dialog_close,
     resolved_dialog_size,
+    should_preserve_transition_height,
     text_column_width,
 )
 
@@ -32,7 +36,7 @@ def test_compact_confirmation_does_not_expand_with_a_large_screen() -> None:
         DialogSizeClass.COMPACT_CONFIRMATION,
         2560,
         1440,
-    ) == (540, 250)
+    ) == (520, 220)
 
 
 def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> None:
@@ -40,7 +44,7 @@ def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> No
         DialogSizeClass.COMPARISON,
         2560,
         1440,
-    ) == (560, 290)
+    ) == (540, 250)
 
 
 def test_preview_dialog_uses_large_screen_without_exceeding_policy() -> None:
@@ -54,16 +58,16 @@ def test_dialog_size_clamps_to_small_available_geometry() -> None:
 
 def test_release_dialog_families_use_authoritative_content_fit_geometry() -> None:
     expected = {
-        DialogSizeClass.COMPACT_STATUS: (540, 250),
-        DialogSizeClass.TRANSACTION: (560, 290),
-        DialogSizeClass.FERTILIZER: (720, 480),
-        DialogSizeClass.SETTINGS: (900, 540),
-        DialogSizeClass.NURSERY: (950, 560),
-        DialogSizeClass.PROGRESS: (980, 620),
+        DialogSizeClass.COMPACT_STATUS: (520, 220),
+        DialogSizeClass.TRANSACTION: (540, 250),
+        DialogSizeClass.FERTILIZER: (720, 430),
+        DialogSizeClass.SETTINGS: (900, 490),
+        DialogSizeClass.NURSERY: (950, 540),
+        DialogSizeClass.PROGRESS: (980, 540),
         DialogSizeClass.LOADOUT: (1020, 610),
-        DialogSizeClass.PLANT_STORY: (840, 570),
-        DialogSizeClass.SPECIES_DETAIL: (920, 620),
-        DialogSizeClass.GROWTH_CHARGE: (560, 340),
+        DialogSizeClass.PLANT_STORY: (840, 595),
+        DialogSizeClass.SPECIES_DETAIL: (920, 600),
+        DialogSizeClass.GROWTH_CHARGE: (540, 315),
         DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
@@ -81,34 +85,37 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
 def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() -> None:
     expected = {
         DialogSizeClass.SETTINGS: {
-            "display": (880, 900, 920, 460, 520, 560),
-            "advanced": (880, 900, 920, 520, 550, 580),
-            "diagnostics-clean": (880, 900, 920, 400, 440, 500),
-            "diagnostics-expanded": (880, 900, 920, 500, 540, 580),
+            "display": (880, 900, 920, 460, 485, 510),
+            "advanced": (880, 900, 920, 540, 565, 590),
+            "diagnostics-clean": (820, 880, 900, 330, 360, 390),
+            "diagnostics-warning": (820, 880, 900, 360, 390, 420),
+            "diagnostics-expanded": (820, 880, 900, 500, 545, 590),
         },
         DialogSizeClass.NURSERY: {
-            "plants": (920, 950, 980, 540, 610, 680),
-            "fertilizer": (920, 950, 980, 500, 570, 640),
-            "spaces": (920, 950, 980, 420, 470, 520),
-            "weather": (920, 950, 980, 500, 570, 640),
-            "empty": (920, 950, 980, 330, 365, 400),
+            "plants": (920, 950, 980, 540, 570, 600),
+            "owned": (920, 950, 980, 470, 500, 530),
+            "fertilizer": (920, 950, 980, 470, 500, 530),
+            "spaces": (920, 950, 980, 380, 405, 430),
+            "weather": (920, 950, 980, 480, 510, 540),
+            "empty": (920, 950, 980, 300, 335, 370),
         },
         DialogSizeClass.PROGRESS: {
-            "growth": (960, 980, 1000, 560, 620, 680),
-            "streak": (960, 980, 1000, 580, 640, 700),
-            "currency": (960, 980, 1000, 480, 540, 600),
-            "achievements": (960, 980, 1000, 600, 670, 720),
-            "collection": (960, 980, 1000, 540, 620, 700),
-            "collection-empty": (960, 980, 1000, 330, 380, 430),
+            "growth": (960, 980, 1000, 520, 540, 560),
+            "streak": (960, 980, 1000, 560, 585, 610),
+            "currency": (960, 980, 1000, 360, 390, 420),
+            "achievements": (960, 980, 1000, 600, 625, 650),
+            "collection": (960, 980, 1000, 540, 570, 600),
+            "collection-empty": (960, 980, 1000, 350, 380, 410),
         },
         DialogSizeClass.LOADOUT: {
             "default": (1000, 1020, 1040, 560, 610, 650),
         },
         DialogSizeClass.PLANT_STORY: {
-            "default": (800, 840, 860, 540, 570, 600),
+            "default": (800, 840, 860, 560, 595, 630),
         },
         DialogSizeClass.SPECIES_DETAIL: {
-            "default": (880, 920, 940, 580, 620, 650),
+            "default": (880, 920, 940, 580, 600, 620),
+            "uncollected": (880, 920, 940, 430, 455, 480),
         },
     }
 
@@ -189,3 +196,60 @@ def test_dialog_close_policy_is_opt_in_and_prioritizes_in_flight_work() -> None:
 def test_text_column_uses_a_character_measurement_not_a_fixed_screenshot_width() -> None:
     assert text_column_width(9) == 612
     assert text_column_width(0, 0) == 1
+
+
+def test_content_fit_coalescing_gives_terminal_shrink_precedence() -> None:
+    assert merge_content_fit_preservation(None, None) is None
+    assert merge_content_fit_preservation(None, True) is True
+    assert merge_content_fit_preservation(True, False) is False
+    assert merge_content_fit_preservation(False, True) is False
+
+    assert should_preserve_transition_height(
+        policy_enabled=True,
+        in_flight=True,
+        requested=True,
+        preserved_height=300,
+    ) is True
+    for request in (None, True, False):
+        assert should_preserve_transition_height(
+            policy_enabled=True,
+            in_flight=False,
+            requested=request,
+            preserved_height=300,
+        ) is False
+    assert should_preserve_transition_height(
+        policy_enabled=True,
+        in_flight=True,
+        requested=False,
+        preserved_height=300,
+    ) is False
+
+
+def test_capture_telemetry_records_are_serializable_and_explicit() -> None:
+    scrollbar = ScrollbarTelemetryRecord(
+        name="Details",
+        minimum=0,
+        maximum=120,
+        value=12,
+        visible=True,
+        overflow_owner=True,
+    )
+    record = DialogCaptureTelemetryRecord(
+        client_surface_fill=0.94,
+        nursery_root_offset=10,
+        content_to_footer_gap=16,
+        maximum_action_width_ratio=0.24,
+        scrollbars=(scrollbar,),
+        minimum_rendered_text_size=12.0,
+        tooltip_widget_count=1,
+        elided_widget_count=1,
+        elision_without_tooltip_count=0,
+        overflow_owner_count=1,
+    )
+    payload = record.as_dict()
+    assert payload["clientSurfaceFill"] == 0.94
+    assert payload["nurseryRootOffset"] == 10
+    assert payload["contentToFooterGap"] == 16
+    assert payload["maximumActionWidthRatio"] == 0.24
+    assert payload["minimumRenderedTextSize"] == 12.0
+    assert payload["scrollbars"] == [scrollbar.as_dict()]

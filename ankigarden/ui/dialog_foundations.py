@@ -244,24 +244,111 @@ class DialogHeightProfile:
                 raise ValueError("dialog view width profiles must be ordered and positive")
 
 
+@dataclass(frozen=True)
+class ScrollbarTelemetryRecord:
+    """Capture-facing state for one deliberate dialog scroll region."""
+
+    name: str
+    minimum: int
+    maximum: int
+    value: int
+    visible: bool
+    overflow_owner: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "minimum": self.minimum,
+            "maximum": self.maximum,
+            "value": self.value,
+            "visible": self.visible,
+            "overflowOwner": self.overflow_owner,
+        }
+
+
+@dataclass(frozen=True)
+class DialogCaptureTelemetryRecord:
+    """Stable native geometry/text evidence consumed by capture QA.
+
+    The Qt shell owns measurement; this dependency-light value object keeps
+    capture code from having to rediscover widget conventions or duplicate
+    threshold logic.
+    """
+
+    client_surface_fill: float
+    nursery_root_offset: int | None
+    content_to_footer_gap: int | None
+    maximum_action_width_ratio: float
+    scrollbars: tuple[ScrollbarTelemetryRecord, ...]
+    minimum_rendered_text_size: float | None
+    tooltip_widget_count: int
+    elided_widget_count: int
+    elision_without_tooltip_count: int
+    overflow_owner_count: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "clientSurfaceFill": self.client_surface_fill,
+            "nurseryRootOffset": self.nursery_root_offset,
+            "contentToFooterGap": self.content_to_footer_gap,
+            "maximumActionWidthRatio": self.maximum_action_width_ratio,
+            "scrollbars": [record.as_dict() for record in self.scrollbars],
+            "minimumRenderedTextSize": self.minimum_rendered_text_size,
+            "tooltipWidgetCount": self.tooltip_widget_count,
+            "elidedWidgetCount": self.elided_widget_count,
+            "elisionWithoutTooltipCount": self.elision_without_tooltip_count,
+            "overflowOwnerCount": self.overflow_owner_count,
+        }
+
+
+def merge_content_fit_preservation(
+    current: bool | None,
+    requested: bool | None,
+) -> bool | None:
+    """Coalesce transition intent with terminal shrink taking precedence."""
+
+    if current is False or requested is False:
+        return False
+    if current is True or requested is True:
+        return True
+    return None
+
+
+def should_preserve_transition_height(
+    *,
+    policy_enabled: bool,
+    in_flight: bool,
+    requested: bool | None,
+    preserved_height: int,
+) -> bool:
+    """Limit fixed-height preservation to an intentional in-flight state."""
+
+    return bool(
+        policy_enabled
+        and in_flight
+        and requested is not False
+        and int(preserved_height) > 0
+    )
+
+
 DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     DialogSizeClass.COMPACT_STATUS: DialogSizePolicy(
         500,
+        200,
+        520,
         220,
         540,
         250,
-        580,
-        280,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.TRANSACTION: DialogSizePolicy(
-        520,
-        210,
-        560,
-        290,
+        480,
+        180,
+        540,
+        250,
         600,
         340,
         1.0,
@@ -273,23 +360,23 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     ),
     DialogSizeClass.FERTILIZER: DialogSizePolicy(
         700,
-        420,
+        250,
         720,
-        480,
+        430,
         740,
-        520,
+        470,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.SETTINGS: DialogSizePolicy(
-        880,
-        400,
+        820,
+        330,
         900,
-        540,
+        490,
         920,
-        580,
+        590,
         1.0,
         1.0,
         False,
@@ -297,11 +384,11 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     ),
     DialogSizeClass.NURSERY: DialogSizePolicy(
         920,
-        330,
+        300,
         950,
-        560,
+        540,
         980,
-        680,
+        600,
         1.0,
         1.0,
         False,
@@ -309,11 +396,11 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     ),
     DialogSizeClass.PROGRESS: DialogSizePolicy(
         960,
-        430,
+        350,
         980,
-        620,
+        540,
         1000,
-        720,
+        650,
         1.0,
         1.0,
         False,
@@ -333,11 +420,11 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     ),
     DialogSizeClass.PLANT_STORY: DialogSizePolicy(
         800,
-        540,
+        560,
         840,
-        570,
+        595,
         860,
-        600,
+        630,
         1.0,
         1.0,
         False,
@@ -345,23 +432,23 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
     ),
     DialogSizeClass.SPECIES_DETAIL: DialogSizePolicy(
         880,
-        580,
+        430,
         920,
-        620,
+        600,
         940,
-        650,
+        620,
         1.0,
         1.0,
         False,
         True,
     ),
     DialogSizeClass.GROWTH_CHARGE: DialogSizePolicy(
+        520,
+        180,
         540,
-        220,
+        315,
         560,
         340,
-        580,
-        380,
         1.0,
         1.0,
         False,
@@ -425,53 +512,65 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     dict[str, DialogHeightProfile],
 ] = {
     DialogSizeClass.COMPACT_STATUS: {
-        "default": DialogHeightProfile(220, 250, 260, 500, 520, 540),
+        "default": DialogHeightProfile(200, 220, 250, 500, 520, 540),
     },
     DialogSizeClass.TRANSACTION: {
-        "simple": DialogHeightProfile(290, 300, 330, 520, 540, 560),
-        "complex": DialogHeightProfile(280, 320, 340, 560, 580, 600),
-        "error": DialogHeightProfile(230, 270, 300, 520, 540, 560),
+        "default": DialogHeightProfile(220, 245, 270, 500, 520, 540),
+        "simple": DialogHeightProfile(220, 245, 270, 500, 520, 540),
+        "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
+        "loading": DialogHeightProfile(220, 245, 270, 500, 520, 540),
+        "warning": DialogHeightProfile(180, 210, 240, 480, 510, 540),
+        "error": DialogHeightProfile(180, 210, 240, 480, 510, 540),
+        "success": DialogHeightProfile(180, 210, 240, 480, 510, 540),
     },
     DialogSizeClass.FERTILIZER: {
-        "default": DialogHeightProfile(420, 480, 520, 700, 720, 740),
+        "default": DialogHeightProfile(390, 430, 470, 700, 720, 740),
+        "selection": DialogHeightProfile(390, 430, 470, 700, 720, 740),
+        "replacement": DialogHeightProfile(250, 275, 300, 560, 590, 620),
     },
     DialogSizeClass.SETTINGS: {
-        "display": DialogHeightProfile(460, 520, 560, 880, 900, 920),
-        "advanced": DialogHeightProfile(520, 550, 580, 880, 900, 920),
-        "diagnostics-clean": DialogHeightProfile(400, 440, 500, 880, 900, 920),
-        "diagnostics-expanded": DialogHeightProfile(500, 540, 580, 880, 900, 920),
+        "display": DialogHeightProfile(460, 485, 510, 880, 900, 920),
+        "advanced": DialogHeightProfile(540, 565, 590, 880, 900, 920),
+        "diagnostics-clean": DialogHeightProfile(330, 360, 390, 820, 880, 900),
+        "diagnostics-warning": DialogHeightProfile(360, 390, 420, 820, 880, 900),
+        "diagnostics-expanded": DialogHeightProfile(500, 545, 590, 820, 880, 900),
     },
     DialogSizeClass.NURSERY: {
-        "starter": DialogHeightProfile(500, 540, 580, 920, 950, 980),
-        "plants": DialogHeightProfile(540, 610, 680),
-        "fertilizer": DialogHeightProfile(500, 570, 640),
-        "spaces": DialogHeightProfile(420, 470, 520),
-        "weather": DialogHeightProfile(500, 570, 640),
-        "empty": DialogHeightProfile(330, 365, 400),
+        "starter": DialogHeightProfile(500, 550, 600, 920, 950, 980),
+        "plants": DialogHeightProfile(540, 570, 600),
+        "owned": DialogHeightProfile(470, 500, 530),
+        "fertilizer": DialogHeightProfile(470, 500, 530),
+        "spaces": DialogHeightProfile(380, 405, 430),
+        "weather": DialogHeightProfile(480, 510, 540),
+        "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
-        "growth": DialogHeightProfile(560, 620, 680),
-        "streak": DialogHeightProfile(580, 640, 700),
-        "currency": DialogHeightProfile(480, 540, 600),
-        "achievements": DialogHeightProfile(600, 670, 720),
-        "collection": DialogHeightProfile(540, 620, 700),
-        "collection-empty": DialogHeightProfile(330, 380, 430),
+        "growth": DialogHeightProfile(520, 540, 560),
+        "streak": DialogHeightProfile(560, 585, 610),
+        "currency": DialogHeightProfile(360, 390, 420),
+        "achievements": DialogHeightProfile(600, 625, 650),
+        "collection": DialogHeightProfile(540, 570, 600),
+        "collection-empty": DialogHeightProfile(350, 380, 410),
     },
     DialogSizeClass.LOADOUT: {
         "default": DialogHeightProfile(560, 610, 650, 1000, 1020, 1040),
     },
     DialogSizeClass.PLANT_STORY: {
-        "default": DialogHeightProfile(540, 570, 600, 800, 840, 860),
+        "default": DialogHeightProfile(560, 595, 630, 800, 840, 860),
     },
     DialogSizeClass.SPECIES_DETAIL: {
-        "default": DialogHeightProfile(580, 620, 650, 880, 920, 940),
+        "default": DialogHeightProfile(580, 600, 620, 880, 920, 940),
+        "collected": DialogHeightProfile(580, 600, 620, 880, 920, 940),
+        "uncollected": DialogHeightProfile(430, 455, 480, 880, 920, 940),
     },
     DialogSizeClass.GROWTH_CHARGE: {
-        "ready": DialogHeightProfile(300, 340, 380, 540, 560, 580),
-        "empty": DialogHeightProfile(230, 250, 270, 540, 560, 580),
-        "loading": DialogHeightProfile(310, 340, 380, 540, 560, 580),
-        "error": DialogHeightProfile(220, 250, 280, 540, 560, 580),
-        "success": DialogHeightProfile(300, 340, 380, 540, 560, 580),
+        "ready": DialogHeightProfile(290, 315, 340, 520, 540, 560),
+        "loading": DialogHeightProfile(290, 315, 340, 520, 540, 560),
+        "stale": DialogHeightProfile(290, 315, 340, 520, 540, 560),
+        "empty": DialogHeightProfile(190, 210, 230, 520, 540, 560),
+        "warning": DialogHeightProfile(180, 210, 240, 520, 540, 560),
+        "error": DialogHeightProfile(180, 210, 240, 520, 540, 560),
+        "success": DialogHeightProfile(260, 290, 320, 520, 540, 560),
     },
 }
 

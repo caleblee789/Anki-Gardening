@@ -64,6 +64,7 @@ except Exception:  # pragma: no cover - depends on the host Qt export surface
 
 from .dialog_foundations import (
     DIALOG_SIZE_POLICIES,
+    DialogCaptureTelemetryRecord,
     DialogCloseBlocker,
     DialogCloseDecision,
     DialogClosePolicy,
@@ -71,10 +72,13 @@ from .dialog_foundations import (
     DialogSizeClass,
     DialogViewState,
     InitialFocusPolicy,
+    ScrollbarTelemetryRecord,
     dialog_height_profile,
     dialog_view_policy,
+    merge_content_fit_preservation,
     resolve_dialog_close,
     resolved_dialog_size,
+    should_preserve_transition_height,
     text_column_width,
 )
 from .accessibility import (
@@ -110,6 +114,7 @@ from .scene import GardenSceneWidget
 from .state import GardenUiCoordinator, select_garden_ui
 from .state_contracts import OnboardingState, onboarding_state_display, streak_presentation
 from .theme import (
+    ButtonSize,
     BUTTON_MIN_HEIGHT,
     BUTTON_VARIANT_DESTRUCTIVE,
     BUTTON_VARIANT_PRIMARY,
@@ -124,6 +129,7 @@ from .theme import (
     SemanticRole,
     TextRole,
     apply_tabular_numerals,
+    apply_button_size,
     apply_text_role,
     button_stylesheet,
     foundation_stylesheet,
@@ -250,6 +256,58 @@ UX_ACTIVE_GROWTH = "ACTIVE_GROWTH"
 UX_NURTURED_PLANT_COMPLETE = "NURTURED_PLANT_COMPLETE"
 
 
+class _FocusTooltipFilter(QObject):
+    """Expose native tooltips to keyboard focus as well as pointer hover."""
+
+    def eventFilter(self, watched: QObject, event: Any) -> bool:
+        event_type = event.type()
+        if event_type == QEvent.Type.FocusIn and isinstance(watched, QWidget):
+            copy = str(watched.toolTip() or "").strip()
+            if copy:
+                QToolTip.showText(
+                    watched.mapToGlobal(watched.rect().bottomLeft()),
+                    copy,
+                    watched,
+                )
+        elif event_type in {QEvent.Type.FocusOut, QEvent.Type.Hide}:
+            QToolTip.hideText()
+        return False
+
+
+def _set_focus_accessible_tooltip(widget: QWidget, full_text: str) -> None:
+    """Bind tooltip evidence to hover, focus, and accessibility metadata."""
+
+    copy = str(full_text).strip()
+    widget.setToolTip(copy)
+    widget.setProperty("tooltipPresent", bool(copy))
+    widget.setProperty("tooltipOnFocus", bool(copy))
+    if copy:
+        if not widget.accessibleName():
+            widget.setAccessibleName(copy)
+        if widget.property("tooltipOriginalAccessibleDescription") is None:
+            widget.setProperty(
+                "tooltipOriginalAccessibleDescription",
+                widget.accessibleDescription(),
+            )
+        widget.setAccessibleDescription(copy)
+        if widget.focusPolicy() == Qt.FocusPolicy.NoFocus:
+            widget.setProperty("tooltipAddedFocus", True)
+            widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            set_keyboard_focus_surface(widget)
+        tooltip_filter = getattr(widget, "_garden_focus_tooltip_filter", None)
+        if tooltip_filter is None:
+            tooltip_filter = _FocusTooltipFilter(widget)
+            widget._garden_focus_tooltip_filter = tooltip_filter
+            widget.installEventFilter(tooltip_filter)
+        return
+    if bool(widget.property("tooltipAddedFocus")):
+        widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        widget.setProperty("tooltipAddedFocus", False)
+    original_description = widget.property("tooltipOriginalAccessibleDescription")
+    if original_description is not None:
+        widget.setAccessibleDescription(str(original_description))
+
+
 class ElidingLabel(QLabel):
     """Single-line label that retains its full accessible name and tooltip."""
 
@@ -276,11 +334,54 @@ class ElidingLabel(QLabel):
         )
         if super().text() != visible:
             super().setText(visible)
-        self.setToolTip(self._full_text if visible != self._full_text else "")
+        elided = visible != self._full_text
+        self.setProperty("textElided", elided)
+        self.setProperty("fullText", self._full_text)
+        _set_focus_accessible_tooltip(
+            self,
+            self._full_text if elided else "",
+        )
+
+
+def set_button_size(
+    button: QPushButton,
+    size: ButtonSize | str,
+    *,
+    allow_horizontal_stretch: bool = False,
+) -> None:
+    """Apply shared button geometry while keeping ordinary actions text-fit."""
+
+    normalized = size if isinstance(size, ButtonSize) else ButtonSize(str(size))
+    apply_button_size(button, normalized)
+    button.setProperty("textFitAction", not allow_horizontal_stretch)
+    if normalized is ButtonSize.ICON:
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        button.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
+    else:
+        button.setSizePolicy(
+            (
+                QSizePolicy.Policy.Expanding
+                if allow_horizontal_stretch
+                else QSizePolicy.Policy.Maximum
+            ),
+            QSizePolicy.Policy.Fixed,
+        )
 
 
 def _set_button_variant(button: QPushButton, variant: str) -> None:
     button.setProperty("variant", variant)
+    current_size = str(button.property("buttonSize") or "")
+    if current_size not in {
+        ButtonSize.COMPACT_ROW.value,
+        ButtonSize.ONBOARDING.value,
+        ButtonSize.ICON.value,
+    }:
+        set_button_size(
+            button,
+            ButtonSize.PRIMARY
+            if variant == BUTTON_VARIANT_PRIMARY
+            else ButtonSize.SECONDARY,
+        )
     style = button.style()
     if style is not None:
         style.unpolish(button)
@@ -291,6 +392,7 @@ def _set_compact_row_action(button: QPushButton) -> None:
     """Apply the shared text-fit 30 px treatment for card-row actions."""
 
     button.setProperty("compactRowAction", True)
+    set_button_size(button, ButtonSize.COMPACT_ROW)
     style = button.style()
     if style is not None:
         style.unpolish(button)
@@ -477,6 +579,8 @@ class DialogShell(QWidget):
         self._last_close_decision: DialogCloseDecision | None = None
         self._registered_scroll_regions: list[QScrollArea] = []
         self._scroll_base_margins: dict[int, tuple[int, int, int, int]] = {}
+        self._scroll_base_policies: dict[int, Any] = {}
+        self._overflow_owner: QScrollArea | None = None
         self._pinned_footer: QWidget | None = None
         self._dialog_result = int(QDialog.DialogCode.Rejected)
         self._dialog_event_loop: QEventLoop | None = None
@@ -488,6 +592,14 @@ class DialogShell(QWidget):
         self._family_width = 0
         self._preserved_transition_height = 0
         self._preserve_transition_height = False
+        self._content_fit_running = False
+        self._scheduled_preserve_transition: bool | None = None
+        self._content_fit_reasons: set[str] = set()
+        self._capture_telemetry: DialogCaptureTelemetryRecord | None = None
+        self._content_fit_timer = QTimer(self)
+        self._content_fit_timer.setSingleShot(True)
+        self._content_fit_timer.setInterval(0)
+        self._content_fit_timer.timeout.connect(self._run_scheduled_content_fit)
         # DialogShell deliberately remains a QWidget subclass so its custom
         # dialog contract works consistently in Anki's supported Qt versions.
         # The Tool/Dialog window flag supplies the native top-level window.
@@ -504,6 +616,8 @@ class DialogShell(QWidget):
         self.setProperty("dialogInFlight", False)
         self.setProperty("lastCloseReason", "")
         self.setProperty("closeBlockedBy", "")
+        self.setProperty("contentFitPending", False)
+        self.setProperty("overflowOwnerCount", 0)
         self.accessibility_announcer = AccessibilityAnnouncer(self)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         # Secondary Garden shells are built eagerly. Keep every native window
@@ -519,6 +633,7 @@ class DialogShell(QWidget):
             if self._native_auxiliary_on_macos
             else Qt.WindowModality.WindowModal
         )
+        self.installEventFilter(self)
 
     def setWindowTitle(self, title: str) -> None:
         """Keep the native title and accessibility title synchronized."""
@@ -609,9 +724,18 @@ class DialogShell(QWidget):
         return self._dialog_in_flight
 
     def set_dialog_in_flight(self, in_flight: bool) -> None:
-        self._dialog_in_flight = bool(in_flight)
+        next_value = bool(in_flight)
+        if next_value and not self._dialog_in_flight:
+            # Capture the settled READY geometry before controls or artwork
+            # switch to their intentional in-flight presentation.
+            self._preserved_transition_height = max(1, int(self.height()))
+        self._dialog_in_flight = next_value
         self.setProperty("dialogInFlight", self._dialog_in_flight)
         self.close_policy_changed()
+        self.schedule_content_fit(
+            "in-flight-state",
+            preserve_transition=True if next_value else False,
+        )
 
     @property
     def last_close_decision(self) -> DialogCloseDecision | None:
@@ -715,32 +839,109 @@ class DialogShell(QWidget):
         )
 
     def register_scroll_region(self, scroll: QScrollArea) -> None:
-        """Register a deliberate vertical scroll owner for footer clearance."""
+        """Register one candidate for the shell's single overflow owner."""
 
         # Child dialogs are parented to their invoking shell but are separate
         # native windows. A recursive QObject search must never let the owner
         # adopt or mutate a nested dialog's scroll contract.
         if scroll.window() is not self:
             return
-        if scroll not in self._registered_scroll_regions:
+        newly_registered = scroll not in self._registered_scroll_regions
+        if newly_registered:
             self._registered_scroll_regions.append(scroll)
+            self._scroll_base_policies[id(scroll)] = (
+                scroll.verticalScrollBarPolicy()
+            )
+            scroll.installEventFilter(self)
+            scroll.verticalScrollBar().rangeChanged.connect(
+                lambda _minimum, _maximum: self.schedule_content_fit(
+                    "scroll-range"
+                )
+            )
         scroll.setProperty("dialogScrollRegion", True)
-        self._sync_footer_clearance()
+        scroll.setProperty("dialogOverflowOwner", False)
+        if newly_registered:
+            self._sync_footer_clearance()
+            self.schedule_content_fit("scroll-region")
 
     def register_pinned_footer(self, footer: QWidget) -> None:
         self._pinned_footer = footer
+        # The historical method name is retained for call-site compatibility;
+        # the footer is a normal-flow layout sibling, never a painted overlay.
         footer.setProperty("dialogPinnedFooter", True)
+        footer.setProperty("normalFlowFooter", True)
+        footer.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        for button in footer.findChildren(QPushButton):
+            if not bool(button.property("allowHorizontalStretch")):
+                button.setSizePolicy(
+                    QSizePolicy.Policy.Maximum,
+                    QSizePolicy.Policy.Fixed,
+                )
         self._sync_footer_clearance()
+        self.schedule_content_fit("footer")
 
     def _discover_scroll_regions(self) -> None:
         for scroll in self.findChildren(QScrollArea):
             if (
                 scroll.window() is self
-                and
-                scroll.verticalScrollBarPolicy()
-                != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                and (
+                    id(scroll) in self._scroll_base_policies
+                    or scroll.verticalScrollBarPolicy()
+                    != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                )
             ):
                 self.register_scroll_region(scroll)
+
+    def _sync_overflow_owner(self) -> QScrollArea | None:
+        """Permit one visible AsNeeded vertical owner and suppress the rest."""
+
+        self._discover_scroll_regions()
+        candidates: list[QScrollArea] = []
+        for scroll in tuple(self._registered_scroll_regions):
+            try:
+                if scroll.window() is not self:
+                    self._registered_scroll_regions.remove(scroll)
+                    self._scroll_base_policies.pop(id(scroll), None)
+                    continue
+                if scroll.isVisibleTo(self) and not scroll.isHidden():
+                    candidates.append(scroll)
+            except RuntimeError:
+                self._registered_scroll_regions.remove(scroll)
+                self._scroll_base_policies.pop(id(scroll), None)
+
+        owner: QScrollArea | None = None
+        if candidates:
+            # Prefer the first explicitly registered region that actually
+            # overflows. Stable registration order prevents state churn.
+            owner = next(
+                (
+                    scroll
+                    for scroll in candidates
+                    if int(scroll.verticalScrollBar().maximum()) > 0
+                ),
+                candidates[0],
+            )
+        for scroll in tuple(self._registered_scroll_regions):
+            try:
+                is_owner = scroll is owner
+                scroll.setProperty("dialogOverflowOwner", is_owner)
+                scroll.setProperty("overflowSuppressed", not is_owner)
+                desired_policy = (
+                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
+                    if is_owner
+                    else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                )
+                if scroll.verticalScrollBarPolicy() != desired_policy:
+                    scroll.setVerticalScrollBarPolicy(desired_policy)
+            except RuntimeError:
+                continue
+        self._overflow_owner = owner
+        owner_count = 1 if owner is not None else 0
+        self.setProperty("overflowOwnerCount", owner_count)
+        return owner
 
     def _sync_footer_clearance(self) -> None:
         footer = self._pinned_footer
@@ -780,17 +981,82 @@ class DialogShell(QWidget):
                 self._registered_scroll_regions.remove(scroll)
 
     def active_vertical_scroll_regions(self) -> tuple[QScrollArea, ...]:
-        """Return visible vertical owners for diagnostics and capture audits."""
+        """Return at most one visible vertical owner for capture audits."""
 
-        self._discover_scroll_regions()
-        return tuple(
-            scroll
-            for scroll in self._registered_scroll_regions
-            if scroll.window() is self
-            and scroll.isVisibleTo(self)
-            and scroll.verticalScrollBarPolicy()
-            != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        owner = self._sync_overflow_owner()
+        return (owner,) if owner is not None else ()
+
+    def schedule_content_fit(
+        self,
+        reason: str = "state-change",
+        *,
+        preserve_transition: bool | None = None,
+    ) -> None:
+        """Coalesce layout-affecting changes into one settled native fit."""
+
+        if self._content_fit_running:
+            return
+        copy = str(reason).strip()
+        if copy:
+            self._content_fit_reasons.add(copy)
+        # A terminal request always wins over an earlier preservation request.
+        self._scheduled_preserve_transition = merge_content_fit_preservation(
+            self._scheduled_preserve_transition,
+            preserve_transition,
         )
+        self.setProperty("contentFitPending", True)
+        if not self._content_fit_timer.isActive():
+            self._content_fit_timer.start()
+
+    def _run_scheduled_content_fit(self) -> None:
+        preserve_transition = self._scheduled_preserve_transition
+        reasons = tuple(sorted(self._content_fit_reasons))
+        self._scheduled_preserve_transition = None
+        self._content_fit_reasons.clear()
+        self.setProperty("contentFitPending", False)
+        self.setProperty("contentFitReasons", "|".join(reasons))
+        self.fit_content_to_family(
+            preserve_transition=preserve_transition,
+        )
+
+    def eventFilter(self, watched: QObject, event: Any) -> bool:
+        """Observe settled content changes without synchronously resizing."""
+
+        event_type = event.type()
+        if event_type in {QEvent.Type.ChildAdded, QEvent.Type.ChildRemoved}:
+            child_getter = getattr(event, "child", None)
+            child = child_getter() if callable(child_getter) else None
+            if child is not None and event_type == QEvent.Type.ChildAdded:
+                QTimer.singleShot(
+                    0,
+                    lambda candidate=child: self._observe_content_object(candidate),
+                )
+            self.schedule_content_fit("child-tree")
+        elif event_type in {
+            QEvent.Type.LayoutRequest,
+            QEvent.Type.Show,
+            QEvent.Type.Hide,
+            QEvent.Type.FontChange,
+            QEvent.Type.ApplicationFontChange,
+            QEvent.Type.StyleChange,
+            QEvent.Type.PaletteChange,
+            QEvent.Type.ContentsRectChange,
+        }:
+            self.schedule_content_fit(event_type.name.lower())
+        elif event_type == QEvent.Type.Resize and watched is not self:
+            self.schedule_content_fit("content-resize")
+        return super().eventFilter(watched, event)
+
+    def _observe_content_object(self, candidate: QObject) -> None:
+        """Install the coalescing observer on a newly created content subtree."""
+
+        try:
+            if candidate is not self._content_fit_timer:
+                candidate.installEventFilter(self)
+            for child in candidate.children():
+                self._observe_content_object(child)
+        except RuntimeError:
+            return
 
     def apply_size_policy(
         self,
@@ -849,7 +1115,7 @@ class DialogShell(QWidget):
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Preferred,
                 )
-            QTimer.singleShot(0, self.fit_content_to_family)
+            self.schedule_content_fit("size-policy", preserve_transition=False)
         return width, height
 
     def apply_view_size_profile(self, view_key: str) -> int:
@@ -890,29 +1156,35 @@ class DialogShell(QWidget):
             screen_width_cap,
         )
         maximum_width = max(minimum_width, maximum_width)
-        preferred_width = min(
+        family_width = int(self._family_width or policy.preferred_width)
+        fitted_width = min(
             max(
                 minimum_width,
-                int(profile.preferred_width or self._family_width or policy.preferred_width),
+                family_width,
             ),
             maximum_width,
         )
         self.setMinimumSize(minimum_width, minimum)
         self.setMaximumSize(maximum_width, max(minimum, maximum))
-        self._family_width = preferred_width
-        self.resize(
-            preferred_width,
-            min(max(minimum, profile.preferred_height), maximum),
-        )
+        if int(self.width()) != fitted_width:
+            self.resize(fitted_width, self.height())
         self.setProperty("dialogViewProfile", self._dialog_view_key)
-        fitted = self.fit_content_to_family(preserve_transition=False)
+        self.setProperty("dialogFamilyWidth", self._family_width)
+        self.schedule_content_fit(
+            "view-profile",
+            preserve_transition=(
+                True
+                if policy.preserve_transition_height and self.dialog_in_flight
+                else False
+            ),
+        )
         QTimer.singleShot(0, self._recenter_over_parent)
-        return fitted
+        return int(self.height())
 
     def fit_content_to_family(
         self,
         *,
-        breathing_room: int = 16,
+        breathing_room: int = 0,
         preserve_transition: bool | None = None,
     ) -> int:
         """Fit the active family to native content without changing width.
@@ -922,45 +1194,322 @@ class DialogShell(QWidget):
         call this method with ``preserve_transition=False``.
         """
 
-        size_class = self._dialog_size_class
-        if size_class is None:
+        if self._content_fit_running:
             return int(self.height())
-        policy = DIALOG_SIZE_POLICIES[size_class]
-        height_profile = dialog_height_profile(
-            size_class,
-            self._dialog_view_key,
-        )
-        if not policy.content_fit:
-            return int(self.height())
-        keep_height = (
-            self._preserve_transition_height
-            if preserve_transition is None
-            else bool(preserve_transition)
-        )
-        if keep_height and self.dialog_in_flight and self._preserved_transition_height:
-            target = min(self.maximumHeight(), self._preserved_transition_height)
-            self.resize(self._family_width or self.width(), target)
+        if self._content_fit_timer.isActive():
+            self._content_fit_timer.stop()
+            self._scheduled_preserve_transition = None
+            self._content_fit_reasons.clear()
+            self.setProperty("contentFitPending", False)
+        self._content_fit_running = True
+        try:
+            size_class = self._dialog_size_class
+            if size_class is None:
+                self._publish_capture_telemetry()
+                return int(self.height())
+            policy = DIALOG_SIZE_POLICIES[size_class]
+            height_profile = dialog_height_profile(
+                size_class,
+                self._dialog_view_key,
+            )
+            if not policy.content_fit:
+                self._publish_capture_telemetry()
+                return int(self.height())
+
+            self._sync_overflow_owner()
+            parent = self.parentWidget()
+            screen = (
+                parent.window().screen()
+                if parent is not None and parent.window() is not None
+                else self.screen()
+            )
+            if screen is None:
+                screen_height_cap = policy.max_height
+                screen_width_cap = policy.max_width
+            else:
+                available = screen.availableGeometry()
+                screen_height_cap = max(
+                    1,
+                    int(available.height()) - policy.screen_margin * 2,
+                )
+                screen_width_cap = max(
+                    1,
+                    int(available.width()) - policy.screen_margin * 2,
+                )
+            maximum_height = max(
+                1,
+                min(
+                    int(height_profile.max_height),
+                    int(policy.max_height),
+                    int(screen_height_cap),
+                    int(self.maximumHeight()),
+                ),
+            )
+            minimum_height = min(
+                maximum_height,
+                int(height_profile.min_height),
+            )
+            profile_min_width = int(
+                height_profile.min_width or policy.min_width
+            )
+            profile_max_width = int(
+                height_profile.max_width or policy.max_width
+            )
+            fitted_width = min(
+                max(
+                    min(profile_min_width, screen_width_cap),
+                    int(self._family_width or self.width()),
+                ),
+                profile_max_width,
+                screen_width_cap,
+            )
+
+            keep_height = should_preserve_transition_height(
+                policy_enabled=self._preserve_transition_height,
+                in_flight=self.dialog_in_flight,
+                requested=preserve_transition,
+                preserved_height=self._preserved_transition_height,
+            )
+            if keep_height:
+                target = min(
+                    maximum_height,
+                    max(minimum_height, self._preserved_transition_height),
+                )
+                if (int(self.width()), int(self.height())) != (fitted_width, target):
+                    self.resize(fitted_width, target)
+                self.setProperty("contentFitPreservedTransition", True)
+                self.setProperty("contentFittedHeight", target)
+                self._publish_capture_telemetry()
+                return target
+
+            root_layout = self.layout()
+            natural_height = int(self.height())
+            if root_layout is not None:
+                root_layout.invalidate()
+                root_layout.activate()
+                natural_height = max(1, int(root_layout.sizeHint().height()))
+            target = max(
+                minimum_height,
+                min(
+                    maximum_height,
+                    natural_height + max(0, int(breathing_room)),
+                ),
+            )
+            if (int(self.width()), int(self.height())) != (fitted_width, target):
+                self.resize(fitted_width, target)
+            if not self.dialog_in_flight:
+                self._preserved_transition_height = target
+            self.setProperty("contentFitPreservedTransition", False)
+            self.setProperty("contentNaturalHeight", natural_height)
+            self.setProperty("contentFittedHeight", target)
+            self._publish_capture_telemetry()
             return target
-        root_layout = self.layout()
-        natural_height = int(self.height())
-        if root_layout is not None:
-            root_layout.invalidate()
-            root_layout.activate()
-            natural_height = max(1, int(root_layout.sizeHint().height()))
-        target = max(
-            min(height_profile.min_height, self.maximumHeight()),
-            min(
-                self.maximumHeight(),
-                height_profile.max_height,
-                natural_height + max(0, int(breathing_room)),
-            ),
+        finally:
+            self._content_fit_running = False
+
+    def _visible_direct_content(self) -> list[QWidget]:
+        content: list[QWidget] = []
+        for child in self.children():
+            if not isinstance(child, QWidget) or child.window() is not self:
+                continue
+            try:
+                if not child.isHidden():
+                    content.append(child)
+            except RuntimeError:
+                continue
+        return content
+
+    def _rendered_text_size_px(self, widget: QWidget) -> float | None:
+        try:
+            font = widget.font()
+            pixel_size = int(font.pixelSize())
+            if pixel_size > 0:
+                return float(pixel_size)
+            point_size = float(font.pointSizeF())
+            if point_size <= 0:
+                return None
+            screen = self.screen()
+            dpi = (
+                float(screen.logicalDotsPerInchY())
+                if screen is not None
+                else 96.0
+            )
+            return point_size * dpi / 72.0
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _widget_has_text(widget: QWidget) -> bool:
+        try:
+            if isinstance(widget, QTextEdit):
+                return bool(widget.toPlainText().strip())
+            if isinstance(widget, QComboBox):
+                return bool(widget.currentText().strip())
+            text_getter = getattr(widget, "text", None)
+            return bool(str(text_getter()).strip()) if callable(text_getter) else False
+        except RuntimeError:
+            return False
+
+    def _publish_capture_telemetry(self) -> DialogCaptureTelemetryRecord:
+        """Measure and publish the native evidence required by capture QA."""
+
+        direct_content = self._visible_direct_content()
+        client_width = max(1, int(self.contentsRect().width()))
+        widest_surface = max(
+            (max(0, int(widget.geometry().width())) for widget in direct_content),
+            default=0,
         )
-        self.resize(self._family_width or self.width(), target)
-        if not self.dialog_in_flight:
-            self._preserved_transition_height = target
-        self.setProperty("contentNaturalHeight", natural_height)
-        self.setProperty("contentFittedHeight", target)
-        return target
+        client_surface_fill = min(1.0, widest_surface / client_width)
+
+        nursery_root_offset: int | None = None
+        if (
+            self._dialog_size_class is DialogSizeClass.NURSERY
+            or bool(self.property("nurseryRoot"))
+        ):
+            nursery_root_offset = min(
+                (max(0, int(widget.geometry().top())) for widget in direct_content),
+                default=0,
+            )
+
+        content_to_footer_gap: int | None = None
+        footer = self._pinned_footer
+        if footer is not None and not footer.isHidden():
+            siblings = [
+                widget
+                for widget in direct_content
+                if widget is not footer and widget.parentWidget() is footer.parentWidget()
+            ]
+            if siblings:
+                content_bottom = max(
+                    int(widget.geometry().bottom()) + 1
+                    for widget in siblings
+                )
+                content_to_footer_gap = max(
+                    0,
+                    int(footer.geometry().top()) - content_bottom,
+                )
+
+        action_ratios: list[float] = []
+        for button in self.findChildren(QPushButton):
+            try:
+                if (
+                    button.window() is not self
+                    or button.isHidden()
+                    or bool(button.property("iconButton"))
+                ):
+                    continue
+                ratio = max(0.0, float(button.width()) / client_width)
+                button.setProperty("actionWidthRatio", round(ratio, 4))
+                button.setProperty(
+                    "buttonHeightTelemetry",
+                    int(button.height()),
+                )
+                action_ratios.append(ratio)
+            except RuntimeError:
+                continue
+        maximum_action_width_ratio = max(action_ratios, default=0.0)
+
+        scrollbars: list[ScrollbarTelemetryRecord] = []
+        overflow_owner_count = 0
+        for index, scroll in enumerate(tuple(self._registered_scroll_regions)):
+            try:
+                if scroll.window() is not self:
+                    continue
+                bar = scroll.verticalScrollBar()
+                is_owner = bool(scroll.property("dialogOverflowOwner"))
+                overflow_owner_count += int(is_owner)
+                visible = bool(
+                    not scroll.isHidden()
+                    and bar.isVisibleTo(scroll)
+                    and int(bar.maximum()) > int(bar.minimum())
+                )
+                scroll.setProperty("scrollRangeMinimum", int(bar.minimum()))
+                scroll.setProperty("scrollRangeMaximum", int(bar.maximum()))
+                scroll.setProperty("scrollbarVisible", visible)
+                name = str(
+                    scroll.accessibleName()
+                    or scroll.objectName()
+                    or f"scroll-region-{index + 1}"
+                )
+                scrollbars.append(
+                    ScrollbarTelemetryRecord(
+                        name=name,
+                        minimum=int(bar.minimum()),
+                        maximum=int(bar.maximum()),
+                        value=int(bar.value()),
+                        visible=visible,
+                        overflow_owner=is_owner,
+                    )
+                )
+            except RuntimeError:
+                continue
+
+        text_sizes: list[float] = []
+        tooltip_widget_count = 0
+        elided_widget_count = 0
+        elision_without_tooltip_count = 0
+        for widget in self.findChildren(QWidget):
+            try:
+                if (
+                    not isinstance(
+                        widget,
+                        (QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit, QComboBox),
+                    )
+                    or widget.window() is not self
+                    or widget.isHidden()
+                    or not self._widget_has_text(widget)
+                ):
+                    continue
+                size_px = self._rendered_text_size_px(widget)
+                if size_px is not None:
+                    rounded_size = round(size_px, 2)
+                    widget.setProperty("renderedTextSizePx", rounded_size)
+                    text_sizes.append(rounded_size)
+                tooltip_present = bool(str(widget.toolTip() or "").strip())
+                widget.setProperty("tooltipPresent", tooltip_present)
+                tooltip_widget_count += int(tooltip_present)
+                elided = bool(widget.property("textElided"))
+                elided_widget_count += int(elided)
+                elision_without_tooltip_count += int(elided and not tooltip_present)
+            except RuntimeError:
+                continue
+
+        record = DialogCaptureTelemetryRecord(
+            client_surface_fill=round(client_surface_fill, 4),
+            nursery_root_offset=nursery_root_offset,
+            content_to_footer_gap=content_to_footer_gap,
+            maximum_action_width_ratio=round(maximum_action_width_ratio, 4),
+            scrollbars=tuple(scrollbars),
+            minimum_rendered_text_size=min(text_sizes, default=None),
+            tooltip_widget_count=tooltip_widget_count,
+            elided_widget_count=elided_widget_count,
+            elision_without_tooltip_count=elision_without_tooltip_count,
+            overflow_owner_count=overflow_owner_count,
+        )
+        self._capture_telemetry = record
+        payload = record.as_dict()
+        for property_name, value in (
+            ("clientSurfaceFill", payload["clientSurfaceFill"]),
+            ("nurseryRootOffset", payload["nurseryRootOffset"]),
+            ("contentToFooterGap", payload["contentToFooterGap"]),
+            ("maximumActionWidthRatio", payload["maximumActionWidthRatio"]),
+            ("minimumRenderedTextSize", payload["minimumRenderedTextSize"]),
+            ("tooltipWidgetCount", payload["tooltipWidgetCount"]),
+            ("elidedWidgetCount", payload["elidedWidgetCount"]),
+            (
+                "elisionWithoutTooltipCount",
+                payload["elisionWithoutTooltipCount"],
+            ),
+            ("overflowOwnerCount", payload["overflowOwnerCount"]),
+        ):
+            self.setProperty(property_name, value)
+        return record
+
+    def capture_layout_telemetry(self) -> dict[str, object]:
+        """Return a fresh serializable snapshot for the capture runner."""
+
+        self._sync_overflow_owner()
+        return self._publish_capture_telemetry().as_dict()
 
     def set_content_bounded_maximum_height(
         self,
@@ -1427,14 +1976,18 @@ class DialogShell(QWidget):
             QTimer.singleShot(0, restore)
 
     def showEvent(self, event: Any) -> None:
+        for child in self.children():
+            self._observe_content_object(child)
         self._discover_scroll_regions()
         self._sync_footer_clearance()
         super().showEvent(event)
+        self.schedule_content_fit("show")
         QTimer.singleShot(0, self._apply_initial_focus)
 
     def resizeEvent(self, event: Any) -> None:
         self._sync_footer_clearance()
         super().resizeEvent(event)
+        self.schedule_content_fit("shell-resize")
 
     def closeEvent(self, event: Any) -> None:
         self.request_close(DialogCloseReason.WINDOW_CLOSE)
@@ -1461,12 +2014,17 @@ class GardenDialogHeader(QFrame):
 
 
 class GardenDialogFooter(QFrame):
-    """Shared sticky action/footer surface."""
+    """Shared normal-flow action/footer surface."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("actionFooter", True)
+        self.setProperty("normalFlowFooter", True)
         self.setProperty("gardenComponent", "dialog-footer")
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
 
 
 class GardenButton(QPushButton):
@@ -1478,10 +2036,13 @@ class GardenButton(QPushButton):
         parent: QWidget | None = None,
         *,
         variant: str = BUTTON_VARIANT_SECONDARY,
+        size: ButtonSize | str | None = None,
     ) -> None:
         super().__init__(str(label), parent)
         self.setProperty("gardenComponent", "button")
         _set_button_variant(self, variant)
+        if size is not None:
+            set_button_size(self, size)
         self.setAccessibleName(str(label))
 
 
@@ -1496,7 +2057,7 @@ class GardenIconButton(GardenButton):
     ) -> None:
         super().__init__("", parent, variant=BUTTON_VARIANT_TERTIARY)
         self.setProperty("gardenComponent", "icon-button")
-        self.setProperty("visualControlSize", ICON_BUTTON_SIZE)
+        set_button_size(self, ButtonSize.ICON)
         self.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
         self.setIcon(garden_icon(icon_name))
         self.setIconSize(QSize(16, 16))
@@ -1625,6 +2186,7 @@ class GardenDialog(DialogShell):
     def set_tabs_widget(self, tabs: QWidget) -> None:
         self.tabs_layout.addWidget(tabs)
         self.tabs_region.show()
+        self.schedule_content_fit("tabs")
 
     def set_body_widget(self, body: QWidget) -> None:
         self.body_layout.insertWidget(
@@ -1641,12 +2203,14 @@ class GardenDialog(DialogShell):
                 != Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             ):
                 self.register_scroll_region(scroll)
+        self.schedule_content_fit("body-widget")
 
     def remove_body_widget(self, body: QWidget) -> None:
         """Stop managing a body that a specialized dialog replaces."""
 
         self.body_layout.removeWidget(body)
         self._body_widgets = [widget for widget in self._body_widgets if widget is not body]
+        self.schedule_content_fit("body-widget-removed", preserve_transition=False)
 
     def _run_state_retry(self) -> None:
         callback = self._state_retry_callback
@@ -1681,6 +2245,7 @@ class GardenDialog(DialogShell):
             self.state_message.setText("")
             self.state_message.setAccessibleDescription("")
             self.state_retry.hide()
+            self.schedule_content_fit("dialog-ready", preserve_transition=False)
             self._apply_initial_focus()
             return
         text = str(message or policy.fallback_message)
@@ -1705,6 +2270,10 @@ class GardenDialog(DialogShell):
             self._state_focus_target = self.top_close
         else:
             self._state_focus_target = self.state_message
+        self.schedule_content_fit(
+            f"dialog-state-{state.value}",
+            preserve_transition=True if policy.busy else False,
+        )
         self._apply_initial_focus()
 
     def add_footer_widget(self, widget: QWidget, *, stretch_before: bool = False) -> None:
@@ -1712,7 +2281,7 @@ class GardenDialog(DialogShell):
             self.footer_layout.addStretch(1)
         self.footer_layout.addWidget(widget)
         self.footer.show()
-        QTimer.singleShot(0, self._sync_footer_clearance)
+        self.schedule_content_fit("footer-action", preserve_transition=False)
 
 
 # Canonical release name; ``GardenDialog`` remains a source-compatible alias
@@ -5154,10 +5723,30 @@ def _environment_preview_pixmap(
         )
 
 
-class ArtworkThumbnail(QLabel):
-    """Metadata-cropped artwork preview; source sprite geometry remains untouched."""
+class GardenImageFrame(QLabel):
+    """Shared native frame for artwork without altering source sprite geometry."""
 
-    pass
+    def __init__(
+        self,
+        text: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(str(text), parent)
+        self.setProperty("gardenComponent", "image-frame")
+        self.setProperty("imageFrame", True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def setPixmap(self, pixmap: QPixmap) -> None:
+        super().setPixmap(pixmap)
+        self.setProperty("artworkLoaded", not pixmap.isNull())
+        self.updateGeometry()
+        owner = self.window()
+        if isinstance(owner, DialogShell):
+            owner.schedule_content_fit("artwork")
+
+
+class ArtworkThumbnail(GardenImageFrame):
+    """Compatibility name for the shared metadata-cropped image frame."""
 
 
 def _nurtured_badge_pixmap(asset: Any, *, size: int = 15) -> QPixmap:
@@ -5371,6 +5960,16 @@ class GardenTabs(QTabWidget):
         self.tabBar().setUsesScrollButtons(True)
         self.tabBar().setExpanding(True)
         self.tabBar().setElideMode(Qt.TextElideMode.ElideNone)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.currentChanged.connect(self._schedule_dialog_refit)
+
+    def _schedule_dialog_refit(self, _index: int) -> None:
+        owner = self.window()
+        if isinstance(owner, DialogShell):
+            owner.schedule_content_fit("tab-change", preserve_transition=False)
 
 
 class SectionCard(QFrame):
@@ -5439,7 +6038,12 @@ class GardenStatusBanner(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("gardenComponent", "status-banner")
+        self.setProperty("compactStatusBanner", True)
         set_semantic_role(self, SemanticRole.BANNER)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         self.message = QLabel("")
@@ -5460,6 +6064,12 @@ class GardenStatusBanner(QFrame):
         self.setAccessibleDescription(copy)
         set_semantic_role(self, SemanticRole.BANNER, tone=tone)
         self.setVisible(bool(copy))
+        owner = self.window()
+        if isinstance(owner, DialogShell):
+            owner.schedule_content_fit(
+                "status-banner",
+                preserve_transition=False,
+            )
 
 
 class EmptyState(QFrame):
@@ -5475,7 +6085,12 @@ class EmptyState(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setProperty("emptyState", True)
+        self.setProperty("topAlignedState", True)
         set_semantic_role(self, SemanticRole.EMPTY_STATE)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(4)
@@ -5505,10 +6120,7 @@ class GardenTooltip:
 
     @staticmethod
     def attach(widget: QWidget, full_text: str) -> None:
-        copy = str(full_text)
-        widget.setToolTip(copy)
-        if not widget.accessibleName():
-            widget.setAccessibleName(copy)
+        _set_focus_accessible_tooltip(widget, str(full_text))
 
 
 class GardenOutcomePreview(QFrame):
@@ -8115,6 +8727,8 @@ class NurseryDialog(DialogShell):
         super().__init__(parent)
         self.engine = engine
         self.storage = storage
+        self.setProperty("nurseryRoot", True)
+        self.setProperty("contentTopAligned", True)
         self.setWindowTitle("Nursery")
         self.apply_size_policy(
             DialogSizeClass.NURSERY,

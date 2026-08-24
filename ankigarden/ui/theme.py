@@ -110,6 +110,27 @@ class ControlVariant(str, Enum):
     DESTRUCTIVE = "destructive"
 
 
+class ButtonSize(str, Enum):
+    """Shared native button geometry independent of visual priority."""
+
+    COMPACT_ROW = "compact-row"
+    SECONDARY = "secondary"
+    PRIMARY = "primary"
+    ONBOARDING = "onboarding"
+    ICON = "icon"
+
+
+@dataclass(frozen=True)
+class ButtonSizeToken:
+    height_px: int
+    horizontal_padding_px: int
+    square: bool = False
+
+    def __post_init__(self) -> None:
+        if self.height_px <= 0 or self.horizontal_padding_px < 0:
+            raise ValueError("button size tokens must use positive geometry")
+
+
 BUTTON_VARIANT_PRIMARY = ControlVariant.PRIMARY.value
 BUTTON_VARIANT_SECONDARY = ControlVariant.SECONDARY.value
 BUTTON_VARIANT_QUIET = ControlVariant.QUIET.value
@@ -128,6 +149,7 @@ BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
 BUTTON_VISUAL_HEIGHT = 34
 PRIMARY_BUTTON_VISUAL_HEIGHT = 36
 COMPACT_BUTTON_HEIGHT = 30
+ONBOARDING_BUTTON_VISUAL_HEIGHT = 38
 ICON_BUTTON_VISUAL_SIZE = 30
 INPUT_VISUAL_HEIGHT = 36
 TAB_VISUAL_HEIGHT = 38
@@ -136,6 +158,14 @@ TOGGLE_VISUAL_HEIGHT = 20
 PLANT_ACTION_MIN_HEIGHT = MIN_HIT_TARGET
 ICON_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
 SCENE_HELP_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
+
+BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
+    ButtonSize.COMPACT_ROW: ButtonSizeToken(COMPACT_BUTTON_HEIGHT, 10),
+    ButtonSize.SECONDARY: ButtonSizeToken(BUTTON_VISUAL_HEIGHT, 14),
+    ButtonSize.PRIMARY: ButtonSizeToken(PRIMARY_BUTTON_VISUAL_HEIGHT, 16),
+    ButtonSize.ONBOARDING: ButtonSizeToken(ONBOARDING_BUTTON_VISUAL_HEIGHT, 16),
+    ButtonSize.ICON: ButtonSizeToken(ICON_BUTTON_VISUAL_SIZE, 0, square=True),
+}
 
 
 class ThemeContext(str, Enum):
@@ -428,6 +458,40 @@ def apply_control_variant(widget: Any, variant: ControlVariant | str) -> Control
 
 
 set_control_variant = apply_control_variant
+
+
+def apply_button_size(widget: Any, size: ButtonSize | str) -> ButtonSizeToken:
+    """Apply one exact visual-height token to a Qt-like button.
+
+    Horizontal sizing deliberately remains content-driven. The native shell
+    assigns a non-expanding size policy, while this dependency-light helper
+    supplies geometry and capture-visible properties without importing Qt.
+    """
+
+    try:
+        normalized = size if isinstance(size, ButtonSize) else ButtonSize(str(size))
+    except ValueError as error:
+        raise ValueError(f"unknown button size: {size!r}") from error
+    token = BUTTON_SIZE_TOKENS[normalized]
+    _set_property(widget, "buttonSize", normalized.value)
+    _set_property(widget, "visualControlSize", token.height_px)
+    _set_property(widget, "horizontalPadding", token.horizontal_padding_px)
+
+    minimum_height = getattr(widget, "setMinimumHeight", None)
+    maximum_height = getattr(widget, "setMaximumHeight", None)
+    if callable(minimum_height):
+        minimum_height(token.height_px)
+    if callable(maximum_height):
+        maximum_height(token.height_px)
+    if token.square:
+        minimum_width = getattr(widget, "setMinimumWidth", None)
+        maximum_width = getattr(widget, "setMaximumWidth", None)
+        if callable(minimum_width):
+            minimum_width(token.height_px)
+        if callable(maximum_width):
+            maximum_width(token.height_px)
+    _repolish(widget)
+    return token
 
 
 def set_control_enabled(
@@ -730,6 +794,33 @@ def button_stylesheet(
             max-height: {COMPACT_BUTTON_HEIGHT}px;
             padding: 0 10px;
         }}
+        QPushButton[buttonSize='compact-row'] {{
+            min-height: {COMPACT_BUTTON_HEIGHT}px;
+            max-height: {COMPACT_BUTTON_HEIGHT}px;
+            padding: 0 10px;
+        }}
+        QPushButton[buttonSize='secondary'] {{
+            min-height: {BUTTON_VISUAL_HEIGHT}px;
+            max-height: {BUTTON_VISUAL_HEIGHT}px;
+            padding: 0 14px;
+        }}
+        QPushButton[buttonSize='primary'] {{
+            min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
+            max-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
+            padding: 0 16px;
+        }}
+        QPushButton[buttonSize='onboarding'] {{
+            min-height: {ONBOARDING_BUTTON_VISUAL_HEIGHT}px;
+            max-height: {ONBOARDING_BUTTON_VISUAL_HEIGHT}px;
+            padding: 0 16px;
+        }}
+        QPushButton[buttonSize='icon'] {{
+            min-width: {ICON_BUTTON_VISUAL_SIZE}px;
+            max-width: {ICON_BUTTON_VISUAL_SIZE}px;
+            min-height: {ICON_BUTTON_VISUAL_SIZE}px;
+            max-height: {ICON_BUTTON_VISUAL_SIZE}px;
+            padding: 0;
+        }}
         QPushButton:checked, QPushButton[selected='true'] {{
             background: {t['selected_surface']};
             border-color: {t['coin_accent']};
@@ -997,28 +1088,38 @@ def semantic_component_stylesheet(
         }}
         QFrame[gardenRole='banner'],
         QFrame[gardenRole='toast'] {{
-            padding: {SpacingToken.MD}px {SpacingToken.LG}px;
+            padding: {SpacingToken.SM}px {SpacingToken.MD}px;
             color: {t['text_primary']};
             background: {t['raised_surface']};
-            border: 1px solid {t['strong_border']};
-            border-left-width: 4px;
-            border-radius: 10px;
+            border: 0;
+            border-left: 3px solid {t['strong_border']};
+            border-radius: 8px;
         }}
         QFrame[gardenRole='banner'][gardenTone='success'],
         QFrame[gardenRole='toast'][gardenTone='success'] {{
+            background: #163229;
             border-left-color: {t['success']};
         }}
         QFrame[gardenRole='banner'][gardenTone='warning'],
         QFrame[gardenRole='toast'][gardenTone='warning'] {{
+            background: #302c1d;
             border-left-color: {t['warning']};
         }}
         QFrame[gardenRole='banner'][gardenTone='info'],
         QFrame[gardenRole='toast'][gardenTone='info'] {{
+            background: #162b31;
             border-left-color: {t['info']};
         }}
         QFrame[gardenRole='banner'][gardenTone='error'],
         QFrame[gardenRole='toast'][gardenTone='error'] {{
+            background: #322125;
             border-left-color: {t['error']};
+        }}
+        QLabel[imageFrame='true'] {{
+            color: {t['text_secondary']};
+            background: {t['secondary_action']};
+            border: 1px solid {t['subtle_border']};
+            border-radius: 10px;
         }}
         QFrame[gardenRole='empty-state'] {{
             padding: {SpacingToken.XL}px;
