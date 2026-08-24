@@ -13211,6 +13211,10 @@ class CollectibleDetailDialog(GardenDialog):
             QLabel[environmentName='true'] {{ color:{GARDEN_THEME['text_primary']}; font-size:14px; font-weight:650; }}
             QLabel[environmentState='true'] {{ color:{GARDEN_THEME['text_secondary']}; font-size:12.5px; }}
             QLabel[unsavedState='true'] {{ color:{GARDEN_THEME['coin_accent']}; font-size:13px; font-weight:650; }}
+            QFrame[toastRegion='true'] {{ background:#17342e; border:1px solid #557665; border-radius:12px; }}
+            QFrame[toastRegion='true'][error='true'] {{ background:#582f34; border-color:#a85b64; }}
+            QLabel[toastIcon='true'] {{ color:#0b211a; background:#82e2ac; border:0; border-radius:10px; font-size:14px; font-weight:900; }}
+            QLabel[toastIcon='true'][error='true'] {{ color:#3b1116; background:#ffd0d0; }}
         """)
 
         body = QWidget()
@@ -13317,17 +13321,15 @@ class CollectibleDetailDialog(GardenDialog):
         self.preview_selection = QLabel("")
         self.preview_selection.setProperty("dialogSubtitle", True)
         self.preview_selection.setWordWrap(True)
-        self.preview_feedback = GardenStatusBanner()
-        self.preview_feedback.setAccessibleName("Garden appearance result")
-        self.preview_feedback.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        set_keyboard_focus_surface(self.preview_feedback)
-        self.preview_feedback.hide()
         self.preview_scene = GardenSceneWidget()
         self.preview_scene.set_interactive(False)
-        self.preview_scene.setMinimumSize(0, 300)
+        self.preview_scene.setMinimumSize(0, 260)
+        self.preview_scene.installEventFilter(self)
+        self.preview_feedback = ToastRegion(self.preview_scene)
+        self.preview_feedback.setAccessibleName("Garden appearance result")
+        self.preview_feedback.shown.connect(self._position_preview_feedback)
         preview_layout.addWidget(preview_heading)
         preview_layout.addWidget(self.preview_selection)
-        preview_layout.addWidget(self.preview_feedback)
         preview_layout.addWidget(self.preview_scene, 1)
 
         self.main_grid.addWidget(self.library, 0, 0)
@@ -13403,6 +13405,62 @@ class CollectibleDetailDialog(GardenDialog):
         self.footer.show()
         self.prepare_to_show()
         self.apply_view_size_profile("default")
+        QTimer.singleShot(0, self._sync_preview_scene_geometry)
+
+    def _position_preview_feedback(self) -> None:
+        """Keep appearance feedback inside the scene without consuming layout."""
+
+        if not self.preview_feedback.isVisible():
+            return
+        inset = 12
+        available_width = max(1, self.preview_scene.width() - (inset * 2))
+        toast_width = min(420, available_width)
+        toast_height = min(
+            84,
+            max(44, self.preview_feedback.sizeHint().height()),
+        )
+        x = max(inset, (self.preview_scene.width() - toast_width) // 2)
+        self.preview_feedback.setGeometry(
+            x,
+            inset,
+            toast_width,
+            toast_height,
+        )
+        self.preview_feedback.raise_()
+
+    def _sync_preview_scene_geometry(self) -> None:
+        """Choose the complete 16:9 garden variant instead of cropping its beds."""
+
+        available_width = max(
+            0,
+            self.preview_panel.contentsRect().width() - 24,
+        )
+        if available_width < 80:
+            return
+        target_height = max(260, min(420, round(available_width * 9 / 16)))
+        if (
+            self.preview_scene.minimumHeight() != target_height
+            or self.preview_scene.maximumHeight() != target_height
+        ):
+            self.preview_scene.setMinimumHeight(target_height)
+            self.preview_scene.setMaximumHeight(target_height)
+        self._position_preview_feedback()
+
+    def _show_preview_feedback(
+        self,
+        message: str,
+        *,
+        tone: FeedbackTone,
+        duration_ms: int = 2400,
+    ) -> None:
+        error = tone is FeedbackTone.ERROR
+        self.preview_feedback.show_message(
+            message,
+            duration_ms=0 if error else duration_ms,
+            error=error,
+            dismissible=error,
+        )
+        self._position_preview_feedback()
 
     def _set_loadout_footer_mode(self, mode: str) -> None:
         compact = mode == COMPACT_MODE
@@ -13474,7 +13532,6 @@ class CollectibleDetailDialog(GardenDialog):
             self.main_grid.setRowStretch(1, 1)
             self.library.setMinimumWidth(0)
             self.library.setMaximumWidth(16777215)
-            self.preview_scene.setMinimumHeight(300)
         else:
             self.main_grid.addWidget(self.library, 0, 0)
             self.main_grid.addWidget(self.preview_panel, 0, 1)
@@ -13483,13 +13540,13 @@ class CollectibleDetailDialog(GardenDialog):
             self.main_grid.setRowStretch(0, 1)
             self.library.setMinimumWidth(300)
             self.library.setMaximumWidth(330)
-            self.preview_scene.setMinimumHeight(300)
         self.library.setMinimumHeight(0)
         self.preview_panel.setMinimumHeight(0)
         body = self.body_scroll.widget()
         if body is not None:
             body.setMinimumHeight(0)
             body.updateGeometry()
+        QTimer.singleShot(0, self._sync_preview_scene_geometry)
 
     @staticmethod
     def _clear_grid(grid: QGridLayout) -> None:
@@ -13716,7 +13773,7 @@ class CollectibleDetailDialog(GardenDialog):
         self._loadout_failure = False
         self.set_dialog_in_flight(False)
         self.setProperty("transactionState", "ready")
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
         self._draft_weather = str(state.selected_weather)
         self._draft_scenery = str(state.selected_background)
         self._draft_decoration = state.loadout.decoration_id
@@ -13747,7 +13804,7 @@ class CollectibleDetailDialog(GardenDialog):
         )
 
     def _select_option(self, kind: str, item_id: str) -> None:
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
         if kind == "weather":
             self._draft_weather = str(item_id)
         else:
@@ -13757,13 +13814,13 @@ class CollectibleDetailDialog(GardenDialog):
         self._sync_dirty_state()
 
     def _set_draft_visibility(self, kind: str, enabled: bool) -> None:
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
         self._draft_visibility[str(kind)] = bool(enabled)
         self._refresh_preview()
         self._sync_dirty_state()
 
     def _select_decoration(self, item_id: str | None) -> None:
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
         self._draft_decoration = item_id
         self._rebuild_options()
         self._refresh_preview()
@@ -13788,11 +13845,11 @@ class CollectibleDetailDialog(GardenDialog):
         self.show_weather.blockSignals(False)
         self.show_scenery.blockSignals(False)
         self._loadout_failure = False
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
         self._rebuild_options()
         self._refresh_preview()
         self._sync_dirty_state()
-        self.preview_feedback.set_status(
+        self._show_preview_feedback(
             "Preview reset.",
             tone=FeedbackTone.INFO,
         )
@@ -14009,7 +14066,7 @@ class CollectibleDetailDialog(GardenDialog):
             self.setProperty("transactionPresentation", "committed-state-unchanged")
             self._sync_dirty_state()
             failure_copy = "Couldn’t save changes. Your garden is unchanged."
-            self.preview_feedback.set_status(
+            self._show_preview_feedback(
                 failure_copy,
                 tone=FeedbackTone.ERROR,
             )
@@ -14031,7 +14088,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.setProperty("transactionPresentation", "committed-result")
         self.unsaved.clear()
         self.unsaved.hide()
-        self.preview_feedback.set_status(
+        self._show_preview_feedback(
             "Garden appearance saved.",
             tone=FeedbackTone.SUCCESS,
         )
@@ -14054,7 +14111,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.unsaved.clear()
         self.unsaved.setAccessibleDescription("")
         self.unsaved.hide()
-        self.preview_feedback.set_status("")
+        self.preview_feedback.clear()
 
     def open_item(self, category: str, item_id: str) -> None:
         """Open from a Collection card with that owned item selected for preview."""
@@ -14107,6 +14164,15 @@ class CollectibleDetailDialog(GardenDialog):
             footer = self.loadout_footer_responsive.evaluate(content_width)
             self.setProperty("footerMode", footer.mode)
         super().resizeEvent(event)
+        QTimer.singleShot(0, self._sync_preview_scene_geometry)
+
+    def eventFilter(self, watched: Any, event: Any) -> bool:
+        if (
+            watched is getattr(self, "preview_scene", None)
+            and event.type() in (QEvent.Type.Resize, QEvent.Type.Show)
+        ):
+            QTimer.singleShot(0, self._sync_preview_scene_geometry)
+        return super().eventFilter(watched, event)
 
 class GardenDashboard(DialogShell):
     ROOT_MARGINS = (12, 12, 12, 12)

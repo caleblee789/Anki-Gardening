@@ -89,6 +89,22 @@ def test_plant_story_uses_compact_artwork_stages_and_timeline_spacing() -> None:
     assert "size=42" in story
 
 
+def test_loadout_preview_feedback_is_an_aspect_fitted_scene_overlay() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    loadout = source.split("class CollectibleDetailDialog", 1)[1].split(
+        "class GardenDashboard", 1
+    )[0]
+
+    assert "self.preview_feedback = ToastRegion(self.preview_scene)" in loadout
+    assert "preview_layout.addWidget(self.preview_feedback)" not in loadout
+    assert "self.preview_scene.installEventFilter(self)" in loadout
+    assert "available_width * 9 / 16" in loadout
+    assert "max(260, min(420" in loadout
+    assert "self.preview_feedback.setGeometry(" in loadout
+    assert "self.preview_feedback.show_message(" in loadout
+    assert "duration_ms=0 if error else duration_ms" in loadout
+
+
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
