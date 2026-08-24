@@ -5942,83 +5942,141 @@ class _UiFaceCaptureRunner:
                     if not button.isHidden()
                 ]
                 active_scrolls = tuple(widget.active_vertical_scroll_regions())
-                required_fact_keys = {
-                    "growth",
-                    "stage",
-                    "inventory",
+                quote = getattr(widget, "quote", None)
+                outcome = getattr(widget, "outcome", None)
+                visible_label_text = {
+                    str(label_widget.text()).strip()
+                    for label_widget in widget.findChildren(QLabel)
+                    if label_widget.isVisible()
+                    and str(label_widget.text()).strip()
                 }
-                facts_complete = required_fact_keys == set(widget.fact_values) and all(
-                    str(widget.fact_values[key].text()).strip()
-                    and str(widget.fact_values[key].text()).strip() != "—"
-                    for key in required_fact_keys
+                compact_result = str(widget.compact_summary.text()).strip()
+                compact_result_visible = bool(
+                    widget.compact_summary_card.isVisible()
+                    and compact_result
+                )
+                plant_details_visible = bool(
+                    widget.hero.isVisible()
+                    and widget.target_name.isVisible()
+                    and str(widget.target_name.text()).strip()
+                )
+                charge_details_visible = bool(
+                    widget.selector_card.isVisible()
+                    and (
+                        widget.charge_selector.isVisible()
+                        or widget.static_charge_row.isVisible()
+                    )
+                )
+                quantity_text = " ".join(filter(None, (
+                    str(widget.static_charge_quantity.text()).strip(),
+                    str(widget.charge_selector.currentText()).strip(),
+                )))
+                result_matches_quote = bool(
+                    quote is not None
+                    and compact_result_visible
+                    and f"{max(0, int(quote.current_growth)):,}" in compact_result
+                    and f"{max(0, int(quote.projected_growth)):,}" in compact_result
+                )
+                target_state_value = str(
+                    getattr(
+                        getattr(quote, "target_state", ""),
+                        "value",
+                        getattr(quote, "target_state", ""),
+                    )
+                )
+                target_state_label = format_status_label(target_state_value)
+                target_state_visible = bool(
+                    target_state_label
+                    and any(
+                        target_state_label.casefold() in text.casefold()
+                        for text in visible_label_text
+                    )
+                )
+                footer = getattr(widget, "_pinned_footer", None)
+                nursery_action_in_footer = bool(
+                    footer is not None
+                    and footer.isAncestorOf(widget.nursery_action)
                 )
                 state_visible = True
                 if state_name == "growth-charge-empty-inventory":
                     state_visible = (
-                        not widget.empty_inventory.isHidden()
-                        and not widget.nursery_action.isHidden()
-                        and widget.nursery_action.parentWidget()
-                        is widget.empty_inventory
+                        widget.empty_inventory.isVisible()
+                        and widget.nursery_action.isVisible()
+                        and nursery_action_in_footer
                         and widget.use_action.isHidden()
                     )
                 elif state_name == "growth-charge-loading-disabled":
                     state_visible = (
-                        not widget.use_action.isEnabled()
+                        bool(widget._submitting)
+                        and bool(widget.dialog_in_flight)
+                        and not widget.use_action.isEnabled()
                         and not widget.cancel_action.isEnabled()
                         and not widget.charge_selector.isEnabled()
-                        and _displayed_button_text(widget.use_action)
-                        == "Applying Growth Charge…"
+                        and bool(widget.use_action.property("busy"))
+                        and plant_details_visible
+                        and charge_details_visible
+                        and result_matches_quote
                     )
                 elif state_name == "growth-charge-invalid-target":
                     state_visible = (
-                        not widget.alert.isHidden()
+                        widget.alert.isVisible()
                         and bool(widget.alert.text().strip())
+                        and plant_details_visible
+                        and charge_details_visible
+                        and target_state_visible
+                        and bool(quantity_text)
+                        and widget._primary_route == "choose_plant"
                         and widget.use_action.isEnabled()
-                        and _displayed_button_text(widget.use_action)
-                        == "Choose another plant"
                     )
-                elif state_name in {
-                    "growth-charge-stale-inventory",
-                    "growth-charge-persistence-failure",
-                }:
+                elif state_name == "growth-charge-stale-inventory":
                     state_visible = (
-                        not widget.alert.isHidden()
+                        outcome is not None
+                        and str(
+                            getattr(
+                                getattr(outcome, "status", ""),
+                                "value",
+                                getattr(outcome, "status", ""),
+                            )
+                        ) == "stale_inventory"
+                        and quote is not None
+                        and bool(quote.ready)
+                        and not bool(widget._submitting)
+                        and widget.use_action.isEnabled()
+                        and plant_details_visible
+                        and charge_details_visible
+                        and result_matches_quote
+                        and f"{max(0, int(quote.inventory_before)):,}" in quantity_text
+                    )
+                elif state_name == "growth-charge-persistence-failure":
+                    state_visible = (
+                        widget.alert.isVisible()
                         and bool(widget.alert.text().strip())
+                        and bool(quantity_text)
+                        and widget.use_action.isEnabled()
                     )
                 elif state_name == "growth-charge-success-stage-reward":
-                    reward_chips = {
-                        str(label_widget.text())
-                        for label_widget in widget.reward_chips.findChildren(QLabel)
-                        if label_widget.isVisible()
-                        and str(label_widget.text()).strip()
-                    }
-                    outcome = widget.outcome
-                    rewards = tuple(outcome.rewards or ())
+                    rewards = tuple(getattr(outcome, "rewards", ()) or ())
                     reward_total = sum(
                         max(0, int(getattr(reward, "garden_coins", 0) or 0))
                         for reward in rewards
                     )
-                    expected_reward_chips = {
-                        *{
-                            f"{format_status_label(str(getattr(reward, 'stage', '') or 'Stage'))} reward"
-                            for reward in rewards
-                        },
-                    }
-                    if reward_total:
-                        expected_reward_chips.add(
-                            f"+{reward_total:,} Garden Coins"
-                        )
+                    transition = (
+                        f"{format_status_label(str(getattr(outcome, 'previous_stage', '')))} → "
+                        f"{format_status_label(str(getattr(outcome, 'resulting_stage', '')))}"
+                    )
+                    reward_copy = f"+{reward_total:,} Garden Coins"
                     state_visible = (
-                        not widget.receipt.isHidden()
-                        and expected_reward_chips.issubset(reward_chips)
+                        outcome is not None
+                        and widget.receipt.isVisible()
+                        and transition in visible_label_text
+                        and reward_copy in visible_label_text
                         and widget.receipt_copy.isVisible()
-                        and str(widget.receipt_copy.text()).strip()
-                        == (
-                            f"+{max(0, int(outcome.growth_granted)):,} Growth · "
-                            f"{max(0, int(outcome.inventory_remaining)):,} remaining"
-                        )
-                        and _displayed_button_text(widget.use_action) == "View plant"
-                        and _displayed_button_text(widget.cancel_action) == "Close"
+                        and f"+{max(0, int(getattr(outcome, 'growth_granted', 0))):,} Growth"
+                        in str(widget.receipt_copy.text())
+                        and f"{max(0, int(getattr(outcome, 'inventory_remaining', 0))):,}"
+                        in str(widget.receipt_copy.text())
+                        and widget.use_action.isEnabled()
+                        and widget.cancel_action.isHidden()
                     )
                 declared_size = list(
                     expectation.get("declared_client_size", ()) or ()
@@ -6027,32 +6085,24 @@ class _UiFaceCaptureRunner:
                     not declared_size
                     or [int(widget.width()), int(widget.height())] == declared_size
                 )
-                expected_title = (
-                    "Growth Charge applied"
-                    if state_name == "growth-charge-success-stage-reward"
-                    else "Use Growth Charge"
-                )
                 require(
                     "growth_charge_confirmation_state",
-                    title == expected_title
+                    bool(title)
                     and actual_status == expected_status
                     and bool(annotation.get("passed", False))
                     and len(active_scrolls) == 1
                     and state_visible
                     and geometry_matches
-                    and (
-                        state_name in {
-                            "growth-charge-empty-inventory",
-                            "growth-charge-success-stage-reward",
-                        }
-                        or facts_complete
-                    ),
+                    and not bool(widget.content_scroll.verticalScrollBar().isVisible()),
                     {
                         "expected_status": expected_status,
                         "actual_status": actual_status,
                         "buttons": buttons,
                         "active_scroll_count": len(active_scrolls),
-                        "facts_complete": facts_complete,
+                        "compact_result_visible": compact_result_visible,
+                        "plant_details_visible": plant_details_visible,
+                        "charge_details_visible": charge_details_visible,
+                        "target_state_visible": target_state_visible,
                         "state_visible": state_visible,
                         "declared_size": declared_size,
                         "actual_size": [int(widget.width()), int(widget.height())],
@@ -10834,68 +10884,158 @@ class _UiFaceCaptureRunner:
         ledger_count = len(state.completed_growth_charge_requests)
         alert_visible = not dialog.alert.isHidden()
         receipt_visible = not dialog.receipt.isHidden()
+        quote = getattr(dialog, "quote", None)
+        outcome = getattr(dialog, "outcome", None)
+        visible_label_text = {
+            str(label_widget.text()).strip()
+            for label_widget in dialog.findChildren(QLabel)
+            if label_widget.isVisible()
+            and str(label_widget.text()).strip()
+        }
+        compact_result = str(dialog.compact_summary.text()).strip()
+        compact_result_visible = bool(
+            dialog.compact_summary_card.isVisible()
+            and compact_result
+        )
+        result_matches_quote = bool(
+            quote is not None
+            and compact_result_visible
+            and f"{max(0, int(quote.current_growth)):,}" in compact_result
+            and f"{max(0, int(quote.projected_growth)):,}" in compact_result
+        )
+        plant_details_visible = bool(
+            dialog.hero.isVisible()
+            and dialog.target_name.isVisible()
+            and str(dialog.target_name.text()).strip()
+        )
+        charge_details_visible = bool(
+            dialog.selector_card.isVisible()
+            and (
+                dialog.charge_selector.isVisible()
+                or dialog.static_charge_row.isVisible()
+            )
+        )
+        quantity_text = " ".join(filter(None, (
+            str(dialog.static_charge_quantity.text()).strip(),
+            str(dialog.charge_selector.currentText()).strip(),
+        )))
         conditions = [actual_status == expected_status]
         if variant == "ready":
             conditions.extend([
-                bool(dialog.quote is not None and dialog.quote.ready),
+                bool(quote is not None and quote.ready),
                 dialog.use_action.isEnabled(),
+                plant_details_visible,
+                charge_details_visible,
+                result_matches_quote,
                 inventory == 2,
             ])
         elif variant == "empty":
+            footer = getattr(dialog, "_pinned_footer", None)
             conditions.extend([
-                not dialog.empty_inventory.isHidden(),
-                not dialog.nursery_action.isHidden(),
+                dialog.empty_inventory.isVisible(),
+                dialog.nursery_action.isVisible(),
+                bool(
+                    footer is not None
+                    and footer.isAncestorOf(dialog.nursery_action)
+                ),
                 dialog.use_action.isHidden(),
                 inventory == 0,
             ])
         elif variant == "loading":
             conditions.extend([
                 dialog._submitting,
+                dialog.dialog_in_flight,
                 not dialog.use_action.isEnabled(),
                 not dialog.cancel_action.isEnabled(),
                 not dialog.charge_selector.isEnabled(),
-                dialog.use_action.text() == "Applying Growth Charge…",
+                bool(dialog.use_action.property("busy")),
+                plant_details_visible,
+                charge_details_visible,
+                result_matches_quote,
                 inventory == 2,
             ])
         elif variant == "stale":
             conditions.extend([
-                alert_visible,
-                "inventory changed" in dialog.alert.text().casefold(),
+                outcome is not None,
+                str(
+                    getattr(
+                        getattr(outcome, "status", ""),
+                        "value",
+                        getattr(outcome, "status", ""),
+                    )
+                ) == "stale_inventory",
+                bool(quote is not None and quote.ready),
+                not dialog._submitting,
+                dialog.use_action.isEnabled(),
+                plant_details_visible,
+                charge_details_visible,
+                result_matches_quote,
+                f"{inventory:,}" in quantity_text,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 1_250,
                 ledger_count == 0,
             ])
         elif variant == "invalid":
+            from .ui.formatters import format_status_label
+
+            target_state = str(
+                getattr(
+                    getattr(quote, "target_state", ""),
+                    "value",
+                    getattr(quote, "target_state", ""),
+                )
+            )
+            target_state_label = format_status_label(target_state)
             conditions.extend([
                 alert_visible,
+                plant_details_visible,
+                charge_details_visible,
+                bool(quantity_text),
+                bool(
+                    target_state_label
+                    and any(
+                        target_state_label.casefold() in text.casefold()
+                        for text in visible_label_text
+                    )
+                ),
                 dialog.use_action.isEnabled(),
-                dialog.use_action.text() == "Choose another plant",
+                dialog._primary_route == "choose_plant",
                 not bool(getattr(target, "planted", False)),
                 ledger_count == 0,
             ])
         elif variant == "persistence":
             conditions.extend([
                 alert_visible,
-                "could not save" in dialog.alert.text().casefold(),
+                bool(dialog.alert.text().strip()),
+                bool(quantity_text),
+                dialog.use_action.isEnabled(),
                 inventory == 2,
                 int(getattr(target, "growth_points", -1)) == 1_250,
                 ledger_count == 0,
             ])
         elif variant == "success":
-            outcome = dialog.outcome
+            from .ui.formatters import format_status_label
+
+            transition = (
+                f"{format_status_label(str(getattr(outcome, 'previous_stage', '')))} → "
+                f"{format_status_label(str(getattr(outcome, 'resulting_stage', '')))}"
+            )
+            reward_total = sum(
+                int(reward.garden_coins)
+                for reward in getattr(outcome, "rewards", ())
+            )
             conditions.extend([
                 receipt_visible,
                 bool(outcome is not None and outcome.success),
                 tuple(getattr(outcome, "completed_stages", ())) == ("sprout",),
-                sum(
-                    int(reward.garden_coins)
-                    for reward in getattr(outcome, "rewards", ())
-                ) == 5,
+                reward_total == 5,
+                transition in visible_label_text,
+                f"+{reward_total:,} Garden Coins" in visible_label_text,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 550,
                 ledger_count == 1,
-                dialog.use_action.text() == "View plant",
-                dialog.cancel_action.text() == "Close",
+                dialog.use_action.isEnabled(),
+                dialog.cancel_action.isHidden(),
             ])
         single_scroll_region = len(dialog.active_vertical_scroll_regions()) == 1
         conditions.append(single_scroll_region)
@@ -10909,6 +11049,10 @@ class _UiFaceCaptureRunner:
             "request_ledger_count": ledger_count,
             "alert_visible": alert_visible,
             "receipt_visible": receipt_visible,
+            "compact_result_visible": compact_result_visible,
+            "result_matches_quote": result_matches_quote,
+            "plant_details_visible": plant_details_visible,
+            "charge_details_visible": charge_details_visible,
             "single_scroll_region": single_scroll_region,
             "passed": passed,
         })

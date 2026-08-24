@@ -339,19 +339,17 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert 'if variant == "invalid-target"' in purchase_fixture
     for owned_action in ("Store plant", "Plant in garden", "View in garden"):
         assert f'"{owned_action}"' in fixture_postcondition
-    assert '== "Applying Growth Charge…"' in fixture_postcondition
-    assert '== "Choose another plant"' in fixture_postcondition
-    assert '== "View plant"' in fixture_postcondition
-    assert '== "Applying Growth Charge…"' in growth_charge_annotation
-    assert 'dialog.use_action.text() == "Choose another plant"' in growth_charge_annotation
-    assert 'dialog.use_action.text() == "View plant"' in growth_charge_annotation
-    assert 'dialog.cancel_action.text() == "Close"' in growth_charge_annotation
-    assert '"growth",' in fixture_postcondition
-    assert '"current",' not in fixture_postcondition
-    assert '"projected",' not in fixture_postcondition
-    assert '"stage",' in fixture_postcondition
-    assert '"inventory",' in fixture_postcondition
-    assert '"Growth Charge applied"' in fixture_postcondition
+    assert "nursery_action_in_footer" in fixture_postcondition
+    assert "result_matches_quote" in fixture_postcondition
+    assert "target_state_visible" in fixture_postcondition
+    assert "transition in visible_label_text" in fixture_postcondition
+    assert "widget.dialog_in_flight" in fixture_postcondition
+    assert "widget.cancel_action.isHidden()" in fixture_postcondition
+    assert "dialog.dialog_in_flight" in growth_charge_annotation
+    assert "result_matches_quote" in growth_charge_annotation
+    assert "target_state_label" in growth_charge_annotation
+    assert "transition in visible_label_text" in growth_charge_annotation
+    assert "dialog.cancel_action.isHidden()" in growth_charge_annotation
     assert "scroll_maximum == 0" not in fixture_postcondition
     assert '"loadout_routes_enabled": bool(' in collection_fixture
     assert '"action_buttons_fully_visible": bool(' in collection_fixture
