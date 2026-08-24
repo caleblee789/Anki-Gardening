@@ -5811,13 +5811,16 @@ class ProgressCardGrid(QWidget):
         *,
         wide_columns: int = 2,
         minimum_item_width: int = 180,
+        minimum_card_height: int = 136,
     ) -> None:
         super().__init__(parent)
         self.setAccessibleName(accessible_name)
         self._entries: list[tuple[QWidget, bool]] = []
         self._wide_columns = max(1, int(wide_columns))
         self._minimum_item_width = max(120, int(minimum_item_width))
+        self._minimum_card_height = max(96, int(minimum_card_height))
         self._columns = self._wide_columns
+        self._layout_row_count = 0
         self.container = QWidget()
         self.container.setObjectName("progressCardGridContainer")
         self.container.setStyleSheet(
@@ -5845,13 +5848,18 @@ class ProgressCardGrid(QWidget):
     def clear(self) -> None:
         while self.grid.count():
             self.grid.takeAt(0)
+        self._reset_row_metrics()
         for widget, _full_width in self._entries:
             widget.hide()
             widget.setParent(None)
             widget.deleteLater()
         self._entries.clear()
+        self.container.setMinimumHeight(0)
 
     def add_card(self, card: QWidget) -> None:
+        card.setMinimumHeight(
+            max(self._minimum_card_height, int(card.minimumHeight()))
+        )
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._entries.append((card, False))
         self._reflow()
@@ -5863,31 +5871,71 @@ class ProgressCardGrid(QWidget):
     def add_empty(self, title: str, body: str = "") -> None:
         self.add_full_width(EmptyState(title, body))
 
+    def _reset_row_metrics(self) -> None:
+        for row_index in range(max(self._layout_row_count, len(self._entries) + 2)):
+            self.grid.setRowMinimumHeight(row_index, 0)
+            self.grid.setRowStretch(row_index, 0)
+
     def _reflow(self) -> None:
         while self.grid.count():
             self.grid.takeAt(0)
+        self._reset_row_metrics()
         row = 0
         column = 0
+        row_minimums: dict[int, int] = {}
         for widget, full_width in self._entries:
+            # Explicitly hidden states, such as the Collection no-results
+            # panel, must not leave phantom rows in the populated grid.
+            if widget.isHidden():
+                continue
             if full_width:
                 if column:
                     row += 1
                     column = 0
                 self.grid.addWidget(widget, row, 0, 1, self._columns)
+                row_minimums[row] = max(
+                    row_minimums.get(row, 0),
+                    int(widget.minimumHeight()),
+                    int(widget.minimumSizeHint().height()),
+                )
                 row += 1
                 continue
             self.grid.addWidget(widget, row, column)
+            row_minimums[row] = max(
+                row_minimums.get(row, 0),
+                self._minimum_card_height,
+                int(widget.minimumHeight()),
+            )
             column += 1
             if column >= self._columns:
                 row += 1
                 column = 0
-        for index in range(self._columns):
-            self.grid.setColumnStretch(index, 1)
-        self.grid.setRowStretch(row + (1 if column else 0), 1)
+        for index in range(self._wide_columns):
+            self.grid.setColumnStretch(index, 1 if index < self._columns else 0)
+        for row_index, minimum in row_minimums.items():
+            self.grid.setRowMinimumHeight(row_index, max(0, int(minimum)))
+        trailing_row = row + (1 if column else 0)
+        self.grid.setRowStretch(trailing_row, 1)
+        self._layout_row_count = trailing_row + 1
+        self.grid.invalidate()
+        self.grid.activate()
+        required_height = max(
+            0,
+            int(self.grid.minimumSize().height()),
+            int(self.grid.sizeHint().height()),
+        )
+        self.container.setMinimumHeight(required_height)
+        self.container.setProperty("contentRowCount", len(row_minimums))
+        self.container.setProperty("contentMinimumHeight", required_height)
         self.container.updateGeometry()
+        self.updateGeometry()
 
     def finish(self) -> None:
         self._reflow()
+        # Callers update the no-results visibility immediately after finish().
+        # Re-measure once that state is applied so 0, 1, and full-result views
+        # all retain their natural content height.
+        QTimer.singleShot(0, self._reflow)
 
     def resizeEvent(self, event: Any) -> None:
         width = event.size().width()

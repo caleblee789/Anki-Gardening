@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,3 +35,66 @@ def test_settings_advanced_actions_reserve_footer_clearance() -> None:
     assert "self.advanced_actions_layout.setContentsMargins(0, 8, 0, 16)" in source
     assert "self.controls_scroll.setVerticalScrollBarPolicy(" in source
     assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in source
+
+
+def test_progress_card_grid_owns_content_driven_row_geometry() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    grid = source.split("class ProgressCardGrid", 1)[1].split(
+        "class ResponsiveTileGrid", 1
+    )[0]
+
+    assert "minimum_card_height: int = 136" in grid
+    assert "self.grid.setRowMinimumHeight(row_index, 0)" in grid
+    assert "self.grid.setRowStretch(row_index, 0)" in grid
+    assert "row_minimums: dict[int, int] = {}" in grid
+    assert "self.grid.setRowMinimumHeight(row_index, max(0, int(minimum)))" in grid
+    assert "self.container.setMinimumHeight(required_height)" in grid
+    assert 'self.container.setProperty("contentRowCount", len(row_minimums))' in grid
+    assert "QTimer.singleShot(0, self._reflow)" in grid
+
+
+def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    try:
+        from aqt.qt import QApplication, QFrame
+        from ankigarden.ui.dashboard import ProgressCardGrid
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed")
+
+    application = QApplication.instance() or QApplication([])
+    grid = ProgressCardGrid(
+        "Collection geometry test",
+        wide_columns=4,
+        minimum_item_width=160,
+        minimum_card_height=224,
+    )
+    grid.resize(900, 420)
+    grid.show()
+
+    for _index in range(38):
+        grid.add_card(QFrame())
+    grid.finish()
+    application.processEvents()
+    assert int(grid.container.property("contentRowCount")) == 10
+    assert grid.container.minimumHeight() >= 10 * 224
+
+    grid.clear()
+    grid.add_card(QFrame())
+    grid.finish()
+    application.processEvents()
+    assert int(grid.container.property("contentRowCount")) == 1
+    assert grid.container.minimumHeight() >= 224
+
+    grid.clear()
+    grid.add_empty("No matches")
+    grid.finish()
+    application.processEvents()
+    assert int(grid.container.property("contentRowCount")) == 1
+    assert grid.container.minimumHeight() > 0
+
+    grid.close()
+    grid.deleteLater()
+    application.processEvents()
