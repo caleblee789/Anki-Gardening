@@ -2557,10 +2557,28 @@ def _native_layout_telemetry_record_issues(
         size_name = button.get("buttonSize")
         expected_height = button_heights.get(size_name)
         text_size = _strict_number(button.get("renderedTextSize"))
+        actual_height = button.get("height")
+        actual_width = button.get("width")
+        visual_size = button.get("visualControlSize")
+        expected_outer_height = (
+            expected_height + 2
+            if type(expected_height) is int else None
+        )
         if (
             expected_height is None
             or button.get("expectedHeight") != expected_height
-            or button.get("height") != expected_height
+            or button.get("expectedOuterHeight") != expected_outer_height
+            or type(actual_height) is not int
+            or type(actual_width) is not int
+            or type(visual_size) is not int
+            or visual_size != expected_height
+            or actual_height != expected_outer_height
+            or button.get("outerBorderAllowance") != 2
+            or (
+                type(actual_height) is int
+                and type(visual_size) is int
+                and actual_height - visual_size != 2
+            )
             or button.get("passed") is not True
             or (
                 bool(str(button.get("text", "")).strip())
@@ -2571,7 +2589,10 @@ def _native_layout_telemetry_record_issues(
             )
             or (
                 size_name == "icon"
-                and button.get("width") != expected_height
+                and (
+                    actual_width != actual_height
+                    or actual_width != expected_outer_height
+                )
             )
         ):
             problems.append("native button geometry or text size is invalid")

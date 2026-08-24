@@ -453,9 +453,12 @@ def _valid_native_layout_telemetry(
         "buttonRecords": [{
             "text": "",
             "buttonSize": "icon",
-            "height": 30,
-            "width": 30,
+            "height": 32,
+            "width": 32,
             "expectedHeight": 30,
+            "expectedOuterHeight": 32,
+            "visualControlSize": 30,
+            "outerBorderAllowance": 2,
             "renderedTextSize": 13.0,
             "passed": True,
         }],
@@ -1485,6 +1488,54 @@ def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
     assert "elision is missing tooltip" in message
     assert "button geometry or text size" in message
     assert "tabular numeral evidence is incomplete" in message
+
+
+def test_manifest_accepts_hidden_range_positive_non_owner_scrollbar(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    record = next(
+        item
+        for item in records
+        if isinstance(item, dict)
+        and item.get("label") == "progress-collection"
+    )
+    telemetry = record["native_layout_telemetry"]
+    assert isinstance(telemetry, dict)
+    telemetry["scrollbars"] = [
+        {
+            "minimum": 0,
+            "maximum": 0,
+            "value": 0,
+            "visible": False,
+            "overflowOwner": True,
+        },
+        {
+            "minimum": 0,
+            "maximum": 737,
+            "value": 0,
+            "visible": False,
+            "overflowOwner": False,
+        },
+    ]
+    telemetry["overflowOwnerCount"] = 1
+    audit = record["audit"]
+    assert isinstance(audit, dict)
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
+    _write_json(manifest, payload)
+
+    validate_capture_manifest(manifest)
+
+    telemetry["scrollbars"][1]["visible"] = True
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
+    _write_json(manifest, payload)
+    with pytest.raises(
+        CaptureValidationError,
+        match="native non-owner scrollbar is visible",
+    ):
+        validate_capture_manifest(manifest)
 
 
 def test_manifest_rejects_nonrepresentative_release_profile(tmp_path: Path) -> None:

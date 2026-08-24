@@ -407,7 +407,10 @@ def test_content_fit_is_coalesced_and_publishes_native_capture_evidence() -> Non
     ):
         assert evidence in telemetry
     assert "self.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)" in telemetry
-    assert telemetry.count("isVisibleTo(self)") >= 2
+    assert "scroll.isVisibleTo(self)" in telemetry
+    assert "bar.isVisibleTo(self)" in telemetry
+    assert "bar.isVisibleTo(scroll)" not in telemetry
+    assert "not scroll.isHidden()" not in telemetry
 
 
 def test_text_fit_buttons_use_a_non_shrinking_native_size_policy() -> None:

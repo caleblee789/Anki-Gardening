@@ -3951,6 +3951,13 @@ class _UiFaceCaptureRunner:
                 ):
                     continue
                 size_name = str(button.property("buttonSize") or "")
+                # Navigation rows, filters, and other purpose-built controls
+                # do not opt into the shared action-button tokens. Their own
+                # geometry is audited by the visual contract; treating an
+                # absent token as a failed token created warnings for valid UI.
+                if not size_name:
+                    continue
+                expected_height = CAPTURE_BUTTON_HEIGHTS.get(size_name)
                 height = int(button.height())
                 text = _displayed_button_text(button).strip()
                 measured_text_size = button.property("renderedTextSizePx")
@@ -3972,27 +3979,46 @@ class _UiFaceCaptureRunner:
                             if screen is not None else 96.0
                         )
                         text_size = round(point_size * dpi / 72.0, 2)
-                expected_height = CAPTURE_BUTTON_HEIGHTS.get(size_name)
+                visual_control_size = button.property("visualControlSize")
+                visual_size = (
+                    int(visual_control_size)
+                    if type(visual_control_size) is int else -1
+                )
+                expected_outer_height = (
+                    int(expected_height) + 2
+                    if type(expected_height) is int else -1
+                )
+                outer_height_valid = height == expected_outer_height
+                width = int(button.width())
+                icon_geometry_valid = bool(
+                    size_name != "icon"
+                    or (
+                        width == height
+                        and width == expected_outer_height
+                    )
+                )
                 passed = bool(
-                    expected_height is not None
-                    and height == expected_height
+                    type(expected_height) is int
+                    and visual_size == expected_height
+                    and outer_height_valid
+                    and height - visual_size == 2
                     and (
                         not text
                         or text_size >= float(
                             CAPTURE_LAYOUT_LIMITS["minimum_rendered_text_px"]
                         )
                     )
-                    and (
-                        size_name != "icon"
-                        or int(button.width()) == expected_height
-                    )
+                    and icon_geometry_valid
                 )
                 buttons.append({
                     "text": text,
                     "buttonSize": size_name,
                     "height": height,
-                    "width": int(button.width()),
+                    "width": width,
                     "expectedHeight": expected_height,
+                    "expectedOuterHeight": expected_outer_height,
+                    "visualControlSize": visual_size,
+                    "outerBorderAllowance": height - visual_size,
                     "renderedTextSize": text_size,
                     "passed": passed,
                 })
@@ -4177,9 +4203,10 @@ class _UiFaceCaptureRunner:
                 else 0
             )
             text_width = int(button.fontMetrics().horizontalAdvance(text))
+            token_padding = button.property("horizontalPadding")
             horizontal_padding = (
-                20
-                if button.property("compactRowAction")
+                2 * int(token_padding)
+                if type(token_padding) is int
                 else 16
                 if button.property("disclosureRow")
                 else 28
@@ -4677,6 +4704,13 @@ class _UiFaceCaptureRunner:
                 )
             ]
             if ready:
+                if required_overlays:
+                    composite = [
+                        row for row in ready
+                        if row[0].startswith("qt-shell-with-webview")
+                    ]
+                    if composite:
+                        ready = composite
                 method, pixmap, _metrics = max(
                     ready,
                     key=(
@@ -5246,6 +5280,8 @@ class _UiFaceCaptureRunner:
         if kind == "reviewer":
             handler = getattr(self.app, "reviewer_hooks", None)
             toast = getattr(handler, "_reward_toast", None)
+            reviewer = getattr(mw, "reviewer", None)
+            dashboard = getattr(self.app, "dashboard", None)
             labels = {
                 str(label_widget.objectName()): str(label_widget.text())
                 for label_widget in (
@@ -5261,8 +5297,22 @@ class _UiFaceCaptureRunner:
             )
             require(
                 "reviewer_surface",
-                str(getattr(mw, "state", "")) == "review",
-                str(getattr(mw, "state", "")),
+                bool(
+                    str(getattr(mw, "state", "")) == "review"
+                    and reviewer is not None
+                    and getattr(reviewer, "card", None) is not None
+                    and (dashboard is None or not dashboard.isVisible())
+                ),
+                {
+                    "state": str(getattr(mw, "state", "")),
+                    "card_present": bool(
+                        reviewer is not None
+                        and getattr(reviewer, "card", None) is not None
+                    ),
+                    "dashboard_hidden": bool(
+                        dashboard is None or not dashboard.isVisible()
+                    ),
+                },
             )
             require(
                 "reward_toast_visible",
@@ -5913,6 +5963,26 @@ class _UiFaceCaptureRunner:
                         and direct_growth.get("value_contained", False)
                     ),
                     direct_growth,
+                )
+            elif state_name == "progress-collection":
+                from .collectibles import collectible_views
+
+                collection_views = tuple(collectible_views(garden_state))
+                collected_count = sum(
+                    1 for view in collection_views if bool(view.owned)
+                )
+                expected_summary = "31 of 38 collectibles collected"
+                require(
+                    "representative_collection_summary",
+                    len(collection_views) == 38
+                    and collected_count == 31
+                    and expected_summary in visible_label_texts,
+                    {
+                        "collected": collected_count,
+                        "total": len(collection_views),
+                        "expected_summary": expected_summary,
+                        "visible_labels": visible_label_texts,
+                    },
                 )
             elif state_name == "collection-several-discovered":
                 require(
@@ -11085,6 +11155,16 @@ class _UiFaceCaptureRunner:
         self._capture_progress_page("achievements", "progress-achievements")
 
     def _capture_progress_collection(self) -> None:
+        # The compact release sequence still uses the same information-rich
+        # canonical state as the former exhaustive Collection surface. This
+        # yields the truthful 31-of-38 summary while avoiding duplicate state
+        # permutations in the contact sheets.
+        if (
+            self._capture_profile == "representative"
+            and not self._ensure_development_stress_state()
+        ):
+            self._next_after(200)
+            return
         self._capture_progress_page("collection", "progress-collection")
 
     def _capture_species_overview(self) -> None:
@@ -13557,8 +13637,76 @@ class _UiFaceCaptureRunner:
             cleanup()
             raise
 
+    def _prepare_representative_nursery_fixture(
+        self,
+        label: str,
+        dashboard: Any,
+    ) -> Callable[[], None]:
+        """Expose one useful partial-catalog state without weakening 31/38.
+
+        The representative Collection capture owns the canonical broad state.
+        Nursery needs a different single painting: one owned plant, affordable
+        catalog context, the next bed, and unequipped environment choices. The
+        mutation is fully reversible so later Settings and transaction facts
+        continue to use the canonical development projection.
+        """
+
+        snapshot = self._capture_fixture_state_snapshot(label)
+        if self._capture_profile != "representative":
+            return lambda: self._restore_capture_fixture_state(snapshot)
+        try:
+            from .environment import GROWTH_CHARGES
+
+            state = self.app.storage.state
+            plants = list(getattr(state, "plants", ()) or ())
+            if not plants:
+                raise RuntimeError("representative Nursery requires one plant")
+            representative = plants[0]
+            representative.slot_index = 0
+            state.plants = [representative]
+            state.unlocked_species = [str(representative.species)]
+            state.unlocked_slots = 2
+            state.active_plant_id = str(representative.plant_id)
+            state.currency_balance = 0
+
+            inventory = dict(getattr(state, "inventory", {}) or {})
+            for category, selected in (
+                ("weather", str(getattr(state.loadout, "weather_id", "") or "")),
+                ("scenery", str(getattr(state.loadout, "scenery_id", "") or "")),
+                (
+                    "decorations",
+                    str(getattr(state.loadout, "decoration_id", "") or ""),
+                ),
+            ):
+                inventory[category] = [selected] if selected else []
+            state.inventory = inventory
+
+            consumables = dict(getattr(state, "consumables", {}) or {})
+            for item_id in (
+                "fertilizer_basic",
+                "booster_potion",
+                *tuple(GROWTH_CHARGES),
+            ):
+                consumables[item_id] = 0
+            state.consumables = consumables
+            dashboard.refresh_all()
+        except Exception:
+            self._restore_capture_fixture_state(snapshot)
+            raise
+        return lambda: self._restore_capture_fixture_state(snapshot)
+
     def _capture_nursery_plants(self) -> None:
-        self._capture_nursery_tab(0, "nursery-plants")
+        label = "nursery-plants"
+        self._capture_nursery_tab(
+            0,
+            label,
+            fixture_setup=lambda dashboard: (
+                self._prepare_representative_nursery_fixture(
+                    label,
+                    dashboard,
+                )
+            ),
+        )
 
     def _capture_nursery_fertilizer_booster(self) -> None:
         label = "nursery-fertilizer-booster"
@@ -13567,7 +13715,10 @@ class _UiFaceCaptureRunner:
         def setup(dashboard: Any) -> Callable[[], None]:
             from .collectibles import collectible_registry
 
-            snapshot = self._capture_fixture_state_snapshot(label)
+            restore = self._prepare_representative_nursery_fixture(
+                label,
+                dashboard,
+            )
             try:
                 state = self.app.storage.state
                 item = next(
@@ -13601,9 +13752,9 @@ class _UiFaceCaptureRunner:
                 })
                 dashboard.refresh_all()
             except Exception:
-                self._restore_capture_fixture_state(snapshot)
+                restore()
                 raise
-            return lambda: self._restore_capture_fixture_state(snapshot)
+            return restore
 
         def audit(dialog: Any) -> None:
             item_id = str(fixture.get("item_id", ""))
@@ -13649,7 +13800,17 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_nursery_garden_spaces(self) -> None:
-        self._capture_nursery_tab(2, "nursery-garden-spaces")
+        label = "nursery-garden-spaces"
+        self._capture_nursery_tab(
+            2,
+            label,
+            fixture_setup=lambda dashboard: (
+                self._prepare_representative_nursery_fixture(
+                    label,
+                    dashboard,
+                )
+            ),
+        )
 
     def _capture_nursery_weather_scenery(self) -> None:
         label = "nursery-weather-scenery"
@@ -13740,6 +13901,12 @@ class _UiFaceCaptureRunner:
         self._capture_nursery_tab(
             3,
             label,
+            fixture_setup=lambda dashboard: (
+                self._prepare_representative_nursery_fixture(
+                    label,
+                    dashboard,
+                )
+            ),
             ready_audit=audit,
         )
 
@@ -16372,6 +16539,16 @@ class _UiFaceCaptureRunner:
         *,
         on_error: Callable[[], None] | None = None,
     ) -> None:
+        # GardenDashboard is a native child panel on macOS. Leaving it visible
+        # can cover the main Reviewer even after Anki enters review state, so a
+        # foreground screen-region grab records a cropped Garden instead of
+        # the card and reward notice. Close it before the transition and make
+        # hidden Dashboard state part of Reviewer readiness.
+        self._close_top_level_dialogs()
+        self._close_dashboard()
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
         if not self._prepare_reviewer_capture_card():
             self._failures.append({
                 "label": label,
@@ -16393,6 +16570,12 @@ class _UiFaceCaptureRunner:
                 str(getattr(mw, "state", "")) == "review"
                 and getattr(mw, "web", None) is not None
                 and mw.web.isVisible()
+                and getattr(getattr(mw, "reviewer", None), "card", None)
+                is not None
+                and (
+                    getattr(self.app, "dashboard", None) is None
+                    or not self.app.dashboard.isVisible()
+                )
             ),
             ready,
             tries=100,

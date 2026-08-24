@@ -796,6 +796,52 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     application.processEvents()
 
 
+def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the 1240 by 840 release viewport on one complete Garden surface."""
+
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.ui.dashboard import GardenDashboard
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    owner = QWidget()
+    owner.resize(1280, 900)
+    owner.show()
+    dashboard = GardenDashboard(owner, engine, storage, config)
+    dashboard.resize(1240, 840)
+    dashboard.show()
+    application.processEvents()
+    application.processEvents()
+    dashboard._update_scene_height(840)
+    application.processEvents()
+
+    viewport = dashboard.dashboard_scroll.viewport()
+    origin = dashboard.scene.mapTo(
+        viewport,
+        dashboard.scene.rect().topLeft(),
+    )
+    scene_bottom = int(origin.y()) + int(dashboard.scene.height())
+
+    assert int(dashboard.dashboard_scroll.verticalScrollBar().maximum()) == 0
+    assert int(origin.y()) >= 0
+    assert scene_bottom <= int(viewport.height())
+    assert int(dashboard.scene.maximumHeight()) == int(
+        dashboard.scene.property("viewportHeightLimit")
+    )
+
+    dashboard._fertilizer_timer.stop()
+    dashboard.hide()
+    owner.close()
+    application.processEvents()
+
+
 def test_live_qt_settings_details_stay_bounded_and_scroll_when_needed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

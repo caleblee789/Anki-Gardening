@@ -481,11 +481,27 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
         "collection-origin-plant-placement",
     ):
         assert f'"{label}"' in source
-    for index, label in (
-        (0, "nursery-plants"),
-        (2, "nursery-garden-spaces"),
+    for method_name, index, label in (
+        ("_capture_nursery_plants", 0, "nursery-plants"),
+        ("_capture_nursery_garden_spaces", 2, "nursery-garden-spaces"),
     ):
-        assert f'self._capture_nursery_tab({index}, "{label}")' in source
+        method = _method_source("_UiFaceCaptureRunner", method_name)
+        assert f'label = "{label}"' in method
+        assert f"{index}," in method
+        assert "self._prepare_representative_nursery_fixture(" in method
+    progress_collection = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_progress_collection",
+    )
+    assert 'self._capture_profile == "representative"' in progress_collection
+    assert "self._ensure_development_stress_state()" in progress_collection
+    representative_nursery = _method_source(
+        "_UiFaceCaptureRunner",
+        "_prepare_representative_nursery_fixture",
+    )
+    assert "snapshot = self._capture_fixture_state_snapshot(label)" in representative_nursery
+    assert "state.currency_balance = 0" in representative_nursery
+    assert "return lambda: self._restore_capture_fixture_state(snapshot)" in representative_nursery
     weather_fixture = _method_source(
         "_UiFaceCaptureRunner",
         "_capture_nursery_weather_scenery",
@@ -642,6 +658,8 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
     ):
         assert proof in visual_audit
     assert 'button.property("textFitClearance")' in visual_audit
+    assert 'button.property("horizontalPadding")' in visual_audit
+    assert "2 * int(token_padding)" in visual_audit
     assert "text_width + text_fit_clearance <= available_text_width" in visual_audit
     assert "visible >= 3" in icon_pixels
     assert '"capture_pixels_present"' in capture_pixels
@@ -649,6 +667,12 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
     assert '"rendered_pixel_evidence"' in capture_pixels
     assert "_pixmap_contains_overlay(pixmap, root, target)" in capture_pixels
     assert 'window_family in {"AnkiQt", "GardenDashboard"}' in native_layout_audit
+    assert "if not size_name" in native_layout_audit
+    assert '"visualControlSize"' in native_layout_audit
+    assert '"expectedOuterHeight"' in native_layout_audit
+    assert "height == expected_outer_height" in native_layout_audit
+    assert "height in {" not in native_layout_audit
+    assert "if expected_height is None:" not in native_layout_audit
     assert "QPushButton," in CAPTURE_PATH.read_text("utf-8")
     assert "_audit_capture_pixel_contracts(" in capture_now
     assert 'annotation["visual_contract"]' in capture_now
@@ -1148,12 +1172,16 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert 'cleanup_holder["callback"] = cleanup' in reviewer_capture
     assert "on_error=registered_cleanup" in reviewer_capture
     assert "on_error=on_error" in reviewer_wait
+    assert "self._close_top_level_dialogs()" in reviewer_wait
+    assert "self._close_dashboard()" in reviewer_wait
+    assert 'getattr(getattr(mw, "reviewer", None), "card", None)' in reviewer_wait
     assert reviewer_capture.index('cleanup_holder["callback"] = cleanup') < reviewer_capture.index(
         'config = getattr(self.app, "config", None)'
     )
     assert "required_overlays" in capture_home
     assert "self._pixmap_contains_overlay" in capture_home
     assert 'method += "-with-overlays"' in capture_home
+    assert 'row[0].startswith("qt-shell-with-webview")' in capture_home
     assert 'annotation["required_overlay_pixels_present"]' in capture_now
     assert "Reviewer reward toast was not present in the captured pixels" in capture_now
     assert "_reviewer_overlay_geometry_audit(" in reviewer_capture

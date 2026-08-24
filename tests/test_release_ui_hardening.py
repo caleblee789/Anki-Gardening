@@ -628,6 +628,9 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
     assert "self.resize(" not in settings_details
     assert "self.scene.setMaximumHeight(16777215)" in dashboard_scene
     assert "self.scene.setMaximumHeight(target)" not in dashboard_scene
+    assert "self.scene.mapTo(" in dashboard_scene
+    assert "self.scene.setMaximumHeight(scene_limit)" in dashboard_scene
+    assert 'self.scene.setProperty("viewportHeightLimit", scene_limit)' in dashboard_scene
     assert "margins = self._shell_layout.contentsMargins()" in customize
     assert "self.collection_detail_responsive.evaluate(content_width)" in customize
     assert "self.main_grid.setColumnStretch(column, 0)" in customize_mode

@@ -352,12 +352,29 @@ def set_button_size(
     """Apply shared button geometry while keeping ordinary actions text-fit."""
 
     normalized = size if isinstance(size, ButtonSize) else ButtonSize(str(size))
-    apply_button_size(button, normalized)
+    token = apply_button_size(button, normalized)
     button.setProperty("textFitAction", not allow_horizontal_stretch)
     if normalized is ButtonSize.ICON:
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         button.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)
     else:
+        # Qt's stylesheet size hint can omit part of its horizontal padding
+        # when a fixed-policy button is laid out beside other compact header
+        # actions.  Own the text-fit floor explicitly so a translated or
+        # otherwise wider label cannot lose glyphs.  The extra two pixels are
+        # the visible one-pixel border on each edge.
+        text = str(button.text()).replace("&&", "&")
+        if text:
+            text_width = int(button.fontMetrics().horizontalAdvance(text))
+            required_width = (
+                text_width
+                + (2 * int(token.horizontal_padding_px))
+                + 2
+            )
+            button.setMinimumWidth(
+                max(int(button.minimumWidth()), required_width)
+            )
+            button.setProperty("textFitMinimumWidth", required_width)
         button.setSizePolicy(
             (
                 QSizePolicy.Policy.Expanding
@@ -1427,8 +1444,8 @@ class DialogShell(QWidget):
                 is_owner = bool(scroll.property("dialogOverflowOwner"))
                 overflow_owner_count += int(is_owner)
                 visible = bool(
-                    not scroll.isHidden()
-                    and bar.isVisibleTo(scroll)
+                    scroll.isVisibleTo(self)
+                    and bar.isVisibleTo(self)
                     and int(bar.maximum()) > int(bar.minimum())
                 )
                 scroll.setProperty("scrollRangeMinimum", int(bar.minimum()))
@@ -7146,7 +7163,7 @@ class GardenSettingsDialog(GardenDialog):
             QLabel[saveStatus='true'] {{ padding:5px 8px; border-radius:8px; }}
             QLabel[unsavedState='true'] {{ color:{GARDEN_THEME['coin_accent']}; font-size:13px; font-weight:650; }}
             QFrame[diagnosticsCard='true'] {{ background:{GARDEN_THEME['raised_surface']}; border:0; border-left:4px solid {GARDEN_THEME['success']}; border-radius:12px; }}
-            QFrame[diagnosticsCard='true'][diagnosticState='warning'] {{ background:#332D1D; border-left:4px solid {GARDEN_THEME['warning']}; }}
+            QFrame[diagnosticsCard='true'][diagnosticState='warning'] {{ background:{GARDEN_THEME['raised_surface']}; border-left:4px solid {GARDEN_THEME['warning']}; }}
             QLineEdit[validationState='error'] {{ border:2px solid {GARDEN_THEME['error']}; padding:6px 9px; }}
             QLabel[fieldError='true'] {{ color:#ffb4ab; font-size:12px; font-weight:600; }}
             QLabel[diagnosticsIcon='true'] {{ color:{GARDEN_THEME['action_text']}; background:{GARDEN_THEME['success']}; border-radius:20px; font-size:20px; font-weight:800; }}
@@ -7357,6 +7374,10 @@ class GardenSettingsDialog(GardenDialog):
         self.diagnostics_card = QFrame()
         self.diagnostics_card.setProperty("diagnosticsCard", True)
         self.diagnostics_card.setProperty("diagnosticState", "clean")
+        self.diagnostics_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         diagnostics_layout = QHBoxLayout(self.diagnostics_card)
         diagnostics_layout.setContentsMargins(16, 14, 16, 14)
         diagnostics_layout.setSpacing(12)
@@ -16777,6 +16798,10 @@ class GardenDashboard(DialogShell):
         QTimer.singleShot(0, self._position_onboarding_coachmark)
         QTimer.singleShot(0, self._position_scene_overlays)
         super().resizeEvent(event)
+        # The scroll viewport and responsive header settle only after the base
+        # resize handler. Recompute once with those final coordinates so the
+        # scene cannot retain a width-derived height below the client edge.
+        QTimer.singleShot(0, self._update_scene_height)
         QTimer.singleShot(0, self._sync_dashboard_responsive_geometry)
 
     def _dashboard_content_width(self) -> int:
@@ -17026,6 +17051,8 @@ class GardenDashboard(DialogShell):
         self.progress_btn.setAccessibleName("Garden Progress")
         self.progress_btn.setToolTip("")
         self.progress_btn.setMinimumWidth(0)
+        set_button_size(self.progress_btn, ButtonSize.SECONDARY)
+        set_button_size(self.collection_btn, ButtonSize.SECONDARY)
         self.garden_stats_bar.set_compact(metrics_compact)
         # The large tabular values need a little more vertical breathing room
         # at high display scaling. Keep this adaptive instead of forcing the
@@ -17359,6 +17386,59 @@ class GardenDashboard(DialogShell):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
+        self._sync_dashboard_content_minimum_height()
+        scroll = getattr(self, "dashboard_scroll", None)
+        page = getattr(self, "dashboard_page", None)
+        root = getattr(self, "dashboard_root_layout", None)
+        if scroll is None or page is None or root is None:
+            return
+        viewport = scroll.viewport()
+        live_viewport_height = int(viewport.height())
+        available_height = (
+            live_viewport_height
+            if live_viewport_height > 0 else window_height
+        )
+        try:
+            scene_top = int(
+                self.scene.mapTo(
+                    page,
+                    self.scene.rect().topLeft(),
+                ).y()
+            )
+        except RuntimeError:
+            return
+        trailing_height = 0
+        scene_index = self.dashboard_hero_layout.indexOf(self.scene)
+        visible_trailing_widgets: list[QWidget] = []
+        if scene_index >= 0:
+            for index in range(
+                scene_index + 1,
+                self.dashboard_hero_layout.count(),
+            ):
+                candidate = self.dashboard_hero_layout.itemAt(index).widget()
+                if candidate is not None and candidate.isVisibleTo(self):
+                    visible_trailing_widgets.append(candidate)
+        if visible_trailing_widgets:
+            trailing_height += self.dashboard_hero_layout.spacing() * len(
+                visible_trailing_widgets
+            )
+            trailing_height += sum(
+                max(
+                    int(candidate.minimumHeight()),
+                    int(candidate.minimumSizeHint().height()),
+                    int(candidate.sizeHint().height()),
+                )
+                for candidate in visible_trailing_widgets
+            )
+        scene_limit = max(
+            minimum_height,
+            available_height
+            - scene_top
+            - int(root.contentsMargins().bottom())
+            - trailing_height,
+        )
+        self.scene.setMaximumHeight(scene_limit)
+        self.scene.setProperty("viewportHeightLimit", scene_limit)
         self._sync_dashboard_content_minimum_height()
 
     def _sync_feedback_panel_visibility(self) -> bool:
@@ -19595,7 +19675,7 @@ class GardenDashboard(DialogShell):
             QLabel[currentFertilizer='true'] { background:#123228; border:0; border-radius:9px; padding:8px 10px; }
             QLabel[activeFertilizerBadge='true'] { color:#dff3bc; background:#284936; border:1px solid #54775d; border-radius:8px; padding:6px 10px; font-size:13px; font-weight:700; }
             QLabel[fertilizerUrgent='true'] { color:#f3d17d; background:#3b3420; border:1px solid #7d6f3d; border-radius:7px; padding:3px 7px; }
-            QPushButton[fertilizerRowAction='true'] { min-height:32px; max-height:32px; }
+            QPushButton[fertilizerRowAction='true'] { min-height:30px; max-height:30px; }
         """)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(20, 18, 20, 18)
