@@ -50,6 +50,21 @@ def test_compound_achievements_render_every_condition_without_one_axis_bar() -> 
     assert "elif not compound_conditions:" in refresh
 
 
+def test_odd_achievement_cards_span_the_category_row_only_when_opted_in() -> None:
+    source = DASHBOARD.read_text("utf-8")
+    grid = source.split("class ProgressCardGrid", 1)[1].split(
+        "class ResponsiveTileGrid", 1
+    )[0]
+
+    assert "span_singleton_rows: bool = False" in grid
+    assert "self._span_singleton_rows = bool(span_singleton_rows)" in grid
+    assert "next_is_boundary" in grid
+    assert "and self._columns == 2" in grid
+    assert 'widget.setProperty("spansSingletonRow", spans_singleton_row)' in grid
+    assert '"Achievement progress", span_singleton_rows=True' in source
+    assert '"Collectible collection", wide_columns=4' in source
+
+
 def test_reset_streak_uses_first_positive_bonus_but_keeps_zero_percent_row() -> None:
     streak = _method_source("GardenDetailsDialog", "_refresh_streak")
 

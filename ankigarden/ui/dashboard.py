@@ -5850,6 +5850,7 @@ class ProgressCardGrid(QWidget):
         wide_columns: int = 2,
         minimum_item_width: int = 180,
         minimum_card_height: int = 136,
+        span_singleton_rows: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setAccessibleName(accessible_name)
@@ -5857,6 +5858,7 @@ class ProgressCardGrid(QWidget):
         self._wide_columns = max(1, int(wide_columns))
         self._minimum_item_width = max(120, int(minimum_item_width))
         self._minimum_card_height = max(96, int(minimum_card_height))
+        self._span_singleton_rows = bool(span_singleton_rows)
         self._columns = self._wide_columns
         self._layout_row_count = 0
         self.container = QWidget()
@@ -5921,11 +5923,16 @@ class ProgressCardGrid(QWidget):
         row = 0
         column = 0
         row_minimums: dict[int, int] = {}
-        for widget, full_width in self._entries:
-            # Explicitly hidden states, such as the Collection no-results
-            # panel, must not leave phantom rows in the populated grid.
-            if widget.isHidden():
-                continue
+        # Explicitly hidden states, such as the Collection no-results panel,
+        # must not leave phantom rows in the populated grid. Keeping the
+        # filtered sequence also lets category-bound singleton cards span the
+        # row without changing the default grid behavior.
+        visible_entries = [
+            (widget, full_width)
+            for widget, full_width in self._entries
+            if not widget.isHidden()
+        ]
+        for entry_index, (widget, full_width) in enumerate(visible_entries):
             if full_width:
                 if column:
                     row += 1
@@ -5937,6 +5944,27 @@ class ProgressCardGrid(QWidget):
                     int(widget.minimumSizeHint().height()),
                 )
                 row += 1
+                continue
+            next_is_boundary = (
+                entry_index + 1 >= len(visible_entries)
+                or visible_entries[entry_index + 1][1]
+            )
+            spans_singleton_row = (
+                self._span_singleton_rows
+                and self._columns == 2
+                and column == 0
+                and next_is_boundary
+            )
+            widget.setProperty("spansSingletonRow", spans_singleton_row)
+            if spans_singleton_row:
+                self.grid.addWidget(widget, row, 0, 1, self._columns)
+                row_minimums[row] = max(
+                    row_minimums.get(row, 0),
+                    self._minimum_card_height,
+                    int(widget.minimumHeight()),
+                )
+                row += 1
+                column = 0
                 continue
             self.grid.addWidget(widget, row, column)
             row_minimums[row] = max(
@@ -14833,7 +14861,9 @@ class GardenDashboard(DialogShell):
 
         self._achievement_filter = "all"
         self._achievement_filter_buttons: dict[str, QPushButton] = {}
-        self.achievement_list = ProgressCardGrid("Achievement progress")
+        self.achievement_list = ProgressCardGrid(
+            "Achievement progress", span_singleton_rows=True
+        )
         self._collection_filter = "all"
         self._collection_category = "all"
         self._collection_query = ""
