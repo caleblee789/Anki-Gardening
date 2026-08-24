@@ -617,9 +617,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             'aria-label="Anki Garden" aria-busy="true">'
             '<div class="ag-home__state" data-testid="home-loading">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
-            '<div class="ag-home__state-title">Loading your garden</div>'
-            '<div class="ag-home__state-message" role="status" aria-live="polite">'
-            'Loading garden preview…</div>'
+            '<div class="ag-home__state-title" role="status" aria-live="polite">'
+            'Loading garden…</div>'
             '<div class="ag-home__loading-track" role="progressbar" aria-label="Loading garden preview"></div>'
             '</div>'
             "</div>"
@@ -632,7 +631,6 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
             f'<div class="ag-home__state-title">{HOME_NO_STARTER_TITLE}</div>'
-            '<div class="ag-home__state-message">Start with one free seed.</div>'
             f'<span class="ag-home__sr-only">{HOME_NO_STARTER_ACCESSIBLE}</span>'
             f'<button data-testid="home-open" type="button" aria-label="{CHOOSE_STARTER_ACTION}" '
             f'onclick="pycmd(\'anki-garden:choose-starter\')">{CHOOSE_STARTER_ACTION}</button></div>'
@@ -645,16 +643,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-title">Preview unavailable</div>'
             '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
-            'The preview could not be generated, but your garden is still available. '
+            'Your garden is still available. '
             f'<span class="ag-home__sr-only">{detail}</span></div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            'aria-label="Open garden" onclick="pycmd(\'anki-garden:open\')">Open garden</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
-            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
             '</div></div>'
             "</div>"
         )
@@ -672,15 +670,15 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Garden preview unavailable</div>'
+            '<div class="ag-home__state-title">Preview unavailable</div>'
             '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
-            'The preview could not be generated, but your garden is still available.</div>'
+            'Your garden is still available.</div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            'aria-label="Open garden" onclick="pycmd(\'anki-garden:open\')">Open garden</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
-            'onclick="pycmd(\'anki-garden:refresh\')">Retry preview</button>'
+            'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
             '</div></div>'
             "</div>"
         )
@@ -726,7 +724,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             f'role="status" aria-live="polite">{partial_error}</div>'
         )
     elif preview.status_text:
-        status_copy = "Updating" if preview.phase == "stale" else preview.status_text
+        status_copy = "Updating…" if preview.phase == "stale" else preview.status_text
         partial_banner = (
             '<div class="ag-home__partial-message" data-testid="home-preview-status" '
             f'role="status" aria-live="polite">{escape(status_copy)}</div>'
@@ -1195,15 +1193,15 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             display_growth_current = max(0, int(data.active_growth_points))
             display_growth_goal = max(1, display_growth_current)
             growth_text = (
-                f"{display_growth_current:,} / {display_growth_goal:,} Growth"
+                f"{display_growth_current:,} / {display_growth_goal:,}"
             )
         elif display_growth_goal > 0:
             growth_text = (
                 f"{display_growth_current:,} / "
-                f"{display_growth_goal:,} Growth"
+                f"{display_growth_goal:,}"
             )
         else:
-            growth_text = preview.growth_text or "0 Growth"
+            growth_text = preview.growth_text or "0"
         preview_support = f"{preview.active_plant_name} · {stage} · {growth_text}"
     elif data.planted_starter_name:
         starter_progress = growth_display(max(0, int(data.active_growth_points)))
@@ -1214,7 +1212,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         preview_support = (
             f"{data.planted_starter_name} · {starter_stage} · "
-            f"{display_growth_current:,} / {display_growth_goal:,} Growth"
+            f"{display_growth_current:,} / {display_growth_goal:,}"
         )
     else:
         preview_support = preview.summary

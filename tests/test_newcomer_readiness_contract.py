@@ -87,12 +87,11 @@ def test_no_starter_home_is_decision_oriented_and_keeps_the_name_fallback_visibl
         )
     )
 
-    assert f'aria-label="{HOME_NO_STARTER_TITLE}"' in html
-    assert HOME_NO_STARTER_BODY in html
+    assert f'aria-label="{CHOOSE_STARTER_ACTION}"' in html
     assert HOME_NO_STARTER_ACCESSIBLE in html
     assert CHOOSE_STARTER_ACTION in html
     assert 'data-anki-garden-command="anki-garden:choose-starter"' in html
-    assert 'data-testid="home-title" aria-label="Choose your first plant"' in html
+    assert 'data-testid="home-title" aria-label="Choose a starter"' in html
     assert "Answer your first card" not in html
     assert 'data-testid="home-streak"' not in html
     assert 'data-testid="home-currency"' not in html
@@ -124,21 +123,13 @@ def test_canonical_copy_inventory_is_centralized() -> None:
         "STARTER_SAVE_ERROR",
     }
     assert all(name in copy for name in expected_names)
-    assert GARDEN_SETUP_SECONDARY_ACTION == "Not now"
-    assert NURSERY_STARTER_COUNT == "4 starter choices available."
-    assert STARTER_SAVE_ERROR == (
-        "Your starter could not be saved. No changes were made. Try again."
-    )
-    assert starter_confirmation("Rose Plant") == (
-        "Rose Plant is planted and ready to nurture. "
-        "Nurture it before studying so Anki card answers can add Growth."
-    )
-    assert starter_ready_next_step("Rose Plant") == (
-        "Rose Plant is ready. Answer an Anki card to give it Growth."
-    )
-    assert ACTIVE_GROWTH_TITLE == "Growth is underway"
-    assert "nurtured plant" in ACTIVE_GROWTH_GUIDANCE
-    assert "Nurture" in ACTIVE_GROWTH_GUIDANCE
+    assert GARDEN_SETUP_SECONDARY_ACTION == "Later"
+    assert NURSERY_STARTER_COUNT == ""
+    assert STARTER_SAVE_ERROR == "Couldn’t save your garden. Nothing was changed."
+    assert starter_confirmation("Rose Plant") == "Choose Rose Plant?"
+    assert starter_ready_next_step("Rose Plant") == "Rose Plant is now nurtured."
+    assert ACTIVE_GROWTH_TITLE == "Nurtured"
+    assert ACTIVE_GROWTH_GUIDANCE == ""
 
 
 def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> None:
@@ -211,8 +202,8 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
         "_open_starter_nursery",
     )
 
-    assert 'HOME_NO_STARTER_BODY = "Reviews completed before setup do not earn Growth."' in copy
-    assert '"Choose a plant before studying. Reviews completed before setup do not earn Growth."' in copy
+    assert 'HOME_NO_STARTER_BODY = ""' in copy
+    assert 'HOME_NO_STARTER_ACCESSIBLE = "Choose a starter for your garden."' in copy
     assert '"No plant selected"' in contracts
     assert '"Ready to nurture"' in contracts
     assert '"NO PLANT SELECTED"' in stats

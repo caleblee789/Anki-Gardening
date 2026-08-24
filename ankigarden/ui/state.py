@@ -247,7 +247,7 @@ class GardenHomePreview:
     growth_goal: int = 0
     growth_text: str = ""
     metrics: tuple[GardenPreviewMetric, ...] = ()
-    action_label: str = "Open Garden"
+    action_label: str = "Open garden"
     action_command: str = "home-open"
     status_tone: str = "neutral"
     scene_opacity: float = 1.0
@@ -345,19 +345,19 @@ def garden_preview_from_values(
     if not starter_selected and normalized_phase == "success":
         normalized_phase = "empty"
     if normalized_phase == "empty":
-        title = "Choose your first plant"
-        summary = "Start with one free seed."
+        title = "Choose a starter"
+        summary = ""
     elif active_name and stage_label:
         if active_fully_grown:
             summary = (
                 f"{active_name} · {stage_label} · "
-                f"{max(0, int(active_growth_points or 0)):,} Growth"
+                f"{max(0, int(active_growth_points or 0)):,}"
             )
         elif int(active_stage_goal or 0) > 0:
             summary = (
                 f"{active_name} · {stage_label} · "
                 f"{max(0, int(active_stage_points or 0)):,} / "
-                f"{max(0, int(active_stage_goal or 0)):,} Growth"
+                f"{max(0, int(active_stage_goal or 0)):,}"
             )
         else:
             summary = f"{active_name} · {stage_label}"
@@ -367,20 +367,20 @@ def garden_preview_from_values(
         starter_goal = max(0, int(active_stage_goal or 0))
         summary = (
             f"{planted_starter_name} · {planted_stage} · "
-            f"{starter_points:,} / {starter_goal:,} Growth"
+            f"{starter_points:,} / {starter_goal:,}"
             if starter_goal > 0
             else f"{planted_starter_name} · {planted_stage}"
         )
     else:
-        summary = "Choose a plant to begin growing."
+        summary = ""
     if normalized_phase == "loading":
-        summary = "Loading garden preview…"
+        summary = "Loading garden…"
     elif normalized_phase == "error":
-        summary = status_text or "Garden preview is unavailable."
+        summary = "Your garden is still available."
     elif normalized_phase == "stale":
-        status_text = status_text or "Updating garden preview…"
+        status_text = "Updating…"
     elif normalized_phase == "disabled":
-        status_text = status_text or "Preview paused."
+        status_text = "Preview hidden"
     growth_current = max(0, int(active_stage_points or 0))
     growth_goal = max(0, int(active_stage_goal or 0))
     growth_text = (
@@ -457,9 +457,9 @@ def preview_with_phase(
         normalized_phase = "error"
     status = snapshot.status_text if status_text is None else str(status_text)
     if normalized_phase == "stale" and not status:
-        status = "Updating garden preview…"
+        status = "Updating…"
     elif normalized_phase == "disabled" and not status:
-        status = "Home previews are off."
+        status = "Preview hidden"
     return replace(
         snapshot,
         phase=normalized_phase,
