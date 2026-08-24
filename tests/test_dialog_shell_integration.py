@@ -23,6 +23,19 @@ def _class_source(path: Path, class_name: str) -> str:
     return segment
 
 
+def _function_source(path: Path, function_name: str) -> str:
+    source = path.read_text("utf-8")
+    tree = ast.parse(source)
+    node = next(
+        item
+        for item in tree.body
+        if isinstance(item, ast.FunctionDef) and item.name == function_name
+    )
+    segment = ast.get_source_segment(source, node)
+    assert segment is not None
+    return segment
+
+
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
     source = path.read_text("utf-8")
     tree = ast.parse(source)
@@ -395,3 +408,23 @@ def test_content_fit_is_coalesced_and_publishes_native_capture_evidence() -> Non
         assert evidence in telemetry
     assert "self.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)" in telemetry
     assert telemetry.count("isVisibleTo(self)") >= 2
+
+
+def test_text_fit_buttons_use_a_non_shrinking_native_size_policy() -> None:
+    sizing = _function_source(DASHBOARD, "set_button_size")
+
+    assert "QSizePolicy.Policy.Fixed" in sizing
+    assert "QSizePolicy.Policy.Maximum" not in sizing
+    assert "QSizePolicy.Policy.Expanding" in sizing
+
+
+def test_dashboard_terminal_state_drops_stale_scroll_height() -> None:
+    sync = _method_source(
+        DASHBOARD,
+        "GardenDashboard",
+        "_sync_dashboard_content_minimum_height",
+    )
+
+    assert "page.setMinimumHeight(0)" in sync
+    assert "page.minimumSizeHint().height()" in sync
+    assert "root.minimumSize().height()" not in sync

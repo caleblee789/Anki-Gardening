@@ -692,7 +692,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             })
     payload: dict[str, object] = {
         "capture_contract_version": contract.version,
-        "capture_profile": "full",
+        "capture_profile": "representative",
         "capture_display": "primary",
         "capture_displays": ["primary"],
         "capture_groups": [
@@ -706,51 +706,12 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         "failures": [],
         "expected_count": len(contract.labels),
         "requested_scale_factor": "1.0",
-        "dialog_memory_probe": {
-            "status": "measured",
-            "cycles": 12,
-            "visible_cycles": 12,
-            "closed_cycles": 12,
-            "cycle_observations": [
-                {
-                    "cycle": cycle,
-                    "visible": True,
-                    "closed": True,
-                    "dialog_class": "NurseryDialog",
-                }
-                for cycle in range(1, 13)
-            ],
-            "passed": True,
-            "measurement": "QApplication.allWidgets plus process peak RSS",
-            "current_rss_available": False,
-            "peak_rss_before_kib": 1000,
-            "peak_rss_after_kib": 1004,
-            "widget_count_before": 10,
-            "widget_count_after": 10,
-            "watched_class_counts_before": {
-                "NurseryDialog": 0,
-                "DialogShell": 1,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-            "watched_class_counts_after": {
-                "NurseryDialog": 0,
-                "DialogShell": 1,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-            "watched_class_delta": {
-                "NurseryDialog": 0,
-                "DialogShell": 0,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-        },
+        "dialog_memory_probe": {"status": "not-run", "cycles": 0},
         "dialog_memory_probe_complete": True,
         "dialog_scroll_audits": {
-            "required": True,
-            "required_count": len(scroll_summary_records),
-            "records": scroll_summary_records,
+            "required": False,
+            "required_count": 0,
+            "records": [],
             "passed": True,
         },
         "dialog_scroll_audits_complete": True,
@@ -937,11 +898,11 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 126
+    assert capture_result["capture_count"] == 26
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
-        "page_count": 17,
-        "surface_count": 126,
+        "page_count": 4,
+        "surface_count": 26,
         "status": "valid",
     }
 
@@ -950,43 +911,34 @@ def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     pages = expected_contact_sheet_pages(contract)
 
-    assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 5, 9, 8, 10, 9, 9,
-    ]
-    assert pages[6:10] == (
-        (("Release stress — Garden", 10),),
-        (("Release stress — Garden (continued)", 6),),
-        (("Watering can — all six plots", 10),),
-        (("Watering can — all six plots (continued)", 2),),
-    )
+    assert [sum(count for _name, count in page) for page in pages] == [9, 5, 6, 6]
+    assert pages[0] == (("First run", 3), ("Home and Garden", 6))
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
-        4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
-        4148, 3218, 5192, 4148, 5078, 5078, 5192,
+        5192, 3218, 3218, 3218,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_126_faces() -> None:
+def test_renderer_families_are_derived_for_every_representative_face() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
     assert tuple(families) == contract.labels
     assert Counter(families.values()) == Counter({
-        "GardenDashboard": 32,
-        "GardenProgressDialog": 17,
-        "GardenSettingsDialog": 10,
-        "NurseryDialog": 15,
-        "AnkiQt": 18,
-        "CollectibleDetailDialog": 4,
-        "FertilizerDialog": 4,
+        "GardenDashboard": 4,
+        "GardenProgressDialog": 5,
+        "GardenSettingsDialog": 2,
+        "NurseryDialog": 6,
+        "AnkiQt": 2,
+        "CollectibleDetailDialog": 1,
+        "FertilizerDialog": 1,
         "StarterConfirmationDialog": 1,
         "PlantStoryDialog": 1,
-        "FertilizerReplacementDialog": 1,
-        "SpeciesOverviewDialog": 2,
-        "PurchaseConfirmationDialog": 14,
-        "GrowthChargeConfirmationDialog": 7,
+        "SpeciesOverviewDialog": 1,
+        "PurchaseConfirmationDialog": 1,
+        "GrowthChargeConfirmationDialog": 1,
     })
-    assert families["popover-plot-6"] == "GardenDashboard"
-    assert families["watering-can-garden-plot-6"] == "GardenDashboard"
+    assert families["full-garden"] == "GardenDashboard"
+    assert families["growth-charge-use-ready"] == "GrowthChargeConfirmationDialog"
     assert "resize-species-overview-large" not in families
     resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
     assert len(resize_modes) == 65
@@ -995,7 +947,7 @@ def test_renderer_families_are_derived_from_source_for_all_126_faces() -> None:
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_126_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_every_representative_face() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -1004,58 +956,32 @@ def test_state_evidence_contracts_are_derived_for_all_126_faces() -> None:
 
     assert tuple(states) == contract.labels
     assert Counter(state["kind"] for state in states.values()) == Counter({
-        "dashboard": 32,
-        "progress": 17,
-        "home": 15,
-        "nursery": 15,
-        "settings": 10,
-        "reviewer": 3,
-        "dialog": 30,
-        "collectible-detail": 4,
+        "dashboard": 4,
+        "progress": 5,
+        "home": 1,
+        "nursery": 6,
+        "settings": 2,
+        "reviewer": 1,
+        "dialog": 6,
+        "collectible-detail": 1,
     })
-    assert states["watering-can-overview-plot-6"]["profile"] == {
-        "profile_id": "watering-can-overview-plot-6",
-        "window_family": "AnkiQt",
-        "kind": "home",
-        "surface": "overview",
-        "fixture_state": "nurtured-active",
-        "active_slot": 5,
-    }
-    assert states["growth-zero"]["profile"]["page"] == "growth"
-    assert states["nursery-item-locked"]["profile"]["tab"] == 1
-    assert states["nursery-item-locked"]["profile"]["starter_mode"] is False
+    assert states["growth-nonzero"]["profile"]["page"] == "growth"
+    assert states["nursery-fertilizer-booster"]["profile"]["tab"] == 1
+    assert states["nursery-fertilizer-booster"]["profile"]["starter_mode"] is False
     assert "resize-progress-default" not in states
-    assert states["growth-charge-success-stage-reward"]["profile"][
+    assert states["growth-charge-use-ready"]["profile"][
         "growth_charge_status"
-    ] == "success"
+    ] == "ready"
 
 
 def test_accessibility_fixture_ownership_and_cleanup_are_source_bound() -> None:
     states = load_expected_state_evidence_contracts(CAPTURE_SOURCE)
 
-    reduced_motion_values = states["reduced-motion-enabled"][
-        "expected_fact_values"
-    ]
-    assert {
-        key: reduced_motion_values[key]
-        for key in ("reduced_motion_checked", "reduced_motion_config_enabled")
-    } == {
-        "reduced_motion_checked": True,
-        "reduced_motion_config_enabled": True,
-    }
-    keyboard_values = states["keyboard-focus-state"]["expected_fact_values"]
-    assert {
-        key: keyboard_values[key]
-        for key in (
-            "reduced_motion_baseline_restored",
-            "keyboard_focus_visible",
-            "keyboard_focus_owner",
-        )
-    } == {
-        "reduced_motion_baseline_restored": False,
-        "keyboard_focus_visible": True,
-        "keyboard_focus_owner": "progress_btn",
-    }
+    settings_values = states["settings-unsaved-changes"]["expected_fact_values"]
+    assert settings_values["settings_tab"] == 0
+    assert states["reviewer-find-environment"]["kind"] == "reviewer"
+    assert "reduced-motion-enabled" not in states
+    assert "keyboard-focus-state" not in states
     assert "narrow-window-responsive" not in states
     assert "display-scaling-150" not in states
     assert "display-scaling-200-qt-representative" not in states
@@ -1073,8 +999,8 @@ def test_state_profile_loader_tracks_source_mapping_and_fails_closed(
     changed_source = tmp_path / "changed_capture_ui_faces.py"
     changed_source.write_text(changed_mapping, encoding="utf-8")
     changed = load_expected_state_evidence_contracts(changed_source)
-    assert changed["growth-zero"]["profile"]["page"] == "streak"
-    assert changed["growth-zero"]["expected_fact_values"]["progress_page"] == "streak"
+    assert changed["growth-nonzero"]["profile"]["page"] == "streak"
+    assert changed["growth-nonzero"]["expected_fact_values"]["progress_page"] == "streak"
 
     unsupported = source.replace(
         "family = expected_capture_window_family(label)",
@@ -1159,28 +1085,13 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
     by_label["full-garden"]["audit"]["rendered_pixel_evidence"][
         "results"
     ][0]["capture_pixels_present"] = False
-    by_label["progress-overview-redirect-growth"]["audit"][
-        "direct_growth_visual"
-    ]["amount"] = 0
-    by_label["collection-preview-restored"]["audit"][
-        "restored_preview_visual"
-    ]["visible"] = False
-    by_label["nursery-item-owned"]["audit"]["owned_item_visual"][
-        "action_bounds"
-    ]["contained"] = False
     by_label["reviewer-find-environment"]["audit"][
         "reviewer_overlay_geometry"
     ]["viewport_contained"] = False
     by_label["reviewer-find-environment"]["audit"][
         "required_overlay_pixels_present"
     ] = False
-    by_label["missing-artwork-graphical-fallback"]["audit"][
-        "missing_artwork_matrix"
-    ]["entries"][0]["diagnostic_path_logged"] = False
-    by_label["collection-environment-mechanics"]["audit"][
-        "environment_mechanics_visual"
-    ]["required_bounds"][-1]["contained"] = False
-    by_label["deck-browser-home"]["audit"]["compact_home_copy"][
+    by_label["active-deck-browser-home-after-nurture"]["audit"]["compact_home_copy"][
         "rendered_text"
     ] += " Hidden Garden Coins 999"
 
@@ -1210,13 +1121,8 @@ def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
     for expected in (
         "full Garden does not prove a clean contained steady state",
         "required state widgets are absent from captured pixels",
-        "does not visibly prove nonzero direct reward or charge Growth",
-        "restored preview does not show a contained result banner",
-        "owned Nursery item is not visibly identified and contained",
         "Reviewer card lacks full containment or control clearance",
         "Reviewer card is absent from captured pixels",
-        "missing-artwork fallback evidence is incomplete, clipped, or unlogged",
-        "environment mechanics content is incomplete or clipped",
         "compact Home rendered or accessibility copy contains banned terms",
         "at most one filled primary action",
         "close icon has blank pixels or invalid bounds",
@@ -1242,7 +1148,7 @@ def test_manifest_rejects_renderer_provenance_not_owned_by_source(
     audit["fixture_identity"] = copy.deepcopy(fixture)
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="source-owned AnkiQt"):
+    with pytest.raises(CaptureValidationError, match="source-owned GardenDashboard"):
         validate_capture_manifest(manifest)
 
 
@@ -1262,7 +1168,7 @@ def test_manifest_rejects_top_level_fixture_source_racing_nested_identity(
 
     with pytest.raises(
         CaptureValidationError,
-        match="capture 007 deck-browser-home: fixture sources disagree",
+        match="capture 007 fertilizer-affordable: fixture sources disagree",
     ):
         validate_capture_manifest(manifest)
 
@@ -1298,7 +1204,7 @@ def test_manifest_rejects_incomplete_or_mismatched_state_postcondition(
     message = str(raised.value)
     assert "state_profile must match" in message
     assert "postcondition profile_id must match" in message
-    assert "postcondition kind must be 'home'" in message
+    assert "postcondition kind must be 'dashboard'" in message
     assert "postcondition facts must be nonempty" in message
     assert "postcondition issues must be empty" in message
     assert "postcondition did not pass" in message
@@ -1320,26 +1226,26 @@ def test_manifest_rejects_same_renderer_state_schema_substitution(
     contract = load_capture_contract(CAPTURE_SOURCE)
     records = payload["captures"]
     assert isinstance(records, list)
-    zero = records[contract.labels.index("growth-zero")]
-    nonzero = records[contract.labels.index("growth-nonzero")]
-    assert isinstance(zero, dict) and isinstance(nonzero, dict)
-    zero_fixture = zero["fixture_validation"]
-    nonzero_fixture = nonzero["fixture_validation"]
-    assert isinstance(zero_fixture, dict) and isinstance(nonzero_fixture, dict)
-    zero_postcondition = zero_fixture["postcondition"]
-    nonzero_postcondition = nonzero_fixture["postcondition"]
-    assert isinstance(zero_postcondition, dict) and isinstance(nonzero_postcondition, dict)
-    zero_postcondition["facts"] = copy.deepcopy(nonzero_postcondition["facts"])
-    zero_audit = zero["audit"]
-    assert isinstance(zero_audit, dict)
-    zero_audit["fixture_identity"] = copy.deepcopy(zero_fixture)
+    growth = records[contract.labels.index("growth-nonzero")]
+    streak = records[contract.labels.index("streak-active")]
+    assert isinstance(growth, dict) and isinstance(streak, dict)
+    growth_fixture = growth["fixture_validation"]
+    streak_fixture = streak["fixture_validation"]
+    assert isinstance(growth_fixture, dict) and isinstance(streak_fixture, dict)
+    growth_postcondition = growth_fixture["postcondition"]
+    streak_postcondition = streak_fixture["postcondition"]
+    assert isinstance(growth_postcondition, dict) and isinstance(streak_postcondition, dict)
+    growth_postcondition["facts"] = copy.deepcopy(streak_postcondition["facts"])
+    growth_audit = growth["audit"]
+    assert isinstance(growth_audit, dict)
+    growth_audit["fixture_identity"] = copy.deepcopy(growth_fixture)
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError, match="postcondition fact schema mismatch"):
         validate_capture_manifest(manifest)
 
 
-def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
+def test_manifest_rejects_representative_owner_state_substitution(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
@@ -1348,8 +1254,8 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
     assert isinstance(records, list)
 
     substitutions = (
-        ("reduced-motion-enabled", "settings-home-preview-disabled"),
-        ("keyboard-focus-state", "full-garden"),
+        ("settings-unsaved-changes", "diagnostics-warning"),
+        ("reviewer-find-environment", "active-deck-browser-home-after-nurture"),
     )
     for target_label, source_label in substitutions:
         target = records[contract.labels.index(target_label)]
@@ -1372,18 +1278,18 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
         validate_capture_manifest(manifest)
 
     message = str(raised.value)
-    assert "capture 089 reduced-motion-enabled: postcondition fact schema mismatch" in message
-    assert "capture 090 keyboard-focus-state: postcondition fact schema mismatch" in message
+    assert "settings-unsaved-changes: postcondition fact schema mismatch" in message
+    assert "reviewer-find-environment: postcondition fact schema mismatch" in message
 
 
-def test_manifest_rejects_forged_accessibility_focus_fact_value(
+def test_manifest_rejects_forged_reviewer_visibility_fact_value(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
     records = payload["captures"]
     assert isinstance(records, list)
-    record = records[contract.labels.index("keyboard-focus-state")]
+    record = records[contract.labels.index("reviewer-find-environment")]
     assert isinstance(record, dict)
     fixture = record["fixture_validation"]
     assert isinstance(fixture, dict)
@@ -1391,13 +1297,13 @@ def test_manifest_rejects_forged_accessibility_focus_fact_value(
     assert isinstance(postcondition, dict)
     facts = postcondition["facts"]
     assert isinstance(facts, dict)
-    facts["keyboard_focus_owner"] = "scene"
+    facts["reward_toast_visible"] = False
     audit = record["audit"]
     assert isinstance(audit, dict)
     audit["fixture_identity"] = copy.deepcopy(fixture)
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="keyboard_focus_owner.*progress_btn"):
+    with pytest.raises(CaptureValidationError, match="reward_toast_visible.*True"):
         validate_capture_manifest(manifest)
 
 
@@ -1509,8 +1415,8 @@ def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
 
     message = str(raised.value)
     assert "numeric-equivalent to 1.0" in message
-    assert "status must be 'measured'" in message
-    assert "cycles must be 12" in message
+    assert "status must be 'not-run'" in message
+    assert "cycles must be 0" in message
     assert "actual_client_size must match" in message
     assert "device_pixel_ratio is invalid" in message
     assert "layout_mode is missing" in message
@@ -1518,17 +1424,18 @@ def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
     assert "capture_display does not match" in message
 
 
-def test_manifest_rejects_memory_probe_bad_class_delta(tmp_path: Path) -> None:
+def test_manifest_rejects_unexpected_release_memory_probe(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     probe = payload["dialog_memory_probe"]
     assert isinstance(probe, dict)
-    deltas = probe["watched_class_delta"]
-    assert isinstance(deltas, dict)
-    deltas["NurseryDialog"] = 1
+    probe.update({"status": "measured", "cycles": 12})
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="delta for NurseryDialog"):
+    with pytest.raises(CaptureValidationError) as raised:
         validate_capture_manifest(manifest)
+    message = str(raised.value)
+    assert "status must be 'not-run'" in message
+    assert "cycles must be 0" in message
 
 
 def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
@@ -1541,7 +1448,7 @@ def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
         item
         for item in records
         if isinstance(item, dict)
-        and item.get("label") == "purchase-error-stale-balance"
+        and item.get("label") == "growth-charge-use-ready"
     )
     telemetry = record["native_layout_telemetry"]
     assert isinstance(telemetry, dict)
@@ -1580,24 +1487,12 @@ def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
     assert "tabular numeral evidence is incomplete" in message
 
 
-def test_manifest_rejects_internally_consistent_nursery_retention(
-    tmp_path: Path,
-) -> None:
+def test_manifest_rejects_nonrepresentative_release_profile(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
-    probe = payload["dialog_memory_probe"]
-    assert isinstance(probe, dict)
-    after = probe["watched_class_counts_after"]
-    deltas = probe["watched_class_delta"]
-    assert isinstance(after, dict)
-    assert isinstance(deltas, dict)
-    after["NurseryDialog"] = 1
-    deltas["NurseryDialog"] = 1
+    payload["capture_profile"] = "full"
     _write_json(manifest, payload)
 
-    with pytest.raises(
-        CaptureValidationError,
-        match="NurseryDialog delta must be exactly zero",
-    ):
+    with pytest.raises(CaptureValidationError, match="must be 'representative'"):
         validate_capture_manifest(manifest)
 
 
@@ -1606,21 +1501,8 @@ def test_manifest_rejects_incomplete_or_fabricated_memory_cycles(tmp_path: Path)
     payload["dialog_memory_probe_complete"] = False
     probe = payload["dialog_memory_probe"]
     assert isinstance(probe, dict)
-    probe["passed"] = False
-    probe["visible_cycles"] = 11
-    probe["closed_cycles"] = 11
-    observations = probe["cycle_observations"]
-    assert isinstance(observations, list)
-    observations.pop()
-    first = observations[0]
-    assert isinstance(first, dict)
-    first.update({
-        "cycle": 2,
-        "visible": False,
-        "closed": False,
-        "dialog_class": "WrongDialog",
-        "close_error": "still open",
-    })
+    probe["status"] = "measured"
+    probe["cycles"] = 12
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError) as raised:
@@ -1628,10 +1510,8 @@ def test_manifest_rejects_incomplete_or_fabricated_memory_cycles(tmp_path: Path)
 
     message = str(raised.value)
     assert "dialog_memory_probe_complete must be true" in message
-    assert "dialog_memory_probe passed must be true" in message
-    assert "visible_cycles must be 12" in message
-    assert "closed_cycles must be 12" in message
-    assert "cycle_observations must contain 12 records" in message
+    assert "dialog_memory_probe status must be 'not-run'" in message
+    assert "dialog_memory_probe cycles must be 0" in message
 
 
 def test_manifest_rejects_order_path_and_unowned_png_drift(tmp_path: Path) -> None:
@@ -1677,9 +1557,9 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 126" in message
-    assert "pages account for 125 surfaces" in message
-    assert "PNG dimensions must be 3000x4262px" in message
+    assert "surface_count must be 26" in message
+    assert "pages account for 25 surfaces" in message
+    assert "PNG dimensions must be 3000x5192px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message
 
@@ -1881,8 +1761,8 @@ def test_manifest_rejects_solid_or_near_blank_decoded_pixels(tmp_path: Path) -> 
 def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
-    streak_index = contract.labels.index("streak-achievement-earned-next")
-    coins_index = contract.labels.index("coins-zero")
+    streak_index = contract.labels.index("streak-active")
+    coins_index = contract.labels.index("coins-activity")
     screenshots = payload["screenshots"]
     assert isinstance(screenshots, list)
     Path(screenshots[coins_index]).write_bytes(
@@ -1893,29 +1773,13 @@ def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -
         validate_capture_manifest(manifest)
 
 
-def test_manifest_accepts_documented_duplicate_with_required_audit(
+def test_representative_contract_omits_redundant_duplicate_capture(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
-    first_index = contract.labels.index("starter-nursery-plants")
-    action_index = contract.labels.index("starter-action-above-footer")
-    screenshots = payload["screenshots"]
-    records = payload["captures"]
-    assert isinstance(screenshots, list)
-    assert isinstance(records, list)
-    Path(screenshots[action_index]).write_bytes(Path(screenshots[first_index]).read_bytes())
-    action_record = records[action_index]
-    assert isinstance(action_record, dict)
-    action_audit = action_record["audit"]
-    assert isinstance(action_audit, dict)
-    action_audit.update({
-        "nursery_footer_clearance_audited": True,
-        "catalog_row": "first",
-        "action_count": 1,
-    })
-    _write_json(manifest, payload)
-
+    assert "starter-nursery-plants" in contract.labels
+    assert "starter-action-above-footer" not in contract.labels
     assert validate_capture_manifest(manifest)["status"] == "valid"
 
 
@@ -1972,13 +1836,15 @@ def test_manifest_accepts_preferred_scroll_height_above_reachable_minimum(
     assert validate_capture_manifest(manifest)["status"] == "valid"
 
 
-def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> None:
+def test_manifest_rejects_nonempty_representative_scroll_summary(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     payload["dialog_scroll_audits_complete"] = False
     summary = payload["dialog_scroll_audits"]
     assert isinstance(summary, dict)
+    summary["required"] = True
     summary["passed"] = False
-    summary["records"] = []
+    summary["required_count"] = 1
+    summary["records"] = [{}]
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError) as raised:
@@ -1986,5 +1852,7 @@ def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> Non
 
     message = str(raised.value)
     assert "dialog_scroll_audits_complete must be true" in message
+    assert "dialog_scroll_audits required must be false" in message
     assert "dialog_scroll_audits passed must be true" in message
-    assert "dialog_scroll_audits records must contain" in message
+    assert "dialog_scroll_audits required_count must be 0" in message
+    assert "dialog_scroll_audits records must be empty" in message

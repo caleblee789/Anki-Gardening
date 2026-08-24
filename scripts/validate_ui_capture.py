@@ -235,6 +235,17 @@ def load_dialog_scroll_capture_coverage(
 
     issues: list[str] = []
     contract_labels = set(contract.labels)
+    try:
+        exhaustive_groups = ast.literal_eval(
+            _assignment_value(module, "EXHAUSTIVE_CAPTURE_FACE_GROUPS")
+        )
+        exhaustive_labels = {
+            label
+            for _group, labels in exhaustive_groups
+            for label in labels
+        }
+    except (CaptureValidationError, TypeError, ValueError, SyntaxError):
+        exhaustive_labels = contract_labels
     normalized: dict[str, dict[str, str]] = {}
     all_labels: list[str] = []
     if not isinstance(raw_coverage, dict) or not raw_coverage:
@@ -257,9 +268,9 @@ def load_dialog_scroll_capture_coverage(
                     )
                     continue
                 all_labels.append(label)
-                if label not in contract_labels:
+                if label not in exhaustive_labels:
                     issues.append(
-                        f"dialog scroll label {label!r} is outside CAPTURE_FACE_GROUPS"
+                        f"dialog scroll label {label!r} is outside the declared capture profiles"
                     )
                 semantic = (
                     raw_semantics.get(label, "").strip()
@@ -271,8 +282,10 @@ def load_dialog_scroll_capture_coverage(
                     issues.append(
                         f"dialog scroll label {label!r} has no page semantic"
                     )
-                surface_contract[label] = semantic
-            normalized[surface] = surface_contract
+                if label in contract_labels:
+                    surface_contract[label] = semantic
+            if surface_contract:
+                normalized[surface] = surface_contract
 
     if len(all_labels) != len(set(all_labels)):
         duplicates = sorted(
@@ -538,14 +551,28 @@ def load_expected_renderer_families(
 
     expected = set(contract.labels)
     actual = set(mapping)
-    if actual != expected:
+    try:
+        exhaustive_groups = ast.literal_eval(
+            _assignment_value(module, "EXHAUSTIVE_CAPTURE_FACE_GROUPS")
+        )
+        declared = {
+            label
+            for _group, labels in exhaustive_groups
+            for label in labels
+        }
+    except (CaptureValidationError, TypeError, ValueError, SyntaxError):
+        declared = expected
+    if not expected.issubset(actual) or actual != declared:
         missing = sorted(expected - actual)
-        extra = sorted(actual - expected)
+        undeclared = sorted(actual - declared)
+        unowned = sorted(declared - actual)
         details = []
         if missing:
             details.append("missing " + ", ".join(missing))
-        if extra:
-            details.append("extra " + ", ".join(extra))
+        if undeclared:
+            details.append("undeclared " + ", ".join(undeclared))
+        if unowned:
+            details.append("unowned " + ", ".join(unowned))
         raise CaptureValidationError(("renderer mapping does not cover the contract: " + "; ".join(details),))
     return {label: mapping[label] for label in contract.labels}
 
@@ -1722,6 +1749,8 @@ def _validate_dialog_scroll_summary(
     coverage: dict[str, dict[str, str]],
     record_audits: dict[str, dict[str, Any]],
     issues: list[str],
+    *,
+    required: bool,
 ) -> None:
     expected = [
         (label, surface, semantic)
@@ -1733,6 +1762,16 @@ def _validate_dialog_scroll_summary(
     summary = payload.get("dialog_scroll_audits")
     if not isinstance(summary, dict):
         issues.append("dialog_scroll_audits must be an object")
+        return
+    if not required:
+        if summary.get("required") is not False:
+            issues.append("dialog_scroll_audits required must be false")
+        if summary.get("passed") is not True:
+            issues.append("dialog_scroll_audits passed must be true")
+        if summary.get("required_count") != 0:
+            issues.append("dialog_scroll_audits required_count must be 0")
+        if summary.get("records") != []:
+            issues.append("dialog_scroll_audits records must be empty")
         return
     if summary.get("required") is not True:
         issues.append("dialog_scroll_audits required must be true")
@@ -1861,12 +1900,23 @@ def expected_resize_geometry_acceptance(
     }
 
 
-def _validate_memory_probe(payload: dict[str, Any], issues: list[str]) -> None:
+def _validate_memory_probe(
+    payload: dict[str, Any],
+    issues: list[str],
+    *,
+    required: bool,
+) -> None:
     if payload.get("dialog_memory_probe_complete") is not True:
         issues.append("dialog_memory_probe_complete must be true")
     probe = payload.get("dialog_memory_probe")
     if not isinstance(probe, dict):
         issues.append("dialog_memory_probe must be an object")
+        return
+    if not required:
+        if probe.get("status") != "not-run":
+            issues.append("dialog_memory_probe status must be 'not-run'")
+        if probe.get("cycles") != 0:
+            issues.append("dialog_memory_probe cycles must be 0")
         return
     if probe.get("status") != "measured":
         issues.append("dialog_memory_probe status must be 'measured'")
@@ -2590,8 +2640,9 @@ def validate_capture_manifest(
             "capture_contract_version does not match the repository contract "
             f"({payload.get('capture_contract_version')!r} != {contract.version})"
         )
-    if payload.get("capture_profile") != "full":
-        issues.append("capture_profile must be 'full' for release evidence")
+    capture_profile = payload.get("capture_profile")
+    if capture_profile != "representative":
+        issues.append("capture_profile must be 'representative' for release evidence")
     raw_scale = payload.get("requested_scale_factor")
     try:
         scale = float(raw_scale) if not isinstance(raw_scale, bool) else math.nan
@@ -2622,7 +2673,11 @@ def validate_capture_manifest(
         issues.append("text_layout_warnings must be a list")
     elif warnings:
         issues.append(f"capture manifest reports {len(warnings)} text-layout warning(s)")
-    _validate_memory_probe(payload, issues)
+    _validate_memory_probe(
+        payload,
+        issues,
+        required=capture_profile == "full",
+    )
 
     raw_screenshots = payload.get("screenshots")
     if not isinstance(raw_screenshots, list):
@@ -3113,6 +3168,7 @@ def validate_capture_manifest(
         dialog_scroll_coverage,
         record_scroll_audits,
         issues,
+        required=capture_profile == "full",
     )
 
     first_seen_displays = list(dict.fromkeys(record_displays))

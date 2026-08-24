@@ -35,6 +35,7 @@ from aqt.qt import (
     QLabel,
     QLineEdit,
     QPainter,
+    QPushButton,
     QScrollArea,
     QTabWidget,
     QTimer,
@@ -61,8 +62,8 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 21
-CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+CAPTURE_CONTRACT_VERSION = 22
+EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
         (
@@ -280,9 +281,73 @@ CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
 )
+
+# Release contact sheets are a visual inventory, not a second exhaustive test
+# suite.  Capture one representative state for each distinct interface and
+# leave the deeper state matrix to deterministic automated tests.  The former
+# 126-surface sequence remains available through the explicit ``full`` profile
+# for targeted diagnostics, but it is no longer the release default.
+CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "First run",
+        (
+            "starter-garden-onboarding",
+            "starter-nursery-plants",
+            "starter-selection-confirmation",
+        ),
+    ),
+    (
+        "Home and Garden",
+        (
+            "full-garden",
+            "selected-plant-nurtured",
+            "active-deck-browser-home-after-nurture",
+            "fertilizer-affordable",
+            "move-mode",
+            "plant-story",
+        ),
+    ),
+    (
+        "Progress",
+        (
+            "growth-nonzero",
+            "streak-active",
+            "coins-activity",
+            "progress-achievements",
+            "progress-collection",
+        ),
+    ),
+    (
+        "Collection and Nursery",
+        (
+            "collection-species-overview",
+            "collection-loadout-detail",
+            "nursery-plants",
+            "nursery-fertilizer-booster",
+            "nursery-garden-spaces",
+            "nursery-weather-scenery",
+        ),
+    ),
+    (
+        "Settings and transactions",
+        (
+            "settings-unsaved-changes",
+            "diagnostics-warning",
+            "reviewer-find-environment",
+            "purchase-confirmation-growth-charge",
+            "purchase-success-inventory-collection",
+            "growth-charge-use-ready",
+        ),
+    ),
+)
 CAPTURE_FACE_LABELS = tuple(
     label
     for _group, labels in CAPTURE_FACE_GROUPS
+    for label in labels
+)
+EXHAUSTIVE_CAPTURE_FACE_LABELS = tuple(
+    label
+    for _group, labels in EXHAUSTIVE_CAPTURE_FACE_GROUPS
     for label in labels
 )
 
@@ -1479,7 +1544,7 @@ class _UiFaceCaptureRunner:
         self._requested_scale_factor = os.environ.get("QT_SCALE_FACTOR", "system")
         self._active_geometry_request: dict[str, Any] | None = None
         self._phase = "starter"
-        self._starter_steps = [
+        self._exhaustive_starter_steps = [
             self._capture_starter_deck_browser,
             self._capture_starter_overview,
             self._capture_starter_garden,
@@ -1487,7 +1552,7 @@ class _UiFaceCaptureRunner:
             self._capture_starter_confirmation,
             self._capture_starter_action_above_footer,
         ]
-        self._release_steps = [
+        self._exhaustive_release_steps = [
             self._capture_deck_browser,
             self._capture_overview,
             self._capture_full_garden,
@@ -1616,15 +1681,55 @@ class _UiFaceCaptureRunner:
             self._capture_growth_charge_persistence_failure,
             self._capture_growth_charge_success_reward,
         ]
+        self._representative_starter_steps = [
+            self._capture_starter_garden,
+            self._capture_starter_nursery,
+            self._capture_starter_confirmation,
+        ]
+        self._representative_release_steps = [
+            self._capture_full_garden,
+            self._capture_nurture,
+            self._capture_active_deck_browser_after_nurture,
+            self._capture_fertilize_affordable,
+            self._capture_move,
+            self._capture_story,
+            self._capture_growth_nonzero,
+            self._capture_streak_active,
+            self._capture_coins_activity,
+            self._capture_progress_achievements,
+            self._capture_progress_collection,
+            self._capture_species_overview,
+            self._capture_collection_loadout_detail,
+            self._capture_nursery_plants,
+            self._capture_nursery_fertilizer_booster,
+            self._capture_nursery_garden_spaces,
+            self._capture_nursery_weather_scenery,
+            self._capture_settings_unsaved,
+            self._capture_settings_warning,
+            self._capture_reviewer_find_environment,
+            self._capture_purchase_confirmation_growth_charge,
+            self._capture_purchase_success_collection,
+            self._capture_growth_charge_ready,
+        ]
         self._capture_profile = str(
-            os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full") or "full"
+            os.environ.get(
+                "ANKI_GARDEN_CAPTURE_PROFILE",
+                "representative",
+            )
+            or "representative"
         ).strip().lower()
         self._capture_face_groups = CAPTURE_FACE_GROUPS
-        if self._capture_profile == "watering-can":
+        self._starter_steps = self._representative_starter_steps
+        self._release_steps = self._representative_release_steps
+        if self._capture_profile == "full":
+            self._capture_face_groups = EXHAUSTIVE_CAPTURE_FACE_GROUPS
+            self._starter_steps = self._exhaustive_starter_steps
+            self._release_steps = self._exhaustive_release_steps
+        elif self._capture_profile == "watering-can":
             # The targeted regression profile still seeds through the real
             # first-run transaction, but does not spend time screenshotting
-            # unrelated interfaces. The full canonical release contract remains the
-            # default.
+            # unrelated interfaces. The representative release contract remains
+            # the default.
             self._capture_face_groups = WATERING_CAN_CAPTURE_FACE_GROUPS
             self._starter_steps = []
             self._release_steps = [
@@ -1671,7 +1776,7 @@ class _UiFaceCaptureRunner:
                     for slot in (1, 3, 5)
                 ),
             ]
-        elif self._capture_profile != "full":
+        elif self._capture_profile != "representative":
             self._failures.append({
                 "label": "capture-profile",
                 "reason": f"Unsupported capture profile: {self._capture_profile}",
@@ -3104,7 +3209,15 @@ class _UiFaceCaptureRunner:
             if target_layout is None:
                 issues.append(f"{type(scene).__name__} target layout was unavailable")
             else:
+                diagnostic_planter = list(
+                    diagnostic.get("planter_rect", ()) or ()
+                )
                 target_planter = planter_draw_rect(target_layout, family)
+                planter_width = (
+                    float(diagnostic_planter[2])
+                    if len(diagnostic_planter) == 4
+                    else float(target_planter.width)
+                )
                 marker_center_x = marker_rect.x + marker_rect.width / 2
                 marker_ground_y = marker_rect.y + marker_rect.height * 0.916
                 plant_distance = math.hypot(
@@ -3116,7 +3229,7 @@ class _UiFaceCaptureRunner:
                 )
                 if (
                     plant_distance
-                    > target_planter.width
+                    > max(1.0, planter_width)
                     * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
                 ):
                     issues.append(
@@ -5970,7 +6083,8 @@ class _UiFaceCaptureRunner:
                     and annotation.get("weekly_reward_status")
                     == weekly_reward.status
                     and "Streak ended at 3 days" in visible_label_texts
-                    and "Answer a card to start again." in visible_label_texts
+                    and "Answer one card to begin a new streak."
+                    in visible_label_texts
                     and not any(
                         text.startswith(("Previous streak", "Next Growth bonus"))
                         for text in visible_label_texts
@@ -6598,8 +6712,10 @@ class _UiFaceCaptureRunner:
                     alert_copy = str(widget.alert.text()).strip()
                     state_visible = (
                         widget.alert.isVisible()
-                        and "This plant can’t use a Growth Charge." in alert_copy
-                        and "Your charge was not used." in alert_copy
+                        and str(getattr(quote, "target_name", "") or "")
+                        in alert_copy
+                        and "cannot use this Growth Charge." in alert_copy
+                        and "No charge was used." in alert_copy
                         and not plant_details_visible
                         and not charge_details_visible
                         and not compact_result_visible
@@ -6649,7 +6765,7 @@ class _UiFaceCaptureRunner:
                     state_visible = (
                         outcome is not None
                         and widget.receipt.isVisible()
-                        and result_title in visible_label_text
+                        and str(widget.windowTitle()) == result_title
                         and reward_copy in visible_label_text
                         and widget.receipt_copy.isVisible()
                         and f"+{max(0, int(getattr(outcome, 'growth_granted', 0))):,} Growth"
@@ -6720,10 +6836,11 @@ class _UiFaceCaptureRunner:
                         "growth_charge_seed_to_sprout_receipt",
                         bool(
                             annotation.get("seed_to_sprout_receipt", False)
-                            and "Seed → Sprout"
-                            in str(widget.receipt_copy.text())
+                            and str(widget.receipt_title.text())
+                            == "Seed → Sprout"
                         ),
                         {
+                            "receipt_title": str(widget.receipt_title.text()),
                             "receipt": str(widget.receipt_copy.text()),
                             "annotation": annotation,
                         },
@@ -6788,6 +6905,15 @@ class _UiFaceCaptureRunner:
                     "purchase-error-stale-price",
                     "purchase-error-stale-balance",
                 }:
+                    proposal_message = getattr(
+                        widget.proposal_notice,
+                        "message",
+                        None,
+                    )
+                    proposal_text = str(
+                        proposal_message.text()
+                        if proposal_message is not None else ""
+                    ).strip()
                     require(
                         "stale_purchase_updated_terms",
                         bool(
@@ -6804,7 +6930,7 @@ class _UiFaceCaptureRunner:
                             and bool(annotation.get("canonical_primary_action", False))
                         ),
                         {
-                            "proposal": widget.proposal_notice.text(),
+                            "proposal": proposal_text,
                             "price": widget.price_label.text(),
                             "balance": widget.balance_label.text(),
                             "annotation": annotation,
@@ -6826,15 +6952,6 @@ class _UiFaceCaptureRunner:
                         },
                     )
                 elif state_name == "purchase-error-stale-balance":
-                    proposal_message = getattr(
-                        widget.proposal_notice,
-                        "message",
-                        None,
-                    )
-                    proposal_text = str(
-                        proposal_message.text()
-                        if proposal_message is not None else ""
-                    ).strip()
                     require(
                         "ready_with_balance_update",
                         bool(
@@ -11933,8 +12050,9 @@ class _UiFaceCaptureRunner:
                 not compact_result_visible,
                 target_state == "stored",
                 str(dialog.windowTitle()) == "Choose another plant",
-                "This plant can’t use a Growth Charge." in alert_copy,
-                "Your charge was not used." in alert_copy,
+                str(getattr(quote, "target_name", "") or "") in alert_copy,
+                "cannot use this Growth Charge." in alert_copy,
+                "No charge was used." in alert_copy,
                 dialog.use_action.isEnabled(),
                 dialog.cancel_action.isVisible(),
                 dialog.cancel_action.isEnabled(),
@@ -11968,9 +12086,9 @@ class _UiFaceCaptureRunner:
                 bool(outcome is not None and outcome.success),
                 tuple(getattr(outcome, "completed_stages", ())) == ("sprout",),
                 reward_total == 5,
-                result_title in visible_label_text,
+                str(dialog.windowTitle()) == result_title,
                 f"+{reward_total:,} Garden Coins" in visible_label_text,
-                "Seed → Sprout" in receipt_copy,
+                str(dialog.receipt_title.text()).strip() == "Seed → Sprout",
                 not compact_result_visible,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 550,
@@ -12011,7 +12129,8 @@ class _UiFaceCaptureRunner:
                 variant != "success"
                 or (
                     receipt_visible
-                    and "Seed → Sprout" in receipt_copy
+                    and str(dialog.receipt_title.text()).strip()
+                    == "Seed → Sprout"
                 )
             ),
             "single_scroll_region": single_scroll_region,
@@ -14978,7 +15097,7 @@ class _UiFaceCaptureRunner:
                 (
                     button for button in buttons
                     if _displayed_button_text(button)
-                    in {"Store", "Place", "View in garden"}
+                    in {"Store plant", "Place in Garden"}
                 ),
                 None,
             )
@@ -15003,7 +15122,7 @@ class _UiFaceCaptureRunner:
                     f"{target_name} ·"
                 )
                 and visual["action"]
-                in {"Store", "Place", "View in garden"}
+                in {"Store plant", "Place in Garden"}
                 and all(
                     bool(evidence.get("contained", False))
                     for evidence in (

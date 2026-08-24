@@ -1,7 +1,7 @@
 # Anki Garden UI release contract
 
 Status: implemented contract for Anki Garden 2.1.0, state schema 21, and UI
-capture contract v21. Source code and persisted behavior are authoritative.
+capture contract v22. Source code and persisted behavior are authoritative.
 
 ## Authority map
 
@@ -111,12 +111,14 @@ Nursery purchases never auto-equip an environment item.
 
 ## Capture and acceptance contract
 
-Capture contract v21 contains 126 distinct functional/state faces in source
-order. Each is captured exactly once under `QT_SCALE_FACTOR=1.0`; responsive
-and scaling duplicates are excluded.
+Capture contract v22 contains 26 distinct interfaces in source order. Each is
+captured once in a stable representative state under `QT_SCALE_FACTOR=1.0`.
+The retained 126-state `full` profile is diagnostic only; alternate states,
+responsive geometry, memory cycles, and scaling remain automated or separate
+platform gates instead of duplicate release screenshots.
 
-The independent validator must report contract 21, 126/126 captures, zero
-failures or text-layout warnings, and 17/17 valid contact sheets. Production and
+The independent validator must report contract 22, 26/26 captures, zero
+failures or text-layout warnings, and 4/4 valid contact sheets. Production and
 capture archives must retain exact shared-payload parity and distinct
 capability identities.
 

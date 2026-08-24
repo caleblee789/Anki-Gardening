@@ -154,6 +154,12 @@ def test_nursery_uses_compact_cards_normal_flow_feedback_and_starter_only_footer
     assert "self._environment_artwork(item, width=180, height=101)" in nursery
     assert "self.environment_feature_art.setFixedSize(180, 101)" in nursery
     assert "maximum_columns=3" in nursery
+    feedback_sync = nursery.split(
+        "def _sync_nursery_feedback_host", 1
+    )[1].split("def _focus_purchase_result", 1)[0]
+    assert "self.nursery_toast.isHidden()" in feedback_sync
+    assert "self.status.isHidden()" in feedback_sync
+    assert "self.nursery_toast.isVisible()" not in feedback_sync
     result = nursery.split("def _show_result", 1)[1].split(
         "def _hide_status_if_current", 1
     )[0]

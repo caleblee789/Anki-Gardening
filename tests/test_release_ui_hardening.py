@@ -760,13 +760,14 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "def resolve_preview_asset(" in refresh_preview
 
 
-def test_dashboard_scroll_minimum_comes_from_the_root_layout_without_feedback() -> None:
+def test_dashboard_scroll_minimum_drops_stale_explicit_page_height() -> None:
     sync = _segment(
         _method_node("GardenDashboard", "_sync_dashboard_content_minimum_height")
     )
 
     assert "page.setMinimumHeight(0)" in sync
-    assert "root.minimumSize().height()" in sync
+    assert "page.minimumSizeHint().height()" in sync
+    assert "root.minimumSize().height()" not in sync
     assert 'page.setProperty("minimumReachableContentHeight", required)' in sync
     assert "findChildren" not in sync
     assert "descendant.mapTo" not in sync

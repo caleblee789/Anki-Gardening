@@ -271,7 +271,7 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> None:
+def test_all_eleven_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
@@ -287,7 +287,7 @@ def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> Non
         "Collection",
         "Collection loadout details",
     }
-    groups = _literal_assignment("CAPTURE_FACE_GROUPS")
+    groups = _literal_assignment("EXHAUSTIVE_CAPTURE_FACE_GROUPS")
     contract = {
         label
         for _group, labels in groups
@@ -301,6 +301,12 @@ def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> Non
         assert labels
         assert set(labels) <= contract
         assert all(not label.startswith("resize-") for label in labels)
+    release_labels = {
+        label
+        for _group, labels in _literal_assignment("CAPTURE_FACE_GROUPS")
+        for label in labels
+    }
+    assert release_labels < contract
     assert "growth-charge-use-ready" in coverage[
         "Growth Charge confirmation"
     ]

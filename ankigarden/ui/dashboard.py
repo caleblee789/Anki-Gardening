@@ -362,7 +362,7 @@ def set_button_size(
             (
                 QSizePolicy.Policy.Expanding
                 if allow_horizontal_stretch
-                else QSizePolicy.Policy.Maximum
+                else QSizePolicy.Policy.Fixed
             ),
             QSizePolicy.Policy.Fixed,
         )
@@ -9240,7 +9240,14 @@ class NurseryDialog(DialogShell):
         self._sync_nursery_feedback_host()
 
     def _sync_nursery_feedback_host(self) -> None:
-        visible = bool(self.nursery_toast.isVisible() or self.status.isVisible())
+        # ``show_message()`` runs while this host is still hidden.  Qt's
+        # ``isVisible()`` therefore remains false until an ancestor is shown,
+        # which used to leave successful receipts hidden forever.  The child
+        # hidden flag is the authoritative requested state here.
+        visible = bool(
+            not self.nursery_toast.isHidden()
+            or not self.status.isHidden()
+        )
         self.nursery_feedback_host.setVisible(visible)
         self.nursery_feedback_host.updateGeometry()
         self.schedule_content_fit(
@@ -16805,7 +16812,12 @@ class GardenDashboard(DialogShell):
         page.setMinimumHeight(0)
         root.invalidate()
         root.activate()
-        required = max(1, int(root.minimumSize().height()))
+        # A guided or overlay state can leave the live page taller than its
+        # true layout minimum. Feeding that old height back into the scroll
+        # widget keeps a terminal Garden a few pixels below the viewport.
+        # After clearing the explicit floor, the page's current minimum hint
+        # is the layout-derived requirement and permits the scene to shrink.
+        required = max(1, int(page.minimumSizeHint().height()))
         page.setMinimumHeight(required)
         page.setProperty("minimumReachableContentHeight", required)
 

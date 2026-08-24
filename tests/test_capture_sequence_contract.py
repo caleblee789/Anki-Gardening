@@ -119,171 +119,58 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 21
-
-    assert groups["First run"] == (
-            "starter-deck-browser-home",
-            "starter-overview-home",
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 22
+    assert groups == {
+        "First run": (
             "starter-garden-onboarding",
             "starter-nursery-plants",
             "starter-selection-confirmation",
-            "starter-action-above-footer",
-        )
-    assert groups["Anki home"] == ("deck-browser-home", "overview-home")
-    assert groups["Garden"] == (
+        ),
+        "Home and Garden": (
             "full-garden",
-            "hover-outline",
-            "selected-plant-not-nurtured",
             "selected-plant-nurtured",
-            "fertilizer-unaffordable",
+            "active-deck-browser-home-after-nurture",
             "fertilizer-affordable",
-            "fertilizer-active",
             "move-mode",
             "plant-story",
-        )
-    assert groups["Anki home — active after Nurture"] == (
-        "active-deck-browser-home-after-nurture",
-        "active-overview-home-after-nurture",
-    )
-    assert groups["Garden Progress"] == (
-            "growth-zero",
+        ),
+        "Progress": (
             "growth-nonzero",
-            "streak-new",
             "streak-active",
-            "coins-zero",
             "coins-activity",
-            "progress-overview-redirect-growth",
             "progress-achievements",
             "progress-collection",
+        ),
+        "Collection and Nursery": (
             "collection-species-overview",
-        )
-    assert groups["Collection loadout details"] == (
-        "collection-loadout-detail",
-        "collection-preview-active",
-        "collection-preview-restored",
-    )
-    assert groups["Nursery"] == (
+            "collection-loadout-detail",
             "nursery-plants",
             "nursery-fertilizer-booster",
             "nursery-garden-spaces",
             "nursery-weather-scenery",
-        )
-    assert groups["Settings"] == (
-            "settings-home-preview-disabled",
-            "settings-display",
-            "settings-display-advanced-open",
-            "diagnostics-clean",
+        ),
+        "Settings and transactions": (
+            "settings-unsaved-changes",
             "diagnostics-warning",
-        )
-    assert groups["Release stress — Garden"] == (
-        "long-garden-name",
-        "long-plant-name",
-        "four-digit-coin-balance",
-        "growth-near-stage-completion",
-        "all-six-beds-occupied",
-        "plant-at-every-stage",
-        "fully-grown-plant-without-fertilize",
-        "popover-plot-1",
-        "popover-plot-2",
-        "popover-plot-3",
-        "popover-plot-4",
-        "popover-plot-5",
-        "popover-plot-6",
-        "move-occupied-empty-destinations",
-        "fertilizer-expiring-under-minute",
-        "fertilizer-replacement-confirmation",
-    )
-    assert groups["Watering can — all six plots"] == (
-        "watering-can-garden-plot-1",
-        "watering-can-garden-plot-2",
-        "watering-can-garden-plot-3",
-        "watering-can-garden-plot-4",
-        "watering-can-garden-plot-5",
-        "watering-can-garden-plot-6",
-        "watering-can-deck-browser-plot-1",
-        "watering-can-deck-browser-plot-3",
-        "watering-can-deck-browser-plot-5",
-        "watering-can-overview-plot-2",
-        "watering-can-overview-plot-4",
-        "watering-can-overview-plot-6",
-    )
-    assert groups["Release stress — Progress"] == (
-        "collection-several-discovered",
-        "collection-no-filter-matches",
-        "achievement-completed",
-        "clear-recall-canonical-projection",
-        "streak-at-risk",
-        "streak-missed-day",
-        "streak-achievement-earned-next",
-    )
-    assert groups["Release stress — Nursery"] == (
-        "nursery-item-owned",
-        "nursery-item-locked",
-        "nursery-purchase-success",
-        "nursery-final-row-above-footer",
-        "missing-artwork-graphical-fallback",
-    )
-    assert groups["Release stress — Settings and reviewer rewards"] == (
-        "settings-unsaved-changes",
-        "settings-validation-error",
-        "diagnostics-expanded",
-        "production-build-controls-absent",
-        "reviewer-find-common-reduced-motion",
-        "reviewer-find-environment",
-        "reviewer-find-stacked-sync",
-    )
-    assert groups["Accessibility"] == (
-        "reduced-motion-enabled",
-        "keyboard-focus-state",
-    )
-    assert "Responsive resize matrix" not in groups
-    assert groups["Release overhaul — resumable and resilient states"] == (
-        "starter-placement",
-        "starter-completion",
-        "home-preview-loading",
-        "home-preview-error",
-        "home-preview-stale",
-        "onboarding-persistence-error",
-        "move-persistence-error",
-        "collection-known-not-collected-overview",
-    )
-    assert groups["Release overhaul — purchase confirmations and outcomes"] == (
-        "purchase-confirmation-species",
-        "purchase-confirmation-growth-charge",
-        "purchase-confirmation-environment",
-        "purchase-confirmation-fertilizer-application",
-        "purchase-confirmation-fertilizer-extension",
-        "purchase-confirmation-garden-bed",
-        "purchase-confirmation-loading-disabled",
-        "purchase-error-insufficient-coins",
-        "purchase-error-persistence-failure",
-        "purchase-error-item-unavailable",
-        "purchase-error-already-owned",
-        "purchase-error-invalid-target",
-        "purchase-error-stale-price",
-        "purchase-error-stale-balance",
-        "purchase-success-inventory-collection",
-        "purchase-success-fertilizer-applied",
-        "purchase-success-garden-bed-unlocked",
-        "nursery-empty-state",
-        "collection-environment-mechanics",
-    )
-    assert groups["Collection consolidation — transactional states"] == (
-        "collection-loadout-persistence-error",
-        "collection-origin-plant-placement",
-    )
-    assert groups["Growth overhaul — Charge confirmation states"] == (
-        "growth-charge-use-ready",
-        "growth-charge-empty-inventory",
-        "growth-charge-loading-disabled",
-        "growth-charge-stale-inventory",
-        "growth-charge-invalid-target",
-        "growth-charge-persistence-failure",
-        "growth-charge-success-stage-reward",
-    )
+            "reviewer-find-environment",
+            "purchase-confirmation-growth-charge",
+            "purchase-success-inventory-collection",
+            "growth-charge-use-ready",
+        ),
+    }
     labels = [label for group in groups.values() for label in group]
-    assert len(labels) == 126
+    assert len(labels) == 26
     assert len(labels) == len(set(labels))
+    exhaustive_labels = [
+        label
+        for _group, group_labels in _literal_assignment(
+            "EXHAUSTIVE_CAPTURE_FACE_GROUPS"
+        )
+        for label in group_labels
+    ]
+    assert len(exhaustive_labels) == 126
+    assert len(exhaustive_labels) == len(set(exhaustive_labels))
+    assert set(labels).issubset(exhaustive_labels)
     excluded_visual_probes = {
         "narrow-window-responsive",
         "display-scaling-150",
@@ -343,7 +230,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "nursery_action_in_footer" in fixture_postcondition
     assert "result_matches_quote" in fixture_postcondition
     assert "target_state_visible" in fixture_postcondition
-    assert "result_title in visible_label_text" in fixture_postcondition
+    assert "str(widget.receipt_title.text())" in fixture_postcondition
     assert "widget.dialog_in_flight" in fixture_postcondition
     assert "widget.cancel_action.isVisible()" in fixture_postcondition
     assert "dialog.dialog_in_flight" in growth_charge_annotation
@@ -351,7 +238,7 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert 'target_state == "stored"' in growth_charge_annotation
     assert "not plant_details_visible" in growth_charge_annotation
     assert "not charge_details_visible" in growth_charge_annotation
-    assert "result_title in visible_label_text" in growth_charge_annotation
+    assert 'str(dialog.receipt_title.text()).strip() == "Seed → Sprout"' in growth_charge_annotation
     assert "dialog.cancel_action.isVisible()" in growth_charge_annotation
     assert "scroll_maximum == 0" not in fixture_postcondition
     assert '"loadout_routes_enabled": bool(' in collection_fixture
@@ -394,19 +281,18 @@ def test_every_capture_fixture_has_one_exact_renderer_family() -> None:
 
     assert all(families)
     assert Counter(families) == Counter({
-        "AnkiQt": 18,
-        "GardenDashboard": 32,
-        "GardenProgressDialog": 17,
-        "GardenSettingsDialog": 10,
-        "NurseryDialog": 15,
-        "CollectibleDetailDialog": 4,
-        "FertilizerDialog": 4,
+        "AnkiQt": 2,
+        "GardenDashboard": 4,
+        "GardenProgressDialog": 5,
+        "GardenSettingsDialog": 2,
+        "NurseryDialog": 6,
+        "CollectibleDetailDialog": 1,
+        "FertilizerDialog": 1,
         "StarterConfirmationDialog": 1,
         "PlantStoryDialog": 1,
-        "FertilizerReplacementDialog": 1,
-        "SpeciesOverviewDialog": 2,
-        "PurchaseConfirmationDialog": 14,
-        "GrowthChargeConfirmationDialog": 7,
+        "SpeciesOverviewDialog": 1,
+        "PurchaseConfirmationDialog": 1,
+        "GrowthChargeConfirmationDialog": 1,
     })
 
 
@@ -421,7 +307,7 @@ def test_every_capture_fixture_has_one_state_specific_profile() -> None:
 
     assert all(profile for profile in profiles)
     assert [profile["profile_id"] for profile in profiles] == labels
-    assert len({profile["profile_id"] for profile in profiles}) == 126
+    assert len({profile["profile_id"] for profile in profiles}) == 26
     assert all(profile.get("kind") for profile in profiles)
     assert resolver("deck-browser-home")["fixture_state"] == (
         "starter-planted-not-nurtured"
@@ -763,6 +649,7 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
     assert '"rendered_pixel_evidence"' in capture_pixels
     assert "_pixmap_contains_overlay(pixmap, root, target)" in capture_pixels
     assert 'window_family in {"AnkiQt", "GardenDashboard"}' in native_layout_audit
+    assert "QPushButton," in CAPTURE_PATH.read_text("utf-8")
     assert "_audit_capture_pixel_contracts(" in capture_now
     assert 'annotation["visual_contract"]' in capture_now
 
@@ -1212,7 +1099,7 @@ def test_capture_p0_fixtures_are_coherent_and_transaction_bound() -> None:
     assert '"weekly_reward_status": weekly_reward.status' in missed_streak
     assert '"missed_day_weekly_reward_projection"' in fixture_postcondition
     assert '"Streak ended at 3 days"' in fixture_postcondition
-    assert '"Answer a card to start again."' in fixture_postcondition
+    assert '"Answer one card to begin a new streak."' in fixture_postcondition
     assert '"Previous streak", "Next Growth bonus"' in fixture_postcondition
     assert '"more needed"' in fixture_postcondition
     assert "weekly_reward.status" in fixture_postcondition
@@ -1444,7 +1331,7 @@ def test_watering_can_capture_profile_skips_unrelated_release_interfaces() -> No
             "reduced-motion-enabled",
         )
     }
-    assert 'os.environ.get("ANKI_GARDEN_CAPTURE_PROFILE", "full")' in init
+    assert '"ANKI_GARDEN_CAPTURE_PROFILE",\n                "representative",' in init
     assert 'if self._capture_profile == "watering-can":' in init
     assert "self._starter_steps = []" in init
     assert "self._capture_nurture," in init
@@ -1565,7 +1452,7 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert 'elif self._capture_profile == "watering-can-home":' in init
     home_branch = init.split(
         'elif self._capture_profile == "watering-can-home":', 1
-    )[1].split('elif self._capture_profile != "full":', 1)[0]
+    )[1].split('elif self._capture_profile != "representative":', 1)[0]
     assert "self._capture_nurture" not in home_branch
     assert "for slot in (0, 2, 4)" in home_branch
     assert "for slot in (1, 3, 5)" in home_branch
