@@ -47,10 +47,24 @@ def test_progress_card_grid_owns_content_driven_row_geometry() -> None:
     assert "self.grid.setRowMinimumHeight(row_index, 0)" in grid
     assert "self.grid.setRowStretch(row_index, 0)" in grid
     assert "row_minimums: dict[int, int] = {}" in grid
+    assert 'widget.property("excludedFromProgressGrid")' in grid
+    assert "widget.isHidden()" not in grid
     assert "self.grid.setRowMinimumHeight(row_index, max(0, int(minimum)))" in grid
     assert "self.container.setMinimumHeight(required_height)" in grid
     assert 'self.container.setProperty("contentRowCount", len(row_minimums))' in grid
     assert "QTimer.singleShot(0, self._reflow)" in grid
+
+    collection = source.split("def _refresh_collection_list", 1)[1].split(
+        "def _set_collection_filter", 1
+    )[0]
+    assert 'no_results.setProperty("excludedFromProgressGrid", True)' in collection
+    assert 'no_results.setProperty("excludedFromProgressGrid", not is_empty)' in collection
+    assert collection.index(
+        'no_results.setProperty("excludedFromProgressGrid", not is_empty)'
+    ) < collection.index("self.collection_list.finish()")
+    assert collection.index("self.collection_list.finish()") < collection.index(
+        "no_results.setVisible(is_empty)"
+    )
 
 
 def test_scene_toasts_use_compact_overlay_geometry() -> None:

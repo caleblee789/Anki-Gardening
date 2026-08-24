@@ -5923,14 +5923,15 @@ class ProgressCardGrid(QWidget):
         row = 0
         column = 0
         row_minimums: dict[int, int] = {}
-        # Explicitly hidden states, such as the Collection no-results panel,
-        # must not leave phantom rows in the populated grid. Keeping the
-        # filtered sequence also lets category-bound singleton cards span the
-        # row without changing the default grid behavior.
+        # New Qt widgets are hidden until a layout adopts them, so isHidden()
+        # cannot distinguish fresh cards from an intentionally suppressed row.
+        # Callers mark only the latter explicitly. Keeping the filtered
+        # sequence also lets category-bound singleton cards span the row
+        # without changing the default grid behavior.
         visible_entries = [
             (widget, full_width)
             for widget, full_width in self._entries
-            if not widget.isHidden()
+            if not bool(widget.property("excludedFromProgressGrid"))
         ]
         for entry_index, (widget, full_width) in enumerate(visible_entries):
             if full_width:
@@ -17600,6 +17601,7 @@ class GardenDashboard(DialogShell):
             "",
         )
         no_results.setAccessibleName("Collection filters returned no results")
+        no_results.setProperty("excludedFromProgressGrid", True)
         no_results.hide()
         self.collection_list.add_full_width(no_results)
         self.collection_no_results = no_results
@@ -17768,8 +17770,9 @@ class GardenDashboard(DialogShell):
                         self._collectible_registry_card(view)
                     )
             result_count += len(extra)
-        self.collection_list.finish()
         is_empty = result_count == 0
+        no_results.setProperty("excludedFromProgressGrid", not is_empty)
+        self.collection_list.finish()
         no_results.setVisible(is_empty)
         self.collection_list.setProperty("emptyResult", is_empty)
         progress_dialog = getattr(self, "progress_dialog", None)
