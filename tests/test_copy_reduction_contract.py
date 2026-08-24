@@ -53,6 +53,7 @@ REMOVED_VISIBLE_COPY = (
     "Purchasing…",
     "Apply Growth Charge",
     "Growth Charge applied",
+    "Use potion",
     "Manage loadout",
     "Refresh diagnostics",
     "No new plants available",
@@ -66,6 +67,49 @@ REMOVED_VISIBLE_COPY = (
     "Outcome preview",
     "More details",
     "Garden Spaces",
+)
+
+OFFSCREEN_STRING_PATHS = (
+    ROOT / "ankigarden" / "addon.py",
+    ROOT / "ankigarden" / "game.py",
+    ROOT / "ankigarden" / "reward_presentation.py",
+    ROOT / "ankigarden" / "terminology.py",
+    ROOT / "ankigarden" / "purchases.py",
+    ROOT / "ankigarden" / "hooks" / "reviewer.py",
+    ROOT / "ankigarden" / "ui" / "copy.py",
+    ROOT / "ankigarden" / "ui" / "state.py",
+    ROOT / "ankigarden" / "ui" / "plant_presenters.py",
+    *VISIBLE_STRING_PATHS,
+)
+
+OFFSCREEN_REMOVED_COPY = (
+    "The reward for finishing all due cards could not be saved.",
+    "The purchase could not be saved; no Garden Coins were spent.",
+    "The Booster Potion could not be applied",
+    "The move could not be saved",
+    "The collection change could not be saved.",
+    "The plant you chose to nurture could not be saved.",
+    "The new name could not be saved.",
+    "The garden name could not be saved.",
+    "The new arrangement could not be saved.",
+    "The previous arrangement could not be restored.",
+    "Anki card answer Garden can count",
+    "Anki card answers Garden can count",
+    "Growth per Anki card answer",
+    "Finalized after the qualifying Anki day",
+    "Garden progress could not refresh.",
+    "stored in Collection and remains owned",
+    "Storing the plant could not be saved.",
+    "Planting could not be saved.",
+    "Nurtured + passive",
+    "cards left to",
+    "direct Growth to the nurtured plant",
+    "Added to the Weather and Scenery collection",
+    "unfinished planted plant",
+    "Move or swap here",
+    "Swap with plant",
+    "Showing the last available garden preview",
+    "Garden progress could not be loaded",
 )
 
 PROCESS_BUTTON_LABELS = {
@@ -132,6 +176,29 @@ def test_deleted_copy_is_not_reintroduced_on_visible_surfaces() -> None:
         if any(removed.casefold() in text.casefold() for removed in REMOVED_VISIBLE_COPY)
     ]
     assert not violations, "Superseded copy remains visible:\n" + "\n".join(violations)
+
+
+def test_non_brand_visible_copy_does_not_use_all_caps() -> None:
+    violations = [
+        f"{path.relative_to(ROOT)}:{line}: {text!r}"
+        for path, line, text in _visible_literals()
+        if text == "GARDEN COINS"
+    ]
+    assert not violations, "All-caps ordinary copy remains:\n" + "\n".join(
+        violations
+    )
+
+
+def test_offscreen_learner_copy_does_not_restore_superseded_phrasing() -> None:
+    violations: list[str] = []
+    for path in OFFSCREEN_STRING_PATHS:
+        source = path.read_text("utf-8")
+        for removed in OFFSCREEN_REMOVED_COPY:
+            if removed.casefold() in source.casefold():
+                violations.append(f"{path.relative_to(ROOT)}: {removed!r}")
+    assert not violations, "Superseded off-screen copy remains:\n" + "\n".join(
+        violations
+    )
 
 
 def test_buttons_use_direct_action_labels() -> None:

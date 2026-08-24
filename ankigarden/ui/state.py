@@ -94,13 +94,13 @@ def select_garden_ui(engine: Any, storage: Any) -> GardenUiSnapshot:
             0, int(reward_map.get(plant_id, 0) or 0)
         )
         if nurtured and passive:
-            return "Nurtured + passive"
+            return "Nurtured + bonuses"
         if nurtured:
             return "Nurtured"
         if passive:
-            return "Passive"
+            return "Bonuses"
         if direct:
-            return "Direct only"
+            return "Rewards and charges"
         return "No Growth today"
 
     plants = tuple(

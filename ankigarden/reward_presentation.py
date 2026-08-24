@@ -44,14 +44,14 @@ class RewardLine:
             unit = "Garden Coin" if amount == 1 else "Garden Coins"
             return f"+{amount:,} {unit}"
         if self.reward_type == "growth":
-            return f"+{amount:,} direct Growth to the nurtured plant"
+            return f"+{amount:,} Growth"
         if self.reward_type == "inventory_item":
             item_name = _inventory_item_name(self.item_id)
             if amount != 1 and not item_name.endswith("s"):
                 item_name = f"{item_name}s"
             return f"+{amount:,} {item_name}"
         if self.reward_type == "environment_item":
-            return f"Unlocked {_environment_item_name(self.item_id)}"
+            return f"{_environment_item_name(self.item_id)} added to Weather and Scenery"
         return f"+{amount:,} {_identifier_name(self.reward_type or 'reward')}"
 
 
@@ -225,9 +225,7 @@ class RecurringRewardPresentation:
             label = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
             parts.append(f"+{self.reward_coins:,} {label}")
         if self.reward_growth:
-            parts.append(
-                f"+{self.reward_growth:,} direct Growth to the nurtured plant"
-            )
+            parts.append(f"+{self.reward_growth:,} Growth")
         return " and ".join(parts) if parts else "No reward"
 
 
@@ -396,7 +394,7 @@ def recurring_reward_presentations(
             rule_id="weekly_streak",
             source="weekly_streak",
             title="Seven-day streak cycle",
-            trigger="Every seventh consecutive counted Anki day",
+            trigger="Reach each 7-day Anki streak milestone.",
             reward_coins=weekly_coins,
             reward_growth=0,
             awarded_today=weekly_awarded,
@@ -465,10 +463,10 @@ def _garden_find_description(
     amount: int,
     persisted_or_registry_description: str,
 ) -> str:
-    """Keep old and registry-backed Growth snapshots explicit and accurate."""
+    """Keep old and registry-backed Growth snapshots concise and accurate."""
 
     if str(reward_type) == "growth":
-        return f"+{max(0, int(amount)):,} direct Growth to the nurtured plant"
+        return f"+{max(0, int(amount)):,} Growth"
     return str(persisted_or_registry_description)
 
 
@@ -573,7 +571,7 @@ def lookup(
             amount=max(0, int(outcome.amount)),
             item_id=outcome.item_id or environment.item_id,
             display_name=environment.display_name,
-            description="Added to the Weather and Scenery collection",
+            description="Added to Weather and Scenery",
             tier=environment.tier,
             artwork_ref=environment.item_id,
             localization_key=f"garden_find.environment.{environment.item_id}",
@@ -726,17 +724,17 @@ class AchievementPresentation:
     @property
     def reward_summary(self) -> str:
         if self.persisted_reward_summary:
-            return self.persisted_reward_summary
+            return self.persisted_reward_summary.replace("+", "")
         parts: list[str] = []
         if self.reward_coins:
-            parts.append(f"+{self.reward_coins:,} Garden Coins")
+            parts.append(f"{self.reward_coins:,} Garden Coins")
         if self.reward_small_growth_charges:
             parts.append(
-                f"+{self.reward_small_growth_charges} Small Growth Charge"
+                f"{self.reward_small_growth_charges} Small Growth Charge"
             )
         if self.reward_standard_growth_charges:
             parts.append(
-                f"+{self.reward_standard_growth_charges} Standard Growth Charge"
+                f"{self.reward_standard_growth_charges} Standard Growth Charge"
             )
         return " and ".join(parts) if parts else "Badge only"
 
@@ -777,20 +775,9 @@ def _achievement_condition_lines(
                 definition.minimum_non_again_percent,
             )
             return (
-                f"Answers: {answers:,} of {definition.minimum_answers:,}",
-                "Non-Again accuracy: "
-                f"{non_again_percent}% of "
-                f"{definition.minimum_non_again_percent}% required",
+                f"{answers:,} card answers, {non_again_percent}% accuracy",
             )
-        accuracy = (
-            "No Again answers"
-            if definition.minimum_non_again_percent >= 100 else
-            f"At least {definition.minimum_non_again_percent}% non-Again accuracy"
-        )
-        return (
-            f"At least {definition.minimum_answers:,} Anki card answers Garden can count",
-            accuracy,
-        )
+        return (persisted_requirement or definition.description,)
     return (persisted_requirement or definition.description,)
 
 

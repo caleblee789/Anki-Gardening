@@ -407,7 +407,7 @@ def test_multiword_species_uses_learner_facing_label_in_messages():
 
     assert not ok
     assert message == (
-        "You need 400 more Garden Coins to purchase Japanese Maple Seed."
+        "You need 400 more Garden Coins to buy Japanese Maple Seed."
     )
 
 
@@ -1022,7 +1022,7 @@ def test_all_due_requires_an_answer_live_zero_obligations_and_is_once_per_day():
     engine, storage = make_engine()
     assert engine.evaluate_all_due(DueObligationStatus()) == (
         False,
-        "Answer at least one card before you can earn the reward for finishing all due cards.",
+        "Answer a card first.",
     )
     assert engine.observe_due_start(DueObligationStatus(review_count=1))
     answer(engine, storage)
@@ -1046,7 +1046,7 @@ def test_all_due_check_persists_scheduler_rollover_even_when_not_earned():
 
     ok, message = engine.evaluate_all_due(DueObligationStatus(review_count=2))
 
-    assert not ok and "at least one card" in message
+    assert not ok and message == "Answer a card first."
     assert storage.state.daily_stats.day == "2026-08-09"
     assert storage.save_count == saves_before + 1
 
@@ -1379,7 +1379,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
         if event.event_id == f"reward-summary:{first.correlation_id}"
     )
     assert feedback.message == (
-        "+2 Garden Coins and +40 direct Growth to the nurtured plant"
+        "+2 Garden Coins and +40 Growth"
     )
     assert feedback.correlation_id == first.correlation_id
     assert feedback.amount == 0
@@ -1528,7 +1528,7 @@ def test_collection_planting_rejects_invalid_external_destination_without_mutati
     ok, message = engine.plant_from_collection("p3", invalid_destination)
 
     assert not ok
-    assert message == "Choose an empty garden bed."
+    assert message == "Choose an empty bed."
     assert storage.state.to_dict() == before
     assert storage.save_count == saves_before
 

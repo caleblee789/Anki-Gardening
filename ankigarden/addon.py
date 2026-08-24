@@ -232,8 +232,8 @@ class AnkiGardenApp:
         except Exception:
             logger.debug("Anki Garden: live Garden could not refresh after maintenance", exc_info=True)
             USER_NOTICES.publish(
-                "Your garden progress is safe, but the display could not refresh. "
-                "Reopen Anki Garden to try again.",
+                "Couldn’t update the Garden. Your progress is safe. "
+                "Close and reopen it to try again.",
                 key="display_refresh",
             )
         try:
@@ -826,7 +826,7 @@ class AnkiGardenApp:
             request_id = self._home_widget_controller.begin_request()
             self._home_widget_controller.resolve_error(
                 request_id,
-                "Garden progress could not refresh. Your Anki screen is still available; retry the Garden.",
+                "Your garden is still available.",
             )
             html = render_home_widget(self._home_widget_controller.snapshot)
         else:

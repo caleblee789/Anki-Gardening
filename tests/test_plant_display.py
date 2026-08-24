@@ -805,7 +805,7 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
 
     assert labels == {
         0: ("Current location", "current"),
-        1: ("Swap with plant", "available"),
+        1: ("Move here", "available"),
         2: ("Move here", "active"),
         3: ("Move here", "available"),
         4: ("Locked", "locked"),
@@ -1173,7 +1173,7 @@ def test_statistics_help_is_explicit_hidden_and_keyboard_focusable():
     assert "self._draw_stats_help(painter, r)" in scene
     assert "self._stats_help_button.clicked.connect(self._focus_stats_help)" in scene
     assert "QEvent.Type.Enter, QEvent.Type.FocusIn" in scene
-    assert "That garden bed has not been unlocked yet." in scene
+    assert "That bed is locked." in scene
 
 
 def test_scene_landmarks_are_registered_accessible_and_disabled_while_rearranging():
@@ -1217,7 +1217,7 @@ def test_dashboard_exposes_accessible_plant_story_and_inline_rename():
     assert 'setAccessibleName("Plant memory timeline")' in dashboard
     assert 'setAccessibleName("Rename plant")' in dashboard
     assert 'QLabel("History")' in dashboard
-    assert "New history will appear as this plant grows." in dashboard
+    assert "New history will appear as this plant grows." not in dashboard
     assert 'QLabel("Up next")' in dashboard
     assert "reverse=True" not in dashboard.split("class PlantStoryDialog", 1)[1].split("class NurseryDialog", 1)[0]
     assert "event.key() == Qt.Key.Key_Escape" in dashboard

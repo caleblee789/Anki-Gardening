@@ -201,8 +201,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
         "Earn from a Garden Find or daily Scenery reward."
     )
     assert booster.descriptor.buff == (
-        f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per Anki card "
-        "answer while active."
+        f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card."
     )
     assert GardenGameEngine._duration_label(
         GardenGameEngine.BOOSTER_DURATION_SECONDS

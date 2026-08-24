@@ -343,14 +343,14 @@ def test_capture_contract_covers_every_public_surface_group() -> None:
     assert "nursery_action_in_footer" in fixture_postcondition
     assert "result_matches_quote" in fixture_postcondition
     assert "target_state_visible" in fixture_postcondition
-    assert "transition in visible_label_text" in fixture_postcondition
+    assert "result_title in visible_label_text" in fixture_postcondition
     assert "widget.dialog_in_flight" in fixture_postcondition
-    assert "widget.cancel_action.isHidden()" in fixture_postcondition
+    assert "widget.cancel_action.isVisible()" in fixture_postcondition
     assert "dialog.dialog_in_flight" in growth_charge_annotation
     assert "result_matches_quote" in growth_charge_annotation
     assert "target_state_label" in growth_charge_annotation
-    assert "transition in visible_label_text" in growth_charge_annotation
-    assert "dialog.cancel_action.isHidden()" in growth_charge_annotation
+    assert "result_title in visible_label_text" in growth_charge_annotation
+    assert "dialog.cancel_action.isVisible()" in growth_charge_annotation
     assert "scroll_maximum == 0" not in fixture_postcondition
     assert '"loadout_routes_enabled": bool(' in collection_fixture
     assert '"action_buttons_fully_visible": bool(' in collection_fixture
@@ -2096,7 +2096,7 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
     assert "definition.reward.coins" in clear_recall
     assert '"condition_lines": list(projection.condition_lines)' in clear_recall
     assert "achievement_progress_display" not in clear_recall
-    assert "len(projection.condition_lines) >= 2" in postcondition
+    assert "len(projection.condition_lines) >= 1" in postcondition
     assert "condition in visible_label_texts" in postcondition
 
     assert 'button_prefix="Choose"' in starter

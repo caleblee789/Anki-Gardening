@@ -2012,7 +2012,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 other.foliage_rect.expanded(3, 2) for other in rows
                 if other.slot_index in active_slots
             ] + placed_controls
-            control = bed_badge_rect(row, "Swap with plant", width, height, obstacles)
+            control = bed_badge_rect(row, "Move here", width, height, obstacles)
             placed_controls.append(control)
             strict = enforce_slot_envelopes and row.release_layout_candidate
             warnings = set(row.validation_warnings)
@@ -2133,7 +2133,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
         if reserve_move_controls:
             for row in active_result:
                 obstacles = [other.foliage_rect.expanded(3, 2) for other in active_result]
-                badge = bed_badge_rect(row, "Swap with plant", width, height, obstacles)
+                badge = bed_badge_rect(row, "Move here", width, height, obstacles)
                 blockers = [other for other in active_result if badge.intersects(other.foliage_rect.expanded(3, 2))]
                 for blocker in blockers:
                     blocker_center = blocker.foliage_rect.y + blocker.foliage_rect.height / 2
@@ -2229,9 +2229,8 @@ def move_badge_label(
         return "Locked", "locked"
     if slot_index == origin_slot:
         return "Current location", "current"
-    occupant_names = occupant_names or {}
-    label = f"Swap with {occupant_names.get(slot_index, 'plant')}" if slot_index in occupied_slots else "Move here"
-    return label, "active" if slot_index == destination_slot else "available"
+    del occupied_slots, occupant_names
+    return "Move here", "active" if slot_index == destination_slot else "available"
 
 
 def move_target_state(

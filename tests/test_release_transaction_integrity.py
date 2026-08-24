@@ -767,7 +767,7 @@ def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> 
     )
 
     assert not ok
-    assert "no Garden Coins were spent" in message
+    assert "No Garden Coins were spent" in message
     assert failing_storage.state.to_dict() == before_failed_replacement
 
 
@@ -1265,8 +1265,8 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
 @pytest.mark.parametrize(
     ("committed", "message_fragment"),
     (
-        (False, "could not confirm that change"),
-        (True, "change was saved"),
+        (False, "Nothing was changed"),
+        (True, "Changes were saved"),
     ),
 )
 def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
@@ -1301,7 +1301,7 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
     assert log_calls
     assert results and results[0][0] is False
     assert message_fragment in results[0][1]
-    assert "reopen the Nursery" in results[0][1]
+    assert "Reopen the Nursery" in results[0][1]
     assert properties == (
         {"transactionPresentation": "committed-result-with-refresh-failure"}
         if committed else {}

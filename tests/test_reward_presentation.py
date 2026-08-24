@@ -67,7 +67,7 @@ def test_recent_reward_summaries_groups_atomic_receipt_lines_without_cross_event
     ]
     assert summaries[0].learner_text == (
         "+100 Garden Coins, +1 Small Growth Charge, +1 Basic Fertilizer, and "
-        "+5 direct Growth to the nurtured plant"
+        "+5 Growth"
     )
     assert summaries[1].event_key == "bundle:2"
     assert RewardLine(
@@ -110,7 +110,7 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
     environment_presentation = lookup(environment_hit)
     assert environment_presentation is not None
     assert environment_presentation.description == (
-        "Added to the Weather and Scenery collection"
+        "Added to Weather and Scenery"
     )
 
     persisted_growth = GardenFindOutcome(
@@ -120,7 +120,7 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
         description="+40 Growth",
     )
     assert lookup(persisted_growth).description == (
-        "+40 direct Growth to the nurtured plant"
+        "+40 Growth"
     )
     registry_growth = GardenFindOutcome(
         "answer:8", "2026-08-20", "hit", "standard", "standard-v1",
@@ -128,7 +128,7 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
         reward_type="growth", amount=60,
     )
     assert lookup(registry_growth).description == (
-        "+60 direct Growth to the nurtured plant"
+        "+60 Growth"
     )
 
     state = GardenState(garden_find_outcomes={
@@ -180,8 +180,7 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     )
     assert clear_recall.category == "recall"
     assert clear_recall.condition_lines == (
-        "Answers: 29 of 20",
-        "Non-Again accuracy: 89.7% of 90% required",
+        "29 card answers, 89.7% accuracy",
     )
     absent_but_derivable = next(
         item for item in achievement_presentations(state)
@@ -224,7 +223,7 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     assert rules["daily_activity"].reward_summary == "+2 Garden Coins"
     assert rules["daily_activity"].status == "Earned today"
     assert rules["all_due"].reward_summary == (
-        "+12 Garden Coins and +5 direct Growth to the nurtured plant"
+        "+12 Garden Coins and +5 Growth"
     )
     assert all_due_calls == [True]
     assert rules["weekly_streak"].reward_summary == "+10 Garden Coins"
@@ -266,7 +265,7 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     }
     assert committed_rules["all_due"].awarded_today is True
     assert committed_rules["all_due"].reward_summary == (
-        "+12 Garden Coins and +5 direct Growth to the nurtured plant"
+        "+12 Garden Coins and +5 Growth"
     )
     assert all_due_calls == []
 

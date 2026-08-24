@@ -178,7 +178,7 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
                     "card answer while active."
                 ),
                 activation_condition=(
-                    "Use on a nurtured, unfinished planted plant."
+                    "Use on a nurtured plant that is still growing."
                 ),
                 duration=(
                     f"Lasts {basic_duration}; another {basic_fertilizer.name} "

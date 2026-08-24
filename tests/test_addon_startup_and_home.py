@@ -860,7 +860,7 @@ def test_dashboard_refresh_failure_does_not_flip_maintenance_success_or_repeat_p
 
     assert calls == {"ledger": 1, "rollover": 1, "catch-up": 1, "refresh": 1}
     assert addon.USER_NOTICES.current.key == "display_refresh"
-    assert "display" in addon.USER_NOTICES.current.message.lower()
+    assert "update the garden" in addon.USER_NOTICES.current.message.lower()
 
 
 def test_same_day_maintenance_never_reenters_external_surface_refresh() -> None:
@@ -1855,7 +1855,7 @@ def test_failed_live_revlog_read_is_credited_by_catchup_exactly_once(monkeypatch
     assert [payload["revlog_id"] for payload in engine.catchup_payloads] == [200]
     assert storage.state.last_processed_revlog_id == 200
     assert storage.save_calls == 0
-    assert "retry automatically" in notices.current.message
+    assert "will add it when review history is available" in notices.current.message
 
 
 def test_reviewer_reconciles_earlier_failed_answer_with_next_callback_exactly_once(

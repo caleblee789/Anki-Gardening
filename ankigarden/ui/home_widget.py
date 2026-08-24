@@ -151,7 +151,7 @@ class HomeWidgetStateController:
             phase="stale" if self._last_valid_data is not None else "loading",
             data=self._last_valid_data,
             error_message=(
-                "Showing the last available garden preview. Updating..."
+                "Updating…"
                 if self._last_valid_data is not None else None
             ),
         )
@@ -194,7 +194,7 @@ class HomeWidgetStateController:
     def resolve_stale(
         self,
         request_id: int,
-        error_message: str = "Showing the last available garden preview. Updating...",
+        error_message: str = "Updating…",
     ) -> bool:
         if request_id != self.snapshot.request_id or self._last_valid_data is None:
             return False
@@ -207,7 +207,7 @@ class HomeWidgetStateController:
         return True
 
 
-DEFAULT_ERROR_MESSAGE = "Garden progress could not be loaded. Try again in a moment."
+DEFAULT_ERROR_MESSAGE = "Preview unavailable."
 
 HOME_COMPACT_CONTAINER_MAX_WIDTH = 469
 HOME_NARROW_CONTAINER_MAX_WIDTH = 420
@@ -727,7 +727,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     partial_banner = ""
     if phase == "partial":
-        partial_error = escape(snapshot.error_message or "Some details are temporarily unavailable.")
+        partial_error = escape(snapshot.error_message or "Some details are unavailable.")
         partial_banner = (
             '<div class="ag-home__partial-message" data-testid="home-partial-error" '
             f'role="status" aria-live="polite">{partial_error}</div>'

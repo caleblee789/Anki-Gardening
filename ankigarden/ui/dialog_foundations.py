@@ -96,7 +96,7 @@ DIALOG_VIEW_POLICIES: dict[DialogViewState, DialogViewPolicy] = {
         busy=True,
     ),
     DialogViewState.STALE_PROPOSAL: DialogViewPolicy(
-        "The proposal changed. Review the latest details before continuing.",
+        "Details changed. Review them before continuing.",
         "warning",
         retryable=True,
     ),
@@ -105,23 +105,23 @@ DIALOG_VIEW_POLICIES: dict[DialogViewState, DialogViewPolicy] = {
         "warning",
     ),
     DialogViewState.RECOVERABLE_FAILURE: DialogViewPolicy(
-        "This action could not be completed. Try again.",
+        "Couldn’t finish that action. Try again.",
         "error",
         retryable=True,
         assertive=True,
     ),
     DialogViewState.PERSISTENCE_FAILURE: DialogViewPolicy(
-        "Changes could not be saved. The committed state is unchanged.",
+        "Couldn’t save changes. Nothing was changed.",
         "error",
         retryable=True,
         assertive=True,
     ),
     DialogViewState.SUCCESS: DialogViewPolicy(
-        "Saved successfully.",
+        "Saved.",
         "success",
     ),
     DialogViewState.ERROR: DialogViewPolicy(
-        "This view could not be loaded.",
+        "Couldn’t load this view.",
         "error",
         retryable=True,
         assertive=True,

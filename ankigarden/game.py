@@ -250,8 +250,8 @@ class GardenGameEngine:
         (0.190, 0.526), (0.498, 0.526), (0.769, 0.526),
         (0.185, 0.765), (0.502, 0.835), (0.835, 0.765),
     )
-    SOIL_PLANT_MESSAGE = "Choose an empty garden bed."
-    SOIL_CAPACITY_MESSAGE = "Unlock or empty a garden bed before placing this plant."
+    SOIL_PLANT_MESSAGE = "Choose an empty bed."
+    SOIL_CAPACITY_MESSAGE = "Unlock or empty a bed first."
     SPECIES_PRICES = {
         "bonsai": 100,
         "rose": 100,
@@ -1747,7 +1747,7 @@ class GardenGameEngine:
                 daily_activity_event_key,
                 source="daily_activity",
                 source_id=scheduler_day,
-                reason="First eligible answer of the Anki day",
+                reason="First card answer of the Anki day",
                 scheduler_day=scheduler_day,
                 correlation_id=correlation_id,
                 coins=self.DAILY_ACTIVITY_COINS,
@@ -2635,7 +2635,7 @@ class GardenGameEngine:
                     environment.item.display_name if environment.item else ""
                 ),
                 description=(
-                    "Added to the Weather and Scenery collection"
+                    "Added to Weather and Scenery"
                     if environment.item else ""
                 ),
                 tier=(environment.item.tier if environment.item else ""),
@@ -2892,13 +2892,13 @@ class GardenGameEngine:
         if stats.completed_due_cards:
             return False, "You already earned today’s reward for finishing all due cards."
         if not self._reward_applied(f"daily_activity:{stats.day}"):
-            return False, "Answer at least one card before you can earn the reward for finishing all due cards."
+            return False, "Answer a card first."
         if stats.due_started_with_cards is not True:
             return False, (
                 "Today did not begin with a verified due review or learning step."
             )
         if not self.state.starter_selection_complete:
-            return False, "Complete Garden setup before all-due rewards begin."
+            return False, "Finish Garden setup first."
         if status is None:
             resolver = getattr(self.storage, "due_obligations", None)
             status = resolver() if callable(resolver) else DueObligationStatus(available=False, error="Unavailable")
@@ -2958,7 +2958,7 @@ class GardenGameEngine:
         except Exception:
             self._pending_stage_transitions = transition_snapshot
             self._restore_state(snapshot)
-            return False, "The reward for finishing all due cards could not be saved."
+            return False, "Couldn’t add the reward. No Garden Coins were added."
         return True, feedback
 
     def apply_same_day_reviews(self, reviews: list[Dict[str, Any]], *, latest_revlog_id: int = 0) -> int:
@@ -3224,12 +3224,9 @@ class GardenGameEngine:
         return EffectDescriptor(
             function="Applies a timed Growth boost to the nurtured plant.",
             buff=(
-                f"+{cls.BOOSTER_GROWTH_PER_ANSWER:,} Growth per Anki card "
-                "answer while active."
+                f"+{cls.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card."
             ),
-            activation_condition=(
-                "Use on a nurtured, unfinished planted plant."
-            ),
+            activation_condition="Use on a nurtured plant that is still growing.",
             duration=(
                 f"Lasts {duration}; another Potion adds more time."
             ),
@@ -3288,7 +3285,7 @@ class GardenGameEngine:
             effective_status = PurchaseStatus.INSUFFICIENT_COINS
             shortfall = price - balance
             effective_message = (
-                f"You need {shortfall:,} more Garden Coins to purchase {item_name}."
+                f"You need {shortfall:,} more Garden Coins to buy {item_name}."
             )
         token = self._purchase_quote_token({
             "schema": 1,
@@ -3748,7 +3745,7 @@ class GardenGameEngine:
             return self._purchase_failure(
                 replay_quote,
                 PurchaseStatus.REQUEST_ID_CONFLICT,
-                "This purchase request conflicts with an earlier completed purchase. Start again.",
+                "Purchase failed. No Garden Coins were spent.",
                 balance=self.state.currency_balance,
             )
 
@@ -3764,14 +3761,14 @@ class GardenGameEngine:
             return self._purchase_failure(
                 current,
                 PurchaseStatus.REQUEST_ID_CONFLICT,
-                "This purchase request is invalid. Start again.",
+                "Purchase failed. No Garden Coins were spent.",
                 balance=self.state.currency_balance,
             )
         if not isinstance(request.request_id, str) or request.request_id != canonical_request_id:
             return self._purchase_failure(
                 current,
                 PurchaseStatus.REQUEST_ID_CONFLICT,
-                "This purchase request is invalid. Start again.",
+                "Purchase failed. No Garden Coins were spent.",
                 balance=self.state.currency_balance,
             )
         if current.item_id != request.item_id:
@@ -3867,7 +3864,7 @@ class GardenGameEngine:
             return self._purchase_failure(
                 current,
                 PurchaseStatus.PERSISTENCE_FAILURE,
-                "The purchase could not be saved; no Garden Coins were spent. Try again.",
+                "Purchase failed. No Garden Coins were spent.",
                 balance=self.state.currency_balance,
             )
 
@@ -4635,7 +4632,7 @@ class GardenGameEngine:
             or not plant.planted
             or plant.fully_grown
         ):
-            return False, "Nurture an unfinished planted plant before using Basic Fertilizer."
+            return False, "Choose a nurtured plant that is still growing."
         if self.state.consumables.get("fertilizer_basic", 0) <= 0:
             return False, "You do not have any Rich Compost yet."
         spec = self.FERTILIZERS["basic"]
@@ -4683,11 +4680,11 @@ class GardenGameEngine:
     def use_booster_potion(self, plant_id: str | None = None) -> tuple[bool, str]:
         plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
         if plant is None:
-            return False, "Choose an unfinished plant to nurture before using a Booster Potion."
+            return False, "Choose a nurtured plant that is still growing."
         if self.state.active_plant_id != plant.plant_id or not plant.planted or plant.fully_grown:
-            return False, "Nurture this unfinished planted plant before using a Booster Potion."
+            return False, "This plant can’t use a Booster Potion."
         if self.state.consumables.get("booster_potion", 0) <= 0:
-            return False, "You do not have a Booster Potion yet. Rare study gifts can contain one."
+            return False, "No Booster Potions available."
         now = self._now_seconds()
         current = plant.booster if plant.booster and plant.booster.active(now) else None
         archived = None if current is not None else self._historical_booster_period(
@@ -4741,7 +4738,7 @@ class GardenGameEngine:
             "booster",
             (
                 f"Booster Potion {action} on {plant.name}: "
-                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per Anki card answer for {duration_text}."
+                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per card for {duration_text}."
             ),
             plant.plant_id,
             title="Booster Potion active",
@@ -4752,7 +4749,7 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The Booster Potion could not be applied; it remains in your collection."
+            return False, "Couldn’t use the Booster Potion. Your potion was not used."
         return True, (
             f"Booster Potion {action}: +{self.BOOSTER_GROWTH_PER_ANSWER} Growth "
             f"per answer for {duration_text}."
@@ -4789,11 +4786,11 @@ class GardenGameEngine:
         try:
             destination = available[0] if slot_index is None else int(slot_index)
         except (TypeError, ValueError):
-            return False, "Choose an empty garden bed."
+            return False, "Choose an empty bed."
         if not self.slot_accepts_plant(plant, destination):
             return False, self.SOIL_PLANT_MESSAGE
         if destination not in available:
-            return False, "Choose an empty garden bed."
+            return False, "Choose an empty bed."
         snapshot = self._state_snapshot()
         plant.slot_index = destination
         try:
@@ -4811,7 +4808,7 @@ class GardenGameEngine:
         try:
             destination = int(slot_index)
         except (TypeError, ValueError):
-            return False, "Choose an empty garden bed."
+            return False, "Choose an empty bed."
         occupied = {
             item.slot_index for item in self.state.plants
             if item.plant_id != plant.plant_id and item.slot_index is not None
@@ -4821,7 +4818,7 @@ class GardenGameEngine:
             or destination >= self.state.unlocked_slots
             or destination in occupied
         ):
-            return False, "Choose an empty garden bed."
+            return False, "Choose an empty bed."
         if not self.slot_accepts_plant(plant, destination):
             return False, self.SOIL_PLANT_MESSAGE
         if plant.slot_index == destination:
@@ -4831,7 +4828,7 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The move could not be saved; the previous bed was restored."
+            return False, "Couldn’t move the plant. Your garden is unchanged."
         return True, f"{plant.name} moved to Bed {destination + 1}."
 
     def move_to_collection(self, plant_id: str) -> tuple[bool, str]:
@@ -4839,14 +4836,14 @@ class GardenGameEngine:
         if plant is None or not plant.planted:
             return False, "That plant is not currently planted."
         if self.state.active_plant_id == plant.plant_id:
-            return False, "Nurture another unfinished planted plant before moving this one to the collection."
+            return False, "Nurture another plant before storing this one."
         snapshot = self._state_snapshot()
         plant.slot_index = None
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The collection change could not be saved."
-        return True, f"{plant.name} moved to the collection without losing progress."
+            return False, "Couldn’t store the plant. Your garden is unchanged."
+        return True, f"{plant.name} stored."
 
     def _repair_active_plant(self) -> Plant | None:
         requested_active_id = self.state.active_plant_id
@@ -4912,9 +4909,9 @@ class GardenGameEngine:
         if plant is None:
             return False, "That plant is no longer in your collection."
         if not plant.planted:
-            return False, "Place this plant in a garden bed before nurturing it."
+            return False, "Place this plant in a bed first."
         if plant.fully_grown:
-            return False, "This plant is fully grown. Choose an unfinished plant to nurture instead."
+            return False, "This plant is fully grown. Nurture another plant."
         progress = self.state.onboarding
         if self.state.active_plant_id == plant.plant_id:
             if (
@@ -4929,8 +4926,8 @@ class GardenGameEngine:
                 try:
                     self._persist_or_restore(snapshot)
                 except Exception:
-                    return False, "The plant you chose to nurture could not be saved."
-            return True, f"{plant.name} is already being nurtured and receives Growth from future card answers."
+                    return False, "Couldn’t nurture the plant. Your garden is unchanged."
+            return True, f"{plant.name} is already nurtured."
         snapshot = self._state_snapshot()
         self.state.active_plant_id = plant.plant_id
         self._record_active_period(plant.plant_id)
@@ -4946,8 +4943,8 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The plant you chose to nurture could not be saved."
-        return True, f"You are now nurturing {plant.name}. It receives Growth from future card answers."
+            return False, "Couldn’t nurture the plant. Your garden is unchanged."
+        return True, f"{plant.name} is now nurtured."
 
     def rename_plant(self, plant_id: str, name: str) -> tuple[bool, str]:
         plant = self.plant_story(plant_id)
@@ -4957,22 +4954,22 @@ class GardenGameEngine:
         if not clean:
             return False, "Enter a name for this plant."
         if len(clean) > MAX_PLANT_NAME_LENGTH:
-            return False, f"Plant names can be at most {MAX_PLANT_NAME_LENGTH} characters."
+            return False, f"Use {MAX_PLANT_NAME_LENGTH} characters or fewer."
         snapshot = self._state_snapshot()
         plant.name = clean
         plant.name_customized = True
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The new name could not be saved."
+            return False, "Couldn’t rename the plant. Nothing was changed."
         return True, f"This plant is now named {clean}."
 
     def rename_garden(self, name: str, *, complete_setup: bool = True) -> tuple[bool, str]:
         clean = " ".join(str(name).split())
         if not clean:
-            return False, "Enter a name for your garden."
+            return False, "Enter a garden name."
         if len(clean) > MAX_GARDEN_NAME_LENGTH:
-            return False, f"Garden names can be at most {MAX_GARDEN_NAME_LENGTH} characters."
+            return False, f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."
         snapshot = self._state_snapshot()
         self.state.garden_name = clean
         if complete_setup:
@@ -4980,7 +4977,7 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The garden name could not be saved."
+            return False, "Couldn’t save the garden name. Nothing was changed."
         return True, f"Your garden is now named {clean}."
 
     def development_populate(self) -> tuple[bool, str]:
@@ -5149,13 +5146,13 @@ class GardenGameEngine:
         plants_by_id = {plant.plant_id: plant for plant in plants}
         plant = plants_by_id.get(str(plant_id))
         if plant is None:
-            return False, "That planted plant is no longer in your garden.", None
+            return False, "That plant is no longer in your garden.", None
         try:
             destination = int(destination_slot)
         except (TypeError, ValueError):
-            return False, "Choose a garden bed.", None
+            return False, "Choose a bed.", None
         if destination < 0 or destination >= self.state.unlocked_slots:
-            return False, "That garden bed is still locked.", None
+            return False, "That bed is locked.", None
         origin = int(plant.slot_index or 0)
         if origin == destination:
             return False, "That plant is already in this bed.", None
@@ -5177,14 +5174,14 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The new arrangement could not be saved.", None
+            return False, "Couldn’t move the plant. Your garden is unchanged.", None
         return True, "Plants moved.", PlacementChange(before, after)
 
     def begin_placement_draft(self, plant_id: str) -> tuple[bool, str, PlacementDraft | None]:
         plants = self._planted()
         slots = {plant.plant_id: int(plant.slot_index or 0) for plant in plants}
         if str(plant_id) not in slots:
-            return False, "That planted plant is no longer in your garden.", None
+            return False, "That plant is no longer in your garden.", None
         return True, "Arrangement ready.", PlacementDraft(str(plant_id), slots, dict(slots), [])
 
     def stage_placement(self, draft: PlacementDraft, destination_slot: int) -> tuple[bool, str, PlacementChange | None]:
@@ -5193,9 +5190,9 @@ class GardenGameEngine:
         try:
             destination = int(destination_slot)
         except (TypeError, ValueError):
-            return False, "Choose a garden bed.", None
+            return False, "Choose a bed.", None
         if destination < 0 or destination >= self.state.unlocked_slots:
-            return False, "That garden bed is still locked.", None
+            return False, "That bed is locked.", None
         origin = draft.current[draft.selected_plant_id]
         if destination == origin:
             return False, "That plant is already in this bed.", None
@@ -5224,42 +5221,42 @@ class GardenGameEngine:
         plants = {plant.plant_id: plant for plant in self._planted()}
         live = {pid: int(plant.slot_index or 0) for pid, plant in plants.items()}
         if live != draft.original:
-            return False, "The garden changed while you were moving plants. No arrangement was saved.", None
+            return False, "Your garden changed while you were moving the plant. Nothing was saved.", None
         if set(draft.current) != set(draft.original) or len(set(draft.current.values())) != len(draft.current):
-            return False, "The pending arrangement is not valid.", None
+            return False, "Choose another bed.", None
         if any(slot < 0 or slot >= self.state.unlocked_slots for slot in draft.current.values()):
-            return False, "The pending arrangement includes a locked garden bed.", None
+            return False, "Choose an unlocked bed.", None
         surface_error = self._arrangement_error(draft.current)
         if surface_error:
             return False, surface_error, None
         if draft.current == draft.original:
-            return True, "The arrangement is unchanged.", PlacementChange(dict(draft.original), dict(draft.current))
+            return True, "Nothing changed.", PlacementChange(dict(draft.original), dict(draft.current))
         snapshot = self._state_snapshot()
         for plant_id, slot in draft.current.items():
             plants[plant_id].slot_index = slot
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The new arrangement could not be saved.", None
-        return True, "Plant arrangement saved.", PlacementChange(dict(draft.original), dict(draft.current))
+            return False, "Couldn’t move the plant. Your garden is unchanged.", None
+        return True, "Plants moved.", PlacementChange(dict(draft.original), dict(draft.current))
 
     def restore_placement(self, change: PlacementChange) -> tuple[bool, str, PlacementChange | None]:
         plants = {plant.plant_id: plant for plant in self._planted()}
         if not change.before or any(pid not in plants for pid in change.before):
-            return False, "That move can no longer be undone.", None
+            return False, "That move can’t be undone.", None
         current = {pid: int(plants[pid].slot_index or 0) for pid in change.before}
         if current != change.after:
-            return False, "The garden changed after that move, so it cannot be undone.", None
+            return False, "Your garden changed, so that move can’t be undone.", None
         surface_error = self._arrangement_error(change.before)
         if surface_error:
-            return False, "That previous arrangement is no longer valid for these planting surfaces.", None
+            return False, "That move can’t be restored.", None
         snapshot = self._state_snapshot()
         for pid, slot in change.before.items():
             plants[pid].slot_index = slot
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "The previous arrangement could not be restored.", None
+            return False, "Couldn’t undo the move. Your garden is unchanged.", None
         return True, "Move undone.", PlacementChange(current, dict(change.before))
 
     def peek_stage_transitions(self) -> list[StageTransition]:
@@ -5297,14 +5294,14 @@ class GardenGameEngine:
         if len(transitions) == 1:
             item = transitions[0]
             plant_name = item.plant_name or item.species.replace("_", " ").title()
-            return f"{plant_name} reached {item.new_stage.title()}!"
+            return f"{plant_name} reached {item.new_stage.title()}."
         names = ", ".join(
             item.plant_name or item.species.replace("_", " ").title()
             for item in transitions[:3]
         )
         if len(transitions) > 3:
             names += f" and {len(transitions) - 3} more"
-        return f"Garden milestone! {names} reached new growth stages."
+        return f"{names} reached new growth stages."
 
     def _ensure_achievements(self) -> None:
         allowed = {definition.achievement_id for definition in ACHIEVEMENT_DEFINITIONS}

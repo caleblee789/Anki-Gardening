@@ -153,8 +153,7 @@ def test_canonical_clear_recall_projection_does_not_round_a_near_miss_up() -> No
     )
 
     assert projection.condition_lines == (
-        "Answers: 29 of 20",
-        "Non-Again accuracy: 89.7% of 90% required",
+        "29 card answers, 89.7% accuracy",
     )
 
 
@@ -189,6 +188,6 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
     assert ended.missed_day == date(2026, 8, 11)
 
 
-def test_fertilizer_explanation_uses_eligible_answer_semantics() -> None:
-    assert "Growth per Anki card answer" in FERTILIZER_EXPLANATION
+def test_fertilizer_explanation_uses_concise_card_answer_copy() -> None:
+    assert "Growth to each card answer" in FERTILIZER_EXPLANATION
     assert "Growth per answer" not in FERTILIZER_EXPLANATION

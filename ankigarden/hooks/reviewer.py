@@ -384,8 +384,8 @@ class ReviewerHookHandler:
         except Exception:
             logger.exception("Anki Garden: review progress could not be saved")
             message = (
-                "Your card answer was saved in Anki, but its Garden Growth could not be saved. "
-                "Open Anki Garden to retry after the problem is resolved."
+                "Your card answer is safe in Anki, but Garden couldn’t save its Growth. "
+                "Open Garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -414,7 +414,7 @@ class ReviewerHookHandler:
     @staticmethod
     def _show_deferred_history_notice() -> None:
         message = (
-            "Your card answer is safe in Anki. Garden could not read it yet and will retry automatically."
+            "Your card answer is safe in Anki. Garden will add it when review history is available."
         )
         if USER_NOTICES.publish(message, key="review_history"):
             try:

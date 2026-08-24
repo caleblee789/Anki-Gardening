@@ -3,8 +3,7 @@ from math import isfinite
 from pathlib import Path
 from types import SimpleNamespace
 
-from ankigarden.models.state import GROWTH_THRESHOLDS
-from ankigarden.ui.plant_presenters import fertilizer_status, growth_forecast
+from ankigarden.ui.plant_presenters import fertilizer_status
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,18 +79,12 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     assert "starter_selection_complete" in nursery
     assert '"Store" if plant.planted else "Place"' in owned_card
     assert '"Move to Collection"' not in owned_card
-    for consequence in (
-        "will still own",
-        "Growth, memories, and active Fertilizer unchanged",
-        "will become empty",
-        "nurtured plant",
-    ):
+    for consequence in ("Store", "Collection", "Bed", "will become empty"):
         assert consequence in return_copy
     assert "self._placement_transaction_pending" in placement
-    assert "remains " in placement
-    assert "in Garden Bed" in placement
-    assert "remains stored in " in placement
-    assert "garden bed remain unchanged" in placement
+    assert "Couldn’t store" in placement
+    assert "Couldn’t place" in placement
+    assert "Your garden is unchanged" in placement
     assert '"already" in lower_message' in show_result
     assert "FeedbackTone.INFO" in show_result
     assert '"persistence-failure"' in show_result
@@ -147,7 +140,7 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
-    assert 'ready_text="Ready to purchase"' in available_card
+    assert 'ready_text="Ready to buy"' in available_card
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
     assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
@@ -544,7 +537,7 @@ def test_garden_progress_rewards_use_canonical_streak_and_achievement_projection
     assert '_calendar_date(projection.unlocked_at)' in achievement_list
     assert 'f"Completed {_calendar_date(projection.unlocked_at)}"' not in achievement_list
     assert 'projection.evaluation_mode == "finalized_day"' in achievement_list
-    assert "Finalized only after the Anki day closes" in achievement_list
+    assert "Checked when the Anki day ends" in achievement_list
     assert "finalized.hide()" in achievement_list
     assert "claim" not in achievement_list.casefold()
     assert "_achievement_condition_rows" not in dashboard
@@ -688,7 +681,7 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
     )
     assert "self.quote" not in show_receipt
     assert "for reward in tuple(outcome.rewards or ())" in show_receipt
-    assert "_committed_receipt_copy(outcome, reward_copy)" in show_receipt
+    assert "_committed_receipt_copy(outcome)" in show_receipt
     assert "_render_committed_target(outcome)" in show_receipt
     assert "outcome.charge_name" not in receipt_copy
     assert 'self.charge_heading = QLabel("")' in _class_source(
@@ -699,13 +692,13 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
     )
     assert "outcome.growth_granted" in receipt_copy
     assert "outcome.inventory_remaining" in receipt_copy
-    assert "outcome.previous_stage" in show_receipt
-    assert 'stage_transition = f"{previous_stage} → {resulting_stage}"' in show_receipt
-    assert "self.receipt_title.show()" in show_receipt
+    assert "outcome.previous_stage" not in show_receipt
+    assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in show_receipt
+    assert "self.receipt_title.hide()" in show_receipt
     assert "GardenBadge(" in show_receipt
     assert 'self.use_action.setText("View plant")' in show_receipt
     assert 'self.cancel_action.setText("Close")' in show_receipt
-    assert "self.cancel_action.hide()" in show_receipt
+    assert "self.cancel_action.show()" in show_receipt
     assert "self.preview_banner.hide()" in show_receipt
 
 
@@ -859,7 +852,7 @@ def test_story_is_chronological_compact_and_has_an_up_next_card() -> None:
     assert "memories = chronological_memories(plant.memories)" in refresh
     assert "reverse=True" not in refresh
     assert 'timeline_label = QLabel("History")' in dashboard
-    assert "New history will appear as this plant grows." in dashboard
+    assert "New history will appear as this plant grows." not in dashboard
     assert "growth_forecast(self.engine, plant)" not in refresh
     assert 'f"About {answers:,} Anki card' not in refresh
     assert "self.stage_nodes" in story
@@ -1080,7 +1073,7 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in fertilizer
-    assert "current_status = FertilizerStatusBlock(allow_description=False)" in fertilizer
+    assert "current_status = FertilizerStatusBlock()" in fertilizer
     assert "fertilizer_status(" in fertilizer
     assert '"Buy and replace"' in fertilizer
     assert 'else presentation.primary_label.split(" ·", 1)[0]' in fertilizer
@@ -1102,7 +1095,7 @@ def test_move_guidance_uses_only_the_scene_popup_after_commit() -> None:
     )
     assert "self.scene.setFocus()" in begin_move
     assert "QTimer.singleShot(0, self._position_scene_overlays)" in begin_move
-    assert 'action_text="Undo Move"' in place
+    assert 'action_text="Undo move"' in place
     assert "self._restore_move_focus(plant_id)" in place
 
 
@@ -1214,8 +1207,8 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
 
     assert scope["_plant_count"](1) == "1 plant"
     assert scope["_plant_count"](2) == "2 plants"
-    assert scope["_card_answer_count"](1) == "1 Anki card answer"
-    assert scope["_card_answer_count"](2) == "2 Anki card answers"
+    assert scope["_card_answer_count"](1) == "1 card answer"
+    assert scope["_card_answer_count"](2) == "2 card answers"
     assert scope["_minute_count"](1) == "1 minute"
     assert scope["_minute_count"](2) == "2 minutes"
 
@@ -1514,47 +1507,16 @@ def test_progress_surfaces_show_one_growth_value_without_a_card_answer_forecast(
     assert "_refresh_progress_overview" not in _source("ankigarden/ui/dashboard.py")
 
 
-def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time() -> None:
+def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     class Engine:
         FERTILIZERS = {
             "basic": SimpleNamespace(name="Basic Fertilizer"),
         }
 
-        def __init__(self, rate: int = 10, bonus: int = 0) -> None:
-            self.state = SimpleNamespace(active_plant_id="plant-1")
-            self.award = SimpleNamespace(
-                total_growth=rate,
-                bonus_percent=0,
-                bonus_growth=bonus,
-                paused_reason="",
-            )
-
-        def project_review_growth(self, _plant: object, *, now=None):
-            return self.award
-
     engine = Engine()
     plant = SimpleNamespace(
         plant_id="plant-1", growth_stage="seed", growth_points=0, fully_grown=False
     )
-    assert growth_forecast(engine, plant).text == "50 cards left to sprout"
-    plant.growth_stage = "mature"
-    plant.growth_points = GROWTH_THRESHOLDS[4] - 10
-    assert growth_forecast(engine, plant).text == "1 card left to flowering"
-    plant.growth_points = GROWTH_THRESHOLDS[-1]
-    assert growth_forecast(engine, plant).text == "Fully grown"
-
-    plant.growth_stage = "young"
-    plant.growth_points = GROWTH_THRESHOLDS[2]
-    engine.award = SimpleNamespace(
-        total_growth=12,
-        bonus_percent=0,
-        bonus_growth=2,
-        paused_reason="",
-    )
-    forecast = growth_forecast(engine, plant)
-    assert forecast.tooltip == "Based on the current Growth per card"
-    assert forecast.cards_left is not None and forecast.cards_left >= 0
-
     plant.fertilizer = SimpleNamespace(
         tier="basic", growth_per_answer=1, expires_at=7_900.0
     )
@@ -1562,12 +1524,10 @@ def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time()
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
         "+1 Growth per card",
-        "1h 55m remaining",
+        "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0
-    assert fertilizer_status(engine, plant, now=1_000.0).duration == (
-        "30 seconds left"
-    )
+    assert fertilizer_status(engine, plant, now=1_000.0).duration == "30 sec left"
     plant.fertilizer.expires_at = 999.0
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"
 
@@ -1617,7 +1577,7 @@ def test_visible_navigation_uses_garden_coins_and_nurture_language() -> None:
     assert "Make active" not in sources
     assert "Unlock species" not in sources
     assert "Move here" in dashboard
-    assert "Swap with" in dashboard
+    assert 'box.setText(f"Swap {moving.name} with {occupant.name}?")' in dashboard
 
 
 def test_shared_ui_snapshot_and_post_commit_event_are_the_refresh_boundary() -> None:

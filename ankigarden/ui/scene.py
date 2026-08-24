@@ -334,9 +334,7 @@ class GardenSceneWidget(QWidget):
         marker_description = ""
         if active is not None:
             name = str(active.get("name") or active.get("species") or "This plant")
-            marker_description = (
-                f" Watering can: {name} is nurtured and receives Growth from future Anki card answers."
-            )
+            marker_description = f" Watering can: {name} is nurtured."
         base = (
             f"Select a plant to view its actions. {KEYBOARD_HINT}"
             if self.interactive else
@@ -509,7 +507,7 @@ class GardenSceneWidget(QWidget):
 
     def cancel_move(self) -> None:
         """Cancel a learner-initiated move and notify the persistence owner."""
-        self.finish_move("Move cancelled. Plant selection remains available.")
+        self.finish_move("Move canceled.")
         self.cancelPlacementRequested.emit()
 
     def _finish_stage_transition(self, generation: int) -> None:
@@ -1937,8 +1935,6 @@ class GardenSceneWidget(QWidget):
             visual_label = (
                 "Current"
                 if current else
-                "Swap"
-                if swap_target else
                 "Move here"
                 if semantic_state in {"active", "available"} else
                 label
@@ -2132,7 +2128,7 @@ class GardenSceneWidget(QWidget):
         species = str(plant.get("species") or "plant").replace("_", " ").title()
         stage = str(plant.get("stage") or "seed").replace("_", " ").title()
         nurtured = (
-            f" Watering can: {name} is nurtured and receives Growth from future Anki card answers."
+            f" Watering can: {name} is nurtured."
             if bool(plant.get("is_active")) else
             ""
         )
@@ -2222,7 +2218,7 @@ class GardenSceneWidget(QWidget):
             elif state == "unavailable":
                 label = "invalid destination"
             elif occupant:
-                label = f"swap with {occupant}"
+                label = f"occupied by {occupant}"
             elif self._starter_placement:
                 label = "place here"
             else:
@@ -2365,8 +2361,7 @@ class GardenSceneWidget(QWidget):
             self.setAccessibleName(f"Move {name}. Choose a bed.")
             self.setAccessibleDescription(
                 self._placement_accessible_description(
-                    "Six garden beds are shown. Empty beds move the plant; "
-                    "occupied beds swap plants."
+                    "Choose a bed."
                 )
             )
         return started
@@ -2400,16 +2395,16 @@ class GardenSceneWidget(QWidget):
             # so they are intentionally suppressed for the complete move mode.
             QToolTip.hideText()
             if target_state == "locked":
-                self._inline_message = "That garden bed has not been unlocked yet."
+                self._inline_message = "That bed is locked."
             elif target_state == "unavailable":
-                self._inline_message = "That garden bed is unavailable for this move."
+                self._inline_message = "Choose another bed."
             elif target_state == "current":
                 self._inline_message = "Current location. Click to cancel moving."
             elif target_state == "valid":
                 self._inline_message = (
-                    "Place your starter here."
+                    "Place here."
                     if getattr(self, "_starter_placement", False) else
-                    "Move or swap here."
+                    "Move here."
                 )
             if self._press_plant_id and self._press_position is not None:
                 delta = position - self._press_position
@@ -2504,9 +2499,9 @@ class GardenSceneWidget(QWidget):
                         unlocked_slots=int(self.scene.get("unlocked_slots", 0)),
                     )
                     self._inline_message = (
-                        "That garden bed is locked"
+                        "That bed is locked"
                         if state == "locked" else
-                        "That garden bed is unavailable for this move"
+                        "Choose another bed"
                     )
                     self.setAccessibleName(
                         f"Garden bed {slot + 1}: "

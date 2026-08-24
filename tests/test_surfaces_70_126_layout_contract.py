@@ -40,14 +40,15 @@ def test_collection_no_matches_keeps_one_filter_action_and_sparse_profile() -> N
     assert 'annotation.get("filter_clear_visible", False)' in capture
 
 
-def test_compound_achievements_render_every_condition_without_one_axis_bar() -> None:
+def test_compound_achievements_render_complete_conditions_without_one_axis_bar() -> None:
     refresh = _method_source("GardenDashboard", "_refresh_achievement_list")
 
-    assert "len(condition_lines) > 1" in refresh
+    assert "len(condition_lines) > 1" not in refresh
+    assert "line != projection.criteria_text" in refresh
     assert '"compoundConditionsVisible"' in refresh
     assert "for condition_line in condition_lines" in refresh
     assert 'conditions.setProperty("achievementConditions", True)' in refresh
-    assert "elif not compound_conditions:" in refresh
+    assert "elif not progress_conditions:" in refresh
 
 
 def test_odd_achievement_cards_span_the_category_row_only_when_opted_in() -> None:
@@ -81,6 +82,5 @@ def test_reset_streak_uses_first_positive_bonus_but_keeps_zero_percent_row() -> 
     assert "positive_bonus_tiers = tuple(" in streak
     assert "if percent > 0" in streak
     assert "display_bonus_tiers = tuple(STREAK_BONUS_TIERS)" in streak
-    assert "if days_to_next > 0:" in streak
-    assert "if days > 0 and days_to_next > 0:" not in streak
+    assert "if days > 0 and days_to_next > 0:" in streak
     assert "f\"{'+' if percent > 0 else ''}{percent}% Growth\"" in streak

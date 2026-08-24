@@ -363,7 +363,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     scene._hovered_move_slot = 1
     hover_painter = _FakePainter()
     draw_slots(scene, hover_painter)
-    assert set(hover_painter.labels) == {"Current", "Swap"}
+    assert set(hover_painter.labels) == {"Current", "Move here"}
     assert len(hover_painter.badges) == 2
 
     scene._hovered_move_slot = None
@@ -385,7 +385,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     for description in (
         "current bed",
         'label = "move here"',
-        "swap with",
+        "occupied by",
         "locked bed",
         "invalid destination",
     ):
@@ -885,7 +885,7 @@ def test_deck_browser_and_overview_previews_receive_watering_can_url() -> None:
     assert "resolve_nurtured_marker_spout_right_image" in home_right_resolver
 
 
-def test_native_watering_can_description_explains_future_growth_routing() -> None:
+def test_native_watering_can_description_identifies_the_nurtured_plant() -> None:
     accessible = _method_source(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -898,10 +898,7 @@ def test_native_watering_can_description_explains_future_growth_routing() -> Non
         "set_interactive",
     )
 
-    assert (
-        "Watering can: {name} is nurtured and receives Growth from future Anki card answers."
-        in accessible
-    )
+    assert "Watering can: {name} is nurtured." in accessible
     assert "_update_scene_accessible_description()" in set_scene
     assert "_update_scene_accessible_description()" in set_interactive
 
@@ -1301,7 +1298,7 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
     assert 'BUTTON_VARIANT_PRIMARY if not active and not fully_grown' in source
     assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
     constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
-    assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
+    assert "self.fertilizer_summary = FertilizerStatusBlock()" in constructor
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
     assert "value_text=format_stage_progress(stage_points, stage_goal, next_stage)" in source
     assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' not in source
@@ -1482,12 +1479,12 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
 
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert scene.message == "Your garden is unchanged."
+    assert scene.message == "Couldn’t move the plant. Your garden is unchanged."
     assert dashboard.refreshed is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is retry_draft
     assert dashboard._active_placement_token == 17
-    assert rearrange.failure == "Your garden is unchanged."
+    assert rearrange.failure == "Couldn’t move the plant. Your garden is unchanged."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
     assert toast.messages == []

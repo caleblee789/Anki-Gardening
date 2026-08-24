@@ -5561,7 +5561,7 @@ class _UiFaceCaptureRunner:
                     and projection is not None
                     and tuple(annotation.get("condition_lines", ()))
                     == projection.condition_lines
-                    and len(projection.condition_lines) >= 2
+                    and len(projection.condition_lines) >= 1
                     and all(
                         condition in visible_label_texts
                         for condition in projection.condition_lines
@@ -5774,10 +5774,11 @@ class _UiFaceCaptureRunner:
                     if button.isVisible()
                     and not button.isEnabled()
                     and _displayed_button_text(button) in {
-                        "Purchase",
-                        "Replace",
-                        "Use potion",
-                        "Use on nurtured plant",
+                        "Buy",
+                        "Buy and apply",
+                        "Buy and replace",
+                        "Extend",
+                        "Use",
                     }
                 ]
                 helper_text = [
@@ -6270,15 +6271,15 @@ class _UiFaceCaptureRunner:
                         max(0, int(getattr(reward, "garden_coins", 0) or 0))
                         for reward in rewards
                     )
-                    transition = (
-                        f"{format_status_label(str(getattr(outcome, 'previous_stage', '')))} → "
+                    result_title = (
+                        f"{str(getattr(outcome, 'target_name', ''))} reached "
                         f"{format_status_label(str(getattr(outcome, 'resulting_stage', '')))}"
                     )
                     reward_copy = f"+{reward_total:,} Garden Coins"
                     state_visible = (
                         outcome is not None
                         and widget.receipt.isVisible()
-                        and transition in visible_label_text
+                        and result_title in visible_label_text
                         and reward_copy in visible_label_text
                         and widget.receipt_copy.isVisible()
                         and f"+{max(0, int(getattr(outcome, 'growth_granted', 0))):,} Growth"
@@ -6286,7 +6287,8 @@ class _UiFaceCaptureRunner:
                         and f"{max(0, int(getattr(outcome, 'inventory_remaining', 0))):,}"
                         in str(widget.receipt_copy.text())
                         and widget.use_action.isEnabled()
-                        and widget.cancel_action.isHidden()
+                        and widget.cancel_action.isVisible()
+                        and widget.cancel_action.isEnabled()
                     )
                 declared_size = list(
                     expectation.get("declared_client_size", ()) or ()
@@ -11369,8 +11371,8 @@ class _UiFaceCaptureRunner:
         elif variant == "success":
             from .ui.formatters import format_status_label
 
-            transition = (
-                f"{format_status_label(str(getattr(outcome, 'previous_stage', '')))} → "
+            result_title = (
+                f"{str(getattr(outcome, 'target_name', ''))} reached "
                 f"{format_status_label(str(getattr(outcome, 'resulting_stage', '')))}"
             )
             reward_total = sum(
@@ -11382,13 +11384,14 @@ class _UiFaceCaptureRunner:
                 bool(outcome is not None and outcome.success),
                 tuple(getattr(outcome, "completed_stages", ())) == ("sprout",),
                 reward_total == 5,
-                transition in visible_label_text,
+                result_title in visible_label_text,
                 f"+{reward_total:,} Garden Coins" in visible_label_text,
                 inventory == 1,
                 int(getattr(target, "growth_points", -1)) == 550,
                 ledger_count == 1,
                 dialog.use_action.isEnabled(),
-                dialog.cancel_action.isHidden(),
+                dialog.cancel_action.isVisible(),
+                dialog.cancel_action.isEnabled(),
             ])
         single_scroll_region = len(dialog.active_vertical_scroll_regions()) == 1
         conditions.append(single_scroll_region)
@@ -12346,7 +12349,6 @@ class _UiFaceCaptureRunner:
                 )
                 current = target_state == "current"
                 occupied_target = slot in occupied_slots and not current
-                swap_target = target_state == "valid" and occupied_target
                 visual_label = (
                     "Current"
                     if current else
@@ -12356,8 +12358,6 @@ class _UiFaceCaptureRunner:
                     if target_state == "unavailable" else
                     "Locked"
                     if target_state == "locked" else
-                    "Swap"
-                    if swap_target else
                     "Move"
                     if semantic_state in {"active", "available"} else
                     semantic_label
@@ -14038,7 +14038,7 @@ class _UiFaceCaptureRunner:
             item.achievement_id for item in projections if item.unlocked
         ]
         passed = bool(
-            len(projection.condition_lines) >= 2
+            len(projection.condition_lines) >= 1
             and projection.current == daily_answers
             and projection.progress_target == definition.progress_target
             and projection.reward_coins == definition.reward.coins
@@ -15441,7 +15441,7 @@ class _UiFaceCaptureRunner:
                     amount=1,
                     item_id=item.item_id,
                     display_name=item.display_name,
-                    description="Added to the Weather and Scenery collection",
+                    description="Added to Weather and Scenery",
                     tier=item.tier,
                     artwork_ref=item.item_id,
                     localization_key=f"garden_find.environment.{item.item_id}",

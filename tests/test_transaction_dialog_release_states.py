@@ -85,16 +85,16 @@ def test_growth_charge_invalid_and_success_states_expose_concrete_semantics() ->
     assert "self.target_stage.setText(" in refresh
     assert "self.hero.show()" in refresh
     assert "self.selector_card.show()" in refresh
-    assert "self.cancel_action.hide()" in refresh
+    assert "self.cancel_action.show()" in refresh
     assert 'self.set_dialog_title("Choose another plant")' in failure
     assert 'self.use_action.setText("Choose plant")' in failure
-    assert "self.cancel_action.hide()" in failure
+    assert "self.cancel_action.show()" in failure
     assert 'f"{stage_name} reward"' not in receipt
     assert "self.target_stage.hide()" in receipt
     assert 'self.cancel_action.setText("Close")' in receipt
-    assert 'stage_transition = f"{previous_stage} → {resulting_stage}"' in receipt
-    assert "self.receipt_title.show()" in receipt
-    assert "self.cancel_action.hide()" in receipt
+    assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in receipt
+    assert "self.receipt_title.hide()" in receipt
+    assert "self.cancel_action.show()" in receipt
     assert 'f"{outcome.target_name} reached {resulting_stage}"' in receipt
 
 
