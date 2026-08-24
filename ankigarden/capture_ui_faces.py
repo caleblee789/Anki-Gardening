@@ -5391,6 +5391,11 @@ class _UiFaceCaptureRunner:
                     and projection is not None
                     and tuple(annotation.get("condition_lines", ()))
                     == projection.condition_lines
+                    and len(projection.condition_lines) >= 2
+                    and all(
+                        condition in visible_label_texts
+                        for condition in projection.condition_lines
+                    )
                     and annotation.get("value_text") == projection.value_text
                     and annotation.get("reward_summary")
                     == projection.reward_summary
@@ -13453,7 +13458,7 @@ class _UiFaceCaptureRunner:
             item.achievement_id for item in projections if item.unlocked
         ]
         passed = bool(
-            bool(projection.condition_lines)
+            len(projection.condition_lines) >= 2
             and projection.current == daily_answers
             and projection.progress_target == definition.progress_target
             and projection.reward_coins == definition.reward.coins

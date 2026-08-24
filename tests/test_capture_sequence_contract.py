@@ -2048,6 +2048,8 @@ def test_remaining_release_faces_prepare_and_audit_their_exact_ui_states() -> No
     assert "definition.reward.coins" in clear_recall
     assert '"condition_lines": list(projection.condition_lines)' in clear_recall
     assert "achievement_progress_display" not in clear_recall
+    assert "len(projection.condition_lines) >= 2" in postcondition
+    assert "condition in visible_label_texts" in postcondition
 
     assert 'button_prefix="Choose"' in starter
     assert 'row="first"' in starter
