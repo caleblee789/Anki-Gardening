@@ -137,6 +137,11 @@ def _valid_visual_contract(
             "visual_size": 28,
             "icon_size": [14, 14],
             "size_passed": True,
+            "contained": True,
+            "footer_action": False,
+            "text_width": 0,
+            "available_text_width": 0,
+            "text_fit_passed": True,
         }
         visual = {
             "applicable": True,
@@ -155,6 +160,9 @@ def _valid_visual_contract(
             "primary_action_count": 0,
             "primary_action_groups": [],
             "max_primary_actions_per_group": 0,
+            "footer_actions": [],
+            "footer_actions_contained": True,
+            "action_text_fits": True,
             "visible_horizontal_scrollbars": [],
             "largest_unexplained_gap": 0,
             "screen_contained": True,
@@ -493,6 +501,13 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 "content_minimum_size_hint_height": 260,
                 "scroll_minimum": 0,
                 "scroll_maximum": 0,
+                "last_body_child_bottom": 300,
+                "last_body_child_bottom_at_scroll_end": 400,
+                "require_no_scroll": bool(
+                    label.startswith("purchase-confirmation-")
+                    or label.startswith("purchase-error-")
+                    or label.startswith("growth-charge-")
+                ),
                 "required_content_height": 300,
                 "reachable_content_height": 300,
                 "issues": [],
@@ -566,6 +581,8 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                         "layout_clearance",
                         "required_content_height",
                         "reachable_content_height",
+                        "last_body_child_bottom",
+                        "last_body_child_bottom_at_scroll_end",
                     )
                 },
                 "issues": [],

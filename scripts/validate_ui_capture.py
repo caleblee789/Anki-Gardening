@@ -1476,6 +1476,8 @@ def dialog_scroll_audit_issue_codes(
         "content_minimum_size_hint_height",
         "scroll_minimum",
         "scroll_maximum",
+        "last_body_child_bottom",
+        "last_body_child_bottom_at_scroll_end",
         "required_content_height",
         "reachable_content_height",
     )
@@ -1485,9 +1487,16 @@ def dialog_scroll_audit_issue_codes(
     ]
     issues.extend(f"invalid-scroll-metric:{field}" for field in invalid_metrics)
     footer_visible = audit.get("footer_visible")
+    require_no_scroll = audit.get("require_no_scroll")
     if type(footer_visible) is not bool:
         issues.append("invalid-footer-visibility")
-    if invalid_metrics or type(footer_visible) is not bool:
+    if type(require_no_scroll) is not bool:
+        issues.append("invalid-require-no-scroll")
+    if (
+        invalid_metrics
+        or type(footer_visible) is not bool
+        or type(require_no_scroll) is not bool
+    ):
         return tuple(dict.fromkeys(issues))
 
     registered = int(audit["registered_count"])
@@ -1504,6 +1513,10 @@ def dialog_scroll_audit_issue_codes(
     minimum_hint = int(audit["content_minimum_size_hint_height"])
     scroll_minimum = int(audit["scroll_minimum"])
     scroll_maximum = int(audit["scroll_maximum"])
+    last_body_child_bottom = int(audit["last_body_child_bottom"])
+    last_body_child_bottom_at_scroll_end = int(
+        audit["last_body_child_bottom_at_scroll_end"]
+    )
     required = int(audit["required_content_height"])
     reachable = int(audit["reachable_content_height"])
 
@@ -1522,6 +1535,10 @@ def dialog_scroll_audit_issue_codes(
         "content_minimum_size_hint_height": minimum_hint,
         "scroll_minimum": scroll_minimum,
         "scroll_maximum": scroll_maximum,
+        "last_body_child_bottom": last_body_child_bottom,
+        "last_body_child_bottom_at_scroll_end": (
+            last_body_child_bottom_at_scroll_end
+        ),
         "required_content_height": required,
         "reachable_content_height": reachable,
     }
@@ -1534,6 +1551,18 @@ def dialog_scroll_audit_issue_codes(
         issues.append("invalid-scroll-metric:content_height")
     if scroll_maximum < scroll_minimum:
         issues.append("invalid-scroll-range")
+    scroll_span = max(0, scroll_maximum - scroll_minimum)
+    independently_positioned_body_end = viewport_top + max(
+        0,
+        last_body_child_bottom - scroll_span,
+    )
+    if last_body_child_bottom_at_scroll_end != independently_positioned_body_end:
+        issues.append("last-body-child-position-mismatch")
+    body_limit = footer_top if footer_visible else viewport_bottom
+    if last_body_child_bottom_at_scroll_end > body_limit:
+        issues.append("last-body-child-under-footer")
+    if require_no_scroll and scroll_span != 0:
+        issues.append("compact-transaction-scroll-range")
 
     if footer_visible and footer_height <= 0:
         issues.append("visible-footer-height")
@@ -1553,10 +1582,7 @@ def dialog_scroll_audit_issue_codes(
     # The capture-side content_height includes the bottom-most visible
     # descendant, while minimum_hint remains the non-negotiable layout floor.
     independently_required = max(0, content_height, minimum_hint)
-    independently_reachable = viewport_height + max(
-        0,
-        scroll_maximum - scroll_minimum,
-    )
+    independently_reachable = viewport_height + scroll_span
     if required != independently_required:
         issues.append("required-content-height-mismatch")
     if reachable != independently_reachable:
@@ -1606,6 +1632,8 @@ def _validate_dialog_scroll_summary(
         "layout_clearance",
         "required_content_height",
         "reachable_content_height",
+        "last_body_child_bottom",
+        "last_body_child_bottom_at_scroll_end",
     )
     for index, ((label, surface, semantic), summary_record) in enumerate(
         zip(expected, summaries),
@@ -1848,6 +1876,7 @@ def _visual_contract_record_issues(
         elif any(
             not isinstance(control, dict)
             or control.get("size_passed") is not True
+            or control.get("text_fit_passed") is not True
             or not isinstance(control.get("bounds"), list)
             or len(control["bounds"]) != 4
             for control in controls
@@ -1855,6 +1884,20 @@ def _visual_contract_record_issues(
             reject("visual contract controls must have passing measured bounds")
         if visual.get("control_sizes_passed") is not True:
             reject("visual contract control sizes did not pass")
+        if visual.get("action_text_fits") is not True:
+            reject("visual contract contains an overflowing action label")
+        footer_actions = visual.get("footer_actions")
+        if not isinstance(footer_actions, list) or any(
+            not isinstance(action, dict)
+            or action.get("footer_action") is not True
+            or action.get("contained") is not True
+            for action in (
+                footer_actions if isinstance(footer_actions, list) else []
+            )
+        ):
+            reject("visual contract footer actions are invalid")
+        if visual.get("footer_actions_contained") is not True:
+            reject("visual contract footer action is outside the dialog")
         requires_inline_close = visual.get("requires_inline_close")
         if type(requires_inline_close) is not bool:
             reject("visual contract close requirement must be boolean")

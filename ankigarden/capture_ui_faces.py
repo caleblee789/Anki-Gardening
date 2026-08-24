@@ -690,6 +690,9 @@ def dialog_scroll_geometry_issue_codes(
     content_minimum_size_hint_height: int,
     scroll_minimum: int,
     scroll_maximum: int,
+    last_body_child_bottom: int,
+    last_body_child_bottom_at_scroll_end: int,
+    require_no_scroll: bool,
 ) -> tuple[str, ...]:
     """Return fail-closed issue codes for one dialog's vertical scroll owner."""
 
@@ -714,6 +717,10 @@ def dialog_scroll_geometry_issue_codes(
         ),
         "scroll_minimum": int(scroll_minimum),
         "scroll_maximum": int(scroll_maximum),
+        "last_body_child_bottom": int(last_body_child_bottom),
+        "last_body_child_bottom_at_scroll_end": int(
+            last_body_child_bottom_at_scroll_end
+        ),
     }
     if registered < 1:
         issues.append("registered-scroll-count")
@@ -726,6 +733,22 @@ def dialog_scroll_geometry_issue_codes(
         issues.append("invalid-scroll-metric:content_height")
     if int(scroll_maximum) < int(scroll_minimum):
         issues.append("invalid-scroll-range")
+    scroll_span = max(0, int(scroll_maximum) - int(scroll_minimum))
+    expected_body_end = int(viewport_top) + max(
+        0,
+        int(last_body_child_bottom) - scroll_span,
+    )
+    if int(last_body_child_bottom_at_scroll_end) != expected_body_end:
+        issues.append("last-body-child-position-mismatch")
+    body_limit = (
+        int(footer_top)
+        if bool(footer_visible)
+        else int(viewport_top) + int(viewport_height)
+    )
+    if int(last_body_child_bottom_at_scroll_end) > body_limit:
+        issues.append("last-body-child-under-footer")
+    if bool(require_no_scroll) and scroll_span != 0:
+        issues.append("compact-transaction-scroll-range")
 
     if bool(footer_visible) and int(footer_height) <= 0:
         issues.append("visible-footer-height")
@@ -750,7 +773,6 @@ def dialog_scroll_geometry_issue_codes(
         int(content_height),
         int(content_minimum_size_hint_height),
     )
-    scroll_span = max(0, int(scroll_maximum) - int(scroll_minimum))
     reachable_content_height = int(viewport_height) + scroll_span
     if reachable_content_height < required_content_height:
         issues.append("unreachable-scroll-content")
@@ -3487,6 +3509,8 @@ class _UiFaceCaptureRunner:
         primary_actions: list[str] = []
         primary_scope_widgets: list[QWidget] = []
         primary_action_groups: list[dict[str, Any]] = []
+        footer_actions: list[dict[str, Any]] = []
+        pinned_footer = getattr(root, "_pinned_footer", None)
 
         def primary_scope(button: QAbstractButton) -> QWidget:
             current = button.parentWidget()
@@ -3574,6 +3598,26 @@ class _UiFaceCaptureRunner:
                 component == "button"
                 or str(button.property("variant") or "")
             )
+            icon_width = (
+                max(0, int(button.iconSize().width())) + 6
+                if not button.icon().isNull()
+                else 0
+            )
+            text_width = int(button.fontMetrics().horizontalAdvance(text))
+            available_text_width = max(
+                0,
+                int(button.contentsRect().width()) - 24 - icon_width,
+            )
+            text_fit_passed = bool(
+                not text or text_width <= available_text_width
+            )
+            footer_action = bool(
+                pinned_footer is not None
+                and (
+                    button is pinned_footer
+                    or pinned_footer.isAncestorOf(button)
+                )
+            )
             size_passed = bool(
                 28 <= visual_size <= 30
                 and 14 <= icon_size[0] <= 16
@@ -3592,11 +3636,22 @@ class _UiFaceCaptureRunner:
                 "icon_size": icon_size,
                 "standard_button": standard_button,
                 "size_passed": size_passed,
+                "contained": bool(painted.get("contained", False)),
+                "footer_action": footer_action,
+                "text_width": text_width,
+                "available_text_width": available_text_width,
+                "text_fit_passed": text_fit_passed,
             })
             if not size_passed:
                 issue_codes.append(
                     "icon-control-size" if icon_only else "standard-button-height"
                 )
+            if not text_fit_passed:
+                issue_codes.append("action-label-overflow")
+            if footer_action:
+                footer_actions.append(controls[-1])
+                if not painted.get("contained", False):
+                    issue_codes.append("footer-action-outside-dialog")
             if str(button.property("variant") or "") == "primary":
                 action_name = (
                     text or str(button.accessibleName() or type(button).__name__)
@@ -3726,6 +3781,15 @@ class _UiFaceCaptureRunner:
             "primary_action_count": len(primary_actions),
             "primary_action_groups": primary_action_groups,
             "max_primary_actions_per_group": max_primary_actions_per_group,
+            "footer_actions": footer_actions,
+            "footer_actions_contained": all(
+                bool(item.get("contained", False))
+                for item in footer_actions
+            ),
+            "action_text_fits": all(
+                bool(item.get("text_fit_passed", False))
+                for item in controls
+            ),
             "visible_horizontal_scrollbars": horizontal_scrollbars,
             "largest_unexplained_gap": largest_gap,
             "screen_contained": screen_contained,
@@ -6841,6 +6905,19 @@ class _UiFaceCaptureRunner:
                     if content is not None else 0
                 )
                 vertical = scroll.verticalScrollBar()
+                scroll_span = max(
+                    0,
+                    int(vertical.maximum()) - int(vertical.minimum()),
+                )
+                last_body_child_bottom_at_scroll_end = (
+                    viewport_top
+                    + max(0, visible_content_bottom - scroll_span)
+                )
+                require_no_scroll = bool(
+                    capture_label.startswith("purchase-confirmation-")
+                    or capture_label.startswith("purchase-error-")
+                    or capture_label.startswith("growth-charge-")
+                )
                 metrics = {
                     "registered_count": len(deliberate),
                     "active_count": len(active_scrolls),
@@ -6856,6 +6933,11 @@ class _UiFaceCaptureRunner:
                     "content_minimum_size_hint_height": minimum_hint_height,
                     "scroll_minimum": int(vertical.minimum()),
                     "scroll_maximum": int(vertical.maximum()),
+                    "last_body_child_bottom": visible_content_bottom,
+                    "last_body_child_bottom_at_scroll_end": (
+                        last_body_child_bottom_at_scroll_end
+                    ),
+                    "require_no_scroll": require_no_scroll,
                 }
                 issue_codes = dialog_scroll_geometry_issue_codes(**metrics)
                 required_content_height = max(
@@ -6864,7 +6946,7 @@ class _UiFaceCaptureRunner:
                 )
                 reachable_content_height = (
                     int(viewport.height())
-                    + max(0, int(vertical.maximum()) - int(vertical.minimum()))
+                    + scroll_span
                 )
                 dialog_scroll_audit = {
                     "applicable": True,
@@ -15138,6 +15220,8 @@ class _UiFaceCaptureRunner:
             "content_minimum_size_hint_height",
             "scroll_minimum",
             "scroll_maximum",
+            "last_body_child_bottom",
+            "last_body_child_bottom_at_scroll_end",
             "required_content_height",
             "reachable_content_height",
         )
@@ -15155,6 +15239,8 @@ class _UiFaceCaptureRunner:
             "content_minimum_size_hint_height",
             "scroll_minimum",
             "scroll_maximum",
+            "last_body_child_bottom",
+            "last_body_child_bottom_at_scroll_end",
         )
         for label, (surface, expected_semantic) in coverage_by_label.items():
             record = records.get(label, {})
@@ -15189,6 +15275,8 @@ class _UiFaceCaptureRunner:
                 issues.append("missing-scroll-name")
             if type(audit.get("footer_visible")) is not bool:
                 issues.append("invalid-footer-visibility")
+            if type(audit.get("require_no_scroll")) is not bool:
+                issues.append("invalid-require-no-scroll")
             for field in integer_fields:
                 if type(audit.get(field)) is not int:
                     issues.append(f"invalid-scroll-metric:{field}")
@@ -15213,6 +15301,9 @@ class _UiFaceCaptureRunner:
                     for field in geometry_fields
                 }
                 metrics["footer_visible"] = bool(audit.get("footer_visible"))
+                metrics["require_no_scroll"] = bool(
+                    audit.get("require_no_scroll")
+                )
                 issues.extend(dialog_scroll_geometry_issue_codes(**metrics))
                 required = max(
                     0,
@@ -15247,6 +15338,10 @@ class _UiFaceCaptureRunner:
                 "layout_clearance": audit.get("layout_clearance"),
                 "required_content_height": audit.get("required_content_height"),
                 "reachable_content_height": audit.get("reachable_content_height"),
+                "last_body_child_bottom": audit.get("last_body_child_bottom"),
+                "last_body_child_bottom_at_scroll_end": audit.get(
+                    "last_body_child_bottom_at_scroll_end"
+                ),
                 "issues": list(dict.fromkeys(issues)),
                 "passed": passed,
             })
