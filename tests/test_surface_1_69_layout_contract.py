@@ -53,6 +53,24 @@ def test_progress_card_grid_owns_content_driven_row_geometry() -> None:
     assert "QTimer.singleShot(0, self._reflow)" in grid
 
 
+def test_scene_toasts_use_compact_overlay_geometry() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    toast = source.split("class ToastRegion", 1)[1].split(
+        "class _TooltipFocusFilter", 1
+    )[0]
+    position = source.split("def _position_scene_overlays", 1)[1].split(
+        "def _position_onboarding_coachmark", 1
+    )[0]
+
+    assert "layout.setContentsMargins(8, 6, 8, 6)" in toast
+    assert "self.setMinimumHeight(44)" in toast
+    assert "self.setMaximumHeight(84)" in toast
+    assert "available_width = max(1, self.scene.width() - (inset * 2))" in position
+    assert "available_height = max(1, self.scene.height() - (inset * 2))" in position
+    assert "min(84, max(44, self.toast_region.sizeHint().height()))" in position
+    assert "self.scene.height() - toast_height - inset" in position
+
+
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

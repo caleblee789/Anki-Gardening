@@ -3990,11 +3990,11 @@ class ToastRegion(QFrame):
         self._clear_timer.setSingleShot(True)
         self._clear_timer.timeout.connect(self._clear_scheduled_message)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(8)
         self.icon = QLabel("✓")
         self.icon.setProperty("toastIcon", True)
-        self.icon.setFixedSize(24, 24)
+        self.icon.setFixedSize(20, 20)
         self.icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon.setAccessibleName("Success")
         self.message = QLabel("")
@@ -4013,11 +4013,11 @@ class ToastRegion(QFrame):
         layout.addWidget(self.action)
         layout.addWidget(self.dismiss)
         self.dismiss.hide()
-        # A 36 px action plus 16 px vertical margins needs at least 52 px.
-        # The former 48 px cap squeezed one- and two-line messages down to a
-        # few pixels whenever an action was present.
-        self.setMinimumHeight(56)
-        self.setMaximumHeight(104)
+        # A compact 32 px action plus 12 px vertical margins fits a 44 px toast.
+        # Wrapped or actionable errors may grow, but routine notices stay on
+        # the desktop-density baseline and never resize their parent layout.
+        self.setMinimumHeight(44)
+        self.setMaximumHeight(84)
         self.hide()
 
     def show_message(
@@ -15878,9 +15878,11 @@ class GardenDashboard(DialogShell):
         if not hasattr(self, "scene"):
             return
         inset = 20
+        available_width = max(1, self.scene.width() - (inset * 2))
+        available_height = max(1, self.scene.height() - (inset * 2))
         top = inset
         if self.rearrange_bar.isVisible():
-            bar_width = min(620, max(240, self.scene.width() - (inset * 2)))
+            bar_width = min(620, max(1, available_width))
             self.rearrange_bar.setFixedWidth(bar_width)
             self.rearrange_bar.adjustSize()
             bar_height = min(96, max(40, self.rearrange_bar.sizeHint().height()))
@@ -15893,10 +15895,16 @@ class GardenDashboard(DialogShell):
             self.rearrange_bar.raise_()
             top = inset + bar_height + 8
         if self.toast_region.isVisible():
-            toast_width = min(360, max(240, self.scene.width() - (inset * 2)))
+            toast_width = min(
+                360,
+                max(240, available_width) if available_width >= 240 else available_width,
+            )
             self.toast_region.setFixedWidth(toast_width)
             self.toast_region.adjustSize()
-            toast_height = min(124, max(56, self.toast_region.sizeHint().height()))
+            toast_height = min(
+                available_height,
+                min(84, max(44, self.toast_region.sizeHint().height())),
+            )
             toast_x = self.scene.width() - toast_width - inset
             card_in_scene = (
                 self.plant_card.isVisible()
@@ -15921,9 +15929,13 @@ class GardenDashboard(DialogShell):
                 )
                 if overlaps_horizontally and overlaps_vertically:
                     toast_x = max(inset, (self.scene.width() - toast_width) // 2)
+            toast_y = max(
+                inset,
+                min(top, self.scene.height() - toast_height - inset),
+            )
             self.toast_region.setGeometry(
                 max(inset, min(toast_x, self.scene.width() - toast_width - inset)),
-                top,
+                toast_y,
                 toast_width,
                 toast_height,
             )
