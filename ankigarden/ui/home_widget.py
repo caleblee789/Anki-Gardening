@@ -11,6 +11,7 @@ from .copy import (
     CHOOSE_STARTER_ACTION,
     FALLBACK_GARDEN_NAME,
     HOME_ACTIVE_ACTION,
+    HOME_NO_STARTER_BODY,
     HOME_NO_STARTER_ACCESSIBLE,
     HOME_NO_STARTER_TITLE,
 )
@@ -207,7 +208,7 @@ class HomeWidgetStateController:
         return True
 
 
-DEFAULT_ERROR_MESSAGE = "Preview unavailable."
+DEFAULT_ERROR_MESSAGE = "Garden preview unavailable."
 
 HOME_COMPACT_CONTAINER_MAX_WIDTH = 469
 HOME_NARROW_CONTAINER_MAX_WIDTH = 420
@@ -404,8 +405,8 @@ HOME_WIDGET_STYLE = """
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width:108px;
-  min-height:32px;
+  min-width:104px;
+  min-height:36px;
   box-sizing:border-box;
   line-height:1.2;
   flex:none;
@@ -431,7 +432,7 @@ HOME_WIDGET_STYLE = """
   outline-offset: 2px;
   box-shadow:0 0 0 4px #071A15;
 }
-.ag-home__open { flex:none; min-width:100px !important; min-height:32px !important; padding:0 12px !important; border-radius:8px !important; font-size:13px !important; }
+.ag-home__open { flex:none; min-width:104px !important; min-height:36px !important; padding:0 12px !important; border-radius:8px !important; font-size:13px !important; }
 .ag-home__state-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 #ag-home-root button.ag-home__secondary {
   border-color:#4F806E;
@@ -504,7 +505,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__details::before { display:none; }
 .ag-home__identity-row {
   display:grid;
-  grid-template-columns:minmax(0,280px) 100px;
+  grid-template-columns:minmax(0,280px) 120px;
   justify-content:space-between;
   gap:16px;
   align-items:start;
@@ -561,11 +562,11 @@ HOME_WIDGET_STYLE = """
   right:16px;
 }
 #ag-home-root button,.ag-home__open {
-  min-height:32px !important;
-  max-height:32px !important;
-  min-width:96px !important;
-  width:auto;
-  max-width:132px;
+  min-height:36px !important;
+  max-height:36px !important;
+  min-width:104px !important;
+  width:120px;
+  max-width:120px;
   padding:0 12px !important;
   border-color:#5CC58B;
   background:#5CC58B;
@@ -589,7 +590,7 @@ HOME_WIDGET_STYLE = """
 }
 @container (max-width: 469px) {
   .ag-home__details { padding:14px; }
-  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 96px; gap:12px; }
+  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 112px; gap:12px; }
   .ag-home__support { max-width:100%; }
   .ag-home--no-starter .ag-home__support {
     overflow:visible;
@@ -627,7 +628,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div class="ag-home__state" data-testid="home-loading">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
             '<div class="ag-home__state-title" role="status" aria-live="polite">'
-            'Loading garden…</div>'
+            'Loading garden...</div>'
             '<div class="ag-home__loading-track" aria-hidden="true"></div>'
             '</div>'
             "</div>"
@@ -640,6 +641,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
             f'<div class="ag-home__state-title">{HOME_NO_STARTER_TITLE}</div>'
+            f'<div class="ag-home__state-message">{HOME_NO_STARTER_BODY}</div>'
             f'<span class="ag-home__sr-only">{HOME_NO_STARTER_ACCESSIBLE}</span>'
             f'<button data-testid="home-open" type="button" aria-label="{CHOOSE_STARTER_ACTION}" '
             f'onclick="pycmd(\'anki-garden:choose-starter\')">{CHOOSE_STARTER_ACTION}</button></div>'
@@ -652,13 +654,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Preview unavailable</div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
             '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
-            'Your garden is still available. '
+            'Your garden can still be opened. '
             f'<span class="ag-home__sr-only">{detail}</span></div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open garden" onclick="pycmd(\'anki-garden:open\')">Open garden</button>'
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
             'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
@@ -679,12 +681,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="error"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state">'
-            '<div class="ag-home__state-title">Preview unavailable</div>'
+            '<div class="ag-home__state-title">Garden preview unavailable</div>'
             '<div class="ag-home__state-message" data-testid="home-error" role="alert">'
-            'Your garden is still available.</div>'
+            'Your garden can still be opened.</div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open garden" onclick="pycmd(\'anki-garden:open\')">Open garden</button>'
+            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
             'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
@@ -1229,7 +1231,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             )
         else:
             growth_text = preview.growth_text or "0"
-        preview_support = f"{preview.active_plant_name} · {stage} · {growth_text}"
+        preview_support = (
+            f"{preview.active_plant_name} · {stage} · {growth_text} Growth"
+        )
     elif data.planted_starter_name:
         starter_progress = growth_display(max(0, int(data.active_growth_points)))
         display_growth_current = max(0, int(starter_progress.stage_points))
@@ -1239,10 +1243,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         preview_support = (
             f"{data.planted_starter_name} · {starter_stage} · "
-            f"{display_growth_current:,} / {display_growth_goal:,}"
+            f"{display_growth_current:,} / {display_growth_goal:,} Growth"
         )
     else:
-        preview_support = preview.summary
+        preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'

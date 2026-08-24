@@ -531,6 +531,18 @@ class SceneGeometryLayout:
             alternate = "right" if preferred == "left" else "left"
             center_x = visible.x + visible.width / 2
             anchor_y = visible.y + min(visible.height * 0.42, 80.0)
+            horizontal_preference = (
+                "left" if center_x >= safe.x + safe.width / 2 else "right"
+            )
+            vertical_preference = (
+                "above" if anchor_y >= safe.y + safe.height / 2 else "below"
+            )
+            opposite_horizontal = (
+                "right" if horizontal_preference == "left" else "left"
+            )
+            opposite_vertical = (
+                "below" if vertical_preference == "above" else "above"
+            )
             beds.append(SceneBedGeometry(
                 bed_id=int(placement.slot_index),
                 sprite_anchor=placement.ground_anchor,
@@ -539,10 +551,10 @@ class SceneGeometryLayout:
                 selection_region=selection,
                 popover_anchor=(center_x, anchor_y),
                 popover_candidates=(
-                    "right",
-                    "left",
-                    "above",
-                    "below",
+                    horizontal_preference,
+                    vertical_preference,
+                    opposite_horizontal,
+                    opposite_vertical,
                     "bottom-docked",
                     "top-docked",
                 ),
@@ -680,7 +692,11 @@ class SceneGeometryLayout:
                 height,
             )
 
-        sides = ("right", "left", "above", "below")
+        sides = tuple(
+            side
+            for side in selected.popover_candidates
+            if side in {"right", "left", "above", "below"}
+        ) or ("right", "left", "above", "below")
         selected_obstacle = selected.selection_region.expanded(6.0)
         soft = {
             bed.bed_id: bed.selection_region.expanded(5.0)
@@ -1164,10 +1180,23 @@ def nurtured_marker_placement(
             ):
                 resolved.append(candidate)
         if resolved:
+            edge_target = max(float(margin), min(20.0, canvas_width * 0.04))
+
+            def edge_penalty(candidate: NurturedMarkerPlacement) -> float:
+                pulse = candidate.pulse_bounds
+                clearance = min(
+                    pulse.x,
+                    pulse.y,
+                    float(canvas_width) - pulse.right,
+                    float(canvas_height) - pulse.bottom,
+                )
+                return max(0.0, edge_target - clearance)
+
             return min(
                 resolved,
                 key=lambda candidate: (
                     -candidate.rect.width,
+                    edge_penalty(candidate),
                     0 if candidate.side == preferred else 1,
                     math.hypot(
                         candidate.rect.x + candidate.rect.width / 2 - layout.ground_anchor[0],

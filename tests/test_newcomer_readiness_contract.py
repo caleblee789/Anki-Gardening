@@ -123,11 +123,11 @@ def test_canonical_copy_inventory_is_centralized() -> None:
         "STARTER_SAVE_ERROR",
     }
     assert all(name in copy for name in expected_names)
-    assert GARDEN_SETUP_SECONDARY_ACTION == "Later"
+    assert GARDEN_SETUP_SECONDARY_ACTION == "Not now"
     assert NURSERY_STARTER_COUNT == ""
     assert STARTER_SAVE_ERROR == "Couldn’t save your garden. Nothing was changed."
     assert starter_confirmation("Rose Plant") == "Choose Rose Plant?"
-    assert starter_ready_next_step("Rose Plant") == "Rose Plant is now nurtured."
+    assert starter_ready_next_step("Rose Plant") == "Rose Plant is now earning Growth."
     assert ACTIVE_GROWTH_TITLE == "Nurtured"
     assert ACTIVE_GROWTH_GUIDANCE == ""
 
@@ -151,7 +151,7 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
     assert "self.catalog_tabs.tabBar().setVisible(not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Later" if starter_mode else "Close")' in nursery
+    assert "GARDEN_SETUP_SECONDARY_ACTION if starter_mode else \"Close\"" in nursery
     assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
     assert "available = available[:4]" in nursery
@@ -169,10 +169,10 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     )
     assert "Starting stage:" not in starter_card
     assert "seed_title(species_name)" in starter_card
-    assert "COST_FREE" in starter_card
+    assert 'QLabel("Permanent")' in starter_card
     assert 'QPushButton("Choose")' in starter_card
     assert 'f"Choose {item_name} as your first plant"' in starter_card
-    assert 'QPushButton("Preview")' in starter_card
+    assert 'QPushButton("View stages")' in starter_card
     assert "Free starter" not in available_card
     assert "Included with your free starter" not in available_card
 
@@ -202,7 +202,7 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
         "_open_starter_nursery",
     )
 
-    assert 'HOME_NO_STARTER_BODY = ""' in copy
+    assert 'HOME_NO_STARTER_BODY = "Your first plant is free."' in copy
     assert 'HOME_NO_STARTER_ACCESSIBLE = "Choose a starter for your garden."' in copy
     assert '"No plant selected"' in contracts
     assert '"Ready to nurture"' in contracts
@@ -210,11 +210,11 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
     assert '"READY TO NURTURE"' in stats
     assert "self.growth_value.hide()" in stats
     assert 'self.progress["growth"].hide()' in stats
-    assert refresh_onboarding.count('"Later"') == 3
+    assert refresh_onboarding.count("GARDEN_SETUP_SECONDARY_ACTION") == 3
     assert refresh_onboarding.count('"Back"') == 2
     assert "self._set_onboarding_shield(visible)" in refresh_onboarding
     assert '"Back to Anki"' in refresh_onboarding
-    assert '"Explore garden"' in refresh_onboarding
+    assert '"Explore Garden"' in refresh_onboarding
     assert '"Try again"' in refresh_onboarding
     assert '"Back to setup"' in refresh_onboarding
     assert 'return f"{plant_name} is growing in {bed}."' in completion

@@ -83,11 +83,11 @@ def test_home_and_native_actions_share_the_same_visual_roles() -> None:
     )
     assert cta_rules is not None
     rules = cta_rules.group("rules")
-    assert "min-height:32px !important" in rules
-    assert "max-height:32px !important" in rules
-    assert "min-width:96px !important" in rules
-    assert "width:auto" in rules
-    assert "max-width:132px" in rules
+    assert "min-height:36px !important" in rules
+    assert "max-height:36px !important" in rules
+    assert "min-width:104px !important" in rules
+    assert "width:120px" in rules
+    assert "max-width:120px" in rules
     assert "background:#5CC58B" in home
     assert "background:#71D39C" in home
     assert "outline: 2px solid #82E2AC" in home
@@ -115,9 +115,9 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert "streak_layout.addWidget(self.streak_support)" in stats
     assert "currency_layout.addWidget(self.currency_support)" in stats
     assert "QLabel(METRIC_AFFORDANCE)" not in stats
-    assert "cell.setMinimumHeight(54)" in stats
-    assert "growth_layout.setContentsMargins(16, 5, 16, 5)" in stats
-    assert "growth_layout.setSpacing(2)" in stats
+    assert "cell.setMinimumHeight(72)" in stats
+    assert "growth_layout.setContentsMargins(16, 3, 16, 3)" in stats
+    assert "growth_layout.setSpacing(1)" in stats
     assert "growth_bar.setFixedHeight(4)" in stats
     assert "self.growth_support.setWordWrap(True)" in stats
     assert "self.streak_support.setWordWrap(True)" in stats
@@ -126,8 +126,8 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert stats.count("QSizePolicy.Policy.Ignored") >= 3
     assert "stretches = (1, 1, 1, 1)" in stats
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "0 if guided else (108 if metrics_compact else 54)" in dashboard
-    assert "min-height:54px; max-height:54px" in dashboard
+    assert "0 if guided else (144 if metrics_compact else 72)" in dashboard
+    assert "min-height:72px; max-height:72px" in dashboard
     assert "self.garden_stats_bar.setFixedHeight" not in dashboard
 
 
@@ -140,10 +140,10 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     assert "top.setMinimumHeight(102)" in dashboard
     assert "self.top_bar.setMinimumHeight(minimum)" in dashboard
     assert "minimum = 56" in dashboard
-    assert "164 if self._header_narrow_layout and metrics_compact else" in dashboard
-    assert "156 if self._header_compact_layout and metrics_compact else" in dashboard
-    assert "142 if self._header_narrow_layout else" in dashboard
-    assert "102" in dashboard
+    assert "200 if self._header_narrow_layout and metrics_compact else" in dashboard
+    assert "192 if self._header_compact_layout and metrics_compact else" in dashboard
+    assert "160 if self._header_narrow_layout else" in dashboard
+    assert "120" in dashboard
     assert "top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)" in dashboard
     assert "self.top_bar.setFixedHeight" not in dashboard
     assert "self.feedback_panel.hide()" in dashboard

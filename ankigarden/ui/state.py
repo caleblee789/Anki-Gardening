@@ -247,7 +247,7 @@ class GardenHomePreview:
     growth_goal: int = 0
     growth_text: str = ""
     metrics: tuple[GardenPreviewMetric, ...] = ()
-    action_label: str = "Open garden"
+    action_label: str = "Open Garden"
     action_command: str = "home-open"
     status_tone: str = "neutral"
     scene_opacity: float = 1.0

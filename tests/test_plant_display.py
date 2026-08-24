@@ -191,6 +191,10 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
         assert marker.pulse_bounds.right <= width
         assert 0 <= marker.pulse_bounds.y
         assert marker.pulse_bounds.bottom <= height
+        if layout.slot_index == 2:
+            assert marker.pulse_bounds.x >= 12
+        if layout.slot_index == 5:
+            assert width - marker.pulse_bounds.right >= 12
         assert not any(marker.pulse_bounds.intersects(rect) for rect in obstacles)
         aligned_y = layout.ground_anchor[1] - marker.rect.height * 0.916
         assert abs(marker.rect.y - aligned_y) <= (
@@ -369,6 +373,18 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
     safe = Rect(16, 16, 1_093 - 32, 615 - 32)
     preferred = (320.0, 300.0)
     minimum = (280.0, 220.0)
+
+    lower_right_beds = [
+        bed
+        for bed in geometry.beds
+        if bed.popover_anchor[0] >= geometry.safe_bounds.x + geometry.safe_bounds.width / 2
+        and bed.popover_anchor[1] >= geometry.safe_bounds.y + geometry.safe_bounds.height / 2
+    ]
+    assert lower_right_beds
+    assert all(
+        bed.popover_candidates[:2] == ("left", "above")
+        for bed in lower_right_beds
+    )
 
     def clamped(rect: Rect) -> Rect:
         return Rect(
@@ -1327,11 +1343,12 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     scene = (Path(__file__).resolve().parents[1] / "ankigarden/ui/scene.py").read_text()
     assert "class PlantInfoCard(QFrame):" in dashboard
     assert 'self.nurture = QPushButton("Nurture")' in dashboard
-    assert 'self.fertilize = QPushButton("Fertilize")' in dashboard
+    assert 'self.fertilize = QPushButton("Fertilizer")' in dashboard
+    assert 'self.growth_charge = QPushButton("Growth Charge")' in dashboard
     assert 'self.move = QPushButton("Move")' in dashboard
     assert 'self.story = QPushButton("Plant Story")' in dashboard
     assert 'self.nurture.setText("Nurture")' in dashboard
-    assert 'self.fertilize.setText("Fertilize")' in dashboard
+    assert 'self.fertilize.setText("Fertilizer")' in dashboard
     assert "class RearrangeBar(QFrame):" in dashboard
     assert 'self.title = QLabel("")' in dashboard
     assert 'self.rearrange_bar.title.setText(f"Move {name}")' in dashboard
@@ -1347,12 +1364,12 @@ def test_dashboard_floating_plant_card_and_distinct_rearrange_bar_are_real_contr
     assert '"dashboard.rearrange-actions"' in dashboard
     assert "self.dashboard_rearrange_responsive.evaluate(available)" in dashboard
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "0 if guided else (108 if metrics_compact else 54)" in dashboard
-    assert "164 if self._header_narrow_layout and metrics_compact" in dashboard
-    assert "156 if self._header_compact_layout and metrics_compact" in dashboard
+    assert "0 if guided else (144 if metrics_compact else 72)" in dashboard
+    assert "200 if self._header_narrow_layout and metrics_compact" in dashboard
+    assert "192 if self._header_compact_layout and metrics_compact" in dashboard
     assert "self.overlay_manager.move_mode_changed(active)" in dashboard
     assert "self.onboarding_panel.setFixedWidth(width)" in dashboard
-    assert "ONBOARDING_COACHMARK_MAX_WIDTH = 360" in dashboard
+    assert "ONBOARDING_COACHMARK_MAX_WIDTH = 340" in dashboard
     assert "active_message.heightForWidth(message_width)" in dashboard
     assert "self.onboarding_error_banner.message" in dashboard
     assert "self.onboarding_layout.activate()" in dashboard

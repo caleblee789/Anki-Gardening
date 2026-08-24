@@ -640,7 +640,7 @@ def test_window_content_reflows_without_overwriting_user_geometry() -> None:
 def test_compact_stats_preserve_the_anki_streak_accessible_name() -> None:
     stats = _segment(_class_node("GardenStatsStrip"))
     compact = _segment(_method_node("GardenStatsStrip", "set_compact"))
-    assert 'self.streak_label.setText("")' in compact
+    assert 'self.streak_label.setText("ANKI STREAK")' in compact
     assert 'self.streak_label.setAccessibleName("Anki streak")' in compact
     assert "self.streak_heading.removeWidget(self.streak_bonus)" in compact
     assert "self.streak_value_row.insertWidget(" in compact
@@ -654,15 +654,15 @@ def test_first_run_header_compacts_and_resynchronizes_with_onboarding_state() ->
         _method_node("GardenDashboard", "_sync_header_minimum_heights")
     )
 
-    assert "cell.setMinimumHeight(54)" in stats
+    assert "cell.setMinimumHeight(72)" in stats
     assert "self.garden_stats_bar.set_onboarding_mode(guided)" in refresh
     assert refresh.index("self.garden_stats_bar.set_onboarding_mode(guided)") < refresh.index(
         "self._sync_header_minimum_heights()"
     )
     assert "self.garden_stats_bar.setVisible(not guided)" in heights
-    assert "0 if guided else (108 if metrics_compact else 54)" in heights
+    assert "0 if guided else (144 if metrics_compact else 72)" in heights
     assert "minimum = 56" in heights
-    for value in (102, 142, 156, 164):
+    for value in (120, 160, 192, 200):
         assert str(value) in heights
     assert "self.top_bar.setMinimumHeight(minimum)" in heights
 

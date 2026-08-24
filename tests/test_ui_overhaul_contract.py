@@ -756,10 +756,14 @@ def test_dashboard_metric_cards_have_uniform_interaction_affordances() -> None:
         "class RearrangeBar", 1
     )[0]
 
-    assert "cell.setMinimumHeight(54)" in stats
-    assert "growth_layout.setContentsMargins(16, 5, 16, 5)" in stats
-    assert "growth_layout.setSpacing(2)" in stats
+    assert "cell.setMinimumHeight(72)" in stats
+    assert "growth_layout.setContentsMargins(16, 3, 16, 3)" in stats
+    assert "growth_layout.setSpacing(1)" in stats
     assert "growth_bar.setFixedHeight(4)" in stats
+    assert 'self.growth_kicker = QLabel("CURRENT PLANT")' in stats
+    assert 'self.streak_label = QLabel("ANKI STREAK")' in stats
+    assert 'self.currency_label = QLabel("GARDEN COINS")' in stats
+    assert 'self.growth_name.setText("No nurtured plant")' in stats
     assert 'cell.setProperty("separator", key != "currency")' in stats
     assert "QLabel(METRIC_AFFORDANCE)" not in stats
     assert 'METRIC_AFFORDANCE = "Open details"' in _source("ankigarden/ui/copy.py")
@@ -802,8 +806,8 @@ def test_growth_metric_uses_compact_high_dpi_numeric_copy() -> None:
         "class RearrangeBar", 1
     )[0]
 
-    assert 'self._growth_value_full_text = "0 / 0"' in stats
-    assert 'full_text.removesuffix(" Growth")' in stats
+    assert 'self._growth_value_full_text = "0 / 0 Growth"' in stats
+    assert 'full_text.removesuffix(" Growth")' not in stats
     assert "self.growth_value.setAccessibleName(full_text)" in stats
     assert "growth_layout.addWidget(growth_bar)" in stats
     assert stats.index("growth_layout.addWidget(growth_bar)") < stats.index(
@@ -845,7 +849,7 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     undo = _method_source("ankigarden/ui/dashboard.py", "GardenDashboard", "_undo_move")
 
     positions: list[int] = []
-    for label in ("Nurture", "Fertilize", "Use charge", "Move", "Plant Story"):
+    for label in ("Nurture", "Fertilizer", "Growth Charge", "Move", "Plant Story"):
         assert f'QPushButton("{label}")' in card
         positions.append(card.index(f'QPushButton("{label}")'))
     assert positions == sorted(positions)
@@ -858,12 +862,14 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     assert "self.actions.addWidget(self.move, secondary_row, 0)" in card
     assert "self.actions.addWidget(self.story, secondary_row, 1)" in card
     assert 'self.nurture.setText("Nurture")' in card
-    assert 'self.fertilize.setText("Fertilize")' in card
+    assert 'self.fertilize.setText("Fertilizer")' in card
     assert "self.nurture.setChecked(False)" in card
     assert "self.nurture.setVisible(not active and not fully_grown)" in card
     assert "self.nurtured_badge.setVisible(active and not fully_grown)" in card
     assert "self.fertilize.setVisible(active and not fully_grown)" in card
     assert "self.growth_charge.setVisible(active and not fully_grown)" in card
+    assert "self.fully_grown_badge.setVisible(fully_grown)" in card
+    assert "set_button_size(button, ButtonSize.COMPACT_ROW)" in card
     assert "nurture_reason" in card
     assert "fertilizer_reason" in card
     assert "Nurture this plant before using Fertilizer." in card
@@ -1551,7 +1557,8 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         assert "Replace for" not in source
 
     assert "cost_label(price)" in available
-    assert "COST_FREE" in starter
+    assert 'QLabel("Permanent")' in starter
+    assert "cost_label(" not in starter
     assert "cost_label(spec.price)" in supplement
     assert "cost_label(spec.price)" in charge
     assert "cost_label(item.price)" in environment
@@ -1617,7 +1624,7 @@ def test_compact_dashboard_keeps_words_for_progress_and_anki_streak() -> None:
     assert 'self.progress_btn.setText("Garden Progress")' in responsive
     assert '"Progress" if smallest else "Garden Progress"' not in responsive
     assert 'self.progress_btn.setText("↗"' not in responsive
-    assert 'self.streak_label.setText("")' in compact_stats
+    assert 'self.streak_label.setText("ANKI STREAK")' in compact_stats
     assert 'self.streak_label.setAccessibleName("Anki streak")' in compact_stats
     assert "self.streak_heading.removeWidget(self.streak_bonus)" in compact_stats
     assert "self.streak_value_row.insertWidget(" in compact_stats

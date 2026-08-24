@@ -1282,8 +1282,8 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:14px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
-    assert "font-size:20px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
+    assert "font-size:18px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
+    assert "font-size:18px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
 def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boosts() -> None:
@@ -1480,12 +1480,12 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
 
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert scene.message == "Couldn’t move the plant. Your garden is unchanged."
+    assert scene.message == "Move not saved. Your plant remains in its original bed."
     assert dashboard.refreshed is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is retry_draft
     assert dashboard._active_placement_token == 17
-    assert rearrange.failure == "Your garden is unchanged."
+    assert rearrange.failure == "Your plant remains in its original bed."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
     assert toast.messages == []
@@ -1659,7 +1659,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert dashboard.plant_card.maximum_width == 876
     assert dashboard.plant_card.geometry == (12, 190, 876, 264)
     assert geometry_calls == [
-        (320, 264, {}),
+        (288, 264, {}),
         (876, 264, {"minimum_width": 876, "minimum_height": 264}),
     ]
     assert len(connector_calls) == 1
@@ -1672,7 +1672,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert "geometry = self.scene.card_geometry(" in dashboard_source
     assert "if geometry is None:" in dashboard_source
     assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
-    assert "if docked else 340" in dashboard_source
+    assert "if docked else 290" in dashboard_source
     assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
     assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 

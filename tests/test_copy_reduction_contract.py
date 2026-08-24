@@ -178,15 +178,18 @@ def test_deleted_copy_is_not_reintroduced_on_visible_surfaces() -> None:
     assert not violations, "Superseded copy remains visible:\n" + "\n".join(violations)
 
 
-def test_non_brand_visible_copy_does_not_use_all_caps() -> None:
+def test_only_metric_labels_use_the_required_all_caps_copy() -> None:
+    allowed_metric_labels = {"CURRENT PLANT", "ANKI STREAK", "GARDEN COINS"}
     violations = [
         f"{path.relative_to(ROOT)}:{line}: {text!r}"
         for path, line, text in _visible_literals()
-        if text == "GARDEN COINS"
+        if text in allowed_metric_labels and path.name != "dashboard.py"
     ]
-    assert not violations, "All-caps ordinary copy remains:\n" + "\n".join(
+    assert not violations, "Metric-label copy escaped the Garden header:\n" + "\n".join(
         violations
     )
+    visible = {text for _path, _line, text in _visible_literals()}
+    assert allowed_metric_labels <= visible
 
 
 def test_offscreen_learner_copy_does_not_restore_superseded_phrasing() -> None:
@@ -227,6 +230,9 @@ def test_occupied_bed_swap_is_confirmed_only_after_selection() -> None:
     assert 'box.addButton("Swap", QMessageBox.ButtonRole.AcceptRole)' in dashboard
     assert 'box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)' in dashboard
     assert 'self.rearrange_bar.instructions.setText("Choose a bed.")' in dashboard
+    assert '"Choose an empty bed or a plant to swap with."' in dashboard
+    assert 'failure_title = "Move not saved"' in dashboard
+    assert 'failure_body = "Your plant remains in its original bed."' in dashboard
 
 
 def test_shared_copy_surfaces_keep_the_canonical_action_vocabulary() -> None:
@@ -236,13 +242,13 @@ def test_shared_copy_surfaces_keep_the_canonical_action_vocabulary() -> None:
 
     for copy in (
         "Choose a starter",
-        "Open garden",
+        "Open Garden",
         "Use charge",
         "Growth breakdown",
         "Garden appearance",
         "Technical details",
         "Couldn’t save your garden",
-        "Couldn’t move the plant",
+        "Move not saved",
     ):
         assert copy in dashboard or copy in home
 

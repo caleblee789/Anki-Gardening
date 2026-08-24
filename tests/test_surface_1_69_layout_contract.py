@@ -150,7 +150,7 @@ def test_nursery_uses_compact_cards_normal_flow_feedback_and_starter_only_footer
     assert "target_layout.insertWidget(0, self.nursery_feedback_host)" in nursery
     assert "def _position_nursery_overlays(self)" not in nursery
     assert "self.nursery_footer.setVisible(starter_mode)" in nursery
-    assert "self._plant_artwork(species, GROWTH_STAGES[0], 68)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 72)" in nursery
     assert "self._environment_artwork(item, width=180, height=101)" in nursery
     assert "self.environment_feature_art.setFixedSize(180, 101)" in nursery
     assert "maximum_columns=3" in nursery
@@ -170,13 +170,27 @@ def test_plant_popover_is_compact_and_omits_inactive_boost_actions() -> None:
         "class GardenStatsStrip", 1
     )[0]
 
-    assert "self.setMinimumWidth(280)" in card
-    assert "self.setMaximumWidth(300)" in card
+    assert "self.setMinimumWidth(270)" in card
+    assert "self.setMaximumWidth(290)" in card
     assert "layout.setContentsMargins(12, 10, 12, 12)" in card
     assert "self.actions.addWidget(self.fertilize, 1, 0)" not in card
     assert "self.actions.addWidget(self.growth_charge, 1, 1)" not in card
     assert "self.fertilize.setVisible(active and not fully_grown)" in card
     assert "self.growth_charge.setVisible(active and not fully_grown)" in card
+
+
+def test_plant_story_keeps_readable_history_and_content_fits_standard_state() -> None:
+    source = _source("ankigarden/ui/dashboard.py")
+    story = source.split("class PlantStoryDialog", 1)[1].split(
+        "class StarterConfirmationDialog", 1
+    )[0]
+
+    assert 'QLabel[memoryBody=\'true\'] { color:#d9e5dd; font-size:13.5px; }' in story
+    assert 'self.edit_name_btn = QPushButton("Rename")' in story
+    assert "BUTTON_VARIANT_TERTIARY" in story
+    assert 'f"Next: {next_stage} at {max(0, int(progress.next_threshold)):,} Growth"' in story
+    assert '"complete" if progress.fully_grown else' in story
+    assert 'self.schedule_content_fit("plant-story-refresh")' in story
 
 
 def test_live_progress_grid_preserves_full_single_and_empty_heights_when_available(
