@@ -115,18 +115,22 @@ def test_starter_confirmation_is_a_non_scrolling_decision_dialog() -> None:
     assert "register_scroll_region" not in starter
 
 
-def test_loadout_preview_feedback_is_an_aspect_fitted_scene_overlay() -> None:
+def test_loadout_preview_feedback_is_normal_flow_above_aspect_fitted_scene() -> None:
     source = _source("ankigarden/ui/dashboard.py")
     loadout = source.split("class CollectibleDetailDialog", 1)[1].split(
         "class GardenDashboard", 1
     )[0]
 
-    assert "self.preview_feedback = ToastRegion(self.preview_scene)" in loadout
-    assert "preview_layout.addWidget(self.preview_feedback)" not in loadout
+    assert "self.preview_feedback = ToastRegion(self.preview_panel)" in loadout
+    assert "preview_layout.addWidget(self.preview_feedback)" in loadout
+    assert loadout.index("preview_layout.addWidget(self.preview_feedback)") < loadout.index(
+        "preview_layout.addWidget(self.preview_scene, 1)"
+    )
     assert "self.preview_scene.installEventFilter(self)" in loadout
     assert "available_width * 9 / 16" in loadout
     assert "max(260, min(420" in loadout
-    assert "self.preview_feedback.setGeometry(" in loadout
+    assert "self.preview_feedback.setGeometry(" not in loadout
+    assert 'self.schedule_content_fit(\n            "appearance-feedback"' in loadout
     assert "self.preview_feedback.show_message(" in loadout
     assert "duration_ms=0 if error else duration_ms" in loadout
 

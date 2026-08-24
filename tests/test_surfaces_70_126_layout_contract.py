@@ -63,7 +63,10 @@ def test_odd_achievement_cards_span_the_category_row_only_when_opted_in() -> Non
     assert "and self._columns == 2" in grid
     assert 'widget.setProperty("spansSingletonRow", spans_singleton_row)' in grid
     assert '"Achievement progress", span_singleton_rows=True' in source
-    assert '"Collectible collection", wide_columns=4' in source
+    assert '"Collectible collection",' in source
+    assert "wide_columns=4" in source
+    assert "minimum_item_width=180" in source
+    assert "minimum_card_height=224" in source
 
     capture = CAPTURE.read_text("utf-8")
     assert 'candidate.property("spansSingletonRow")' in capture
@@ -84,3 +87,35 @@ def test_reset_streak_uses_first_positive_bonus_but_keeps_zero_percent_row() -> 
     assert "display_bonus_tiers = tuple(STREAK_BONUS_TIERS)" in streak
     assert "if days > 0 and days_to_next > 0:" in streak
     assert "f\"{'+' if percent > 0 else ''}{percent}% Growth\"" in streak
+
+
+def test_collection_cards_use_truthful_total_and_separate_readable_captions() -> None:
+    refresh = _method_source("GardenDashboard", "_refresh_collection_list")
+
+    assert (
+        'f"{collected} of {len(registry_views)} collectibles collected"'
+        in refresh
+    )
+    assert 'format_status_label(highest_stage)' in refresh
+    assert '_plant_count(len(instances)) if collected_species else ""' in refresh
+    assert "layout.addWidget(stage_copy)" in refresh
+    assert "layout.addWidget(instances_copy)" in refresh
+    assert "minimum_card_height=224" in DASHBOARD.read_text("utf-8")
+    assert '"Clear filters to see all collectibles."' in refresh
+
+
+def test_species_and_environment_actions_are_compact_normal_flow_actions() -> None:
+    species = _method_source("GardenDashboard", "_build_species_overview_dialog")
+    environment = _method_source("GardenDashboard", "_environment_collection_card")
+    metadata = _method_source("GardenDashboard", "_collection_environment_metadata")
+
+    assert '"collected" if collected else "uncollected"' in species
+    assert 'empty_footer.setProperty("speciesUncollectedFooter", True)' in species
+    assert "empty_footer_layout.addStretch(1)" in species
+    assert "nursery.setMaximumWidth(140)" in species
+    assert "actions = QHBoxLayout()" in environment
+    assert "actions.addStretch(1)" in environment
+    assert "BUTTON_VARIANT_PRIMARY if owned" not in environment
+    assert 'f"Available every day\\nOnly one {kind} can be equipped"' in metadata
+    for backend_copy in ("Duration:", "Stacking:", "Replacement:"):
+        assert backend_copy not in metadata

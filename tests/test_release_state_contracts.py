@@ -167,7 +167,7 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
 
     assert (new.state, new.status_label, new.current_days) == (
         StreakPresentationState.NEW,
-        "No streak",
+        "No active streak",
         0,
     )
     assert (active.state, active.current_days) == (StreakPresentationState.ACTIVE, 1)
@@ -181,9 +181,9 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
         "Streak ended",
         0,
     )
-    assert new.message == "Answer a card today to start."
-    assert at_risk.message == "Answer a card today to keep your streak."
-    assert ended.message == "Answer a card to start again."
+    assert new.message == "Answer one card today to start."
+    assert at_risk.message == "Answer one card today to keep your streak."
+    assert ended.message == "Answer one card to begin a new streak."
     assert ended.previous_days == 3
     assert ended.missed_day == date(2026, 8, 11)
 

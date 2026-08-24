@@ -224,7 +224,7 @@ def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> 
     assert 'f"Highest stage {format_status_label(highest_stage)}' in overview
     assert 'GROWTH_THRESHOLDS[-1]:,' in overview
     assert 'f"Unlocks at {GROWTH_THRESHOLDS[-1]:,} Growth"' in overview
-    assert '"Available in the Nursery"' in overview
+    assert '"Available in Nursery"' in overview
     assert 'instances_title = QLabel("Your plants")' in overview
     assert "fertilizer_status(self.engine, plant, now=time.time())" not in overview
     assert "stages = ResponsiveTileGrid(" in overview
@@ -1236,7 +1236,10 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
     assert 'f"{owned_count:,} of "' in nursery_refresh
     assert 'f"{max(owned_count, owned_count + available_count):,} collected"' in nursery_refresh
     assert "self.intro.setAccessibleDescription(intro_text)" in nursery_refresh
-    assert 'f"{collected} of {len(registry_views)} collected"' in collection_refresh
+    assert (
+        'f"{collected} of {len(registry_views)} collectibles collected"'
+        in collection_refresh
+    )
     assert '("Locked", "not_collected")' in collection_filters
     assert 'QLabel("Collected" if collected_species else "Not collected")' not in collection_refresh
     assert '"Available in Nursery"' in collection_refresh
@@ -1469,8 +1472,11 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "item.descriptor.mechanics_rows()" not in environment
     assert 'f"Owned quantity: {1 if owned else 0}"' not in collection_environment
     assert 'f"Effect: {descriptor.buff}"' not in collection_environment
-    assert "if effect_copy and owned:" in collection_environment
-    assert "self._collection_mechanics_help(descriptor, item.name)" in collection_environment
+    assert "if owned and not mystery:" in collection_environment
+    assert "self._collection_environment_metadata(item)" in collection_environment
+    assert "Duration:" not in collection_environment
+    assert "Stacking:" not in collection_environment
+    assert "Replacement:" not in collection_environment
     assert "item.descriptor.mechanics_rows()" not in collection_environment
     assert "Current equipment state:" not in collection_environment
     for noise in (

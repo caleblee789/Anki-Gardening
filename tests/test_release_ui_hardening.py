@@ -728,7 +728,8 @@ def test_collection_effects_advanced_action_has_readable_copy_at_compact_widths(
     assert "self._sync_loadout_footer_button_geometry()" in sync_dirty
     assert 'self.setProperty("transactionPresentation", "committed-state-unchanged")' in apply_draft
     assert 'self.setProperty("transactionPresentation", "preview-being-committed")' in apply_draft
-    assert "Couldn’t save changes. Your garden is unchanged." in apply_draft
+    assert "Could not save changes." in apply_draft
+    assert "Your current Garden appearance is unchanged." in apply_draft
     assert "if self._loadout_failure:" in cancel_preview
     assert cancel_preview.index("self._reset_preview()") < cancel_preview.index(
         "self.request_close(DialogCloseReason.CANCEL_ACTION)"
