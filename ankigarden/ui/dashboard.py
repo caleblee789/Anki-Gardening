@@ -15358,11 +15358,32 @@ class GardenDashboard(DialogShell):
                 condition_lines = tuple(projection.condition_lines) or (
                     projection.criteria_text,
                 )
+                compound_conditions = bool(
+                    not projection.unlocked
+                    and len(condition_lines) > 1
+                )
+                card.setProperty(
+                    "compoundConditionsVisible",
+                    compound_conditions,
+                )
                 if not str(projection.achievement_id).startswith("streak_"):
                     requirement = QLabel(projection.criteria_text or condition_lines[0])
                     requirement.setWordWrap(True)
                     requirement.setProperty("rowCriteria", True)
                     card_layout.addWidget(requirement)
+                if compound_conditions:
+                    conditions = QWidget()
+                    conditions.setProperty("achievementConditions", True)
+                    conditions_layout = QVBoxLayout(conditions)
+                    conditions_layout.setContentsMargins(0, 0, 0, 0)
+                    conditions_layout.setSpacing(3)
+                    for condition_line in condition_lines:
+                        condition = QLabel(condition_line)
+                        condition.setWordWrap(True)
+                        condition.setProperty("rowStatus", True)
+                        apply_tabular_numerals(condition)
+                        conditions_layout.addWidget(condition)
+                    card_layout.addWidget(conditions)
 
                 unlock_text = ""
                 if projection.unlocked:
@@ -15374,7 +15395,7 @@ class GardenDashboard(DialogShell):
                     completed_date = QLabel(unlock_text)
                     completed_date.setProperty("rowCriteria", True)
                     card_layout.addWidget(completed_date)
-                else:
+                elif not compound_conditions:
                     progress = LabeledProgress(f"{projection.name} progress")
                     progress.set_progress(
                         "",

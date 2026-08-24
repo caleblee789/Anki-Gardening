@@ -38,3 +38,13 @@ def test_collection_no_matches_keeps_one_filter_action_and_sparse_profile() -> N
     assert '"collection-empty"' in profile
     assert 'annotation.get("empty_state_actions") == []' in capture
     assert 'annotation.get("filter_clear_visible", False)' in capture
+
+
+def test_compound_achievements_render_every_condition_without_one_axis_bar() -> None:
+    refresh = _method_source("GardenDashboard", "_refresh_achievement_list")
+
+    assert "len(condition_lines) > 1" in refresh
+    assert '"compoundConditionsVisible"' in refresh
+    assert "for condition_line in condition_lines" in refresh
+    assert 'conditions.setProperty("achievementConditions", True)' in refresh
+    assert "elif not compound_conditions:" in refresh
