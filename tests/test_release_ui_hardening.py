@@ -880,7 +880,7 @@ def test_settings_name_failure_reports_the_split_commit_if_rollback_fails() -> N
     assert "no Settings changes were applied" not in dialog.errors[0]
 
 
-def test_missing_artwork_uses_intentional_labeled_fallbacks_and_internal_logging() -> None:
+def test_missing_artwork_uses_graphical_fallbacks_and_internal_logging() -> None:
     fallback = _segment(_function_node("_missing_artwork_pixmap"))
     recorder = _segment(_function_node("_record_missing_artwork"))
     placeholder = _segment(_function_node("_botanical_placeholder_pixmap"))
@@ -912,7 +912,8 @@ def test_missing_artwork_uses_intentional_labeled_fallbacks_and_internal_logging
     assert "drawRoundedRect(" in fallback
     assert "drawEllipse(" in fallback
     assert "drawPath(" in fallback
-    assert 'label = "Artwork unavailable"' in fallback
+    assert 'label = "Artwork unavailable"' not in fallback
+    assert "drawText(" not in fallback
     for category in ("plant", "weather", "scenery", "fertilizer"):
         assert category in fallback
     assert "DISPLAY_TELEMETRY.track_fallback(" in recorder

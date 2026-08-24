@@ -4374,11 +4374,10 @@ def _missing_artwork_pixmap(
     painter.setBrush(QColor(32, 67, 54, 220))
     painter.drawRoundedRect(QRectF(4, 4, safe_width - 8, safe_height - 8), 9, 9)
 
-    label_height = min(28, max(20, safe_height // 3))
-    icon_bottom = max(14, safe_height - label_height - 3)
+    icon_bottom = max(14, safe_height - 4)
     icon_size = max(12, min(30, min(safe_width - 12, icon_bottom - 8)))
     center_x = safe_width / 2
-    center_y = max(7.0 + icon_size / 2, icon_bottom / 2)
+    center_y = safe_height / 2
     icon_rect = QRectF(
         center_x - icon_size / 2,
         center_y - icon_size / 2,
@@ -4472,24 +4471,6 @@ def _missing_artwork_pixmap(
         bolt.closeSubpath()
         painter.drawPath(bolt)
 
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(9, 30, 24, 238))
-    painter.drawRoundedRect(
-        QRectF(3, safe_height - label_height - 2, safe_width - 6, label_height),
-        6,
-        6,
-    )
-    painter.setPen(QColor("#e3ece5"))
-    font = painter.font()
-    font.setPixelSize(11)
-    font.setBold(True)
-    painter.setFont(font)
-    label = "Artwork unavailable" if safe_width >= 108 else "Artwork\nunavailable"
-    painter.drawText(
-        QRectF(5, safe_height - label_height - 1, safe_width - 10, label_height - 2),
-        int(Qt.AlignmentFlag.AlignCenter),
-        label,
-    )
     painter.end()
     return preview
 
