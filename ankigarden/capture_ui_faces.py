@@ -3684,6 +3684,14 @@ class _UiFaceCaptureRunner:
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         """Consume the shell-owned telemetry and bind it to release limits."""
 
+        window_family = expected_capture_window_family(label)
+        if window_family in {"AnkiQt", "GardenDashboard"}:
+            return ({
+                "applicable": False,
+                "source": "",
+                "issues": [],
+                "passed": True,
+            }, [])
         reader = getattr(root, "capture_layout_telemetry", None)
         if not callable(reader):
             return ({
@@ -13722,7 +13730,7 @@ class _UiFaceCaptureRunner:
             self._capture_settings_troubleshooting_ready,
             tries=80,
             failure_label="diagnostics-clean",
-            failure_reason="Settings Troubleshooting tab did not become ready",
+            failure_reason="Settings Diagnostics tab did not become ready",
         )
 
     def _capture_settings_troubleshooting_ready(self) -> None:

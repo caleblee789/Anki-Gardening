@@ -383,7 +383,7 @@ def purchase_presentation(
         outcome = "Adds it to Weather and Scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
-        next_actions = ("View in Collection", "Keep browsing")
+        next_actions = ("View Collection", "Keep browsing")
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
@@ -392,7 +392,7 @@ def purchase_presentation(
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
-        next_actions = ("View garden", "Keep browsing")
+        next_actions = ("View Garden", "Keep browsing")
 
     primary_label, primary_accessible, processing_label = _priced_action(
         action, quote.total_price

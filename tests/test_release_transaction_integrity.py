@@ -314,6 +314,14 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     if kind is PurchaseKind.SPECIES:
         assert presentation.outcome == "Adds Sunflower to your collection."
         assert "No Growth while in Collection" not in visible
+    expected_next_actions = {
+        PurchaseKind.SPECIES: ("Place in Garden", "View Collection"),
+        PurchaseKind.GROWTH_CHARGE: ("Use charge", "Keep browsing"),
+        PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
+        PurchaseKind.WEATHER: ("View Collection", "Keep browsing"),
+        PurchaseKind.BED: ("View Garden", "Keep browsing"),
+    }
+    assert presentation.next_actions == expected_next_actions[kind]
     assert presentation.badges == ()
     assert not presentation.show_item_name
     assert not presentation.show_category

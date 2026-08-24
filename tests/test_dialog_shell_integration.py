@@ -393,3 +393,5 @@ def test_content_fit_is_coalesced_and_publishes_native_capture_evidence() -> Non
         "tooltipPresent",
     ):
         assert evidence in telemetry
+    assert "self.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)" in telemetry
+    assert telemetry.count("isVisibleTo(self)") >= 2

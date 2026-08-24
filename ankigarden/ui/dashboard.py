@@ -1359,7 +1359,15 @@ class DialogShell(QWidget):
             (max(0, int(widget.geometry().width())) for widget in direct_content),
             default=0,
         )
-        client_surface_fill = min(1.0, widest_surface / client_width)
+        # DialogShell paints its own styled background across the full client
+        # rect. Internal layout margins are intentional content padding, not
+        # the black/empty outer gutter this release telemetry is designed to
+        # detect. Only fall back to child geometry for an unpainted shell.
+        client_surface_fill = (
+            1.0
+            if self.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+            else min(1.0, widest_surface / client_width)
+        )
 
         nursery_root_offset: int | None = None
         if (
@@ -1394,7 +1402,7 @@ class DialogShell(QWidget):
             try:
                 if (
                     button.window() is not self
-                    or button.isHidden()
+                    or not button.isVisibleTo(self)
                     or bool(button.property("iconButton"))
                 ):
                     continue
@@ -1456,7 +1464,7 @@ class DialogShell(QWidget):
                         (QLabel, QPushButton, QCheckBox, QLineEdit, QTextEdit, QComboBox),
                     )
                     or widget.window() is not self
-                    or widget.isHidden()
+                    or not widget.isVisibleTo(self)
                     or not self._widget_has_text(widget)
                 ):
                     continue

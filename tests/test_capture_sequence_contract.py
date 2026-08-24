@@ -702,6 +702,10 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
         "_UiFaceCaptureRunner",
         "_visual_contract_audit",
     )
+    native_layout_audit = _method_source(
+        "_UiFaceCaptureRunner",
+        "_native_layout_telemetry_audit",
+    )
     icon_pixels = _method_source(
         "_UiFaceCaptureRunner",
         "_icon_has_visible_pixels",
@@ -758,6 +762,7 @@ def test_capture_manifest_records_canonical_geometry_and_responsive_telemetry() 
     assert "RENDERED_PIXEL_EVIDENCE_KEYS.get(label" in capture_pixels
     assert '"rendered_pixel_evidence"' in capture_pixels
     assert "_pixmap_contains_overlay(pixmap, root, target)" in capture_pixels
+    assert 'window_family in {"AnkiQt", "GardenDashboard"}' in native_layout_audit
     assert "_audit_capture_pixel_contracts(" in capture_now
     assert 'annotation["visual_contract"]' in capture_now
 
