@@ -2318,8 +2318,11 @@ class _UiFaceCaptureRunner:
             )
             return
         web = getattr(mw, "web", None)
+        page_getter = getattr(web, "page", None)
+        page = page_getter() if callable(page_getter) else None
+        run_javascript = getattr(page, "runJavaScript", None)
         evaluate = getattr(web, "evalWithCallback", None)
-        if not callable(evaluate):
+        if not callable(run_javascript) and not callable(evaluate):
             self._failures.append({
                 "label": capture_label,
                 "reason": "Home fixture identity could not be verified without WebEngine",
@@ -2577,7 +2580,18 @@ class _UiFaceCaptureRunner:
             resolved,
         )
         try:
-            evaluate(script, resolved_once)
+            if callable(run_javascript):
+                # Call the live QWebEnginePage directly. Anki's convenience
+                # wrapper can retain a callback queue across repeated main-page
+                # navigations; late in a full release run that queue may stop
+                # delivering results even though the page remains painted.
+                # The page API binds this audit to the current renderer frame.
+                try:
+                    run_javascript(script, 0, resolved_once)
+                except TypeError:
+                    run_javascript(script, resolved_once)
+            else:
+                evaluate(script, resolved_once)
             # A busy WebEngine compositor can legitimately take longer than
             # one frame budget to return runJavaScript results while native
             # capture windows are being moved and grabbed.  The old 750 ms
