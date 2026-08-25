@@ -1701,7 +1701,7 @@ def test_capture_harness_requires_painted_surfaces_and_exact_dialog_instances() 
         "ankigarden/capture_ui_faces.py", "_UiFaceCaptureRunner", "_prepare_capture_state"
     )
     assert "reset()" in prepare_state
-    assert "QTimer.singleShot(800, self._next_step)" in prepare_state
+    assert "QTimer.singleShot(120, self._next_step)" in prepare_state
     deck_capture = _method_source(
         "ankigarden/capture_ui_faces.py", "_UiFaceCaptureRunner", "_capture_deck_browser"
     )
