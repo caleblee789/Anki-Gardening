@@ -119,7 +119,7 @@ def _compiled_renderer_family_contract() -> dict[str, object]:
 def test_capture_contract_covers_every_public_surface_group() -> None:
     groups = dict(_literal_assignment("CAPTURE_FACE_GROUPS"))
 
-    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 22
+    assert _literal_assignment("CAPTURE_CONTRACT_VERSION") == 23
     assert groups == {
         "First run": (
             "starter-garden-onboarding",
@@ -437,11 +437,18 @@ def test_high_risk_capture_fixtures_require_visible_state_and_bounds_proof() -> 
 def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     source = CAPTURE_PATH.read_text("utf-8")
 
-    for key, label in (
-        ("achievements", "progress-achievements"),
-        ("collection", "progress-collection"),
-    ):
-        assert f'self._capture_progress_page("{key}", "{label}")' in source
+    achievements = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_progress_achievements",
+    )
+    collection = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_progress_collection",
+    )
+    assert 'self._capture_progress_page("achievements", "progress-achievements")' in achievements
+    assert '"collection"' in collection
+    assert '"progress-collection"' in collection
+    assert "restore_callback=restore_environment_inventory" in collection
     redirect = _method_source("_UiFaceCaptureRunner", "_capture_progress_today")
     assert 'label = "progress-overview-redirect-growth"' in redirect
     assert 'dialog.open_page("overview")' in redirect
@@ -529,7 +536,8 @@ def test_capture_runner_drives_every_tab_and_exports_its_contract() -> None:
     assert '"capture_contract_version": CAPTURE_CONTRACT_VERSION' in source
     assert '"capture_groups": [' in source
     assert '"expected_faces": expected_labels' in source
-    assert "captured_labels == expected_labels" in source
+    assert "captured_labels == requested_labels" in source
+    assert '"capture_scope": getattr(' in source
 
 
 def test_resize_matrix_covers_every_custom_window_family_and_breakpoint_edge() -> None:
@@ -761,7 +769,7 @@ def test_capture_timeouts_and_step_exceptions_fail_closed() -> None:
     assert "Capture step" in next_step
     assert "type(exc).__name__" in next_step
     assert "if self._fatal_fixture_restore_failure:" in next_step
-    assert "and not self._fatal_fixture_restore_failure" in finish
+    assert 'and not bool(getattr(self, "_fatal_fixture_restore_failure", False))' in finish
     assert "on_ready()" not in wait.split("if tries <= 0:", 1)[1]
     assert '"Timed out waiting for the requested UI surface"' in wait
     assert '"Anki collection did not become ready before capture"' in collection
@@ -1370,7 +1378,7 @@ def test_watering_can_capture_profile_skips_unrelated_release_interfaces() -> No
     assert '"capture_profile": self._capture_profile' in finish
     assert "for group, labels in self._capture_face_groups" in finish
     assert "fixture_validations_complete" in finish
-    assert "complete and manifest_write_succeeded" in finish
+    assert "scope_complete and evidence_write_succeeded" in finish
     assert "app.exit(exit_code)" in finish
 
 
@@ -1485,9 +1493,9 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert "for slot in (0, 2, 4)" in home_branch
     assert "for slot in (1, 3, 5)" in home_branch
     assert "self._capture_home_pixmap(widget)" in capture_now
-    assert capture_home.index(
+    assert capture_home.index("candidates:") < capture_home.index(
         "self._activate_current_process_window(widget)"
-    ) < capture_home.index("candidates:")
+    )
     assert "allow_screen_capture=foreground_confirmed" in capture_home
     assert "screen.grabWindow(" in capture_home
     assert "int(widget.winId())" in capture_home
@@ -1513,7 +1521,8 @@ def test_home_only_capture_profile_uses_screen_compositing_and_rejects_blank_she
     assert "dark_ratio >= 0.003" in pixmap_metrics
     assert '"semantic_identity_passed": semantic_passed' in pixmap_metrics
     assert "branded Garden" in pixmap_audit
-    assert "self._activate_current_process_window(widget)" in capture_and_advance
+    assert "self._activate_current_process_window(widget)" not in capture_and_advance
+    assert "self._move_to_capture_display(widget)" in capture_and_advance
     assert 'platform.system() != "Darwin"' in activate_window
     assert 'ctypes.CDLL("/usr/lib/libobjc.A.dylib")' in activate_window
     assert 'objc_get_class(b"NSRunningApplication")' in activate_window
@@ -1562,7 +1571,10 @@ def test_home_capture_uses_only_the_app_owned_qt_surface_without_foreground() ->
             warning=lambda *args: warnings.append(args),
         ),
         mw=SimpleNamespace(web=None),
-        time=SimpleNamespace(sleep=lambda _seconds: None),
+        time=SimpleNamespace(
+            perf_counter=lambda: 1.0,
+            sleep=lambda _seconds: None,
+        ),
     )
     runner = SimpleNamespace(
         _activate_current_process_window=lambda _widget: False,
@@ -1580,7 +1592,7 @@ def test_home_capture_uses_only_the_app_owned_qt_surface_without_foreground() ->
     assert isinstance(pixmap, Pixmap)
     assert method == "qt-widget"
     assert foreground is False
-    assert "limiting capture to the app-owned Qt surface" in str(warnings[0][0])
+    assert warnings == []
 
 
 def test_home_capture_waits_for_late_webengine_semantic_paint() -> None:
@@ -1633,7 +1645,10 @@ def test_home_capture_waits_for_late_webengine_semantic_paint() -> None:
             warning=lambda *_args, **_kwargs: None,
         ),
         mw=SimpleNamespace(web=None),
-        time=SimpleNamespace(sleep=lambda _seconds: None),
+        time=SimpleNamespace(
+            perf_counter=lambda: 1.0,
+            sleep=lambda _seconds: None,
+        ),
     )
     runner = SimpleNamespace(
         _activate_current_process_window=lambda _widget: False,
@@ -1657,7 +1672,7 @@ def test_home_capture_waits_for_late_webengine_semantic_paint() -> None:
     assert foreground is False
     assert widget.attempts == 5
     assert widget.updates == 4
-    assert len(process_events) == 8
+    assert len(process_events) == 4
 
 
 def test_current_window_activation_keeps_the_cross_platform_qt_path() -> None:
@@ -1836,6 +1851,7 @@ def test_capture_display_move_relocates_once_then_becomes_idempotent() -> None:
         _move_to_capture_display=lambda _widget: prepared.append(
             prepare_runner._capture_force_primary
         ),
+        _run_capture_calibration=lambda: True,
         _prepare_starter_phase=lambda: None,
     )
 
@@ -1843,7 +1859,7 @@ def test_capture_display_move_relocates_once_then_becomes_idempotent() -> None:
 
     assert prepare_runner._capture_force_primary is True
     assert prepared == [True]
-    assert timers == [(300, prepare_runner._prepare_starter_phase)]
+    assert timers == [(80, prepare_runner._prepare_starter_phase)]
 
 
 def test_secondary_home_capture_never_accepts_desktop_or_moves_synchronously() -> None:
@@ -1943,11 +1959,16 @@ def test_secondary_home_capture_never_accepts_desktop_or_moves_synchronously() -
             warning=lambda *args: warnings.append(args),
         ),
         mw=SimpleNamespace(web=None),
-        time=SimpleNamespace(sleep=lambda _seconds: None),
+        time=SimpleNamespace(
+            perf_counter=lambda: 1.0,
+            sleep=lambda _seconds: None,
+        ),
     )
     runner = SimpleNamespace(
         _capture_display="secondary",
         _capture_force_primary=False,
+        _foreground_policy="required-only",
+        _foreground_requests=[],
         _activate_current_process_window=lambda _widget: True,
         _home_capture_ready_attempts=3,
     )
@@ -1973,10 +1994,10 @@ def test_secondary_home_capture_never_accepts_desktop_or_moves_synchronously() -
     assert foreground is True
     assert runner._capture_force_primary is True
     assert widget.capture_display == "secondary"
-    assert process_events == [True, True, True, True]
+    assert process_events == [True, True]
     assert len(warnings) == 3
     assert warnings[0][1] == "secondary"
-    assert warnings[0][2][0] == {
+    assert warnings[1][2][0] == {
         "method": "foreground-screen-region",
         "pixel_size": [2002, 1710],
         "generic": True,
@@ -2511,8 +2532,8 @@ def test_delayed_capture_keeps_reserved_identity_after_global_provenance_advance
 
         assert runner._capture_index == 8
         if widget is home_widget:
-            assert runner._active_fixture_source == "ordered-step-002:_capture_overview"
-            assert events == ["move", "activate"]
+            assert runner._active_fixture_source == "ordered-step-001:_capture_deck_browser"
+            assert events == ["move"]
         else:
             assert runner._active_fixture_source == "ordered-step-001:_capture_deck_browser"
             assert events == []
@@ -2579,12 +2600,12 @@ def test_capture_cleanup_and_advance_are_chained_after_the_screenshot() -> None:
     )
 
     assert events == []
-    assert [delay for delay, _callback in timer_callbacks] == [520]
+    assert [delay for delay, _callback in timer_callbacks] == [0]
     timer_callbacks.pop(0)[1]()
-    assert events == ["capture"]
-    assert [delay for delay, _callback in timer_callbacks] == [330]
+    assert events == ["capture", "close"]
+    assert [delay for delay, _callback in timer_callbacks] == [32]
     timer_callbacks.pop(0)[1]()
-    assert events == ["capture", "close", "advance:350"]
+    assert events == ["capture", "close", "advance:80"]
 
 
 def test_capture_identity_mismatches_fail_before_reading_qt_or_saving() -> None:
@@ -2639,11 +2660,11 @@ def test_saved_capture_provenance_never_reads_mutable_next_step_globals() -> Non
         "_capture_fixture_postcondition",
     )
 
-    assert "self._capture_index = capture_id + 1" in reserve
+    assert "capture_id = face_labels.index(label) + 1" in reserve
     assert 'getattr(self, "_active_fixture_source", "")' in reserve
     assert 'getattr(self, "_active_fixture_expected_label", "")' in reserve
     assert schedule.index("self._reserve_capture_identity(label)") < schedule.index(
-        "self._activate_current_process_window(widget)"
+        '"_wait_for_visual_stability"'
     )
     assert "lambda identity=capture_identity" in schedule
     assert "capture_identity=identity" in schedule

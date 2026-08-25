@@ -125,6 +125,7 @@ from .theme import (
     ICON_BUTTON_SIZE,
     INPUT_VISUAL_HEIGHT,
     PLANT_ACTION_MIN_HEIGHT,
+    PRIMARY_BUTTON_VISUAL_HEIGHT,
     FeedbackTone,
     SemanticRole,
     TextRole,
@@ -11259,6 +11260,12 @@ class NurseryDialog(DialogShell):
         else:
             view_collection = QPushButton("View Collection")
             _set_button_variant(view_collection, BUTTON_VARIANT_PRIMARY)
+            # The empty-state selector applies its bold font only after the
+            # action is parented. Reserve the measured macOS delta explicitly
+            # so the final label keeps its full primary-button padding.
+            view_collection.setMinimumWidth(
+                view_collection.minimumWidth() + 6
+            )
             view_collection.clicked.connect(self._open_customize_from_nursery)
             empty = EmptyState(
                 "New plants are being prepared"
@@ -11268,6 +11275,30 @@ class NurseryDialog(DialogShell):
                 f"{owned_count:,} of {max(owned_count, release_ready_count):,} species collected",
                 action=None if starter_mode else view_collection,
             )
+            if not starter_mode:
+                # EmptyState's compact nested selector must not lower this
+                # explicitly primary action to the secondary 34 px profile.
+                view_collection.setStyleSheet(
+                    f"{view_collection.styleSheet()}\n"
+                    "QPushButton {"
+                    f"min-height:{PRIMARY_BUTTON_VISUAL_HEIGHT}px;"
+                    f"max-height:{PRIMARY_BUTTON_VISUAL_HEIGHT}px;"
+                    "}"
+                )
+                # Measure once more after the nested EmptyState font has been
+                # applied; reserve two pixels of clearance beyond its border.
+                final_text_width = int(
+                    view_collection.fontMetrics().horizontalAdvance(
+                        str(view_collection.text()).replace("&&", "&")
+                    )
+                )
+                final_padding = int(
+                    view_collection.property("horizontalPadding") or 16
+                )
+                view_collection.setFixedWidth(max(
+                    140,
+                    final_text_width + (2 * final_padding) + 4,
+                ))
             empty.setMaximumWidth(520)
             self.catalog_layout.addWidget(
                 empty,
@@ -13918,6 +13949,10 @@ class GardenDetailsDialog(GardenDialog):
         hero_layout.addLayout(balance_copy, 1)
         open_nursery = QPushButton("Open Nursery")
         _set_button_variant(open_nursery, BUTTON_VARIANT_PRIMARY)
+        # Re-measure after the variant has applied its bold font.  Qt's
+        # pre-polish size hint is two pixels narrower on macOS and can leave
+        # the final label inside the button's reserved padding.
+        set_button_size(open_nursery, ButtonSize.PRIMARY)
         open_nursery.clicked.connect(self._open_nursery)
         hero_layout.addWidget(open_nursery, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(hero)
@@ -19337,10 +19372,20 @@ class GardenDashboard(DialogShell):
                 )
                 for label_text, action_name in action_specs:
                     action = QPushButton(label_text)
+                    action_size = (
+                        ButtonSize.PRIMARY
+                        if action_name in {"view", "plant", "nurture"}
+                        else ButtonSize.SECONDARY
+                    )
                     _set_button_variant(
                         action,
                         BUTTON_VARIANT_PRIMARY if action_name in {"view", "plant", "nurture"} else BUTTON_VARIANT_SECONDARY,
                     )
+                    # The variant changes font weight. Re-measure once with
+                    # that final font so longer actions such as View in garden
+                    # retain the shared horizontal padding without clipping.
+                    set_button_size(action, action_size)
+                    action.setMinimumWidth(action.minimumWidth() + 10)
                     action.setAccessibleDescription(f"{label_text} for {plant.name}.")
                     set_control_enabled(
                         action,

@@ -105,6 +105,14 @@ class CaptureValidationError(ValueError):
         super().__init__("; ".join(self.issues))
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True)
 class CaptureContract:
     version: int
@@ -2679,10 +2687,93 @@ def validate_capture_manifest(
         issues.append(
             f"expected_count must be {expected_count}, found {payload.get('expected_count')!r}"
         )
+    capture_scope = payload.get("capture_scope")
+    if capture_scope not in {"full", "assembled"}:
+        issues.append("capture_scope must be 'full' or 'assembled' for release evidence")
+    if payload.get("requested_faces") != list(expected_labels):
+        issues.append("requested_faces must contain the complete ordered release contract")
+    captured_faces = payload.get("captured_faces")
+    reused_faces = payload.get("reused_faces")
+    if not isinstance(captured_faces, list) or not isinstance(reused_faces, list):
+        issues.append("captured_faces and reused_faces must be lists")
+        captured_faces = []
+        reused_faces = []
+    else:
+        captured_faces = [str(value) for value in captured_faces]
+        reused_faces = [str(value) for value in reused_faces]
+        if len(captured_faces) != len(set(captured_faces)):
+            issues.append("captured_faces contains duplicates")
+        if len(reused_faces) != len(set(reused_faces)):
+            issues.append("reused_faces contains duplicates")
+        if set(captured_faces) & set(reused_faces):
+            issues.append("captured_faces and reused_faces overlap")
+        if set(captured_faces) | set(reused_faces) != set(expected_labels):
+            issues.append("captured_faces and reused_faces do not cover the release contract")
+        if captured_faces != [label for label in expected_labels if label in captured_faces]:
+            issues.append("captured_faces is not in canonical order")
+        if reused_faces != [label for label in expected_labels if label in reused_faces]:
+            issues.append("reused_faces is not in canonical order")
+    invalidated_faces = payload.get("invalidated_faces")
+    if not isinstance(invalidated_faces, list) or any(
+        str(value) not in expected_labels for value in invalidated_faces
+    ):
+        issues.append("invalidated_faces must contain only contract labels")
+    calibration = payload.get("capture_calibration")
+    if not isinstance(calibration, dict) or calibration.get("passed") is not True:
+        issues.append("capture calibration did not pass")
+    if payload.get("scope_complete") is not True:
+        issues.append("scope_complete is not true")
+    sha_pattern = re.compile(r"[0-9a-f]{64}")
+    production_package_sha256 = payload.get("production_package_sha256")
+    capture_environment_digest = payload.get("capture_environment_digest")
+    if (
+        not isinstance(production_package_sha256, str)
+        or sha_pattern.fullmatch(production_package_sha256) is None
+    ):
+        issues.append("production_package_sha256 is invalid")
+    if (
+        not isinstance(capture_environment_digest, str)
+        or sha_pattern.fullmatch(capture_environment_digest) is None
+    ):
+        issues.append("capture_environment_digest is invalid")
+    render_inputs = payload.get("render_inputs")
+    render_surfaces: dict[str, Any] = {}
+    if not isinstance(render_inputs, dict):
+        issues.append("render_inputs must be an object")
+    else:
+        if render_inputs.get("environment_digest") != capture_environment_digest:
+            issues.append("render_inputs environment digest does not match the manifest")
+        if render_inputs.get("production_archive_sha256") != production_package_sha256:
+            issues.append("render_inputs production archive hash does not match the manifest")
+        raw_render_surfaces = render_inputs.get("surfaces")
+        if not isinstance(raw_render_surfaces, dict):
+            issues.append("render_inputs surfaces must be an object")
+        else:
+            render_surfaces = raw_render_surfaces
+            if set(render_surfaces) != set(expected_labels):
+                issues.append("render_inputs surfaces do not match the release contract")
+    if payload.get("foreground_policy") != "required-only":
+        issues.append("foreground_policy must be 'required-only'")
+    foreground_requests = payload.get("foreground_requests")
+    if not isinstance(foreground_requests, list) or len(foreground_requests) > 2:
+        issues.append("foreground_requests must be a list containing at most two requests")
     if payload.get("complete") is not True:
         issues.append("capture manifest is not marked complete")
     if payload.get("fixture_validations_complete") is not True:
         issues.append("fixture_validations_complete is not true")
+
+    completion_path = session_dir / "capture-complete.json"
+    completion = _load_json_object(completion_path, "capture completion")
+    if completion.get("manifest_sha256") != _file_sha256(manifest_path):
+        issues.append("capture completion manifest hash does not match")
+    referenced_manifest = _resolved_evidence_path(
+        completion.get("manifest"),
+        session_dir,
+    )
+    if referenced_manifest != manifest_path:
+        issues.append("capture completion references a different manifest")
+    if completion.get("scope_complete") is not True or completion.get("exit_code") != 0:
+        issues.append("capture completion does not report a clean successful scope")
 
     failures = payload.get("failures")
     if not isinstance(failures, list):
@@ -2776,6 +2867,69 @@ def validate_capture_manifest(
         record_path = _resolved_evidence_path(record.get("path"), session_dir)
         if record_path != screenshot_path:
             issues.append(f"capture {index:03d} {label}: record path does not match screenshots")
+        if screenshot_path is not None and screenshot_path.is_file():
+            if record.get("png_sha256") != _file_sha256(screenshot_path):
+                issues.append(f"capture {index:03d} {label}: PNG SHA-256 does not match")
+        evidence_status = record.get("evidence_status")
+        expected_status = "reused" if label in reused_faces else "captured"
+        if evidence_status != expected_status:
+            issues.append(
+                f"capture {index:03d} {label}: evidence_status must be {expected_status!r}"
+            )
+        surface_inputs = render_surfaces.get(label)
+        if not isinstance(surface_inputs, dict):
+            issues.append(f"capture {index:03d} {label}: render inputs are missing")
+        else:
+            if record.get("render_input_digest") != surface_inputs.get("digest"):
+                issues.append(f"capture {index:03d} {label}: render-input digest does not match")
+            if record.get("render_input_count") != surface_inputs.get("input_count"):
+                issues.append(f"capture {index:03d} {label}: render-input count does not match")
+            if record.get("capture_environment_digest") != surface_inputs.get(
+                "environment_digest"
+            ):
+                issues.append(
+                    f"capture {index:03d} {label}: capture environment digest does not match"
+                )
+        lineage = record.get("lineage")
+        if not isinstance(lineage, dict):
+            issues.append(f"capture {index:03d} {label}: lineage is missing")
+        else:
+            if lineage.get("evidence_status") != evidence_status:
+                issues.append(f"capture {index:03d} {label}: lineage evidence status differs")
+            if not isinstance(lineage.get("source_run_id"), str) or not str(
+                lineage.get("source_run_id", "")
+            ).strip():
+                issues.append(f"capture {index:03d} {label}: lineage source run is missing")
+            source_package = lineage.get("source_package_sha256")
+            if not isinstance(source_package, str) or sha_pattern.fullmatch(source_package) is None:
+                issues.append(f"capture {index:03d} {label}: lineage package hash is invalid")
+            if evidence_status == "reused":
+                for field in ("source_manifest_sha256", "source_record_sha256"):
+                    value = lineage.get(field)
+                    if not isinstance(value, str) or sha_pattern.fullmatch(value) is None:
+                        issues.append(
+                            f"capture {index:03d} {label}: reused lineage {field} is invalid"
+                        )
+        if record.get("stable") is not True:
+            issues.append(f"capture {index:03d} {label}: surface stability was not proven")
+        stable_frames = record.get("stable_frame_count")
+        if type(stable_frames) is not int or stable_frames < 2:
+            issues.append(f"capture {index:03d} {label}: stable_frame_count must be at least 2")
+        for timing_field in (
+            "semantic_ready_ms",
+            "stable_ms",
+            "capture_ms",
+            "audit_ms",
+            "cleanup_ms",
+        ):
+            timing = _strict_number(record.get(timing_field))
+            if timing is None or timing < 0:
+                issues.append(
+                    f"capture {index:03d} {label}: {timing_field} is invalid"
+                )
+        capture_method = record.get("capture_method")
+        if not isinstance(capture_method, str) or not capture_method.strip():
+            issues.append(f"capture {index:03d} {label}: capture_method is missing")
 
         width = record.get("width")
         height = record.get("height")
@@ -3497,11 +3651,34 @@ def _parser() -> argparse.ArgumentParser:
             "remain the runtime geometry authority"
         ),
     )
+    parser.add_argument(
+        "--surface-report",
+        action="store_true",
+        help=(
+            "Classify each manifest-owned surface and return a minimal "
+            "recapture list without requiring a complete release set"
+        ),
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
+    if arguments.surface_report:
+        try:
+            try:
+                from scripts.capture_evidence import surface_validation_report
+            except ImportError:
+                from capture_evidence import surface_validation_report
+            result = surface_validation_report(arguments.manifest)
+        except (OSError, ValueError) as error:
+            print(
+                json.dumps({"error": str(error), "status": "failed"}),
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
     try:
         result = validate_capture_manifest(
             arguments.manifest,

@@ -8,6 +8,8 @@ paths and closes transient dialogs after each face to keep the sequence stable.
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 import math
 import os
 import platform
@@ -62,7 +64,7 @@ HOME_CAPTURE_DARK_RGB = (
 )
 
 
-CAPTURE_CONTRACT_VERSION = 22
+CAPTURE_CONTRACT_VERSION = 23
 EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "First run",
@@ -1532,15 +1534,25 @@ class _UiFaceCaptureRunner:
         self._screenshots: list[str] = []
         self._capture_records: list[dict[str, Any]] = []
         self._capture_annotations: dict[str, dict[str, Any]] = {}
+        self._capture_phase_timings: dict[str, dict[str, Any]] = {}
+        self._capture_calibration: dict[str, Any] = {
+            "status": "not-run",
+            "passed": False,
+        }
         self._active_home_fixture_state = ""
         self._active_home_dom_audit: dict[str, Any] = {}
         self._text_layout_warnings: list[dict[str, Any]] = []
         self._failures: list[dict[str, str]] = []
         self._step_index = 0
         self._capture_index = 1
+        self._reserved_capture_labels: set[str] = set()
         self._starter_seed_attempts = 0
         self._capture_display = "primary"
         self._capture_force_primary = False
+        self._foreground_policy = str(
+            os.environ.get("ANKI_GARDEN_CAPTURE_FOREGROUND_POLICY", "required-only")
+        ).strip().lower()
+        self._foreground_requests: list[dict[str, Any]] = []
         self._requested_scale_factor = os.environ.get("QT_SCALE_FACTOR", "system")
         self._active_geometry_request: dict[str, Any] | None = None
         self._phase = "starter"
@@ -1786,7 +1798,139 @@ class _UiFaceCaptureRunner:
             for _group, labels in self._capture_face_groups
             for label in labels
         )
+        starter_count = len(self._starter_steps)
+        if starter_count + len(self._release_steps) != len(self._capture_face_labels):
+            self._failures.append({
+                "label": "capture-registry",
+                "reason": "Capture step registry does not match the active face contract",
+            })
+        self._starter_steps = list(zip(
+            self._capture_face_labels[:starter_count],
+            self._starter_steps,
+        ))
+        self._release_steps = list(zip(
+            self._capture_face_labels[starter_count:],
+            self._release_steps,
+        ))
+        self._capture_step_registry = dict([
+            *self._starter_steps,
+            *self._release_steps,
+        ])
+        if len(self._capture_step_registry) != len(self._capture_face_labels):
+            self._failures.append({
+                "label": "capture-registry",
+                "reason": "Capture registry contains a duplicate or missing surface",
+            })
+
+        requested_payload = os.environ.get(
+            "ANKI_GARDEN_CAPTURE_SURFACES_JSON",
+            "",
+        ).strip()
+        requested_values: list[str] = []
+        if requested_payload:
+            try:
+                raw_requested = json.loads(requested_payload)
+                if not isinstance(raw_requested, list):
+                    raise ValueError("surface selection must be a list")
+                requested_values = [str(value).strip() for value in raw_requested]
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                self._failures.append({
+                    "label": "capture-selection",
+                    "reason": f"Capture surface selection was invalid: {type(exc).__name__}",
+                })
+        requested_set = set(requested_values or self._capture_face_labels)
+        unknown_requested = requested_set - set(self._capture_face_labels)
+        if unknown_requested:
+            self._failures.append({
+                "label": "capture-selection",
+                "reason": (
+                    "Unknown capture surfaces: "
+                    + ", ".join(sorted(unknown_requested))
+                ),
+            })
+        self._requested_face_labels = tuple(
+            label for label in self._capture_face_labels if label in requested_set
+        )
+        self._capture_scope = (
+            "full"
+            if self._requested_face_labels == self._capture_face_labels
+            else "patch"
+        )
+
+        # A nurtured active plant is the deterministic release boundary for all
+        # representative faces after the full Garden.  Execute that one setup
+        # step without saving a PNG when an arbitrary later face is selected.
+        execution_labels = set(self._requested_face_labels)
+        if self._capture_profile == "representative":
+            release_labels = [label for label, _step in self._release_steps]
+            nurture_label = "selected-plant-nurtured"
+            if any(
+                label in release_labels[2:]
+                for label in self._requested_face_labels
+            ):
+                execution_labels.add(nurture_label)
+        self._starter_steps = [
+            row for row in self._starter_steps if row[0] in execution_labels
+        ]
+        self._release_steps = [
+            row for row in self._release_steps if row[0] in execution_labels
+        ]
         self._steps = self._starter_steps
+
+        self._production_package_sha256 = str(
+            os.environ.get("ANKI_GARDEN_PRODUCTION_PACKAGE_SHA256", "")
+        ).strip()
+        self._capture_environment_digest = str(
+            os.environ.get("ANKI_GARDEN_CAPTURE_ENVIRONMENT_DIGEST", "")
+        ).strip()
+        self._render_inputs: dict[str, Any] = {}
+        render_inputs_path = str(
+            os.environ.get("ANKI_GARDEN_RENDER_INPUTS_PATH", "")
+        ).strip()
+        if render_inputs_path:
+            try:
+                loaded_inputs = json.loads(
+                    Path(render_inputs_path).read_text(encoding="utf-8")
+                )
+                if not isinstance(loaded_inputs, dict):
+                    raise ValueError("render-input catalog must be an object")
+                self._render_inputs = loaded_inputs
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                self._failures.append({
+                    "label": "capture-provenance",
+                    "reason": f"Render-input catalog was invalid: {type(exc).__name__}",
+                })
+        else:
+            self._failures.append({
+                "label": "capture-provenance",
+                "reason": "Render-input catalog was not provided",
+            })
+        try:
+            raw_invalidated = json.loads(
+                os.environ.get("ANKI_GARDEN_INVALIDATED_SURFACES_JSON", "[]")
+            )
+            self._invalidated_face_labels = [
+                str(value) for value in raw_invalidated
+            ] if isinstance(raw_invalidated, list) else []
+        except json.JSONDecodeError:
+            self._invalidated_face_labels = []
+        render_surfaces = dict(self._render_inputs.get("surfaces", {}) or {})
+        self._capture_surface_registry = {
+            label: {
+                "capture_id": index,
+                "label": label,
+                "phase": "starter" if index <= starter_count else "release",
+                "renderer_family": expected_capture_window_family(label),
+                "readiness_policy": (
+                    "web-composite" if label in _HOME_CAPTURE_LABELS else "native-layout"
+                ),
+                "render_input_digest": str(
+                    dict(render_surfaces.get(label, {}) or {}).get("digest", "")
+                ),
+                "step": self._capture_step_registry.get(label),
+            }
+            for index, label in enumerate(self._capture_face_labels, start=1)
+        }
 
     def start(self) -> None:
         """Kick off capture after collection load and dashboard prerequisites."""
@@ -1820,7 +1964,122 @@ class _UiFaceCaptureRunner:
                 exc_info=True,
             )
         self._move_to_capture_display(mw)
-        QTimer.singleShot(300, self._prepare_starter_phase)
+        if not self._run_capture_calibration():
+            QTimer.singleShot(0, self._finish)
+            return
+        QTimer.singleShot(80, self._prepare_starter_phase)
+
+    def _run_capture_calibration(self) -> bool:
+        """Validate the shared capture geometry before saving any evidence."""
+
+        from .ui.dashboard import ElidingLabel, set_button_size
+
+        issues: list[str] = []
+        measurements: dict[str, Any] = {}
+        try:
+            scale = float(self._requested_scale_factor)
+        except (TypeError, ValueError):
+            scale = math.nan
+        if not math.isfinite(scale) or not math.isclose(scale, 1.0):
+            issues.append("capture scale is not exactly 1.0")
+
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            issues.append("primary capture screen is unavailable")
+            available_size = [0, 0]
+        else:
+            available = screen.availableGeometry()
+            available_size = [int(available.width()), int(available.height())]
+            if available_size[0] < 1240 or available_size[1] < 840:
+                issues.append("capture screen cannot contain the canonical 1240×840 client")
+        measurements["available_screen_size"] = available_size
+
+        probe = QWidget()
+        try:
+            probe.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+            layout = QVBoxLayout(probe)
+            button_heights: dict[str, int] = {}
+            for variant, expected_height in CAPTURE_BUTTON_HEIGHTS.items():
+                button = QPushButton("Calibration", probe)
+                set_button_size(button, variant)
+                layout.addWidget(button)
+                button_heights[variant] = int(button.height())
+                if int(button.minimumHeight()) != int(expected_height):
+                    issues.append(f"{variant} button minimum height drifted")
+                if int(button.maximumHeight()) != int(expected_height):
+                    issues.append(f"{variant} button maximum height drifted")
+                point_size = float(button.font().pointSizeF())
+                if point_size > 0 and point_size < 12.0:
+                    issues.append(f"{variant} button font is below 12 px/pt")
+
+            elided = ElidingLabel(
+                "A deliberately long calibration label with full evidence",
+                probe,
+            )
+            elided.setFixedWidth(48)
+            layout.addWidget(elided)
+            hidden_scroll = QScrollArea(probe)
+            hidden_scroll.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            hidden_scroll.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            hidden_scroll.setWidget(QWidget())
+            layout.addWidget(hidden_scroll)
+            probe.show()
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            elided.resize(48, max(20, int(elided.height())))
+            elided._refresh_elision()
+            if elided.property("textElided") is not True or not elided.toolTip():
+                issues.append("tooltip-backed text elision calibration failed")
+            if hidden_scroll.verticalScrollBar().isVisible():
+                issues.append("hidden scrollbar became visible during calibration")
+            measurements.update({
+                "button_heights": button_heights,
+                "elision_tooltip_present": bool(elided.toolTip()),
+                "hidden_scrollbar_visible": bool(
+                    hidden_scroll.verticalScrollBar().isVisible()
+                ),
+            })
+        except Exception as exc:
+            issues.append(f"calibration raised {type(exc).__name__}")
+            logger.exception("Anki Garden capture: calibration failed")
+        finally:
+            self._close_widget(probe)
+            probe.deleteLater()
+
+        surfaces = self._render_inputs.get("surfaces")
+        if not isinstance(surfaces, dict):
+            issues.append("render-input surface catalog is unavailable")
+        else:
+            for label in self._requested_face_labels:
+                row = surfaces.get(label)
+                if (
+                    not isinstance(row, dict)
+                    or not isinstance(row.get("digest"), str)
+                    or len(str(row.get("digest"))) != 64
+                ):
+                    issues.append(f"render-input digest is unavailable for {label}")
+        if self._capture_environment_digest != self._render_inputs.get(
+            "environment_digest"
+        ):
+            issues.append("capture environment digest does not match render inputs")
+
+        self._capture_calibration = {
+            "status": "passed" if not issues else "failed",
+            "issues": list(dict.fromkeys(issues)),
+            "measurements": measurements,
+            "passed": not issues,
+        }
+        if issues:
+            self._failures.append({
+                "label": "capture-calibration",
+                "reason": "; ".join(dict.fromkeys(issues)),
+            })
+        return not issues
 
     def _prepare_starter_phase(self, *, tries: int = 80) -> None:
         """Require the disposable profile's untouched first-run state."""
@@ -1918,7 +2177,7 @@ class _UiFaceCaptureRunner:
             self._phase = "release"
             self._steps = self._release_steps
             self._step_index = 0
-            QTimer.singleShot(800, self._next_step)
+            QTimer.singleShot(120, self._next_step)
             return
         if self._starter_seed_attempts >= 80:
             self._failures.append({
@@ -2003,19 +2262,17 @@ class _UiFaceCaptureRunner:
                 return
             self._finish()
             return
-        current = self._steps[self._step_index]
+        expected_label, current = self._steps[self._step_index]
         self._step_index += 1
-        expected_index = max(0, self._capture_index - 1)
-        expected_label = (
-            self._capture_face_labels[expected_index]
-            if expected_index < len(self._capture_face_labels) else
-            f"capture-step-{self._step_index}"
-        )
         self._active_fixture_source = (
             f"ordered-step-{self._step_index:03d}:"
             f"{getattr(current, '__name__', type(current).__name__)}"
         )
         self._active_fixture_expected_label = expected_label
+        self._capture_requested_monotonic.setdefault(
+            expected_label,
+            time.perf_counter(),
+        )
         trace = getattr(globals().get("logger"), "info", None)
         if callable(trace):
             trace(
@@ -2024,7 +2281,7 @@ class _UiFaceCaptureRunner:
                 len(self._steps),
                 expected_label,
                 self._active_fixture_source,
-                self._capture_index,
+                self._capture_face_labels.index(expected_label) + 1,
             )
         try:
             current()
@@ -4554,12 +4811,7 @@ class _UiFaceCaptureRunner:
     ) -> tuple[Any | None, str, bool]:
         """Capture the real Anki main window without trusting an obscured desktop."""
 
-        foreground_confirmed = bool(self._activate_current_process_window(widget))
-        if not foreground_confirmed:
-            logger.warning(
-                "Anki Garden capture: exact Anki Home window did not become "
-                "foreground; limiting capture to the app-owned Qt surface"
-            )
+        foreground_confirmed = False
 
         def capture_candidates(
             *,
@@ -4681,15 +4933,26 @@ class _UiFaceCaptureRunner:
         # a Deck Browser/Overview transition, especially when the window moves
         # between mixed-DPI displays. Poll the semantic pixels for a bounded
         # interval instead of treating the first 180 ms as authoritative.
-        attempt_count = max(
-            3,
-            int(getattr(self, "_home_capture_ready_attempts", 20)),
-        )
+        attempt_count = max(2, int(getattr(self, "_home_capture_ready_attempts", 3)))
         for capture_attempt in range(attempt_count):
-            if capture_attempt:
+            if (
+                capture_attempt == 1
+                and getattr(self, "_foreground_policy", "never") == "required-only"
+            ):
+                foreground_started = time.perf_counter()
                 foreground_confirmed = bool(
                     self._activate_current_process_window(widget)
                 )
+                foreground_requests = getattr(self, "_foreground_requests", None)
+                if isinstance(foreground_requests, list):
+                    foreground_requests.append({
+                        "confirmed": foreground_confirmed,
+                        "duration_ms": round(
+                            (time.perf_counter() - foreground_started) * 1000.0,
+                            3,
+                        ),
+                        "reason": "app-owned-home-composite-not-ready",
+                    })
             viable = capture_candidates(
                 allow_screen_capture=foreground_confirmed,
             )
@@ -4765,9 +5028,6 @@ class _UiFaceCaptureRunner:
                     update = getattr(render_target, "update", None)
                     if callable(update):
                         update()
-                time.sleep(0.12)
-                if app is not None:
-                    app.processEvents()
         failure_kind = (
             "semantic-window-not-ready"
             if foreground_confirmed else
@@ -7338,6 +7598,8 @@ class _UiFaceCaptureRunner:
             ) and bool(
                 native_layout_telemetry.get("passed", False)
             ) and bool(visual_contract_audit.get("passed", False))
+            capture_method = "qt-widget-grab"
+            foreground_confirmed = False
             if widget is mw:
                 reward_toast = None
                 if label in _REVIEWER_CAPTURE_LABELS:
@@ -7432,7 +7694,10 @@ class _UiFaceCaptureRunner:
                     expected_width=int(widget.width()),
                     expected_height=int(widget.height()),
                 )
-            if pixmap.save(str(path), "png"):
+            temporary_path = path.with_name(f".{path.name}.tmp")
+            if pixmap.save(str(temporary_path), "png"):
+                os.replace(temporary_path, path)
+                png_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
                 self._screenshots.append(str(path))
                 trace = getattr(globals().get("logger"), "info", None)
                 if callable(trace):
@@ -7462,6 +7727,13 @@ class _UiFaceCaptureRunner:
                 device_pixel_ratio = (
                     float(dpr_reader()) if callable(dpr_reader) else
                     float(widget.devicePixelRatio())
+                )
+                render_surface = dict(
+                    dict(self._render_inputs.get("surfaces", {})).get(label, {})
+                    or {}
+                )
+                phase_timings = dict(
+                    self._capture_phase_timings.get(label, {})
                 )
                 record = {
                     "capture_id": capture_id,
@@ -7518,6 +7790,22 @@ class _UiFaceCaptureRunner:
                     "frame_size": [int(frame.width()), int(frame.height())],
                     "device_pixel_ratio": device_pixel_ratio,
                     "capture_display": self._capture_display,
+                    "capture_method": capture_method,
+                    "capture_environment_digest": self._capture_environment_digest,
+                    "evidence_status": "captured",
+                    "png_sha256": png_sha256,
+                    "render_input_count": int(
+                        render_surface.get("input_count", 0) or 0
+                    ),
+                    "render_input_digest": str(
+                        render_surface.get("digest", "")
+                    ),
+                    "source_package_sha256": self._production_package_sha256,
+                    "lineage": {
+                        "evidence_status": "captured",
+                        "source_run_id": self.session_dir.name,
+                        "source_package_sha256": self._production_package_sha256,
+                    },
                     "layout_mode": str(widget.property("layoutMode") or "default"),
                     "transition_path": (
                         str(geometry_request["transition_path"])
@@ -7534,6 +7822,15 @@ class _UiFaceCaptureRunner:
                     "geometry_layout_warnings": geometry_layout_warnings,
                     "fixture_source": fixture_source,
                     "fixture_validation": dict(fixture_validation),
+                    "semantic_ready_ms": phase_timings.get(
+                        "semantic_ready_ms",
+                        0.0,
+                    ),
+                    "stable": bool(phase_timings.get("stable", False)),
+                    "stable_frame_count": int(
+                        phase_timings.get("stable_frame_count", 0) or 0
+                    ),
+                    "stable_ms": float(phase_timings.get("stable_ms", 0.0) or 0.0),
                     "ready_to_capture_ms": round(
                         max(
                             0.0,
@@ -7555,6 +7852,22 @@ class _UiFaceCaptureRunner:
                         ),
                         3,
                     ),
+                    "capture_ms": round(
+                        max(
+                            0.0,
+                            (time.perf_counter() - capture_started_monotonic)
+                            * 1000.0,
+                        ),
+                        3,
+                    ),
+                    "audit_ms": round(
+                        max(
+                            0.0,
+                            (time.perf_counter() - capture_started_monotonic)
+                            * 1000.0,
+                        ),
+                        3,
+                    ),
                 }
                 annotation = self._capture_annotations.get(label)
                 if annotation:
@@ -7562,6 +7875,10 @@ class _UiFaceCaptureRunner:
                 self._capture_records.append(record)
             else:
                 self._failures.append({"label": label, "reason": "PNG save failed"})
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except (OSError, TypeError):
+                    pass
         except Exception:
             self._failures.append({"label": label, "reason": "Unexpected capture exception"})
             logger.debug("Anki Garden capture: screenshot failed for %s", label, exc_info=True)
@@ -8262,15 +8579,154 @@ class _UiFaceCaptureRunner:
     ) -> tuple[int, str, str, str]:
         """Reserve immutable identity before any delayed or re-entrant Qt work."""
 
-        capture_id = int(self._capture_index)
+        reserved = getattr(self, "_reserved_capture_labels", None)
+        if not isinstance(reserved, set):
+            reserved = set()
+            self._reserved_capture_labels = reserved
+        if label in reserved:
+            raise RuntimeError(f"Capture surface {label!r} was reserved twice")
+        face_labels = tuple(getattr(self, "_capture_face_labels", ()) or ())
+        if face_labels:
+            try:
+                capture_id = face_labels.index(label) + 1
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Capture surface {label!r} is not in the contract"
+                ) from exc
+        else:
+            capture_id = int(getattr(self, "_capture_index", 1))
+            self._capture_index = capture_id + 1
+        reserved.add(label)
         identity = (
             capture_id,
             str(label),
             str(getattr(self, "_active_fixture_source", "")),
             str(getattr(self, "_active_fixture_expected_label", "")),
         )
-        self._capture_index = capture_id + 1
         return identity
+
+    @staticmethod
+    def _sample_pixmap_digest(pixmap: Any) -> str:
+        if pixmap is None or pixmap.isNull():
+            return ""
+        image = pixmap.toImage()
+        width = max(1, int(image.width()))
+        height = max(1, int(image.height()))
+        values: list[int] = []
+        for row in range(1, 7):
+            y = min(height - 1, (height * row) // 7)
+            for column in range(1, 9):
+                x = min(width - 1, (width * column) // 9)
+                values.append(int(image.pixel(x, y)))
+        return hashlib.sha256(
+            ",".join(str(value) for value in values).encode("ascii")
+        ).hexdigest()
+
+    def _surface_stability_signature(self, widget: Any) -> tuple[Any, ...]:
+        """Return a compact painting/layout signature without screen capture."""
+
+        if widget is None:
+            return ("missing",)
+        try:
+            layout = widget.layout()
+            layout_hint = layout.sizeHint() if layout is not None else None
+            child_geometry: list[tuple[Any, ...]] = []
+            for child in widget.findChildren(QWidget):
+                if len(child_geometry) >= 160:
+                    break
+                if child.window() is not widget or not child.isVisibleTo(widget):
+                    continue
+                geometry = child.geometry()
+                row: tuple[Any, ...] = (
+                    type(child).__name__,
+                    str(child.objectName() or ""),
+                    int(geometry.x()),
+                    int(geometry.y()),
+                    int(geometry.width()),
+                    int(geometry.height()),
+                )
+                if isinstance(child, QAbstractScrollArea):
+                    vertical = child.verticalScrollBar()
+                    horizontal = child.horizontalScrollBar()
+                    row += (
+                        int(vertical.minimum()),
+                        int(vertical.maximum()),
+                        bool(vertical.isVisible()),
+                        int(horizontal.minimum()),
+                        int(horizontal.maximum()),
+                        bool(horizontal.isVisible()),
+                    )
+                child_geometry.append(row)
+            paint_digest = ""
+            if widget is mw:
+                web = getattr(mw, "web", None)
+                if web is not None and bool(web.isVisible()):
+                    paint_digest = self._sample_pixmap_digest(web.grab())
+            return (
+                bool(widget.isVisible()),
+                int(widget.width()),
+                int(widget.height()),
+                int(layout_hint.width()) if layout_hint is not None else -1,
+                int(layout_hint.height()) if layout_hint is not None else -1,
+                str(widget.property("layoutMode") or "default"),
+                paint_digest,
+                tuple(child_geometry),
+            )
+        except RuntimeError:
+            return ("deleted",)
+
+    def _wait_for_visual_stability(
+        self,
+        label: str,
+        widget: Any,
+        callback: Callable[[], None],
+    ) -> None:
+        interval_ms = 80 if widget is mw else 32
+        timeout_ms = 4000 if widget is mw else 2000
+        started = time.perf_counter()
+        last_signature: tuple[Any, ...] | None = None
+        stable_frames = 0
+
+        def sample() -> None:
+            nonlocal last_signature, stable_frames
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            signature = self._surface_stability_signature(widget)
+            if signature == last_signature and signature not in {
+                ("missing",),
+                ("deleted",),
+            }:
+                stable_frames += 1
+            else:
+                last_signature = signature
+                stable_frames = 1
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            if stable_frames >= 2:
+                self._capture_phase_timings.setdefault(label, {}).update({
+                    "stable": True,
+                    "stable_frame_count": stable_frames,
+                    "stable_ms": round(elapsed_ms, 3),
+                })
+                callback()
+                return
+            if elapsed_ms >= timeout_ms:
+                self._capture_phase_timings.setdefault(label, {}).update({
+                    "stable": False,
+                    "stable_frame_count": stable_frames,
+                    "stable_ms": round(elapsed_ms, 3),
+                })
+                self._failures.append({
+                    "label": label,
+                    "reason": f"Surface did not stabilize within {timeout_ms} ms",
+                })
+                # Preserve the last diagnostic frame while keeping this local
+                # failure from discarding other surfaces in the same attempt.
+                callback()
+                return
+            QTimer.singleShot(interval_ms, sample)
+
+        QTimer.singleShot(interval_ms, sample)
 
     def _capture_and_advance(
         self,
@@ -8283,6 +8739,24 @@ class _UiFaceCaptureRunner:
         close_callback: Callable[[], None] | None = None,
         next_ms: int = 900,
     ) -> None:
+        del capture_delay_ms, close_ms, next_ms
+        requested_faces = tuple(
+            getattr(self, "_requested_face_labels", (label,)) or (label,)
+        )
+        if label not in requested_faces:
+            try:
+                if before_capture is not None:
+                    before_capture()
+                if close_callback is not None:
+                    close_callback()
+            except Exception as exc:
+                self._failures.append({
+                    "label": label,
+                    "reason": f"Prerequisite cleanup raised {type(exc).__name__}",
+                })
+            self._next_after(80)
+            return
+
         capture_identity = self._reserve_capture_identity(label)
         trace = getattr(globals().get("logger"), "info", None)
         if callable(trace):
@@ -8292,58 +8766,84 @@ class _UiFaceCaptureRunner:
                 capture_identity,
             )
         scheduled_label = capture_identity[1]
-        self._capture_requested_monotonic[scheduled_label] = time.perf_counter()
-        capture_delay = max(20, int(capture_delay_ms))
-        requested_next = max(80, int(next_ms))
-        requested_close = (
-            max(60, int(close_ms))
-            if close_callback is not None and close_ms is not None
-            else capture_delay + 180
+        semantic_ready_at = time.perf_counter()
+        requested_at = self._capture_requested_monotonic.setdefault(
+            scheduled_label,
+            semantic_ready_at,
         )
+        phase_timings = getattr(self, "_capture_phase_timings", None)
+        if not isinstance(phase_timings, dict):
+            phase_timings = {}
+            self._capture_phase_timings = phase_timings
+        phase_timings[scheduled_label] = {
+            "semantic_ready_ms": round(
+                max(0.0, (semantic_ready_at - requested_at) * 1000.0),
+                3,
+            ),
+            "stable": False,
+            "stable_frame_count": 0,
+        }
         if widget is mw:
-            # Position the live WebEngine window before the existing async
-            # settle delay. Moving it again in the screenshot callback can
-            # yield an unpainted compositor frame on macOS.
+            # Position the app-owned composite without taking foreground. The
+            # Home capture path requests it only if background pixels fail.
             self._move_to_capture_display(widget)
-            if not self._activate_current_process_window(widget):
-                logger.debug(
-                    "Anki Garden capture: foreground request is still settling"
-                )
 
         def advance_after_capture() -> None:
             if close_callback is None:
-                self._next_after(max(80, requested_next - capture_delay))
+                phase_timings.setdefault(
+                    scheduled_label,
+                    {},
+                )["cleanup_ms"] = 0.0
+                for record in reversed(getattr(self, "_capture_records", [])):
+                    if record.get("label") == scheduled_label:
+                        record["cleanup_ms"] = 0.0
+                        break
+                self._next_after(80)
                 return
+            cleanup_started = time.perf_counter()
+            try:
+                close_callback()
+            except Exception as exc:
+                self._failures.append({
+                    "label": scheduled_label,
+                    "reason": (
+                        "Capture cleanup callback raised "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+                logger.exception(
+                    "Anki Garden capture: cleanup failed for %s",
+                    scheduled_label,
+                )
 
-            def close_then_advance() -> None:
+            def cleanup_ready() -> None:
+                elapsed_ms = (time.perf_counter() - cleanup_started) * 1000.0
                 try:
-                    close_callback()
-                except Exception as exc:
-                    self._failures.append({
-                        "label": scheduled_label,
-                        "reason": (
-                            "Capture cleanup callback raised "
-                            f"{type(exc).__name__}"
-                        ),
-                    })
-                    logger.exception(
-                        "Anki Garden capture: cleanup failed for %s",
+                    closed = not bool(widget.isVisible())
+                except (AttributeError, RuntimeError):
+                    closed = True
+                if closed or elapsed_ms >= 1500.0:
+                    phase_timings.setdefault(
                         scheduled_label,
-                    )
-                finally:
-                    self._next_after(
-                        max(80, requested_next - requested_close)
-                    )
+                        {},
+                    )["cleanup_ms"] = round(elapsed_ms, 3)
+                    for record in reversed(getattr(self, "_capture_records", [])):
+                        if record.get("label") == scheduled_label:
+                            record["cleanup_ms"] = round(elapsed_ms, 3)
+                            break
+                    if not closed:
+                        self._failures.append({
+                            "label": scheduled_label,
+                            "reason": "Capture surface did not close within 1500 ms",
+                        })
+                    self._next_after(80)
+                    return
+                QTimer.singleShot(32, cleanup_ready)
 
-            QTimer.singleShot(
-                max(20, requested_close - capture_delay),
-                close_then_advance,
-            )
+            QTimer.singleShot(32, cleanup_ready)
 
         def capture_ready(identity: tuple[int, str, str, str]) -> None:
             try:
-                if before_capture is not None:
-                    before_capture()
                 self._capture_now(
                     identity[1],
                     widget,
@@ -8368,10 +8868,26 @@ class _UiFaceCaptureRunner:
                 # the surface or replace resize provenance before grabbing it.
                 advance_after_capture()
 
-        QTimer.singleShot(
-            capture_delay,
-            lambda identity=capture_identity: capture_ready(identity),
-        )
+        try:
+            if before_capture is not None:
+                before_capture()
+        except Exception as exc:
+            self._failures.append({
+                "label": scheduled_label,
+                "reason": f"Before-capture callback raised {type(exc).__name__}",
+            })
+        stability_waiter = getattr(self, "_wait_for_visual_stability", None)
+        if callable(stability_waiter):
+            stability_waiter(
+                scheduled_label,
+                widget,
+                lambda identity=capture_identity: capture_ready(identity),
+            )
+        else:
+            QTimer.singleShot(
+                0,
+                lambda identity=capture_identity: capture_ready(identity),
+            )
 
     def _close_widget(self, widget: Any | None) -> None:
         if widget is None:
@@ -8650,11 +9166,6 @@ class _UiFaceCaptureRunner:
                 close_ms=620,
                 next_ms=1000,
             )
-            if dialog is not None:
-                QTimer.singleShot(650, lambda: self._close_widget(dialog))
-            else:
-                # keep moving if dialog creation failed
-                QTimer.singleShot(0, self._close_dashboard)
 
         self._wait_for(
             lambda: bool(
@@ -11165,7 +11676,43 @@ class _UiFaceCaptureRunner:
         ):
             self._next_after(200)
             return
-        self._capture_progress_page("collection", "progress-collection")
+        from .environment import SCENERY_CATALOG, WEATHER_CATALOG
+
+        # The broad development state owns the complete environment catalog.
+        # This one representative Collection face deliberately leaves the six
+        # drop-only rewards undiscovered, producing the canonical truthful
+        # 31-of-38 summary. Restore the broad state immediately afterward so
+        # later Nursery and transaction fixtures retain their own contract.
+        state = self.app.storage.state
+        original_weather = list(state.inventory.get("weather", ()) or ())
+        original_scenery = list(state.inventory.get("scenery", ()) or ())
+        restored = False
+
+        def restore_environment_inventory() -> None:
+            nonlocal restored
+            if restored:
+                return
+            restored = True
+            state.inventory["weather"] = original_weather
+            state.inventory["scenery"] = original_scenery
+            self._refresh_capture_dashboard()
+
+        state.inventory["weather"] = [
+            item_id for item_id in original_weather
+            if item_id in WEATHER_CATALOG
+            and not bool(WEATHER_CATALOG[item_id].drop_only)
+        ]
+        state.inventory["scenery"] = [
+            item_id for item_id in original_scenery
+            if item_id in SCENERY_CATALOG
+            and not bool(SCENERY_CATALOG[item_id].drop_only)
+        ]
+        self._refresh_capture_dashboard()
+        self._capture_progress_page(
+            "collection",
+            "progress-collection",
+            restore_callback=restore_environment_inventory,
+        )
 
     def _capture_species_overview(self) -> None:
         def dashboard_ready() -> None:
@@ -16153,7 +16700,13 @@ class _UiFaceCaptureRunner:
             recent_reward_summaries,
         )
 
-        snapshot = self._capture_fixture_state_snapshot("reviewer-feedback")
+        # Showing Reviewer feedback consumes and persists queued presentation
+        # state, which advances the ledger generation. Use the capture-owned
+        # exact database boundary rather than a rollback-only checkpoint.
+        snapshot = self._capture_fixture_state_snapshot(
+            "reviewer-feedback",
+            exact_ledger_restore=True,
+        )
         try:
             handler = getattr(self.app, "reviewer_hooks", None)
             if handler is None:
@@ -17202,6 +17755,9 @@ class _UiFaceCaptureRunner:
             for record in self._capture_records
         ]
         expected_labels = list(self._capture_face_labels)
+        requested_labels = list(
+            getattr(self, "_requested_face_labels", self._capture_face_labels)
+        )
         capture_displays = list(dict.fromkeys(
             str(record.get("capture_display", ""))
             for record in self._capture_records
@@ -17215,14 +17771,14 @@ class _UiFaceCaptureRunner:
             self._capture_display
         )
         fixture_validations_complete = (
-            len(self._capture_records) == len(expected_labels)
+            captured_labels == requested_labels
             and all(
-                int(record.get("capture_id", -1)) == index
-                and str(record.get("label", "")) == expected_labels[index - 1]
+                int(record.get("capture_id", -1))
+                == expected_labels.index(str(record.get("label", ""))) + 1
                 and bool(
                     dict(record.get("fixture_validation", {})).get("passed", False)
                 )
-                for index, record in enumerate(self._capture_records, start=1)
+                for record in self._capture_records
             )
         )
         finished_at = datetime.now().isoformat(timespec="milliseconds")
@@ -17319,16 +17875,20 @@ class _UiFaceCaptureRunner:
         responsive_stability_complete = bool(
             responsive_stability.get("passed", False)
         )
-        complete = (
-            captured_labels == expected_labels
-            and len(self._screenshots) == len(expected_labels)
+        scope_complete = (
+            captured_labels == requested_labels
+            and len(self._screenshots) == len(requested_labels)
             and fixture_validations_complete
             and memory_probe_complete
             and dialog_scroll_audits_complete
             and responsive_stability_complete
-            and not self._fatal_fixture_restore_failure
+            and not bool(getattr(self, "_fatal_fixture_restore_failure", False))
             and not self._failures
             and not self._text_layout_warnings
+        )
+        complete = bool(
+            scope_complete
+            and requested_labels == expected_labels
         )
         manifest = {
             "captured_at": finished_at,
@@ -17346,43 +17906,112 @@ class _UiFaceCaptureRunner:
             "responsive_stability_complete": responsive_stability_complete,
             "capture_contract_version": CAPTURE_CONTRACT_VERSION,
             "capture_profile": self._capture_profile,
+            "capture_scope": getattr(
+                self,
+                "_capture_scope",
+                "full" if requested_labels == expected_labels else "patch",
+            ),
             "capture_display": capture_display,
             "capture_displays": capture_displays,
+            "capture_calibration": dict(getattr(
+                self,
+                "_capture_calibration",
+                {"status": "not-run", "passed": False},
+            )),
+            "capture_environment_digest": str(getattr(
+                self,
+                "_capture_environment_digest",
+                "",
+            )),
+            "capture_phase_timings": dict(getattr(
+                self,
+                "_capture_phase_timings",
+                {},
+            )),
+            "foreground_policy": str(getattr(
+                self,
+                "_foreground_policy",
+                "required-only",
+            )),
+            "foreground_requests": list(getattr(
+                self,
+                "_foreground_requests",
+                [],
+            )),
             "requested_scale_factor": self._requested_scale_factor,
             "capture_groups": [
                 {"name": group, "labels": list(labels)}
                 for group, labels in self._capture_face_groups
             ],
             "expected_faces": expected_labels,
+            "requested_faces": requested_labels,
+            "captured_faces": captured_labels,
+            "reused_faces": [],
+            "invalidated_faces": list(getattr(
+                self,
+                "_invalidated_face_labels",
+                [],
+            )),
             "screenshots": self._screenshots,
             "captures": self._capture_records,
             "text_layout_warnings": self._text_layout_warnings,
             "failures": self._failures,
             "expected_count": len(expected_labels),
             "fixture_validations_complete": fixture_validations_complete,
+            "production_package_sha256": str(getattr(
+                self,
+                "_production_package_sha256",
+                "",
+            )),
+            "render_inputs": dict(getattr(self, "_render_inputs", {})),
+            "scope_complete": scope_complete,
             "complete": complete,
-            "manifest_write_succeeded": True,
         }
         try:
             self._close_top_level_dialogs()
             self._close_dashboard()
         except Exception:
             pass
-        manifest_write_succeeded = False
+        evidence_write_succeeded = False
         try:
             manifest_path = self.session_dir / "manifest.json"
-            manifest_path.write_text(
+            temporary_manifest = self.session_dir / ".manifest.json.tmp"
+            temporary_manifest.write_text(
                 __import__("json").dumps(manifest, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-            manifest_write_succeeded = True
+            __import__("os").replace(temporary_manifest, manifest_path)
+            manifest_sha256 = __import__("hashlib").sha256(
+                manifest_path.read_bytes()
+            ).hexdigest()
+            completion_path = self.session_dir / "capture-complete.json"
+            temporary_completion = self.session_dir / ".capture-complete.json.tmp"
+            temporary_completion.write_text(
+                __import__("json").dumps({
+                    "complete": complete,
+                    "exit_code": 0 if scope_complete else 1,
+                    "manifest": str(manifest_path),
+                    "manifest_sha256": manifest_sha256,
+                    "scope_complete": scope_complete,
+                }, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            __import__("os").replace(temporary_completion, completion_path)
+            evidence_write_succeeded = True
         except Exception:
-            logger.error("Anki Garden capture: could not write manifest", exc_info=True)
+            logger.error(
+                "Anki Garden capture: could not atomically finalize evidence",
+                exc_info=True,
+            )
         if (
             os.environ.get("ANKI_GARDEN_CAPTURE_QUIT_WHEN_DONE") == "1"
-            or not manifest_write_succeeded
+            or not evidence_write_succeeded
         ):
             app = QApplication.instance()
             if app is not None:
-                exit_code = 0 if complete and manifest_write_succeeded else 1
+                exit_code = 0 if scope_complete and evidence_write_succeeded else 1
+                # Give deferred Qt/WebEngine deletion one settled event turn
+                # after the atomic completion record is visible. This avoids
+                # tearing down the disposable profile while its page objects
+                # are still queued for deletion on macOS.
                 QTimer.singleShot(350, lambda: app.exit(exit_code))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import struct
 import zlib
@@ -10,6 +11,11 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw, ImageOps, PngImagePlugin
 
+from scripts.capture_evidence import (
+    assemble_capture_manifest,
+    plan_incremental_capture,
+    surface_validation_report,
+)
 from scripts.validate_ui_capture import (
     CONTACT_SHEET_OUTLINE_WIDTH,
     CONTACT_SHEET_PREVIEW_FRAME_FILL,
@@ -113,6 +119,16 @@ def _png_with_corrupt_idat(width: int, height: int) -> bytes:
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    completion = path.parent / "capture-complete.json"
+    if path.name == "manifest.json" and completion.is_file():
+        completion_payload = json.loads(completion.read_text(encoding="utf-8"))
+        completion_payload["manifest_sha256"] = hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        completion.write_text(
+            json.dumps(completion_payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _valid_visual_contract(
@@ -494,6 +510,9 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     }
     screenshots: list[str] = []
     records: list[dict[str, object]] = []
+    environment_digest = "a" * 64
+    production_package_sha256 = "b" * 64
+    render_surfaces: dict[str, dict[str, object]] = {}
     for capture_id, label in enumerate(contract.labels, start=1):
         path = tmp_path / f"{capture_id:02d}-{label}.png"
         fixture_source = f"ordered-step-{capture_id:03d}:fixture"
@@ -513,6 +532,14 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         path.write_bytes(
             _png_bytes(*physical_size, marker=capture_id)
         )
+        png_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        render_digest = hashlib.sha256(label.encode("utf-8")).hexdigest()
+        render_surfaces[label] = {
+            "digest": render_digest,
+            "environment_digest": environment_digest,
+            "input_count": 1,
+            "inputs": {"fixture": render_digest},
+        }
         screenshots.append(str(path))
         postcondition_kind = state_contract["kind"]
         postcondition_facts = {
@@ -631,7 +658,12 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "actual_client_size": list(logical_size),
             "capture_id": capture_id,
             "capture_display": "primary",
+            "capture_environment_digest": environment_digest,
+            "capture_method": "qt-widget-grab",
             "capture_duration_ms": 1.0,
+            "capture_ms": 1.0,
+            "audit_ms": 1.0,
+            "cleanup_ms": 1.0,
             "constraint_limited": False,
             "declared_client_size": list(logical_size),
             "device_pixel_ratio": dpr,
@@ -646,12 +678,26 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "geometry_drift_accepted": False,
             "geometry_layout_warnings": [],
             "height": logical_size[1],
+            "evidence_status": "captured",
             "label": label,
+            "lineage": {
+                "evidence_status": "captured",
+                "source_package_sha256": production_package_sha256,
+                "source_run_id": "fixture-run",
+            },
             "layout_mode": layout_mode,
             "native_normalized": False,
             "normalization_reason": "",
             "path": str(path),
+            "png_sha256": png_sha256,
             "ready_to_capture_ms": 2.0,
+            "semantic_ready_ms": 1.0,
+            "stable": True,
+            "stable_frame_count": 2,
+            "stable_ms": 1.0,
+            "render_input_count": 1,
+            "render_input_digest": render_digest,
+            "source_package_sha256": production_package_sha256,
             "requested_client_size": list(logical_size),
             "screen_limited": False,
             "text_layout_warnings": [],
@@ -696,13 +742,22 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     payload: dict[str, object] = {
         "capture_contract_version": contract.version,
         "capture_profile": "representative",
+        "capture_scope": "full",
         "capture_display": "primary",
         "capture_displays": ["primary"],
+        "capture_calibration": {"passed": True, "issues": []},
+        "capture_environment_digest": environment_digest,
+        "foreground_policy": "required-only",
+        "foreground_requests": [],
         "capture_groups": [
             {"name": name, "labels": list(labels)}
             for name, labels in contract.groups
         ],
         "expected_faces": list(contract.labels),
+        "requested_faces": list(contract.labels),
+        "captured_faces": list(contract.labels),
+        "reused_faces": [],
+        "invalidated_faces": [],
         "screenshots": screenshots,
         "captures": records,
         "text_layout_warnings": [],
@@ -719,10 +774,24 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         },
         "dialog_scroll_audits_complete": True,
         "fixture_validations_complete": True,
+        "production_package_sha256": production_package_sha256,
+        "render_inputs": {
+            "environment_digest": environment_digest,
+            "production_archive_sha256": production_package_sha256,
+            "surfaces": render_surfaces,
+        },
+        "scope_complete": True,
         "complete": True,
     }
     manifest = tmp_path / "manifest.json"
     _write_json(manifest, payload)
+    _write_json(tmp_path / "capture-complete.json", {
+        "complete": True,
+        "exit_code": 0,
+        "manifest": str(manifest),
+        "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "scope_complete": True,
+    })
     return manifest, payload
 
 
@@ -908,6 +977,78 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
         "surface_count": 26,
         "status": "valid",
     }
+
+
+def test_incremental_plan_and_assembly_reuse_unaffected_surfaces(
+    tmp_path: Path,
+) -> None:
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    base_manifest, base_payload = _valid_capture(base_dir)
+    contract = load_capture_contract(CAPTURE_SOURCE)
+    selected = list(contract.labels[3:8])
+    plan = plan_incremental_capture(
+        base_manifest=base_manifest,
+        current_render_inputs=base_payload["render_inputs"],
+        expected_labels=contract.labels,
+        contract_version=contract.version,
+        explicit_surfaces=selected,
+    )
+    assert plan["recapture_required"] == selected
+    assert plan["reused"] == [
+        label for label in contract.labels if label not in selected
+    ]
+
+    patch_dir = tmp_path / "patch"
+    patch_dir.mkdir()
+    patch_payload = copy.deepcopy(base_payload)
+    patch_records = []
+    patch_screenshots = []
+    base_records = {
+        str(record["label"]): record
+        for record in base_payload["captures"]
+    }
+    for label in selected:
+        record = copy.deepcopy(base_records[label])
+        source = Path(str(record["path"]))
+        destination = patch_dir / source.name
+        destination.write_bytes(source.read_bytes())
+        record["path"] = str(destination)
+        patch_records.append(record)
+        patch_screenshots.append(str(destination))
+    patch_payload.update({
+        "capture_scope": "patch",
+        "requested_faces": selected,
+        "captured_faces": selected,
+        "reused_faces": [],
+        "invalidated_faces": selected,
+        "captures": patch_records,
+        "screenshots": patch_screenshots,
+        "scope_complete": True,
+        "complete": False,
+    })
+    patch_manifest = patch_dir / "manifest.json"
+    _write_json(patch_manifest, patch_payload)
+    _write_json(patch_dir / "capture-complete.json", {
+        "complete": False,
+        "exit_code": 0,
+        "manifest": str(patch_manifest),
+        "manifest_sha256": hashlib.sha256(patch_manifest.read_bytes()).hexdigest(),
+        "scope_complete": True,
+    })
+    assert surface_validation_report(patch_manifest)["status"] == "valid"
+
+    assembled = assemble_capture_manifest(
+        base_manifest=base_manifest,
+        patch_manifest=patch_manifest,
+        reuse_plan=plan,
+        current_render_inputs=base_payload["render_inputs"],
+        output_dir=tmp_path / "assembled",
+    )
+    assembled_payload = json.loads(assembled.read_text(encoding="utf-8"))
+    assert assembled_payload["captured_faces"] == selected
+    assert assembled_payload["reused_faces"] == plan["reused"]
+    assert validate_capture_manifest(assembled)["status"] == "valid"
 
 
 def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
