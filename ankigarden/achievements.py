@@ -72,7 +72,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "streak_7",
         "7-Day Anki Streak",
-        "Reach a 7-day active Anki streak.",
+        "Reach a 7-day Anki streak.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
@@ -82,7 +82,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "streak_30",
         "30-Day Anki Streak",
-        "Reach a 30-day active Anki streak.",
+        "Reach a 30-day Anki streak.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
@@ -92,7 +92,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "streak_100",
         "100-Day Anki Streak",
-        "Reach a 100-day active Anki streak.",
+        "Reach a 100-day Anki streak.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
@@ -102,7 +102,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "streak_365",
         "365-Day Anki Streak",
-        "Reach a 365-day active Anki streak.",
+        "Reach a 365-day Anki streak.",
         AchievementCategory.CONSISTENCY,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.STREAK_DAYS,
@@ -112,7 +112,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "reviews_100_day",
         "Century Day",
-        "Complete 100 eligible answers within one Anki day.",
+        "Finish a day with 100 card answers.",
         AchievementCategory.STUDY_VOLUME,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.DAILY_ANSWERS,
@@ -123,7 +123,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "reviews_1000_total",
         "Deep Roots",
-        "Complete 1,000 lifetime eligible answers.",
+        "Answer 1,000 cards.",
         AchievementCategory.STUDY_VOLUME,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.LIFETIME_ANSWERS,
@@ -133,7 +133,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "retention_90",
         "Clear Recall",
-        "Finish an Anki day with at least 20 eligible answers and at least 90% non-Again accuracy.",
+        "Finish a day with 20 card answers and at least 90% accuracy.",
         AchievementCategory.RECALL,
         AchievementEvaluationMode.FINALIZED_DAY,
         AchievementProgressMetric.DAILY_ANSWERS,
@@ -145,7 +145,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "retention_100",
         "Perfect Canopy",
-        "Complete 30 consecutive eligible answers without choosing Again.",
+        "Answer 30 cards in a row without Again.",
         AchievementCategory.RECALL,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.CONSECUTIVE_NON_AGAIN,
@@ -155,7 +155,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "no_lapse",
         "No-Again Day",
-        "Finish an Anki day with at least 40 eligible answers and no Again answers.",
+        "Finish a day with 40 card answers and no Again answers.",
         AchievementCategory.RECALL,
         AchievementEvaluationMode.FINALIZED_DAY,
         AchievementProgressMetric.DAILY_ANSWERS,
@@ -167,7 +167,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "all_due_done",
         "All Clear",
-        "Complete your first valid all-due Anki day.",
+        "Finish all due cards.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.LIVE_ONLY,
         AchievementProgressMetric.VALID_ALL_DUE_DAYS,

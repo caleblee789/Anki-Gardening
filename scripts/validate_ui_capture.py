@@ -33,6 +33,10 @@ CONTACT_SHEET_PREVIEW_TOP = 110
 CONTACT_SHEET_PREVIEW_SIDE = 22
 CONTACT_SHEET_PREVIEW_BOTTOM = 40
 CONTACT_SHEET_PREVIEW_INSET = 8
+CONTACT_SHEET_PREVIEW_FRAME_FILL = (216, 209, 190)  # #d8d1be
+CONTACT_SHEET_PREVIEW_FRAME_OUTLINE = (158, 148, 124)  # #9e947c
+CONTACT_SHEET_SCREENSHOT_OUTLINE = (73, 102, 92)  # #49665c
+CONTACT_SHEET_OUTLINE_WIDTH = 3
 MIN_LOGICAL_CAPTURE_DIMENSION = 100
 MAX_PNG_PIXELS = 100_000_000
 CAPTURE_SCALE_FACTOR = 1.0
@@ -43,6 +47,45 @@ MEMORY_PROBE_CLASSES = (
     "PlantStoryDialog",
     "GardenDialog",
 )
+COMPACT_HOME_BANNED_COPY = (
+    "today",
+    "streak",
+    "garden coins",
+    "coins",
+    "closest",
+    "planted starter",
+)
+MISSING_ARTWORK_CAPTURE_TYPES = (
+    "plant",
+    "fertilizer",
+    "weather",
+    "scenery",
+    "growth-charge",
+)
+RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
+    "full-garden": ("full-garden-scene",),
+    "progress-overview-redirect-growth": (
+        "direct-growth-label",
+        "direct-growth-value",
+    ),
+    "collection-preview-restored": ("restored-preview-banner",),
+    "nursery-item-owned": ("owned-item-card",),
+    "missing-artwork-graphical-fallback": ("missing-art-weather",),
+    "collection-environment-mechanics": (
+        "environment-toolbar",
+        "environment-summary-title",
+        "environment-summary-selection",
+        "environment-edit-appearance",
+        "environment-item-title",
+        "environment-item-status",
+        "environment-effect",
+        "environment-mechanics",
+    ),
+    "collection-loadout-persistence-error": (
+        "loadout-preview-scene",
+        "loadout-persistence-error",
+    ),
+}
 _NO_INFERRED_VALUE = object()
 # These are evidence aliases, not broad duplicate exemptions.  A duplicate hash
 # must match one complete set exactly; subsets and supersets still fail.
@@ -60,6 +103,14 @@ class CaptureValidationError(ValueError):
     def __init__(self, issues: Sequence[str]) -> None:
         self.issues = tuple(str(issue) for issue in issues)
         super().__init__("; ".join(self.issues))
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -192,6 +243,17 @@ def load_dialog_scroll_capture_coverage(
 
     issues: list[str] = []
     contract_labels = set(contract.labels)
+    try:
+        exhaustive_groups = ast.literal_eval(
+            _assignment_value(module, "EXHAUSTIVE_CAPTURE_FACE_GROUPS")
+        )
+        exhaustive_labels = {
+            label
+            for _group, labels in exhaustive_groups
+            for label in labels
+        }
+    except (CaptureValidationError, TypeError, ValueError, SyntaxError):
+        exhaustive_labels = contract_labels
     normalized: dict[str, dict[str, str]] = {}
     all_labels: list[str] = []
     if not isinstance(raw_coverage, dict) or not raw_coverage:
@@ -214,9 +276,9 @@ def load_dialog_scroll_capture_coverage(
                     )
                     continue
                 all_labels.append(label)
-                if label not in contract_labels:
+                if label not in exhaustive_labels:
                     issues.append(
-                        f"dialog scroll label {label!r} is outside CAPTURE_FACE_GROUPS"
+                        f"dialog scroll label {label!r} is outside the declared capture profiles"
                     )
                 semantic = (
                     raw_semantics.get(label, "").strip()
@@ -228,8 +290,10 @@ def load_dialog_scroll_capture_coverage(
                     issues.append(
                         f"dialog scroll label {label!r} has no page semantic"
                     )
-                surface_contract[label] = semantic
-            normalized[surface] = surface_contract
+                if label in contract_labels:
+                    surface_contract[label] = semantic
+            if surface_contract:
+                normalized[surface] = surface_contract
 
     if len(all_labels) != len(set(all_labels)):
         duplicates = sorted(
@@ -355,6 +419,66 @@ def _static_renderer_value(
     )
 
 
+def load_capture_layout_contract(
+    source_path: Path = DEFAULT_CAPTURE_SOURCE,
+) -> tuple[dict[str, float | int], dict[str, int], frozenset[str]]:
+    """Load the shell telemetry thresholds without importing Anki or Qt."""
+
+    module = _source_module(source_path)
+    try:
+        raw_limits = ast.literal_eval(
+            _assignment_value(module, "CAPTURE_LAYOUT_LIMITS")
+        )
+        raw_heights = ast.literal_eval(
+            _assignment_value(module, "CAPTURE_BUTTON_HEIGHTS")
+        )
+        raw_tabular = _static_renderer_value(
+            _assignment_value(module, "TABULAR_NUMERAL_CAPTURE_LABELS"),
+            module,
+        )
+    except (SyntaxError, ValueError) as error:
+        raise CaptureValidationError(
+            (f"capture layout telemetry contract is not literal: {error}",)
+        ) from error
+    expected_limit_keys = {
+        "maximum_client_gutter_px",
+        "maximum_content_footer_gap_px",
+        "maximum_nursery_root_offset_px",
+        "maximum_action_width_ratio",
+        "minimum_rendered_text_px",
+        "maximum_overflow_owner_count",
+    }
+    expected_height_keys = {
+        "compact-row",
+        "secondary",
+        "primary",
+        "onboarding",
+        "icon",
+    }
+    issues: list[str] = []
+    if not isinstance(raw_limits, dict) or set(raw_limits) != expected_limit_keys:
+        issues.append("CAPTURE_LAYOUT_LIMITS has an invalid schema")
+    elif any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) < 0
+        for value in raw_limits.values()
+    ):
+        issues.append("CAPTURE_LAYOUT_LIMITS values must be finite and nonnegative")
+    if not isinstance(raw_heights, dict) or set(raw_heights) != expected_height_keys:
+        issues.append("CAPTURE_BUTTON_HEIGHTS has an invalid schema")
+    elif any(type(value) is not int or value <= 0 for value in raw_heights.values()):
+        issues.append("CAPTURE_BUTTON_HEIGHTS values must be positive integers")
+    if not isinstance(raw_tabular, frozenset) or any(
+        not isinstance(label, str) or not label for label in raw_tabular
+    ):
+        issues.append("TABULAR_NUMERAL_CAPTURE_LABELS must be a static label set")
+    if issues:
+        raise CaptureValidationError(issues)
+    return dict(raw_limits), dict(raw_heights), frozenset(raw_tabular)
+
+
 def _branch_labels(test: ast.expr, module: ast.Module) -> frozenset[str]:
     if not isinstance(test, ast.Compare) or len(test.ops) != 1 or len(test.comparators) != 1:
         raise CaptureValidationError(("renderer branch must use one label comparison",))
@@ -435,14 +559,28 @@ def load_expected_renderer_families(
 
     expected = set(contract.labels)
     actual = set(mapping)
-    if actual != expected:
+    try:
+        exhaustive_groups = ast.literal_eval(
+            _assignment_value(module, "EXHAUSTIVE_CAPTURE_FACE_GROUPS")
+        )
+        declared = {
+            label
+            for _group, labels in exhaustive_groups
+            for label in labels
+        }
+    except (CaptureValidationError, TypeError, ValueError, SyntaxError):
+        declared = expected
+    if not expected.issubset(actual) or actual != declared:
         missing = sorted(expected - actual)
-        extra = sorted(actual - expected)
+        undeclared = sorted(actual - declared)
+        unowned = sorted(declared - actual)
         details = []
         if missing:
             details.append("missing " + ", ".join(missing))
-        if extra:
-            details.append("extra " + ", ".join(extra))
+        if undeclared:
+            details.append("undeclared " + ", ".join(undeclared))
+        if unowned:
+            details.append("unowned " + ", ".join(unowned))
         raise CaptureValidationError(("renderer mapping does not cover the contract: " + "; ".join(details),))
     return {label: mapping[label] for label in contract.labels}
 
@@ -619,6 +757,15 @@ def _required_postcondition_facts(
                 if inferred_values is not None and inferred is not _NO_INFERRED_VALUE:
                     inferred_values[fact] = inferred
             elif isinstance(statement, ast.If):
+                if not any(
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "require"
+                    for node in ast.walk(statement)
+                ):
+                    # Runtime-only presentation branches do not alter the
+                    # declared postcondition fact schema.
+                    continue
                 branch = (
                     statement.body
                     if bool(_schema_condition_value(statement.test, environment))
@@ -1257,7 +1404,7 @@ def _contact_preview_issues(
     page_groups: Sequence[tuple[str, Sequence[str]]],
     capture_paths: dict[str, Path],
 ) -> list[str]:
-    """Bind every rendered tile preview to its exact manifest screenshot."""
+    """Bind review-aid tiles to raw, geometry-authoritative screenshots."""
 
     issues: list[str] = []
     cell_width = (
@@ -1309,10 +1456,7 @@ def _contact_preview_issues(
                     preview_box[0]
                     + (preview_box[2] - preview_box[0] - preview.width) // 2
                 )
-                preview_y = (
-                    preview_box[1]
-                    + (preview_box[3] - preview_box[1] - preview.height) // 2
-                )
+                preview_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
                 actual = page_image.crop((
                     preview_x,
                     preview_y,
@@ -1322,6 +1466,69 @@ def _contact_preview_issues(
                 if ImageChops.difference(actual, preview).getbbox() is not None:
                     issues.append(
                         f"contact preview {label}: pixels do not match manifest screenshot"
+                    )
+                frame_mid_x = (preview_box[0] + preview_box[2]) // 2
+                frame_mid_y = (preview_box[1] + preview_box[3]) // 2
+                frame_outline_points = [
+                    (frame_mid_x, preview_box[1] + offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (frame_mid_x, preview_box[3] - offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_box[0] + offset, frame_mid_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_box[2] - offset, frame_mid_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ]
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_PREVIEW_FRAME_OUTLINE
+                    for point in frame_outline_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: light preview frame outline is missing"
+                    )
+                frame_fill_points = (
+                    (frame_mid_x, preview_box[1] + CONTACT_SHEET_OUTLINE_WIDTH + 1),
+                    (frame_mid_x, preview_box[3] - CONTACT_SHEET_OUTLINE_WIDTH - 1),
+                    (preview_box[0] + CONTACT_SHEET_OUTLINE_WIDTH + 1, frame_mid_y),
+                    (preview_box[2] - CONTACT_SHEET_OUTLINE_WIDTH - 1, frame_mid_y),
+                )
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_PREVIEW_FRAME_FILL
+                    for point in frame_fill_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: unused frame is not the distinct light fill"
+                    )
+
+                outline_left = preview_x - CONTACT_SHEET_OUTLINE_WIDTH
+                outline_top = preview_y - CONTACT_SHEET_OUTLINE_WIDTH
+                outline_right = preview_x + preview.width + CONTACT_SHEET_OUTLINE_WIDTH - 1
+                outline_bottom = preview_y + preview.height + CONTACT_SHEET_OUTLINE_WIDTH - 1
+                screenshot_outline_points = [
+                    (preview_x, outline_top + offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (preview_x, outline_bottom - offset)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (outline_left + offset, preview_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ] + [
+                    (outline_right - offset, preview_y)
+                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                ]
+                if any(
+                    page_image.getpixel(point)
+                    != CONTACT_SHEET_SCREENSHOT_OUTLINE
+                    for point in screenshot_outline_points
+                ):
+                    issues.append(
+                        f"contact preview {label}: explicit screenshot outline is missing"
                     )
             y += (
                 math.ceil(len(labels) / CONTACT_SHEET_COLUMNS)
@@ -1429,6 +1636,8 @@ def dialog_scroll_audit_issue_codes(
         "content_minimum_size_hint_height",
         "scroll_minimum",
         "scroll_maximum",
+        "last_body_child_bottom",
+        "last_body_child_bottom_at_scroll_end",
         "required_content_height",
         "reachable_content_height",
     )
@@ -1438,9 +1647,16 @@ def dialog_scroll_audit_issue_codes(
     ]
     issues.extend(f"invalid-scroll-metric:{field}" for field in invalid_metrics)
     footer_visible = audit.get("footer_visible")
+    require_no_scroll = audit.get("require_no_scroll")
     if type(footer_visible) is not bool:
         issues.append("invalid-footer-visibility")
-    if invalid_metrics or type(footer_visible) is not bool:
+    if type(require_no_scroll) is not bool:
+        issues.append("invalid-require-no-scroll")
+    if (
+        invalid_metrics
+        or type(footer_visible) is not bool
+        or type(require_no_scroll) is not bool
+    ):
         return tuple(dict.fromkeys(issues))
 
     registered = int(audit["registered_count"])
@@ -1457,6 +1673,10 @@ def dialog_scroll_audit_issue_codes(
     minimum_hint = int(audit["content_minimum_size_hint_height"])
     scroll_minimum = int(audit["scroll_minimum"])
     scroll_maximum = int(audit["scroll_maximum"])
+    last_body_child_bottom = int(audit["last_body_child_bottom"])
+    last_body_child_bottom_at_scroll_end = int(
+        audit["last_body_child_bottom_at_scroll_end"]
+    )
     required = int(audit["required_content_height"])
     reachable = int(audit["reachable_content_height"])
 
@@ -1475,6 +1695,10 @@ def dialog_scroll_audit_issue_codes(
         "content_minimum_size_hint_height": minimum_hint,
         "scroll_minimum": scroll_minimum,
         "scroll_maximum": scroll_maximum,
+        "last_body_child_bottom": last_body_child_bottom,
+        "last_body_child_bottom_at_scroll_end": (
+            last_body_child_bottom_at_scroll_end
+        ),
         "required_content_height": required,
         "reachable_content_height": reachable,
     }
@@ -1487,16 +1711,28 @@ def dialog_scroll_audit_issue_codes(
         issues.append("invalid-scroll-metric:content_height")
     if scroll_maximum < scroll_minimum:
         issues.append("invalid-scroll-range")
+    scroll_span = max(0, scroll_maximum - scroll_minimum)
+    independently_positioned_body_end = viewport_top + max(
+        0,
+        last_body_child_bottom - scroll_span,
+    )
+    if last_body_child_bottom_at_scroll_end != independently_positioned_body_end:
+        issues.append("last-body-child-position-mismatch")
+    body_limit = footer_top if footer_visible else viewport_bottom
+    if last_body_child_bottom_at_scroll_end > body_limit:
+        issues.append("last-body-child-under-footer")
+    if require_no_scroll and scroll_span != 0:
+        issues.append("compact-transaction-scroll-range")
 
-    expected_footer_height = footer_height if footer_visible else 0
     if footer_visible and footer_height <= 0:
         issues.append("visible-footer-height")
     if not footer_visible and footer_height != 0:
         issues.append("hidden-footer-height")
-    if declared_clearance != expected_footer_height:
+    # The footer is a sibling below the viewport, not an overlay. Its height
+    # must not be duplicated as artificial content padding; the capture and
+    # layout measurements only need to agree with each other.
+    if declared_clearance != layout_clearance:
         issues.append("footer-clearance-mismatch")
-    if layout_clearance != expected_footer_height:
-        issues.append("footer-layout-clearance-mismatch")
     if viewport_bottom != viewport_top + viewport_height:
         issues.append("viewport-bottom-mismatch")
     if footer_visible and viewport_bottom > footer_top:
@@ -1506,10 +1742,7 @@ def dialog_scroll_audit_issue_codes(
     # The capture-side content_height includes the bottom-most visible
     # descendant, while minimum_hint remains the non-negotiable layout floor.
     independently_required = max(0, content_height, minimum_hint)
-    independently_reachable = viewport_height + max(
-        0,
-        scroll_maximum - scroll_minimum,
-    )
+    independently_reachable = viewport_height + scroll_span
     if required != independently_required:
         issues.append("required-content-height-mismatch")
     if reachable != independently_reachable:
@@ -1524,6 +1757,8 @@ def _validate_dialog_scroll_summary(
     coverage: dict[str, dict[str, str]],
     record_audits: dict[str, dict[str, Any]],
     issues: list[str],
+    *,
+    required: bool,
 ) -> None:
     expected = [
         (label, surface, semantic)
@@ -1535,6 +1770,16 @@ def _validate_dialog_scroll_summary(
     summary = payload.get("dialog_scroll_audits")
     if not isinstance(summary, dict):
         issues.append("dialog_scroll_audits must be an object")
+        return
+    if not required:
+        if summary.get("required") is not False:
+            issues.append("dialog_scroll_audits required must be false")
+        if summary.get("passed") is not True:
+            issues.append("dialog_scroll_audits passed must be true")
+        if summary.get("required_count") != 0:
+            issues.append("dialog_scroll_audits required_count must be 0")
+        if summary.get("records") != []:
+            issues.append("dialog_scroll_audits records must be empty")
         return
     if summary.get("required") is not True:
         issues.append("dialog_scroll_audits required must be true")
@@ -1559,6 +1804,8 @@ def _validate_dialog_scroll_summary(
         "layout_clearance",
         "required_content_height",
         "reachable_content_height",
+        "last_body_child_bottom",
+        "last_body_child_bottom_at_scroll_end",
     )
     for index, ((label, surface, semantic), summary_record) in enumerate(
         zip(expected, summaries),
@@ -1661,12 +1908,23 @@ def expected_resize_geometry_acceptance(
     }
 
 
-def _validate_memory_probe(payload: dict[str, Any], issues: list[str]) -> None:
+def _validate_memory_probe(
+    payload: dict[str, Any],
+    issues: list[str],
+    *,
+    required: bool,
+) -> None:
     if payload.get("dialog_memory_probe_complete") is not True:
         issues.append("dialog_memory_probe_complete must be true")
     probe = payload.get("dialog_memory_probe")
     if not isinstance(probe, dict):
         issues.append("dialog_memory_probe must be an object")
+        return
+    if not required:
+        if probe.get("status") != "not-run":
+            issues.append("dialog_memory_probe status must be 'not-run'")
+        if probe.get("cycles") != 0:
+            issues.append("dialog_memory_probe cycles must be 0")
         return
     if probe.get("status") != "measured":
         issues.append("dialog_memory_probe status must be 'measured'")
@@ -1768,6 +2026,606 @@ def _validate_memory_probe(payload: dict[str, Any], issues: list[str]) -> None:
             )
 
 
+def _visual_contract_record_issues(
+    *,
+    label: str,
+    state_kind: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+) -> list[str]:
+    """Validate source-independent rendered-geometry and high-risk state proof."""
+
+    problems: list[str] = []
+
+    def reject(message: str) -> None:
+        problems.append(message)
+
+    visual = record.get("visual_contract_audit")
+    if not isinstance(visual, dict):
+        return ["visual_contract_audit is missing"]
+    if audit is None or audit.get("visual_contract") != visual:
+        reject("visual contract audit does not match the capture audit")
+    if visual.get("passed") is not True:
+        reject("visual contract audit did not pass")
+    if visual.get("issues") != []:
+        reject("visual contract issues must be empty")
+    applicable = visual.get("applicable")
+    if type(applicable) is not bool:
+        reject("visual contract applicable must be boolean")
+    elif applicable:
+        controls = visual.get("controls")
+        if not isinstance(controls, list):
+            reject("visual contract controls must be a list")
+        elif any(
+            not isinstance(control, dict)
+            or control.get("size_passed") is not True
+            or control.get("text_fit_passed") is not True
+            or not isinstance(control.get("bounds"), list)
+            or len(control["bounds"]) != 4
+            for control in controls
+        ):
+            reject("visual contract controls must have passing measured bounds")
+        if visual.get("control_sizes_passed") is not True:
+            reject("visual contract control sizes did not pass")
+        if visual.get("action_text_fits") is not True:
+            reject("visual contract contains an overflowing action label")
+        footer_actions = visual.get("footer_actions")
+        if not isinstance(footer_actions, list) or any(
+            not isinstance(action, dict)
+            or action.get("footer_action") is not True
+            or action.get("contained") is not True
+            for action in (
+                footer_actions if isinstance(footer_actions, list) else []
+            )
+        ):
+            reject("visual contract footer actions are invalid")
+        if visual.get("footer_actions_contained") is not True:
+            reject("visual contract footer action is outside the dialog")
+        requires_inline_close = visual.get("requires_inline_close")
+        if type(requires_inline_close) is not bool:
+            reject("visual contract close requirement must be boolean")
+            requires_inline_close = True
+        close_icons = visual.get("close_icons")
+        if not isinstance(close_icons, list):
+            reject("visual contract close icons must be a list")
+            close_icons = []
+        elif requires_inline_close and not close_icons:
+            reject("visual contract has no measured inline close icon")
+        if close_icons and any(
+            not isinstance(icon, dict)
+            or icon.get("passed") is not True
+            or icon.get("glyph_pixels_present") is not True
+            or icon.get("capture_pixels_present") is not True
+            or not isinstance(icon.get("bounds"), list)
+            or len(icon["bounds"]) != 4
+            for icon in close_icons
+        ):
+            reject("visual contract close icon has blank pixels or invalid bounds")
+        if visual.get("close_icons_passed") is not True:
+            reject("visual contract close icons did not pass")
+        primary_count = visual.get("primary_action_count")
+        if type(primary_count) is not int or primary_count < 0:
+            reject("visual contract primary action count must be nonnegative")
+        primary_groups = visual.get("primary_action_groups")
+        if not isinstance(primary_groups, list) or any(
+            not isinstance(group, dict)
+            or not isinstance(group.get("scope"), str)
+            or not isinstance(group.get("actions"), list)
+            or type(group.get("count")) is not int
+            or group.get("count") != len(group.get("actions", []))
+            or group.get("passed") is not True
+            for group in (primary_groups if isinstance(primary_groups, list) else [])
+        ):
+            reject("visual contract primary decision groups are invalid")
+            primary_groups = []
+        maximum_group_count = visual.get("max_primary_actions_per_group")
+        independently_maximum = max(
+            (
+                int(group.get("count", 0))
+                for group in primary_groups
+                if isinstance(group, dict)
+                and type(group.get("count")) is int
+            ),
+            default=0,
+        )
+        if (
+            type(maximum_group_count) is not int
+            or maximum_group_count != independently_maximum
+            or maximum_group_count > 1
+        ):
+            reject(
+                "visual contract must contain at most one filled primary action per decision group"
+            )
+        if visual.get("visible_horizontal_scrollbars") != []:
+            reject("visual contract contains a visible horizontal scrollbar")
+        largest_gap = visual.get("largest_unexplained_gap")
+        if (
+            isinstance(largest_gap, bool)
+            or not isinstance(largest_gap, (int, float))
+            or largest_gap < 0
+        ):
+            reject("visual contract largest gap must be a nonnegative number")
+        if visual.get("screen_contained") is not True:
+            reject("visual contract window is outside the available screen")
+        popover = visual.get("popover")
+        if not isinstance(popover, dict) or popover.get("passed") is not True:
+            reject("visual contract popover containment did not pass")
+        elif label.startswith("popover-plot-") and not (
+            popover.get("applicable") is True
+            and popover.get("contained_in_scene") is True
+            and popover.get("page_scroll_value") == 0
+        ):
+            reject("visual contract popover is outside the scene or page-scrolled")
+    elif state_kind not in {"home", "reviewer"}:
+        reject("visual contract was inapplicable for a Qt-owned surface")
+
+    if audit is None:
+        return problems
+
+    def audit_object(name: str) -> dict[str, Any]:
+        value = audit.get(name)
+        if not isinstance(value, dict):
+            reject(f"{name} is missing")
+            return {}
+        return value
+
+    required_pixel_keys = RENDERED_PIXEL_EVIDENCE_KEYS.get(label, ())
+    if required_pixel_keys:
+        rendered_pixels = audit_object("rendered_pixel_evidence")
+        pixel_results = rendered_pixels.get("results")
+        if not (
+            rendered_pixels.get("passed") is True
+            and rendered_pixels.get("required_keys")
+            == list(required_pixel_keys)
+            and isinstance(pixel_results, list)
+            and [
+                row.get("key")
+                for row in pixel_results
+                if isinstance(row, dict)
+            ] == list(required_pixel_keys)
+            and all(
+                isinstance(row, dict)
+                and row.get("visible") is True
+                and row.get("contained") is True
+                and row.get("capture_pixels_present") is True
+                and row.get("passed") is True
+                for row in pixel_results
+            )
+        ):
+            reject("required state widgets are absent from captured pixels")
+
+    if state_kind == "home":
+        compact = audit_object("compact_home_copy")
+        rendered = compact.get("rendered_text")
+        banned = compact.get("banned_terms")
+        if compact.get("passed") is not True:
+            reject("compact Home copy audit did not pass")
+        if not isinstance(rendered, str):
+            reject("compact Home rendered copy must be a string")
+        else:
+            normalized = " ".join(rendered.casefold().split())
+            leaked = [term for term in COMPACT_HOME_BANNED_COPY if term in normalized]
+            if leaked:
+                reject("compact Home rendered or accessibility copy contains banned terms")
+        if banned != []:
+            reject("compact Home banned term list must be empty")
+        support = str(compact.get("support_text", ""))
+        action = str(compact.get("action_text", ""))
+        if not (
+            compact.get("information_model_passed") is True
+            and compact.get("geometry_passed") is True
+        ):
+            reject("compact Home information model or CTA geometry did not pass")
+        if label == "home-preview-loading":
+            if "loading garden" not in str(rendered).casefold():
+                reject("Home loading state copy is missing")
+        elif label == "home-preview-error":
+            if not (
+                "garden preview unavailable" in str(rendered).casefold()
+                and action == "Open Garden"
+            ):
+                reject("Home error state must retain the Open Garden action")
+        elif not label.startswith("starter-"):
+            if not (
+                "Growth" in support
+                and action == "Open Garden"
+                and type(compact.get("action_width")) is int
+                and 104 <= compact["action_width"] <= 120
+                and compact.get("action_height") == 36
+            ):
+                reject("compact Home must show Growth and a 104-120 by 36 Open Garden CTA")
+
+    if label == "full-garden":
+        steady = audit_object("steady_state_visual")
+        if not (
+            steady.get("passed") is True
+            and steady.get("overlay_free") is True
+            and steady.get("scene_contained") is True
+            and steady.get("onboarding_step") == "done"
+            and steady.get("page_scroll_value") == 0
+        ):
+            reject("full Garden does not prove a clean contained steady state")
+
+    if label == "progress-overview-redirect-growth":
+        direct = audit_object("direct_growth_visual")
+        amount = direct.get("amount")
+        if not (
+            direct.get("passed") is True
+            and type(amount) is int
+            and amount > 0
+            and "Rewards and charges" in str(direct.get("label", ""))
+            and direct.get("label_contained") is True
+            and direct.get("value_contained") is True
+        ):
+            reject("Growth redirect does not visibly prove nonzero direct reward or charge Growth")
+
+    if label == "collection-preview-restored":
+        restored = audit_object("restored_preview_visual")
+        if not (
+            restored.get("passed") is True
+            and restored.get("visible") is True
+            and restored.get("contained") is True
+            and bool(str(restored.get("text", "")).strip())
+            and audit.get("restored_preview_dirty_cleared") is True
+        ):
+            reject("restored preview does not show a contained result banner")
+
+    if label == "nursery-item-owned":
+        owned = audit_object("owned_item_visual")
+        if not (
+            owned.get("passed") is True
+            and bool(owned.get("item_id"))
+            and bool(owned.get("item_name"))
+            and all(
+                isinstance(owned.get(key), dict)
+                and owned[key].get("contained") is True
+                for key in ("card", "title", "action_bounds")
+            )
+        ):
+            reject("owned Nursery item is not visibly identified and contained")
+
+    if label in {
+        "reviewer-find-environment",
+        "reviewer-find-stacked-sync",
+        "reviewer-find-common-reduced-motion",
+    }:
+        geometry = audit_object("reviewer_overlay_geometry")
+        bounds = geometry.get("overlay_bounds")
+        controls = geometry.get("control_rects")
+        if not (
+            geometry.get("passed") is True
+            and geometry.get("parent_is_reviewer_webview") is True
+            and geometry.get("viewport_contained") is True
+            and geometry.get("size_in_range") is True
+            and isinstance(bounds, list)
+            and len(bounds) == 4
+            and isinstance(controls, list)
+            and bool(controls)
+            and type(geometry.get("minimum_control_clearance")) is int
+            and geometry["minimum_control_clearance"] >= 16
+        ):
+            reject("Reviewer card lacks full containment or control clearance")
+        if audit.get("required_overlay_pixels_present") is not True:
+            reject("Reviewer card is absent from captured pixels")
+
+    if label == "missing-artwork-graphical-fallback":
+        matrix = audit_object("missing_artwork_matrix")
+        entries = matrix.get("entries")
+        missing_paths = matrix.get("missing_source_paths")
+        logged_fingerprints = matrix.get("diagnostic_log_fingerprints")
+        visible_card = matrix.get("visible_card")
+        visible_preview = matrix.get("visible_preview")
+        if not (
+            matrix.get("passed") is True
+            and matrix.get("types") == list(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(entries, list)
+            and len(entries) == len(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(missing_paths, dict)
+            and set(missing_paths) == set(MISSING_ARTWORK_CAPTURE_TYPES)
+            and isinstance(logged_fingerprints, list)
+            and len(logged_fingerprints) == len(MISSING_ARTWORK_CAPTURE_TYPES)
+            and [entry.get("type") for entry in entries if isinstance(entry, dict)]
+            == list(MISSING_ARTWORK_CAPTURE_TYPES)
+            and all(
+                isinstance(entry, dict)
+                and entry.get("passed") is True
+                and entry.get("semantic_role") == "missing-art"
+                and entry.get("graphic_present") is True
+                and entry.get("aspect_ratio_preserved") is True
+                and entry.get("diagnostic_path_logged") is True
+                and bool(str(entry.get("accessible_name", "")).strip())
+                and str(entry.get("accessible_description", "")).startswith(
+                    "Artwork unavailable"
+                )
+                and str(entry.get("source_path", "")).startswith(
+                    "/capture-missing/"
+                )
+                for entry in entries
+            )
+            and isinstance(visible_card, dict)
+            and visible_card.get("contained") is True
+            and isinstance(visible_preview, dict)
+            and visible_preview.get("contained") is True
+            and matrix.get("visible_missing_preview_count") == 1
+        ):
+            reject("missing-artwork fallback evidence is incomplete, clipped, or unlogged")
+
+    if label == "collection-environment-mechanics":
+        mechanics = audit_object("environment_mechanics_visual")
+        required_keys = {
+            "toolbar",
+            "summary_title",
+            "summary_selection",
+            "edit_appearance",
+            "item_title",
+            "item_status",
+            "effect",
+            "mechanics",
+        }
+        bounds = mechanics.get("required_bounds")
+        if not (
+            mechanics.get("passed") is True
+            and set(mechanics.get("required_keys", ())) == required_keys
+            and isinstance(bounds, list)
+            and {row.get("key") for row in bounds if isinstance(row, dict)}
+            == required_keys
+            and all(
+                isinstance(row, dict)
+                and row.get("visible") is True
+                and row.get("contained") is True
+                and bool(str(row.get("text", "")).strip())
+                for row in bounds
+            )
+        ):
+            reject("environment mechanics content is incomplete or clipped")
+        mechanics_row = next(
+            (
+                row for row in bounds
+                if isinstance(row, dict) and row.get("key") == "mechanics"
+            ),
+            {},
+        ) if isinstance(bounds, list) else {}
+        mechanics_copy = str(mechanics_row.get("text", ""))
+        if not (
+            "Available every day" in mechanics_copy
+            and "Only one weather can be equipped" in mechanics_copy
+            and audit.get("mechanics_always_visible") is True
+            and audit.get("compact_environment_actions") is True
+        ):
+            reject(
+                "environment mechanics must stay visible with compact Preview and Unequip actions"
+            )
+
+    if label == "collection-loadout-persistence-error":
+        rendered_state = audit_object("rendered_state")
+        feedback_text = str(rendered_state.get("feedback_text", ""))
+        if not (
+            str(audit.get("error_copy", "")).startswith(
+                "Could not save changes."
+            )
+            and feedback_text.startswith("Could not save changes.")
+            and rendered_state.get("feedback_outside_artwork") is True
+            and rendered_state.get("passed") is True
+        ):
+            reject(
+                "loadout persistence feedback must say Could not and remain outside the artwork"
+            )
+
+    return problems
+
+
+def _native_layout_telemetry_record_issues(
+    *,
+    label: str,
+    window_family: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+    limits: dict[str, float | int],
+    button_heights: dict[str, int],
+    tabular_labels: frozenset[str],
+) -> list[str]:
+    """Independently validate shell-owned client, control, and text evidence."""
+
+    problems: list[str] = []
+    telemetry = record.get("native_layout_telemetry")
+    if not isinstance(telemetry, dict):
+        return ["native_layout_telemetry is missing"]
+    if audit is None or audit.get("native_layout_telemetry") != telemetry:
+        problems.append("native layout telemetry does not match the capture audit")
+    if telemetry.get("passed") is not True or telemetry.get("issues") != []:
+        problems.append("native layout telemetry did not pass")
+
+    shell_expected = window_family not in {"AnkiQt", "GardenDashboard"}
+    applicable = telemetry.get("applicable")
+    if type(applicable) is not bool:
+        problems.append("native layout applicable must be boolean")
+        return problems
+    if not shell_expected:
+        if applicable:
+            problems.append("native layout telemetry is unexpectedly applicable")
+        return problems
+    if not applicable:
+        problems.append("DialogShell capture layout telemetry is not applicable")
+        return problems
+    if telemetry.get("source") != "DialogShell.capture_layout_telemetry":
+        problems.append("native layout telemetry source is invalid")
+    if telemetry.get("limits") != limits:
+        problems.append("native layout telemetry limits drifted from source")
+    if telemetry.get("buttonHeights") != button_heights:
+        problems.append("native button height telemetry drifted from source")
+
+    client_width = telemetry.get("clientWidth")
+    fill = _strict_number(telemetry.get("clientSurfaceFill"))
+    gutter = telemetry.get("clientGutterPx")
+    if type(client_width) is not int or client_width <= 0:
+        problems.append("native layout client width is invalid")
+    elif fill is None or not 0.0 <= fill <= 1.0:
+        problems.append("native layout client surface fill is invalid")
+    elif (
+        type(gutter) is not int
+        or gutter != max(0, client_width - round(client_width * fill))
+        or gutter > int(limits["maximum_client_gutter_px"])
+    ):
+        problems.append("native layout client gutter exceeds the compact limit")
+
+    footer_gap = telemetry.get("contentToFooterGap")
+    if footer_gap is not None and (
+        type(footer_gap) is not int
+        or footer_gap < 0
+        or footer_gap > int(limits["maximum_content_footer_gap_px"])
+    ):
+        problems.append("native layout content-to-footer gap exceeds the limit")
+    nursery_offset = telemetry.get("nurseryRootOffset")
+    if window_family == "NurseryDialog":
+        if (
+            type(nursery_offset) is not int
+            or nursery_offset < 0
+            or nursery_offset
+            > int(limits["maximum_nursery_root_offset_px"])
+        ):
+            problems.append("native Nursery root is not top-aligned")
+    elif nursery_offset is not None and (
+        type(nursery_offset) is not int or nursery_offset < 0
+    ):
+        problems.append("native layout Nursery offset is invalid")
+
+    action_ratio = _strict_number(telemetry.get("maximumActionWidthRatio"))
+    if (
+        action_ratio is None
+        or not 0.0 <= action_ratio <= 1.0
+        or action_ratio > float(limits["maximum_action_width_ratio"])
+    ):
+        problems.append("native action width ratio exceeds the normal-dialog limit")
+    minimum_text = _strict_number(telemetry.get("minimumRenderedTextSize"))
+    if minimum_text is None or minimum_text < float(
+        limits["minimum_rendered_text_px"]
+    ):
+        problems.append("native rendered text is below the 12 px floor")
+
+    for count_name in (
+        "tooltipWidgetCount",
+        "elidedWidgetCount",
+        "elisionWithoutTooltipCount",
+    ):
+        value = telemetry.get(count_name)
+        if type(value) is not int or value < 0:
+            problems.append(f"native layout {count_name} is invalid")
+    if telemetry.get("elisionWithoutTooltipCount") != 0:
+        problems.append("native elision is missing tooltip evidence")
+
+    rows = telemetry.get("scrollbars")
+    owner_count = telemetry.get("overflowOwnerCount")
+    if not isinstance(rows, list):
+        problems.append("native scrollbar telemetry must be a list")
+        rows = []
+    if (
+        type(owner_count) is not int
+        or owner_count < 0
+        or owner_count > int(limits["maximum_overflow_owner_count"])
+        or (rows and owner_count != 1)
+    ):
+        problems.append("native overflow owner count is invalid")
+    measured_owners = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            problems.append("native scrollbar record is invalid")
+            continue
+        minimum = row.get("minimum")
+        maximum = row.get("maximum")
+        value = row.get("value")
+        visible = row.get("visible")
+        owner = row.get("overflowOwner")
+        if (
+            type(minimum) is not int
+            or type(maximum) is not int
+            or type(value) is not int
+            or type(visible) is not bool
+            or type(owner) is not bool
+            or maximum < minimum
+            or not minimum <= value <= maximum
+        ):
+            problems.append("native scrollbar record is invalid")
+            continue
+        measured_owners += int(owner)
+        if owner and visible != (maximum > minimum):
+            problems.append("native scrollbar visibility disagrees with its range")
+        if not owner and visible:
+            problems.append("native non-owner scrollbar is visible")
+    if type(owner_count) is int and measured_owners != owner_count:
+        problems.append("native overflow owner record count disagrees")
+
+    button_rows = telemetry.get("buttonRecords")
+    if not isinstance(button_rows, list):
+        problems.append("native button telemetry must be a list")
+        button_rows = []
+    for button in button_rows:
+        if not isinstance(button, dict):
+            problems.append("native button telemetry record is invalid")
+            continue
+        size_name = button.get("buttonSize")
+        expected_height = button_heights.get(size_name)
+        text_size = _strict_number(button.get("renderedTextSize"))
+        actual_height = button.get("height")
+        actual_width = button.get("width")
+        visual_size = button.get("visualControlSize")
+        expected_outer_height = (
+            expected_height + 2
+            if type(expected_height) is int else None
+        )
+        if (
+            expected_height is None
+            or button.get("expectedHeight") != expected_height
+            or button.get("expectedOuterHeight") != expected_outer_height
+            or type(actual_height) is not int
+            or type(actual_width) is not int
+            or type(visual_size) is not int
+            or visual_size != expected_height
+            or actual_height != expected_outer_height
+            or button.get("outerBorderAllowance") != 2
+            or (
+                type(actual_height) is int
+                and type(visual_size) is int
+                and actual_height - visual_size != 2
+            )
+            or button.get("passed") is not True
+            or (
+                bool(str(button.get("text", "")).strip())
+                and (
+                    text_size is None
+                    or text_size < float(limits["minimum_rendered_text_px"])
+                )
+            )
+            or (
+                size_name == "icon"
+                and (
+                    actual_width != actual_height
+                    or actual_width != expected_outer_height
+                )
+            )
+        ):
+            problems.append("native button geometry or text size is invalid")
+
+    tabular_rows = telemetry.get("tabularNumeralWidgets")
+    tabular_count = telemetry.get("tabularNumeralWidgetCount")
+    tabular_required = label in tabular_labels
+    if (
+        not isinstance(tabular_rows, list)
+        or type(tabular_count) is not int
+        or tabular_count != len(tabular_rows)
+        or telemetry.get("tabularNumeralsRequired") is not tabular_required
+        or (tabular_required and tabular_count < 1)
+    ):
+        problems.append("native tabular numeral evidence is incomplete")
+    elif any(
+        not isinstance(row, dict)
+        or not bool(str(row.get("widget", "")).strip())
+        or not any(character.isdigit() for character in str(row.get("text", "")))
+        for row in tabular_rows
+    ):
+        problems.append("native tabular numeral record is invalid")
+    return list(dict.fromkeys(problems))
+
+
 def validate_capture_manifest(
     manifest_path: Path,
     *,
@@ -1789,6 +2647,11 @@ def validate_capture_manifest(
         capture_source,
         contract=contract,
     )
+    (
+        layout_limits,
+        button_heights,
+        tabular_labels,
+    ) = load_capture_layout_contract(capture_source)
     dialog_scroll_by_label = {
         label: (surface, semantic)
         for surface, labels in dialog_scroll_coverage.items()
@@ -1806,8 +2669,9 @@ def validate_capture_manifest(
             "capture_contract_version does not match the repository contract "
             f"({payload.get('capture_contract_version')!r} != {contract.version})"
         )
-    if payload.get("capture_profile") != "full":
-        issues.append("capture_profile must be 'full' for release evidence")
+    capture_profile = payload.get("capture_profile")
+    if capture_profile != "representative":
+        issues.append("capture_profile must be 'representative' for release evidence")
     raw_scale = payload.get("requested_scale_factor")
     try:
         scale = float(raw_scale) if not isinstance(raw_scale, bool) else math.nan
@@ -1823,10 +2687,93 @@ def validate_capture_manifest(
         issues.append(
             f"expected_count must be {expected_count}, found {payload.get('expected_count')!r}"
         )
+    capture_scope = payload.get("capture_scope")
+    if capture_scope not in {"full", "assembled"}:
+        issues.append("capture_scope must be 'full' or 'assembled' for release evidence")
+    if payload.get("requested_faces") != list(expected_labels):
+        issues.append("requested_faces must contain the complete ordered release contract")
+    captured_faces = payload.get("captured_faces")
+    reused_faces = payload.get("reused_faces")
+    if not isinstance(captured_faces, list) or not isinstance(reused_faces, list):
+        issues.append("captured_faces and reused_faces must be lists")
+        captured_faces = []
+        reused_faces = []
+    else:
+        captured_faces = [str(value) for value in captured_faces]
+        reused_faces = [str(value) for value in reused_faces]
+        if len(captured_faces) != len(set(captured_faces)):
+            issues.append("captured_faces contains duplicates")
+        if len(reused_faces) != len(set(reused_faces)):
+            issues.append("reused_faces contains duplicates")
+        if set(captured_faces) & set(reused_faces):
+            issues.append("captured_faces and reused_faces overlap")
+        if set(captured_faces) | set(reused_faces) != set(expected_labels):
+            issues.append("captured_faces and reused_faces do not cover the release contract")
+        if captured_faces != [label for label in expected_labels if label in captured_faces]:
+            issues.append("captured_faces is not in canonical order")
+        if reused_faces != [label for label in expected_labels if label in reused_faces]:
+            issues.append("reused_faces is not in canonical order")
+    invalidated_faces = payload.get("invalidated_faces")
+    if not isinstance(invalidated_faces, list) or any(
+        str(value) not in expected_labels for value in invalidated_faces
+    ):
+        issues.append("invalidated_faces must contain only contract labels")
+    calibration = payload.get("capture_calibration")
+    if not isinstance(calibration, dict) or calibration.get("passed") is not True:
+        issues.append("capture calibration did not pass")
+    if payload.get("scope_complete") is not True:
+        issues.append("scope_complete is not true")
+    sha_pattern = re.compile(r"[0-9a-f]{64}")
+    production_package_sha256 = payload.get("production_package_sha256")
+    capture_environment_digest = payload.get("capture_environment_digest")
+    if (
+        not isinstance(production_package_sha256, str)
+        or sha_pattern.fullmatch(production_package_sha256) is None
+    ):
+        issues.append("production_package_sha256 is invalid")
+    if (
+        not isinstance(capture_environment_digest, str)
+        or sha_pattern.fullmatch(capture_environment_digest) is None
+    ):
+        issues.append("capture_environment_digest is invalid")
+    render_inputs = payload.get("render_inputs")
+    render_surfaces: dict[str, Any] = {}
+    if not isinstance(render_inputs, dict):
+        issues.append("render_inputs must be an object")
+    else:
+        if render_inputs.get("environment_digest") != capture_environment_digest:
+            issues.append("render_inputs environment digest does not match the manifest")
+        if render_inputs.get("production_archive_sha256") != production_package_sha256:
+            issues.append("render_inputs production archive hash does not match the manifest")
+        raw_render_surfaces = render_inputs.get("surfaces")
+        if not isinstance(raw_render_surfaces, dict):
+            issues.append("render_inputs surfaces must be an object")
+        else:
+            render_surfaces = raw_render_surfaces
+            if set(render_surfaces) != set(expected_labels):
+                issues.append("render_inputs surfaces do not match the release contract")
+    if payload.get("foreground_policy") != "required-only":
+        issues.append("foreground_policy must be 'required-only'")
+    foreground_requests = payload.get("foreground_requests")
+    if not isinstance(foreground_requests, list) or len(foreground_requests) > 2:
+        issues.append("foreground_requests must be a list containing at most two requests")
     if payload.get("complete") is not True:
         issues.append("capture manifest is not marked complete")
     if payload.get("fixture_validations_complete") is not True:
         issues.append("fixture_validations_complete is not true")
+
+    completion_path = session_dir / "capture-complete.json"
+    completion = _load_json_object(completion_path, "capture completion")
+    if completion.get("manifest_sha256") != _file_sha256(manifest_path):
+        issues.append("capture completion manifest hash does not match")
+    referenced_manifest = _resolved_evidence_path(
+        completion.get("manifest"),
+        session_dir,
+    )
+    if referenced_manifest != manifest_path:
+        issues.append("capture completion references a different manifest")
+    if completion.get("scope_complete") is not True or completion.get("exit_code") != 0:
+        issues.append("capture completion does not report a clean successful scope")
 
     failures = payload.get("failures")
     if not isinstance(failures, list):
@@ -1838,7 +2785,11 @@ def validate_capture_manifest(
         issues.append("text_layout_warnings must be a list")
     elif warnings:
         issues.append(f"capture manifest reports {len(warnings)} text-layout warning(s)")
-    _validate_memory_probe(payload, issues)
+    _validate_memory_probe(
+        payload,
+        issues,
+        required=capture_profile == "full",
+    )
 
     raw_screenshots = payload.get("screenshots")
     if not isinstance(raw_screenshots, list):
@@ -1916,6 +2867,69 @@ def validate_capture_manifest(
         record_path = _resolved_evidence_path(record.get("path"), session_dir)
         if record_path != screenshot_path:
             issues.append(f"capture {index:03d} {label}: record path does not match screenshots")
+        if screenshot_path is not None and screenshot_path.is_file():
+            if record.get("png_sha256") != _file_sha256(screenshot_path):
+                issues.append(f"capture {index:03d} {label}: PNG SHA-256 does not match")
+        evidence_status = record.get("evidence_status")
+        expected_status = "reused" if label in reused_faces else "captured"
+        if evidence_status != expected_status:
+            issues.append(
+                f"capture {index:03d} {label}: evidence_status must be {expected_status!r}"
+            )
+        surface_inputs = render_surfaces.get(label)
+        if not isinstance(surface_inputs, dict):
+            issues.append(f"capture {index:03d} {label}: render inputs are missing")
+        else:
+            if record.get("render_input_digest") != surface_inputs.get("digest"):
+                issues.append(f"capture {index:03d} {label}: render-input digest does not match")
+            if record.get("render_input_count") != surface_inputs.get("input_count"):
+                issues.append(f"capture {index:03d} {label}: render-input count does not match")
+            if record.get("capture_environment_digest") != surface_inputs.get(
+                "environment_digest"
+            ):
+                issues.append(
+                    f"capture {index:03d} {label}: capture environment digest does not match"
+                )
+        lineage = record.get("lineage")
+        if not isinstance(lineage, dict):
+            issues.append(f"capture {index:03d} {label}: lineage is missing")
+        else:
+            if lineage.get("evidence_status") != evidence_status:
+                issues.append(f"capture {index:03d} {label}: lineage evidence status differs")
+            if not isinstance(lineage.get("source_run_id"), str) or not str(
+                lineage.get("source_run_id", "")
+            ).strip():
+                issues.append(f"capture {index:03d} {label}: lineage source run is missing")
+            source_package = lineage.get("source_package_sha256")
+            if not isinstance(source_package, str) or sha_pattern.fullmatch(source_package) is None:
+                issues.append(f"capture {index:03d} {label}: lineage package hash is invalid")
+            if evidence_status == "reused":
+                for field in ("source_manifest_sha256", "source_record_sha256"):
+                    value = lineage.get(field)
+                    if not isinstance(value, str) or sha_pattern.fullmatch(value) is None:
+                        issues.append(
+                            f"capture {index:03d} {label}: reused lineage {field} is invalid"
+                        )
+        if record.get("stable") is not True:
+            issues.append(f"capture {index:03d} {label}: surface stability was not proven")
+        stable_frames = record.get("stable_frame_count")
+        if type(stable_frames) is not int or stable_frames < 2:
+            issues.append(f"capture {index:03d} {label}: stable_frame_count must be at least 2")
+        for timing_field in (
+            "semantic_ready_ms",
+            "stable_ms",
+            "capture_ms",
+            "audit_ms",
+            "cleanup_ms",
+        ):
+            timing = _strict_number(record.get(timing_field))
+            if timing is None or timing < 0:
+                issues.append(
+                    f"capture {index:03d} {label}: {timing_field} is invalid"
+                )
+        capture_method = record.get("capture_method")
+        if not isinstance(capture_method, str) or not capture_method.strip():
+            issues.append(f"capture {index:03d} {label}: capture_method is missing")
 
         width = record.get("width")
         height = record.get("height")
@@ -2295,6 +3309,27 @@ def validate_capture_manifest(
             issues.append(f"capture {index:03d} {label}: audit fixture identity disagrees")
         if isinstance(audit, dict):
             record_audits[label] = audit
+        for telemetry_issue in _native_layout_telemetry_record_issues(
+            label=label,
+            window_family=renderer_families[label],
+            record=record,
+            audit=audit if isinstance(audit, dict) else None,
+            limits=layout_limits,
+            button_heights=button_heights,
+            tabular_labels=tabular_labels,
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: {telemetry_issue}"
+            )
+        for visual_issue in _visual_contract_record_issues(
+            label=label,
+            state_kind=str(state_contract["kind"]),
+            record=record,
+            audit=audit if isinstance(audit, dict) else None,
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: {visual_issue}"
+            )
         if logical_size is not None and dpr is not None:
             record_geometry[label] = (
                 logical_size[0],
@@ -2308,6 +3343,7 @@ def validate_capture_manifest(
         dialog_scroll_coverage,
         record_scroll_audits,
         issues,
+        required=capture_profile == "full",
     )
 
     first_seen_displays = list(dict.fromkeys(record_displays))
@@ -2610,13 +3646,39 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--contact-sheet-set",
         type=Path,
-        help="Optional path to contact-sheet-set.json",
+        help=(
+            "Optional contact-sheet-set.json review aid; raw manifest PNGs "
+            "remain the runtime geometry authority"
+        ),
+    )
+    parser.add_argument(
+        "--surface-report",
+        action="store_true",
+        help=(
+            "Classify each manifest-owned surface and return a minimal "
+            "recapture list without requiring a complete release set"
+        ),
     )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
+    if arguments.surface_report:
+        try:
+            try:
+                from scripts.capture_evidence import surface_validation_report
+            except ImportError:
+                from capture_evidence import surface_validation_report
+            result = surface_validation_report(arguments.manifest)
+        except (OSError, ValueError) as error:
+            print(
+                json.dumps({"error": str(error), "status": "failed"}),
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
     try:
         result = validate_capture_manifest(
             arguments.manifest,

@@ -243,7 +243,7 @@ def streak_presentation(
             StreakPresentationState.AT_RISK,
             days,
             "At risk",
-            "Answer an Anki card today to continue your streak.",
+            "Answer one card today to keep your streak.",
             "warning",
         )
 
@@ -253,7 +253,7 @@ def streak_presentation(
             StreakPresentationState.ENDED,
             0,
             "Streak ended",
-            "Answer an Anki card to begin a new streak.",
+            "Answer one card to begin a new streak.",
             "missed",
             previous_days=days,
             missed_day=missed_day,
@@ -262,8 +262,8 @@ def streak_presentation(
     return StreakPresentation(
         StreakPresentationState.NEW,
         0,
-        "Start today",
-        "Answer an Anki card to begin a new streak.",
+        "No active streak",
+        "Answer one card today to start.",
         "start",
     )
 

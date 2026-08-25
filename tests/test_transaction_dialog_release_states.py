@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DASHBOARD = ROOT / "ankigarden" / "ui" / "dashboard.py"
+
+
+def _class(name: str) -> ast.ClassDef:
+    tree = ast.parse(DASHBOARD.read_text(encoding="utf-8"))
+    return next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == name
+    )
+
+
+def _method(class_name: str, method_name: str) -> str:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    node = next(
+        child
+        for child in _class(class_name).body
+        if isinstance(child, ast.FunctionDef) and child.name == method_name
+    )
+    return ast.get_source_segment(source, node) or ""
+
+
+def test_purchase_watchdog_returns_to_the_same_idempotent_request() -> None:
+    constructor = _method("PurchaseConfirmationDialog", "__init__")
+    submit = _method("PurchaseConfirmationDialog", "_submit")
+    commit = _method("PurchaseConfirmationDialog", "_commit")
+    timeout = _method("PurchaseConfirmationDialog", "_transaction_timed_out")
+
+    assert "self._commit_watchdog.timeout.connect" in constructor
+    assert "self._commit_watchdog.start()" in submit
+    assert "self.engine.confirm_purchase(self.request)" in commit
+    assert "PurchaseRequest.from_quote" not in timeout
+    assert 'self.setProperty("transactionTimedOut", True)' in timeout
+
+
+def test_growth_charge_attempt_reuses_request_until_quote_changes() -> None:
+    refresh = _method("GrowthChargeConfirmationDialog", "_refresh_quote")
+    commit = _method("GrowthChargeConfirmationDialog", "_commit")
+    timeout = _method("GrowthChargeConfirmationDialog", "_transaction_timed_out")
+
+    assert "self.request.fingerprint() != request.fingerprint()" in refresh
+    assert "request = self.request" in commit
+    assert "GrowthChargeRequest.from_quote" not in commit
+    assert "GrowthChargeRequest.from_quote" not in timeout
+    assert 'self.setProperty("transactionTimedOut", True)' in timeout
+
+
+def test_growth_charge_empty_state_owns_its_primary_action_in_the_footer() -> None:
+    constructor = _method("GrowthChargeConfirmationDialog", "__init__")
+    populate = _method("GrowthChargeConfirmationDialog", "_populate_inventory")
+
+    empty_state_call = constructor.split("self.empty_inventory = EmptyState(", 1)[1].split(
+        ")\n", 1
+    )[0]
+    assert "action=self.nursery_action" not in empty_state_call
+    assert "self.footer_layout.addWidget(self.nursery_action)" in constructor
+    assert "self.nursery_action.setVisible(not has_inventory)" in populate
+
+
+def test_growth_charge_count_refresh_has_visible_availability_evidence() -> None:
+    failure = _method("GrowthChargeConfirmationDialog", "_show_failed_outcome")
+
+    assert "GrowthChargeStatus.STALE_INVENTORY" in failure
+    assert "GrowthChargeStatus.STALE_TARGET" in failure
+    assert "Availability updated" in failure
+    assert "self._show_alert(alert_copy, outcome.status)" in failure
+    assert "self._refresh_compact_summary()" in failure
+    assert 'self.setProperty("growthChargeState", outcome.status.value)' in failure
+    assert 'self.apply_view_size_profile(\n                "stale"' in failure
+
+
+def test_growth_charge_invalid_and_success_states_expose_concrete_semantics() -> None:
+    refresh = _method("GrowthChargeConfirmationDialog", "_refresh_quote")
+    failure = _method("GrowthChargeConfirmationDialog", "_show_failed_outcome")
+    receipt = _method("GrowthChargeConfirmationDialog", "_show_receipt")
+
+    assert "GrowthChargeTargetState(quote.target_state)" in refresh
+    assert "self.target_stage.setText(" in refresh
+    assert "self.hero.hide()" in refresh
+    assert "self.selector_card.hide()" in refresh
+    assert "self.cancel_action.show()" in refresh
+    assert 'self.set_dialog_title("Choose another plant")' in failure
+    assert 'self.use_action.setText("Choose plant")' in failure
+    assert "self.cancel_action.show()" in failure
+    assert 'f"{stage_name} reward"' not in receipt
+    assert "self.target_stage.hide()" in receipt
+    assert "self.compact_summary_card.hide()" in receipt
+    assert 'self.cancel_action.setText("Close")' in receipt
+    assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in receipt
+    assert 'self.receipt_title.setText(f"{previous_stage} → {resulting_stage}")' in receipt
+    assert 'self.charge_heading.setText("Growth Charge")' in receipt
+    assert 'self.stage_rewards_heading.setText("Stage reward")' in receipt
+    assert "self.cancel_action.show()" in receipt
+    assert 'f"{outcome.target_name} reached {resulting_stage}"' in receipt
+
+
+def test_growth_charge_visible_copy_uses_the_canonical_result_structure() -> None:
+    constructor = _method("GrowthChargeConfirmationDialog", "__init__")
+    preview = _method("GrowthChargeConfirmationDialog", "_compact_preview_copy")
+    loading = _method("GrowthChargeConfirmationDialog", "_activate_primary")
+    receipt = _method("GrowthChargeConfirmationDialog", "_committed_receipt_copy")
+
+    assert 'self._empty_inventory_title = "No Growth Charges available"' in constructor
+    assert 'self.empty_inventory = EmptyState(\n            "",' in constructor
+    assert 'self.use_action = QPushButton("Use charge")' in constructor
+    assert 'f"+{max(0, int(quote.granted_growth)):,} Growth"' in preview
+    assert 'f"After use: {max(0, int(quote.inventory_after)):,} remaining"' in preview
+    assert "Inventory:" not in preview
+    assert "Stage:" not in preview
+    assert 'self.use_action.setText("Using charge…")' in loading
+    assert 'f"{remaining:,} remaining"' in receipt

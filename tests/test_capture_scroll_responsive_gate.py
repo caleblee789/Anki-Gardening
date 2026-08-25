@@ -92,6 +92,9 @@ def _valid_scroll_geometry() -> dict[str, Any]:
         "content_minimum_size_hint_height": 220,
         "scroll_minimum": 0,
         "scroll_maximum": 0,
+        "last_body_child_bottom": 300,
+        "last_body_child_bottom_at_scroll_end": 400,
+        "require_no_scroll": False,
     }
 
 
@@ -112,6 +115,8 @@ def test_scroll_geometry_accepts_short_and_reachable_long_content() -> None:
         "content_size_hint_height": 720,
         "content_minimum_size_hint_height": 680,
         "scroll_maximum": 480,
+        "last_body_child_bottom": 720,
+        "last_body_child_bottom_at_scroll_end": 340,
     })
     assert check(**long) == ()
 
@@ -128,6 +133,8 @@ def test_scroll_geometry_does_not_treat_preferred_height_as_mandatory() -> None:
         "content_size_hint_height": 420,
         "content_minimum_size_hint_height": 340,
         "scroll_maximum": 120,
+        "last_body_child_bottom": 360,
+        "last_body_child_bottom_at_scroll_end": 340,
     })
 
     assert check(**geometry) == ()
@@ -152,6 +159,8 @@ def test_scroll_geometry_rejects_missing_nested_and_min_height_failures() -> Non
         "content_size_hint_height": 700,
         "content_minimum_size_hint_height": 650,
         "scroll_maximum": 499,
+        "last_body_child_bottom": 700,
+        "last_body_child_bottom_at_scroll_end": 301,
     })
     assert "unreachable-scroll-content" in check(**unreachable)
 
@@ -174,6 +183,8 @@ def test_capture_and_validator_reject_the_same_invalid_scroll_metrics() -> None:
         "content_minimum_size_hint_height": 0,
         "scroll_minimum": 4,
         "scroll_maximum": 3,
+        "last_body_child_bottom": 0,
+        "last_body_child_bottom_at_scroll_end": 0,
     })
     capture_issues = check(**geometry)
     audit = {
@@ -206,9 +217,27 @@ def test_scroll_geometry_requires_exact_clearance_and_no_footer_overlap() -> Non
         "footer_top": 399,
     })
     assert check(**geometry) == (
+        "last-body-child-under-footer",
         "footer-clearance-mismatch",
-        "footer-layout-clearance-mismatch",
         "footer-viewport-overlap",
+    )
+
+
+def test_scroll_geometry_rejects_body_under_footer_and_compact_scroll() -> None:
+    check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
+        "dialog_scroll_geometry_issue_codes"
+    ]
+    geometry = _valid_scroll_geometry()
+    geometry.update({
+        "last_body_child_bottom": 302,
+        "last_body_child_bottom_at_scroll_end": 401,
+        "require_no_scroll": True,
+        "scroll_maximum": 1,
+    })
+
+    assert check(**geometry) == (
+        "last-body-child-under-footer",
+        "compact-transaction-scroll-range",
     )
 
 
@@ -242,7 +271,7 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> None:
+def test_all_eleven_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
@@ -258,7 +287,7 @@ def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> Non
         "Collection",
         "Collection loadout details",
     }
-    groups = _literal_assignment("CAPTURE_FACE_GROUPS")
+    groups = _literal_assignment("EXHAUSTIVE_CAPTURE_FACE_GROUPS")
     contract = {
         label
         for _group, labels in groups
@@ -272,6 +301,12 @@ def test_all_eleven_scroll_surfaces_have_canonical_100_percent_evidence() -> Non
         assert labels
         assert set(labels) <= contract
         assert all(not label.startswith("resize-") for label in labels)
+    release_labels = {
+        label
+        for _group, labels in _literal_assignment("CAPTURE_FACE_GROUPS")
+        for label in labels
+    }
+    assert release_labels < contract
     assert "growth-charge-use-ready" in coverage[
         "Growth Charge confirmation"
     ]
@@ -331,14 +366,14 @@ def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
 
 def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     specs = {spec[0]: spec for spec in _literal_assignment("RESIZE_MATRIX_SPECS")}
-    assert specs["resize-story-large"][3:5] == (900, 800)
-    assert specs["resize-fertilizer-large"][3:5] == (900, 800)
-    assert specs["resize-species-overview-large"][3:5] == (900, 800)
-    assert specs["resize-fertilizer-replacement-large"][3:5] == (820, 660)
-    assert specs["resize-starter-confirmation-large"][3:5] == (520, 360)
+    assert specs["resize-story-large"][3:5] == (940, 800)
+    assert specs["resize-fertilizer-large"][3:5] == (940, 800)
+    assert specs["resize-species-overview-large"][3:5] == (940, 800)
+    assert specs["resize-fertilizer-replacement-large"][3:5] == (820, 535)
+    assert specs["resize-starter-confirmation-large"][3:5] == (600, 380)
     assert specs["resize-collection-minimum"][3:5] == (720, 500)
-    assert specs["resize-collection-default"][3:5] == (940, 680)
-    assert specs["resize-collection-large"][3:5] == (1000, 820)
+    assert specs["resize-collection-default"][3:5] == (1120, 800)
+    assert specs["resize-collection-large"][3:5] == (1180, 880)
 
 
 def test_footer_stress_fixture_resets_deferred_scroll_state() -> None:
@@ -476,6 +511,9 @@ def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> No
         "content_minimum_size_hint_height": 680,
         "scroll_minimum": 0,
         "scroll_maximum": 420,
+        "last_body_child_bottom": 720,
+        "last_body_child_bottom_at_scroll_end": 400,
+        "require_no_scroll": False,
         "required_content_height": 720,
         "reachable_content_height": 720,
         "issues": [],

@@ -87,12 +87,11 @@ def test_no_starter_home_is_decision_oriented_and_keeps_the_name_fallback_visibl
         )
     )
 
-    assert f'aria-label="{HOME_NO_STARTER_TITLE}"' in html
-    assert HOME_NO_STARTER_BODY in html
+    assert f'aria-label="{CHOOSE_STARTER_ACTION}"' in html
     assert HOME_NO_STARTER_ACCESSIBLE in html
     assert CHOOSE_STARTER_ACTION in html
     assert 'data-anki-garden-command="anki-garden:choose-starter"' in html
-    assert 'data-testid="home-title" aria-label="Choose your first plant"' in html
+    assert 'data-testid="home-title" aria-label="Choose a starter"' in html
     assert "Answer your first card" not in html
     assert 'data-testid="home-streak"' not in html
     assert 'data-testid="home-currency"' not in html
@@ -125,16 +124,12 @@ def test_canonical_copy_inventory_is_centralized() -> None:
     }
     assert all(name in copy for name in expected_names)
     assert GARDEN_SETUP_SECONDARY_ACTION == "Not now"
-    assert starter_confirmation("Rose Plant") == (
-        "Rose Plant is planted and ready to nurture. "
-        "Nurture it before studying so Anki card answers can add Growth."
-    )
-    assert starter_ready_next_step("Rose Plant") == (
-        "Rose Plant is ready. Answer an Anki card to give it Growth."
-    )
-    assert ACTIVE_GROWTH_TITLE == "Growth is underway"
-    assert "nurtured plant" in ACTIVE_GROWTH_GUIDANCE
-    assert "Nurture" in ACTIVE_GROWTH_GUIDANCE
+    assert NURSERY_STARTER_COUNT == ""
+    assert STARTER_SAVE_ERROR == "Couldn’t save your garden. Nothing was changed."
+    assert starter_confirmation("Rose Plant") == "Choose Rose Plant?"
+    assert starter_ready_next_step("Rose Plant") == "Rose Plant is now earning Growth."
+    assert ACTIVE_GROWTH_TITLE == "Nurtured"
+    assert ACTIVE_GROWTH_GUIDANCE == ""
 
 
 def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> None:
@@ -156,9 +151,10 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     assert "self.catalog_tabs.tabBar().setTabVisible(index, not starter_mode)" in nursery
     assert "self.catalog_tabs.tabBar().setVisible(not starter_mode)" in nursery
     assert "self.coin_resource.setVisible(not starter_mode)" in nursery
-    assert 'self.close_button.setText("Choose later" if starter_mode else "Close")' in nursery
+    assert "GARDEN_SETUP_SECONDARY_ACTION if starter_mode else \"Close\"" in nursery
     assert "self.close_button.clicked.connect(self._close_nursery)" in nursery
     assert "self._starter_card(species)" in nursery
+    assert "available = available[:4]" in nursery
     assert "self.catalog_tabs.setAccessibleDescription" in nursery
     assert "Cost: Free" not in nursery  # the visible label is centralized
     available_card = _method_source(
@@ -173,7 +169,7 @@ def test_starter_mode_explains_the_low_pressure_choice_and_disabled_tabs() -> No
     )
     assert "Starting stage:" not in starter_card
     assert "seed_title(species_name)" in starter_card
-    assert "COST_FREE" in starter_card
+    assert 'QLabel("Permanent")' in starter_card
     assert 'QPushButton("Choose")' in starter_card
     assert 'f"Choose {item_name} as your first plant"' in starter_card
     assert 'QPushButton("View stages")' in starter_card
@@ -206,27 +202,25 @@ def test_onboarding_copy_has_one_instruction_owner_per_visible_surface() -> None
         "_open_starter_nursery",
     )
 
-    assert 'HOME_NO_STARTER_BODY = "Reviews completed before setup do not earn Growth."' in copy
-    assert '"Choose a plant before studying. Reviews completed before setup do not earn Growth."' in copy
+    assert 'HOME_NO_STARTER_BODY = "Your first plant is free."' in copy
+    assert 'HOME_NO_STARTER_ACCESSIBLE = "Choose a starter for your garden."' in copy
     assert '"No plant selected"' in contracts
     assert '"Ready to nurture"' in contracts
     assert '"NO PLANT SELECTED"' in stats
     assert '"READY TO NURTURE"' in stats
     assert "self.growth_value.hide()" in stats
     assert 'self.progress["growth"].hide()' in stats
-    assert refresh_onboarding.count('"Not now"') == 3
+    assert refresh_onboarding.count("GARDEN_SETUP_SECONDARY_ACTION") == 3
     assert refresh_onboarding.count('"Back"') == 2
     assert "self._set_onboarding_shield(visible)" in refresh_onboarding
-    assert '"Return to Anki"' in refresh_onboarding
-    assert '"Explore garden"' in refresh_onboarding
+    assert '"Back to Anki"' in refresh_onboarding
+    assert '"Explore Garden"' in refresh_onboarding
     assert '"Try again"' in refresh_onboarding
-    assert '"Return to setup"' in refresh_onboarding
-    assert 'f"Starter selected: {species}\\n"' in completion
-    assert 'f"Garden bed selected: {bed}\\n"' in completion
-    assert 'f"Plant nurtured: {plant_name}\\n"' in completion
-    assert '"Earlier Growth and repeatable rewards are not backfilled. "' in completion
-    assert '"Reliably reconstructable one-time achievements may be."' in completion
-    assert '"The last committed setup state is unchanged."' in failure
+    assert '"Back to setup"' in refresh_onboarding
+    assert 'return f"{plant_name} is growing in {bed}."' in completion
+    assert "qualifying" not in completion
+    assert 'return "Nothing was changed."' in failure
+    assert "last committed setup state" not in failure
     assert "self._onboarding_save_error = message" in open_starter
     assert "self.toast_region.show_message" not in open_starter
 
@@ -236,12 +230,12 @@ def test_nursery_tab_intros_do_not_repeat_section_details() -> None:
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_sync_catalog_intro"
     )
 
-    assert '2: "Make room for a larger plant collection."' in sync_intro
-    assert '3: "Collect a new look for the garden."' in sync_intro
+    assert '2: ""' in sync_intro
+    assert '3: ""' in sync_intro
     assert "Garden spaces unlock permanently and in order." not in sync_intro
     assert "Preview collectible Weather and Scenery before buying." not in sync_intro
     nursery = _source("ankigarden/ui/dashboard.py")
-    assert '"Unlocks follow the order shown below."' in nursery
+    assert '"Unlocks follow the order shown below."' not in nursery
     assert '"Each unlock adds one permanent planting space."' not in nursery
 
 
@@ -271,10 +265,10 @@ def test_onboarding_and_navigation_use_one_direct_starter_route() -> None:
     )
     assert "self.engine.select_starter_species(species)" in choose_starter
     assert "self._starter_choice_pending" in choose_starter
-    assert "Starter setup could not be saved." in choose_starter
-    assert "the last committed Garden setup is unchanged" in choose_starter
-    assert "Choose the plant " in choose_starter
-    assert "again to retry, or select Choose later." in choose_starter
+    assert '"Couldn’t save your garden. Nothing was changed."' in choose_starter
+    assert "Starter setup could not be saved." not in choose_starter
+    assert "last committed Garden setup" not in choose_starter
+    assert "Not now" not in choose_starter
     assert "except Exception:" in choose_starter
     assert "starter choice save failed unexpectedly" in choose_starter
     assert "if not ok:" in choose_starter
@@ -292,7 +286,7 @@ def test_fully_grown_and_accessibility_copy_are_rendered_at_the_action_site() ->
     assert "self.choose_another = QPushButton(FULLY_GROWN_ACTION)" in dashboard
     assert "self.choose_another.show()" in dashboard
     assert "All_PLANTS_COMPLETE" not in dashboard
-    assert "ALL_PLANTS_COMPLETE" in dashboard
+    assert "ALL_PLANTS_COMPLETE" not in dashboard
     assert KEYBOARD_HINT in scene
     assert "focusInEvent" in scene and "_show_keyboard_hint" in scene
     focus_in = _method_source("ankigarden/ui/scene.py", "GardenSceneWidget", "focusInEvent")
@@ -305,7 +299,7 @@ def test_reduced_motion_is_visible_and_suppresses_scene_motion() -> None:
     scene = _source("ankigarden/ui/scene.py")
     assert 'self.reduced_motion = QCheckBox()' in studio
     assert "self.motion_row = ToggleSettingRow(" in studio
-    assert 'controls_layout.addWidget(self.motion_row)' in studio
+    assert 'self.advanced_actions_layout.addWidget(self.motion_row)' in studio
     assert '"reduced_motion": animation_flags[1]' in studio
     assert "effective_motion_enabled(" in studio
     assert "os_reader=lambda: self._system_reduced_motion" in studio

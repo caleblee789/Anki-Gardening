@@ -358,6 +358,42 @@ class NurturedMarkerPlacement:
     asset_key: str
     orientation: str
     used_fallback: bool = False
+    contact_shadow: Rect = Rect(0, 0, 0, 0)
+    perspective_scale: float = 1.0
+
+
+def _nurtured_marker_perspective_scale(layout: PlantPlacement) -> float:
+    """Return the release row scale for the watering-can accessory."""
+
+    return {
+        "far": 0.78,
+        "rear": 0.78,
+        "middle": 0.90,
+        "near": 1.00,
+        "front": 1.00,
+    }.get(str(layout.depth_band), 1.00)
+
+
+def _nurtured_marker_contact_shadow(
+    marker: Rect,
+    canvas_width: float,
+    canvas_height: float,
+    margin: float,
+) -> Rect:
+    """Resolve a subtle, bounded ground-contact shadow below the can."""
+
+    shadow_width = marker.width * 0.68
+    shadow_height = max(3.0, marker.height * 0.12)
+    shadow_x = marker.x + (marker.width - shadow_width) / 2.0
+    shadow_y = marker.y + marker.height * 0.87
+    safe_right = max(margin, float(canvas_width) - margin)
+    safe_bottom = max(margin, float(canvas_height) - margin)
+    return Rect(
+        max(margin, min(shadow_x, safe_right - shadow_width)),
+        max(margin, min(shadow_y, safe_bottom - shadow_height)),
+        min(shadow_width, max(1.0, safe_right - margin)),
+        min(shadow_height, max(1.0, safe_bottom - margin)),
+    )
 
 
 @dataclass(frozen=True)
@@ -457,7 +493,11 @@ class SceneGeometryLayout:
                 )
                 if region.clipped_to(scene).area > 0
             )
-            marker_size = max(52.0, min(88.0, planter.width * 0.45))
+            marker_scale = _nurtured_marker_perspective_scale(placement)
+            marker_size = max(
+                44.0,
+                min(88.0, max(68.0, planter.width * 0.45) * marker_scale),
+            )
             lane_width = marker_size + 18.0
             vertical_sweep = marker_size * 0.85
             lane_height = marker_size + vertical_sweep * 2.0 + 16.0
@@ -491,6 +531,18 @@ class SceneGeometryLayout:
             alternate = "right" if preferred == "left" else "left"
             center_x = visible.x + visible.width / 2
             anchor_y = visible.y + min(visible.height * 0.42, 80.0)
+            horizontal_preference = (
+                "left" if center_x >= safe.x + safe.width / 2 else "right"
+            )
+            vertical_preference = (
+                "above" if anchor_y >= safe.y + safe.height / 2 else "below"
+            )
+            opposite_horizontal = (
+                "right" if horizontal_preference == "left" else "left"
+            )
+            opposite_vertical = (
+                "below" if vertical_preference == "above" else "above"
+            )
             beds.append(SceneBedGeometry(
                 bed_id=int(placement.slot_index),
                 sprite_anchor=placement.ground_anchor,
@@ -498,7 +550,14 @@ class SceneGeometryLayout:
                 visible_region=visible,
                 selection_region=selection,
                 popover_anchor=(center_x, anchor_y),
-                popover_candidates=("right", "left", "above", "below", "bottom-docked"),
+                popover_candidates=(
+                    horizontal_preference,
+                    vertical_preference,
+                    opposite_horizontal,
+                    opposite_vertical,
+                    "bottom-docked",
+                    "top-docked",
+                ),
                 watering_can_accessory_lanes=(lane(preferred), lane(alternate)),
                 move_target=bed_target,
                 hotspot=bed_target,
@@ -555,25 +614,36 @@ class SceneGeometryLayout:
         minimum_size: tuple[float, float],
         extra_obstacles: Iterable[Rect] = (),
     ) -> PopoverPlacement:
-        """Place a plant panel right, left, above, below, then docked."""
+        """Place a plant panel without obscuring its selected scene target."""
 
         selected = self.bed(bed_id)
         if selected is None:
             raise ValueError(f"unknown garden bed {bed_id}")
+        popover_inset = min(
+            16.0,
+            self.scene_bounds.width / 4.0,
+            self.scene_bounds.height / 4.0,
+        )
+        popover_bounds = Rect(
+            popover_inset,
+            popover_inset,
+            max(1.0, self.scene_bounds.width - popover_inset * 2.0),
+            max(1.0, self.scene_bounds.height - popover_inset * 2.0),
+        )
         minimum_width = min(
-            self.safe_bounds.width,
+            popover_bounds.width,
             max(1.0, float(minimum_size[0])),
         )
         minimum_height = min(
-            self.safe_bounds.height,
+            popover_bounds.height,
             max(1.0, float(minimum_size[1])),
         )
         preferred_width = min(
-            self.safe_bounds.width,
+            popover_bounds.width,
             max(minimum_width, float(preferred_size[0])),
         )
         preferred_height = min(
-            self.safe_bounds.height,
+            popover_bounds.height,
             max(minimum_height, float(preferred_size[1])),
         )
         sizes = [(preferred_width, preferred_height)]
@@ -587,8 +657,8 @@ class SceneGeometryLayout:
 
         def clamp(rect: Rect) -> Rect:
             return Rect(
-                max(self.safe_bounds.x, min(rect.x, self.safe_bounds.right - rect.width)),
-                max(self.safe_bounds.y, min(rect.y, self.safe_bounds.bottom - rect.height)),
+                max(popover_bounds.x, min(rect.x, popover_bounds.right - rect.width)),
+                max(popover_bounds.y, min(rect.y, popover_bounds.bottom - rect.height)),
                 rect.width,
                 rect.height,
             )
@@ -622,7 +692,11 @@ class SceneGeometryLayout:
                 height,
             )
 
-        sides = ("right", "left", "above", "below")
+        sides = tuple(
+            side
+            for side in selected.popover_candidates
+            if side in {"right", "left", "above", "below"}
+        ) or ("right", "left", "above", "below")
         selected_obstacle = selected.selection_region.expanded(6.0)
         soft = {
             bed.bed_id: bed.selection_region.expanded(5.0)
@@ -635,40 +709,86 @@ class SceneGeometryLayout:
             if isinstance(obstacle, Rect) and obstacle.area > 0
         ]
 
+        scored: list[tuple[tuple[float, ...], str, Rect]] = []
+        preferred_area = max(1.0, preferred_width * preferred_height)
+        for side_index, side in enumerate(sides):
+            for size_index, (width, height) in enumerate(sizes):
+                raw = candidate(side, width, height)
+                rectangle = clamp(raw)
+                if rectangle.intersects(selected_obstacle):
+                    continue
+                if any(rectangle.intersects(obstacle) for obstacle in hard):
+                    continue
+                soft_overlap = sum(
+                    rectangle.intersection_area(obstacle)
+                    for obstacle in soft.values()
+                )
+                shrink_ratio = 1.0 - rectangle.area / preferred_area
+                clamp_shift = abs(rectangle.x - raw.x) + abs(rectangle.y - raw.y)
+                scored.append((
+                    (
+                        soft_overlap,
+                        max(0.0, shrink_ratio),
+                        float(side_index),
+                        float(size_index),
+                        clamp_shift,
+                    ),
+                    side,
+                    rectangle,
+                ))
+
         chosen_side = ""
         chosen: Rect | None = None
-        for allow_soft_overlap in (False, True):
-            for side in sides:
-                for width, height in sizes:
-                    rectangle = clamp(candidate(side, width, height))
-                    if rectangle.intersects(selected_obstacle):
-                        continue
-                    if any(rectangle.intersects(obstacle) for obstacle in hard):
-                        continue
-                    if not allow_soft_overlap and any(
-                        rectangle.intersects(obstacle) for obstacle in soft.values()
-                    ):
-                        continue
-                    chosen_side, chosen = side, rectangle
-                    break
-                if chosen is not None:
-                    break
-            if chosen is not None:
-                break
+        if scored:
+            _, chosen_side, chosen = min(scored, key=lambda row: row[0])
 
         docked = chosen is None
         if chosen is None:
             dock_height = min(
                 preferred_height,
-                max(minimum_height, self.safe_bounds.height * 0.44),
+                max(minimum_height, popover_bounds.height * 0.44),
             )
-            chosen = Rect(
-                self.safe_bounds.x,
-                self.safe_bounds.bottom - dock_height,
-                self.safe_bounds.width,
-                dock_height,
+            dock_candidates = (
+                (
+                    "bottom-docked",
+                    Rect(
+                        popover_bounds.x,
+                        popover_bounds.bottom - dock_height,
+                        popover_bounds.width,
+                        dock_height,
+                    ),
+                ),
+                (
+                    "top-docked",
+                    Rect(
+                        popover_bounds.x,
+                        popover_bounds.y,
+                        popover_bounds.width,
+                        dock_height,
+                    ),
+                ),
             )
-            chosen_side = "bottom-docked"
+            viable_docks = [
+                (side, rectangle)
+                for side, rectangle in dock_candidates
+                if not rectangle.intersects(selected_obstacle)
+                and not any(rectangle.intersects(obstacle) for obstacle in hard)
+            ]
+            if viable_docks:
+                chosen_side, chosen = min(
+                    viable_docks,
+                    key=lambda row: sum(
+                        row[1].intersection_area(obstacle)
+                        for obstacle in soft.values()
+                    ),
+                )
+            else:
+                # Unsupported viewports still receive a bounded panel. Normal
+                # release layouts are tested to resolve a target-clear option.
+                chosen_side, chosen = min(
+                    dock_candidates,
+                    key=lambda row: row[1].intersection_area(selected_obstacle),
+                )
 
         avoided = tuple(
             bed_key for bed_key, obstacle in sorted(soft.items())
@@ -680,7 +800,7 @@ class SceneGeometryLayout:
         elif chosen_side == "left":
             start = (selected.visible_region.x, anchor_y)
             end = (chosen.right, max(chosen.y, min(anchor_y, chosen.bottom)))
-        elif chosen_side == "above":
+        elif chosen_side in {"above", "top-docked"}:
             start = (anchor_x, selected.visible_region.y)
             end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.bottom)
         else:
@@ -823,7 +943,11 @@ def _nurtured_marker_side_placement(
         else "nurtured_marker"
     )
     orientation = "spout-right" if side == "left" else "spout-left"
-    desired_size = max(52.0, min(88.0, support.width * 0.45))
+    perspective_scale = _nurtured_marker_perspective_scale(layout)
+    desired_size = max(
+        44.0,
+        min(88.0, max(68.0, support.width * 0.45) * perspective_scale),
+    )
     blocked = [
         rect for rect in tuple(obstacles) + tuple(protected_regions)
         if isinstance(rect, Rect) and rect.area > 0
@@ -939,6 +1063,13 @@ def _nurtured_marker_side_placement(
                         side=side,
                         asset_key=asset_key,
                         orientation=orientation,
+                        contact_shadow=_nurtured_marker_contact_shadow(
+                            candidate,
+                            safe_width,
+                            safe_height,
+                            margin,
+                        ),
+                        perspective_scale=perspective_scale,
                     ),
                 ))
 
@@ -976,6 +1107,13 @@ def _nurtured_marker_side_placement(
         asset_key=asset_key,
         orientation=orientation,
         used_fallback=True,
+        contact_shadow=_nurtured_marker_contact_shadow(
+            fallback,
+            safe_width,
+            safe_height,
+            margin,
+        ),
+        perspective_scale=perspective_scale,
     )
 
 
@@ -1009,7 +1147,8 @@ def nurtured_marker_placement(
             )
             attempts.append((lane_side, lane))
     else:
-        attempts = [(preferred, None)]
+        alternate = "right" if preferred == "left" else "left"
+        attempts = [(preferred, None), (alternate, None)]
 
     for allow_scaling in (False, True):
         resolved: list[NurturedMarkerPlacement] = []
@@ -1041,10 +1180,23 @@ def nurtured_marker_placement(
             ):
                 resolved.append(candidate)
         if resolved:
+            edge_target = max(float(margin), min(20.0, canvas_width * 0.04))
+
+            def edge_penalty(candidate: NurturedMarkerPlacement) -> float:
+                pulse = candidate.pulse_bounds
+                clearance = min(
+                    pulse.x,
+                    pulse.y,
+                    float(canvas_width) - pulse.right,
+                    float(canvas_height) - pulse.bottom,
+                )
+                return max(0.0, edge_target - clearance)
+
             return min(
                 resolved,
                 key=lambda candidate: (
                     -candidate.rect.width,
+                    edge_penalty(candidate),
                     0 if candidate.side == preferred else 1,
                     math.hypot(
                         candidate.rect.x + candidate.rect.width / 2 - layout.ground_anchor[0],
@@ -1452,6 +1604,9 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             compact_scale,
             1.0,
         )
+        # Preserve the already-generous compact composition while giving the
+        # desktop Garden the requested 8–12% readability lift.
+        context_scale = min(1.20, context_scale * 1.10)
     nominal_h = min(height * 0.29, available_w * 0.205) * context_scale
     specs: list[
         tuple[int, dict[str, Any], BedAnchor, tuple[float, float, float, float], tuple[float, float]]
@@ -1886,7 +2041,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 other.foliage_rect.expanded(3, 2) for other in rows
                 if other.slot_index in active_slots
             ] + placed_controls
-            control = bed_badge_rect(row, "Swap with plant", width, height, obstacles)
+            control = bed_badge_rect(row, "Move here", width, height, obstacles)
             placed_controls.append(control)
             strict = enforce_slot_envelopes and row.release_layout_candidate
             warnings = set(row.validation_warnings)
@@ -2007,7 +2162,7 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
         if reserve_move_controls:
             for row in active_result:
                 obstacles = [other.foliage_rect.expanded(3, 2) for other in active_result]
-                badge = bed_badge_rect(row, "Swap with plant", width, height, obstacles)
+                badge = bed_badge_rect(row, "Move here", width, height, obstacles)
                 blockers = [other for other in active_result if badge.intersects(other.foliage_rect.expanded(3, 2))]
                 for blocker in blockers:
                     blocker_center = blocker.foliage_rect.y + blocker.foliage_rect.height / 2
@@ -2103,9 +2258,8 @@ def move_badge_label(
         return "Locked", "locked"
     if slot_index == origin_slot:
         return "Current location", "current"
-    occupant_names = occupant_names or {}
-    label = f"Swap with {occupant_names.get(slot_index, 'plant')}" if slot_index in occupied_slots else "Move here"
-    return label, "active" if slot_index == destination_slot else "available"
+    del occupied_slots, occupant_names
+    return "Move here", "active" if slot_index == destination_slot else "available"
 
 
 def move_target_state(
@@ -2468,8 +2622,8 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if just_completed:
         return OnboardingDisplay(
             True,
-            "Starter selected",
-            "Your starter is now your nurtured plant. Your next Anki card answer will give it Growth.",
+            "Your garden is ready",
+            "",
         )
     try:
         version = int(onboarding_version)
@@ -2484,13 +2638,13 @@ def onboarding_display(total_reviews: Any, onboarding_version: Any, *, just_comp
     if reviews == 0:
         return OnboardingDisplay(
             True,
-            "Choose your starter",
-            "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+            "Choose a starter",
+            "Pick a free plant for your garden.",
             "Choose starter",
         )
     return OnboardingDisplay(
         True,
-        "Choose your starter",
-        "Choose a starter before studying to earn Growth. Answers completed before setup will not be credited later.",
+        "Choose a starter",
+        "Pick a free plant for your garden.",
         "Choose starter",
     )

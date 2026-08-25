@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -186,10 +187,13 @@ class PurchasePresentation:
     balance_after: int | None
     show_preview: bool
     show_cost: bool
+    show_item_name: bool
+    show_category: bool
     primary_label: str
     primary_accessible_name: str
     processing_label: str
     secondary_label: str
+    update_label: str = ""
     primary_route: str = ""
     terminal: bool = False
     retry: bool = False
@@ -249,23 +253,52 @@ def _priced_action(
     price: int,
 ) -> tuple[str, str, str]:
     short = {
-        PurchaseAction.PURCHASE: "Purchase",
-        PurchaseAction.PURCHASE_APPLY: "Purchase & Apply",
+        PurchaseAction.PURCHASE: "Buy",
+        PurchaseAction.PURCHASE_APPLY: "Buy and apply",
         PurchaseAction.EXTEND: "Extend",
-        PurchaseAction.PURCHASE_REPLACE: "Purchase & Replace",
+        PurchaseAction.PURCHASE_REPLACE: "Buy and replace",
         PurchaseAction.UNLOCK: "Unlock",
     }[action]
     processing = {
-        PurchaseAction.PURCHASE: "Purchasing…",
-        PurchaseAction.PURCHASE_APPLY: "Purchasing and applying…",
+        PurchaseAction.PURCHASE: "Buying…",
+        PurchaseAction.PURCHASE_APPLY: "Applying…",
         PurchaseAction.EXTEND: "Extending…",
-        PurchaseAction.PURCHASE_REPLACE: "Purchasing and replacing…",
+        PurchaseAction.PURCHASE_REPLACE: "Applying…",
         PurchaseAction.UNLOCK: "Unlocking…",
     }[action]
     return (
-        f"{short} · {max(0, int(price)):,}",
-        f"{short.replace('&', 'and')} for {max(0, int(price)):,} Garden Coins",
+        short,
+        f"{short} for {max(0, int(price)):,} Garden Coins",
         processing,
+    )
+
+
+def _stale_price_copy(item_name: str, message: str, current_price: int) -> str:
+    """Compress the engine's exact stale-price result into one reconfirmation."""
+
+    match = re.search(
+        r"changed from\s+([\d,]+)\s+to\s+([\d,]+)\s+Garden Coins",
+        str(message),
+        flags=re.IGNORECASE,
+    )
+    if match is not None:
+        old_price, new_price = match.groups()
+        return f"The price changed from {old_price} to {new_price} Garden Coins."
+    return f"{item_name} now costs {max(0, int(current_price)):,} Garden Coins."
+
+
+def _sentence_duration(seconds: int, fallback: str) -> str:
+    """Keep financially relevant lost time exact at sub-minute boundaries."""
+
+    remaining = max(0, int(seconds))
+    if remaining < 60:
+        unit = "second" if remaining == 1 else "seconds"
+        return f"{remaining} {unit}"
+    return (
+        _without_period(fallback)
+        .removesuffix(" remaining")
+        .removesuffix(" left")
+        or compact_duration(remaining)
     )
 
 
@@ -291,145 +324,75 @@ def purchase_presentation(
     more_details: list[PurchaseFact] = []
     preview_style = PurchasePreviewStyle.SQUARE
     action = PurchaseAction.PURCHASE
-    outcome = _without_period(quote.descriptor.function)
+    outcome = ""
+    # Activity labels are persisted internal ledger reasons. Keep their stable
+    # wording even though visible buttons use the shorter "Buy" verb.
     activity_label = f"Purchased {item_name}"
-    success_message = f"{item_name} purchased."
-    next_actions = ("Continue shopping",)
+    success_message = f"{item_name} added."
+    next_actions = ("Keep browsing",)
+    update_label = ""
 
     if quote.kind is PurchaseKind.SPECIES:
         species_name = item_name[:-5] if item_name.lower().endswith(" seed") else item_name
-        title = f"Purchase {item_name}"
-        outcome = f"Adds {species_name} to your collection permanently."
-        facts.extend((
-            PurchaseFact("planting", "", "Plant in any open garden bed"),
-            PurchaseFact(
-                "passive",
-                "Growth routing",
-                "No Growth while in Collection. Once planted and unfinished, "
-                "this plant participates in normal nurtured and passive Growth routing.",
-            ),
-            PurchaseFact(
-                "collection",
-                "Collection",
-                f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
-            ),
-        ))
-        badges.append("Permanent")
-        success_message = f"{species_name} added to your collection."
-        next_actions = ("Plant in garden", "View Collection")
+        title = f"Buy {item_name}?"
+        outcome = f"Adds {species_name} to your collection."
+        success_message = f"{species_name} added."
+        next_actions = ("Place in Garden", "View Collection")
     elif quote.kind is PurchaseKind.GROWTH_CHARGE:
-        title = f"Purchase {item_name}"
+        title = f"Buy {item_name}?"
         outcome = f"Adds one {item_name} to your inventory."
-        facts.extend((
-            PurchaseFact(
-                "effect",
-                "Effect",
-                f"{_compact_effect(quote.descriptor.buff)} to one unfinished plant",
-                True,
-            ),
-            PurchaseFact(
-                "inventory",
-                "Inventory",
-                f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
-            ),
-        ))
-        badges.append("Single use")
-        success_message = f"{item_name} added to your inventory."
-        next_actions = ("Use Growth Charge", "Continue shopping")
+        success_message = f"{item_name} added."
+        next_actions = ("Use charge", "Keep browsing")
     elif quote.kind is PurchaseKind.FERTILIZER:
         fertilizer_target = target_name or "your nurtured plant"
         if quote.replacement_required:
             action = PurchaseAction.PURCHASE_REPLACE
-            title = f"Replace with {item_name}"
-            outcome = f"Replaces the active Fertilizer on {fertilizer_target} and starts immediately."
-            facts.extend((
-                PurchaseFact("effect", "Effect", _compact_effect(quote.descriptor.buff), True),
-                PurchaseFact("duration", "Duration", _without_period(quote.descriptor.duration)),
-            ))
-            activity_label = f"Replaced Fertilizer with {item_name} on {fertilizer_target}"
-            success_message = (
-                f"{item_name} replaced the Fertilizer on {fertilizer_target} "
-                f"for {_without_period(quote.descriptor.duration)}."
+            current_name = str(quote.current_item_name or "Fertilizer")
+            title = f"Replace {current_name}?"
+            lost_time = _sentence_duration(
+                quote.current_seconds_remaining,
+                quote.current_duration,
             )
+            outcome = (
+                f"{item_name} starts immediately. You will lose {lost_time} of "
+                f"{current_name}."
+            )
+            activity_label = f"Replaced Fertilizer with {item_name} on {fertilizer_target}"
+            success_message = f"{item_name} applied."
         elif quote.disposition is PurchaseDisposition.EXTENDED:
             action = PurchaseAction.EXTEND
-            title = f"Extend {item_name}"
-            outcome = f"Adds {_without_period(quote.descriptor.duration)} to the Fertilizer on {fertilizer_target}."
-            facts.extend((
-                PurchaseFact("effect", "Effect", _compact_effect(quote.descriptor.buff), True),
-                PurchaseFact(
-                    "remaining",
-                    "Remaining",
-                    f"{compact_duration(quote.current_seconds_remaining)} → "
-                    f"{compact_duration(quote.resulting_seconds_remaining)}",
-                    True,
-                ),
-            ))
-            badges.append(f"Adds {_without_period(quote.descriptor.duration)}")
-            activity_label = f"Extended {item_name} on {fertilizer_target}"
-            success_message = (
-                f"{item_name} extended to "
-                f"{compact_duration(quote.resulting_seconds_remaining)} remaining "
-                f"on {fertilizer_target}."
+            title = f"Extend {item_name}?"
+            outcome = (
+                f"Adds {_without_period(quote.descriptor.duration)} to "
+                f"{fertilizer_target}."
             )
+            activity_label = f"Extended {item_name} on {fertilizer_target}"
+            success_message = f"{item_name} extended."
         else:
             action = PurchaseAction.PURCHASE_APPLY
-            title = f"Purchase & Apply {item_name}"
-            outcome = f"Applies {item_name} to {fertilizer_target} immediately."
-            facts.extend((
-                PurchaseFact("effect", "Effect", _compact_effect(quote.descriptor.buff), True),
-                PurchaseFact(
-                    "condition",
-                    "Condition",
-                    f"While {fertilizer_target} is nurtured and not fully grown",
-                ),
-            ))
-            badges.append(_without_period(quote.descriptor.duration))
-            activity_label = f"Applied {item_name} to {fertilizer_target}"
-            success_message = (
-                f"{item_name} applied to {fertilizer_target} for "
-                f"{_without_period(quote.descriptor.duration)}."
+            title = f"Buy and apply {item_name}?"
+            outcome = (
+                f"{fertilizer_target} · {_compact_effect(quote.descriptor.buff)} "
+                f"for {_without_period(quote.descriptor.duration)}"
             )
-        next_actions = ("View plant", "Continue shopping")
+            activity_label = f"Applied {item_name} to {fertilizer_target}"
+            success_message = f"{item_name} applied."
+        next_actions = ("View plant", "Keep browsing")
     elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
-        kind_name = "weather" if quote.kind is PurchaseKind.WEATHER else "scenery"
-        title = f"Purchase {item_name}"
-        outcome = f"Permanently unlocks {item_name} {kind_name}."
-        facts.extend((
-            PurchaseFact(
-                "effect",
-                "Effect",
-                f"While equipped: {_compact_effect(quote.descriptor.buff)}",
-                True,
-            ),
-            PurchaseFact("equipment_limit", "", f"Only one {kind_name} can be equipped at a time"),
-            PurchaseFact("equipment", "Equipment", "Preview and equip later in Collection"),
-        ))
-        badges.append("Permanent unlock")
+        title = f"Buy {item_name}?"
+        outcome = "Adds it to Weather and Scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
-        success_message = f"{item_name} unlocked. Preview or equip it in Collection."
-        next_actions = ("Open Collection", "Continue shopping")
+        success_message = f"{item_name} added to your collection."
+        next_actions = ("View Collection", "Keep browsing")
     else:
         action = PurchaseAction.UNLOCK
-        bed_name = item_name.replace("Garden bed", "Garden Bed")
-        unlocked_before, unlocked_after = _bed_unlock_counts(quote)
-        title = f"Unlock {bed_name}"
-        outcome = "Permanently adds one planting space to your garden."
-        facts.extend((
-            PurchaseFact(
-                "unlocked_beds",
-                "Unlocked beds",
-                f"{unlocked_before:,} → {unlocked_after:,}",
-                True,
-            ),
-            PurchaseFact("available_bed", "Becomes available", bed_name),
-            PurchaseFact("plants", "", "Existing plants stay where they are"),
-        ))
-        badges.append("Permanent")
+        bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
+        title = f"Unlock {bed_name}?"
+        outcome = "Adds one permanent planting space."
         preview_style = PurchasePreviewStyle.GARDEN_BED
-        activity_label = f"Unlocked {bed_name}"
+        activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
-        next_actions = ("View garden", "Continue shopping")
+        next_actions = ("View Garden", "Keep browsing")
 
     primary_label, primary_accessible, processing_label = _priced_action(
         action, quote.total_price
@@ -444,129 +407,87 @@ def purchase_presentation(
     primary_route = ""
     terminal = False
     retry = False
+    show_item_name = False
+    show_category = False
+
+    if quote.replacement_required:
+        current_short = str(quote.current_item_name or "Fertilizer").removesuffix(
+            " Fertilizer"
+        )
+        new_short = item_name.removesuffix(" Fertilizer")
+        secondary_label = f"Keep {current_short}"
+        primary_label = f"Buy {new_short}"
+        primary_accessible = f"Buy {item_name} for {quote.total_price:,} Garden Coins"
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
         display_title = "Purchase failed"
-        display_outcome = (
-            "Purchase could not be saved. No Garden Coins were spent and no item was added."
+        failed_result = (
+            f"{item_name} was not applied."
+            if quote.kind is PurchaseKind.FERTILIZER
+            else f"{item_name} was not unlocked."
+            if quote.kind is PurchaseKind.BED
+            else f"{item_name} was not added."
         )
-        badges = ["Retry preview"]
-        if quote.kind is PurchaseKind.SPECIES:
-            visible_facts = (
-                PurchaseFact(
-                    "collection",
-                    "Current collection",
-                    f"{max(0, quote.inventory_before):,} (unchanged)",
-                    True,
-                ),
-                PurchaseFact(
-                    "retry_preview",
-                    "Retry preview",
-                    f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
-                ),
-            )
-        elif quote.kind is PurchaseKind.GROWTH_CHARGE:
-            visible_facts = (
-                PurchaseFact(
-                    "inventory",
-                    "Current inventory",
-                    f"{max(0, quote.inventory_before):,} (unchanged)",
-                    True,
-                ),
-                PurchaseFact(
-                    "retry_preview",
-                    "Retry preview",
-                    f"{max(0, quote.inventory_before):,} → {max(0, quote.inventory_after):,}",
-                ),
-                PurchaseFact("effect", "Effect on retry", _compact_effect(quote.descriptor.buff)),
-            )
-        elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
-            visible_facts = (
-                PurchaseFact("ownership", "Current ownership", "Not owned (unchanged)", True),
-                PurchaseFact(
-                    "retry_preview",
-                    "Retry preview",
-                    f"Would permanently unlock {item_name}",
-                ),
-            )
-        elif quote.kind is PurchaseKind.FERTILIZER:
-            visible_facts = (
-                PurchaseFact(
-                    "fertilizer",
-                    "Current Fertilizer",
-                    (
-                        f"{quote.current_item_name} (unchanged)"
-                        if quote.current_item_name
-                        else "No active Fertilizer (unchanged)"
-                    ),
-                    True,
-                ),
-                PurchaseFact("retry_preview", "Retry preview", outcome),
-                PurchaseFact("effect", "Effect on retry", _compact_effect(quote.descriptor.buff)),
-            )
-        else:
-            unlocked_before, unlocked_after = _bed_unlock_counts(quote)
-            visible_facts = (
-                PurchaseFact(
-                    "unlocked_beds",
-                    "Current unlocked beds",
-                    f"{unlocked_before:,} (unchanged)",
-                    True,
-                ),
-                PurchaseFact(
-                    "retry_preview",
-                    "Retry preview",
-                    f"{unlocked_before:,} → {unlocked_after:,}; {item_name} becomes available",
-                ),
-            )
+        display_outcome = f"{failed_result}\nNo Garden Coins were spent."
+        badges = []
+        more_details = []
+        visible_facts = ()
         balance_after = quote.balance_before
+        show_cost = False
+        show_preview = False
         secondary_label = "Cancel"
-        primary_label = "Try Again"
+        primary_label = "Try again"
         primary_accessible = f"Try purchasing {item_name} again"
         processing_label = _priced_action(action, quote.total_price)[2]
         retry = True
     elif effective_status is PurchaseStatus.INSUFFICIENT_COINS:
-        shortfall = max(0, quote.total_price - quote.balance_before)
-        unit = "Garden Coin" if shortfall == 1 else "Garden Coins"
         display_title = "Not enough Garden Coins"
-        display_outcome = f"You need {shortfall:,} more {unit}."
+        display_outcome = (
+            f"{item_name} costs {quote.total_price:,} Garden Coins.\n"
+            f"Current balance: {max(0, quote.balance_before):,}"
+        )
         visible_facts = ()
         badges = []
         balance_after = None
+        show_cost = False
+        show_preview = False
         secondary_label = "Close"
-        primary_label = "View Ways to Earn"
-        primary_accessible = "View ways to earn Garden Coins"
+        primary_label = "Ways to earn"
+        primary_accessible = primary_label
         primary_route = "ways_to_earn"
         terminal = True
     elif effective_status is PurchaseStatus.ITEM_UNAVAILABLE:
-        unavailable_name = item_name if item_name.lower() != "unavailable item" else category
-        display_title = f"{unavailable_name} Unavailable"
-        display_outcome = str(
-            message
-            or quote.message
-            or "This item is not currently available."
+        unavailable_name = (
+            "Growth Charge"
+            if quote.kind is PurchaseKind.GROWTH_CHARGE
+            else item_name if item_name.lower() != "unavailable item" else category
         )
+        display_title = f"{unavailable_name} unavailable"
+        display_outcome = "This item is unavailable right now."
         visible_facts = ()
         badges = []
         more_details = []
         show_cost = False
+        show_preview = False
         balance_after = None
         secondary_label = "Close"
-        primary_label = "Return to Nursery"
-        primary_accessible = "Return to the Nursery"
+        primary_label = "Back to Nursery"
+        primary_accessible = primary_label
         primary_route = "nursery"
         terminal = True
     elif effective_status is PurchaseStatus.ALREADY_OWNED:
-        display_title = f"{item_name} Already Owned"
-        display_outcome = str(message or quote.message or f"You already own {item_name}.")
+        display_title = "Already in your collection"
+        display_outcome = ""
         visible_facts = ()
         badges = []
         show_cost = False
+        show_preview = True
         balance_after = None
-        secondary_label = "Close"
+        secondary_label = ""
         primary_route = "collection"
-        primary_label = "Open Collection"
+        primary_label = "View in Collection"
         primary_accessible = primary_label
+        show_item_name = True
         terminal = True
     elif effective_status in {
         PurchaseStatus.TARGET_INVALID,
@@ -574,41 +495,44 @@ def purchase_presentation(
         PurchaseStatus.REPLACEMENT_REQUIRED,
     }:
         display_title = {
-            PurchaseStatus.TARGET_INVALID: "Target no longer valid",
-            PurchaseStatus.REQUEST_ID_CONFLICT: "Purchase could not be verified",
-            PurchaseStatus.REPLACEMENT_REQUIRED: "Replacement confirmation required",
+            PurchaseStatus.TARGET_INVALID: "Choose another plant",
+            PurchaseStatus.REQUEST_ID_CONFLICT: "Purchase failed",
+            PurchaseStatus.REPLACEMENT_REQUIRED: f"Replace {quote.current_item_name or 'Fertilizer'}?",
         }[effective_status]
-        invalid_message = str(
-            message or quote.message or "This purchase can no longer be completed."
+        invalid_message = (
+            f"This plant cannot use {item_name}."
+            if effective_status is PurchaseStatus.TARGET_INVALID
+            else "No Garden Coins were spent."
+            if effective_status is PurchaseStatus.REQUEST_ID_CONFLICT
+            else outcome
         )
-        if (
-            effective_status is PurchaseStatus.TARGET_INVALID
-            and quote.kind is PurchaseKind.FERTILIZER
-            and "no longer valid" in invalid_message.lower()
-        ):
-            invalid_message = (
-                "Fertilizer requires a planted, unfinished nurtured plant. "
-                "Choose another plant in the Garden."
-            )
         display_outcome = invalid_message
         visible_facts = ()
         badges = []
         show_cost = False
+        show_preview = False
         balance_after = None
-        secondary_label = "Close"
-        primary_label = "Return to Nursery"
-        primary_accessible = "Return to the Nursery"
-        primary_route = "nursery"
-        terminal = True
+        secondary_label = "Cancel"
+        primary_label = (
+            "Choose plant"
+            if effective_status is PurchaseStatus.TARGET_INVALID
+            else "Try again"
+        )
+        primary_accessible = primary_label
+        primary_route = (
+            "garden" if effective_status is PurchaseStatus.TARGET_INVALID else ""
+        )
+        terminal = effective_status is PurchaseStatus.TARGET_INVALID
+        retry = effective_status is PurchaseStatus.REQUEST_ID_CONFLICT
     elif effective_status in {
         PurchaseStatus.STALE_PRICE,
         PurchaseStatus.STALE_BALANCE,
         PurchaseStatus.STALE_TARGET,
     }:
         display_title = {
-            PurchaseStatus.STALE_PRICE: "Price updated",
-            PurchaseStatus.STALE_BALANCE: "Balance refreshed",
-            PurchaseStatus.STALE_TARGET: "Purchase details changed",
+            PurchaseStatus.STALE_PRICE: "Price changed",
+            PurchaseStatus.STALE_BALANCE: title,
+            PurchaseStatus.STALE_TARGET: "Item updated",
         }[effective_status]
         stale_outcome = str(
             message
@@ -616,27 +540,23 @@ def purchase_presentation(
             or "Review the updated purchase terms before continuing."
         )
         display_outcome = (
-            f"{stale_outcome} No purchase was made; the terms below are previews."
+            _stale_price_copy(item_name, stale_outcome, quote.total_price)
+            if effective_status is PurchaseStatus.STALE_PRICE
+            else outcome
+            if effective_status is PurchaseStatus.STALE_BALANCE
+            else "Review the current item."
         )
-        visible_facts = tuple(
-            PurchaseFact(
-                fact.key,
-                f"{fact.label} · Preview" if fact.label else "Preview",
-                f"Proposed: {fact.value}" if "→" in fact.value else fact.value,
-                fact.emphasized,
-            )
-            for fact in visible_facts
-        ) + (
-            PurchaseFact(
-                "balance_preview",
-                "Balance after purchase · Preview",
-                f"Proposed: {max(0, quote.balance_before):,} → "
-                f"{max(0, quote.balance_after):,}",
-                True,
-            ),
+        update_label = (
+            "Balance updated"
+            if effective_status is PurchaseStatus.STALE_BALANCE
+            else ""
         )
-        badges = ["Updated terms preview"]
-        balance_after = None
+        show_item_name = effective_status is PurchaseStatus.STALE_PRICE
+        badges = []
+        primary_label = "Buy" if action is PurchaseAction.PURCHASE else primary_label
+        primary_accessible = (
+            f"{primary_label} for {max(0, quote.total_price):,} Garden Coins"
+        )
 
     if effective_status not in {
         PurchaseStatus.READY,
@@ -656,26 +576,19 @@ def purchase_presentation(
         badges=tuple(badges),
         more_details=tuple(more_details),
         preview_style=preview_style,
-        target_name=(
-            target_name
-            if visible_facts or (
-                effective_status in {
-                    PurchaseStatus.READY,
-                    PurchaseStatus.PERSISTENCE_FAILURE,
-                }
-                and quote.kind is PurchaseKind.FERTILIZER
-            )
-            else ""
-        ),
+        target_name="",
         price=quote.total_price,
         balance_before=quote.balance_before,
         balance_after=balance_after,
         show_preview=show_preview,
         show_cost=show_cost,
+        show_item_name=show_item_name,
+        show_category=show_category,
         primary_label=primary_label,
         primary_accessible_name=primary_accessible,
         processing_label=processing_label,
         secondary_label=secondary_label,
+        update_label=update_label,
         primary_route=primary_route,
         terminal=terminal,
         retry=retry,

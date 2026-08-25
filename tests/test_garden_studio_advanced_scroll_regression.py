@@ -140,8 +140,8 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
 
     for name in (
         "Plants catalog",
-        "Fertilizer and Boosters catalog",
-        "Garden Spaces catalog",
+        "Fertilizers and boosts catalog",
+        "Garden beds catalog",
         "Weather and Scenery catalog",
     ):
         assert f'"{name}"' in nursery
@@ -161,13 +161,13 @@ def test_dialog_state_preserves_the_declared_ready_focus_contract() -> None:
     assert "self.set_initial_focus(self.top_close)" not in dialog
 
 
-def test_settings_troubleshooting_actions_reflow_from_their_own_viewport() -> None:
+def test_settings_diagnostics_actions_reflow_from_their_own_viewport() -> None:
     settings = _class_source(DASHBOARD_PATH, "GardenSettingsDialog")
 
-    assert '"settings.troubleshooting-actions"' in settings
-    assert "self.troubleshooting_scroll.viewport()" in settings
-    assert "QBoxLayout.Direction.TopToBottom" in settings
+    assert '"settings.diagnostics-actions"' in settings
+    assert "self.diagnostics_scroll.viewport()" in settings
     assert "QBoxLayout.Direction.LeftToRight" in settings
+    assert "QBoxLayout.Direction.TopToBottom" not in settings
     assert '"refresh-diagnostics"' in settings
     assert '"copy-report"' in settings
     assert '"technical-details"' in settings
@@ -493,7 +493,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         )
     ) == (
         "Plants catalog",
-        "Fertilizer and Boosters catalog",
+        "Fertilizers and boosts catalog",
         "Garden Spaces catalog",
         "Weather and Scenery catalog",
     )
@@ -621,6 +621,12 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         application.processEvents()
         assert settings.behavior.property("studioMode") == "wide"
         assert settings.property("footerMode") == "wide"
+    settings.resize(1020, 690)
+    settings.behavior.advanced_toggle.setChecked(True)
+    application.processEvents()
+    application.processEvents()
+    display_scroll = settings.active_vertical_scroll_regions()[0]
+    assert display_scroll.widget().width() <= display_scroll.viewport().width()
     settings.hide()
 
     dashboard.show()
@@ -784,6 +790,52 @@ def test_live_qt_dashboard_does_not_adopt_nested_dialog_scrolls_when_available(
     assert_owner_does_not_adopt(customize)
 
     customize.hide()
+    dashboard._fertilizer_timer.stop()
+    dashboard.hide()
+    owner.close()
+    application.processEvents()
+
+
+def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the 1240 by 840 release viewport on one complete Garden surface."""
+
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.ui.dashboard import GardenDashboard
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    config, storage, engine = _live_engine_fixture()
+    owner = QWidget()
+    owner.resize(1280, 900)
+    owner.show()
+    dashboard = GardenDashboard(owner, engine, storage, config)
+    dashboard.resize(1240, 840)
+    dashboard.show()
+    application.processEvents()
+    application.processEvents()
+    dashboard._update_scene_height(840)
+    application.processEvents()
+
+    viewport = dashboard.dashboard_scroll.viewport()
+    origin = dashboard.scene.mapTo(
+        viewport,
+        dashboard.scene.rect().topLeft(),
+    )
+    scene_bottom = int(origin.y()) + int(dashboard.scene.height())
+
+    assert int(dashboard.dashboard_scroll.verticalScrollBar().maximum()) == 0
+    assert int(origin.y()) >= 0
+    assert scene_bottom <= int(viewport.height())
+    assert int(dashboard.scene.maximumHeight()) == int(
+        dashboard.scene.property("viewportHeightLimit")
+    )
+
     dashboard._fertilizer_timer.stop()
     dashboard.hide()
     owner.close()
@@ -1179,7 +1231,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     for index, expected_name in enumerate(
         (
             "Plants catalog",
-            "Fertilizer and Boosters catalog",
+            "Fertilizers and boosts catalog",
             "Garden Spaces catalog",
             "Weather and Scenery catalog",
         )

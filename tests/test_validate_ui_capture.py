@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import struct
 import zlib
@@ -8,15 +9,26 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-from PIL import Image, ImageOps, PngImagePlugin
+from PIL import Image, ImageDraw, ImageOps, PngImagePlugin
 
+from scripts.capture_evidence import (
+    assemble_capture_manifest,
+    plan_incremental_capture,
+    surface_validation_report,
+)
 from scripts.validate_ui_capture import (
+    CONTACT_SHEET_OUTLINE_WIDTH,
+    CONTACT_SHEET_PREVIEW_FRAME_FILL,
+    CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+    CONTACT_SHEET_PREVIEW_INSET,
+    CONTACT_SHEET_SCREENSHOT_OUTLINE,
     CaptureValidationError,
     expected_contact_sheet_pages,
     expected_contact_sheet_dimensions,
     expected_contact_sheet_page_groups,
     expected_resize_geometry_acceptance,
     load_capture_contract,
+    load_capture_layout_contract,
     load_dialog_scroll_capture_coverage,
     load_expected_renderer_families,
     load_expected_resize_layout_modes,
@@ -107,6 +119,373 @@ def _png_with_corrupt_idat(width: int, height: int) -> bytes:
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    completion = path.parent / "capture-complete.json"
+    if path.name == "manifest.json" and completion.is_file():
+        completion_payload = json.loads(completion.read_text(encoding="utf-8"))
+        completion_payload["manifest_sha256"] = hashlib.sha256(
+            path.read_bytes()
+        ).hexdigest()
+        completion.write_text(
+            json.dumps(completion_payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
+def _valid_visual_contract(
+    label: str,
+    state_kind: str,
+    window_family: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    if state_kind in {"home", "reviewer"}:
+        visual: dict[str, object] = {
+            "applicable": False,
+            "controls": [],
+            "close_icons": [],
+            "primary_action_count": 0,
+            "visible_horizontal_scrollbars": [],
+            "largest_unexplained_gap": 0,
+            "screen_contained": True,
+            "popover": {"applicable": False, "passed": True},
+            "issues": [],
+            "passed": True,
+        }
+    else:
+        requires_inline_close = window_family != "GardenDashboard"
+        close_control = {
+            "text": "",
+            "accessible_name": "Close dialog",
+            "bounds": [68, 4, 28, 28],
+            "icon_only": True,
+            "visual_size": 28,
+            "icon_size": [14, 14],
+            "size_passed": True,
+            "contained": True,
+            "footer_action": False,
+            "text_width": 0,
+            "available_text_width": 0,
+            "text_fit_passed": True,
+        }
+        visual = {
+            "applicable": True,
+            "controls": [close_control] if requires_inline_close else [],
+            "control_sizes_passed": True,
+            "requires_inline_close": requires_inline_close,
+            "close_icons": [{
+                "accessible_name": "Close dialog",
+                "bounds": [68, 4, 28, 28],
+                "glyph_pixels_present": True,
+                "capture_pixels_present": True,
+                "passed": True,
+            }] if requires_inline_close else [],
+            "close_icons_passed": True,
+            "primary_actions": [],
+            "primary_action_count": 0,
+            "primary_action_groups": [],
+            "max_primary_actions_per_group": 0,
+            "footer_actions": [],
+            "footer_actions_contained": True,
+            "action_text_fits": True,
+            "visible_horizontal_scrollbars": [],
+            "largest_unexplained_gap": 0,
+            "screen_contained": True,
+            "popover": {
+                "applicable": label.startswith("popover-plot-"),
+                "contained_in_scene": True,
+                "page_scroll_value": 0,
+                "passed": True,
+            },
+            "issues": [],
+            "passed": True,
+        }
+
+    audit: dict[str, object] = {"visual_contract": copy.deepcopy(visual)}
+    if state_kind == "home":
+        rendered_text = (
+            "Anki Garden Loading garden..."
+            if label == "home-preview-loading" else
+            "Anki Garden Garden preview unavailable Open Garden Try again"
+            if label == "home-preview-error" else
+            "Garden Moonlit Garden Bonsai Seed Growth 25 of 100 "
+            "Ready to nurture Open Garden"
+        )
+        normal_open_action = not label.startswith("starter-") and label != (
+            "home-preview-loading"
+        )
+        audit["compact_home_copy"] = {
+            "rendered_text": rendered_text,
+            "banned_terms": [],
+            "compact_fields_present": True,
+            "support_text": "Bonsai · Seed · 25 / 100 Growth",
+            "action_text": "Open Garden" if normal_open_action else "Choose starter",
+            "action_width": 112 if normal_open_action else None,
+            "action_height": 36 if normal_open_action else None,
+            "information_model_passed": True,
+            "geometry_passed": True,
+            "passed": True,
+        }
+    if label == "full-garden":
+        audit["steady_state_visual"] = {
+            "overlay_free": True,
+            "visible_overlays": [],
+            "scene_contained": True,
+            "onboarding_step": "done",
+            "page_scroll_value": 0,
+            "passed": True,
+        }
+    if label == "progress-overview-redirect-growth":
+        audit["direct_growth_visual"] = {
+            "label": "Rewards and charges",
+            "amount": 31,
+            "label_bounds": [10, 10, 100, 24],
+            "value_bounds": [120, 10, 40, 24],
+            "label_contained": True,
+            "value_contained": True,
+            "passed": True,
+        }
+    if label == "collection-preview-restored":
+        audit["restored_preview_visual"] = {
+            "text": "Preview reset.",
+            "visible": True,
+            "bounds": [20, 20, 300, 40],
+            "contained": True,
+            "passed": True,
+        }
+        audit["restored_preview_dirty_cleared"] = True
+    if label == "nursery-item-owned":
+        contained = {
+            "bounds": [10, 10, 300, 80],
+            "container_size": [900, 600],
+            "visible": True,
+            "intersects": True,
+            "contained": True,
+        }
+        audit["owned_item_visual"] = {
+            "item_id": "dev_bonsai",
+            "item_name": "Bonsai Plant",
+            "action": "Store plant",
+            "card": copy.deepcopy(contained),
+            "title": copy.deepcopy(contained),
+            "action_bounds": copy.deepcopy(contained),
+            "passed": True,
+        }
+    if state_kind == "reviewer":
+        width = 360 if label == "reviewer-find-stacked-sync" else 344
+        height = 74
+        audit["reviewer_overlay_geometry"] = {
+            "parent_is_reviewer_webview": True,
+            "overlay_bounds": [604, 16, width, height],
+            "viewport_size": [1000, 700],
+            "viewport_contained": True,
+            "width": width,
+            "height": height,
+            "size_in_range": True,
+            "control_rects": [{
+                "name": "reviewer-answer-and-toolbar-reserved-band",
+                "bounds": [0, 572, 1000, 128],
+                "source": "reviewer-viewport-contract",
+            }],
+            "minimum_control_clearance": 460,
+            "passed": True,
+        }
+        audit["required_overlay_pixels_present"] = True
+    if label == "missing-artwork-graphical-fallback":
+        types = ["plant", "fertilizer", "weather", "scenery", "growth-charge"]
+        contained = {
+            "bounds": [5, 5, 100, 100],
+            "container_size": [900, 600],
+            "visible": True,
+            "intersects": True,
+            "contained": True,
+        }
+        entries = []
+        for artwork_type in types:
+            entries.append({
+                "type": artwork_type,
+                "source_path": f"/capture-missing/{artwork_type}.webp",
+                "accessible_name": f"{artwork_type} preview",
+                "accessible_description": "Artwork unavailable; fallback shown.",
+                "semantic_role": "missing-art",
+                "graphic_present": True,
+                "aspect_ratio_preserved": True,
+                "diagnostic_path_logged": True,
+                "passed": True,
+            })
+        audit["missing_artwork_matrix"] = {
+            "types": types,
+            "entries": entries,
+            "missing_source_paths": {
+                artwork_type: f"/capture-missing/{artwork_type}.webp"
+                for artwork_type in types
+            },
+            "diagnostic_log_fingerprints": [
+                [
+                    artwork_type.replace("-", "_"),
+                    artwork_type,
+                    f"/capture-missing/{artwork_type}.webp",
+                ]
+                for artwork_type in types
+            ],
+            "visible_card": copy.deepcopy(contained),
+            "visible_preview": copy.deepcopy(contained),
+            "visible_missing_preview_count": 1,
+            "passed": True,
+        }
+    if label == "collection-environment-mechanics":
+        keys = [
+            "toolbar",
+            "summary_title",
+            "summary_selection",
+            "edit_appearance",
+            "item_title",
+            "item_status",
+            "effect",
+            "mechanics",
+        ]
+        audit["environment_mechanics_visual"] = {
+            "required_keys": keys,
+            "required_bounds": [
+                {
+                    "key": key,
+                    "text": (
+                        "Available every day\nOnly one weather can be equipped"
+                        if key == "mechanics" else key.replace("_", " ")
+                    ),
+                    "bounds": [10, 10, 200, 30],
+                    "container_size": [900, 600],
+                    "visible": True,
+                    "intersects": True,
+                    "contained": True,
+                }
+                for key in keys
+            ],
+            "viewport_size": [900, 600],
+            "passed": True,
+        }
+        audit["mechanics_always_visible"] = True
+        audit["compact_environment_actions"] = True
+    if label == "collection-loadout-persistence-error":
+        audit["error_copy"] = (
+            "Could not save changes. Your current Garden appearance is unchanged."
+        )
+        audit["rendered_state"] = {
+            "scene_bounds": {
+                "bounds": [10, 100, 600, 300],
+                "visible": True,
+                "contained": True,
+            },
+            "feedback_bounds": {
+                "bounds": [10, 40, 600, 44],
+                "visible": True,
+                "contained": True,
+            },
+            "feedback_text": (
+                "Could not save changes. Your current Garden appearance is unchanged."
+            ),
+            "feedback_outside_artwork": True,
+            "passed": True,
+        }
+    rendered_pixel_keys = {
+        "full-garden": ["full-garden-scene"],
+        "progress-overview-redirect-growth": [
+            "direct-growth-label",
+            "direct-growth-value",
+        ],
+        "collection-preview-restored": ["restored-preview-banner"],
+        "nursery-item-owned": ["owned-item-card"],
+        "missing-artwork-graphical-fallback": ["missing-art-weather"],
+        "collection-environment-mechanics": [
+            "environment-toolbar",
+            "environment-summary-title",
+            "environment-summary-selection",
+            "environment-edit-appearance",
+            "environment-item-title",
+            "environment-item-status",
+            "environment-effect",
+            "environment-mechanics",
+        ],
+        "collection-loadout-persistence-error": [
+            "loadout-preview-scene",
+            "loadout-persistence-error",
+        ],
+    }.get(label, [])
+    if rendered_pixel_keys:
+        audit["rendered_pixel_evidence"] = {
+            "required_keys": rendered_pixel_keys,
+            "results": [
+                {
+                    "key": key,
+                    "bounds": [10, 10, 100, 30],
+                    "visible": True,
+                    "contained": True,
+                    "capture_pixels_present": True,
+                    "passed": True,
+                }
+                for key in rendered_pixel_keys
+            ],
+            "passed": True,
+        }
+    return visual, audit
+
+
+def _valid_native_layout_telemetry(
+    *,
+    label: str,
+    window_family: str,
+) -> dict[str, object]:
+    if window_family in {"AnkiQt", "GardenDashboard"}:
+        return {
+            "applicable": False,
+            "source": "",
+            "issues": [],
+            "passed": True,
+        }
+    limits, button_heights, tabular_labels = load_capture_layout_contract(
+        CAPTURE_SOURCE
+    )
+    tabular_required = label in tabular_labels
+    tabular_rows = (
+        [{
+            "widget": "QLabel",
+            "objectName": "metric",
+            "text": "1,250 Growth",
+        }]
+        if tabular_required else []
+    )
+    return {
+        "applicable": True,
+        "source": "DialogShell.capture_layout_telemetry",
+        "clientSurfaceFill": 0.96,
+        "nurseryRootOffset": 8 if window_family == "NurseryDialog" else None,
+        "contentToFooterGap": 12,
+        "maximumActionWidthRatio": 0.32,
+        "scrollbars": [],
+        "minimumRenderedTextSize": 13.0,
+        "tooltipWidgetCount": 1,
+        "elidedWidgetCount": 1,
+        "elisionWithoutTooltipCount": 0,
+        "overflowOwnerCount": 0,
+        "clientWidth": 100,
+        "clientGutterPx": 4,
+        "buttonRecords": [{
+            "text": "",
+            "buttonSize": "icon",
+            "height": 32,
+            "width": 32,
+            "expectedHeight": 30,
+            "expectedOuterHeight": 32,
+            "visualControlSize": 30,
+            "outerBorderAllowance": 2,
+            "renderedTextSize": 13.0,
+            "passed": True,
+        }],
+        "tabularNumeralWidgets": tabular_rows,
+        "tabularNumeralWidgetCount": len(tabular_rows),
+        "tabularNumeralsRequired": tabular_required,
+        "limits": limits,
+        "buttonHeights": button_heights,
+        "issues": [],
+        "passed": True,
+    }
 
 
 def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
@@ -131,6 +510,9 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     }
     screenshots: list[str] = []
     records: list[dict[str, object]] = []
+    environment_digest = "a" * 64
+    production_package_sha256 = "b" * 64
+    render_surfaces: dict[str, dict[str, object]] = {}
     for capture_id, label in enumerate(contract.labels, start=1):
         path = tmp_path / f"{capture_id:02d}-{label}.png"
         fixture_source = f"ordered-step-{capture_id:03d}:fixture"
@@ -150,6 +532,14 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
         path.write_bytes(
             _png_bytes(*physical_size, marker=capture_id)
         )
+        png_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        render_digest = hashlib.sha256(label.encode("utf-8")).hexdigest()
+        render_surfaces[label] = {
+            "digest": render_digest,
+            "environment_digest": environment_digest,
+            "input_count": 1,
+            "inputs": {"fixture": render_digest},
+        }
         screenshots.append(str(path))
         postcondition_kind = state_contract["kind"]
         postcondition_facts = {
@@ -228,31 +618,57 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 "viewport_top": 100,
                 "viewport_height": 300,
                 "viewport_bottom": 400,
-                "declared_clearance": 64,
-                "layout_clearance": 64,
+                "declared_clearance": 0,
+                "layout_clearance": 0,
                 "content_height": 300,
                 "content_size_hint_height": 280,
                 "content_minimum_size_hint_height": 260,
                 "scroll_minimum": 0,
                 "scroll_maximum": 0,
+                "last_body_child_bottom": 300,
+                "last_body_child_bottom_at_scroll_end": 400,
+                "require_no_scroll": bool(
+                    label.startswith("purchase-confirmation-")
+                    or label.startswith("purchase-error-")
+                    or label.startswith("growth-charge-")
+                ),
                 "required_content_height": 300,
                 "reachable_content_height": 300,
                 "issues": [],
                 "passed": True,
             }
+        visual_contract, visual_audit = _valid_visual_contract(
+            label,
+            str(postcondition_kind),
+            family,
+        )
+        native_layout_telemetry = _valid_native_layout_telemetry(
+            label=label,
+            window_family=family,
+        )
         records.append({
             "audit": {
                 "fixture_identity": fixture_validation,
+                "native_layout_telemetry": copy.deepcopy(
+                    native_layout_telemetry
+                ),
+                **visual_audit,
                 "passed": True,
             },
             "actual_client_size": list(logical_size),
             "capture_id": capture_id,
             "capture_display": "primary",
+            "capture_environment_digest": environment_digest,
+            "capture_method": "qt-widget-grab",
             "capture_duration_ms": 1.0,
+            "capture_ms": 1.0,
+            "audit_ms": 1.0,
+            "cleanup_ms": 1.0,
             "constraint_limited": False,
             "declared_client_size": list(logical_size),
             "device_pixel_ratio": dpr,
             "dialog_scroll_audit": dialog_scroll_audit,
+            "native_layout_telemetry": native_layout_telemetry,
             "exact_size_reached": True,
             "fixture_source": fixture_source,
             "fixture_validation": fixture_validation,
@@ -262,12 +678,26 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             "geometry_drift_accepted": False,
             "geometry_layout_warnings": [],
             "height": logical_size[1],
+            "evidence_status": "captured",
             "label": label,
+            "lineage": {
+                "evidence_status": "captured",
+                "source_package_sha256": production_package_sha256,
+                "source_run_id": "fixture-run",
+            },
             "layout_mode": layout_mode,
             "native_normalized": False,
             "normalization_reason": "",
             "path": str(path),
+            "png_sha256": png_sha256,
             "ready_to_capture_ms": 2.0,
+            "semantic_ready_ms": 1.0,
+            "stable": True,
+            "stable_frame_count": 2,
+            "stable_ms": 1.0,
+            "render_input_count": 1,
+            "render_input_digest": render_digest,
+            "source_package_sha256": production_package_sha256,
             "requested_client_size": list(logical_size),
             "screen_limited": False,
             "text_layout_warnings": [],
@@ -276,6 +706,7 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                 if label in resize_layout_modes
                 else "canonical-open"
             ),
+            "visual_contract_audit": visual_contract,
             "width": logical_size[0],
             "window_family": family,
         })
@@ -301,6 +732,8 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
                         "layout_clearance",
                         "required_content_height",
                         "reachable_content_height",
+                        "last_body_child_bottom",
+                        "last_body_child_bottom_at_scroll_end",
                     )
                 },
                 "issues": [],
@@ -308,73 +741,57 @@ def _valid_capture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
             })
     payload: dict[str, object] = {
         "capture_contract_version": contract.version,
-        "capture_profile": "full",
+        "capture_profile": "representative",
+        "capture_scope": "full",
         "capture_display": "primary",
         "capture_displays": ["primary"],
+        "capture_calibration": {"passed": True, "issues": []},
+        "capture_environment_digest": environment_digest,
+        "foreground_policy": "required-only",
+        "foreground_requests": [],
         "capture_groups": [
             {"name": name, "labels": list(labels)}
             for name, labels in contract.groups
         ],
         "expected_faces": list(contract.labels),
+        "requested_faces": list(contract.labels),
+        "captured_faces": list(contract.labels),
+        "reused_faces": [],
+        "invalidated_faces": [],
         "screenshots": screenshots,
         "captures": records,
         "text_layout_warnings": [],
         "failures": [],
         "expected_count": len(contract.labels),
         "requested_scale_factor": "1.0",
-        "dialog_memory_probe": {
-            "status": "measured",
-            "cycles": 12,
-            "visible_cycles": 12,
-            "closed_cycles": 12,
-            "cycle_observations": [
-                {
-                    "cycle": cycle,
-                    "visible": True,
-                    "closed": True,
-                    "dialog_class": "NurseryDialog",
-                }
-                for cycle in range(1, 13)
-            ],
-            "passed": True,
-            "measurement": "QApplication.allWidgets plus process peak RSS",
-            "current_rss_available": False,
-            "peak_rss_before_kib": 1000,
-            "peak_rss_after_kib": 1004,
-            "widget_count_before": 10,
-            "widget_count_after": 10,
-            "watched_class_counts_before": {
-                "NurseryDialog": 0,
-                "DialogShell": 1,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-            "watched_class_counts_after": {
-                "NurseryDialog": 0,
-                "DialogShell": 1,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-            "watched_class_delta": {
-                "NurseryDialog": 0,
-                "DialogShell": 0,
-                "PlantStoryDialog": 0,
-                "GardenDialog": 0,
-            },
-        },
+        "dialog_memory_probe": {"status": "not-run", "cycles": 0},
         "dialog_memory_probe_complete": True,
         "dialog_scroll_audits": {
-            "required": True,
-            "required_count": len(scroll_summary_records),
-            "records": scroll_summary_records,
+            "required": False,
+            "required_count": 0,
+            "records": [],
             "passed": True,
         },
         "dialog_scroll_audits_complete": True,
         "fixture_validations_complete": True,
+        "production_package_sha256": production_package_sha256,
+        "render_inputs": {
+            "environment_digest": environment_digest,
+            "production_archive_sha256": production_package_sha256,
+            "surfaces": render_surfaces,
+        },
+        "scope_complete": True,
         "complete": True,
     }
     manifest = tmp_path / "manifest.json"
     _write_json(manifest, payload)
+    _write_json(tmp_path / "capture-complete.json", {
+        "complete": True,
+        "exit_code": 0,
+        "manifest": str(manifest),
+        "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        "scope_complete": True,
+    })
     return manifest, payload
 
 
@@ -467,6 +884,7 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
         filename = f"{page:02d}-{slug}.png"
         width, height = expected_contact_sheet_dimensions(topology)
         sheet = Image.new("RGB", (width, height), "#081814")
+        draw = ImageDraw.Draw(sheet)
         cell_width = (3000 - 64 * 2 - 32) // 2
         y = 250
         for _group_name, labels in label_pages[page - 1]:
@@ -482,6 +900,13 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
                     x + cell_width - 22,
                     tile_y + 930 - 40,
                 )
+                draw.rounded_rectangle(
+                    preview_box,
+                    radius=12,
+                    fill=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+                    outline=CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+                    width=CONTACT_SHEET_OUTLINE_WIDTH,
+                )
                 with Image.open(Path(records[label]["path"])) as opened:
                     source = ImageOps.exif_transpose(opened).convert("RGB")
                     max_width = preview_box[2] - preview_box[0] - 16
@@ -494,9 +919,17 @@ def _valid_contact_sheets(tmp_path: Path, manifest: Path) -> Path:
                 preview_x = preview_box[0] + (
                     preview_box[2] - preview_box[0] - preview.width
                 ) // 2
-                preview_y = preview_box[1] + (
-                    preview_box[3] - preview_box[1] - preview.height
-                ) // 2
+                preview_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
+                draw.rectangle(
+                    (
+                        preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+                        preview_y - CONTACT_SHEET_OUTLINE_WIDTH,
+                        preview_x + preview.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+                        preview_y + preview.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+                    ),
+                    outline=CONTACT_SHEET_SCREENSHOT_OUTLINE,
+                    width=CONTACT_SHEET_OUTLINE_WIDTH,
+                )
                 sheet.paste(preview, (preview_x, preview_y))
             y += ((len(labels) + 1) // 2) * 930 + 30
         metadata = PngImagePlugin.PngInfo()
@@ -537,56 +970,119 @@ def test_complete_capture_and_contact_sheet_set_pass_strict_validation(
     )
 
     assert capture_result["status"] == "valid"
-    assert capture_result["capture_count"] == 126
+    assert capture_result["capture_count"] == 26
     assert sheet_result == {
         "contact_sheet_set": str(contact_sheets.resolve()),
-        "page_count": 17,
-        "surface_count": 126,
+        "page_count": 4,
+        "surface_count": 26,
         "status": "valid",
     }
+
+
+def test_incremental_plan_and_assembly_reuse_unaffected_surfaces(
+    tmp_path: Path,
+) -> None:
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    base_manifest, base_payload = _valid_capture(base_dir)
+    contract = load_capture_contract(CAPTURE_SOURCE)
+    selected = list(contract.labels[3:8])
+    plan = plan_incremental_capture(
+        base_manifest=base_manifest,
+        current_render_inputs=base_payload["render_inputs"],
+        expected_labels=contract.labels,
+        contract_version=contract.version,
+        explicit_surfaces=selected,
+    )
+    assert plan["recapture_required"] == selected
+    assert plan["reused"] == [
+        label for label in contract.labels if label not in selected
+    ]
+
+    patch_dir = tmp_path / "patch"
+    patch_dir.mkdir()
+    patch_payload = copy.deepcopy(base_payload)
+    patch_records = []
+    patch_screenshots = []
+    base_records = {
+        str(record["label"]): record
+        for record in base_payload["captures"]
+    }
+    for label in selected:
+        record = copy.deepcopy(base_records[label])
+        source = Path(str(record["path"]))
+        destination = patch_dir / source.name
+        destination.write_bytes(source.read_bytes())
+        record["path"] = str(destination)
+        patch_records.append(record)
+        patch_screenshots.append(str(destination))
+    patch_payload.update({
+        "capture_scope": "patch",
+        "requested_faces": selected,
+        "captured_faces": selected,
+        "reused_faces": [],
+        "invalidated_faces": selected,
+        "captures": patch_records,
+        "screenshots": patch_screenshots,
+        "scope_complete": True,
+        "complete": False,
+    })
+    patch_manifest = patch_dir / "manifest.json"
+    _write_json(patch_manifest, patch_payload)
+    _write_json(patch_dir / "capture-complete.json", {
+        "complete": False,
+        "exit_code": 0,
+        "manifest": str(patch_manifest),
+        "manifest_sha256": hashlib.sha256(patch_manifest.read_bytes()).hexdigest(),
+        "scope_complete": True,
+    })
+    assert surface_validation_report(patch_manifest)["status"] == "valid"
+
+    assembled = assemble_capture_manifest(
+        base_manifest=base_manifest,
+        patch_manifest=patch_manifest,
+        reuse_plan=plan,
+        current_render_inputs=base_payload["render_inputs"],
+        output_dir=tmp_path / "assembled",
+    )
+    assembled_payload = json.loads(assembled.read_text(encoding="utf-8"))
+    assert assembled_payload["captured_faces"] == selected
+    assert assembled_payload["reused_faces"] == plan["reused"]
+    assert validate_capture_manifest(assembled)["status"] == "valid"
 
 
 def test_contact_sheet_topology_is_two_columns_by_five_rows() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     pages = expected_contact_sheet_pages(contract)
 
-    assert [sum(count for _name, count in page) for page in pages] == [
-        8, 9, 2, 10, 7, 5, 10, 6, 10, 2, 7, 5, 9, 8, 10, 9, 9,
-    ]
-    assert pages[6:10] == (
-        (("Release stress — Garden", 10),),
-        (("Release stress — Garden (continued)", 6),),
-        (("Watering can — all six plots", 10),),
-        (("Watering can — all six plots (continued)", 2),),
-    )
+    assert [sum(count for _name, count in page) for page in pages] == [9, 5, 6, 6]
+    assert pages[0] == (("First run", 3), ("Home and Garden", 6))
     assert [expected_contact_sheet_dimensions(page)[1] for page in pages] == [
-        4262, 5078, 1358, 5078, 4262, 3218, 5078, 3218, 5078, 1358,
-        4148, 3218, 5192, 4148, 5078, 5078, 5192,
+        5192, 3218, 3218, 3218,
     ]
 
 
-def test_renderer_families_are_derived_from_source_for_all_126_faces() -> None:
+def test_renderer_families_are_derived_for_every_representative_face() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     families = load_expected_renderer_families(CAPTURE_SOURCE, contract=contract)
 
     assert tuple(families) == contract.labels
     assert Counter(families.values()) == Counter({
-        "GardenDashboard": 32,
-        "GardenProgressDialog": 17,
-        "GardenSettingsDialog": 10,
-        "NurseryDialog": 15,
-        "AnkiQt": 18,
-        "CollectibleDetailDialog": 4,
-        "FertilizerDialog": 4,
+        "GardenDashboard": 4,
+        "GardenProgressDialog": 5,
+        "GardenSettingsDialog": 2,
+        "NurseryDialog": 6,
+        "AnkiQt": 2,
+        "CollectibleDetailDialog": 1,
+        "FertilizerDialog": 1,
         "StarterConfirmationDialog": 1,
         "PlantStoryDialog": 1,
-        "FertilizerReplacementDialog": 1,
-        "SpeciesOverviewDialog": 2,
-        "PurchaseConfirmationDialog": 14,
-        "GrowthChargeConfirmationDialog": 7,
+        "SpeciesOverviewDialog": 1,
+        "PurchaseConfirmationDialog": 1,
+        "GrowthChargeConfirmationDialog": 1,
     })
-    assert families["popover-plot-6"] == "GardenDashboard"
-    assert families["watering-can-garden-plot-6"] == "GardenDashboard"
+    assert families["full-garden"] == "GardenDashboard"
+    assert families["growth-charge-use-ready"] == "GrowthChargeConfirmationDialog"
     assert "resize-species-overview-large" not in families
     resize_modes = load_expected_resize_layout_modes(CAPTURE_SOURCE)
     assert len(resize_modes) == 65
@@ -595,7 +1091,7 @@ def test_renderer_families_are_derived_from_source_for_all_126_faces() -> None:
     assert resize_modes["resize-progress-default"] == "wide"
 
 
-def test_state_evidence_contracts_are_derived_for_all_126_faces() -> None:
+def test_state_evidence_contracts_are_derived_for_every_representative_face() -> None:
     contract = load_capture_contract(CAPTURE_SOURCE)
     states = load_expected_state_evidence_contracts(
         CAPTURE_SOURCE,
@@ -604,58 +1100,32 @@ def test_state_evidence_contracts_are_derived_for_all_126_faces() -> None:
 
     assert tuple(states) == contract.labels
     assert Counter(state["kind"] for state in states.values()) == Counter({
-        "dashboard": 32,
-        "progress": 17,
-        "home": 15,
-        "nursery": 15,
-        "settings": 10,
-        "reviewer": 3,
-        "dialog": 30,
-        "collectible-detail": 4,
+        "dashboard": 4,
+        "progress": 5,
+        "home": 1,
+        "nursery": 6,
+        "settings": 2,
+        "reviewer": 1,
+        "dialog": 6,
+        "collectible-detail": 1,
     })
-    assert states["watering-can-overview-plot-6"]["profile"] == {
-        "profile_id": "watering-can-overview-plot-6",
-        "window_family": "AnkiQt",
-        "kind": "home",
-        "surface": "overview",
-        "fixture_state": "nurtured-active",
-        "active_slot": 5,
-    }
-    assert states["growth-zero"]["profile"]["page"] == "growth"
-    assert states["nursery-item-locked"]["profile"]["tab"] == 1
-    assert states["nursery-item-locked"]["profile"]["starter_mode"] is False
+    assert states["growth-nonzero"]["profile"]["page"] == "growth"
+    assert states["nursery-fertilizer-booster"]["profile"]["tab"] == 1
+    assert states["nursery-fertilizer-booster"]["profile"]["starter_mode"] is False
     assert "resize-progress-default" not in states
-    assert states["growth-charge-success-stage-reward"]["profile"][
+    assert states["growth-charge-use-ready"]["profile"][
         "growth_charge_status"
-    ] == "success"
+    ] == "ready"
 
 
 def test_accessibility_fixture_ownership_and_cleanup_are_source_bound() -> None:
     states = load_expected_state_evidence_contracts(CAPTURE_SOURCE)
 
-    reduced_motion_values = states["reduced-motion-enabled"][
-        "expected_fact_values"
-    ]
-    assert {
-        key: reduced_motion_values[key]
-        for key in ("reduced_motion_checked", "reduced_motion_config_enabled")
-    } == {
-        "reduced_motion_checked": True,
-        "reduced_motion_config_enabled": True,
-    }
-    keyboard_values = states["keyboard-focus-state"]["expected_fact_values"]
-    assert {
-        key: keyboard_values[key]
-        for key in (
-            "reduced_motion_baseline_restored",
-            "keyboard_focus_visible",
-            "keyboard_focus_owner",
-        )
-    } == {
-        "reduced_motion_baseline_restored": False,
-        "keyboard_focus_visible": True,
-        "keyboard_focus_owner": "progress_btn",
-    }
+    settings_values = states["settings-unsaved-changes"]["expected_fact_values"]
+    assert settings_values["settings_tab"] == 0
+    assert states["reviewer-find-environment"]["kind"] == "reviewer"
+    assert "reduced-motion-enabled" not in states
+    assert "keyboard-focus-state" not in states
     assert "narrow-window-responsive" not in states
     assert "display-scaling-150" not in states
     assert "display-scaling-200-qt-representative" not in states
@@ -673,8 +1143,8 @@ def test_state_profile_loader_tracks_source_mapping_and_fails_closed(
     changed_source = tmp_path / "changed_capture_ui_faces.py"
     changed_source.write_text(changed_mapping, encoding="utf-8")
     changed = load_expected_state_evidence_contracts(changed_source)
-    assert changed["growth-zero"]["profile"]["page"] == "streak"
-    assert changed["growth-zero"]["expected_fact_values"]["progress_page"] == "streak"
+    assert changed["growth-nonzero"]["profile"]["page"] == "streak"
+    assert changed["growth-nonzero"]["expected_fact_values"]["progress_page"] == "streak"
 
     unsupported = source.replace(
         "family = expected_capture_window_family(label)",
@@ -741,6 +1211,69 @@ def test_manifest_rejects_incomplete_warning_and_fixture_identity_drift(
     assert "fixture validation did not pass" in message
 
 
+def test_manifest_rejects_high_risk_visual_state_and_geometry_regressions(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    by_label = {
+        str(record["label"]): record
+        for record in records
+        if isinstance(record, dict)
+    }
+
+    by_label["full-garden"]["audit"]["steady_state_visual"][
+        "overlay_free"
+    ] = False
+    by_label["full-garden"]["audit"]["rendered_pixel_evidence"][
+        "results"
+    ][0]["capture_pixels_present"] = False
+    by_label["reviewer-find-environment"]["audit"][
+        "reviewer_overlay_geometry"
+    ]["viewport_contained"] = False
+    by_label["reviewer-find-environment"]["audit"][
+        "required_overlay_pixels_present"
+    ] = False
+    by_label["active-deck-browser-home-after-nurture"]["audit"]["compact_home_copy"][
+        "rendered_text"
+    ] += " Hidden Garden Coins 999"
+
+    generic = by_label["starter-selection-confirmation"]
+    generic_visual = generic["visual_contract_audit"]
+    assert isinstance(generic_visual, dict)
+    generic_visual["primary_actions"] = ["Confirm", "Purchase"]
+    generic_visual["primary_action_count"] = 2
+    generic_visual["primary_action_groups"] = [{
+        "scope": "actionFooter-1",
+        "actions": ["Confirm", "Purchase"],
+        "count": 2,
+        "passed": False,
+    }]
+    generic_visual["max_primary_actions_per_group"] = 2
+    generic_visual["close_icons"][0]["glyph_pixels_present"] = False
+    generic_visual["close_icons"][0]["passed"] = False
+    generic_audit = generic["audit"]
+    assert isinstance(generic_audit, dict)
+    generic_audit["visual_contract"] = copy.deepcopy(generic_visual)
+
+    _write_json(manifest, payload)
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    for expected in (
+        "full Garden does not prove a clean contained steady state",
+        "required state widgets are absent from captured pixels",
+        "Reviewer card lacks full containment or control clearance",
+        "Reviewer card is absent from captured pixels",
+        "compact Home rendered or accessibility copy contains banned terms",
+        "at most one filled primary action",
+        "close icon has blank pixels or invalid bounds",
+    ):
+        assert expected in message
+
+
 def test_manifest_rejects_renderer_provenance_not_owned_by_source(
     tmp_path: Path,
 ) -> None:
@@ -759,7 +1292,7 @@ def test_manifest_rejects_renderer_provenance_not_owned_by_source(
     audit["fixture_identity"] = copy.deepcopy(fixture)
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="source-owned AnkiQt"):
+    with pytest.raises(CaptureValidationError, match="source-owned GardenDashboard"):
         validate_capture_manifest(manifest)
 
 
@@ -779,7 +1312,7 @@ def test_manifest_rejects_top_level_fixture_source_racing_nested_identity(
 
     with pytest.raises(
         CaptureValidationError,
-        match="capture 007 deck-browser-home: fixture sources disagree",
+        match="capture 007 fertilizer-affordable: fixture sources disagree",
     ):
         validate_capture_manifest(manifest)
 
@@ -815,7 +1348,7 @@ def test_manifest_rejects_incomplete_or_mismatched_state_postcondition(
     message = str(raised.value)
     assert "state_profile must match" in message
     assert "postcondition profile_id must match" in message
-    assert "postcondition kind must be 'home'" in message
+    assert "postcondition kind must be 'dashboard'" in message
     assert "postcondition facts must be nonempty" in message
     assert "postcondition issues must be empty" in message
     assert "postcondition did not pass" in message
@@ -837,26 +1370,26 @@ def test_manifest_rejects_same_renderer_state_schema_substitution(
     contract = load_capture_contract(CAPTURE_SOURCE)
     records = payload["captures"]
     assert isinstance(records, list)
-    zero = records[contract.labels.index("growth-zero")]
-    nonzero = records[contract.labels.index("growth-nonzero")]
-    assert isinstance(zero, dict) and isinstance(nonzero, dict)
-    zero_fixture = zero["fixture_validation"]
-    nonzero_fixture = nonzero["fixture_validation"]
-    assert isinstance(zero_fixture, dict) and isinstance(nonzero_fixture, dict)
-    zero_postcondition = zero_fixture["postcondition"]
-    nonzero_postcondition = nonzero_fixture["postcondition"]
-    assert isinstance(zero_postcondition, dict) and isinstance(nonzero_postcondition, dict)
-    zero_postcondition["facts"] = copy.deepcopy(nonzero_postcondition["facts"])
-    zero_audit = zero["audit"]
-    assert isinstance(zero_audit, dict)
-    zero_audit["fixture_identity"] = copy.deepcopy(zero_fixture)
+    growth = records[contract.labels.index("growth-nonzero")]
+    streak = records[contract.labels.index("streak-active")]
+    assert isinstance(growth, dict) and isinstance(streak, dict)
+    growth_fixture = growth["fixture_validation"]
+    streak_fixture = streak["fixture_validation"]
+    assert isinstance(growth_fixture, dict) and isinstance(streak_fixture, dict)
+    growth_postcondition = growth_fixture["postcondition"]
+    streak_postcondition = streak_fixture["postcondition"]
+    assert isinstance(growth_postcondition, dict) and isinstance(streak_postcondition, dict)
+    growth_postcondition["facts"] = copy.deepcopy(streak_postcondition["facts"])
+    growth_audit = growth["audit"]
+    assert isinstance(growth_audit, dict)
+    growth_audit["fixture_identity"] = copy.deepcopy(growth_fixture)
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError, match="postcondition fact schema mismatch"):
         validate_capture_manifest(manifest)
 
 
-def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
+def test_manifest_rejects_representative_owner_state_substitution(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
@@ -865,8 +1398,8 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
     assert isinstance(records, list)
 
     substitutions = (
-        ("reduced-motion-enabled", "settings-home-preview-disabled"),
-        ("keyboard-focus-state", "full-garden"),
+        ("settings-unsaved-changes", "diagnostics-warning"),
+        ("reviewer-find-environment", "active-deck-browser-home-after-nurture"),
     )
     for target_label, source_label in substitutions:
         target = records[contract.labels.index(target_label)]
@@ -889,18 +1422,18 @@ def test_manifest_rejects_accessibility_owner_and_cleanup_state_substitution(
         validate_capture_manifest(manifest)
 
     message = str(raised.value)
-    assert "capture 089 reduced-motion-enabled: postcondition fact schema mismatch" in message
-    assert "capture 090 keyboard-focus-state: postcondition fact schema mismatch" in message
+    assert "settings-unsaved-changes: postcondition fact schema mismatch" in message
+    assert "reviewer-find-environment: postcondition fact schema mismatch" in message
 
 
-def test_manifest_rejects_forged_accessibility_focus_fact_value(
+def test_manifest_rejects_forged_reviewer_visibility_fact_value(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
     records = payload["captures"]
     assert isinstance(records, list)
-    record = records[contract.labels.index("keyboard-focus-state")]
+    record = records[contract.labels.index("reviewer-find-environment")]
     assert isinstance(record, dict)
     fixture = record["fixture_validation"]
     assert isinstance(fixture, dict)
@@ -908,13 +1441,13 @@ def test_manifest_rejects_forged_accessibility_focus_fact_value(
     assert isinstance(postcondition, dict)
     facts = postcondition["facts"]
     assert isinstance(facts, dict)
-    facts["keyboard_focus_owner"] = "scene"
+    facts["reward_toast_visible"] = False
     audit = record["audit"]
     assert isinstance(audit, dict)
     audit["fixture_identity"] = copy.deepcopy(fixture)
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="keyboard_focus_owner.*progress_btn"):
+    with pytest.raises(CaptureValidationError, match="reward_toast_visible.*True"):
         validate_capture_manifest(manifest)
 
 
@@ -1026,8 +1559,8 @@ def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
 
     message = str(raised.value)
     assert "numeric-equivalent to 1.0" in message
-    assert "status must be 'measured'" in message
-    assert "cycles must be 12" in message
+    assert "status must be 'not-run'" in message
+    assert "cycles must be 0" in message
     assert "actual_client_size must match" in message
     assert "device_pixel_ratio is invalid" in message
     assert "layout_mode is missing" in message
@@ -1035,37 +1568,123 @@ def test_manifest_rejects_scale_display_geometry_layout_and_memory_drift(
     assert "capture_display does not match" in message
 
 
-def test_manifest_rejects_memory_probe_bad_class_delta(tmp_path: Path) -> None:
+def test_manifest_rejects_unexpected_release_memory_probe(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     probe = payload["dialog_memory_probe"]
     assert isinstance(probe, dict)
-    deltas = probe["watched_class_delta"]
-    assert isinstance(deltas, dict)
-    deltas["NurseryDialog"] = 1
+    probe.update({"status": "measured", "cycles": 12})
     _write_json(manifest, payload)
 
-    with pytest.raises(CaptureValidationError, match="delta for NurseryDialog"):
+    with pytest.raises(CaptureValidationError) as raised:
         validate_capture_manifest(manifest)
+    message = str(raised.value)
+    assert "status must be 'not-run'" in message
+    assert "cycles must be 0" in message
 
 
-def test_manifest_rejects_internally_consistent_nursery_retention(
+def test_manifest_rejects_invalid_native_dialog_layout_telemetry(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
-    probe = payload["dialog_memory_probe"]
-    assert isinstance(probe, dict)
-    after = probe["watched_class_counts_after"]
-    deltas = probe["watched_class_delta"]
-    assert isinstance(after, dict)
-    assert isinstance(deltas, dict)
-    after["NurseryDialog"] = 1
-    deltas["NurseryDialog"] = 1
+    records = payload["captures"]
+    assert isinstance(records, list)
+    record = next(
+        item
+        for item in records
+        if isinstance(item, dict)
+        and item.get("label") == "growth-charge-use-ready"
+    )
+    telemetry = record["native_layout_telemetry"]
+    assert isinstance(telemetry, dict)
+    telemetry.update({
+        "clientSurfaceFill": 0.50,
+        "clientGutterPx": 50,
+        "contentToFooterGap": 49,
+        "maximumActionWidthRatio": 0.51,
+        "minimumRenderedTextSize": 11.9,
+        "elisionWithoutTooltipCount": 1,
+        "tabularNumeralWidgets": [],
+        "tabularNumeralWidgetCount": 0,
+        "passed": True,
+        "issues": [],
+    })
+    buttons = telemetry["buttonRecords"]
+    assert isinstance(buttons, list)
+    button = buttons[0]
+    assert isinstance(button, dict)
+    button["height"] = 35
+    audit = record["audit"]
+    assert isinstance(audit, dict)
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
     _write_json(manifest, payload)
 
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_capture_manifest(manifest)
+
+    message = str(raised.value)
+    assert "client gutter exceeds" in message
+    assert "content-to-footer gap exceeds" in message
+    assert "action width ratio exceeds" in message
+    assert "rendered text is below" in message
+    assert "elision is missing tooltip" in message
+    assert "button geometry or text size" in message
+    assert "tabular numeral evidence is incomplete" in message
+
+
+def test_manifest_accepts_hidden_range_positive_non_owner_scrollbar(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    record = next(
+        item
+        for item in records
+        if isinstance(item, dict)
+        and item.get("label") == "progress-collection"
+    )
+    telemetry = record["native_layout_telemetry"]
+    assert isinstance(telemetry, dict)
+    telemetry["scrollbars"] = [
+        {
+            "minimum": 0,
+            "maximum": 0,
+            "value": 0,
+            "visible": False,
+            "overflowOwner": True,
+        },
+        {
+            "minimum": 0,
+            "maximum": 737,
+            "value": 0,
+            "visible": False,
+            "overflowOwner": False,
+        },
+    ]
+    telemetry["overflowOwnerCount"] = 1
+    audit = record["audit"]
+    assert isinstance(audit, dict)
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
+    _write_json(manifest, payload)
+
+    validate_capture_manifest(manifest)
+
+    telemetry["scrollbars"][1]["visible"] = True
+    audit["native_layout_telemetry"] = copy.deepcopy(telemetry)
+    _write_json(manifest, payload)
     with pytest.raises(
         CaptureValidationError,
-        match="NurseryDialog delta must be exactly zero",
+        match="native non-owner scrollbar is visible",
     ):
+        validate_capture_manifest(manifest)
+
+
+def test_manifest_rejects_nonrepresentative_release_profile(tmp_path: Path) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    payload["capture_profile"] = "full"
+    _write_json(manifest, payload)
+
+    with pytest.raises(CaptureValidationError, match="must be 'representative'"):
         validate_capture_manifest(manifest)
 
 
@@ -1074,21 +1693,8 @@ def test_manifest_rejects_incomplete_or_fabricated_memory_cycles(tmp_path: Path)
     payload["dialog_memory_probe_complete"] = False
     probe = payload["dialog_memory_probe"]
     assert isinstance(probe, dict)
-    probe["passed"] = False
-    probe["visible_cycles"] = 11
-    probe["closed_cycles"] = 11
-    observations = probe["cycle_observations"]
-    assert isinstance(observations, list)
-    observations.pop()
-    first = observations[0]
-    assert isinstance(first, dict)
-    first.update({
-        "cycle": 2,
-        "visible": False,
-        "closed": False,
-        "dialog_class": "WrongDialog",
-        "close_error": "still open",
-    })
+    probe["status"] = "measured"
+    probe["cycles"] = 12
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError) as raised:
@@ -1096,10 +1702,8 @@ def test_manifest_rejects_incomplete_or_fabricated_memory_cycles(tmp_path: Path)
 
     message = str(raised.value)
     assert "dialog_memory_probe_complete must be true" in message
-    assert "dialog_memory_probe passed must be true" in message
-    assert "visible_cycles must be 12" in message
-    assert "closed_cycles must be 12" in message
-    assert "cycle_observations must contain 12 records" in message
+    assert "dialog_memory_probe status must be 'not-run'" in message
+    assert "dialog_memory_probe cycles must be 0" in message
 
 
 def test_manifest_rejects_order_path_and_unowned_png_drift(tmp_path: Path) -> None:
@@ -1145,9 +1749,9 @@ def test_contact_sheet_set_rejects_page_file_and_count_drift(tmp_path: Path) -> 
     message = str(raised.value)
     assert "not marked complete" in message
     assert "page_count does not match" in message
-    assert "surface_count must be 126" in message
-    assert "pages account for 125 surfaces" in message
-    assert "PNG dimensions must be 3000x4262px" in message
+    assert "surface_count must be 26" in message
+    assert "pages account for 25 surfaces" in message
+    assert "PNG dimensions must be 3000x5192px" in message
     assert "groups do not match deterministic topology" in message
     assert "contains unindexed PNG files" in message
 
@@ -1171,6 +1775,92 @@ def test_contact_sheet_set_rejects_blank_and_reordered_preview_pixels(
     with pytest.raises(CaptureValidationError, match="pixels do not match manifest screenshot"):
         validate_contact_sheet_set(index, manifest_path=manifest)
 
+
+def test_contact_sheet_set_rejects_centering_missing_outline_and_dark_frame(
+    tmp_path: Path,
+) -> None:
+    manifest, payload = _valid_capture(tmp_path)
+    index = _valid_contact_sheets(tmp_path, manifest)
+    index_payload = json.loads(index.read_text(encoding="utf-8"))
+    first_page = index.parent / index_payload["pages"][0]["file"]
+    with Image.open(first_page) as opened:
+        opened.load()
+        original = opened.convert("RGB")
+        metadata = dict(opened.text)
+    records = payload["captures"]
+    assert isinstance(records, list)
+    first_record = records[0]
+    assert isinstance(first_record, dict)
+    with Image.open(Path(str(first_record["path"]))) as opened_source:
+        source = opened_source.convert("RGB")
+
+    preview_box = (86, 444, 1462, 1224)
+    preview_x = preview_box[0] + (preview_box[2] - preview_box[0] - source.width) // 2
+    top_y = preview_box[1] + CONTACT_SHEET_PREVIEW_INSET
+    centered_y = preview_box[1] + (
+        preview_box[3] - preview_box[1] - source.height
+    ) // 2
+
+    def save(page: Image.Image) -> None:
+        pnginfo = PngImagePlugin.PngInfo()
+        for key, value in metadata.items():
+            pnginfo.add_text(key, value)
+        page.save(first_page, format="PNG", pnginfo=pnginfo)
+
+    centered = original.copy()
+    draw = ImageDraw.Draw(centered)
+    draw.rounded_rectangle(
+        preview_box,
+        radius=12,
+        fill=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+        outline=CONTACT_SHEET_PREVIEW_FRAME_OUTLINE,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    draw.rectangle(
+        (
+            preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+            centered_y - CONTACT_SHEET_OUTLINE_WIDTH,
+            preview_x + source.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+            centered_y + source.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+        ),
+        outline=CONTACT_SHEET_SCREENSHOT_OUTLINE,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    centered.paste(source, (preview_x, centered_y))
+    save(centered)
+    with pytest.raises(CaptureValidationError) as raised:
+        validate_contact_sheet_set(index, manifest_path=manifest)
+    assert "pixels do not match manifest screenshot" in str(raised.value)
+
+    missing_outline = original.copy()
+    draw = ImageDraw.Draw(missing_outline)
+    draw.rectangle(
+        (
+            preview_x - CONTACT_SHEET_OUTLINE_WIDTH,
+            top_y - CONTACT_SHEET_OUTLINE_WIDTH,
+            preview_x + source.width + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+            top_y + source.height + CONTACT_SHEET_OUTLINE_WIDTH - 1,
+        ),
+        outline=CONTACT_SHEET_PREVIEW_FRAME_FILL,
+        width=CONTACT_SHEET_OUTLINE_WIDTH,
+    )
+    missing_outline.paste(source, (preview_x, top_y))
+    save(missing_outline)
+    with pytest.raises(CaptureValidationError, match="screenshot outline is missing"):
+        validate_contact_sheet_set(index, manifest_path=manifest)
+
+    wrong_frame = original.copy()
+    wrong_frame.putpixel(
+        (
+            (preview_box[0] + preview_box[2]) // 2,
+            preview_box[1] + CONTACT_SHEET_OUTLINE_WIDTH + 1,
+        ),
+        (7, 18, 15),
+    )
+    save(wrong_frame)
+    with pytest.raises(CaptureValidationError, match="distinct light fill"):
+        validate_contact_sheet_set(index, manifest_path=manifest)
+
     reordered_root = tmp_path / "reordered"
     reordered_root.mkdir()
     index = _valid_contact_sheets(reordered_root, manifest)
@@ -1180,8 +1870,8 @@ def test_contact_sheet_set_rejects_blank_and_reordered_preview_pixels(
         opened.load()
         metadata = dict(opened.text)
         reordered = opened.convert("RGB")
-    first_box = (724, 784, 824, 884)
-    second_box = (2176, 784, 2276, 884)
+    first_box = (724, 452, 824, 552)
+    second_box = (2176, 452, 2276, 552)
     first_pixels = reordered.crop(first_box)
     second_pixels = reordered.crop(second_box)
     reordered.paste(second_pixels, first_box[:2])
@@ -1263,8 +1953,8 @@ def test_manifest_rejects_solid_or_near_blank_decoded_pixels(tmp_path: Path) -> 
 def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
-    streak_index = contract.labels.index("streak-achievement-earned-next")
-    coins_index = contract.labels.index("coins-zero")
+    streak_index = contract.labels.index("streak-active")
+    coins_index = contract.labels.index("coins-activity")
     screenshots = payload["screenshots"]
     assert isinstance(screenshots, list)
     Path(screenshots[coins_index]).write_bytes(
@@ -1275,29 +1965,13 @@ def test_manifest_rejects_unapproved_duplicate_visual_evidence(tmp_path: Path) -
         validate_capture_manifest(manifest)
 
 
-def test_manifest_accepts_documented_duplicate_with_required_audit(
+def test_representative_contract_omits_redundant_duplicate_capture(
     tmp_path: Path,
 ) -> None:
     manifest, payload = _valid_capture(tmp_path)
     contract = load_capture_contract(CAPTURE_SOURCE)
-    first_index = contract.labels.index("starter-nursery-plants")
-    action_index = contract.labels.index("starter-action-above-footer")
-    screenshots = payload["screenshots"]
-    records = payload["captures"]
-    assert isinstance(screenshots, list)
-    assert isinstance(records, list)
-    Path(screenshots[action_index]).write_bytes(Path(screenshots[first_index]).read_bytes())
-    action_record = records[action_index]
-    assert isinstance(action_record, dict)
-    action_audit = action_record["audit"]
-    assert isinstance(action_audit, dict)
-    action_audit.update({
-        "nursery_footer_clearance_audited": True,
-        "catalog_row": "first",
-        "action_count": 1,
-    })
-    _write_json(manifest, payload)
-
+    assert "starter-nursery-plants" in contract.labels
+    assert "starter-action-above-footer" not in contract.labels
     assert validate_capture_manifest(manifest)["status"] == "valid"
 
 
@@ -1354,13 +2028,15 @@ def test_manifest_accepts_preferred_scroll_height_above_reachable_minimum(
     assert validate_capture_manifest(manifest)["status"] == "valid"
 
 
-def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> None:
+def test_manifest_rejects_nonempty_representative_scroll_summary(tmp_path: Path) -> None:
     manifest, payload = _valid_capture(tmp_path)
     payload["dialog_scroll_audits_complete"] = False
     summary = payload["dialog_scroll_audits"]
     assert isinstance(summary, dict)
+    summary["required"] = True
     summary["passed"] = False
-    summary["records"] = []
+    summary["required_count"] = 1
+    summary["records"] = [{}]
     _write_json(manifest, payload)
 
     with pytest.raises(CaptureValidationError) as raised:
@@ -1368,5 +2044,7 @@ def test_manifest_rejects_missing_positive_scroll_summary(tmp_path: Path) -> Non
 
     message = str(raised.value)
     assert "dialog_scroll_audits_complete must be true" in message
+    assert "dialog_scroll_audits required must be false" in message
     assert "dialog_scroll_audits passed must be true" in message
-    assert "dialog_scroll_audits records must contain" in message
+    assert "dialog_scroll_audits required_count must be 0" in message
+    assert "dialog_scroll_audits records must be empty" in message

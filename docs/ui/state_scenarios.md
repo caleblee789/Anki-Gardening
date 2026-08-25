@@ -139,7 +139,7 @@
   Click, Enter, or Space opens Nursery or Garden Progress.
 - Move mode disables both landmarks. Home and Settings previews never expose
   them as actions.
-- Nursery tabs are **Plants**, **Fertilizer and Boosters**, **Garden Spaces**,
+- Nursery tabs are **Plants**, **Fertilizers and boosts**, **Garden beds**,
   and **Weather and Scenery**. Plants retains computed
   ownership/availability counts with no
   hard-coded roster denominator and provides an artwork carousel for all stages.
@@ -209,7 +209,7 @@
 - Staged controls update the preview immediately without changing persistence.
   **Cancel** restores persisted values; **Restore defaults** only stages
   defaults; **Save settings** commits once and shows a temporary confirmation.
-- **Troubleshooting** remains a separate tab with refreshable, copyable display
+- **Diagnostics** remains a separate tab with refreshable, copyable display
   diagnostics. The production package has no state-mutation controls; temporary
   confirm/back up/populate/restore tools appear only in an explicitly built,
   disposable capture package.

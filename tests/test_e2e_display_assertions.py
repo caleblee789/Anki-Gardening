@@ -53,7 +53,7 @@ class _DB:
     def __init__(self, return_value=0):
         self.return_value = return_value
 
-    def scalar(self, _query, _cutoff):
+    def scalar(self, _query, *_params):
         return self.return_value
 
 
@@ -132,7 +132,10 @@ def _build_seeded_app(monkeypatch, *, review_count: int, growth_cap: int = 220):
     app._home_widget_controller = addon.HomeWidgetStateController()
     app._apply_same_day_catchup = lambda: None
     app.engine = SimpleNamespace(rollover_if_needed=lambda: None)
-    app.storage = SimpleNamespace(state=_seed_state(growth_cap))
+    app.storage = SimpleNamespace(
+        state=_seed_state(growth_cap),
+        current_scheduler_day_bounds_ms=lambda: (1, 124_000),
+    )
     app.config = SimpleNamespace(value=lambda _key, default=None: default)
     return app
 
@@ -145,9 +148,12 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in html
-    assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in html
+    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in html
+    assert "12 today" not in html
+    assert "8-day streak" not in html
+    assert "35 coins" not in html
     assert 'data-testid="home-weather"' not in html
+    assert "ag-home__weather-layer" not in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
@@ -155,7 +161,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     before = app._build_home_garden_html()
     assert 'data-testid="home-reviews"' not in before
-    assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in before
+    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in before
 
     app.storage.state.daily_stats.base_growth = 54
     app.storage.state.daily_stats.streak_bonus_growth = 6
@@ -167,12 +173,12 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in updated
-    assert "9-day Anki streak" in updated
+    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in updated
+    assert "9-day streak" not in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-support" title="Aster, Seed — 310 / 500 Growth"' in refreshed
-    assert "9-day Anki streak" in refreshed
+    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in refreshed
+    assert "9-day streak" not in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
 
@@ -193,5 +199,7 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'data-testid="home-reviews"' not in rendered
-        assert 'data-testid="home-support" title="Aster, Seed — 250 / 500 Growth"' in rendered
-        assert "Aster, Seed stage, 250 of 500 Growth; 8-day Anki streak; 35 Garden Coins" in rendered
+        assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in rendered
+        assert "12 today" not in rendered
+        assert "8-day streak" not in rendered
+        assert "35 coins" not in rendered

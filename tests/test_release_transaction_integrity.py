@@ -245,41 +245,41 @@ def test_purchase_quotes_share_exact_current_terms(
             PurchaseKind.SPECIES,
             "sunflower",
             None,
-            "Purchase Sunflower Seed",
+            "Buy Sunflower Seed?",
             PurchaseAction.PURCHASE,
-            {"planting", "passive", "collection"},
+            set(),
         ),
         (
             PurchaseKind.GROWTH_CHARGE,
             "growth_charge_small",
             None,
-            "Purchase Small Growth Charge",
+            "Buy Small Growth Charge?",
             PurchaseAction.PURCHASE,
-            {"effect", "inventory"},
+            set(),
         ),
         (
             PurchaseKind.FERTILIZER,
             "basic",
             "p1",
-            "Purchase & Apply Basic Fertilizer",
+            "Buy and apply Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
-            {"effect", "condition"},
+            set(),
         ),
         (
             PurchaseKind.WEATHER,
             "breeze",
             None,
-            "Purchase Soft Breeze",
+            "Buy Soft Breeze?",
             PurchaseAction.PURCHASE,
-            {"effect", "equipment_limit", "equipment"},
+            set(),
         ),
         (
             PurchaseKind.BED,
             "next",
             None,
-            "Unlock Garden Bed 3",
+            "Unlock Bed 3?",
             PurchaseAction.UNLOCK,
-            {"unlocked_beds", "available_bed", "plants"},
+            set(),
         ),
     ),
 )
@@ -306,19 +306,25 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     assert presentation.title == title
     assert presentation.action is action
     assert {fact.key for fact in presentation.facts} == fact_keys
-    assert presentation.primary_label.endswith(f"· {quote.total_price:,}")
+    assert "·" not in presentation.primary_label
     assert presentation.primary_accessible_name.endswith(
         f"for {quote.total_price:,} Garden Coins"
     )
     assert presentation.balance_after == 5_000 - quote.total_price
     if kind is PurchaseKind.SPECIES:
-        growth_routing = next(
-            fact for fact in presentation.facts if fact.key == "passive"
-        )
-        assert growth_routing.label == "Growth routing"
-        assert "No Growth while in Collection" in growth_routing.value
-        assert "normal nurtured and passive Growth routing" in growth_routing.value
-        assert "No passive bonus" not in visible
+        assert presentation.outcome == "Adds Sunflower to your collection."
+        assert "No Growth while in Collection" not in visible
+    expected_next_actions = {
+        PurchaseKind.SPECIES: ("Place in Garden", "View Collection"),
+        PurchaseKind.GROWTH_CHARGE: ("Use charge", "Keep browsing"),
+        PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
+        PurchaseKind.WEATHER: ("View Collection", "Keep browsing"),
+        PurchaseKind.BED: ("View Garden", "Keep browsing"),
+    }
+    assert presentation.next_actions == expected_next_actions[kind]
+    assert presentation.badges == ()
+    assert not presentation.show_item_name
+    assert not presentation.show_category
     assert all(
         noise not in visible
         for noise in (
@@ -348,13 +354,12 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     )
     extension = purchase_presentation(extension_quote)
     assert extension.action is PurchaseAction.EXTEND
-    assert extension.title == "Extend Basic Fertilizer"
-    assert extension.primary_label == "Extend · 25"
+    assert extension.title == "Extend Basic Fertilizer?"
+    assert extension.primary_label == "Extend"
     assert extension_quote.current_seconds_remaining == 2_700
     assert extension_quote.resulting_seconds_remaining == 6_300
-    assert next(
-        fact.value for fact in extension.facts if fact.key == "remaining"
-    ) == "45m → 1h 45m"
+    assert extension.facts == ()
+    assert extension.outcome == "Adds 1 hour to Moss."
 
     replacement_quote = engine.quote_purchase(
         PurchaseKind.FERTILIZER,
@@ -363,8 +368,13 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     )
     replacement = purchase_presentation(replacement_quote)
     assert replacement.action is PurchaseAction.PURCHASE_REPLACE
-    assert replacement.primary_label == "Purchase & Replace · 150"
-    assert replacement.secondary_label == "Keep current"
+    assert replacement.title == "Replace Basic Fertilizer?"
+    assert replacement.primary_label == "Buy Magical"
+    assert replacement.secondary_label == "Keep Basic"
+    assert replacement.outcome == (
+        "Magical Fertilizer starts immediately. "
+        "You will lose 45 minutes of Basic Fertilizer."
+    )
     assert replacement_quote.current_seconds_remaining == 2_700
 
     failed_replacement = purchase_presentation(
@@ -373,16 +383,12 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     )
     assert failed_replacement.secondary_label == "Cancel"
     assert failed_replacement.balance_after == replacement_quote.balance_before
-    assert next(
-        fact.value for fact in failed_replacement.facts
-        if fact.key == "fertilizer"
-    ) == "Basic Fertilizer (unchanged)"
+    assert failed_replacement.facts == ()
+    assert failed_replacement.more_details == ()
 
     extended = engine.confirm_purchase(PurchaseRequest.from_quote(extension_quote))
     assert extended.success
-    assert extended.message == (
-        "Basic Fertilizer extended to 1h 45m remaining on Moss."
-    )
+    assert extended.message == "Basic Fertilizer extended."
     assert storage.state.currency_transactions[-1].reason == (
         "Extended Basic Fertilizer on Moss"
     )
@@ -394,21 +400,21 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
         (
             PurchaseStatus.INSUFFICIENT_COINS,
             "Not enough Garden Coins",
-            "View Ways to Earn",
-            True,
+            "Ways to earn",
+            False,
             None,
         ),
         (
             PurchaseStatus.PERSISTENCE_FAILURE,
             "Purchase failed",
-            "Try Again",
-            True,
+            "Try again",
+            False,
             5_000,
         ),
         (
             PurchaseStatus.ITEM_UNAVAILABLE,
-            "Small Growth Charge Unavailable",
-            "Return to Nursery",
+            "Growth Charge unavailable",
+            "Back to Nursery",
             False,
             None,
         ),
@@ -439,12 +445,12 @@ def test_purchase_error_presentations_have_distinct_recovery_actions(
     assert presentation.terminal is (status is not PurchaseStatus.PERSISTENCE_FAILURE)
     if status is PurchaseStatus.PERSISTENCE_FAILURE:
         assert presentation.outcome == (
-            "Purchase could not be saved. No Garden Coins were spent and no item was added."
+            "Small Growth Charge was not added.\n"
+            "No Garden Coins were spent."
         )
-        facts = {fact.key: fact.value for fact in presentation.facts}
-        assert facts["inventory"] == "0 (unchanged)"
-        assert facts["retry_preview"] == "0 → 1"
-        assert presentation.badges == ("Retry preview",)
+        assert presentation.facts == ()
+        assert presentation.more_details == ()
+        assert presentation.badges == ()
     if presentation.terminal:
         assert presentation.badges == ()
 
@@ -482,7 +488,7 @@ def test_non_success_purchase_presentations_never_expose_receipt_copy(
         PurchaseStatus.STALE_TARGET,
     ),
 )
-def test_stale_purchase_terms_are_explicit_uncommitted_previews(
+def test_stale_purchase_terms_use_one_concise_reconfirmation(
     status: PurchaseStatus,
 ) -> None:
     engine, storage = _make_engine()
@@ -493,15 +499,22 @@ def test_stale_purchase_terms_are_explicit_uncommitted_previews(
     )
 
     presentation = purchase_presentation(quote, status=status)
-    facts = {fact.key: fact for fact in presentation.facts}
-
-    assert presentation.badges == ("Updated terms preview",)
-    assert "No purchase was made" in presentation.outcome
-    assert "terms below are previews" in presentation.outcome
-    assert presentation.balance_after is None
-    assert all("Preview" in fact.label for fact in presentation.facts)
-    assert facts["inventory"].value == "Proposed: 0 → 1"
-    assert facts["balance_preview"].value == "Proposed: 5,000 → 4,970"
+    assert presentation.badges == ()
+    assert "No purchase was made" not in presentation.outcome
+    assert "preview" not in presentation.outcome.casefold()
+    assert presentation.balance_after == 4_970
+    assert presentation.facts == ()
+    assert presentation.primary_label == "Buy"
+    if status is PurchaseStatus.STALE_BALANCE:
+        assert presentation.title == "Buy Small Growth Charge?"
+        assert presentation.update_label == "Balance updated"
+        assert presentation.outcome == (
+            "Adds one Small Growth Charge to your inventory."
+        )
+    else:
+        assert presentation.update_label == ""
+    if status is PurchaseStatus.STALE_PRICE:
+        assert presentation.show_item_name
 
 
 @pytest.mark.parametrize(
@@ -543,12 +556,12 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
     }[kind]
     assert storage.state.completed_purchase_requests[-1].outcome == outcome
     assert outcome.message == {
-        PurchaseKind.SPECIES: "Sunflower added to your collection.",
-        PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added to your inventory.",
-        PurchaseKind.FERTILIZER: "Basic Fertilizer applied to Moss for 1 hour.",
-        PurchaseKind.WEATHER: "Soft Breeze unlocked. Preview or equip it in Collection.",
-        PurchaseKind.SCENERY: "Spring Bloom unlocked. Preview or equip it in Collection.",
-        PurchaseKind.BED: "Garden Bed 3 unlocked.",
+        PurchaseKind.SPECIES: "Sunflower added.",
+        PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added.",
+        PurchaseKind.FERTILIZER: "Basic Fertilizer applied.",
+        PurchaseKind.WEATHER: "Soft Breeze added to your collection.",
+        PurchaseKind.SCENERY: "Spring Bloom added to your collection.",
+        PurchaseKind.BED: "Bed 3 unlocked.",
     }[kind]
     assert outcome.message == presentation.success_message
     assert outcome.next_actions == presentation.next_actions
@@ -730,9 +743,7 @@ def test_fertilizer_replacement_requires_explicit_authorization_and_records_disc
     assert replaced.success
     assert replaced.applied
     assert replaced.disposition.value == "replaced"
-    assert replaced.message == (
-        "Magical Fertilizer replaced the Fertilizer on Moss for 4 hours."
-    )
+    assert replaced.message == "Magical Fertilizer applied."
     assert storage.state.currency_transactions[-1].reason == (
         "Replaced Fertilizer with Magical Fertilizer on Moss"
     )
@@ -778,7 +789,7 @@ def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> 
     )
 
     assert not ok
-    assert "no Garden Coins were spent" in message
+    assert "No Garden Coins were spent" in message
     assert failing_storage.state.to_dict() == before_failed_replacement
 
 
@@ -852,12 +863,15 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "self.engine.confirm_purchase(self.request)" in commit
     assert "except Exception:" in commit
     assert "PurchaseStatus.PERSISTENCE_FAILURE" in commit
-    assert "no Garden Coins were spent" in commit
+    assert "No Garden Coins were spent" in commit
     assert "self.presentation = purchase_presentation(" in commit
     assert "ignore_status=True" in commit
     assert "if refreshed.ready:" in commit
     assert "self._show_status_banner(" in commit
-    assert "balance_only_refresh" not in commit
+    assert "status=display_status" in commit
+    assert "PurchaseStatus.STALE_BALANCE" in commit
+    assert "and not refreshed.ready" in commit
+    assert "self.purchase_result.emit(outcome)" in commit
     assert constructor.index("root.addWidget(self.status)") < constructor.index(
         "root.addWidget(self.content_scroll, 1)"
     )
@@ -913,35 +927,17 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
     assert observed["released"] is True
 
     class _Status:
-        def setText(self, text: str) -> None:
-            self.text = text
-
-        def setAccessibleDescription(self, text: str) -> None:
-            self.accessible_description = text
-
-        def accessibleDescription(self) -> str:
-            return self.accessible_description
-
-        def setStyleSheet(self, text: str) -> None:
-            self.style = text
-
-        def show(self) -> None:
-            self.visible = True
-
-        def setFocus(self) -> None:
-            self.focused = True
-
-        def setToolTip(self, text: str) -> None:
-            self.tooltip = text
-
-        def setProperty(self, name: str, value: str) -> None:
-            setattr(self, name, value)
+        def set_status(self, message: str) -> None:
+            self.visible = bool(message)
 
     status = _Status()
-    receipt_actions = SimpleNamespace(show=lambda: setattr(receipt_actions, "visible", True))
-    receipt_action = SimpleNamespace(
-        setText=lambda text: setattr(receipt_action, "text", text),
-        setAccessibleName=lambda text: setattr(receipt_action, "accessible_name", text),
+    toast_result: dict[str, Any] = {}
+    toast = SimpleNamespace(
+        action=object(),
+        show_message=lambda message, **kwargs: toast_result.update(
+            message=message,
+            **kwargs,
+        ),
     )
     show_receipt = _compiled_method(
         DASHBOARD_PATH,
@@ -953,40 +949,35 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
             "PurchaseOutcome": PurchaseOutcome,
             "PurchasePresentation": object,
             "_learner_text": lambda text: text,
-            "format_status_label": lambda text: str(text).replace("_", " ").title(),
-            "set_semantic_role": lambda *_args, **_kwargs: None,
-            "SemanticRole": SimpleNamespace(BANNER="banner"),
-            "FeedbackTone": SimpleNamespace(SUCCESS="success"),
+            "_set_button_variant": lambda *_args: None,
+            "BUTTON_VARIANT_PRIMARY": "primary",
+            "QTimer": SimpleNamespace(singleShot=lambda *_args: None),
         },
     )
-    announcements: list[str] = []
     show_receipt(
         SimpleNamespace(
             _status_generation=0,
             _receipt_outcome=None,
             status=status,
-            receipt_actions=receipt_actions,
-            receipt_customize=receipt_action,
-            accessibility_announcer=SimpleNamespace(
-                announce=lambda message, **_kwargs: announcements.append(message)
-            ),
+            nursery_toast=toast,
+            _follow_receipt_action=lambda: None,
+            _dismiss_product_receipt=lambda: None,
+            _open_customize_from_nursery=lambda: None,
+            _sync_nursery_feedback_host=lambda: None,
+            _refit_nursery_feedback=lambda: None,
+            _focus_purchase_result=lambda _outcome: None,
         ),
         outcome,
         SimpleNamespace(facts=(), target_name=""),
     )
 
-    assert status.text == (
-        "Purchase complete\n"
-        "Soft Breeze unlocked. Preview or equip it in Collection.\n"
-        "Ownership: Owned · Not equipped\n"
-        "Spent: 100 Garden Coins · Balance: 400 Garden Coins"
-    )
-    assert "Purchase complete" in status.accessible_description
-    assert "Spent: 100 Garden Coins" in status.accessible_description
-    assert "Balance: 400 Garden Coins" in status.accessible_description
-    assert receipt_action.text == "Open Collection"
-    assert receipt_actions.visible is True
-    assert announcements == [status.accessible_description]
+    assert status.visible is False
+    assert toast_result["message"] == "Soft Breeze added to your collection."
+    assert toast_result["action_text"] == "View Collection"
+    assert toast_result["dismiss_text"] == "Keep browsing"
+    assert callable(toast_result["dismiss_callback"])
+    assert toast_result["duration_ms"] == 6_000
+    assert toast_result["dismissible"] is True
 
 
 def test_catalog_engine_exception_keeps_double_activation_guarded_until_release() -> None:
@@ -1096,7 +1087,7 @@ def test_catalog_refresh_exception_reports_saved_change_without_duplicate_use() 
 
 
 def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() -> None:
-    confirmations: list[tuple[str, str]] = []
+    confirmations: list[tuple[str, str, str]] = []
     engine_calls: list[tuple[str, bool]] = []
     scheduled: list[Any] = []
     refreshes: list[str] = []
@@ -1105,8 +1096,15 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
 
     class _Confirmation:
         @staticmethod
-        def confirm(_parent: Any, title: str, message: str) -> bool:
-            confirmations.append((title, message))
+        def confirm(
+            _parent: Any,
+            title: str,
+            message: str,
+            *,
+            confirm_label: str,
+            **_kwargs: Any,
+        ) -> bool:
+            confirmations.append((title, message, confirm_label))
             return True
 
     use_fertilizer = _compiled_method(
@@ -1175,15 +1173,17 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
     assert inventory == {"fertilizer_basic": 1}
     assert refreshes == ["parent", "nursery"]
     assert scheduled == [True, True]
-    assert confirmations[0][0] == "Replace active Fertilizer?"
-    assert "Quality Fertilizer" in confirmations[0][1]
-    assert "3,600 seconds" in confirmations[0][1]
-    assert "cannot be recovered" in confirmations[0][1]
+    assert confirmations[0][0] == "Replace Quality Fertilizer?"
+    assert confirmations[0][1] == (
+        "Basic Fertilizer starts now. You will lose "
+        "1 hour of Quality Fertilizer."
+    )
+    assert confirmations[0][2] == "Use Basic"
     assert results[0] == (True, "Basic Fertilizer applied")
     assert results[1][0] is False
     assert "Rich Compost was not used" in results[1][1]
-    assert "Committed Rich Compost inventory count: 1 (unchanged)" in results[1][1]
-    assert "Active Fertilizer on Moss: Quality Fertilizer (unchanged)" in results[1][1]
+    assert "inventory count" not in results[1][1]
+    assert "(unchanged)" not in results[1][1]
 
 
 @pytest.mark.parametrize(
@@ -1292,8 +1292,8 @@ def test_bed_unlock_exception_restores_both_guards_and_button(
 @pytest.mark.parametrize(
     ("committed", "message_fragment"),
     (
-        (False, "could not confirm that change"),
-        (True, "change was saved"),
+        (False, "Nothing was changed"),
+        (True, "Changes were saved"),
     ),
 )
 def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
@@ -1328,7 +1328,7 @@ def test_catalog_exception_recovery_logs_and_surfaces_safe_guidance(
     assert log_calls
     assert results and results[0][0] is False
     assert message_fragment in results[0][1]
-    assert "reopen the Nursery" in results[0][1]
+    assert "Reopen the Nursery" in results[0][1]
     assert properties == (
         {"transactionPresentation": "committed-result-with-refresh-failure"}
         if committed else {}

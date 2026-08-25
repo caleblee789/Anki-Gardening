@@ -61,7 +61,7 @@ def test_mouse_origin_cancels_but_empty_scene_keeps_the_dashboard_draft() -> Non
         "plant_id = self._plant_at(position)", 1
     )[0]
     assert "self.cancel_move()" not in outside_branch
-    assert "Choose a highlighted garden space, or press Escape to cancel." in outside_branch
+    assert 'self._inline_message = "Choose a bed."' in outside_branch
     assert "list(range(unlocked))" in valid_slots
     assert "sorted(self._slot_placements)" not in valid_slots
 

@@ -3,8 +3,7 @@ from math import isfinite
 from pathlib import Path
 from types import SimpleNamespace
 
-from ankigarden.models.state import GROWTH_THRESHOLDS
-from ankigarden.ui.plant_presenters import fertilizer_status, growth_forecast
+from ankigarden.ui.plant_presenters import fertilizer_status
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,29 +71,35 @@ def test_nursery_uses_ready_catalog_and_the_same_flow_for_the_free_starter() -> 
     assert "self.engine.catalog_summary()" in nursery
     assert "self.engine.select_starter_species(species)" in nursery
     assert "self._currently_growing_strip(active)" in nursery
-    assert '"Your collection"' in nursery
-    assert '"Botanical catalog"' in nursery
+    assert '"Plants in your Garden"' in nursery
+    assert '"Build your collection"' in nursery
+    assert '"Botanical catalog"' not in nursery
     assert "self._plant_stage_strip(species)" in nursery
-    assert "self._plant_artwork(species, GROWTH_STAGES[0], 112)" in nursery
+    assert "self._plant_artwork(species, GROWTH_STAGES[0], 68)" in nursery
     assert "starter_selection_complete" in nursery
-    assert '"Return to Collection"' in owned_card
+    assert '"Store plant" if plant.planted else "Place in Garden"' in owned_card
     assert '"Move to Collection"' not in owned_card
-    for consequence in (
-        "will still own",
-        "Growth, memories, and active Fertilizer unchanged",
-        "will become empty",
-        "nurtured plant",
-    ):
+    for consequence in ("Store", "Collection", "Bed", "will become empty"):
         assert consequence in return_copy
     assert "self._placement_transaction_pending" in placement
-    assert "remains " in placement
-    assert "in Garden Bed" in placement
-    assert "remains stored in " in placement
-    assert "garden bed remain unchanged" in placement
+    assert "Couldn’t store" in placement
+    assert "Couldn’t place" in placement
+    assert "Your garden is unchanged" in placement
     assert '"already" in lower_message' in show_result
     assert "FeedbackTone.INFO" in show_result
     assert '"persistence-failure"' in show_result
     assert '"committed-state-unchanged"' in show_result
+
+
+def test_currently_growing_strip_preserves_both_status_lines() -> None:
+    strip = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_currently_growing_strip",
+    )
+
+    assert "meta.setWordWrap(True)" in strip
+    assert "wide_maximum_height=96" in strip
 
 
 def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
@@ -135,14 +140,16 @@ def test_nursery_previews_crop_manifest_artwork_into_a_grounded_tile() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
+    assert 'f"Need {max(0, int(price) - balance):,} more Garden Coins"' in available_card
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in available_card
     assert "item_name = presentation.item_name" in available_card
     assert "title = QLabel(item_name)" in available_card
-    assert 'ownership = QLabel("Not collected")' in available_card
+    assert 'permanent = QLabel("Permanent")' in available_card
+    assert 'ownership = QLabel("Not collected")' not in available_card
     assert "COST_FREE" not in available_card
-    assert "Cost: {amount} Garden Coins" in _source("ankigarden/ui/copy.py")
+    assert "{amount} Garden Coins" in _source("ankigarden/ui/copy.py")
     assert '"Starts as Seed"' not in available_card
-    assert "_compact_affordability_status(" in available_card
+    assert "_compact_affordability_status(" not in available_card
 
 
 def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> None:
@@ -211,15 +218,17 @@ def test_rare_stage_preview_stays_hidden_everywhere_until_it_is_discovered() -> 
     )
     assert "highest_stage if collected_species else \"seed\"" in collection
     assert "title = QLabel(format_status_label(species))" in collection
-    assert '"Not collected · Available in the Nursery"' in collection
+    assert 'QLabel("Collected" if collected_species else "Not collected")' not in collection
+    assert '"Available in Nursery"' in collection
     assert 'dialog.setProperty("collectionState", "collected" if collected else "not-collected")' in overview
-    assert 'format_status_label(highest_stage) if collected else "None"' in overview
+    assert 'f"Highest stage {format_status_label(highest_stage)}' in overview
     assert 'GROWTH_THRESHOLDS[-1]:,' in overview
-    assert '"Mystery · Reach 50,000 Growth to discover"' not in overview
-    assert '"No collected plants yet"' in overview
-    assert "fertilizer_status(self.engine, plant, now=time.time())" in overview
+    assert 'f"Unlocks at {GROWTH_THRESHOLDS[-1]:,} Growth"' in overview
+    assert '"Available in Nursery"' in overview
+    assert 'instances_title = QLabel("Your plants")' in overview
+    assert "fertilizer_status(self.engine, plant, now=time.time())" not in overview
     assert "stages = ResponsiveTileGrid(" in overview
-    assert "minimum_tile_width=230" in overview
+    assert "minimum_tile_width=112" in overview
     assert "maximum_columns=2" in overview
     assert "minimum_tile_width=170" in overview
     assert "actions.add_tile(action)" in overview
@@ -245,18 +254,18 @@ def test_nursery_stage_carousel_uses_clear_bounded_navigation() -> None:
     assert "layout = QHBoxLayout(widget)" in carousel
     assert "stage_details = QVBoxLayout()" in carousel
     assert "widget.setMaximumWidth(330)" in carousel
-    assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in carousel
+    assert "button.setFixedSize(84, COMPACT_BUTTON_HEIGHT)" in carousel
 
 
-def test_nursery_cards_use_larger_readable_type() -> None:
+def test_nursery_cards_use_compact_readable_type() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     nursery = dashboard.split("class NurseryDialog", 1)[1].split(
         "class PlantInfoCard", 1
     )[0]
 
-    assert "QLabel[nurseryTitle='true'] { font-size:30px" in nursery
-    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:19px" in nursery
-    assert "QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:14px" in nursery
+    assert "QLabel[nurseryTitle='true'] { font-size:24px" in nursery
+    assert "QLabel[nurseryPlantName='true'] { color:#fff3da; font-size:15px" in nursery
+    assert "QLabel[nurseryMeta='true'] { color:#d6c4ac; font-size:13px" in nursery
     assert 'title.setProperty("nurseryPlantName", True)' in nursery
 
 
@@ -269,12 +278,77 @@ def test_nursery_tabs_use_available_width_without_cutting_off_labels() -> None:
     assert "self.catalog_tabs.tabBar().setExpanding(False)" in nursery
     assert "self.catalog_tabs.tabBar().setUsesScrollButtons(True)" in nursery
     assert "self.catalog_tabs.tabBar().setElideMode(Qt.TextElideMode.ElideNone)" in nursery
-    assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in nursery
+    assert "button.setFixedSize(84, COMPACT_BUTTON_HEIGHT)" in nursery
+    assert "minimum_tile_width=240" in nursery
+    assert "else min(3, max(1, len(available)))" in nursery
+    assert '"Only one weather can be equipped at a time. Preview before "' not in nursery
+    assert '3: "Weather and Scenery"' in nursery
     assert "navigation = QHBoxLayout()" in nursery
     assert "navigation.setSpacing(8)" in nursery
 
 
-def test_available_plants_fill_space_with_a_two_column_catalog() -> None:
+def test_nursery_success_toast_has_a_compact_semantic_icon() -> None:
+    toast = _class_source("ankigarden/ui/dashboard.py", "ToastRegion")
+
+    assert 'self.icon = QLabel("✓")' in toast
+    assert 'self.icon.setProperty("toastIcon", True)' in toast
+    assert "self.icon.setFixedSize(20, 20)" in toast
+    assert 'self.icon.setText("!" if error else "✓")' in toast
+    assert 'self.icon.setAccessibleName("Error" if error else "Success")' in toast
+    assert "self.setMinimumHeight(44)" in toast
+    assert "self.setMaximumHeight(84)" in toast
+    assert "self._clear_timer = QTimer(self)" in toast
+    assert "self._clear_timer.setSingleShot(True)" in toast
+    assert "self._clear_timer.timeout.connect(self._clear_scheduled_message)" in toast
+    assert "self._clear_timer.start(duration_ms)" in toast
+    assert "QTimer.singleShot(duration_ms" not in toast
+    assert "dismiss_text: str = \"\"" in toast
+    assert "self.dismiss.clicked.connect(self._run_dismiss)" in toast
+
+
+def test_nursery_feedback_is_one_normal_flow_host_and_purchase_refresh_is_deferred() -> None:
+    nursery = _class_source("ankigarden/ui/dashboard.py", "NurseryDialog")
+    move_host = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_move_nursery_feedback_host",
+    )
+    execute = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_execute_purchase",
+    )
+    stage = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_stage_purchase_result",
+    )
+    handle = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "handle_purchase_result",
+    )
+    receipt = _method_source(
+        "ankigarden/ui/dashboard.py",
+        "NurseryDialog",
+        "_show_purchase_receipt",
+    )
+
+    assert "self.nursery_feedback_host = QFrame()" in nursery
+    assert "self.nursery_feedback_layout.addWidget(self.nursery_toast)" in nursery
+    assert "self.nursery_feedback_layout.addWidget(self.status)" in nursery
+    assert "target_layout.insertWidget(0, self.nursery_feedback_host)" in move_host
+    assert "setGeometry(" not in move_host
+    assert "connect_purchase_result(self._stage_purchase_result)" in execute
+    assert "self._pending_purchase_result = outcome" in stage
+    assert execute.index("dialog.exec()") < execute.index("self.handle_purchase_result")
+    assert "self.refresh()" in handle
+    assert "self._show_purchase_receipt(outcome, presentation)" in handle
+    assert 'primary = "Place in Garden"' in receipt
+    assert "self._refit_nursery_feedback" in receipt
+
+
+def test_available_plants_fill_space_with_an_auto_fit_catalog() -> None:
     available_card = _method_source(
         "ankigarden/ui/dashboard.py", "NurseryDialog", "_available_card"
     )
@@ -283,13 +357,17 @@ def test_available_plants_fill_space_with_a_two_column_catalog() -> None:
     )
 
     assert "card_layout = QVBoxLayout(card)" in available_card
-    assert "presentation.outcome" in available_card
-    assert '_purchase_fact(presentation, "planting")' in available_card
-    assert 'details = QPushButton("Details")' in available_card
+    assert '"Growth begins when planted."' not in available_card
+    assert '_purchase_fact(presentation, "planting")' not in available_card
+    assert 'details = QPushButton("View stages")' in available_card
     assert "footer = QHBoxLayout()" in available_card
     assert "Qt.AlignmentFlag.AlignHCenter" in available_card
-    assert "available_grid_host = ResponsiveTileGrid(breakpoint=600)" in refresh
+    assert "available_grid_host = ResponsiveTileGrid(" in refresh
+    assert "minimum_tile_width=240" in refresh
+    assert "else min(3, max(1, len(available)))" in refresh
     assert "available_grid_host.add_tile(" in refresh
+    assert "Purchased seeds permanently unlock a species." in refresh
+    assert "Plant them to begin earning Growth." in refresh
 
 
 def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
@@ -313,8 +391,9 @@ def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
     assert "def _open_starter_nursery" in dashboard
     assert "self.starter_header_btn.clicked.connect(self._open_starter_nursery)" in dashboard
     assert "self.onboarding_action.clicked.connect(self._activate_onboarding_action)" in dashboard
-    assert "STEP 1 OF 6" in dashboard
-    assert 'f"STEP {step_number} OF 6"' in dashboard
+    assert 'self.onboarding_step = QLabel("")' in dashboard
+    assert "self.onboarding_step.hide()" in dashboard
+    assert "STEP 1 OF 6" not in dashboard
     assert "if opening_settings:" in open_dashboard
     assert "opening_starter" in open_dashboard
     assert "_open_starter_nursery" in open_dashboard
@@ -323,7 +402,7 @@ def test_nursery_is_directly_reachable_from_each_starter_entry_point() -> None:
     assert 'self.scene.focus_landmark("garden.nursery.open")' in dashboard
     assert 'anki-garden:choose-starter' in home
     assert "CHOOSE_STARTER_ACTION" in home
-    assert 'CHOOSE_STARTER_ACTION = "Choose plant"' in _source("ankigarden/ui/copy.py")
+    assert 'CHOOSE_STARTER_ACTION = "Choose starter"' in _source("ankigarden/ui/copy.py")
     assert "_open_starter_nursery()" in dashboard
     assert "not self.interactive" in activate_landmark
     assert "self._interaction.placing" in activate_landmark
@@ -362,7 +441,7 @@ def test_garden_chrome_uses_one_unified_progress_dialog() -> None:
     assert '("streak", "Anki Streak")' in dashboard
     assert '("currency", "Garden Coins")' in dashboard
     assert "self.progress_dialog = GardenProgressDialog(" in dashboard
-    assert "DialogSizeClass.CATALOG" in progress_source
+    assert "DialogSizeClass.PROGRESS" in progress_source
     assert "self.apply_size_policy(" in progress_source
     assert "self.navigation = GardenSideNavigation()" in dashboard
     assert "self.set_body_widget(self.navigation)" in dashboard
@@ -426,18 +505,24 @@ def test_garden_details_growth_is_nonzero_first_and_uses_engine_stage_sources() 
     assert "GROWTH_THRESHOLDS[index]" not in stage_path
     assert "ResponsiveTileGrid(" in stage_path
     assert "maximum_columns=6" in stage_path
-    assert '"✓ Completed"' in stage_path
+    assert 'stage_card.setAccessibleName(' in stage_path
+    assert 'stage_layout.addWidget(stage_name)' in stage_path
+    assert 'QLabel("Completed")' not in stage_path
     assert "display.stage_index" in stage_path
     assert '"completed" if index < display.stage_index' in stage_path
     assert '"current" if index == display.stage_index' in stage_path
-    assert '"Growth Breakdown"' in growth
-    assert '"Study Growth generated"' in growth
-    assert '"Nurtured allocation"' in growth
-    assert '"Passive Growth credited"' in growth
-    assert '"Exact passive Growth earned"' in growth
-    assert '"Growth Charges and direct rewards"' in growth
-    assert '"The nurtured plant receives full Growth.' in growth
-    assert "PASSIVE_GROWTH_EXPLANATION" in growth
+    assert 'f"{total_today:,} Growth today"' in growth
+    assert '"Answer a card to start."' in growth
+    assert '"No growth recorded today"' not in growth
+    assert '"Growth breakdown"' in growth
+    assert '"From cards"' in growth
+    assert '"Bonuses"' in growth
+    assert '"Rewards and charges"' in growth
+    assert '"View calculation details"' not in growth
+    assert '"Nurtured plant allocation"' not in growth
+    assert '"Passive Growth credited"' not in growth
+    assert '"Direct rewards and charges"' not in growth
+    assert "PASSIVE_GROWTH_EXPLANATION" not in growth
     assert '"20 percent of the nurtured plant’s Growth after bonuses."' not in growth
     assert 'self._label("Growth Charges", "detailSection")' not in growth
     assert "stage_scroll" not in growth
@@ -465,18 +550,17 @@ def test_garden_progress_rewards_use_canonical_streak_and_achievement_projection
     assert "applied_reward_event_keys" not in dashboard
     assert "projection.category" not in streak
     assert "current_streak_days=days" in streak
-    assert '"Automatic rewards"' in streak
-    assert '"Today’s daily reward"' in streak
-    assert '"Today’s all-due reward"' in streak
-    assert '"Next streak reward"' in streak
+    assert '"Rewards"' in streak
+    assert '"First card today"' in streak
+    assert '"Finish today’s due cards"' in streak
+    assert '"Day 7"' in streak
     assert "rule.reward_summary" in streak
     assert "tier_label" in streak
-    assert '"Next Growth bonus: Day {next_day:,}"' in streak
-    assert 'ProgressBar("Progress to the next Anki streak Growth bonus")' in streak
-    assert '"Growth bonus thresholds"' in streak
+    assert 'f"Next bonus at {next_day:,} days · {_day_count(days_to_next)} left"' in streak
+    assert '"Growth bonuses"' in streak
     assert '"One-time streak achievements"' in streak
     assert '"How the streak works".lower()' not in dashboard
-    assert '"How the streak works"' in streak
+    assert '"How the streak works"' not in streak
     assert "The milestone layout leaves room" not in dashboard
     assert '"1 days"' not in dashboard
 
@@ -491,16 +575,18 @@ def test_garden_progress_rewards_use_canonical_streak_and_achievement_projection
     assert "projection.condition_lines" in achievement_list
     assert "projection.current" in achievement_list
     assert "projection.progress_target" in achievement_list
-    assert 'QLabel(f"Reward: {projection.reward_summary}")' in achievement_list
-    assert 'f"Unlocked: {_calendar_date(projection.unlocked_at)}"' in achievement_list
+    assert 'QLabel(projection.reward_summary)' in achievement_list
+    assert '_calendar_date(projection.unlocked_at)' in achievement_list
+    assert 'f"Completed {_calendar_date(projection.unlocked_at)}"' not in achievement_list
     assert 'projection.evaluation_mode == "finalized_day"' in achievement_list
-    assert "Finalized only after the Anki day closes" in achievement_list
+    assert "Checked when the Anki day ends" in achievement_list
+    assert "finalized.hide()" in achievement_list
     assert "claim" not in achievement_list.casefold()
     assert "_achievement_condition_rows" not in dashboard
     assert "projection.category" in achievement_list
     for category in (
         '("consistency", "Consistency")',
-        '("study_volume", "Study Volume")',
+        '("study_volume", "Study volume")',
         '("recall", "Recall")',
         '("completion", "Completion")',
     ):
@@ -547,15 +633,18 @@ def test_garden_details_currency_renders_the_persisted_ledger_newest_first() -> 
     assert "transaction.reason" in currency
     assert "transaction.delta" in currency
     assert "transaction.balance" in currency
-    assert '("Date", "Type / source", "Activity", "Coins", "Balance")' in currency
-    assert "_currency_transaction_type(transaction)" in currency
+    assert '("Source", "Change", "Balance")' in currency
     assert "_currency_transaction_source(" in currency
     assert "transactions[:8]" in currency
     assert 'QPushButton("View all activity")' in currency
     assert "len(transactions) > 8" in currency
-    assert "self.engine.STAGE_CURRENCY.items()" in currency
-    assert "self._add_recent_reward_history(ledger_layout)" in currency
-    assert "self._add_recent_garden_finds(earning_layout)" in currency
+    assert '"Earned"' in currency
+    assert '"Spent"' in currency
+    assert '"Earn Garden Coins from cards, streaks, achievements, and Garden Finds."' in currency
+    assert '"How to earn Garden Coins"' in currency
+    assert "self.engine.STAGE_CURRENCY.items()" not in currency
+    assert "self._add_recent_reward_history" not in currency
+    assert "self._add_recent_garden_finds" not in currency
     assert "recent_reward_summaries(" in reward_history
     assert "recent_garden_finds(" in recent_finds
     assert 'getattr(summary, "learner_text"' in reward_result
@@ -564,15 +653,11 @@ def test_garden_details_currency_renders_the_persisted_ledger_newest_first() -> 
     assert 'getattr(finding, "amount"' not in find_result
     assert "direct Growth to the nurtured plant" not in find_result
     assert "achievement_views = achievement_presentations(state)" in currency
-    assert "current_streak_days=current_streak_days" in currency
-    assert "reward_rules['daily_activity'].reward_summary" in currency
-    assert "reward_rules['all_due'].reward_summary" in currency
-    assert "reward_rules['weekly_streak'].reward_summary" in currency
+    assert "current_streak_days=current_streak_days" not in currency
     assert "DAILY_ACTIVITY_COINS" not in currency
     assert "WEEKLY_STREAK_COINS" not in currency
     assert "ALL_DUE_BASE_COINS" not in currency
-    assert "projection.reward_coins > 0" in currency
-    assert '"Uncover a Coin Garden Find"' in currency
+    assert "projection.reward_coins > 0" not in currency
     assert 'transaction_type == "credit"' in transaction_type
     assert 'transaction_type == "debit"' in transaction_type
     for source in (
@@ -605,30 +690,26 @@ def test_growth_charge_failures_keep_committed_state_separate_from_retry_preview
         "_update_responsive_layout",
     )
     assert '"Charge quantity"' not in dialog
-    assert '"Earn one through rewards or obtain one in the Nursery."' in dialog
-    assert '"This plant is no longer eligible. No Growth Charge was used."' in dialog
-    assert '"No Growth was added and no charge was used."' in dialog
-    assert '"No stage change"' in dialog
-    assert "outcome.resulting_growth" in dialog
+    assert '"Earn one from rewards or buy one in the Nursery."' in dialog
+    assert '"No charge was used."' in dialog
+    assert '"Availability updated\\n' in dialog
+    assert '"The change could not be saved.\\nNo charge was used."' in dialog
+    assert 'f"Remains {current_stage}"' not in dialog
     assert "outcome.inventory_remaining" in dialog
-    assert "Values marked Preview" in dialog
+    assert "Values marked Preview" not in dialog
     assert "tone = FeedbackTone.ERROR if is_error else FeedbackTone.WARNING" in dialog
     assert "self.configure_close_policy(protect_in_flight=True)" in dialog
     assert "self.set_dialog_in_flight(True)" in dialog
     assert "self.set_dialog_in_flight(False)" in dialog
-    assert 'self.use_action.setText("Applying Growth Charge…")' in dialog
-    for copy in (
-        "Preview — not committed",
-        "Growth:",
-        "Stage:",
-        "Stage rewards:",
-        "Inventory:",
-    ):
-        assert copy in compact_preview
-    assert "sum(" in compact_preview
-    assert 'getattr(quote, "rewards", ())' in compact_preview
+    assert 'self.use_action.setText("Using charge…")' in dialog
+    assert 'f"+{max(0, int(quote.granted_growth)):,} Growth"' in compact_preview
+    assert 'f"{current_growth:,} → {projected_growth:,}"' in compact_preview
+    assert 'f"After use: {max(0, int(quote.inventory_after)):,} remaining"' in compact_preview
+    for copy in ("Stage:", "Inventory:"):
+        assert copy not in compact_preview
+    assert "(preview)" not in dialog
     assert '"compact" if compact else "default"' in responsive
-    assert "self.compact_summary_card.setVisible(show_compact_summary)" in responsive
+    assert "self.compact_summary_card.hide()" not in responsive
 
 
 def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None:
@@ -643,17 +724,27 @@ def test_growth_charge_success_receipt_uses_only_the_committed_outcome() -> None
         "_committed_receipt_copy",
     )
     assert "self.quote" not in show_receipt
-    assert "sum(" not in show_receipt
-    assert "_committed_receipt_copy(outcome, reward_copy)" in show_receipt
+    assert "for reward in tuple(outcome.rewards or ())" in show_receipt
+    assert "_committed_receipt_copy(outcome)" in show_receipt
     assert "_render_committed_target(outcome)" in show_receipt
-    assert "outcome.previous_stage" in receipt_copy
-    assert "outcome.resulting_stage" in receipt_copy
+    assert "outcome.charge_name" not in receipt_copy
+    assert 'self.charge_heading = QLabel("")' in _class_source(
+        "ankigarden/ui/dashboard.py", "GrowthChargeConfirmationDialog"
+    )
+    assert 'self.stage_rewards_heading = QLabel("")' in _class_source(
+        "ankigarden/ui/dashboard.py", "GrowthChargeConfirmationDialog"
+    )
     assert "outcome.growth_granted" in receipt_copy
     assert "outcome.inventory_remaining" in receipt_copy
-    assert "if outcome.rewards" in receipt_copy
-    assert 'f"{outcome.target_name} reached {resulting_stage}"' in show_receipt
+    assert "outcome.previous_stage" in show_receipt
+    assert 'result_title = f"{outcome.target_name} reached {resulting_stage}"' in show_receipt
+    assert 'self.receipt_title.setText(f"{previous_stage} → {resulting_stage}")' in show_receipt
+    assert 'self.charge_heading.setText("Growth Charge")' in show_receipt
+    assert 'self.stage_rewards_heading.setText("Stage reward")' in show_receipt
+    assert "GardenBadge(" in show_receipt
     assert 'self.use_action.setText("View plant")' in show_receipt
     assert 'self.cancel_action.setText("Close")' in show_receipt
+    assert "self.cancel_action.show()" in show_receipt
     assert "self.preview_banner.hide()" in show_receipt
 
 
@@ -665,10 +756,14 @@ def test_dashboard_metric_cards_have_uniform_interaction_affordances() -> None:
         "class RearrangeBar", 1
     )[0]
 
-    assert "cell.setMinimumHeight(96)" in stats
-    assert "growth_layout.setContentsMargins(16, 10, 16, 11)" in stats
-    assert "growth_layout.setSpacing(5)" in stats
-    assert "growth_bar.setFixedHeight(10)" in stats
+    assert "cell.setMinimumHeight(72)" in stats
+    assert "growth_layout.setContentsMargins(16, 3, 16, 3)" in stats
+    assert "growth_layout.setSpacing(1)" in stats
+    assert "growth_bar.setFixedHeight(4)" in stats
+    assert 'self.growth_kicker = QLabel("CURRENT PLANT")' in stats
+    assert 'self.streak_label = QLabel("ANKI STREAK")' in stats
+    assert 'self.currency_label = QLabel("GARDEN COINS")' in stats
+    assert 'self.growth_name.setText("No nurtured plant")' in stats
     assert 'cell.setProperty("separator", key != "currency")' in stats
     assert "QLabel(METRIC_AFFORDANCE)" not in stats
     assert 'METRIC_AFFORDANCE = "Open details"' in _source("ankigarden/ui/copy.py")
@@ -677,7 +772,8 @@ def test_dashboard_metric_cards_have_uniform_interaction_affordances() -> None:
     assert "QPushButton[gardenStatCell='true']:hover" in dashboard
     assert "QPushButton[gardenStatCell='true']:pressed" in dashboard
     assert "QPushButton[gardenStatCell='true']:focus" in dashboard
-    assert 'self.currency_support = QLabel("Spend in the Nursery")' in stats
+    assert 'self.currency_support = QLabel("")' in stats
+    assert "self.currency_support.hide()" in stats
 
 
 def test_environment_catalog_previews_composite_weather_over_real_scenery() -> None:
@@ -711,7 +807,7 @@ def test_growth_metric_uses_compact_high_dpi_numeric_copy() -> None:
     )[0]
 
     assert 'self._growth_value_full_text = "0 / 0 Growth"' in stats
-    assert 'full_text.removesuffix(" Growth")' in stats
+    assert 'full_text.removesuffix(" Growth")' not in stats
     assert "self.growth_value.setAccessibleName(full_text)" in stats
     assert "growth_layout.addWidget(growth_bar)" in stats
     assert stats.index("growth_layout.addWidget(growth_bar)") < stats.index(
@@ -734,15 +830,14 @@ def test_toggle_switch_text_tracks_signal_blocked_checked_state() -> None:
     assert "○  Off" not in toggle
 
 
-def test_header_settings_action_uses_a_centered_vector_painted_gear() -> None:
+def test_header_settings_action_uses_the_shared_icon_button() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     build_ui = _method_source("ankigarden/ui/dashboard.py", "GardenDashboard", "_build_ui")
 
     assert "def _settings_gear_icon(" in dashboard
     assert "path.setFillRule(Qt.FillRule.OddEvenFill)" in dashboard
-    assert "self.settings_btn = QPushButton()" in build_ui
-    assert "self.settings_btn.setIcon(_settings_gear_icon(22))" in build_ui
-    assert "self.settings_btn.setIconSize(QSize(22, 22))" in build_ui
+    assert 'self.settings_btn = GardenIconButton("settings", UI_TEXT["open_settings"])' in build_ui
+    assert "self.settings_btn.setFixedSize(32, 32)" not in build_ui
 
 
 def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
@@ -754,21 +849,27 @@ def test_plant_card_and_move_flow_have_stable_direct_actions() -> None:
     undo = _method_source("ankigarden/ui/dashboard.py", "GardenDashboard", "_undo_move")
 
     positions: list[int] = []
-    for label in ("Nurture", "Fertilize", "Growth Charge", "Move", "Story"):
+    for label in ("Nurture", "Fertilizer", "Growth Charge", "Move", "Plant Story"):
         assert f'QPushButton("{label}")' in card
         positions.append(card.index(f'QPushButton("{label}")'))
     assert positions == sorted(positions)
     assert "self.actions.addWidget(self.nurture, 0, 0, 1, 2)" in card
     assert "self.actions.addWidget(self.fertilize, 0, 0)" in card
     assert "self.actions.addWidget(self.growth_charge, 0, 1)" in card
-    assert "secondary_row = 1 if active else 2" in card
+    assert "self.actions.addWidget(self.fertilize, 1, 0)" not in card
+    assert "self.actions.addWidget(self.growth_charge, 1, 1)" not in card
+    assert "secondary_row = 1" in card
     assert "self.actions.addWidget(self.move, secondary_row, 0)" in card
     assert "self.actions.addWidget(self.story, secondary_row, 1)" in card
     assert 'self.nurture.setText("Nurture")' in card
-    assert 'self.fertilize.setText("Fertilize")' in card
+    assert 'self.fertilize.setText("Fertilizer")' in card
     assert "self.nurture.setChecked(False)" in card
     assert "self.nurture.setVisible(not active and not fully_grown)" in card
     assert "self.nurtured_badge.setVisible(active and not fully_grown)" in card
+    assert "self.fertilize.setVisible(active and not fully_grown)" in card
+    assert "self.growth_charge.setVisible(active and not fully_grown)" in card
+    assert "self.fully_grown_badge.setVisible(fully_grown)" in card
+    assert "set_button_size(button, ButtonSize.COMPACT_ROW)" in card
     assert "nurture_reason" in card
     assert "fertilizer_reason" in card
     assert "Nurture this plant before using Fertilizer." in card
@@ -802,9 +903,9 @@ def test_story_is_chronological_compact_and_has_an_up_next_card() -> None:
     assert 'self.up_next_title = QLabel("Up next")' in story
     assert "memories = chronological_memories(plant.memories)" in refresh
     assert "reverse=True" not in refresh
-    assert 'timeline_label = QLabel("Memories")' in dashboard
-    assert "New memories will appear as this plant grows." in dashboard
-    assert "forecast = growth_forecast(self.engine, plant)" in refresh
+    assert 'timeline_label = QLabel("History")' in dashboard
+    assert "New history will appear as this plant grows." not in dashboard
+    assert "growth_forecast(self.engine, plant)" not in refresh
     assert 'f"About {answers:,} Anki card' not in refresh
     assert "self.stage_nodes" in story
     assert "stage_preview = ArtworkThumbnail()" in story
@@ -813,8 +914,8 @@ def test_story_is_chronological_compact_and_has_an_up_next_card() -> None:
     assert "plant.species" in refresh
     assert "stage_key" in refresh
     assert "storyStageMark" not in story
-    assert 'self.up_next_title.setText("Growth summary")' in refresh
-    assert 'f"Fully grown · {plant.growth_points:,} total Growth"' in refresh
+    assert 'self.up_next_title.setText("Fully grown")' in refresh
+    assert 'f"Fully grown · {plant.growth_points:,} total Growth"' not in refresh
     assert "FULLY_GROWN_ACTION" in story
 
 
@@ -831,15 +932,12 @@ def test_story_reuses_the_nurtured_badge_and_shows_one_growth_counter() -> None:
     assert "self.nurturing_status = NurturedPlantBadge(nurtured_asset)" in story
     assert "class NurturedPlantBadge(QFrame):" in dashboard
     assert 'self.icon.setAccessibleName("Watering can")' in dashboard
-    assert 'self.stage_progress.set_progress(\n                "Growth",' in story_refresh
+    assert 'self.stage_progress.set_progress(\n                "",' in story_refresh
     assert story_refresh.count(
-        'value_text=f"{progress.stage_points:,} / {progress.stage_goal:,} Growth"'
+        'value_text=f"{progress.stage_points:,} / {progress.stage_goal:,}"'
     ) == 1
     assert 'f"{progress.points_remaining:,} Growth remaining' not in story_refresh
-    assert 'f"Progress to {next_stage}"' in card_refresh
-    assert card_refresh.count(
-        'value_text=f"{stage_points:,} / {stage_goal:,} Growth"'
-    ) == 1
+    assert "format_stage_progress(stage_points, stage_goal, next_stage)" in card_refresh
     assert "self.growth_remaining.setText(" not in card_refresh
     assert card_refresh.count("self.growth_remaining.hide()") == 2
 
@@ -872,33 +970,39 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
     settings = dashboard.split("class GardenSettingsDialog", 1)[1].split("class MemoryTimeline", 1)[0]
     theme_card = studio.split("self.theme_card = QFrame()", 1)[1].split(
-        "self.animations_enabled = QCheckBox()", 1
+        "self.reduced_motion = QCheckBox()", 1
     )[0]
     apply_preview = _method_source("ankigarden/ui/garden_studio.py", "GardenStudioWidget", "_apply_preview")
     save = _method_source("ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_save_visual_settings")
     hide_saved = _method_source("ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_hide_saved_status")
 
     assert "self.theme_combo" not in studio
-    assert 'theme_title = QLabel("Current scenery")' in theme_card
+    assert 'theme_heading = QLabel("Current scenery")' in theme_card
+    assert 'self.theme_title = QLabel("Verdant Twilight")' in theme_card
     assert "self.theme_thumbnail = QLabel()" in theme_card
     assert 'self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")' in theme_card
     assert "QComboBox" not in theme_card
     assert 'self.manage_environment = QToolButton()' in theme_card
+    assert 'self.manage_environment.setText("Edit appearance")' in theme_card
     assert 'background_asset = asset_paths.get("background")' in apply_preview
     assert "self.theme_thumbnail.setPixmap(background_pixmap.scaled(" in apply_preview
     assert "dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))" in apply_preview
     assert '"sprout": 500' not in apply_preview
     assert 'self.fine_tune_toggle.setText("Fine tune")' in studio
     assert "self.fine_tune_section.hide()" in studio
-    assert 'QPushButton("Save changes")' in settings
+    assert 'QPushButton("Save")' in settings
     assert 'QPushButton("Cancel")' in settings
-    assert 'QPushButton("Restore display defaults")' in settings
+    assert 'QPushButton("Reset display settings")' in settings
     assert "self.garden_name_edit = QLineEdit()" in settings
     assert "self.garden_name_edit.setMaxLength(MAX_GARDEN_NAME_LENGTH + 80)" in settings
-    assert 'f"Garden name must be 1 to {MAX_GARDEN_NAME_LENGTH} characters."' in settings
+    assert '"Enter a garden name."' in settings
+    assert 'f"Use {MAX_GARDEN_NAME_LENGTH} characters or fewer."' in settings
     assert 'self.garden_name_error.setProperty("fieldError", True)' in settings
     assert "self.garden_name_error.setVisible(not valid)" in settings
-    assert 'self.save_status.setText("Fix 1 error before saving.")' in save
+    assert "behavior.setMinimumWidth(0)" in settings
+    assert "QSizePolicy.Policy.Ignored" in settings
+    assert "self._update_dirty_state()" in save
+    assert "self.garden_name_error.text()" in save
     assert "self.garden_name_edit.setFocus()" in save
     assert "self.garden_name_edit.selectAll()" in save
     assert "self.engine.rename_garden" in settings
@@ -913,6 +1017,11 @@ def test_settings_expose_one_real_theme_and_stage_changes_until_save() -> None:
     assert 'self.save_status.text() == "Saved"' in hide_saved
     assert "self.save_status.hide()" in hide_saved
     assert 'self.tabs.addTab(advanced, UI_TEXT["tab_advanced"])' in settings
+    assert '"tab_advanced": "Diagnostics"' in dashboard
+    assert 'advanced.setAccessibleName("Diagnostics")' in settings
+    assert '"Troubleshooting"' not in settings
+    assert "self.debug_report.setMinimumHeight(220)" in settings
+    assert "self.debug_report.setMaximumHeight(260)" in settings
     assert "DEVELOPMENT_MUTATION_ENABLED" not in dashboard
     assert "Unlock development tools" not in settings
     assert "Populate test garden" not in settings
@@ -938,9 +1047,10 @@ def test_settings_preview_debounces_expensive_asset_resolution() -> None:
 def test_reduced_motion_control_is_visible_and_owns_animation_behavior() -> None:
     studio = _source("ankigarden/ui/garden_studio.py")
     assert "self.motion_row = ToggleSettingRow(" in studio
-    assert "REDUCED_MOTION_LABEL" in studio
+    assert 'STUDIO_TEXT["animations_label"]' in studio
     assert "REDUCED_MOTION_DESCRIPTION" in studio
-    assert "controls_layout.addWidget(self.motion_row)" in studio
+    assert "self.advanced_actions_layout.addWidget(self.motion_row)" in studio
+    assert "controls_layout.addWidget(self.motion_row)" not in studio
     assert "self.motion_row.hide()" not in studio
 
 
@@ -952,11 +1062,14 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
     )[0]
 
     assert 'self.preview_panel.setProperty("previewPanel", True)' in studio
-    assert 'preview_title = QLabel("Home preview")' in studio
-    assert 'self.home_preview = HomeGardenPreview(self.scene)' in studio
+    assert 'preview_title = QLabel("Preview")' in studio
+    assert 'self.home_preview = GardenHomePreview(self.scene)' in studio
     assert "preview_layout.addWidget(self.home_preview)" in studio
     assert "self.root_layout.addWidget(self.preview_panel, 1)" in studio
-    assert "self.controls.setMaximumWidth(16777215 if compact else 380)" in studio
+    assert "SETTINGS_CONTROLS_WIDE_MAX_WIDTH" in studio
+    assert '"settings.home-preview-row"' in studio
+    assert '"current-scenery"' in studio
+    assert '"shared-home-preview"' in studio
     assert "self.advanced_panel.setSizePolicy(" in studio
     assert "self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)" in studio
     assert "controls_layout.setAlignment(Qt.AlignmentFlag.AlignTop)" in studio
@@ -969,16 +1082,16 @@ def test_settings_preview_and_actions_have_clear_responsive_regions() -> None:
         "class HomeGardenPreview", 1
     )[0]
     assert "QSizePolicy.Policy.Maximum" in toggle_row
-    assert "self.footer_layout.addWidget(self.save_status, 1)" in settings
+    assert "settings_footer_copy_layout.addWidget(self.unsaved_count)" in settings
+    assert "settings_footer_copy_layout.addWidget(self.save_status)" in settings
     assert "def _apply_settings_footer_layout" in settings
     assert "self.behavior.advanced_actions_layout.addWidget(self.restore_defaults)" in settings
     assert "self.settings_footer_grid.addWidget(self.cancel_settings, 0, 0)" in settings
     sync_tab = _method_source(
         "ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_sync_settings_tab"
     )
-    assert "self.settings_footer_actions.show()" in sync_tab
-    assert "self.footer.show()" in sync_tab
-    assert "setVisible(not troubleshooting)" not in sync_tab
+    assert "show_settings_actions = not diagnostics or dirty" in sync_tab
+    assert "self.settings_footer_actions.setVisible(show_settings_actions)" in sync_tab
     restore_persistent = _method_source(
         "ankigarden/ui/garden_studio.py",
         "GardenStudioWidget",
@@ -1007,14 +1120,14 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     )
 
     assert plant_card.count(
-        'value_text=f"{stage_points:,} / {stage_goal:,} Growth"'
+        "value_text=format_stage_progress(stage_points, stage_goal, next_stage)"
     ) == 1
     assert "self.growth_summary.setText(" in plant_card
     assert ".replace('card answer', 'eligible answer')" not in plant_card
-    assert 'forecast = plant.get("growth_forecast", {})' in plant_card
+    assert 'forecast = plant.get("growth_forecast", {})' not in plant_card
     assert "self.growth_remaining.setText(" not in plant_card
     assert plant_card.count("self.growth_remaining.hide()") == 2
-    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in plant_card
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' not in plant_card
     assert "% to {next_stage}" not in plant_card
     assert "_refresh_progress_overview" not in dashboard
     assert "total Growth · {completed_events}" not in refresh
@@ -1022,9 +1135,13 @@ def test_dense_detail_surfaces_do_not_repeat_the_same_growth_totals() -> None:
     assert 'dialog.setWindowTitle(f"Fertilize {plant.name}")' in fertilizer
     assert 'card.setProperty("fertilizerCard", True)' in fertilizer
     assert "presentation = purchase_presentation(quote, ignore_status=True)" in fertilizer
-    assert "current_status = FertilizerStatusBlock(allow_description=True)" in fertilizer
+    assert "current_status = FertilizerStatusBlock()" in fertilizer
+    assert "current_projection = fertilizer_status(" in fertilizer
+    assert "current_status.name_label" not in fertilizer
+    assert "current_projection.name" in fertilizer
     assert "fertilizer_status(" in fertilizer
-    assert 'action_label = presentation.primary_label.split(" ·", 1)[0]' in fertilizer
+    assert '"Buy and replace"' in fertilizer
+    assert 'else presentation.primary_label.split(" ·", 1)[0]' in fertilizer
     assert '_affordability_status(spec.price, balance_value)' in fertilizer
 
 
@@ -1043,15 +1160,13 @@ def test_move_guidance_uses_only_the_scene_popup_after_commit() -> None:
     )
     assert "self.scene.setFocus()" in begin_move
     assert "QTimer.singleShot(0, self._position_scene_overlays)" in begin_move
-    assert 'action_text="Undo Move"' in place
+    assert 'action_text="Undo move"' in place
     assert "self._restore_move_focus(plant_id)" in place
 
 
 def test_compact_identity_copy_uses_middle_dots_but_runtime_notices_are_normalized() -> None:
     dashboard = _source("ankigarden/ui/dashboard.py")
-    studio = _source("ankigarden/ui/garden_studio.py")
     assert " · " in dashboard
-    assert " · " in studio
     assert "chr(0xB7)" in dashboard
     assert "_learner_text(event.message)" in dashboard
     scope = {"Any": object}
@@ -1121,7 +1236,7 @@ def test_reviewer_reward_notices_default_on_across_settings_and_runtime() -> Non
         "ankigarden/ui/dashboard.py", "GardenSettingsDialog", "_restore_defaults"
     )
 
-    assert "progress notifications on" in restore_defaults
+    assert "review rewards" in restore_defaults
     assert "self.behavior.restore_persistent_defaults()" in restore_defaults
     assert 'DEFAULT_CONFIG["show_progress_notifications"]' in studio
     assert 'DEFAULT_CONFIG["show_progress_notifications"]' in reviewer
@@ -1144,9 +1259,9 @@ def test_troubleshooting_copy_reports_visible_keyboard_feedback() -> None:
     assert "self.troubleshooting_status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in settings
     assert 'self.diagnostics_checked.setText("Report copied to clipboard")' in copy_report
     assert "self.diagnostics_card.setFocus()" in copy_report
-    assert 'status = "Garden display may be incomplete"' in refresh_report
+    assert 'status = "Some artwork is missing"' in refresh_report
     assert 'self.diagnostics_card.setProperty("diagnosticState", "warning")' in refresh_report
-    assert 'status = "No display issues detected"' in refresh_report
+    assert 'status = "No display issues found"' in refresh_report
 
 
 def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
@@ -1157,8 +1272,8 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
 
     assert scope["_plant_count"](1) == "1 plant"
     assert scope["_plant_count"](2) == "2 plants"
-    assert scope["_card_answer_count"](1) == "1 Anki card answer"
-    assert scope["_card_answer_count"](2) == "2 Anki card answers"
+    assert scope["_card_answer_count"](1) == "1 card answer"
+    assert scope["_card_answer_count"](2) == "2 card answers"
     assert scope["_minute_count"](1) == "1 minute"
     assert scope["_minute_count"](2) == "2 minutes"
 
@@ -1176,13 +1291,18 @@ def test_dashboard_count_copy_is_grammatical_at_one_and_many() -> None:
         "ankigarden/ui/dashboard.py", "GardenDashboard", "show_same_day_catchup_feedback"
     )
     assert "owned_count + available_count" in nursery_refresh
-    assert "'plant' if max(owned_count, owned_count + available_count) == 1 else 'plants'" in nursery_refresh
+    assert 'f"{owned_count:,} of "' in nursery_refresh
+    assert 'f"{max(owned_count, owned_count + available_count):,} collected"' in nursery_refresh
     assert "self.intro.setAccessibleDescription(intro_text)" in nursery_refresh
-    assert 'f"{collected} of {len(registry_views)} collectibles owned"' in collection_refresh
+    assert (
+        'f"{collected} of {len(registry_views)} collectibles collected"'
+        in collection_refresh
+    )
     assert '("Locked", "not_collected")' in collection_filters
-    assert '"Not collected · Available in the Nursery"' in collection_refresh
+    assert 'QLabel("Collected" if collected_species else "Not collected")' not in collection_refresh
+    assert '"Available in Nursery"' in collection_refresh
     assert "_card_answer_count(review_count)" in catchup
-    assert "growth_forecast(self.engine, plant)" in dashboard
+    assert "growth_forecast(self.engine, plant)" not in dashboard
     assert 'f"About {answers:,} Anki card' not in dashboard
 
 
@@ -1204,14 +1324,20 @@ def test_collection_filters_and_inventory_cards_reflow_without_chip_scrolling() 
         assert copy in filters
     assert "All categories" not in filters
     assert "QScrollArea" not in refresh
-    assert "self.grid.addWidget(self.search, 0, 0, 1, 2)" in filters
-    assert "for row, control in enumerate(controls)" in filters
+    assert "self.grid.addWidget(self.count, 0, 0)" in filters
+    assert "self.grid.addWidget(self.search, 0, 1)" in filters
+    assert "self.grid.addWidget(\n                self.clear," in filters
+    assert "self.grid.addWidget(self.status, 1, 0, 1, 2)" in filters
+    assert "self.grid.addWidget(self.category, 1, 2, 1, 2)" in filters
     assert "QWidget.setTabOrder" in filters
     assert 'for category_key in ("decorations", "garden_beds", "growth_items")' in refresh
     for label in ("Owned quantity", "Effect", "Eligibility", "Acquisition"):
-        assert label in registry_card
-    assert "self._collection_mechanics_help" in registry_card
-    assert 'QLabel("Equipped appearance")' in appearance
+        assert label not in registry_card
+    assert "self._collection_mechanics_help" not in registry_card
+    assert 'QLabel("Garden appearance")' in appearance
+    assert 'f"{scenery.name} · {weather.name} · {decoration_name}"' in appearance
+    assert '"Active effect"' not in appearance
+    assert '"Artwork effects"' not in appearance
     assert "Current garden loadout" not in refresh
 
 
@@ -1249,21 +1375,28 @@ def test_nursery_and_fertilizer_show_affordability_before_activation() -> None:
     assert "affordable," in available_card
     assert "is not affordable yet" in available_card
     assert "card.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in available_card
-    assert "apply_explanatory_tooltip(" in available_card
+    assert "apply_explanatory_tooltip(" not in available_card
     assert "self.bed_affordability" in nursery
     assert "state.currency_balance >= price" in space_card
-    assert 'self.bed_button = QPushButton("Unlock bed")' in space_card
+    assert 'self.bed_button = QPushButton("Unlock")' in space_card
     assert "affordable and not self._bed_purchase_pending" in space_card
     assert "more needed" in space_card
     assert "current_status" in fertilizer
-    assert "self._fertilizer_text(plant)" in fertilizer
+    assert 'extend_current = QPushButton("Extend")' in fertilizer
     assert "set_control_enabled(" in fertilizer
     assert "affordable and active" in fertilizer
-    assert "Nurture this plant before purchasing Fertilizer." in fertilizer
-    assert 'action_label = presentation.primary_label.split(" ·", 1)[0]' in fertilizer
+    assert 'options_heading = QLabel("Replace with")' in fertilizer
+    assert 'options_heading.setVisible(current_fertilizer is not None)' in fertilizer
+    assert '"Nurture this plant first."' in fertilizer
+    assert 'browse = QPushButton("Open Nursery")' in fertilizer
+    assert '"Choose a fertilizer"' not in fertilizer
+    assert '"Temporarily increase Growth earned per card."' not in fertilizer
+    assert '"Buy and replace"' in fertilizer
+    assert 'else presentation.primary_label.split(" ·", 1)[0]' in fertilizer
     assert "presentation.primary_accessible_name" in fertilizer
     assert "shortfall_label = QLabel(" in fertilizer
-    assert 'f"Need {shortfall:,} more {' in fertilizer
+    assert 'f"Need {shortfall:,} more "' in fertilizer
+    assert "'Garden Coin' if shortfall == 1 else 'Garden Coins'" in fertilizer
     assert 'shortfall_label.setProperty("fertilizerShortfall", True)' in fertilizer
     assert 'action_label = f"Need ' not in fertilizer
     assert "purchase_presentation(quote, ignore_status=True)" in fertilizer
@@ -1304,16 +1437,6 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "PurchaseConfirmationDialog",
         "_failure_tone",
     )
-    compact_replacement = _method_source(
-        "ankigarden/ui/dashboard.py",
-        "PurchaseConfirmationDialog",
-        "_update_compact_replacement_summary",
-    )
-    compact_decision = _method_source(
-        "ankigarden/ui/dashboard.py",
-        "PurchaseConfirmationDialog",
-        "_update_compact_decision_summary",
-    )
     collection_environment = _method_source(
         "ankigarden/ui/dashboard.py",
         "GardenDashboard",
@@ -1325,33 +1448,43 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "_option_tile",
     )
 
-    assert 'QPushButton("Purchase")' in available
+    assert 'QPushButton("Buy")' in available
     assert 'QPushButton("Choose")' in starter
-    assert '"Replace"' in supplement
+    assert '"Buy and replace"' in supplement
     assert '"Extend"' in supplement
-    assert '"Apply"' in supplement
-    assert 'QPushButton("Purchase")' in charge
+    assert '"Buy and apply"' in supplement
+    assert 'action.setProperty("textFitClearance", 8)' in supplement
+    assert "int(action.sizeHint().width()) + 8" in supplement
+    assert 'QPushButton("Buy")' in charge
     assert '"growth_items:fertilizer_basic"' in stored_fertilizer
-    assert 'QPushButton(f"Use {definition.name}")' in stored_fertilizer
-    assert "descriptor.unlock_requirement" in stored_fertilizer
-    assert '— {count} owned' in charge
+    assert 'QPushButton("Use")' in stored_fertilizer
+    assert "descriptor.unlock_requirement" not in stored_fertilizer
+    assert 'f"{count:,} available"' in charge
     assert '"Inventory:' not in charge
-    assert "helper_text = spec.how_to_earn" in charge
-    assert 'action = QPushButton("Locked")' in charge
+    assert "helper_text = spec.how_to_earn" not in charge
+    assert 'action = QPushButton("Locked")' not in charge
     assert 'f"Need {spec.price - self.storage.state.currency_balance:,} "' in charge
-    assert '"Equipped" if equipped else' in environment
-    assert '"Open Collection" if owned else' in environment
+    assert '"Equipped" if equipped else "Owned"' in environment
+    assert '"View in Collection" if owned else' not in environment
+    assert 'if not owned:' in environment
     assert '"Garden Find only"' in environment
     assert "item.purchasable" in environment
     assert "item.drop_only" in environment
     assert 'else item.how_to_earn' in environment
     assert '"Garden Find only"' in collection_environment
-    assert '"Locked · Garden Find"' in collection_option
+    assert '"Owned"' not in collection_option
+    assert '"Locked · Garden Find"' not in collection_option
     assert "Earn while reviewing" not in environment + collection_environment
     assert "discovery reward" not in collection_option
-    assert 'QPushButton("Unlock bed")' in spaces
+    assert 'QPushButton("Unlock")' in spaces
+    assert '"nursery.garden-bed-details"' in spaces
+    assert 'AdaptiveRegion.measured("six-bed-map"' in spaces
+    assert 'AdaptiveRegion.measured("selected-bed"' in spaces
+    assert 'QPushButton("Manage owned weather in Collection")' in _method_source(
+        "ankigarden/ui/dashboard.py", "NurseryDialog", "refresh"
+    )
     assert "class FertilizerReplacementDialog(PurchaseConfirmationDialog)" in replacement
-    assert "DialogSizeClass.COMPARISON" in confirmation
+    assert "DialogSizeClass.TRANSACTION" in confirmation
     assert "self.register_scroll_region(self.content_scroll)" in confirmation
     assert "self.register_pinned_footer(self.action_footer)" in confirmation
     assert "presentation = purchase_presentation(quote)" in confirmation
@@ -1368,29 +1501,14 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
     assert "PurchaseStatus.ALREADY_OWNED" in failure_tone
     assert "PurchaseStatus.STALE_BALANCE" in failure_tone
     assert "return FeedbackTone.INFO" in failure_tone
-    for label in (
-        "Target:",
-        "Current:",
-        "New:",
-        "Discarded now:",
-        "seconds",
-        "No active time remaining",
-    ):
-        assert label in compact_replacement
-    assert "self.presentation.outcome" in compact_decision
-    assert "self.presentation.category" in compact_decision
-    assert "self.presentation.facts" in compact_decision
-    assert "self.presentation.badges" in compact_decision
-    assert "self.compact_replacement_summary.setVisible(compact_replacement)" in confirmation
-    assert "short_viewport = int(self.height()) <= 480" in confirmation
-    assert "compact or short_viewport" in confirmation
-    assert "self.compact_decision_summary.setVisible(compact_decision)" in confirmation
-    assert "replacement_visible and not short_viewport" in confirmation
-    assert "content.insertWidget(" in confirmation
-    assert "self.compact_decision_summary" in confirmation
-    assert "self.compact_replacement_summary" in confirmation
+    assert 'self.current_summary = self._comparison_card("Current")' in confirmation
+    assert 'self.new_summary = self._comparison_card("New")' in confirmation
+    assert "replacement_visible = False" in confirmation
+    assert "self.comparison_host.setVisible(replacement_visible)" in confirmation
+    assert "self.discard_warning.setVisible(replacement_visible)" in confirmation
+    assert "compact_decision_summary" not in confirmation
+    assert "compact_replacement_summary" not in confirmation
     assert "self.content_scroll.show()" in confirmation
-    assert "replacement_visible and not compact_replacement" in confirmation
     assert confirmation.index("root.addWidget(self.content_scroll, 1)") < confirmation.index(
         "root.addWidget(self.discard_warning)"
     ) < confirmation.index(
@@ -1403,19 +1521,27 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "Preview cost:",
         "Preview balance:",
     ):
-        assert preview_copy in confirmation
-    assert "purchase_presentation(\n                    refreshed,\n                    status=outcome.status" in confirmation
+        assert preview_copy not in confirmation
+    assert 'self.outcome_heading = QLabel("")' in confirmation
+    assert "self.proposal_notice.hide()" in confirmation
+    assert "purchase_presentation(\n                    refreshed,\n                    status=display_status" in confirmation
+    assert '"inline-balance-update"' in confirmation
+    assert "self.purchase_result.emit(outcome)" in confirmation
     assert "Review the updated terms before continuing." not in confirmation
     button_copy = _function_source(
         "ankigarden/ui/dashboard.py", "_qt_button_text"
     )
     assert '.replace("&", "&&")' in button_copy
-    assert 'AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=324)' in confirmation
+    assert 'AdaptiveRegion.measured("summary-copy", self.summary_copy, floor=280)' in confirmation
     assert "purchase_presentation(quote, ignore_status=True)" in environment
     assert "item.descriptor.mechanics_rows()" not in environment
-    assert 'f"Owned quantity: {1 if owned else 0}"' in collection_environment
-    assert 'f"Effect: {descriptor.buff}"' in collection_environment
-    assert "self._collection_mechanics_help(descriptor, item.name)" in collection_environment
+    assert 'f"Owned quantity: {1 if owned else 0}"' not in collection_environment
+    assert 'f"Effect: {descriptor.buff}"' not in collection_environment
+    assert "if owned and not mystery:" in collection_environment
+    assert "self._collection_environment_metadata(item)" in collection_environment
+    assert "Duration:" not in collection_environment
+    assert "Stacking:" not in collection_environment
+    assert "Replacement:" not in collection_environment
     assert "item.descriptor.mechanics_rows()" not in collection_environment
     assert "Current equipment state:" not in collection_environment
     for noise in (
@@ -1423,7 +1549,6 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         "Replaces nothing",
         "Quantity",
         "Are you sure you want to purchase",
-        "Balance after purchase",
     ):
         assert noise not in confirmation
     for source in (available, supplement, charge, environment, spaces):
@@ -1432,77 +1557,47 @@ def test_purchase_decisions_keep_one_visible_cost_and_concise_actions() -> None:
         assert "Replace for" not in source
 
     assert "cost_label(price)" in available
-    assert "COST_FREE" in starter
+    assert 'QLabel("Permanent")' in starter
+    assert "cost_label(" not in starter
     assert "cost_label(spec.price)" in supplement
     assert "cost_label(spec.price)" in charge
     assert "cost_label(item.price)" in environment
     assert "price_label = QLabel(cost_label(price))" in spaces
     assert 'f"{presentation.price:,} Garden Coins"' in confirmation
-    assert 'f"Balance: {presentation.balance_before:,} → "' in confirmation
+    assert "format_balance_after(" in confirmation
     for source in (available, supplement, charge, environment, spaces, confirmation):
         assert "Garden Coins" in source, "accessible purchase copy must retain the full unit"
 
 
-def test_progress_surfaces_show_one_growth_value_plus_a_card_answer_forecast() -> None:
+def test_progress_surfaces_show_one_growth_value_without_a_card_answer_forecast() -> None:
     growth = _method_source(
         "ankigarden/ui/dashboard.py", "GardenDetailsDialog", "_refresh_growth"
     )
     story = _method_source(
         "ankigarden/ui/dashboard.py", "PlantStoryDialog", "refresh"
     )
-    assert 'progress.set_progress(\n                    "Progress to next stage",' in growth
-    assert 'f"{display.stage_points:,} / {display.stage_goal:,} Growth"' in growth
-    assert '"Current Growth"' in growth
-    assert '"Growth today"' in growth
+    assert 'progress.set_progress(\n                    "",' in growth
+    assert "value_text=format_stage_progress(" in growth
+    assert '"Current Growth"' not in growth
+    assert 'f"{total_today:,} Growth today"' in growth
     assert 'f"About {answers:,} Anki card' not in growth
     assert 'f"{display.points_remaining:,} Growth remaining' not in growth
-    assert 'self.stage_progress.set_progress(\n                "Growth",' in story
-    assert "forecast = growth_forecast(self.engine, plant)" in story
+    assert 'self.stage_progress.set_progress(\n                "",' in story
+    assert "growth_forecast(self.engine, plant)" not in story
     assert 'f"About {answers:,} Anki card' not in story
     assert "_refresh_progress_overview" not in _source("ankigarden/ui/dashboard.py")
 
 
-def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time() -> None:
+def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     class Engine:
         FERTILIZERS = {
             "basic": SimpleNamespace(name="Basic Fertilizer"),
         }
 
-        def __init__(self, rate: int = 10, bonus: int = 0) -> None:
-            self.state = SimpleNamespace(active_plant_id="plant-1")
-            self.award = SimpleNamespace(
-                total_growth=rate,
-                bonus_percent=0,
-                bonus_growth=bonus,
-                paused_reason="",
-            )
-
-        def project_review_growth(self, _plant: object, *, now=None):
-            return self.award
-
     engine = Engine()
     plant = SimpleNamespace(
         plant_id="plant-1", growth_stage="seed", growth_points=0, fully_grown=False
     )
-    assert growth_forecast(engine, plant).text == "50 cards left to sprout"
-    plant.growth_stage = "mature"
-    plant.growth_points = GROWTH_THRESHOLDS[4] - 10
-    assert growth_forecast(engine, plant).text == "1 card left to flowering"
-    plant.growth_points = GROWTH_THRESHOLDS[-1]
-    assert growth_forecast(engine, plant).text == "Fully grown"
-
-    plant.growth_stage = "young"
-    plant.growth_points = GROWTH_THRESHOLDS[2]
-    engine.award = SimpleNamespace(
-        total_growth=12,
-        bonus_percent=0,
-        bonus_growth=2,
-        paused_reason="",
-    )
-    forecast = growth_forecast(engine, plant)
-    assert forecast.tooltip == "Based on the current Growth per card"
-    assert forecast.cards_left is not None and forecast.cards_left >= 0
-
     plant.fertilizer = SimpleNamespace(
         tier="basic", growth_per_answer=1, expires_at=7_900.0
     )
@@ -1510,12 +1605,10 @@ def test_shared_plant_presenters_cover_stage_grammar_buffs_and_fertilizer_time()
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
         "+1 Growth per card",
-        "1h 55m remaining",
+        "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0
-    assert fertilizer_status(engine, plant, now=1_000.0).duration == (
-        "Under 1 minute remaining"
-    )
+    assert fertilizer_status(engine, plant, now=1_000.0).duration == "30 sec left"
     plant.fertilizer.expires_at = 999.0
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"
 
@@ -1532,6 +1625,7 @@ def test_compact_dashboard_keeps_words_for_progress_and_anki_streak() -> None:
     assert '"Progress" if smallest else "Garden Progress"' not in responsive
     assert 'self.progress_btn.setText("↗"' not in responsive
     assert 'self.streak_label.setText("ANKI STREAK")' in compact_stats
+    assert 'self.streak_label.setAccessibleName("Anki streak")' in compact_stats
     assert "self.streak_heading.removeWidget(self.streak_bonus)" in compact_stats
     assert "self.streak_value_row.insertWidget(" in compact_stats
 
@@ -1545,8 +1639,9 @@ def test_diagnostics_has_one_copy_action_and_one_details_toggle() -> None:
     )
 
     assert settings.count('QPushButton("Copy report")') == 1
-    assert "Copy details" not in settings
-    assert 'QPushButton("View technical details")' in settings
+    assert 'QPushButton("Technical details")' in settings
+    assert '"Hide technical details" if expanded else "Technical details"' in toggle
+    assert 'self.copy_debug.setText("Copy report")' in toggle
     assert "self.debug_report.setVisible(bool(expanded))" in toggle
 
 
@@ -1556,12 +1651,14 @@ def test_visible_navigation_uses_garden_coins_and_nurture_language() -> None:
     terminology = _source("ankigarden/terminology.py")
     sources = "\n".join((dashboard, home, _source("ankigarden/ui/scene.py"), terminology))
 
-    assert "Garden Coins" in dashboard and "Garden Coins" in home and "Garden Coins" in terminology
+    assert "Garden Coins" in dashboard and "Garden Coins" in terminology
+    assert "Garden Coins" not in home
+    assert 'data-testid="home-support"' in home
     assert "Nurture" in dashboard and "nurture" in terminology.lower()
     assert "Make active" not in sources
     assert "Unlock species" not in sources
     assert "Move here" in dashboard
-    assert "Swap with" in dashboard
+    assert 'box.setText(f"Swap {moving.name} with {occupant.name}?")' in dashboard
 
 
 def test_shared_ui_snapshot_and_post_commit_event_are_the_refresh_boundary() -> None:
@@ -1604,7 +1701,7 @@ def test_capture_harness_requires_painted_surfaces_and_exact_dialog_instances() 
         "ankigarden/capture_ui_faces.py", "_UiFaceCaptureRunner", "_prepare_capture_state"
     )
     assert "reset()" in prepare_state
-    assert "QTimer.singleShot(800, self._next_step)" in prepare_state
+    assert "QTimer.singleShot(120, self._next_step)" in prepare_state
     deck_capture = _method_source(
         "ankigarden/capture_ui_faces.py", "_UiFaceCaptureRunner", "_capture_deck_browser"
     )

@@ -13,10 +13,11 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
   reliably reconstructable one-time achievements are handled separately from
   authoritative review history.
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
-- The Home preview keeps every garden landmark and plant space visible in a compact scenic postcard, while the full Garden provides contextual setup and nurturing guidance.
+- The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open Garden** visible without duplicating Today, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
+- Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- The release checks cover all 126 distinct UI surfaces and states once at canonical 100% scale, runtime asset references, deterministic archive contents, and exact source-to-package parity. Resize, breakpoint, 150%, and 200% screenshot duplicates are excluded; responsive geometry remains an automated release gate.
+- Automated checks retain the exhaustive 126-state UI matrix, while the faster canonical contact sheet captures each of 26 distinct interfaces once at 100% scale. Runtime asset references, deterministic archive contents, exact source-to-package parity, responsive geometry, and edge states remain independent release gates.
 
 ## Gameplay terms
 
@@ -91,8 +92,8 @@ opens the Nursery when the learner chooses that action. It offers one
 release-ready starter for free and begins with a second empty unlocked space.
 Garden naming is optional personalization in Settings; unnamed Gardens display
 **My Garden**. New plants begin with an unambiguous generated name such as
-**Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Fertilizer and
-Boosters**, **Garden Spaces**, and **Weather and Scenery** tabs, stage artwork
+**Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Fertilizers and
+boosts**, **Garden beds**, and **Weather and Scenery** tabs, stage artwork
 previews, and item art.
 
 ## Fertilizer and collection
@@ -181,14 +182,14 @@ reward-state migration. Failed reads or writes remain fail-closed.
 ## Interface
 
 - The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, foreground, and the watering can in one effects layer while the Garden name, plant summary, and **Open Garden** action remain legible.
-- The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens the catalog; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
+- The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens **Plants**, **Fertilizers and boosts**, **Garden beds**, and **Weather and Scenery**; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
 - The full Garden header gives the Garden name primary title position, followed by **Garden Progress**, **Collection**, and secondary **Settings** navigation.
 - Long metric values keep their normal type size; the Nurtured Plant, Anki Streak, and Garden Coin groups wrap onto two rows when their measured content no longer fits.
 - Watering cans use the six-bed geometry authority and row-level opaque planter-and-soil exclusions, so they stay beside the nurtured plant, clear of planter artwork, and behind the correct foreground layer in both Garden and Home renderers.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
 - Collection is the collectible browser and Garden loadout manager. It derives categories from the registry, distinguishes explicit mysteries from ordinary locked items, manages plant placement, and owns reversible previews plus atomic equipment and visibility changes.
-- Production Settings keeps only the applicable display/notification choices, uses automatically balanced artwork, and honors reduced motion automatically. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
+- Production Settings keeps only the applicable display/notification choices, including **Reduce animations** and **Show reviewer rewards**, uses automatically balanced artwork, and presents read-only **Diagnostics** separately. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
 
 ## Runtime bundle
 
@@ -209,7 +210,7 @@ schema-21 scenery, plant, and planter library.
 The accepted file count, byte size, and SHA-256 are recorded from the final
 rebuilt archive only after the exact-package tests and complete UI capture pass.
 
-## Troubleshooting
+## Diagnostics
 
 - **A plant is not receiving Growth:** open the Garden and make sure an unfinished plant is marked **Nurtured**. Reviews completed before choosing and nurturing a starter are intentionally not backfilled.
 - **Artwork cannot be loaded:** saved plants and progression remain intact. The affected surface keeps the plant name and stage and uses a code-native fallback until the packaged resource is available again.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import runpy
 from pathlib import Path
 
@@ -35,18 +36,23 @@ def test_button_targets_and_shared_state_contract_are_consistent() -> None:
     scope = _theme_scope()
     stylesheet = scope["button_stylesheet"]()
 
-    assert scope["BUTTON_MIN_HEIGHT"] == 44
-    assert scope["COMPACT_BUTTON_HEIGHT"] == 40
-    assert scope["PLANT_ACTION_MIN_HEIGHT"] == 44
-    assert scope["ICON_BUTTON_SIZE"] == 44
-    assert scope["SCENE_HELP_BUTTON_SIZE"] == 44
+    assert scope["BUTTON_MIN_HEIGHT"] == 34
+    assert scope["COMPACT_BUTTON_HEIGHT"] == 30
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
+    assert scope["INPUT_VISUAL_HEIGHT"] == 36
+    assert scope["PLANT_ACTION_MIN_HEIGHT"] == 34
+    assert scope["ICON_BUTTON_SIZE"] == 30
+    assert scope["SCENE_HELP_BUTTON_SIZE"] == 30
     assert "QPushButton {" in stylesheet
-    assert "min-height: 44px" in stylesheet
+    assert "min-height: 34px" in stylesheet
+    assert "max-height: 36px" in stylesheet
     assert "QPushButton[variant='primary']" in stylesheet
     assert "QPushButton[variant='secondary']" in stylesheet
     assert "QPushButton[variant='tertiary']" in stylesheet
     assert "QPushButton:disabled" in stylesheet
     assert "QPushButton:focus" in stylesheet
+    assert "border: 2px solid" in stylesheet
 
 
 def test_action_text_keeps_wcag_aa_contrast_in_every_interaction_state() -> None:
@@ -67,15 +73,33 @@ def test_action_text_keeps_wcag_aa_contrast_in_every_interaction_state() -> None
 def test_home_and_native_actions_share_the_same_visual_roles() -> None:
     home = (ROOT / "ankigarden/ui/home_widget.py").read_text("utf-8")
     dashboard = (ROOT / "ankigarden/ui/dashboard.py").read_text("utf-8")
+    icons = (ROOT / "ankigarden/ui/icons.py").read_text("utf-8")
     studio = (ROOT / "ankigarden/ui/garden_studio.py").read_text("utf-8")
 
-    assert "min-height:44px !important" in home
+    cta_rules = re.search(
+        r"#ag-home-root button,\.ag-home__open\s*\{(?P<rules>.*?)\n\}",
+        home,
+        re.DOTALL,
+    )
+    assert cta_rules is not None
+    rules = cta_rules.group("rules")
+    assert "min-height:36px !important" in rules
+    assert "max-height:36px !important" in rules
+    assert "min-width:104px !important" in rules
+    assert "width:120px" in rules
+    assert "max-width:120px" in rules
     assert "background:#5CC58B" in home
     assert "background:#71D39C" in home
-    assert "outline:3px solid #82E2AC" in home
-    assert "button.setFixedSize(84, BUTTON_MIN_HEIGHT)" in dashboard
+    assert "outline: 2px solid #82E2AC" in home
+    assert "outline:2px solid #82E2AC" in home
+    assert "outline:3px solid #82E2AC" not in home
+    assert "self.setFixedSize(ICON_BUTTON_SIZE, ICON_BUTTON_SIZE)" in dashboard
+    assert "self.setIconSize(QSize(16, 16))" in dashboard
+    assert "QSvgRenderer" in icons
+    assert "renderer.render(painter)" in icons
     assert "_set_button_variant(self.copy_debug, BUTTON_VARIANT_SECONDARY)" in dashboard
-    assert "min-height:44px; max-height:44px; min-width:44px" in dashboard
+    assert "min-width:{ICON_BUTTON_SIZE}px; max-width:{ICON_BUTTON_SIZE}px" in dashboard
+    assert "min-height:{ICON_BUTTON_SIZE}px; max-height:{ICON_BUTTON_SIZE}px" in dashboard
     assert "tool_button_stylesheet()" in studio
 
 
@@ -91,10 +115,10 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert "streak_layout.addWidget(self.streak_support)" in stats
     assert "currency_layout.addWidget(self.currency_support)" in stats
     assert "QLabel(METRIC_AFFORDANCE)" not in stats
-    assert "cell.setMinimumHeight(96)" in stats
-    assert "growth_layout.setContentsMargins(16, 10, 16, 11)" in stats
-    assert "growth_layout.setSpacing(5)" in stats
-    assert "growth_bar.setFixedHeight(10)" in stats
+    assert "cell.setMinimumHeight(72)" in stats
+    assert "growth_layout.setContentsMargins(16, 3, 16, 3)" in stats
+    assert "growth_layout.setSpacing(1)" in stats
+    assert "growth_bar.setFixedHeight(4)" in stats
     assert "self.growth_support.setWordWrap(True)" in stats
     assert "self.streak_support.setWordWrap(True)" in stats
     assert "self.currency_support.setWordWrap(True)" in stats
@@ -102,7 +126,8 @@ def test_metric_cards_use_adaptive_height_without_compressing_text_rows() -> Non
     assert stats.count("QSizePolicy.Policy.Ignored") >= 3
     assert "stretches = (1, 1, 1, 1)" in stats
     assert "def _sync_header_minimum_heights" in dashboard
-    assert "96 if guided else (192 if metrics_compact else 104)" in dashboard
+    assert "0 if guided else (144 if metrics_compact else 72)" in dashboard
+    assert "min-height:72px; max-height:72px" in dashboard
     assert "self.garden_stats_bar.setFixedHeight" not in dashboard
 
 
@@ -112,11 +137,13 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
         "class MemoryTimeline", 1
     )[0]
 
+    assert "top.setMinimumHeight(102)" in dashboard
     assert "self.top_bar.setMinimumHeight(minimum)" in dashboard
-    assert "186 if self._header_narrow_layout else" in dashboard
-    assert "160 if self._header_compact_layout else" in dashboard
-    assert "320 if self._header_narrow_layout and metrics_compact else" in dashboard
-    assert "264 if self._header_compact_layout and metrics_compact else" in dashboard
+    assert "minimum = 56" in dashboard
+    assert "200 if self._header_narrow_layout and metrics_compact else" in dashboard
+    assert "192 if self._header_compact_layout and metrics_compact else" in dashboard
+    assert "160 if self._header_narrow_layout else" in dashboard
+    assert "120" in dashboard
     assert "top.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)" in dashboard
     assert "self.top_bar.setFixedHeight" not in dashboard
     assert "self.feedback_panel.hide()" in dashboard
@@ -131,7 +158,7 @@ def test_minimum_width_layouts_reserve_space_for_long_copy_and_actions() -> None
     assert "self.settings_footer_responsive.evaluate(width)" in settings
     assert "self.settings_footer_grid.addWidget(self.cancel_settings, 0, 0)" in settings
     assert "self.settings_footer_grid.addWidget(self.save_settings, 0, 1)" in settings
-    assert "garden_name_panel.setMinimumHeight(96)" in settings
+    assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in settings
 
 
 def test_capture_manifest_records_native_text_geometry_warnings() -> None:
@@ -156,4 +183,4 @@ def test_tabs_and_form_controls_do_not_fall_back_to_platform_gray() -> None:
     assert "background:#10241f" in dashboard
     assert "QLineEdit, QTextEdit" in dashboard
     assert "QScrollBar::handle:vertical" in dashboard
-    assert '"Fertilizer and Boosters"' in dashboard
+    assert '"Fertilizers and boosts"' in dashboard

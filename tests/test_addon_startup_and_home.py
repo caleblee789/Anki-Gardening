@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import json
 import logging
 import sys
@@ -413,6 +414,59 @@ def test_reviewer_starter_notice_is_once_per_reviewer_session_and_clears_on_sele
     assert shown == ["shown", "shown"]
 
 
+def test_reviewer_overlay_uses_reviewer_webview_and_centers_above_controls(
+    monkeypatch,
+):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+
+    reviewer_web = SimpleNamespace(width=lambda: 667, height=lambda: 570)
+    main_web = SimpleNamespace(width=lambda: 900, height=lambda: 700)
+    aqt_mod.mw.reviewer = SimpleNamespace(web=reviewer_web)
+    aqt_mod.mw.web = main_web
+
+    assert reviewer_module.reviewer_overlay_parent(aqt_mod.mw) is reviewer_web
+    assert reviewer_module.reviewer_reward_overlay_position(
+        667,
+        570,
+        360,
+        88,
+    ) == (153, 370)
+
+    x, y = reviewer_module.reviewer_reward_overlay_position(
+        667,
+        570,
+        400,
+        104,
+    )
+    assert (x, y) == (133, 354)
+    assert x == (667 - 400) // 2
+    assert x + 400 <= 667
+    assert y + 104 <= 570
+    assert y + 104 <= 570 - 112
+
+
+def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
+    monkeypatch,
+):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    source = inspect.getsource(reviewer_module.ReviewerHookHandler._show_reward_toast)
+
+    assert "reviewer_overlay_parent(mw)" in source
+    assert "WA_ShowWithoutActivating" in source
+    assert "WA_TransparentForMouseEvents" in source
+    assert "Qt.FocusPolicy.NoFocus" in source
+    assert "368" in source
+    assert "else 352" in source
+    assert "max(66, min(78" in source
+    assert "Qt.AlignmentFlag.AlignBaseline" in source
+    assert "reviewer_reward_overlay_position(" in source
+    assert '"reviewer-webview-centered-above-controls"' in source
+    assert '"reviewerControlClearance", 112' in source
+    assert ".setFocus(" not in source
+
+
 def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(
     monkeypatch,
 ):
@@ -587,15 +641,10 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
     assert len(shown) == 1
     feedback = shown[0]
     assert feedback.event_ids == tuple(event.event_id for event in events)
-    assert feedback.title == "Garden Find: Morning Dew"
-    assert feedback.message == (
-        "+2 Garden Coins; +40 direct Growth to the nurtured plant and "
-        "+5 Garden Coins; Unlocked All Clear; "
-        "A separate Garden notice remains unchanged"
-    )
-    assert feedback.reward_detail == (
-        "+40 direct Growth to the nurtured plant"
-    )
+    assert feedback.title == "Morning Dew"
+    assert feedback.message == "+7 Garden Coins · +40 Growth"
+    assert feedback.reward_detail == ""
+    assert (feedback.coins_total, feedback.growth_total) == (7, 40)
     assert feedback.tier == "Common"
     assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
     assert feedback.amount == 0
@@ -626,6 +675,63 @@ def test_reviewer_does_not_consume_reward_when_feedback_cannot_render(monkeypatc
 
     assert consumed == []
     assert handler._last_notified_event == ""
+
+
+def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
+    reviewer_module = importlib.import_module("ankigarden.hooks.reviewer")
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(),
+    )
+    events = [
+        SimpleNamespace(
+            event_id=f"garden-find:{index}",
+            kind="garden_find",
+            title="Garden Find",
+            message="",
+            occurred_at=f"2026-08-10T10:0{index}:00",
+            plant_id="plant:1",
+            asset_category="environment",
+            asset_key="firefly_evening",
+            correlation_id=f"answer:{index}",
+        )
+        for index in range(1, 4)
+    ]
+    environment_find = SimpleNamespace(
+        display_name="Firefly Evening",
+        tier="rare",
+        pool_id="environment",
+        description="",
+        artwork_ref="firefly_evening",
+    )
+    handler._garden_find_presentations = lambda _events: (environment_find,)
+    handler._typed_reward_totals = lambda _events: (0, 0, 1)
+
+    environment = handler._consolidated_reward_feedback(events[:1])
+
+    assert environment is not None
+    assert environment.title == "Firefly Evening"
+    assert environment.tier == "Rare"
+    assert environment.message == "Added to Weather and Scenery"
+
+    grouped_finds = tuple(
+        SimpleNamespace(
+            display_name=name,
+            tier="common",
+            pool_id="standard",
+            description="",
+            artwork_ref="growth",
+        )
+        for name in ("Morning Dew", "Fresh Soil", "Sun Shower")
+    )
+    handler._garden_find_presentations = lambda _events: grouped_finds
+    handler._typed_reward_totals = lambda _events: (6, 80, 0)
+
+    grouped = handler._consolidated_reward_feedback(events)
+
+    assert grouped is not None
+    assert grouped.title == "3 Garden rewards added"
+    assert grouped.message == "+6 Garden Coins · +80 Growth"
 
 
 def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(
@@ -755,7 +861,7 @@ def test_dashboard_refresh_failure_does_not_flip_maintenance_success_or_repeat_p
 
     assert calls == {"ledger": 1, "rollover": 1, "catch-up": 1, "refresh": 1}
     assert addon.USER_NOTICES.current.key == "display_refresh"
-    assert "display" in addon.USER_NOTICES.current.message.lower()
+    assert "update the garden" in addon.USER_NOTICES.current.message.lower()
 
 
 def test_same_day_maintenance_never_reenters_external_surface_refresh() -> None:
@@ -1166,6 +1272,8 @@ def test_finished_empty_deck_overview_injects_into_congratulations_page(monkeypa
     assert json.dumps(rendered) in script
     assert 'template.content.querySelectorAll("script")' in script
     assert "sourceScript.remove()" in script
+    assert 'template.content.querySelector("#ag-home-root")' in script
+    assert "root.replaceWith(replacement)" in script
     assert 'document.createElement("script")' not in script
     assert 'button.removeAttribute("onclick")' in script
     assert 'button.addEventListener("click"' in script
@@ -1748,7 +1856,7 @@ def test_failed_live_revlog_read_is_credited_by_catchup_exactly_once(monkeypatch
     assert [payload["revlog_id"] for payload in engine.catchup_payloads] == [200]
     assert storage.state.last_processed_revlog_id == 200
     assert storage.save_calls == 0
-    assert "retry automatically" in notices.current.message
+    assert "will add it when review history is available" in notices.current.message
 
 
 def test_reviewer_reconciles_earlier_failed_answer_with_next_callback_exactly_once(

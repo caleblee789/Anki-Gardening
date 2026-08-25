@@ -86,7 +86,7 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
             HomeWidgetSnapshot(1, phase, error_message="Temporary problem")
         )
         state_rule = html.split(".ag-home__state {", 1)[1].split("}", 1)[0]
-        assert "min-height: 160px" in state_rule
+        assert "min-height: 144px" in state_rule
         assert 'class="ag-home__state"' in html
 
 
@@ -137,7 +137,13 @@ def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route(
     assert "_persist_or_restore(snapshot)" in game
     assert "self.refresh_all()" in failed
     assert "begin_placement_draft" in failed
-    assert "error=True" in failed
+    assert "title=failure_title" in failed
+    assert "toast_region.show_message" not in failed
+    collection_retry = place.split(
+        "if self.scene.begin_collection_placement(plant_id, allowed):", 1
+    )[1].split("return", 1)[0]
+    assert "title=failure_title" in collection_retry
+    assert "toast_region.show_message" not in collection_retry
 
     background = next(
         row for row in manifest["assets"]
@@ -299,7 +305,7 @@ class _FakePen:
         pass
 
 
-def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None:
+def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> None:
     draw_slots = _compiled_method(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -343,21 +349,33 @@ def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None
 
     draw_slots(scene, painter)
 
-    # Current, occupied swap, empty move, invalid, and locked spaces remain
-    # legible without relying on outline color alone.
+    # Idle move mode keeps only the origin label. Destination rings remain
+    # visible, while action copy waits for hover or keyboard focus.
     assert len(painter.ellipses) == 6
-    assert len(painter.badges) == 6
-    assert painter.labels.count("+") == 1
-    assert painter.labels.count("↔") == 1
-    assert painter.labels.count("!") == 2
-    assert painter.labels.count("×") == 1
-    semantic_labels = ("Current", "Swap", "Move", "Occupied", "Invalid", "Locked")
-    for label in semantic_labels:
-        assert label in painter.labels
-    assert {
-        label: size for label, size in painter.label_font_sizes
-        if label in semantic_labels
-    } == {label: 11.0 for label in semantic_labels}
+    assert len(painter.badges) == 1
+    assert painter.labels.count("+") == 0
+    assert painter.labels.count("↔") == 0
+    assert painter.labels == ["Current"]
+    for label in ("Occupied", "Invalid", "Locked"):
+        assert label not in painter.labels
+    assert painter.label_font_sizes == [("Current", 11.0)]
+
+    scene._hovered_move_slot = 1
+    hover_painter = _FakePainter()
+    draw_slots(scene, hover_painter)
+    assert set(hover_painter.labels) == {"Current", "Move here"}
+    assert len(hover_painter.badges) == 2
+
+    scene._hovered_move_slot = None
+    interaction.destination_slot = 2
+    keyboard_painter = _FakePainter()
+    draw_slots(scene, keyboard_painter)
+    assert set(keyboard_painter.labels) == {"Current", "Move here"}
+    assert len(keyboard_painter.badges) == 2
+    assert dict(keyboard_painter.label_font_sizes) == {
+        "Current": 11.0,
+        "Move here": 11.0,
+    }
 
     accessible_targets = _method_source(
         SCENE_PATH,
@@ -366,8 +384,8 @@ def test_move_mode_paints_every_bed_with_distinct_non_color_state_cues() -> None
     )
     for description in (
         "current bed",
-        "eligible; move here",
-        "swap with",
+        'label = "move here"',
+        "occupied by",
         "locked bed",
         "invalid destination",
     ):
@@ -867,7 +885,7 @@ def test_deck_browser_and_overview_previews_receive_watering_can_url() -> None:
     assert "resolve_nurtured_marker_spout_right_image" in home_right_resolver
 
 
-def test_native_watering_can_description_explains_future_growth_routing() -> None:
+def test_native_watering_can_description_identifies_the_nurtured_plant() -> None:
     accessible = _method_source(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -880,10 +898,7 @@ def test_native_watering_can_description_explains_future_growth_routing() -> Non
         "set_interactive",
     )
 
-    assert (
-        "Watering can: {name} is nurtured and receives Growth from future Anki card answers."
-        in accessible
-    )
+    assert "Watering can: {name} is nurtured." in accessible
     assert "_update_scene_accessible_description()" in set_scene
     assert "_update_scene_accessible_description()" in set_interactive
 
@@ -1085,11 +1100,11 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
             self.focused = False
             self.visible = False
 
-        def setText(self, value: str) -> None:
+        def set_status(self, value: str, *, tone: Any = None) -> None:
+            del tone
             self.text = value
-
-        def setStyleSheet(self, _value: str) -> None:
-            return None
+            self.description = value
+            self.visible = bool(value)
 
         def setAccessibleDescription(self, value: str) -> None:
             self.description = value
@@ -1106,25 +1121,26 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
         def setFocus(self) -> None:
             self.focused = True
 
-    class ReceiptActions:
+    class NurseryToast:
         def __init__(self) -> None:
             self.visible = True
 
-        def hide(self) -> None:
+        def clear(self) -> None:
             self.visible = False
 
     status = Status()
-    receipt_actions = ReceiptActions()
+    nursery_toast = NurseryToast()
     announcements: list[tuple[str, str]] = []
     nursery = SimpleNamespace(
         _status_generation=0,
         status=status,
-        receipt_actions=receipt_actions,
+        nursery_toast=nursery_toast,
         accessibility_announcer=SimpleNamespace(
             announce=lambda message, *, priority, target: announcements.append(
                 (message, priority)
             )
         ),
+        _sync_nursery_feedback_host=lambda: None,
     )
     nursery._hide_status_if_current = lambda generation: hide_status(
         nursery,
@@ -1138,7 +1154,7 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     assert (status.text, status.description, status.visible, status.focused) == (
         "Not enough Garden Coins.", "Not enough Garden Coins.", True, True,
     )
-    assert receipt_actions.visible is False
+    assert nursery_toast.visible is False
     assert announcements[-1] == ("Not enough Garden Coins.", "polite")
 
     show_result(nursery, True, "Garden space unlocked.")
@@ -1227,7 +1243,10 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
         grid=Grid(),
         growth_support=SimpleNamespace(setVisible=lambda value: None),
         streak_support=SimpleNamespace(setVisible=lambda value: None),
-        currency_support=SimpleNamespace(setVisible=lambda value: None),
+        currency_support=SimpleNamespace(
+            setVisible=lambda value: None,
+            hide=lambda: None,
+        ),
         streak_label=SimpleNamespace(
             setText=lambda value: None,
             setAccessibleName=lambda value: None,
@@ -1237,6 +1256,7 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
         streak_bonus=SimpleNamespace(
             setText=lambda value: None,
             setMinimumWidth=lambda value: None,
+            setVisible=lambda value: None,
         ),
         streak_heading=Layout(),
         streak_value_row=Layout(),
@@ -1262,8 +1282,8 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
     assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
     dashboard_source = DASHBOARD_PATH.read_text("utf-8")
     assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:16px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
-    assert "font-size:22px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
+    assert "font-size:18px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
+    assert "font-size:18px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
 def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boosts() -> None:
@@ -1271,21 +1291,27 @@ def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boo
 
     assert 'self.nurture.setVisible(not active and not fully_grown)' in source
     assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
-    assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' in source
+    assert (
+        "self.fertilize,\n            BUTTON_VARIANT_SECONDARY"
+        in source
+    )
+    assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' not in source
+    assert 'BUTTON_VARIANT_PRIMARY if not active and not fully_grown' in source
     assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
     constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
-    assert "self.fertilizer_summary = FertilizerStatusBlock(allow_description=False)" in constructor
+    assert "self.fertilizer_summary = FertilizerStatusBlock()" in constructor
     assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
-    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' in source
+    assert "value_text=format_stage_progress(stage_points, stage_goal, next_stage)" in source
+    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' not in source
     assert "self.growth_summary.setText(" in source
     assert ".replace('card answer', 'eligible answer')" not in source
-    assert 'forecast = plant.get("growth_forecast", {})' in source
+    assert "growth_forecast" not in source
     assert source.count("self.growth_remaining.hide()") == 2
     assert "self.growth_remaining.setText(" not in source
     assert "self.growth_summary.setAccessibleDescription(" in source
-    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' in source
-    assert 'self.status_row.show()' in source
-    assert 'allocation_type = str(plant.get("allocation_type")' in source
+    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' not in source
+    assert 'self.status_row.setVisible(bool(status_text))' in source
+    assert 'allocation_type = str(plant.get("allocation_type")' not in source
     assert 'Growth today' in source
     assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
@@ -1301,11 +1327,11 @@ def test_troubleshooting_copy_confirmation_is_visible_and_refresh_resets_it() ->
     assert "QGuiApplication.clipboard().setText" in copy_report
     assert 'self.diagnostics_checked.setText("Report copied to clipboard")' in copy_report
     assert "self.diagnostics_card.setFocus()" in copy_report
-    assert 'status = "No display issues detected"' in refresh_report
-    assert 'status = "Garden display may be incomplete"' in refresh_report
+    assert 'status = "No display issues found"' in refresh_report
+    assert 'status = "Some artwork is missing"' in refresh_report
     assert "contract_failures" in refresh_report
     assert "parsing_exceptions" in refresh_report
-    assert 'f"Last checked {datetime.now().strftime' in refresh_report
+    assert 'f"Checked {datetime.now().strftime' in refresh_report
 
 
 def test_today_growth_row_is_neutral_information_not_a_completion_requirement() -> None:
@@ -1365,12 +1391,17 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
 
     refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
     assert "today = QFrame()" in refresh
-    assert '"Growth Breakdown"' in refresh
-    assert '"Study Growth generated"' in refresh
-    assert '"Nurtured allocation"' in refresh
-    assert '"Passive Growth credited"' in refresh
+    assert 'f"{total_today:,} Growth today"' in refresh
+    assert '"Answer a card to start."' in refresh
+    assert '"Growth breakdown"' in refresh
+    assert '"View calculation details"' not in refresh
+    assert '"Study Growth total"' not in refresh
+    assert '"Nurtured plant allocation"' not in refresh
+    assert '"Passive Growth credited"' not in refresh
+    assert '"From cards"' in refresh
+    assert '"Bonuses"' in refresh
+    assert '"Rewards and charges"' in refresh
     assert 'compact=True' in refresh
-    assert '("Total Growth",' not in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1409,7 +1440,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
             self.retry = Retry()
             self.plant_id = ""
 
-        def set_failure(self, message: str) -> None:
+        def set_failure(self, message: str, **_kwargs: Any) -> None:
             self.failure = message
 
     retry_draft = SimpleNamespace(
@@ -1449,26 +1480,21 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
 
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert scene.message == "The move was not saved. Your garden is unchanged."
+    assert scene.message == "Move not saved. Your plant remains in its original bed."
     assert dashboard.refreshed is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is retry_draft
     assert dashboard._active_placement_token == 17
-    assert rearrange.failure == "The move was not saved. Your garden is unchanged."
+    assert rearrange.failure == "Your plant remains in its original bed."
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
-    assert toast.messages == [
-        (
-            ("The move was not saved. Your garden is unchanged.",),
-            {"error": True, "duration_ms": 0, "dismissible": False},
-        )
-    ]
+    assert toast.messages == []
 
     rearrange_source = DASHBOARD_PATH.read_text("utf-8").split(
         "class RearrangeBar", 1
     )[1].split("class GardenSideNavigation", 1)[0]
     assert 'self.retry = QPushButton("Try again")' in rearrange_source
-    assert 'self.cancel.setText("Cancel move")' in rearrange_source
+    assert 'self.cancel.setText("Stop moving")' in rearrange_source
     assert "_set_button_variant(self.retry, BUTTON_VARIANT_PRIMARY)" in rearrange_source
 
     place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
@@ -1633,7 +1659,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert dashboard.plant_card.maximum_width == 876
     assert dashboard.plant_card.geometry == (12, 190, 876, 264)
     assert geometry_calls == [
-        (320, 264, {}),
+        (288, 264, {}),
         (876, 264, {"minimum_width": 876, "minimum_height": 264}),
     ]
     assert len(connector_calls) == 1
@@ -1646,7 +1672,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert "geometry = self.scene.card_geometry(" in dashboard_source
     assert "if geometry is None:" in dashboard_source
     assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
-    assert "if docked else 330" in dashboard_source
+    assert "if docked else 290" in dashboard_source
     assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
     assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 
@@ -2069,7 +2095,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         def clear_failure(self) -> None:
             self.failed = False
 
-        def set_failure(self, message: str) -> None:
+        def set_failure(self, message: str, **_kwargs: Any) -> None:
             self.failed = True
             self.failure = message
             self.visible = True
@@ -2135,13 +2161,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     begin_move(dashboard, "plant-a")
     finish_failed(dashboard, "The arrangement could not be saved.")
 
-    assert toast.events == [
-        "clear",
-        (
-            ("The move was not saved. Your garden is unchanged.",),
-            {"error": True, "duration_ms": 0, "dismissible": False},
-        ),
-    ]
+    assert toast.events == ["clear"]
     assert scene.focused is True
     assert scene.retry == ("plant-a", [0, 1])
     assert dashboard._placement_draft is draft
@@ -2176,8 +2196,8 @@ def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() ->
         "purchase_presentation",
         "presentation.primary_accessible_name",
         '"effect"',
-        '"duration"',
-        '"remaining"',
+        "quote.descriptor.duration",
+        "fertilizer_status(",
     ):
         assert required in fertilizer_menu
     assert "Garden Coins" in fertilizer_menu

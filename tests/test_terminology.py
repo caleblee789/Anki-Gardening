@@ -18,32 +18,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_gameplay_terms_explain_source_and_progression_effect() -> None:
-    assert "plant progress" in GROWTH_EXPLANATION
-    assert (
-        f"{GardenGameEngine.BASE_GROWTH_PER_REVIEW:,} base Growth"
-        in GROWTH_EXPLANATION
+    assert GROWTH_EXPLANATION == (
+        "Card answers add Growth to your nurtured plant. Bonuses can add more."
     )
-    assert "future card answers" in ACTIVE_PLANT_EXPLANATION
-    assert "Growth already earned stays put" in ACTIVE_PLANT_EXPLANATION
+    assert ACTIVE_PLANT_EXPLANATION == (
+        "Card Growth goes to the plant you nurture."
+    )
     assert "study days in a row" in ANKI_STREAK_EXPLANATION
     assert f"up to {MAX_STREAK_BONUS_PERCENT}% Growth" in ANKI_STREAK_EXPLANATION
     assert "Garden Coins" not in ANKI_STREAK_EXPLANATION
-    assert "first Anki card answer Garden can count each Anki day" in GARDEN_CURRENCY_EXPLANATION
-    assert "one-time achievements" in GARDEN_CURRENCY_EXPLANATION
+    assert "cards, streaks, achievements" in GARDEN_CURRENCY_EXPLANATION
     assert "Garden Finds" in GARDEN_CURRENCY_EXPLANATION
     assert "Spend them in the Nursery" in GARDEN_CURRENCY_EXPLANATION
-    assert all(
-        f"{spec.name.removesuffix(' Fertilizer')} adds {spec.growth_per_answer:,}"
-        in FERTILIZER_EXPLANATION
-        for spec in GardenGameEngine.FERTILIZERS.values()
+    assert FERTILIZER_EXPLANATION == (
+        "Fertilizer adds Growth to each card answer for a limited time."
     )
-    assert "bonus Growth to normal Anki card answers" in FERTILIZER_EXPLANATION
-    assert f"{PASSIVE_GROWTH_PERCENT} percent" in FERTILIZER_EXPLANATION
     assert (
         PASSIVE_GROWTH_PERCENT
         == 100 // GardenGameEngine.PASSIVE_GROWTH_DENOMINATOR
     )
-    assert "direct Growth" not in FERTILIZER_EXPLANATION
+    assert "eligible" not in FERTILIZER_EXPLANATION.casefold()
 
 
 def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
@@ -68,9 +62,15 @@ def test_current_user_copy_uses_anki_streak_for_streak_mechanics() -> None:
     assert "Vitality" not in combined
     default_state = "on" if DEFAULT_CONFIG["show_progress_notifications"] else "off"
     assert f"This is {default_state} by default." in config_doc
-    assert "today's answer count" in normalized_config
-    assert "closest immediate achievement" in normalized_config
-    for category in ("Consistency", "Study Volume", "Recall", "Completion"):
+    assert (
+        "The preview displays the Garden name, nurtured plant, Growth, and "
+        "**Open Garden**" in normalized_config
+    )
+    assert (
+        "Today, Anki streak, and Garden Coins stay in the full Garden and "
+        "Garden Progress" in normalized_config
+    )
+    for category in ("Consistency", "Study volume", "Recall", "Completion"):
         assert f'"{category}"' in dashboard
 
 
@@ -88,9 +88,11 @@ def test_runtime_copy_outside_dialog_views_never_uses_middle_dot_separators() ->
     active_dialog_owners = {
         ROOT / "ankigarden" / "capture_ui_faces.py",
         ROOT / "ankigarden" / "purchases.py",
+        ROOT / "ankigarden" / "hooks" / "reviewer.py",
         ROOT / "ankigarden" / "ui" / "dashboard.py",
         ROOT / "ankigarden" / "ui" / "garden_studio.py",
         ROOT / "ankigarden" / "ui" / "home_widget.py",
+        ROOT / "ankigarden" / "ui" / "state.py",
     }
     offenders: list[str] = []
     for path in sorted((ROOT / "ankigarden").rglob("*.py")):

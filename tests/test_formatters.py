@@ -3,13 +3,23 @@ from __future__ import annotations
 from datetime import date
 
 from ankigarden.ui.formatters import (
+    format_available,
+    format_balance_after,
+    format_balance_delta,
     format_decimal,
+    format_duration,
+    format_garden_coins,
+    format_growth,
     format_integer,
+    format_inventory_delta,
     format_local_date,
     format_local_datetime,
     format_percent,
     format_points,
     format_status_label,
+    format_streak,
+    format_stage_progress,
+    format_shortfall,
     pluralize,
 )
 
@@ -26,6 +36,26 @@ def test_points_and_integer_boundaries() -> None:
     assert format_integer(0) == "0"
     assert format_integer(1234567890) == "1,234,567,890"
     assert format_points(-42) == "-42 growth points"
+
+
+def test_garden_release_formatters_have_one_stable_representation() -> None:
+    assert format_garden_coins(1) == "1 Garden Coin"
+    assert format_garden_coins(1_000_000) == "1,000,000 Garden Coins"
+    assert format_garden_coins(-2, signed=True) == "-2 Garden Coins"
+    assert format_growth(40) == "40 Growth"
+    assert format_growth(40, 500) == "40 / 500 Growth"
+    assert format_growth(40, signed=True) == "+40 Growth"
+    assert format_inventory_delta(-1) == "-1"
+    assert format_balance_delta(150, 119) == "150 → 119 Garden Coins"
+    assert format_duration(0) == "0 minutes"
+    assert format_duration(59) == "Under 1 minute"
+    assert format_duration(9_060) == "2h 31m"
+    assert format_streak(1) == "1 day"
+    assert format_streak(7) == "7 days"
+    assert format_stage_progress(1_250, 2_000, "young") == "1,250 / 2,000 to Young"
+    assert format_balance_after(4_850) == "Balance after: 4,850"
+    assert format_available(2) == "2 available"
+    assert format_shortfall(30) == "30 Garden Coins needed"
 
 
 def test_pluralization_and_status_labels() -> None:

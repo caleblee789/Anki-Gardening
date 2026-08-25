@@ -17,6 +17,82 @@ from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
 logger = logging.getLogger(__name__)
 
 
+def bounded_reviewer_overlay_position(
+    viewport_width: int,
+    viewport_height: int,
+    overlay_width: int,
+    overlay_height: int,
+    *,
+    preferred_y: int = 16,
+    margin: int = 16,
+) -> tuple[int, int]:
+    """Clamp one reviewer overlay wholly inside the reviewer viewport."""
+
+    viewport_width = max(1, int(viewport_width))
+    viewport_height = max(1, int(viewport_height))
+    overlay_width = max(1, int(overlay_width))
+    overlay_height = max(1, int(overlay_height))
+    margin = max(0, int(margin))
+    maximum_x = max(0, viewport_width - overlay_width)
+    maximum_y = max(0, viewport_height - overlay_height)
+    return (
+        max(0, min(maximum_x, viewport_width - overlay_width - margin)),
+        max(0, min(maximum_y, max(margin, int(preferred_y)))),
+    )
+
+
+def reviewer_reward_overlay_position(
+    viewport_width: int,
+    viewport_height: int,
+    overlay_width: int,
+    overlay_height: int,
+    *,
+    margin: int = 16,
+    reviewer_controls_clearance: int = 112,
+) -> tuple[int, int]:
+    """Center a reward above reviewer controls with explicit clearance."""
+
+    viewport_width = max(1, int(viewport_width))
+    viewport_height = max(1, int(viewport_height))
+    overlay_width = max(1, int(overlay_width))
+    overlay_height = max(1, int(overlay_height))
+    margin = max(0, int(margin))
+    maximum_x = max(0, viewport_width - overlay_width)
+    maximum_y = max(0, viewport_height - overlay_height)
+    centered_x = (viewport_width - overlay_width) // 2
+    preferred_y = (
+        viewport_height
+        - max(margin, int(reviewer_controls_clearance))
+        - overlay_height
+    )
+    return (
+        max(0, min(maximum_x, centered_x)),
+        max(0, min(maximum_y, max(margin, preferred_y))),
+    )
+
+
+def reviewer_overlay_parent(main_window: Any) -> Any:
+    """Resolve the visible Reviewer webview, never an add-on dashboard child."""
+
+    reviewer = getattr(main_window, "reviewer", None)
+    for candidate in (
+        getattr(reviewer, "web", None),
+        getattr(main_window, "web", None),
+    ):
+        if (
+            candidate is not None
+            and callable(getattr(candidate, "width", None))
+            and callable(getattr(candidate, "height", None))
+        ):
+            return candidate
+    central_widget = getattr(main_window, "centralWidget", None)
+    if callable(central_widget):
+        candidate = central_widget()
+        if candidate is not None:
+            return candidate
+    return main_window
+
+
 @dataclass(frozen=True)
 class ReviewerRewardFeedback:
     """One focus-safe reviewer projection for all currently pending rewards."""
@@ -34,6 +110,10 @@ class ReviewerRewardFeedback:
     correlation_id: str = ""
     tier: str = ""
     reward_detail: str = ""
+    coins_total: int = 0
+    growth_total: int = 0
+    environment_total: int = 0
+    find_count: int = 0
 
 
 class ReviewerHookHandler:
@@ -89,11 +169,12 @@ class ReviewerHookHandler:
         try:
             from aqt.qt import QFrame, QLabel, QTimer, Qt
 
+            parent = reviewer_overlay_parent(mw)
             previous = self._reviewer_notice
             if previous is not None:
                 previous.hide()
                 previous.deleteLater()
-            notice = QFrame(mw)
+            notice = QFrame(parent)
             notice.setObjectName("ankiGardenReviewerStarterNotice")
             notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -107,10 +188,22 @@ class ReviewerHookHandler:
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             label.setAccessibleName(REVIEWER_NO_STARTER_NOTICE)
             notice.adjustSize()
-            width_attr = getattr(mw, "width", None)
-            parent_width = int(width_attr()) if callable(width_attr) else int(width_attr or 720)
-            parent_width = max(parent_width, notice.width())
-            notice.move(max(12, parent_width - notice.width() - 18), 18)
+            parent_width = max(1, int(parent.width()))
+            parent_height = max(1, int(parent.height()))
+            notice_width = min(
+                max(1, int(notice.width())),
+                max(1, parent_width - 24),
+            )
+            notice.setFixedWidth(notice_width)
+            x, y = bounded_reviewer_overlay_position(
+                parent_width,
+                parent_height,
+                notice.width(),
+                notice.height(),
+                preferred_y=16,
+                margin=12,
+            )
+            notice.move(x, y)
             notice.show()
             notice.raise_()
             self._reviewer_notice = notice
@@ -291,8 +384,8 @@ class ReviewerHookHandler:
         except Exception:
             logger.exception("Anki Garden: review progress could not be saved")
             message = (
-                "Your card answer was saved in Anki, but its Garden Growth could not be saved. "
-                "Open Anki Garden to retry after the problem is resolved."
+                "Your card answer is safe in Anki, but Garden couldn’t save its Growth. "
+                "Open Garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -321,7 +414,7 @@ class ReviewerHookHandler:
     @staticmethod
     def _show_deferred_history_notice() -> None:
         message = (
-            "Your card answer is safe in Anki. Garden could not read it yet and will retry automatically."
+            "Your card answer is safe in Anki. Garden will add it when review history is available."
         )
         if USER_NOTICES.publish(message, key="review_history"):
             try:
@@ -420,7 +513,21 @@ class ReviewerHookHandler:
         )
         event_ids = tuple(str(getattr(event, "event_id")) for event in unique)
         combined_id = "reviewer-summary:" + "|".join(event_ids)
-        message = self._aggregate_reward_messages(unique)
+        coins_total, growth_total, environment_total = self._typed_reward_totals(unique)
+        reward_parts = []
+        if coins_total:
+            reward_parts.append(f"+{coins_total:,} Garden Coins")
+        if growth_total:
+            reward_parts.append(f"+{growth_total:,} Growth")
+        nonreward_messages = tuple(dict.fromkeys(
+            str(getattr(event, "message", "") or "").strip()
+            for event in unique
+            if not self._is_reward_feedback_event(event)
+            and str(getattr(event, "message", "") or "").strip()
+        ))
+        if nonreward_messages and not reward_parts:
+            reward_parts.append(nonreward_messages[0])
+        message = " · ".join(reward_parts)
         title = str(getattr(preferred, "title", "") or "")
         tier = ""
         reward_detail = ""
@@ -430,12 +537,14 @@ class ReviewerHookHandler:
         if presentations:
             if len(presentations) == 1:
                 find = presentations[0]
-                title = f"Garden Find: {find.display_name}"
-                reward_detail = str(find.description)
+                title = str(find.display_name)
                 tier = self._display_tier(find.tier)
+                if str(find.pool_id) == "environment" and environment_total:
+                    message = "Added to Weather and Scenery"
+                elif not message:
+                    message = str(find.description)
             else:
-                title = "Garden Finds and review rewards"
-                reward_detail = self._aggregate_find_details(presentations)
+                title = f"{len(presentations):,} Garden rewards added"
             first_find = presentations[0]
             asset_key = str(first_find.artwork_ref or asset_key)
             asset_category = (
@@ -444,17 +553,19 @@ class ReviewerHookHandler:
                 else "ui"
             )
         elif find_events:
-            title = title or "Garden Find"
+            title = title.removeprefix("Garden Find:").strip() or "Garden reward"
+
+        find_count = max(len(find_events), len(presentations))
+        if find_count > 1:
+            title = f"{find_count:,} Garden rewards added"
+            message = " · ".join(reward_parts) or "Garden rewards added"
+        if not message:
+            message = self._aggregate_reward_messages(unique)
 
         if not title:
-            title = (
-                "Synced review rewards"
-                if any(
-                    "sync" in str(getattr(event, "title", "")).lower()
-                    for event in unique
-                )
-                else "Review rewards"
-            )
+            title = "Garden rewards added" if len(unique) > 1 else "Review rewards"
+        elif "sync" in title.casefold():
+            title = "Garden rewards added"
         return ReviewerRewardFeedback(
             event_id=combined_id,
             event_ids=event_ids,
@@ -470,7 +581,47 @@ class ReviewerHookHandler:
             correlation_id=self._feedback_correlation_id(preferred),
             tier=tier,
             reward_detail=reward_detail,
+            coins_total=coins_total,
+            growth_total=growth_total,
+            environment_total=environment_total,
+            find_count=find_count,
         )
+
+    def _typed_reward_totals(
+        self,
+        events: list[Any],
+    ) -> tuple[int, int, int]:
+        """Sum authoritative typed reward summaries once per correlation."""
+
+        try:
+            from ..reward_presentation import recent_reward_summaries
+
+            summaries = recent_reward_summaries(self.storage.state)
+        except (AttributeError, ImportError, TypeError, ValueError):
+            return 0, 0, 0
+        by_correlation = {
+            str(summary.correlation_id): summary for summary in summaries
+        }
+        correlations = tuple(dict.fromkeys(
+            correlation
+            for event in events
+            if self._is_reward_feedback_event(event)
+            and (correlation := self._feedback_correlation_id(event))
+        ))
+        selected = [
+            by_correlation[correlation]
+            for correlation in correlations
+            if correlation in by_correlation
+        ]
+        coins = sum(max(0, int(summary.coins_total)) for summary in selected)
+        growth = sum(max(0, int(summary.growth_total)) for summary in selected)
+        environments = sum(
+            max(0, int(line.amount))
+            for summary in selected
+            for line in summary.lines
+            if str(line.reward_type) == "environment_item"
+        )
+        return coins, growth, environments
 
     @staticmethod
     def _is_reward_feedback_event(event: Any) -> bool:
@@ -656,7 +807,7 @@ class ReviewerHookHandler:
                 Qt,
             )
 
-            parent = mw
+            parent = reviewer_overlay_parent(mw)
             previous = self._reward_toast
             if previous is not None:
                 try:
@@ -685,18 +836,18 @@ class ReviewerHookHandler:
             )
             toast.setStyleSheet(
                 "QFrame#ankiGardenRewardToast {"
-                " background: #13352d; border: 1px solid #5f8c72;"
+                " background: #13352d; border: 1px solid #527966;"
                 " border-radius: 14px; }"
                 "QFrame#ankiGardenRewardToast[findTier=\"rare\"] {"
-                " background: #173b31; border: 2px solid #a58a4f; }"
+                " background: #173b31; border: 1px solid #647d99; }"
                 "QFrame#ankiGardenRewardToast[findTier=\"exceptional\"] {"
-                " background: #1d3b32; border: 2px solid #d0b866; }"
+                " background: #1d3b32; border: 1px solid #8773a8; }"
                 "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
-                " font-size: 14px; font-weight: 700; }"
+                " font-size: 15px; font-weight: 700; }"
                 "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
-                " font-size: 12px; }"
+                " font-size: 13px; }"
                 "QLabel#ankiGardenRewardDetail { color: #f5df9a;"
-                " font-size: 13px; font-weight: 700; }"
+                " font-size: 14px; font-weight: 700; }"
                 "QLabel#ankiGardenRewardTier { color: #bad5c3;"
                 " background: #21483d; border: 1px solid #4e7765;"
                 " border-radius: 7px; padding: 1px 6px; font-size: 12px; }"
@@ -705,12 +856,12 @@ class ReviewerHookHandler:
                 " color: #f5df9a; font-size: 24px; }"
             )
             row = QHBoxLayout(toast)
-            row.setContentsMargins(12, 10, 14, 10)
-            row.setSpacing(11)
+            row.setContentsMargins(10, 6, 12, 6)
+            row.setSpacing(9)
 
-            art = QLabel(self._reward_artwork_glyph(event))
+            art = QLabel("")
             art.setObjectName("ankiGardenRewardArt")
-            art.setFixedSize(58, 58)
+            art.setFixedSize(44, 44)
             art.setAlignment(Qt.AlignmentFlag.AlignCenter)
             art.setAccessibleName(self._reward_artwork_accessible_name(event))
             pixmap, bounds = self._reward_artwork(event, QPixmap)
@@ -739,11 +890,26 @@ class ReviewerHookHandler:
                         pass
                 art.setText("")
                 art.setPixmap(pixmap.scaled(
-                    48,
-                    48,
+                    38,
+                    38,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 ))
+            else:
+                try:
+                    from ..ui.icons import garden_icon
+
+                    icon_name = (
+                        "coin"
+                        if str(getattr(event, "asset_key", ""))
+                        in {"garden_coin", "garden_coins"}
+                        else "growth"
+                    )
+                    art.setPixmap(
+                        garden_icon(icon_name, color="#f5df9a").pixmap(38, 38)
+                    )
+                except Exception:
+                    pass
             row.addWidget(art)
 
             copy = QVBoxLayout()
@@ -754,11 +920,19 @@ class ReviewerHookHandler:
             if tier_text:
                 header = QHBoxLayout()
                 header.setSpacing(7)
-                header.addWidget(title, 1)
+                header.addWidget(
+                    title,
+                    1,
+                    Qt.AlignmentFlag.AlignBaseline,
+                )
                 tier = QLabel(tier_text)
                 tier.setObjectName("ankiGardenRewardTier")
                 tier.setAccessibleName(f"Garden Find tier: {tier_text}")
-                header.addWidget(tier)
+                header.addWidget(
+                    tier,
+                    0,
+                    Qt.AlignmentFlag.AlignBaseline,
+                )
                 copy.addLayout(header)
             else:
                 copy.addWidget(title)
@@ -776,13 +950,43 @@ class ReviewerHookHandler:
                 copy.addWidget(message)
             row.addLayout(copy, 1)
 
-            toast.setFixedWidth(390)
+            preferred_width = (
+                368
+                if len(tuple(getattr(event, "event_ids", ()) or ())) > 1
+                else 352
+            )
+            viewport_width = max(1, int(parent.width()))
+            viewport_height = max(1, int(parent.height()))
+            toast.setFixedWidth(min(preferred_width, max(1, viewport_width - 32)))
             toast.adjustSize()
-            parent_width = max(toast.width(), int(parent.width()))
-            parent_height = max(toast.height(), int(parent.height()))
-            toast.move(
-                max(16, parent_width - toast.width() - 20),
-                max(16, parent_height - toast.height() - 54),
+            preferred_height = max(66, min(78, toast.sizeHint().height()))
+            toast.setFixedHeight(
+                min(preferred_height, max(1, viewport_height - 32))
+            )
+            x, y = reviewer_reward_overlay_position(
+                viewport_width,
+                viewport_height,
+                toast.width(),
+                toast.height(),
+                margin=16,
+            )
+            toast.move(x, y)
+            toast.setProperty("reviewerOverlay", True)
+            toast.setProperty(
+                "reviewerOverlayAnchor",
+                "reviewer-webview-centered-above-controls",
+            )
+            toast.setProperty("reviewerControlClearance", 112)
+            toast.setProperty("reviewerViewportWidth", viewport_width)
+            toast.setProperty("reviewerViewportHeight", viewport_height)
+            toast.setProperty(
+                "reviewerViewportBounded",
+                bool(
+                    x >= 0
+                    and y >= 0
+                    and x + toast.width() <= viewport_width
+                    and y + toast.height() <= viewport_height
+                ),
             )
             toast.show()
             toast.raise_()
@@ -816,11 +1020,9 @@ class ReviewerHookHandler:
 
     @staticmethod
     def _reward_artwork_glyph(event: Any) -> str:
-        return {
-            "growth": "↟",
-            "garden_coin": "●",
-            "garden_coins": "●",
-        }.get(str(getattr(event, "asset_key", "") or ""), "✦")
+        """Compatibility adapter; reviewer artwork now uses the shared icon family."""
+
+        return ""
 
     @staticmethod
     def _reward_artwork_accessible_name(event: Any) -> str:

@@ -29,7 +29,7 @@ control the normal profile.
 6. Hover and keyboard-focus Nursery and cottage. Confirm silhouette-following
    outlines, anchored labels, click/Enter/Space activation, and no empty-air
    rectangle. Confirm both targets are disabled while moving a plant.
-7. In Nursery, verify **Plants**, **Fertilizer and Boosters**, **Garden Spaces**,
+7. In Nursery, verify **Plants**, **Fertilizers and boosts**, **Garden beds**,
    and **Weather and Scenery** tabs. Plant counts are data-driven;
    stage artwork is clear; Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove,
    Japanese Maple, Wisteria, and Dahlia are stocked by the current complete V6

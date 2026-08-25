@@ -15,7 +15,11 @@ from ankigarden.garden_finds import (
     consumption_id,
     stable_answer_event_identity,
 )
-from ankigarden.growth import GrowthChargeRequest, GrowthChargeStatus
+from ankigarden.growth import (
+    GrowthChargeRequest,
+    GrowthChargeStatus,
+    GrowthChargeTargetState,
+)
 from ankigarden.models.state import (
     ActivePlantPeriod,
     CURRENT_CATALOG_SPECIES_ORDER,
@@ -403,7 +407,7 @@ def test_multiword_species_uses_learner_facing_label_in_messages():
 
     assert not ok
     assert message == (
-        "You need 400 more Garden Coins to purchase Japanese Maple Seed."
+        "You need 400 more Garden Coins to buy Japanese Maple Seed."
     )
 
 
@@ -808,6 +812,34 @@ def test_growth_charge_rejects_stale_invalid_and_rolls_back_failed_save():
     assert engine.peek_stage_transitions() == transitions_before
 
 
+def test_growth_charge_quote_exposes_authoritative_target_state() -> None:
+    engine, storage = make_engine()
+    storage.state.consumables["growth_charge_small"] = 2
+
+    ready = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert ready.target_state is GrowthChargeTargetState.ELIGIBLE
+
+    storage.state.plants[1].slot_index = None
+    stored = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert stored.status is GrowthChargeStatus.TARGET_INVALID
+    assert stored.target_state is GrowthChargeTargetState.STORED
+    assert stored.quote_token != ready.quote_token
+
+    storage.state.plants[1].slot_index = 1
+    storage.state.plants[1].growth_points = GROWTH_THRESHOLDS[-1]
+    fully_grown = engine.quote_growth_charge("growth_charge_small", "p2")
+    assert fully_grown.status is GrowthChargeStatus.TARGET_INVALID
+    assert fully_grown.target_state is GrowthChargeTargetState.FULLY_GROWN
+    assert fully_grown.quote_token != stored.quote_token
+
+    unavailable = engine.quote_growth_charge(
+        "growth_charge_small",
+        "not-owned",
+    )
+    assert unavailable.status is GrowthChargeStatus.TARGET_INVALID
+    assert unavailable.target_state is GrowthChargeTargetState.UNAVAILABLE
+
+
 def test_same_day_events_route_by_active_period_timestamp():
     engine, storage = make_engine()
     switch_at = storage.now_ms + 5_000
@@ -990,7 +1022,7 @@ def test_all_due_requires_an_answer_live_zero_obligations_and_is_once_per_day():
     engine, storage = make_engine()
     assert engine.evaluate_all_due(DueObligationStatus()) == (
         False,
-        "Answer at least one card before you can earn the reward for finishing all due cards.",
+        "Answer a card first.",
     )
     assert engine.observe_due_start(DueObligationStatus(review_count=1))
     answer(engine, storage)
@@ -1014,7 +1046,7 @@ def test_all_due_check_persists_scheduler_rollover_even_when_not_earned():
 
     ok, message = engine.evaluate_all_due(DueObligationStatus(review_count=2))
 
-    assert not ok and "at least one card" in message
+    assert not ok and message == "Answer a card first."
     assert storage.state.daily_stats.day == "2026-08-09"
     assert storage.save_count == saves_before + 1
 
@@ -1063,7 +1095,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
 
     ok, message = engine.purchase_fertilizer("p1", "quality")
     assert ok
-    assert message == "Quality Fertilizer applied to Moss for 2 hours."
+    assert message == "Quality Fertilizer applied."
     plant = storage.state.plants[0]
     assert plant.fertilizer.tier == "quality"
     assert plant.fertilizer.started_at == 1_000
@@ -1076,7 +1108,7 @@ def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypa
     assert engine.fertilizer_growth(plant, now=9_000) == 0
     assert any(
         event.message
-        == "Quality Fertilizer applied to Moss for 2 hours."
+        == "Quality Fertilizer applied."
         for event in engine.peek_feedback()
     )
 
@@ -1347,7 +1379,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
         if event.event_id == f"reward-summary:{first.correlation_id}"
     )
     assert feedback.message == (
-        "+2 Garden Coins and +40 direct Growth to the nurtured plant"
+        "+2 Garden Coins and +40 Growth"
     )
     assert feedback.correlation_id == first.correlation_id
     assert feedback.amount == 0
@@ -1496,7 +1528,7 @@ def test_collection_planting_rejects_invalid_external_destination_without_mutati
     ok, message = engine.plant_from_collection("p3", invalid_destination)
 
     assert not ok
-    assert message == "Choose an empty unlocked garden space."
+    assert message == "Choose an empty bed."
     assert storage.state.to_dict() == before
     assert storage.save_count == saves_before
 

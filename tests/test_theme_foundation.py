@@ -64,6 +64,8 @@ class _Widget:
         self.enabled = True
         self.minimum_width = 0
         self.minimum_height = 0
+        self.maximum_width = 16_777_215
+        self.maximum_height = 16_777_215
         self.accessible_name = ""
         self.accessible_description = "Available action"
         self.tooltip = ""
@@ -86,6 +88,15 @@ class _Widget:
 
     def setMinimumHeight(self, height: int) -> None:
         self.minimum_height = height
+
+    def setMaximumHeight(self, height: int) -> None:
+        self.maximum_height = height
+
+    def setMinimumWidth(self, width: int) -> None:
+        self.minimum_width = width
+
+    def setMaximumWidth(self, width: int) -> None:
+        self.maximum_width = width
 
     def minimumWidth(self) -> int:
         return self.minimum_width
@@ -121,6 +132,7 @@ def test_text_roles_define_legible_type_and_line_metrics() -> None:
     tokens = scope["TEXT_ROLE_TOKENS"]
 
     assert {role.value for role in text_role} == {
+        "brand-eyebrow",
         "display-title",
         "screen-title",
         "section-heading",
@@ -163,7 +175,7 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         scope["spacing"](13)
 
 
-def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
+def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
     scope = _theme_scope()
     control_variant = scope["ControlVariant"]
 
@@ -174,9 +186,12 @@ def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
         "destructive",
     }
     assert scope["BUTTON_VARIANT_TERTIARY"] == "tertiary"
-    assert scope["MIN_HIT_TARGET"] == 44
-    assert scope["BUTTON_MIN_HEIGHT"] == 44
-    assert scope["ICON_BUTTON_SIZE"] == 44
+    assert scope["MIN_HIT_TARGET"] == 34
+    assert scope["BUTTON_MIN_HEIGHT"] == 34
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
+    assert scope["INPUT_VISUAL_HEIGHT"] == 36
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
+    assert scope["ICON_BUTTON_SIZE"] == 30
 
     buttons = scope["button_stylesheet"]()
     tools = scope["tool_button_stylesheet"]()
@@ -185,7 +200,37 @@ def test_control_variants_keep_legacy_tertiary_and_44px_targets() -> None:
     assert "QPushButton[variant='destructive']" in buttons
     assert "QPushButton:disabled" in buttons
     assert "QPushButton:focus" in buttons
+    assert "border: 2px solid" in buttons
+    assert f"border-color: {scope['GARDEN_THEME']['coin_accent']}" in buttons
+    assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
+
+
+def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
+    scope = _theme_scope()
+    button_size = scope["ButtonSize"]
+    tokens = scope["BUTTON_SIZE_TOKENS"]
+
+    assert {
+        size.value: (tokens[size].height_px, tokens[size].horizontal_padding_px)
+        for size in button_size
+    } == {
+        "compact-row": (30, 10),
+        "secondary": (34, 14),
+        "primary": (36, 16),
+        "onboarding": (38, 16),
+        "icon": (30, 0),
+    }
+    widget = _Widget()
+    token = scope["apply_button_size"](widget, "onboarding")
+    assert token is tokens[button_size.ONBOARDING]
+    assert widget.properties["buttonSize"] == "onboarding"
+    assert widget.properties["visualControlSize"] == 38
+    assert (widget.minimum_height, widget.maximum_height) == (38, 38)
+    assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
+
+    scope["apply_button_size"](widget, button_size.ICON)
+    assert (widget.minimum_width, widget.maximum_width) == (30, 30)
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:
@@ -195,7 +240,7 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     normalized = scope["apply_control_variant"](widget, "tertiary")
     assert normalized is scope["ControlVariant"].QUIET
     assert widget.properties["variant"] == "quiet"
-    assert (widget.minimum_width, widget.minimum_height) == (44, 44)
+    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
 
     with pytest.raises(ValueError, match="disabled_reason"):
         scope["set_control_enabled"](widget, False)
@@ -243,7 +288,7 @@ def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> N
     assert widget.tooltip == "Close"
     assert widget.properties["iconButton"] is True
     assert widget.properties["gardenRole"] == "icon-button"
-    assert (widget.minimum_width, widget.minimum_height) == (44, 44)
+    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
 
 
 def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:
@@ -304,13 +349,18 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 44px" in garden
+    assert "min-height: 38px" in garden
+    assert "max-height: 30px" in garden
     assert "QCheckBox:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
     assert scope["GARDEN_THEME"]["raised_surface"] in garden
     assert scope["NURSERY_THEME"]["raised_surface"] in nursery
     assert scope["NURSERY_THEME"]["focus_ring"] in nursery
-    assert scope["NURSERY_THEME"]["raised_surface"] not in garden
+    assert scope["NURSERY_THEME"]["raised_surface"] in garden
+    catalog = scope["nursery_catalog_stylesheet"]()
+    assert scope["NURSERY_THEME"]["shop_surface_1"] in catalog
+    assert scope["NURSERY_THEME"]["shop_surface_2"] in catalog
+    assert scope["NURSERY_THEME"]["shop_surface_3"] in catalog
     nursery_foundation = scope["foundation_stylesheet"]("nursery")
     assert scope["NURSERY_THEME"]["action_accent"] in nursery_foundation
     assert scope["NURSERY_THEME"]["secondary_action"] in nursery_foundation
@@ -371,14 +421,13 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
         "apply_tabular_numerals(self.coins)",
         "apply_tabular_numerals(support)",
         "apply_tabular_numerals(metric)",
-        "apply_tabular_numerals(bonus_value)",
         "apply_tabular_numerals(cutoff_value)",
         "apply_tabular_numerals(milestone)",
         "apply_tabular_numerals(reward)",
         "apply_tabular_numerals(balance_value)",
         "apply_tabular_numerals(amount)",
         "apply_tabular_numerals(resulting)",
-        "apply_tabular_numerals(self.duration_label)",
+        "apply_tabular_numerals(self.summary_label)",
         "apply_tabular_numerals(self.discard_warning)",
         "apply_tabular_numerals(duration)",
         "apply_tabular_numerals(balance)",
@@ -399,11 +448,14 @@ def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals(
 def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() -> None:
     dashboard = (ROOT / "ankigarden/ui/dashboard.py").read_text("utf-8")
 
-    # The only StrongFocus target without the non-button ring hook is the
-    # Garden metric QPushButton, which already has its own focused selector.
-    assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") == (
-        dashboard.count("set_keyboard_focus_surface(") + 1
+    # Shared banners may register their focus surface before toggling focus.
+    # The Garden metric QPushButton is the sole intentional non-frame target
+    # and retains its explicit focused selector.
+    assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") <= (
+        dashboard.count("set_keyboard_focus_surface(")
     )
-    assert "self.garden_name_edit.setFixedHeight(BUTTON_MIN_HEIGHT)" in dashboard
-    assert 'self.show_weather = ToggleSwitch("Preview weather artwork")' in dashboard
-    assert 'self.show_scenery = ToggleSwitch("Preview scenery artwork")' in dashboard
+    assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in dashboard
+    assert "QPushButton[gardenStatCell='true']:focus" in dashboard
+    assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in dashboard
+    assert 'self.show_weather = ToggleSwitch("Weather effects")' in dashboard
+    assert 'self.show_scenery = ToggleSwitch("Scenery effects")' in dashboard

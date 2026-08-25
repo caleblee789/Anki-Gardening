@@ -232,8 +232,8 @@ class AnkiGardenApp:
         except Exception:
             logger.debug("Anki Garden: live Garden could not refresh after maintenance", exc_info=True)
             USER_NOTICES.publish(
-                "Your garden progress is safe, but the display could not refresh. "
-                "Reopen Anki Garden to try again.",
+                "Couldn’t update the Garden. Your progress is safe. "
+                "Close and reopen it to try again.",
                 key="display_refresh",
             )
         try:
@@ -694,21 +694,34 @@ class AnkiGardenApp:
         if path not in {"/_anki/pages/congrats.html", "/congrats"}:
             return
 
+        self._replace_home_garden_root(webview)
+
+    def _replace_home_garden_root(self, webview: object) -> None:
+        """Replace the Garden root in an already verified main Anki webview."""
+
         evaluate = getattr(webview, "eval", None)
         if not callable(evaluate):
             return
+        evaluate(self._home_garden_root_replacement_script())
+
+    def _home_garden_root_replacement_script(self) -> str:
+        """Build the production script that replaces and rebinds one Home root."""
 
         html = self._home_garden_html_for_injection()
-        evaluate(
-            f"""
+        return f"""
 (() => {{
+  const template = document.createElement("template");
+  template.innerHTML = {json.dumps(html)};
+  for (const sourceScript of template.content.querySelectorAll("script")) {{
+    sourceScript.remove();
+  }}
+  const replacement = template.content.querySelector("#ag-home-root");
+  if (!replacement) return;
   let root = document.getElementById("ag-home-root");
-  if (!root) {{
-    const template = document.createElement("template");
-    template.innerHTML = {json.dumps(html)};
-    for (const sourceScript of template.content.querySelectorAll("script")) {{
-      sourceScript.remove();
-    }}
+  if (root) {{
+    root.replaceWith(replacement);
+    root = replacement;
+  }} else {{
     document.body.appendChild(template.content);
     root = document.getElementById("ag-home-root");
   }}
@@ -799,7 +812,6 @@ class AnkiGardenApp:
   }}
 }})();
 """
-        )
 
     def _home_garden_html_for_injection(self) -> str:
         """Refresh Garden state without allowing it to abort Anki home rendering."""
@@ -814,7 +826,7 @@ class AnkiGardenApp:
             request_id = self._home_widget_controller.begin_request()
             self._home_widget_controller.resolve_error(
                 request_id,
-                "Garden progress could not refresh. Your Anki screen is still available; retry the Garden.",
+                "Your garden is still available.",
             )
             html = render_home_widget(self._home_widget_controller.snapshot)
         else:
