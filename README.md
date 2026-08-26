@@ -277,8 +277,9 @@ Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
 proof is produced by the repository capture command instead of simulated by a
 large pytest matrix. The fast lane, release-evidence lane, and explicit union
-are each maintained below one minute on the canonical development machine; CI
-enforces a 60-second ceiling on each independently scheduled lane.
+are each maintained below one minute on the canonical development machine. CI
+shards release evidence and enforces a 60-second ceiling on the fast lane and
+on each independently scheduled release-evidence shard.
 
 The runtime target is Anki 25.07 through 26.08. Release acceptance installs the exact rebuilt archive into a separately keyed, disposable Anki 26.08 base/profile with sync disabled.
 

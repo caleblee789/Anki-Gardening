@@ -37,7 +37,25 @@ on:
 
 jobs:
   release-evidence:
+    name: release-evidence (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: package
+            test_paths: tests/test_package.py
+          - shard: artwork
+            test_paths: tests/test_twilight_v6_library_qa.py
+          - shard: dialogs
+            test_paths: >-
+              tests/test_dialog_content_fit_live.py
+              tests/test_full_catalog_layout_matrix.py
+              tests/test_live_ui_layout.py
+          - shard: layout
+            test_paths: >-
+              tests/test_garden_studio_advanced_scroll_regression.py
+              tests/test_release_restart_and_render_matrix.py
 
     steps:
       - name: Checkout
@@ -55,3 +73,4 @@ jobs:
         run: >-
           timeout --foreground --signal=TERM 60s
           pytest -q -o addopts='' -m release_evidence
+          ${{ matrix.test_paths }}

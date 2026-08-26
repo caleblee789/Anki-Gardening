@@ -703,6 +703,7 @@ def test_run_attempt_stops_process_when_session_discovery_is_ambiguous(
         return {"status": "prelaunch-ready"}
 
     monkeypatch.setattr(runner.BASE, "json_command", json_command)
+    monkeypatch.setattr(runner.Path, "is_file", lambda _path: True)
     monkeypatch.setattr(runner.BASE, "extract_package", lambda *_args: None)
     monkeypatch.setattr(runner.BASE, "set_disposable_ui_scale", lambda *_args: None)
     monkeypatch.setattr(runner.subprocess, "Popen", lambda *_args, **_kwargs: process)
