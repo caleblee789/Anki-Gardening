@@ -1198,13 +1198,19 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     species.show()
     application.processEvents()
     application.processEvents()
-    species_guard = species.species_first_row_guard
-    species_section = species_guard.section
-    species_viewport_height = species_guard.scroll.viewport().height()
-    assert (
-        species_section.geometry().bottom() <= species_viewport_height
-        or species_section.geometry().top() >= species_viewport_height
+    species_scrolls = species.active_vertical_scroll_regions()
+    assert len(species_scrolls) == 1
+    species_scroll = species_scrolls[0]
+    species_section = next(
+        frame
+        for frame in species.findChildren(QFrame)
+        if bool(frame.property("speciesPlantList"))
     )
+    section_top = species_section.mapTo(
+        species_scroll.viewport(),
+        species_section.rect().topLeft(),
+    ).y()
+    assert 0 <= section_top < species_scroll.viewport().height()
     species.hide()
 
     progress = dashboard.progress_dialog
@@ -1387,7 +1393,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     nursery.show()
     for index, expected_name, width_range, height_range in (
         (0, "Plants catalog", (930, 970), (520, 570)),
-        (1, "Fertilizers and boosts catalog", (930, 970), (490, 540)),
+        (1, "Fertilizers and boosts catalog", (930, 970), (540, 570)),
         (2, "Garden Spaces catalog", (900, 950), (340, 370)),
         (3, "Weather and Scenery catalog", (930, 970), (500, 550)),
     ):
@@ -1408,8 +1414,9 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     starter_nursery.show()
     application.processEvents()
     application.processEvents()
-    assert starter_nursery.width() == 950
-    assert 470 <= starter_nursery.height() <= 500
+    assert 925 <= starter_nursery.width() <= 950
+    assert 400 <= starter_nursery.height() <= 440
+    assert starter_nursery.scroll.verticalScrollBar().maximum() == 0
     assert_complete_nursery_fold(starter_nursery.scroll, "Starter Nursery")
     starter_nursery.hide()
 
@@ -1428,8 +1435,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     final_nursery.show()
     application.processEvents()
     application.processEvents()
-    assert 900 <= final_nursery.width() <= 950
-    assert 280 <= final_nursery.height() <= 320
+    assert 925 <= final_nursery.width() <= 950
+    assert 300 <= final_nursery.height() <= 330
     assert_complete_nursery_fold(final_nursery.scroll, "Final Nursery")
     final_labels = {
         label.text()
@@ -1441,9 +1448,8 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         for button in final_nursery.findChildren(QPushButton)
         if button.isVisibleTo(final_nursery)
     ]
-    assert "All species collected" in final_labels
-    assert "10 of 10 species collected" in final_labels
-    assert final_actions.count("View Collection") == 1
+    assert "All 10 plant species collected" in final_labels
+    assert final_actions.count("View collection") == 1
     final_nursery.hide()
     assert_surface(fertilizer_selection, "Fertilizer selection")
     assert_surface(replacement, "Fertilizer replacement")

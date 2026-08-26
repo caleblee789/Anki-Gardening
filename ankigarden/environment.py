@@ -236,7 +236,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "scenery",
         "Ultra Rare",
         "drop",
-        "+10 Scenery Growth per card answer; doubles base Growth only.",
+        "+10 Scenery Growth per answer; doubles base Growth only.",
         "Discover through an occasional Garden Find while reviewing.",
         drop_tier="ultra_environment",
     ),

@@ -13,7 +13,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
   reliably reconstructable one-time achievements are handled separately from
   authoritative review history.
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
-- The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open Garden** visible without duplicating Today, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
+- The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open garden** visible without duplicating Today, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
 - Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
@@ -181,7 +181,7 @@ reward-state migration. Failed reads or writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, and foreground in one effects layer while the Garden name, nurtured-plant summary, and **Open Garden** action remain legible.
+- The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, and foreground in one effects layer while the Garden name, nurtured-plant summary, and **Open garden** action remain legible.
 - The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens **Plants**, **Fertilizers and boosts**, **Garden beds**, and **Weather and Scenery**; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
 - The full Garden header gives the Garden name primary title position, followed by **Garden Progress**, **Collection**, and secondary **Settings** navigation.
 - Long metric values keep their normal type size; the Nurtured Plant, Anki Streak, and Garden Coin groups wrap onto two rows when their measured content no longer fits.

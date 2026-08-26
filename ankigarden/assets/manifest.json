@@ -10186,7 +10186,7 @@
               "landmark_id": "nursery_entrance",
               "action_id": "garden.nursery.open",
               "label": "Nursery",
-              "tooltip": "Open Nursery",
+              "tooltip": "Open nursery",
               "role": "button",
               "supported_variants": ["4:3", "16:9", "home"],
               "variants": {

@@ -201,7 +201,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
         "Earn from a Garden Find or daily Scenery reward."
     )
     assert booster.descriptor.buff == (
-        f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card."
+        f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per answer."
     )
     assert GardenGameEngine._duration_label(
         GardenGameEngine.BOOSTER_DURATION_SECONDS
@@ -293,6 +293,8 @@ def test_schema15_migration_adds_environment_fields_without_losing_existing_stat
     assert restored.consumables == {
         "booster_potion": 2,
         "fertilizer_basic": 0,
+        "fertilizer_quality": 0,
+        "fertilizer_premium": 0,
         "growth_charge_small": 0,
         "growth_charge_standard": 0,
         "growth_charge_grand": 0,

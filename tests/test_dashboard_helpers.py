@@ -62,14 +62,14 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     assert compact_cost(100) == "100 coins"
     assert compact_shortfall(100, 0) == "Need 100 more"
     assert compact_shortfall(100, 100) == ""
-    assert receipt_actions(False) == ("Place in Garden", "View Collection")
-    assert receipt_actions(True) == ("Place in Garden",)
+    assert receipt_actions(False) == ("Place in garden", "View collection")
+    assert receipt_actions(True) == ("Place in garden",)
     assert empty_copy(
         starter_mode=False,
         collection_complete=True,
         owned_count=10,
         release_ready_count=10,
-    ) == ("All species collected", "10 of 10 species collected")
+    ) == ("All 10 plant species collected", "")
     assert product_visible("purchase", "soft_breeze", "clear_skies")
     assert not product_visible("purchase", "clear_skies", "clear_skies")
     assert not product_visible("drop", "rain", "clear_skies")
@@ -200,7 +200,7 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per card",
+        "+1 Growth per answer",
         "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0

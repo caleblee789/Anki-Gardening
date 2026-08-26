@@ -630,6 +630,8 @@ class GardenState:
     consumables: Dict[str, int] = field(default_factory=lambda: {
         "booster_potion": 0,
         "fertilizer_basic": 0,
+        "fertilizer_quality": 0,
+        "fertilizer_premium": 0,
         **{charge_id: 0 for charge_id in GROWTH_CHARGES},
     })
     inventory: Dict[str, List[str]] = field(default_factory=lambda: {
@@ -2207,6 +2209,8 @@ def _consumables(value: Any, issues: list[str]) -> dict[str, int]:
     result = {
         "booster_potion": 0,
         "fertilizer_basic": 0,
+        "fertilizer_quality": 0,
+        "fertilizer_premium": 0,
         **{charge_id: 0 for charge_id in GROWTH_CHARGES},
     }
     if value is None:

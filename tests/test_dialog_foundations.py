@@ -68,7 +68,7 @@ def test_compact_confirmation_does_not_expand_with_a_large_screen() -> None:
         DialogSizeClass.COMPACT_CONFIRMATION,
         2560,
         1440,
-    ) == (500, 200)
+    ) == (500, 190)
 
 
 def test_comparison_dialog_grows_for_cards_without_becoming_screen_sized() -> None:
@@ -90,28 +90,32 @@ def test_dialog_size_clamps_to_small_available_geometry() -> None:
 
 def test_release_dialog_families_use_authoritative_content_fit_geometry() -> None:
     expected = {
-        DialogSizeClass.COMPACT_STATUS: (500, 200),
+        DialogSizeClass.COMPACT_STATUS: (500, 190),
         DialogSizeClass.TRANSACTION: (540, 250),
-        DialogSizeClass.FERTILIZER: (720, 405),
-        DialogSizeClass.SETTINGS: (900, 490),
-        DialogSizeClass.NURSERY: (950, 540),
-        DialogSizeClass.PROGRESS: (980, 520),
+        DialogSizeClass.FERTILIZER: (660, 360),
+        DialogSizeClass.SETTINGS: (820, 510),
+        DialogSizeClass.NURSERY: (940, 420),
+        DialogSizeClass.PROGRESS: (950, 570),
         DialogSizeClass.LOADOUT: (1000, 540),
-        DialogSizeClass.PLANT_STORY: (840, 525),
-        DialogSizeClass.SPECIES_DETAIL: (860, 570),
-        DialogSizeClass.GROWTH_CHARGE: (540, 315),
+        DialogSizeClass.PLANT_STORY: (760, 500),
+        DialogSizeClass.SPECIES_DETAIL: (820, 550),
+        DialogSizeClass.GROWTH_CHARGE: (500, 270),
         DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
         assert resolved_dialog_size(family, 2560, 1440) == size
 
-    content_fit_families = set(expected) - {DialogSizeClass.GARDEN_WORKSPACE}
+    content_fit_families = set(expected) - {
+        DialogSizeClass.GARDEN_WORKSPACE,
+        DialogSizeClass.PROGRESS,
+    }
     assert all(
         DIALOG_SIZE_POLICIES[family].content_fit
         for family in content_fit_families
     )
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].screen_margin == 24
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].preserve_transition_height is True
+    assert DIALOG_SIZE_POLICIES[DialogSizeClass.PROGRESS].content_fit is False
 
 
 def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() -> None:
@@ -127,50 +131,51 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "growth-charge": (500, 500, 500, 220, 230, 240),
         },
         DialogSizeClass.FERTILIZER: {
-            "default": (700, 720, 740, 390, 405, 420),
-            "selection": (700, 720, 740, 390, 405, 420),
-            "replacement": (560, 590, 620, 250, 275, 300),
+            "default": (640, 660, 680, 420, 440, 480),
+            "selection": (640, 660, 680, 420, 440, 480),
+            "replacement": (500, 520, 540, 230, 260, 290),
         },
         DialogSizeClass.SETTINGS: {
-            "display": (880, 900, 920, 480, 500, 520),
-            "advanced": (880, 900, 920, 540, 565, 590),
-            "diagnostics-clean": (820, 880, 900, 330, 360, 390),
-            "diagnostics-warning": (820, 860, 900, 310, 325, 340),
-            "diagnostics-expanded": (820, 880, 900, 500, 545, 590),
+            "display": (800, 820, 840, 480, 500, 520),
+            "advanced": (800, 820, 840, 500, 510, 520),
+            "diagnostics-clean": (760, 780, 800, 280, 300, 320),
+            "diagnostics-warning": (760, 780, 800, 280, 300, 320),
+            "diagnostics-expanded": (760, 780, 800, 430, 470, 520),
         },
         DialogSizeClass.NURSERY: {
-            "starter": (950, 950, 950, 470, 485, 500),
-            "plants": (930, 950, 970, 520, 545, 570),
-            "owned": (920, 950, 980, 470, 500, 530),
-            "fertilizer": (930, 950, 970, 490, 515, 540),
-            "spaces": (900, 925, 950, 340, 355, 370),
-            "weather": (930, 950, 970, 500, 525, 550),
-            "collection-complete": (900, 925, 950, 280, 300, 320),
-            "empty": (920, 950, 980, 300, 335, 370),
+            "starter": (925, 940, 950, 400, 420, 440),
+            "plants": (925, 940, 950, 300, 360, 520),
+            "owned": (925, 940, 950, 470, 500, 530),
+            "fertilizer": (925, 940, 950, 540, 550, 560),
+            "spaces": (925, 940, 950, 300, 325, 330),
+            "weather": (925, 940, 950, 360, 460, 560),
+            "collection-complete": (925, 940, 950, 300, 315, 330),
+            "collection-complete-receipt": (925, 940, 950, 370, 385, 410),
+            "empty": (925, 940, 950, 300, 335, 370),
         },
         DialogSizeClass.PROGRESS: {
-            "growth": (940, 960, 980, 500, 520, 540),
-            "streak": (940, 960, 980, 540, 560, 580),
-            "currency": (880, 920, 940, 330, 345, 360),
-            "achievements": (940, 980, 980, 600, 600, 640),
-            "collection": (940, 960, 980, 520, 550, 580),
-            "collection-empty": (940, 960, 980, 350, 380, 410),
+            "growth": (950, 950, 950, 570, 570, 570),
+            "streak": (950, 950, 950, 570, 570, 570),
+            "currency": (950, 950, 950, 570, 570, 570),
+            "achievements": (950, 950, 950, 570, 570, 570),
+            "collection": (950, 950, 950, 570, 570, 570),
+            "collection-empty": (950, 950, 950, 570, 570, 570),
         },
         DialogSizeClass.LOADOUT: {
             "default": (980, 1000, 1020, 520, 540, 560),
         },
         DialogSizeClass.PLANT_STORY: {
-            "default": (800, 840, 860, 500, 525, 550),
+            "default": (740, 760, 780, 480, 500, 520),
         },
         DialogSizeClass.SPECIES_DETAIL: {
-            "default": (840, 860, 900, 540, 570, 590),
-            "uncollected": (840, 860, 900, 540, 560, 590),
+            "default": (800, 820, 840, 520, 550, 570),
+            "uncollected": (800, 820, 840, 520, 550, 570),
         },
-            DialogSizeClass.GROWTH_CHARGE: {
-                "ready": (500, 510, 520, 270, 285, 300),
-                "loading": (500, 510, 520, 270, 285, 300),
-                "stale": (500, 510, 540, 270, 300, 310),
-            },
+        DialogSizeClass.GROWTH_CHARGE: {
+            "ready": (480, 500, 510, 250, 270, 280),
+            "loading": (480, 500, 510, 250, 270, 280),
+            "stale": (500, 510, 540, 270, 300, 310),
+        },
     }
 
     for family, views in expected.items():

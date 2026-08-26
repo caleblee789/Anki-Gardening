@@ -60,17 +60,17 @@ class TypographyToken:
 # action copy have intentionally larger defaults so platform font substitution
 # does not force them below a practical reading size.
 TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
-    TextRole.BRAND_EYEBROW: TypographyToken(12, 17, 600, 0.8),
-    TextRole.DISPLAY_TITLE: TypographyToken(32, 40, 600, -0.2),
-    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 600, -0.1),
-    TextRole.SECTION_HEADING: TypographyToken(19, 26, 600),
-    TextRole.CARD_TITLE: TypographyToken(16, 23, 600),
-    TextRole.BODY: TypographyToken(14, 21, 400),
-    TextRole.SECONDARY: TypographyToken(13, 19, 400),
-    TextRole.METADATA: TypographyToken(12, 17, 600, 0.1),
-    TextRole.BADGE: TypographyToken(12, 17, 600, 0.3),
-    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 34, 600, tabular_numerals=True),
-    TextRole.BUTTON_LABEL: TypographyToken(13, 19, 600),
+    TextRole.BRAND_EYEBROW: TypographyToken(12, 16, 700, 0.8),
+    TextRole.DISPLAY_TITLE: TypographyToken(28, 36, 700, -0.2),
+    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 700, -0.1),
+    TextRole.SECTION_HEADING: TypographyToken(16, 22, 650),
+    TextRole.CARD_TITLE: TypographyToken(16, 22, 650),
+    TextRole.BODY: TypographyToken(14, 20, 400),
+    TextRole.SECONDARY: TypographyToken(14, 19, 400),
+    TextRole.METADATA: TypographyToken(12, 17, 500, 0.1),
+    TextRole.BADGE: TypographyToken(12, 17, 700, 0.3),
+    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 36, 700, tabular_numerals=True),
+    TextRole.BUTTON_LABEL: TypographyToken(14, 19, 650),
 }
 
 # Public compatibility/readability aliases. All three names reference the same
@@ -143,18 +143,18 @@ BUTTON_VARIANT_TERTIARY = "tertiary"
 # Desktop controls intentionally remain compact. Keyboard focus, tooltips, and
 # generous row spacing carry the accessibility affordance without turning the
 # interface into a touch-sized control system.
-MIN_HIT_TARGET = 34
+MIN_HIT_TARGET = 36
 CONTROL_MIN_HIT_TARGET = MIN_HIT_TARGET
 BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
-BUTTON_VISUAL_HEIGHT = 34
-PRIMARY_BUTTON_VISUAL_HEIGHT = 36
-COMPACT_BUTTON_HEIGHT = 30
-ONBOARDING_BUTTON_VISUAL_HEIGHT = 38
-ICON_BUTTON_VISUAL_SIZE = 30
+BUTTON_VISUAL_HEIGHT = 36
+PRIMARY_BUTTON_VISUAL_HEIGHT = 40
+COMPACT_BUTTON_HEIGHT = 36
+ONBOARDING_BUTTON_VISUAL_HEIGHT = 40
+ICON_BUTTON_VISUAL_SIZE = 32
 # Text-entry controls stay within the 38-40 px release floor. Forty pixels
 # matches the shared QLineEdit stylesheet and avoids a token/QSS split-brain.
-INPUT_VISUAL_HEIGHT = 40
-TAB_VISUAL_HEIGHT = 38
+INPUT_VISUAL_HEIGHT = 36
+TAB_VISUAL_HEIGHT = 40
 TOGGLE_VISUAL_WIDTH = 36
 TOGGLE_VISUAL_HEIGHT = 20
 PLANT_ACTION_MIN_HEIGHT = MIN_HIT_TARGET
@@ -176,23 +176,24 @@ class ThemeContext(str, Enum):
 
 
 SEMANTIC_COLORS = {
-    "bg": "#071B14",
-    "surface_1": "#0E2A20",
-    "surface_2": "#14372A",
-    "surface_3": "#1A4434",
-    "text_primary": "#F2F5EC",
-    "text_secondary": "#C7D2C9",
-    "text_muted": "#95A99C",
-    "primary": "#62D49A",
-    "primary_hover": "#79E2AA",
-    "primary_pressed": "#48B77F",
-    "gold": "#E2B85F",
-    "danger": "#D96570",
-    "warning": "#D2A54F",
-    "info": "#6BA8CC",
-    "shop_surface_1": "#2A1E18",
-    "shop_surface_2": "#3A291F",
-    "shop_surface_3": "#493328",
+    "bg": "#071E18",
+    "surface_1": "#0D2B23",
+    "surface_2": "#12382E",
+    "surface_3": "#184638",
+    "surface_hover": "#1E5142",
+    "text_primary": "#F3F0DF",
+    "text_secondary": "#B6C2BB",
+    "text_muted": "#879B90",
+    "primary": "#63D79C",
+    "primary_hover": "#78E2AD",
+    "primary_pressed": "#4FC58A",
+    "gold": "#E2BF5B",
+    "danger": "#D97971",
+    "warning": "#E2AA43",
+    "info": "#75B9D6",
+    "shop_surface_1": "#2F2924",
+    "shop_surface_2": "#3E332C",
+    "shop_surface_3": "#665344",
 }
 
 
@@ -201,20 +202,20 @@ GARDEN_THEME = {
     "dialog_surface": SEMANTIC_COLORS["surface_1"],
     "raised_surface": SEMANTIC_COLORS["surface_2"],
     "selected_surface": SEMANTIC_COLORS["surface_3"],
-    "subtle_border": "rgba(128, 178, 155, 0.22)",
-    "strong_border": "#4F806E",
+    "subtle_border": "#2E6151",
+    "strong_border": "#437966",
     "text_primary": SEMANTIC_COLORS["text_primary"],
     "text_secondary": SEMANTIC_COLORS["text_secondary"],
     "text_muted": SEMANTIC_COLORS["text_muted"],
     "action_accent": SEMANTIC_COLORS["primary"],
     "action_hover": SEMANTIC_COLORS["primary_hover"],
     "action_pressed": SEMANTIC_COLORS["primary_pressed"],
-    "action_text": "#062017",
+    "action_text": "#06251B",
     "action_border": SEMANTIC_COLORS["primary"],
     "secondary_action": SEMANTIC_COLORS["surface_2"],
-    "secondary_hover": SEMANTIC_COLORS["surface_3"],
+    "secondary_hover": SEMANTIC_COLORS["surface_hover"],
     "secondary_pressed": SEMANTIC_COLORS["surface_1"],
-    "secondary_border": "#4F806E",
+    "secondary_border": "#437966",
     "disabled_surface": "#173029",
     "disabled_border": "#3F5C50",
     "disabled_text": "#A6B6AE",
@@ -650,7 +651,7 @@ def set_icon_accessible_name(
     _set_property(widget, "iconButton", True)
     _set_property(widget, SEMANTIC_ROLE_PROPERTY, SemanticRole.ICON_BUTTON.value)
     if ensure_hit_target:
-        ensure_minimum_hit_target(widget)
+        apply_button_size(widget, ButtonSize.ICON)
     _repolish(widget)
     return widget
 
@@ -860,7 +861,7 @@ def button_stylesheet(
         }}
         QPushButton:checked, QPushButton[selected='true'] {{
             background: {t['selected_surface']};
-            border-color: {t['coin_accent']};
+            border-color: {t['growth_accent']};
             color: {t['text_primary']};
             font-weight: 600;
         }}
@@ -907,7 +908,7 @@ def tool_button_stylesheet(
         }}
         QToolButton:checked {{
             background: {t['selected_surface']};
-            border-color: {t['coin_accent']};
+            border-color: {t['growth_accent']};
             font-weight: 600;
         }}
         QToolButton[variant='primary'] {{
@@ -1018,7 +1019,7 @@ def semantic_component_stylesheet(
             color: {t['text_secondary']};
             background: transparent;
             border: 0;
-            border-bottom: 3px solid transparent;
+            border-bottom: 2px solid transparent;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
             font-weight: 600;
         }}
@@ -1027,9 +1028,10 @@ def semantic_component_stylesheet(
             background: {t['secondary_hover']};
         }}
         QTabBar[gardenRole='tabs']::tab:selected {{
-            color: {t['text_primary']};
-            border-bottom-color: {t['coin_accent']};
-            font-weight: 600;
+            color: {t['growth_accent']};
+            background: {t['selected_surface']};
+            border-bottom-color: {t['growth_accent']};
+            font-weight: 700;
         }}
         QTabBar[gardenRole='tabs']:focus {{
             border: 2px solid {t['focus_ring']};
@@ -1089,6 +1091,22 @@ def semantic_component_stylesheet(
             background: {t['selected_surface']};
             border: 1px solid {t['strong_border']};
             border-radius: 8px;
+            font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
+            font-weight: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_weight};
+        }}
+        QFrame[stageRewardChip='true'] {{
+            min-height: 24px;
+            max-height: 24px;
+            padding: 0;
+            color: {t['action_text']};
+            background: {t['coin_accent']};
+            border: 0;
+            border-radius: 8px;
+        }}
+        QFrame[stageRewardChip='true'] QLabel {{
+            color: {t['action_text']};
+            background: transparent;
+            border: 0;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
             font-weight: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_weight};
         }}
@@ -1205,7 +1223,7 @@ def nursery_catalog_stylesheet() -> str:
     t = theme_palette(ThemeContext.NURSERY)
     return f"""
         QFrame[nurseryCatalog='true'], QWidget[nurseryCatalog='true'] {{
-            background: {t['shop_surface_1']};
+            background: {t['dialog_surface']};
             border: 0;
         }}
         QFrame[nurseryCatalogCard='true'], QPushButton[nurseryCatalogCard='true'] {{

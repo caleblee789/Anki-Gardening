@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from ankigarden.ui.formatters import (
+    GardenDateService,
     format_available,
     format_balance_after,
     format_balance_delta,
@@ -22,6 +23,14 @@ from ankigarden.ui.formatters import (
     format_shortfall,
     pluralize,
 )
+
+
+class _SchedulerDayStorage:
+    def __init__(self, scheduler_day: str) -> None:
+        self._scheduler_day = scheduler_day
+
+    def current_scheduler_day(self) -> str:
+        return self._scheduler_day
 
 
 def test_percent_and_decimal_rounding_boundaries() -> None:
@@ -52,7 +61,7 @@ def test_garden_release_formatters_have_one_stable_representation() -> None:
     assert format_duration(9_060) == "2h 31m"
     assert format_streak(1) == "1 day"
     assert format_streak(7) == "7 days"
-    assert format_stage_progress(1_250, 2_000, "young") == "1,250 / 2,000 to Young"
+    assert format_stage_progress(1_250, 2_000, "young") == "1,250 / 2,000 toward Young"
     assert format_balance_after(4_850) == "Balance after: 4,850"
     assert format_available(2) == "2 available"
     assert format_shortfall(30) == "30 Garden Coins needed"
@@ -74,6 +83,33 @@ def test_datetime_timezone_conversion_is_stable() -> None:
 
 
 def test_date_inputs_support_timezone_sensitive_rendering() -> None:
-    assert format_local_date(date(2026, 4, 24), timezone_name="UTC") == "2026-04-24"
-    assert format_local_date("2026-04-24T23:30:00+00:00", timezone_name="America/New_York") == "2026-04-24"
-    assert format_local_date("2026-04-24T23:30:00+00:00", timezone_name="Asia/Tokyo") == "2026-04-25"
+    assert format_local_date(date(2026, 4, 24), timezone_name="UTC") == "Apr 24, 2026"
+    assert format_local_date("2026-04-24T23:30:00+00:00", timezone_name="America/New_York") == "Apr 24, 2026"
+    assert format_local_date("2026-04-24T23:30:00+00:00", timezone_name="Asia/Tokyo") == "Apr 25, 2026"
+
+
+def test_garden_date_service_uses_scheduler_day_for_grouping() -> None:
+    service = GardenDateService(_SchedulerDayStorage("2026-08-25"))
+
+    assert service.scheduler_day() == date(2026, 8, 25)
+    assert service.format_date(
+        "2026-08-26T04:30:00+00:00",
+        scheduler_day="2026-08-25",
+    ) == "Aug 25, 2026"
+
+
+def test_garden_date_service_uses_compact_today_timestamp() -> None:
+    local_now = datetime.now().astimezone().replace(
+        hour=23,
+        minute=25,
+        second=0,
+        microsecond=0,
+    )
+    service = GardenDateService(
+        _SchedulerDayStorage(local_now.date().isoformat())
+    )
+
+    assert service.format_timestamp(
+        local_now,
+        scheduler_day=local_now.date().isoformat(),
+    ) == "Today, 11:25 PM"

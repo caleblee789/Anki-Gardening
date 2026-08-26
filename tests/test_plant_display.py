@@ -474,39 +474,40 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
 
         alternatives: list[Rect] = []
         anchor_x, anchor_y = bed.popover_anchor
-        for width, height in (preferred, minimum):
-            for side in ("right", "left", "above", "below"):
-                if side == "right":
-                    raw = Rect(
-                        selected_target.right + 12,
-                        anchor_y - height / 2,
-                        width,
-                        height,
-                    )
-                elif side == "left":
-                    raw = Rect(
-                        selected_target.x - 12 - width,
-                        anchor_y - height / 2,
-                        width,
-                        height,
-                    )
-                elif side == "above":
-                    raw = Rect(
-                        anchor_x - width / 2,
-                        selected_target.y - 12 - height,
-                        width,
-                        height,
-                    )
-                else:
-                    raw = Rect(
-                        anchor_x - width / 2,
-                        selected_target.bottom + 12,
-                        width,
-                        height,
-                    )
-                candidate = clamped(raw)
-                if not candidate.intersects(selected_obstacle):
-                    alternatives.append(candidate)
+        width = resolved.rectangle.width
+        height = resolved.rectangle.height
+        for side in ("right", "left", "above", "below"):
+            if side == "right":
+                raw = Rect(
+                    selected_target.right + 12,
+                    selected_target.y,
+                    width,
+                    height,
+                )
+            elif side == "left":
+                raw = Rect(
+                    selected_target.x - 12 - width,
+                    selected_target.y,
+                    width,
+                    height,
+                )
+            elif side == "above":
+                raw = Rect(
+                    anchor_x - width / 2,
+                    selected_target.y - 12 - height,
+                    width,
+                    height,
+                )
+            else:
+                raw = Rect(
+                    anchor_x - width / 2,
+                    selected_target.bottom + 12,
+                    width,
+                    height,
+                )
+            candidate = clamped(raw)
+            if not candidate.intersects(selected_obstacle):
+                alternatives.append(candidate)
 
         assert alternatives
         chosen_overlap = sum(

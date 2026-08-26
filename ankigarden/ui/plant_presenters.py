@@ -52,7 +52,7 @@ def fertilizer_status(
     spec = getattr(engine, "FERTILIZERS", {}).get(tier)
     name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
     growth = max(0, int(getattr(fertilizer, "growth_per_answer", 0) or 0))
-    effect = f"+{growth:,} Growth per card"
+    effect = f"+{growth:,} Growth per answer"
     seconds = max(0, int(ceil(float(getattr(fertilizer, "expires_at", 0) or 0) - float(now))))
     if seconds <= 0:
         return FertilizerStatus(

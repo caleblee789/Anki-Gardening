@@ -2880,18 +2880,18 @@ def _visual_contract_record_issues(
         elif label == "home-preview-error":
             if not (
                 "garden preview unavailable" in str(rendered).casefold()
-                and action == "Open Garden"
+                and action == "Open garden"
             ):
-                reject("Home error state must retain the Open Garden action")
+                reject("Home error state must retain the Open garden action")
         elif not label.startswith("starter-"):
             if not (
-                "Growth" in support
-                and action == "Open Garden"
+                ("toward" in support or "total Growth" in support)
+                and action == "Open garden"
                 and type(compact.get("action_width")) is int
                 and 104 <= compact["action_width"] <= 120
                 and compact.get("action_height") == 36
             ):
-                reject("compact Home must show Growth and a 104-120 by 36 Open Garden CTA")
+                reject("compact Home must show stage progress and a 104-120 by 36 Open garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -3283,7 +3283,17 @@ def _unpainted_client_record_issues(
             if normalized_exemptions != expected_exemptions:
                 problems.append("host-region cream exemptions are not the exact source contract")
             effective = max(0, total - exempt_count) if total >= 0 else -1
-            threshold = 64 if expected_exemptions and not label.startswith("reviewer-") else 0
+            # Match the live guard: ordinary painted surfaces may contain a
+            # few isolated pixels that happen to equal the sheet-padding RGB,
+            # while a leaked padding field remains orders of magnitude above
+            # this allowance. Reviewer overlays stay exact.
+            threshold = (
+                64
+                if expected_exemptions and not label.startswith("reviewer-") else
+                0
+                if label.startswith("reviewer-") else
+                4
+            )
             expected_fields = {
                 "color_rgb": [216, 209, 190],
                 "match": "exact-rgba-opaque",

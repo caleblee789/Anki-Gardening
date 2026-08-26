@@ -7,7 +7,7 @@ that style as a read-only card beside a live, noninteractive garden preview.
 
 - **Show garden on home screens**: Show the compact garden preview in Deck
   Browser and Overview. The preview displays the Garden name, nurtured plant,
-  Growth, and **Open Garden** (or **Choose starter** before setup). Today, Anki
+  Growth, and **Open garden** (or **Choose starter** before setup). Today, Anki
   streak, and Garden Coins stay in the full Garden and Garden Progress. Preview
   plants and Nursery cannot be clicked.
 - **Show progress notifications**: Show quiet, silent, non-modal stage,

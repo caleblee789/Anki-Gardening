@@ -660,7 +660,12 @@ def _migrate_reward_state_payload(payload: dict[str, Any]) -> None:
     if not isinstance(consumables, dict):
         consumables = {}
         payload["consumables"] = consumables
-    consumables.setdefault("fertilizer_basic", 0)
+    for fertilizer_id in (
+        "fertilizer_basic",
+        "fertilizer_quality",
+        "fertilizer_premium",
+    ):
+        consumables.setdefault(fertilizer_id, 0)
 
 
 def migrate_previous_state(raw: Any) -> GardenState:

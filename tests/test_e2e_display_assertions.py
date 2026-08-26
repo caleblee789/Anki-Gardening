@@ -148,7 +148,7 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert 'data-state="success"' in html
     assert 'data-testid="home-reviews"' not in html
     assert 'data-testid="home-title" aria-label="My Garden"' in html
-    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in html
+    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 toward Sprout"' in html
     assert "12 today" not in html
     assert "8-day streak" not in html
     assert "35 coins" not in html
@@ -161,7 +161,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
 
     before = app._build_home_garden_html()
     assert 'data-testid="home-reviews"' not in before
-    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in before
+    assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 toward Sprout"' in before
 
     app.storage.state.daily_stats.base_growth = 54
     app.storage.state.daily_stats.streak_bonus_growth = 6
@@ -173,11 +173,11 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
     updated = app._build_home_garden_html()
     refreshed = app._build_home_garden_html()
 
-    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in updated
+    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 toward Sprout"' in updated
     assert "9-day streak" not in updated
     assert 'data-testid="home-weather"' not in updated
 
-    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 Growth"' in refreshed
+    assert 'data-testid="home-support" title="Aster · Seed · 310 / 500 toward Sprout"' in refreshed
     assert "9-day streak" not in refreshed
     assert 'data-testid="home-weather"' not in refreshed
 
@@ -199,7 +199,7 @@ def test_journey_navigation_between_home_contexts_keeps_values_without_duplicati
 
     for rendered in (deck_content.body, overview_content.body):
         assert 'data-testid="home-reviews"' not in rendered
-        assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 Growth"' in rendered
+        assert 'data-testid="home-support" title="Aster · Seed · 250 / 500 toward Sprout"' in rendered
         assert "12 today" not in rendered
         assert "8-day streak" not in rendered
         assert "35 coins" not in rendered

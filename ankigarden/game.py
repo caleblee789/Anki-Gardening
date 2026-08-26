@@ -438,7 +438,13 @@ class GardenGameEngine:
         }
         if not isinstance(self.state.daily_environment_claims, dict):
             self.state.daily_environment_claims = {}
-        for item_id in ("booster_potion", "fertilizer_basic", *GROWTH_CHARGES):
+        for item_id in (
+            "booster_potion",
+            "fertilizer_basic",
+            "fertilizer_quality",
+            "fertilizer_premium",
+            *GROWTH_CHARGES,
+        ):
             value = self.state.consumables.get(item_id, 0)
             self.state.consumables[item_id] = (
                 max(0, int(value))
@@ -3224,7 +3230,7 @@ class GardenGameEngine:
         return EffectDescriptor(
             function="Applies a timed Growth boost to the nurtured plant.",
             buff=(
-                f"+{cls.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card."
+                f"+{cls.BOOSTER_GROWTH_PER_ANSWER:,} Growth per answer."
             ),
             activation_condition="Use on a nurtured plant that is still growing.",
             duration=(
@@ -3483,13 +3489,36 @@ class GardenGameEngine:
             duration = self._duration_label(spec.duration_seconds)
             descriptor = EffectDescriptor(
                 function="Adds Growth to each card answer.",
-                buff=f"+{spec.growth_per_answer:,} Growth per card.",
+                buff=f"+{spec.growth_per_answer:,} Growth per answer.",
                 activation_condition="Use on a nurtured plant that is still growing.",
                 duration=duration,
                 stacking="Same tier extends remaining time.",
                 replacement="Different tier replaces it and discards remaining time.",
                 unlock_requirement=f"Nursery: {spec.price:,} Garden Coins.",
             )
+            inventory_key = f"fertilizer_{tier}"
+            inventory_before = max(
+                0,
+                int(self.state.consumables.get(inventory_key, 0) or 0),
+            )
+            if target_id is None:
+                return self._make_purchase_quote(
+                    kind=purchase_kind,
+                    item_id=tier,
+                    item_name=spec.name,
+                    category="Fertilizer",
+                    artwork_category="ui",
+                    artwork_key=inventory_key,
+                    unit_price=spec.price,
+                    disposition=PurchaseDisposition.INVENTORY,
+                    descriptor=descriptor,
+                    inventory_before=inventory_before,
+                    inventory_after=inventory_before + 1,
+                    state_signature={
+                        "inventory": inventory_before,
+                        "target": None,
+                    },
+                )
             if (
                 plant is None
                 or self.state.active_plant_id != plant.plant_id
@@ -3560,7 +3589,7 @@ class GardenGameEngine:
                     else ""
                 ),
                 current_effect=(
-                    f"+{int(current.growth_per_answer):,} Growth per card"
+                    f"+{int(current.growth_per_answer):,} Growth per answer"
                     if current is not None
                     else ""
                 ),
@@ -3949,8 +3978,39 @@ class GardenGameEngine:
             )
 
         elif quote.kind is PurchaseKind.FERTILIZER:
-            plant = self.plant_story(str(quote.target_id or ""))
             spec = self.FERTILIZERS[quote.item_id]
+            inventory_key = f"fertilizer_{spec.tier}"
+            if quote.disposition is PurchaseDisposition.INVENTORY:
+                self.state.consumables[inventory_key] = (
+                    max(0, int(self.state.consumables.get(inventory_key, 0) or 0))
+                    + quote.quantity
+                )
+                result_id = inventory_key
+                self._queue_feedback(
+                    event_key,
+                    "fertilizer_inventory",
+                    message,
+                    title=message.rstrip("."),
+                    asset_category="ui",
+                    asset_key=inventory_key,
+                    amount=quote.quantity,
+                )
+                return PurchaseOutcome(
+                    status=PurchaseStatus.SUCCESS,
+                    item_id=quote.item_id,
+                    item_name=quote.item_name,
+                    category=quote.category,
+                    quantity=quote.quantity,
+                    amount_spent=quote.total_price,
+                    new_balance=max(0, int(self.state.currency_balance)),
+                    disposition=quote.disposition,
+                    message=message,
+                    next_actions=next_actions,
+                    result_id=result_id,
+                    applied=False,
+                    equipped=False,
+                )
+            plant = self.plant_story(str(quote.target_id or ""))
             if plant is None:
                 return self._purchase_failure(
                     quote,
@@ -4621,10 +4681,16 @@ class GardenGameEngine:
         self,
         plant_id: str | None = None,
         *,
+        tier: str = "basic",
         replace_active: bool = False,
     ) -> tuple[bool, str]:
-        """Use one stored Rich Compost as the existing Basic Fertilizer effect."""
+        """Use one stored fertilizer tier on the explicit nurtured plant."""
 
+        normalized_tier = str(tier or "basic").lower()
+        spec = self.FERTILIZERS.get(normalized_tier)
+        if spec is None:
+            return False, "That Fertilizer is no longer available."
+        inventory_key = f"fertilizer_{normalized_tier}"
         plant = self.plant_story(str(plant_id or self.state.active_plant_id or ""))
         if (
             plant is None
@@ -4633,20 +4699,19 @@ class GardenGameEngine:
             or plant.fully_grown
         ):
             return False, "Choose a nurtured plant that is still growing."
-        if self.state.consumables.get("fertilizer_basic", 0) <= 0:
-            return False, "You do not have any Rich Compost yet."
-        spec = self.FERTILIZERS["basic"]
+        if self.state.consumables.get(inventory_key, 0) <= 0:
+            return False, f"You do not have any {spec.name} yet."
         now = self._now_seconds()
         current = plant.fertilizer if plant.fertilizer and plant.fertilizer.active(now) else None
         if current is not None and current.tier != spec.tier and not replace_active:
             current_spec = self.FERTILIZERS.get(current.tier)
             current_name = current_spec.name if current_spec is not None else "active Fertilizer"
             return False, (
-                f"Using Rich Compost will replace {current_name}. Confirm replacement first."
+                f"Using {spec.name} will replace {current_name}. Confirm replacement first."
             )
         snapshot = self._state_snapshot()
         try:
-            self.state.consumables["fertilizer_basic"] -= 1
+            self.state.consumables[inventory_key] -= 1
             action = self._activate_fertilizer_effect(plant, spec, now=now)
             event_id = f"fertilizer-item:{uuid.uuid4().hex}"
             self._queue_feedback(
@@ -4654,17 +4719,17 @@ class GardenGameEngine:
                 "fertilizer",
                 f"Basic Fertilizer {action}.",
                 plant.plant_id,
-                title=f"Basic Fertilizer {action}",
+                title=f"{spec.name} {action}",
                 asset_category="ui",
-                asset_key="fertilizer_basic",
+                asset_key=inventory_key,
                 amount=1,
                 correlation_id=event_id,
             )
             self._persist_or_restore(snapshot)
         except Exception:
             self._restore_state(snapshot)
-            return False, "Couldn’t use Basic Fertilizer."
-        return True, f"Basic Fertilizer {action}."
+            return False, f"Couldn’t use {spec.name}."
+        return True, f"{spec.name} {action}."
 
     def use_basic_fertilizer(
         self,
@@ -4674,6 +4739,7 @@ class GardenGameEngine:
     ) -> tuple[bool, str]:
         return self.use_fertilizer_item(
             plant_id,
+            tier="basic",
             replace_active=replace_active,
         )
 
@@ -4738,7 +4804,7 @@ class GardenGameEngine:
             "booster",
             (
                 f"Booster Potion {action} on {plant.name}: "
-                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per card for {duration_text}."
+                f"+{self.BOOSTER_GROWTH_PER_ANSWER} Growth per answer for {duration_text}."
             ),
             plant.plant_id,
             title="Booster Potion active",
@@ -4905,6 +4971,17 @@ class GardenGameEngine:
         return self._repair_active_plant()
 
     def set_active_plant(self, plant_id: Optional[str]) -> tuple[bool, str]:
+        if plant_id is None:
+            if self.state.active_plant_id is None:
+                return True, "No plant is being nurtured."
+            snapshot = self._state_snapshot()
+            self.state.active_plant_id = None
+            self._record_active_period(None)
+            try:
+                self._persist_or_restore(snapshot)
+            except Exception:
+                return False, "Couldn’t stop nurturing. Your garden is unchanged."
+            return True, "Stopped nurturing."
         plant = self.plant_story(str(plant_id or ""))
         if plant is None:
             return False, "That plant is no longer in your collection."
@@ -4980,8 +5057,18 @@ class GardenGameEngine:
             return False, "Couldn’t save the garden name. Nothing was changed."
         return True, f"Your garden is now named {clean}."
 
-    def development_populate(self) -> tuple[bool, str]:
-        """Populate a broad UI test state without touching the revlog ledger."""
+    def development_populate(
+        self,
+        *,
+        emit_feedback: bool = True,
+    ) -> tuple[bool, str]:
+        """Populate a broad UI test state without touching the revlog ledger.
+
+        The capture harness seeds this state as fixture setup rather than as a
+        learner action.  It can therefore suppress the development receipt at
+        the source while the explicit development control retains its normal
+        product feedback.
+        """
 
         if not build_capabilities.DEVELOPMENT_MUTATION_ENABLED:
             return False, "Development garden population is unavailable in this production build."
@@ -5055,12 +5142,13 @@ class GardenGameEngine:
             achievement.unlocked = True
             achievement.unlocked_at = achievement.unlocked_at or now
             achievement.progress = 1.0
-        self._queue_feedback(
-            f"development:ready:{uuid.uuid4().hex}",
-            "development",
-            "Development garden populated. Use Restore backup to return to the prior state.",
-            title="Development garden ready",
-        )
+        if emit_feedback:
+            self._queue_feedback(
+                f"development:ready:{uuid.uuid4().hex}",
+                "development",
+                "Development garden populated. Use Restore backup to return to the prior state.",
+                title="Development garden ready",
+            )
         try:
             self._persist_or_restore(snapshot)
         except Exception:

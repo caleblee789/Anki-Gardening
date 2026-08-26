@@ -1,11 +1,85 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..display_telemetry import DISPLAY_TELEMETRY
+
+
+@dataclass(frozen=True)
+class GardenDateService:
+    """Format Garden dates against Anki's active scheduler day.
+
+    Event timestamps remain persisted as timezone-aware UTC values.  Their
+    stored ``scheduler_day`` is the grouping authority; local time is only a
+    presentation concern.
+    """
+
+    storage: Any | None = None
+
+    def scheduler_day(self) -> date:
+        resolver = getattr(self.storage, "current_scheduler_day", None)
+        try:
+            if callable(resolver):
+                return date.fromisoformat(str(resolver())[:10])
+        except (TypeError, ValueError):
+            pass
+        return datetime.now().astimezone().date()
+
+    @staticmethod
+    def _local_datetime(value: date | datetime | str | None) -> datetime:
+        if value is None:
+            return datetime.now().astimezone()
+        parsed = _coerce_datetime(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone()
+
+    @staticmethod
+    def _display_date(value: date) -> str:
+        return f"{value.strftime('%b')} {value.day}, {value.year}"
+
+    def format_date(
+        self,
+        value: date | datetime | str,
+        *,
+        scheduler_day: str = "",
+        include_year: bool = True,
+    ) -> str:
+        try:
+            displayed = (
+                date.fromisoformat(str(scheduler_day)[:10])
+                if scheduler_day
+                else self._local_datetime(value).date()
+            )
+        except (TypeError, ValueError):
+            return str(value or "—")
+        if include_year:
+            return self._display_date(displayed)
+        return f"{displayed.strftime('%b')} {displayed.day}"
+
+    def format_timestamp(
+        self,
+        value: date | datetime | str | None = None,
+        *,
+        scheduler_day: str = "",
+    ) -> str:
+        try:
+            local = self._local_datetime(value)
+            event_day = (
+                date.fromisoformat(str(scheduler_day)[:10])
+                if scheduler_day
+                else local.date()
+            )
+        except (TypeError, ValueError):
+            return str(value or "—")
+        time_text = local.strftime("%I:%M %p").lstrip("0")
+        if event_day == self.scheduler_day():
+            return f"Today, {time_text}"
+        return f"{self._display_date(event_day)}, {time_text}"
 
 
 def _to_decimal(value: Any, *, default: Decimal = Decimal("0")) -> Decimal:
@@ -106,7 +180,7 @@ def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     """Format the one visible progress expression used by Garden surfaces."""
 
     return (
-        f"{format_growth(value, maximum, include_unit=False)} to "
+        f"{format_growth(value, maximum, include_unit=False)} toward "
         f"{format_status_label(destination)}"
     )
 
@@ -220,4 +294,5 @@ def format_local_datetime(
 
 
 def format_local_date(value: date | datetime | str, *, timezone_name: str) -> str:
-    return format_local_datetime(value, timezone_name=timezone_name, output_format="%Y-%m-%d")
+    rendered = format_local_datetime(value, timezone_name=timezone_name, output_format="%b %d, %Y")
+    return rendered.replace(" 0", " ")

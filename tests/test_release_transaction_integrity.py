@@ -315,25 +315,26 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         assert presentation.outcome == "Adds Sunflower to your collection."
         assert "No Growth while in Collection" not in visible
     expected_next_actions = {
-        PurchaseKind.SPECIES: ("Place in Garden", "View Collection"),
-        PurchaseKind.GROWTH_CHARGE: ("Use charge", "Keep browsing"),
+        PurchaseKind.SPECIES: ("Place in garden", "View collection"),
+        PurchaseKind.GROWTH_CHARGE: ("Use growth charge", "Keep browsing"),
         PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
-        PurchaseKind.WEATHER: ("View Collection", "Keep browsing"),
-        PurchaseKind.BED: ("View Garden", "Keep browsing"),
+        PurchaseKind.WEATHER: ("View collection", "Keep browsing"),
+        PurchaseKind.BED: ("View garden", "Keep browsing"),
     }
     assert presentation.next_actions == expected_next_actions[kind]
     assert presentation.badges == ()
-    assert not presentation.show_item_name
+    assert presentation.show_item_name is (kind is PurchaseKind.GROWTH_CHARGE)
     assert not presentation.show_category
     assert all(
         noise not in visible
         for noise in (
             "Not applicable",
             "Replaces nothing",
-            "Quantity: 1",
             "Are you sure",
         )
     )
+    if kind is PurchaseKind.GROWTH_CHARGE:
+        assert presentation.outcome == "Quantity: 1"
 
 
 def test_fertilizer_presentations_distinguish_extension_and_replacement() -> None:
@@ -369,11 +370,11 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     replacement = purchase_presentation(replacement_quote)
     assert replacement.action is PurchaseAction.PURCHASE_REPLACE
     assert replacement.title == "Replace Basic Fertilizer?"
-    assert replacement.primary_label == "Buy Magical"
+    assert replacement.primary_label == "Replace for 150"
     assert replacement.secondary_label == "Keep Basic"
     assert replacement.outcome == (
-        "Magical Fertilizer starts immediately. "
-        "You will lose 45 minutes of Basic Fertilizer."
+        "Magical Fertilizer will start immediately.\n"
+        "Basic Fertilizer has 45 minutes remaining."
     )
     assert replacement_quote.current_seconds_remaining == 2_700
 
@@ -504,13 +505,11 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert "preview" not in presentation.outcome.casefold()
     assert presentation.balance_after == 4_970
     assert presentation.facts == ()
-    assert presentation.primary_label == "Buy"
+    assert presentation.primary_label == "Buy for 30"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
         assert presentation.update_label == "Balance updated"
-        assert presentation.outcome == (
-            "Adds one Small Growth Charge to your inventory."
-        )
+        assert presentation.outcome == "Quantity: 1"
     else:
         assert presentation.update_label == ""
     if status is PurchaseStatus.STALE_PRICE:
@@ -813,7 +812,7 @@ def test_every_nursery_transaction_routes_through_the_shared_pending_guard() -> 
 
     guarded_methods = (
         "_purchase_fertilizer",
-        "_use_basic_fertilizer",
+        "_use_owned_fertilizer",
         "_use_booster",
         "_purchase_growth_charge",
         "_use_growth_charge",
@@ -977,7 +976,7 @@ def test_environment_receipt_does_not_replace_the_equipped_weather_feature() -> 
 
     assert status.visible is False
     assert toast_result["message"] == "Soft Breeze added to your collection."
-    assert toast_result["action_text"] == "View Collection"
+    assert toast_result["action_text"] == "View collection"
     assert toast_result["dismiss_text"] == "Keep browsing"
     assert callable(toast_result["dismiss_callback"])
     assert toast_result["duration_ms"] == 6_000
@@ -1114,7 +1113,7 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
     use_fertilizer = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
-        "_use_basic_fertilizer",
+        "_use_owned_fertilizer",
         {
             "ConfirmationDialog": _Confirmation,
             "collectible_registry": lambda: (
@@ -1145,15 +1144,24 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
         duration_seconds=3_600,
     )
 
-    def use_item(plant_id: str, *, replace_active: bool) -> tuple[bool, str]:
+    def use_item(
+        plant_id: str,
+        *,
+        tier: str,
+        replace_active: bool,
+    ) -> tuple[bool, str]:
+        assert tier == "basic"
         engine_calls.append((plant_id, replace_active))
-        if len(engine_calls) == 1:
-            inventory["fertilizer_basic"] -= 1
-            return True, "Basic Fertilizer applied"
-        return False, "Basic Fertilizer could not be used because it was not saved."
+        inventory["fertilizer_basic"] -= 1
+        return True, "Basic Fertilizer applied"
 
     nursery = SimpleNamespace(_catalog_transaction_pending=False)
-    nursery._begin_catalog_transaction = lambda: not nursery._catalog_transaction_pending
+    begin = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_begin_catalog_transaction",
+    )
+    nursery._begin_catalog_transaction = lambda: begin(nursery)
     nursery._schedule_catalog_transaction_release = lambda: scheduled.append(True)
     nursery._show_catalog_transaction_exception = lambda *_args, **_kwargs: None
     nursery._show_result = lambda ok, message: results.append((ok, message))
@@ -1170,24 +1178,20 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
         use_fertilizer_item=use_item,
     )
 
-    use_fertilizer(nursery)
-    use_fertilizer(nursery)
+    use_fertilizer(nursery, "basic")
+    use_fertilizer(nursery, "basic")
 
-    assert engine_calls == [("p1", True), ("p1", True)]
+    assert engine_calls == [("p1", True)]
     assert inventory == {"fertilizer_basic": 1}
     assert refreshes == ["parent", "nursery"]
-    assert scheduled == [True, True]
+    assert scheduled == [True]
     assert confirmations[0][0] == "Replace Quality Fertilizer?"
     assert confirmations[0][1] == (
-        "Basic Fertilizer starts now. You will lose "
-        "1 hour of Quality Fertilizer."
+        "Basic Fertilizer will start immediately.\n"
+        "Quality Fertilizer has 1 hour remaining."
     )
     assert confirmations[0][2] == "Use Basic"
     assert results[0] == (True, "Basic Fertilizer applied")
-    assert results[1][0] is False
-    assert "Rich Compost was not used" in results[1][1]
-    assert "inventory count" not in results[1][1]
-    assert "(unchanged)" not in results[1][1]
 
 
 @pytest.mark.parametrize(

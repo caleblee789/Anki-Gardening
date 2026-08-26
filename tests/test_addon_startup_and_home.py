@@ -414,8 +414,14 @@ def test_reviewer_starter_notice_is_once_per_reviewer_session_and_clears_on_sele
     handler.on_question()
     assert shown == ["shown", "shown"]
 
+    notice_source = inspect.getsource(
+        reviewer_module.ReviewerHookHandler._show_no_starter_notice
+    )
+    assert "reviewer_reward_overlay_position(" in notice_source
+    assert "margin=12" in notice_source
 
-def test_reviewer_overlay_uses_reviewer_webview_and_centers_above_controls(
+
+def test_reviewer_overlay_uses_reviewer_webview_and_clears_answer_controls(
     monkeypatch,
 ):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
@@ -432,7 +438,7 @@ def test_reviewer_overlay_uses_reviewer_webview_and_centers_above_controls(
         570,
         360,
         88,
-    ) == (153, 370)
+    ) == (291, 370)
 
     x, y = reviewer_module.reviewer_reward_overlay_position(
         667,
@@ -440,11 +446,11 @@ def test_reviewer_overlay_uses_reviewer_webview_and_centers_above_controls(
         400,
         104,
     )
-    assert (x, y) == (133, 354)
-    assert x == (667 - 400) // 2
+    assert (x, y) == (251, 354)
+    assert x == 667 - 400 - 16
+    assert y == 570 - 104 - 112
     assert x + 400 <= 667
     assert y + 104 <= 570
-    assert y + 104 <= 570 - 112
 
 
 def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
@@ -458,12 +464,12 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert "WA_ShowWithoutActivating" in source
     assert "WA_TransparentForMouseEvents" in source
     assert "Qt.FocusPolicy.NoFocus" in source
-    assert "368" in source
-    assert "else 352" in source
-    assert "max(66, min(78" in source
+    assert "preferred_width = 340" in source
+    assert "max(52, min(64" in source
     assert "Qt.AlignmentFlag.AlignBaseline" in source
     assert "reviewer_reward_overlay_position(" in source
-    assert '"reviewer-webview-centered-above-controls"' in source
+    assert '"reviewer-webview-right-above-controls"' in source
+    assert '"reviewerViewportMargin", 16' in source
     assert '"reviewerControlClearance", 112' in source
     assert '"reviewerControlGap", 16' in source
     assert 'getattr(mw, "state", "")' in source
@@ -674,8 +680,8 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
     assert len(shown) == 1
     feedback = shown[0]
     assert feedback.event_ids == tuple(event.event_id for event in events)
-    assert feedback.title == "Morning Dew"
-    assert feedback.message == "+7 Garden Coins · +40 Growth"
+    assert feedback.title == "Garden Find"
+    assert feedback.message == "+7 coins · +40 Growth"
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (7, 40)
     assert feedback.tier == "Common"
@@ -743,7 +749,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     environment = handler._consolidated_reward_feedback(events[:1])
 
     assert environment is not None
-    assert environment.title == "Firefly Evening"
+    assert environment.title == "Garden Find"
     assert environment.tier == "Rare"
     assert environment.message == "Added to Weather and Scenery"
 
@@ -763,8 +769,8 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     grouped = handler._consolidated_reward_feedback(events)
 
     assert grouped is not None
-    assert grouped.title == "3 Garden rewards added"
-    assert grouped.message == "+6 Garden Coins · +80 Growth"
+    assert grouped.title == "Garden Find"
+    assert grouped.message == "+6 coins · +80 Growth"
 
 
 def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(
