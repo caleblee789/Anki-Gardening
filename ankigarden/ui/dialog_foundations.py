@@ -37,6 +37,14 @@ class DialogSizeClass(str, Enum):
     PREVIEW = "preview"
 
 
+class DialogWindowMode(str, Enum):
+    """Top-level native geometry behavior shared by every dialog family."""
+
+    CANVAS = "canvas"
+    WORKSPACE = "workspace"
+    CONTENT = "content"
+
+
 class InitialFocusPolicy(str, Enum):
     """The kind of control that should receive focus when a dialog opens."""
 
@@ -200,7 +208,9 @@ def resolve_dialog_close(
 
 
 @dataclass(frozen=True)
-class DialogSizePolicy:
+class DialogSizeProfile:
+    """Content-driven bounds plus the top-level native window behavior."""
+
     min_width: int
     min_height: int
     preferred_width: int
@@ -213,6 +223,24 @@ class DialogSizePolicy:
     content_fit: bool = False
     screen_margin: int = 24
     preserve_transition_height: bool = False
+    window_mode: DialogWindowMode = DialogWindowMode.CONTENT
+
+    def __post_init__(self) -> None:
+        if not (
+            0 < self.min_width <= self.preferred_width <= self.max_width
+            and 0 < self.min_height <= self.preferred_height <= self.max_height
+        ):
+            raise ValueError("dialog size profiles must use ordered positive bounds")
+        if not (0 < self.width_ratio <= 1 and 0 < self.height_ratio <= 1):
+            raise ValueError("dialog size profile screen ratios must be in (0, 1]")
+        if self.screen_margin < 0:
+            raise ValueError("dialog size profile screen margin may not be negative")
+        if self.window_mode is DialogWindowMode.CANVAS and self.content_fit:
+            raise ValueError("canvas windows cannot use content-fit sizing")
+
+
+# Source-compatible name retained for integrations that imported the v23 type.
+DialogSizePolicy = DialogSizeProfile
 
 
 @dataclass(frozen=True)
@@ -267,6 +295,24 @@ class ScrollbarTelemetryRecord:
 
 
 @dataclass(frozen=True)
+class DialogGeometryTelemetryRecord:
+    """One widget rectangle expressed in top-level client coordinates."""
+
+    x: int
+    y: int
+    width: int
+    height: int
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "x": self.x,
+            "y": self.y,
+            "width": self.width,
+            "height": self.height,
+        }
+
+
+@dataclass(frozen=True)
 class DialogCaptureTelemetryRecord:
     """Stable native geometry/text evidence consumed by capture QA.
 
@@ -285,6 +331,13 @@ class DialogCaptureTelemetryRecord:
     elided_widget_count: int
     elision_without_tooltip_count: int
     overflow_owner_count: int
+    window_mode: str = DialogWindowMode.CONTENT.value
+    client_bounds: DialogGeometryTelemetryRecord | None = None
+    body_bounds: DialogGeometryTelemetryRecord | None = None
+    footer_bounds: DialogGeometryTelemetryRecord | None = None
+    settled_size: tuple[int, int] | None = None
+    content_fit_pending: bool = False
+    safety_scroll_active: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -298,6 +351,32 @@ class DialogCaptureTelemetryRecord:
             "elidedWidgetCount": self.elided_widget_count,
             "elisionWithoutTooltipCount": self.elision_without_tooltip_count,
             "overflowOwnerCount": self.overflow_owner_count,
+            "windowMode": self.window_mode,
+            "clientBounds": (
+                self.client_bounds.as_dict()
+                if self.client_bounds is not None
+                else None
+            ),
+            "bodyBounds": (
+                self.body_bounds.as_dict()
+                if self.body_bounds is not None
+                else None
+            ),
+            "footerBounds": (
+                self.footer_bounds.as_dict()
+                if self.footer_bounds is not None
+                else None
+            ),
+            "settledSize": (
+                {
+                    "width": int(self.settled_size[0]),
+                    "height": int(self.settled_size[1]),
+                }
+                if self.settled_size is not None
+                else None
+            ),
+            "contentFitPending": self.content_fit_pending,
+            "safetyScrollActive": self.safety_scroll_active,
         }
 
 
@@ -331,14 +410,14 @@ def should_preserve_transition_height(
     )
 
 
-DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
+DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
     DialogSizeClass.COMPACT_STATUS: DialogSizePolicy(
+        480,
+        180,
         500,
         200,
         520,
-        220,
-        540,
-        250,
+        210,
         1.0,
         1.0,
         False,
@@ -362,13 +441,14 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         700,
         250,
         720,
-        430,
+        405,
         740,
-        470,
+        420,
         1.0,
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.SETTINGS: DialogSizePolicy(
         820,
@@ -381,6 +461,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.NURSERY: DialogSizePolicy(
         920,
@@ -393,54 +474,59 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PROGRESS: DialogSizePolicy(
-        960,
-        350,
+        880,
+        320,
         980,
-        540,
-        1000,
-        650,
+        520,
+        980,
+        640,
         1.0,
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.LOADOUT: DialogSizePolicy(
+        980,
+        520,
         1000,
-        560,
+        540,
         1020,
-        610,
-        1040,
-        650,
+        560,
         1.0,
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PLANT_STORY: DialogSizePolicy(
         800,
-        560,
+        500,
         840,
-        595,
+        525,
         860,
-        630,
+        550,
         1.0,
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.SPECIES_DETAIL: DialogSizePolicy(
-        880,
-        430,
-        920,
-        600,
-        940,
-        620,
+        840,
+        540,
+        860,
+        570,
+        900,
+        590,
         1.0,
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.GROWTH_CHARGE: DialogSizePolicy(
         520,
@@ -466,6 +552,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         1.0,
         False,
+        window_mode=DialogWindowMode.CANVAS,
     ),
     # Legacy generic policies remain for secondary dialogs that are outside
     # the named release families. They are deliberately not used by Settings,
@@ -481,6 +568,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         False,
         True,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.CATALOG: DialogSizePolicy(
         640,
@@ -492,6 +580,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         1.0,
         False,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PREVIEW: DialogSizePolicy(
         680,
@@ -503,6 +592,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizePolicy] = {
         1.0,
         1.0,
         False,
+        window_mode=DialogWindowMode.WORKSPACE,
     ),
 }
 
@@ -512,61 +602,69 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     dict[str, DialogHeightProfile],
 ] = {
     DialogSizeClass.COMPACT_STATUS: {
-        "default": DialogHeightProfile(200, 220, 250, 500, 520, 540),
+        "default": DialogHeightProfile(180, 200, 210, 480, 500, 520),
     },
     DialogSizeClass.TRANSACTION: {
-        "default": DialogHeightProfile(220, 245, 270, 500, 520, 540),
-        "simple": DialogHeightProfile(220, 245, 270, 500, 520, 540),
+        "default": DialogHeightProfile(210, 230, 250, 480, 500, 520),
+        "simple": DialogHeightProfile(210, 230, 250, 480, 500, 520),
+        # The Growth Charge quote is the smallest complete purchase: one
+        # artwork row, one cost row, and its actions.  Keep that proposal a
+        # true content-fit window instead of inheriting taller catalog states.
+        "growth-charge": DialogHeightProfile(220, 230, 240, 500, 500, 500),
         "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
-        "loading": DialogHeightProfile(220, 245, 270, 500, 520, 540),
+        "loading": DialogHeightProfile(210, 230, 250, 480, 500, 520),
         "warning": DialogHeightProfile(180, 210, 240, 480, 510, 540),
         "error": DialogHeightProfile(180, 210, 240, 480, 510, 540),
         "success": DialogHeightProfile(180, 210, 240, 480, 510, 540),
     },
     DialogSizeClass.FERTILIZER: {
-        "default": DialogHeightProfile(390, 430, 470, 700, 720, 740),
-        "selection": DialogHeightProfile(390, 430, 470, 700, 720, 740),
+        "default": DialogHeightProfile(390, 405, 420, 700, 720, 740),
+        "selection": DialogHeightProfile(390, 405, 420, 700, 720, 740),
         "replacement": DialogHeightProfile(250, 275, 300, 560, 590, 620),
     },
     DialogSizeClass.SETTINGS: {
-        "display": DialogHeightProfile(460, 485, 510, 880, 900, 920),
+        "display": DialogHeightProfile(480, 500, 520, 880, 900, 920),
         "advanced": DialogHeightProfile(540, 565, 590, 880, 900, 920),
         "diagnostics-clean": DialogHeightProfile(330, 360, 390, 820, 880, 900),
-        "diagnostics-warning": DialogHeightProfile(360, 390, 420, 820, 880, 900),
+        "diagnostics-warning": DialogHeightProfile(310, 325, 340, 820, 860, 900),
         "diagnostics-expanded": DialogHeightProfile(500, 545, 590, 820, 880, 900),
     },
     DialogSizeClass.NURSERY: {
-        "starter": DialogHeightProfile(500, 550, 600, 920, 950, 980),
-        "plants": DialogHeightProfile(540, 570, 600),
+        "starter": DialogHeightProfile(470, 485, 500, 950, 950, 950),
+        "plants": DialogHeightProfile(520, 545, 570, 930, 950, 970),
         "owned": DialogHeightProfile(470, 500, 530),
-        "fertilizer": DialogHeightProfile(470, 500, 530),
-        "spaces": DialogHeightProfile(380, 405, 430),
-        "weather": DialogHeightProfile(480, 510, 540),
+        "fertilizer": DialogHeightProfile(490, 515, 540, 930, 950, 970),
+        "spaces": DialogHeightProfile(340, 355, 370, 900, 925, 950),
+        "weather": DialogHeightProfile(500, 525, 550, 930, 950, 970),
+        "collection-complete": DialogHeightProfile(280, 300, 320, 900, 925, 950),
         "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
-        "growth": DialogHeightProfile(520, 540, 560),
-        "streak": DialogHeightProfile(560, 585, 610),
-        "currency": DialogHeightProfile(360, 390, 420),
-        "achievements": DialogHeightProfile(600, 625, 650),
-        "collection": DialogHeightProfile(540, 570, 600),
-        "collection-empty": DialogHeightProfile(350, 380, 410),
+        "growth": DialogHeightProfile(500, 520, 540, 940, 960, 980),
+        "streak": DialogHeightProfile(540, 560, 580, 940, 960, 980),
+        "currency": DialogHeightProfile(330, 345, 360, 880, 920, 940),
+        "achievements": DialogHeightProfile(600, 600, 640, 940, 980, 980),
+        "collection": DialogHeightProfile(520, 550, 580, 940, 960, 980),
+        "collection-empty": DialogHeightProfile(350, 380, 410, 940, 960, 980),
     },
     DialogSizeClass.LOADOUT: {
-        "default": DialogHeightProfile(560, 610, 650, 1000, 1020, 1040),
+        "default": DialogHeightProfile(520, 540, 560, 980, 1000, 1020),
     },
     DialogSizeClass.PLANT_STORY: {
-        "default": DialogHeightProfile(560, 595, 630, 800, 840, 860),
+        "default": DialogHeightProfile(500, 525, 550, 800, 840, 860),
     },
     DialogSizeClass.SPECIES_DETAIL: {
-        "default": DialogHeightProfile(580, 600, 620, 880, 920, 940),
-        "collected": DialogHeightProfile(580, 600, 620, 880, 920, 940),
-        "uncollected": DialogHeightProfile(430, 455, 480, 880, 920, 940),
+        "default": DialogHeightProfile(540, 570, 590, 840, 860, 900),
+        "collected": DialogHeightProfile(540, 570, 590, 840, 860, 900),
+        "uncollected": DialogHeightProfile(540, 560, 590, 840, 860, 900),
     },
     DialogSizeClass.GROWTH_CHARGE: {
-        "ready": DialogHeightProfile(290, 315, 340, 520, 540, 560),
-        "loading": DialogHeightProfile(290, 315, 340, 520, 540, 560),
-        "stale": DialogHeightProfile(290, 315, 340, 520, 540, 560),
+        "ready": DialogHeightProfile(270, 285, 300, 500, 510, 520),
+        "loading": DialogHeightProfile(270, 285, 300, 500, 510, 520),
+        # An availability refresh adds one compact status banner.  Let that
+        # real content fit up to the approved 310 px family ceiling instead
+        # of manufacturing an 8 px safety scrollbar at 510 x 300.
+        "stale": DialogHeightProfile(270, 300, 310, 500, 510, 540),
         "empty": DialogHeightProfile(190, 210, 230, 520, 540, 560),
         "warning": DialogHeightProfile(180, 210, 240, 520, 540, 560),
         "error": DialogHeightProfile(180, 210, 240, 520, 540, 560),
@@ -592,6 +690,79 @@ def dialog_height_profile(
         return fallback
     key = str(view_key or "default").strip().lower()
     return profiles.get(key) or profiles.get("default") or fallback
+
+
+def dialog_window_mode(size_class: DialogSizeClass) -> DialogWindowMode:
+    """Resolve the first-class native window mode for one semantic family."""
+
+    return DIALOG_SIZE_POLICIES[size_class].window_mode
+
+
+def resolved_dialog_view_width(
+    size_class: DialogSizeClass,
+    view_key: str | None,
+    screen_width_cap: int,
+) -> int:
+    """Resolve a view's preferred width inside its declared and screen bounds."""
+
+    policy = DIALOG_SIZE_POLICIES[size_class]
+    profile = dialog_height_profile(size_class, view_key)
+    cap = max(1, int(screen_width_cap))
+    minimum = min(int(profile.min_width or policy.min_width), cap)
+    maximum = max(
+        minimum,
+        min(int(profile.max_width or policy.max_width), cap),
+    )
+    preferred = int(profile.preferred_width or policy.preferred_width)
+    return min(max(minimum, preferred), maximum)
+
+
+def content_fit_geometry_limited(
+    *,
+    window_mode: DialogWindowMode | str,
+    screen_width_cap: int,
+    screen_height_cap: int,
+    preferred_width: int,
+    preferred_height: int,
+    fitted_width: int,
+    fitted_height: int,
+    natural_width: int | None = None,
+    natural_height: int | None = None,
+) -> bool:
+    """Report whether a Content window is constrained in either dimension.
+
+    Width matters because a screen clamp can wrap otherwise valid copy and turn
+    it into vertical overflow.  Natural dimensions are optional so callers can
+    establish a conservative pre-layout state, then refine it after Qt settles.
+    """
+
+    if DialogWindowMode(window_mode) is not DialogWindowMode.CONTENT:
+        return False
+    width_cap = max(1, int(screen_width_cap))
+    height_cap = max(1, int(screen_height_cap))
+    fitted_width_value = max(1, int(fitted_width))
+    fitted_height_value = max(1, int(fitted_height))
+    width_limited = width_cap < max(1, int(preferred_width))
+    # A content-fit window may intentionally settle below its preferred
+    # height.  Height is constrained only when the screen cannot offer the
+    # preferred geometry or measured content exceeds the fitted result.
+    height_limited = height_cap < max(1, int(preferred_height))
+    if natural_width is not None:
+        # A family profile may intentionally cap a compact dialog below its
+        # natural size.  That is a product-layout defect, not permission for a
+        # screen-limited safety scrollbar.  Attribute the constraint to the
+        # physical display only when the fitted window has reached its screen
+        # cap and content still exceeds it.
+        width_limited = width_limited or bool(
+            int(natural_width) > fitted_width_value
+            and fitted_width_value >= width_cap
+        )
+    if natural_height is not None:
+        height_limited = height_limited or bool(
+            int(natural_height) > fitted_height_value
+            and fitted_height_value >= height_cap
+        )
+    return bool(width_limited or height_limited)
 
 
 def resolved_dialog_size(

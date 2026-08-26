@@ -878,7 +878,7 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "content.addWidget(self.status)" not in constructor
 
 
-def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
+def test_environment_receipt_does_not_replace_the_equipped_weather_feature() -> None:
     purchase_environment = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
@@ -917,14 +917,10 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
 
     purchase_environment(nursery, "weather", "breeze")
 
-    purchased = observed["preview_product"]
-    assert purchased is WEATHER_CATALOG["breeze"]
-    assert purchased.item_id == "breeze"
-    assert purchased.name == "Soft Breeze"
-    assert purchased.price == 100
     assert observed["kind"] is PurchaseKind.WEATHER
     assert observed["item_id"] == "breeze"
     assert observed["released"] is True
+    assert "preview_product" not in observed
 
     class _Status:
         def set_status(self, message: str) -> None:
@@ -932,12 +928,20 @@ def test_environment_receipt_stays_bound_to_the_completed_product() -> None:
 
     status = _Status()
     toast_result: dict[str, Any] = {}
-    toast = SimpleNamespace(
-        action=object(),
-        show_message=lambda message, **kwargs: toast_result.update(
-            message=message,
-            **kwargs,
-        ),
+
+    class _SemanticObject:
+        def __init__(self) -> None:
+            self.properties: dict[str, Any] = {}
+
+        def setProperty(self, name: str, value: Any) -> None:
+            self.properties[name] = value
+
+    toast = _SemanticObject()
+    toast.action = _SemanticObject()
+    toast.dismiss = _SemanticObject()
+    toast.show_message = lambda message, **kwargs: toast_result.update(
+        message=message,
+        **kwargs,
     )
     show_receipt = _compiled_method(
         DASHBOARD_PATH,

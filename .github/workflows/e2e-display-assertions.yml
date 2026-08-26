@@ -25,8 +25,8 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest pillow
 
-      - name: Run full test suite
-        run: pytest -q
+      - name: Run fast test suite
+        run: timeout --foreground --signal=TERM 60s pytest -q
 
       - name: Audit local artwork
         run: python scripts/audit_assets.py

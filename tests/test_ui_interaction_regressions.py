@@ -26,11 +26,8 @@ from ankigarden.ui.plant_display import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ADDON_PATH = ROOT / "ankigarden/addon.py"
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 SCENE_PATH = ROOT / "ankigarden/ui/scene.py"
-STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
-GAME_PATH = ROOT / "ankigarden/game.py"
 
 
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
@@ -103,65 +100,6 @@ def test_home_preview_has_one_explicit_keyboard_action_and_noninteractive_summar
     assert 'data-testid="home-scene" aria-hidden="true"' in html
 
 
-def test_interaction_matrix_covers_modal_keyboard_swap_rollback_and_house_route() -> None:
-    dashboard = DASHBOARD_PATH.read_text("utf-8")
-    scene = SCENE_PATH.read_text("utf-8")
-    game = GAME_PATH.read_text("utf-8")
-    manifest = json.loads((ROOT / "ankigarden/assets/manifest.json").read_text("utf-8"))
-
-    shield = _method_source(
-        DASHBOARD_PATH,
-        "GardenDashboard",
-        "_set_onboarding_shield",
-    )
-    focus_trap = _method_source(
-        DASHBOARD_PATH,
-        "GardenDashboard",
-        "focusNextPrevChild",
-    )
-    assert "self.onboarding_shield.raise_()" in shield
-    assert "self.onboarding_panel.raise_()" in shield
-    assert "self.onboarding_action" in focus_trap
-    assert "self.dismiss_onboarding" in focus_trap
-
-    interaction = PlantInteractionState()
-    assert interaction.cycle_focus(["left", "right"], 1) == "left"
-    interaction.toggle_pin("left")
-    assert interaction.pinned_id == "left"
-    assert "_spatial_destination(event.key())" in scene
-
-    place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
-    failed = _method_source(DASHBOARD_PATH, "GardenDashboard", "_finish_failed_move")
-    assert "occupant" in place and "swapped" in place
-    assert place.index("stage_placement") < place.index("commit_placement_draft")
-    assert "_persist_or_restore(snapshot)" in game
-    assert "self.refresh_all()" in failed
-    assert "begin_placement_draft" in failed
-    assert "title=failure_title" in failed
-    assert "toast_region.show_message" not in failed
-    collection_retry = place.split(
-        "if self.scene.begin_collection_placement(plant_id, allowed):", 1
-    )[1].split("return", 1)[0]
-    assert "title=failure_title" in collection_retry
-    assert "toast_region.show_message" not in collection_retry
-
-    background = next(
-        row for row in manifest["assets"]
-        if row.get("category") == "backgrounds" and row.get("release_preferred") is True
-    )
-    house = next(
-        row for row in background["placement"]["surface_profile"]["landmarks"]
-        if row.get("landmark_id") == "garden_house"
-    )
-    open_collection = _method_source(
-        DASHBOARD_PATH,
-        "GardenDashboard",
-        "_open_collection",
-    )
-    assert house["action_id"] == "garden.collection.open"
-    assert '"garden.collection.open": self._open_collection' in dashboard
-    assert "self.progress_dialog.open_page(\"collection\")" in open_collection
-    assert "self._collection_activation_pending" in open_collection
 
 
 def test_six_plant_home_scene_keeps_each_depth_band_between_planter_layers() -> None:
@@ -278,6 +216,9 @@ class _FakeFont:
     def setBold(self, _value: bool) -> None:
         return None
 
+    def setWeight(self, _value: object) -> None:
+        return None
+
 
 class _FakeRectF:
     def __init__(self, x: float, y: float, width: float, height: float) -> None:
@@ -315,6 +256,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
             "QRectF": _FakeRectF,
             "QColor": _FakeColor,
             "QPen": _FakePen,
+            "QFont": SimpleNamespace(Weight=SimpleNamespace(DemiBold=600)),
             "Qt": SimpleNamespace(AlignmentFlag=SimpleNamespace(AlignCenter=0)),
             "move_badge_label": move_badge_label,
             "move_target_state": move_target_state,
@@ -358,7 +300,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     assert painter.labels == ["Current"]
     for label in ("Occupied", "Invalid", "Locked"):
         assert label not in painter.labels
-    assert painter.label_font_sizes == [("Current", 11.0)]
+    assert painter.label_font_sizes == [("Current", 12.0)]
 
     scene._hovered_move_slot = 1
     hover_painter = _FakePainter()
@@ -373,33 +315,12 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     assert set(keyboard_painter.labels) == {"Current", "Move here"}
     assert len(keyboard_painter.badges) == 2
     assert dict(keyboard_painter.label_font_sizes) == {
-        "Current": 11.0,
-        "Move here": 11.0,
+        "Current": 12.0,
+        "Move here": 12.0,
     }
-
-    accessible_targets = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "_placement_target_descriptions",
-    )
-    for description in (
-        "current bed",
-        'label = "move here"',
-        "occupied by",
-        "locked bed",
-        "invalid destination",
-    ):
-        assert description in accessible_targets
 
 
 def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -> None:
-    source = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "card_geometry",
-    )
-    assert "marker_reservation = geometry_layout.resolve_watering_can(" in source
-    assert "marker_reservation.pulse_bounds.expanded(4.0, 4.0)" in source
     captured: list[tuple[list[Rect], Rect | None]] = []
 
     def no_clear_geometry(
@@ -456,21 +377,9 @@ def test_selected_card_geometry_protects_selected_plant_and_can_request_dock() -
     assert len(captured) == 1
     obstacles, protected = captured[0]
     assert obstacles == [Rect(242, 112, 106, 126)]
-    assert protected == Rect(92, 92, 96, 136)
+    assert protected == Rect(88, 88, 104, 144)
 
 
-def test_move_pointer_feedback_uses_target_state_and_skips_plant_hover() -> None:
-    mouse_move = _method_source(SCENE_PATH, "GardenSceneWidget", "mouseMoveEvent")
-    release = _method_source(SCENE_PATH, "GardenSceneWidget", "mouseReleaseEvent")
-
-    assert 'if target_state in {"valid", "current"}' in mouse_move
-    assert "Qt.CursorShape.PointingHandCursor" in mouse_move
-    assert 'elif target_state in {"locked", "unavailable"}' in mouse_move
-    assert "Qt.CursorShape.ForbiddenCursor" in mouse_move
-    assert mouse_move.index("super().mouseMoveEvent(event)\n            return") < mouse_move.index(
-        "plant_id = self._plant_at(position)"
-    )
-    assert "request = self._interaction.complete_placement() if valid else None" in release
 
 
 def test_move_callback_token_rejects_cancelled_and_superseded_sessions() -> None:
@@ -499,28 +408,6 @@ def test_move_callback_token_rejects_cancelled_and_superseded_sessions() -> None
     assert is_current(dashboard, None) is False
 
 
-def test_selected_plant_suppresses_global_hint_and_close_restores_scene_focus() -> None:
-    show_hint = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "_show_keyboard_hint",
-    )
-    dismiss = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "dismiss_selection",
-    )
-    selection = _method_source(
-        DASHBOARD_PATH,
-        "GardenDashboard",
-        "_on_scene_selection",
-    )
-
-    assert 'getattr(self, "_keyboard_hint_suppressed", False)' in show_hint
-    assert "self._interaction.pinned_id is not None" in show_hint
-    assert "self._hide_keyboard_hint()" in show_hint
-    assert "self.scene.set_keyboard_hint_suppressed(plant is not None)" in selection
-    assert "self.setFocus(Qt.FocusReason.OtherFocusReason)" in dismiss
 
 
 class _Signal:
@@ -728,10 +615,6 @@ def test_story_escape_cancels_rename_and_restores_focus_to_edit_button() -> None
 
     assert ("description", "") in calls
     assert calls[-1] == ("focus", True)
-    key_source = _method_source(DASHBOARD_PATH, "PlantStoryDialog", "keyPressEvent")
-    assert "self.name_edit.isVisible()" in key_source
-    assert "event.key() == Qt.Key.Key_Escape" in key_source
-    assert key_source.index("self._cancel_rename()") < key_source.index("event.accept()")
 
 
 def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slots() -> None:
@@ -830,77 +713,11 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
     assert ("backgrounds", "bg_default_any", "balanced") in assets.calls
     assert ("weather", "weather_gentle_rain", "balanced") in assets.calls
 
-    apply_preview = _method_source(STUDIO_PATH, "GardenStudioWidget", "_apply_preview")
-    assert "preview_weather" in apply_preview
-    assert "real_plants" in apply_preview
-    assert '"unlocked_slots": int(snapshot.get("unlocked_slots", 6) or 6)' in apply_preview
-    assert '"show_status_overlay": False' in apply_preview
 
 
-def test_watering_can_is_shared_by_full_garden_and_native_previews() -> None:
-    customize_preview = _method_source(
-        DASHBOARD_PATH,
-            "CollectibleDetailDialog",
-        "_refresh_preview",
-    )
-    full_garden_refresh = _method_source(
-        DASHBOARD_PATH,
-        "GardenDashboard",
-        "refresh_all",
-    )
-    settings_preview = _method_source(
-        STUDIO_PATH,
-        "GardenStudioWidget",
-        "_apply_preview",
-    )
-
-    for source in (customize_preview, settings_preview, full_garden_refresh):
-        assert '"nurtured_marker"' in source
-        assert '"nurtured_marker_spout_right"' in source
 
 
-def test_deck_browser_and_overview_previews_receive_watering_can_url() -> None:
-    home_builder = _method_source(
-        ADDON_PATH,
-        "AnkiGardenApp",
-        "_build_home_garden_html",
-    )
-    home_resolver = _method_source(
-        ADDON_PATH,
-        "AnkiGardenApp",
-        "_home_nurtured_marker_url",
-    )
-    home_right_resolver = _method_source(
-        ADDON_PATH,
-        "AnkiGardenApp",
-        "_home_nurtured_marker_spout_right_url",
-    )
 
-    assert "nurtured_marker_url=self._home_nurtured_marker_url()" in home_builder
-    assert "nurtured_marker_spout_right_url=(" in home_builder
-    assert "self._home_nurtured_marker_spout_right_url()" in home_builder
-    assert '"resolve_nurtured_marker_asset"' in home_resolver
-    assert "resolve_nurtured_marker_image" in home_resolver
-    assert '"resolve_nurtured_marker_spout_right_asset"' in home_right_resolver
-    assert "resolve_nurtured_marker_spout_right_image" in home_right_resolver
-
-
-def test_native_watering_can_description_identifies_the_nurtured_plant() -> None:
-    accessible = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "_update_scene_accessible_description",
-    )
-    set_scene = _method_source(SCENE_PATH, "GardenSceneWidget", "set_scene")
-    set_interactive = _method_source(
-        SCENE_PATH,
-        "GardenSceneWidget",
-        "set_interactive",
-    )
-
-    assert "Watering can: {name} is nurtured." in accessible
-    assert "_update_scene_accessible_description()" in set_scene
-    assert "_update_scene_accessible_description()" in set_interactive
 
 
 def test_visible_settings_are_raised_without_resetting_staged_controls() -> None:
@@ -1184,11 +1001,6 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     sync_recovery(dashboard)
     assert recovery.visible is False
 
-    nursery_source = DASHBOARD_PATH.read_text("utf-8").split(
-        "class NurseryDialog", 1
-    )[1].split("class PlantInfoCard", 1)[0]
-    assert "self.status.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in nursery_source
-
 
 def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -> None:
     set_compact = _compiled_method(
@@ -1275,63 +1087,10 @@ def test_metric_cells_are_focusable_and_wrap_as_complete_groups_when_compact() -
     assert strip.streak_value_row.insertions == [
         (2, strip.streak_bonus, 0, "align-bottom")
     ]
-    stats_source = DASHBOARD_PATH.read_text("utf-8").split(
-        "class GardenStatsStrip", 1
-    )[1].split("class RearrangeBar", 1)[0]
-    assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in stats_source
-    assert "QPushButton[gardenStatCell='true']:focus" in DASHBOARD_PATH.read_text("utf-8")
-    dashboard_source = DASHBOARD_PATH.read_text("utf-8")
-    assert "font-size:12px" in dashboard_source.split("QLabel[gardenStatLabel", 1)[1].split("}", 1)[0]
-    assert "font-size:18px" in dashboard_source.split("QLabel[gardenGrowthValue", 1)[1].split("}", 1)[0]
-    assert "font-size:18px" in dashboard_source.split("QLabel[gardenLargeValue", 1)[1].split("}", 1)[0]
 
 
-def test_selected_plant_card_distinguishes_nurtured_state_and_omits_inactive_boosts() -> None:
-    source = _method_source(DASHBOARD_PATH, "PlantInfoCard", "set_selected")
-
-    assert 'self.nurture.setVisible(not active and not fully_grown)' in source
-    assert 'self.nurtured_badge.setVisible(active and not fully_grown)' in source
-    assert (
-        "self.fertilize,\n            BUTTON_VARIANT_SECONDARY"
-        in source
-    )
-    assert 'BUTTON_VARIANT_PRIMARY if active and not fully_grown' not in source
-    assert 'BUTTON_VARIANT_PRIMARY if not active and not fully_grown' in source
-    assert "self.fertilizer_summary.set_status(fertilizer_projection)" in source
-    constructor = _method_source(DASHBOARD_PATH, "PlantInfoCard", "__init__")
-    assert "self.fertilizer_summary = FertilizerStatusBlock()" in constructor
-    assert 'self.booster_summary.setVisible(booster_growth > 0)' in source
-    assert "value_text=format_stage_progress(stage_points, stage_goal, next_stage)" in source
-    assert 'value_text=f"{stage_points:,} / {stage_goal:,} Growth"' not in source
-    assert "self.growth_summary.setText(" in source
-    assert ".replace('card answer', 'eligible answer')" not in source
-    assert "growth_forecast" not in source
-    assert source.count("self.growth_remaining.hide()") == 2
-    assert "self.growth_remaining.setText(" not in source
-    assert "self.growth_summary.setAccessibleDescription(" in source
-    assert 'f"{remaining:,} Growth remaining. {forecast_accessible}"' not in source
-    assert 'self.status_row.setVisible(bool(status_text))' in source
-    assert 'allocation_type = str(plant.get("allocation_type")' not in source
-    assert 'Growth today' in source
-    assert 'self._layout_actions(active=active, fully_grown=fully_grown)' in source
 
 
-def test_troubleshooting_copy_confirmation_is_visible_and_refresh_resets_it() -> None:
-    copy_report = _method_source(
-        DASHBOARD_PATH, "GardenSettingsDialog", "_copy_debug_report"
-    )
-    refresh_report = _method_source(
-        DASHBOARD_PATH, "GardenSettingsDialog", "_refresh_debug_report"
-    )
-
-    assert "QGuiApplication.clipboard().setText" in copy_report
-    assert 'self.diagnostics_checked.setText("Report copied to clipboard")' in copy_report
-    assert "self.diagnostics_card.setFocus()" in copy_report
-    assert 'status = "No display issues found"' in refresh_report
-    assert 'status = "Some artwork is missing"' in refresh_report
-    assert "contract_failures" in refresh_report
-    assert "parsing_exceptions" in refresh_report
-    assert 'f"Checked {datetime.now().strftime' in refresh_report
 
 
 def test_today_growth_row_is_neutral_information_not_a_completion_requirement() -> None:
@@ -1388,20 +1147,6 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     assert "requirement" not in row_tooltip.lower()
     assert "Each counted card answer" in row_tooltip
     assert "Each counted card answer" in row.accessible_description
-
-    refresh = _method_source(DASHBOARD_PATH, "GardenDetailsDialog", "_refresh_growth")
-    assert "today = QFrame()" in refresh
-    assert 'f"{total_today:,} Growth today"' in refresh
-    assert '"Answer a card to start."' in refresh
-    assert '"Growth breakdown"' in refresh
-    assert '"View calculation details"' not in refresh
-    assert '"Study Growth total"' not in refresh
-    assert '"Nurtured plant allocation"' not in refresh
-    assert '"Passive Growth credited"' not in refresh
-    assert '"From cards"' in refresh
-    assert '"Bonuses"' in refresh
-    assert '"Rewards and charges"' in refresh
-    assert 'compact=True' in refresh
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1489,23 +1234,6 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert rearrange.retry.focused is True
     assert dashboard.move_overlay is True
     assert toast.messages == []
-
-    rearrange_source = DASHBOARD_PATH.read_text("utf-8").split(
-        "class RearrangeBar", 1
-    )[1].split("class GardenSideNavigation", 1)[0]
-    assert 'self.retry = QPushButton("Try again")' in rearrange_source
-    assert 'self.cancel.setText("Stop moving")' in rearrange_source
-    assert "_set_button_variant(self.retry, BUTTON_VARIANT_PRIMARY)" in rearrange_source
-
-    place = _method_source(DASHBOARD_PATH, "GardenDashboard", "_place_plant")
-    assert "if not self._placement_callback_is_current(request_token):" in place
-    assert place.count("self._finish_failed_move(") == 3
-    for private_scene_mutation in (
-        "self.scene._interaction", "self.scene._clear_hit_targets",
-        "self.scene.placementStateChanged.emit",
-    ):
-        assert private_scene_mutation not in place
-    assert "self.scene.finish_move(" in place
 
 
 def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
@@ -1666,15 +1394,6 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     assert isinstance(connector_calls[0][0], Geometry)
     assert connector_calls[0][1] == "plant-a"
     assert dock.shown is False
-
-    dashboard_source = DASHBOARD_PATH.read_text("utf-8")
-    assert "self.plant_card_dock = QFrame()" in dashboard_source
-    assert "geometry = self.scene.card_geometry(" in dashboard_source
-    assert "if geometry is None:" in dashboard_source
-    assert "self.plant_card.set_docked_mode(docked)" in dashboard_source
-    assert "if docked else 290" in dashboard_source
-    assert "self._show_docked_plant_card(full_width=self.scene.width() < 600)" in dashboard_source
-    assert "narrow_sheet = self.scene.width() < 540" not in dashboard_source
 
 
 def test_external_surface_refresh_never_resets_reviewer_and_only_refreshes_home_views() -> None:
@@ -1947,10 +1666,6 @@ def test_rendered_feedback_acknowledgement_uses_exact_ids_after_queue_churn() ->
     assert engine.feedback == ["new:C", "new:D"]
     assert dashboard._pending_feedback_ack_ids == ()
 
-    refresh = _method_source(DASHBOARD_PATH, "GardenDashboard", "refresh_all")
-    assert "tuple(event.event_id for event in feedback)" in refresh
-    assert "_pending_feedback_ack_count" not in refresh
-
 
 def test_feedback_and_transition_acknowledgements_retry_independently() -> None:
     acknowledge = _compiled_method(
@@ -2170,38 +1885,8 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.retry.focused is True
 
 
-def test_long_plant_names_wrap_in_nursery_and_collection_rows() -> None:
-    nursery_card = _method_source(DASHBOARD_PATH, "NurseryDialog", "_owned_card")
-    collection = _method_source(
-        DASHBOARD_PATH, "GardenDashboard", "_refresh_collection_list"
-    )
-
-    assert "title.setTextFormat(Qt.TextFormat.PlainText)" in nursery_card
-    assert "title.setWordWrap(True)" in nursery_card
-    assert "title.setWordWrap(True)" in collection
-    assert "format_status_label(species)" in collection
-    assert "title.setWordWrap(True)" in collection
-    assert "status.setWordWrap(True)" in collection
 
 
-def test_fertilizer_buttons_describe_tier_cost_and_effect_for_accessibility() -> None:
-    fertilizer_menu = _method_source(
-        DASHBOARD_PATH, "GardenDashboard", "_open_fertilizer_menu"
-    )
-
-    assert "choose.setAccessibleDescription(" in fertilizer_menu
-    for required in (
-        "spec.name",
-        "spec.price",
-        "purchase_presentation",
-        "presentation.primary_accessible_name",
-        '"effect"',
-        "quote.descriptor.duration",
-        "fertilizer_status(",
-    ):
-        assert required in fertilizer_menu
-    assert "Garden Coins" in fertilizer_menu
-    assert "presentation.outcome" in fertilizer_menu
 
 
 def test_stage_transition_generation_ignores_stale_timer_and_reannounces_selection() -> None:

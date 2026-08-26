@@ -21,6 +21,7 @@ CAPTURE_BUILD = "capture"
 BUILD_MODES = {PRODUCTION_BUILD, CAPTURE_BUILD}
 CAPABILITY_MODULE = "build_capabilities.py"
 CAPTURE_HARNESS = "capture_ui_faces.py"
+CAPTURE_SUBTREE = "capture"
 PACKAGE_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 PACKAGE_FILE_MODE = 0o644
 MAX_COMPRESSION_LEVEL = 9
@@ -73,6 +74,8 @@ def build_capabilities_source(mode: str) -> str:
         f'BUILD_MODE = "{normalized}"\n'
         f"CAPTURE_HARNESS_ENABLED = {capture_enabled!r}\n"
         f"DEVELOPMENT_MUTATION_ENABLED = {capture_enabled!r}\n\n"
+        f"CAPTURE_CONTRACT_VERSION = {25 if capture_enabled else 0}\n"
+        f"CAPTURE_RUNTIME_PACKAGE = {('capture' if capture_enabled else '')!r}\n\n"
     )
 
 
@@ -125,7 +128,10 @@ def package_files(mode: str = PRODUCTION_BUILD) -> list[Path]:
         rel = path.relative_to(ADDON)
         if path.name in EXCLUDED_NAMES or any(part in EXCLUDED_PARTS for part in rel.parts):
             continue
-        if rel.as_posix() == CAPTURE_HARNESS and normalized != CAPTURE_BUILD:
+        if normalized != CAPTURE_BUILD and (
+            rel.as_posix() == CAPTURE_HARNESS
+            or (rel.parts and rel.parts[0] == CAPTURE_SUBTREE)
+        ):
             continue
         if rel.parts and rel.parts[0] == "assets" and rel.as_posix() not in runtime_assets:
             continue
@@ -307,7 +313,14 @@ def capture_derivative_report(
         capture_names = set(capture_archive.namelist())
         capture_only = sorted(capture_names - production_names)
         production_only = sorted(production_names - capture_names)
-        expected_capture_only = [CAPTURE_HARNESS]
+        expected_capture_only = sorted(
+            path.relative_to(ADDON).as_posix()
+            for path in package_files(CAPTURE_BUILD)
+            if (
+                path.relative_to(ADDON).as_posix() == CAPTURE_HARNESS
+                or path.relative_to(ADDON).parts[0] == CAPTURE_SUBTREE
+            )
+        )
         if production_only or capture_only != expected_capture_only:
             raise ValueError(
                 "capture derivative archive entries differ outside the allowed "

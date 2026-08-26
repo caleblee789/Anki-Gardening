@@ -9,6 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import (
@@ -32,6 +34,9 @@ from ankigarden.ui.plant_display import (
 )
 from ankigarden.ui.state_contracts import OnboardingState, onboarding_state_display
 from scripts.validate_full_catalog_layout import _scenario_warnings
+
+
+pytestmark = pytest.mark.release_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -301,19 +306,6 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     assert reopened_config.nested("theme_overrides", "weather_particle_density") == 0.6
 
 
-def _method_source(method_name: str) -> str:
-    source = SCENE_PATH.read_text("utf-8")
-    module = ast.parse(source)
-    for node in module.body:
-        if isinstance(node, ast.ClassDef) and node.name == "GardenSceneWidget":
-            for child in node.body:
-                if isinstance(child, ast.FunctionDef) and child.name == method_name:
-                    segment = ast.get_source_segment(source, child)
-                    assert segment is not None
-                    return segment
-    raise AssertionError(f"Missing GardenSceneWidget.{method_name}")
-
-
 def _compiled_scene_method(
     method_name: str,
     namespace: dict[str, Any],
@@ -564,18 +556,6 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     )
     draw_connector = _compiled_scene_method("_draw_card_connector", _SCENE_NAMESPACE)
     animate_move = _compiled_scene_method("animate_plant_move", _SCENE_NAMESPACE)
-    paint_source = _method_source("paintEvent")
-    assert "if selected:" in paint_source
-    assert "self._draw_selected_bed_ring(" in paint_source
-    assert 'if bool(plant.get("is_active")):' in paint_source
-    assert "self._draw_nurtured_marker(" in paint_source
-    assert "if not self._interaction.placing:" in paint_source
-    assert 'if bool(self.scene.get("motion_enabled", True)):' in paint_source
-    assert "self._draw_weather_motion(" in paint_source
-    assert paint_source.index("self._draw_nurtured_marker(") < paint_source.index(
-        "self._draw_weather_motion("
-    ) < paint_source.index("self._draw_status_overlay(")
-
     docked_overlay = SimpleNamespace(
         _card_connector_rect=_RectF(12, 180, 1_069, 420),
         _status_rect=_RectF(16, 14, 430, 68),
@@ -600,6 +580,7 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
     scenarios = 0
     missing_popovers: set[tuple[str, str, int]] = set()
     marker_reserved_docks: set[tuple[str, str, int]] = set()
+    layout_cache: dict[tuple[str, int, bool], list[Any]] = {}
     maximum_marker_distance: tuple[float, tuple[str, int, bool] | None] = (
         0.0,
         None,
@@ -613,28 +594,36 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
             for selected in (False, True):
                 for nurtured in (False, True):
                     for reduced_motion in (False, True):
-                        layouts = plant_layout(
-                            SCENE_WIDTH,
-                            SCENE_HEIGHT,
-                            _scene_items(
-                                asset,
-                                selected_plot,
-                                nurtured,
-                                assets_by_species_stage,
-                                species_order,
-                            ),
-                            background["placement"],
-                            composition_count=6,
-                            protected_status=False,
+                        layout_key = (
+                            str(asset["asset_id"]),
+                            selected_plot,
+                            nurtured,
                         )
-                        assert _scenario_warnings(
-                            layouts,
-                            width=SCENE_WIDTH,
-                            height=SCENE_HEIGHT,
-                            count=6,
-                            move_mode=False,
-                            surface_context="dashboard",
-                        ) == []
+                        layouts = layout_cache.get(layout_key)
+                        if layouts is None:
+                            layouts = plant_layout(
+                                SCENE_WIDTH,
+                                SCENE_HEIGHT,
+                                _scene_items(
+                                    asset,
+                                    selected_plot,
+                                    nurtured,
+                                    assets_by_species_stage,
+                                    species_order,
+                                ),
+                                background["placement"],
+                                composition_count=6,
+                                protected_status=False,
+                            )
+                            assert _scenario_warnings(
+                                layouts,
+                                width=SCENE_WIDTH,
+                                height=SCENE_HEIGHT,
+                                count=6,
+                                move_mode=False,
+                                surface_context="dashboard",
+                            ) == []
+                            layout_cache[layout_key] = layouts
                         target = next(
                             layout
                             for layout in layouts

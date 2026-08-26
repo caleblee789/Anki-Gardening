@@ -1,7 +1,7 @@
 # Anki Garden UI release contract
 
 Status: implemented contract for Anki Garden 2.1.0, state schema 21, and UI
-capture contract v22. Source code and persisted behavior are authoritative.
+capture contract v25. Source code and persisted behavior are authoritative.
 
 ## Authority map
 
@@ -111,16 +111,33 @@ Nursery purchases never auto-equip an environment item.
 
 ## Capture and acceptance contract
 
-Capture contract v22 contains 26 distinct interfaces in source order. Each is
-captured once in a stable representative state under `QT_SCALE_FACTOR=1.0`.
-The retained 126-state `full` profile is diagnostic only; alternate states,
-responsive geometry, memory cycles, and scaling remain automated or separate
-platform gates instead of duplicate release screenshots.
+Capture contract v25 has two registry-derived ordered evidence tiers under
+`QT_SCALE_FACTOR=1.0`. The `representative` profile is the preflight and the
+`full` profile is the final release authority. The current registry derives a
+16-surface/two-sheet preflight and a 31-surface/five-sheet full profile after
+retiring 95 redundant IDs, including every watering-can capture. These totals
+remain generated rather than fixed acceptance constants. A passing
+preflight may seed overlapping full-profile states; it does not replace the
+full release set.
 
-The independent validator must report contract 22, 26/26 captures, zero
-failures or text-layout warnings, and 4/4 valid contact sheets. Production and
+The independent validator must report contract 25 and exact agreement with the
+compiled active registry, with zero failures or text/geometry warnings.
+Production and
 capture archives must retain exact shared-payload parity and distinct
-capability identities.
+capability identities. Native dialogs accept only a direct widget grab; Home
+and Reviewer prefer a verified app-owned Qt/WebView capture and label any
+identity-verified compositor use as fallback. Per-state evidence may be reused
+when its surface and dependency digests remain exact. Unknown, shared, or
+unowned changes fail closed. The PNG, environment, record hash, and
+recursively closed local lineage must remain valid in either case; a failed
+replacement blocks older evidence until a newer passing capture clears that
+invalidation.
+
+All selected surfaces run in one disposable Anki process. Checkpoint cohorts
+remain logical restore and circuit-break domains inside that session; they no
+longer cause relaunches. Clean shutdown is bound to the same process. A
+zero-surface process is needed only when all PNGs are reusable but shutdown
+evidence changed. Memory-leak stress testing is outside the capture workflow.
 
 Raw manifest-owned PNGs are the runtime geometry authority. Contact sheets are
 review aids: their screenshots are top-aligned on a visibly distinct light

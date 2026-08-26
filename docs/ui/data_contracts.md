@@ -248,12 +248,12 @@ session.
 
 Scene interaction geometry is also derived. `SceneGeometryLayout` projects the
 six normalized bed records into logical coordinates after each resize or DPR
-change. Each planter perspective variant supplies one normalized
-`accessory_exclusions` record measured from its opaque alpha bounds; native and
-Home watering-can renderers use the same projected lanes and exclusions rather
-than surface-specific offsets. Popover placement is transient and returns its
-chosen side, connector, usable height, avoided beds, and docked state without
-entering `garden_state.json`.
+change. Each planter perspective variant retains one normalized
+`accessory_exclusions` record measured from its opaque alpha bounds for asset
+compatibility, but native and Home scenes neither render nor reserve the stored
+watering-can accessory. Popover placement is transient and returns its chosen
+side, connector, usable height, avoided beds, and docked state without entering
+`garden_state.json`.
 
 ## Configuration contract
 

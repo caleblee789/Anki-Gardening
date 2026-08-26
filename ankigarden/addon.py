@@ -250,6 +250,18 @@ class AnkiGardenApp:
         question_handler = getattr(self.reviewer_hooks, "on_question", None)
         if reviewer_did_show_question is not None and callable(question_handler):
             reviewer_did_show_question.append(question_handler)
+        try:
+            from aqt import gui_hooks
+
+            state_hook = getattr(gui_hooks, "state_did_change", None)
+            state_handler = getattr(self.reviewer_hooks, "on_state_change", None)
+            if state_hook is not None and callable(state_handler):
+                state_hook.append(state_handler)
+        except Exception:
+            logger.debug(
+                "Anki Garden: Reviewer surface cleanup hook is unavailable",
+                exc_info=True,
+            )
         self._reviewer_hooked = True
 
     def _setup_review_undo_hook(self) -> None:

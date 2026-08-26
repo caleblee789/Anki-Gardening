@@ -5536,7 +5536,7 @@ class GardenGameEngine:
         return self.assets.resolve_ui_asset(item_key, quality_preference="balanced")
 
     def resolve_nurtured_marker_asset(self) -> Optional[ResolvedAsset]:
-        """Resolve the watering-can marker shared by Garden scene previews."""
+        """Resolve retained watering-can artwork for compact Nurtured icons."""
 
         return self.assets.resolve_ui_asset(
             "nurtured_marker",
@@ -5552,7 +5552,7 @@ class GardenGameEngine:
         )
 
     def resolve_nurtured_marker_assets(self) -> dict[str, Optional[ResolvedAsset]]:
-        """Return both inward-facing marker orientations for scene renderers."""
+        """Return both retained orientations for compatibility and icon use."""
 
         return {
             "spout_left": self.resolve_nurtured_marker_asset(),

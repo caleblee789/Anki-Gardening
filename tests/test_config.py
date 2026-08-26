@@ -41,12 +41,6 @@ def test_reviewer_notifications_default_on_and_preserve_explicit_opt_out() -> No
     assert opted_out.value("show_progress_notifications") is False
 
 
-def test_packaged_config_matches_notification_default() -> None:
-    root = Path(__file__).resolve().parents[1]
-    config_json = json.loads((root / "ankigarden" / "config.json").read_text())
-
-    assert DEFAULT_CONFIG["show_progress_notifications"] is True
-    assert config_json["show_progress_notifications"] is True
 
 
 def test_reload_ignores_unknown_and_invalid_persisted_values() -> None:

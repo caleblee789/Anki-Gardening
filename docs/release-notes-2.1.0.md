@@ -100,13 +100,14 @@ this release. Anki Garden retains its established styling.
 ## Release validation status
 
 Automated source, simulation, and package gates must pass before live capture.
-Exact-package Anki startup, restart, interactive acceptance, the complete v22
-26-interface/4-sheet canonical-100%-scale capture, geometry validation,
-full-resolution visual review, final archive path, and SHA-256 belong to the
-immutable capture report for the final combined package. The optional
-126-state diagnostic profile, resize, breakpoint, 150%, and 200% screenshot
-matrices are excluded from the release sheet; their behavior remains automated
-or a separate platform gate. Native
+Exact-package Anki startup, restart, interactive acceptance, the v25
+registry-derived representative preflight and complete full-profile
+canonical-100%-scale final capture, same-process clean-shutdown evidence,
+geometry validation, full-resolution visual
+review, final archive path, and SHA-256 belong to the immutable capture report
+for the final combined package. The preflight may seed unchanged overlapping
+states, but cannot substitute for the final full-profile evidence. Additional
+125%, 150%, and 200% screenshot matrices remain a separate platform gate. Native
 Windows/Linux, 125%/150%, true OS scaling, forced colors, screen-reader, and
 broader human/device acceptance remain separate unless actually run. This note
 does not substitute for that evidence.

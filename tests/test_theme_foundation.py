@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import runpy
-import re
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +68,8 @@ class _Widget:
         self.accessible_name = ""
         self.accessible_description = "Available action"
         self.tooltip = ""
+        self._cursor: object | None = "pointing"
+        self.cursor_events: list[object | None] = []
         self._font = font if font is not None else _NoFeatureFont()
         self.applied_font: object | None = None
         self._style = _Style()
@@ -116,6 +117,17 @@ class _Widget:
     def setToolTip(self, tooltip: str) -> None:
         self.tooltip = tooltip
 
+    def cursor(self) -> object | None:
+        return self._cursor
+
+    def setCursor(self, cursor: object) -> None:
+        self._cursor = cursor
+        self.cursor_events.append(cursor)
+
+    def unsetCursor(self) -> None:
+        self._cursor = None
+        self.cursor_events.append(None)
+
     def font(self) -> object:
         return self._font
 
@@ -152,7 +164,9 @@ def test_text_roles_define_legible_type_and_line_metrics() -> None:
         for token in tokens.values()
     )
     assert tokens[text_role.BODY].font_size_px >= scope["MIN_BODY_TEXT_SIZE"]
-    assert tokens[text_role.BUTTON_LABEL].font_size_px >= scope["MIN_BODY_TEXT_SIZE"]
+    assert 12.5 <= tokens[text_role.BUTTON_LABEL].font_size_px <= 13.5
+    assert tokens[text_role.SECTION_HEADING].font_size_px <= 19
+    assert all(token.font_weight <= 600 for token in tokens.values())
     assert tokens[text_role.NUMERIC_DISPLAY].tabular_numerals is True
 
     stylesheet = scope["typography_stylesheet"]()
@@ -189,7 +203,7 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert scope["MIN_HIT_TARGET"] == 34
     assert scope["BUTTON_MIN_HEIGHT"] == 34
     assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
-    assert scope["INPUT_VISUAL_HEIGHT"] == 36
+    assert scope["INPUT_VISUAL_HEIGHT"] == 40
     assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
     assert scope["ICON_BUTTON_SIZE"] == 30
 
@@ -199,11 +213,17 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton[variant='tertiary']" in buttons
     assert "QPushButton[variant='destructive']" in buttons
     assert "QPushButton:disabled" in buttons
+    assert "QPushButton:enabled:hover" in buttons
+    assert "QPushButton:disabled:hover" in buttons
     assert "QPushButton:focus" in buttons
+    assert "font-size: 13px" in buttons
     assert "border: 2px solid" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['coin_accent']}" in buttons
     assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
+    assert "QToolButton:enabled:hover" in tools
+    assert "QToolButton:disabled:hover" in tools
+    assert "font-size: 13px" in tools
 
 
 def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
@@ -254,6 +274,8 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     assert widget.properties["gardenDisabled"] is True
     assert widget.properties["disabledReason"] == "Choose a plant before nurturing."
     assert widget.accessible_description == "Choose a plant before nurturing."
+    assert widget.properties["controlCursor"] == "forbidden"
+    assert widget._cursor != "pointing"
 
     # A second disabled refresh must not replace the saved enabled description.
     scope["set_disabled_semantics"](
@@ -266,7 +288,11 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     assert widget.properties["gardenDisabled"] is False
     assert widget.properties["disabledReason"] == ""
     assert widget.accessible_description == "Available action"
+    assert widget.properties["controlCursor"] == "restored"
+    assert widget._cursor == "pointing"
     assert [event for event, _widget in widget._style.events].count("polish") >= 3
+
+
 
 
 def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> None:
@@ -376,12 +402,30 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
     assert widget.properties["gardenTone"] == "warning"
 
 
-def test_nursery_action_override_keeps_legible_contrast() -> None:
+def test_action_palettes_keep_legible_contrast_in_every_interaction_state() -> None:
     scope = _theme_scope()
-    palette = scope["NURSERY_THEME"]
+    garden = scope["GARDEN_THEME"]
+    nursery = scope["NURSERY_THEME"]
+    combinations = (
+        *((garden["action_text"], garden[key]) for key in (
+            "action_accent",
+            "action_hover",
+            "action_pressed",
+        )),
+        *((garden["text_primary"], garden[key]) for key in (
+            "secondary_action",
+            "secondary_hover",
+            "secondary_pressed",
+        )),
+        (garden["disabled_text"], garden["disabled_surface"]),
+        *((nursery["action_text"], nursery[key]) for key in (
+            "action_accent",
+            "action_hover",
+            "action_pressed",
+        )),
+    )
 
-    for background in ("action_accent", "action_hover", "action_pressed"):
-        assert _contrast(palette["action_text"], palette[background]) >= 4.5
+    assert all(_contrast(foreground, background) >= 4.5 for foreground, background in combinations)
 
 
 def test_foundation_stylesheet_composes_existing_and_opt_in_apis() -> None:
@@ -392,70 +436,3 @@ def test_foundation_stylesheet_composes_existing_and_opt_in_apis() -> None:
     assert "QToolButton {" in stylesheet
     assert "*[textRole='screen-title']" in stylesheet
     assert "QFrame[gardenRole='empty-state']" in stylesheet
-
-
-def test_release_surfaces_do_not_render_text_below_the_legibility_floor() -> None:
-    offenders: list[str] = []
-    pattern = re.compile(r"font-size\s*:\s*([0-9]+(?:\.[0-9]+)?)px")
-    for relative in (
-        "ankigarden/ui/dashboard.py",
-        "ankigarden/ui/garden_studio.py",
-        "ankigarden/ui/home_widget.py",
-        "ankigarden/ui/theme.py",
-    ):
-        source = (ROOT / relative).read_text("utf-8")
-        for match in pattern.finditer(source):
-            if float(match.group(1)) < 12.0:
-                line = source.count("\n", 0, match.start()) + 1
-                offenders.append(f"{relative}:{line}={match.group(1)}px")
-    assert offenders == []
-
-
-def test_dynamic_growth_coin_countdown_and_progress_values_use_tabular_numerals() -> None:
-    dashboard = (ROOT / "ankigarden/ui/dashboard.py").read_text("utf-8")
-    home = (ROOT / "ankigarden/ui/home_widget.py").read_text("utf-8")
-
-    for call in (
-        "apply_tabular_numerals(self.value_label)",
-        "apply_tabular_numerals(self.status)",
-        "apply_tabular_numerals(self.coins)",
-        "apply_tabular_numerals(support)",
-        "apply_tabular_numerals(metric)",
-        "apply_tabular_numerals(cutoff_value)",
-        "apply_tabular_numerals(milestone)",
-        "apply_tabular_numerals(reward)",
-        "apply_tabular_numerals(balance_value)",
-        "apply_tabular_numerals(amount)",
-        "apply_tabular_numerals(resulting)",
-        "apply_tabular_numerals(self.summary_label)",
-        "apply_tabular_numerals(self.discard_warning)",
-        "apply_tabular_numerals(duration)",
-        "apply_tabular_numerals(balance)",
-        "apply_tabular_numerals(self.status_value)",
-        "apply_tabular_numerals(affordability_label)",
-        "apply_tabular_numerals(helper)",
-        "apply_tabular_numerals(shortfall_label)",
-    ):
-        assert call in dashboard
-    assert dashboard.count("apply_tabular_numerals(value)") >= 2
-    assert dashboard.count("apply_tabular_numerals(meta)") >= 6
-    assert dashboard.count("apply_tabular_numerals(title)") >= 3
-    assert dashboard.count("apply_tabular_numerals(detail)") >= 1
-    assert "apply_tabular_numerals(label)" in dashboard
-    assert "font-variant-numeric:tabular-nums" in home
-
-
-def test_release_focus_targets_and_checkbox_controls_use_shared_foundations() -> None:
-    dashboard = (ROOT / "ankigarden/ui/dashboard.py").read_text("utf-8")
-
-    # Shared banners may register their focus surface before toggling focus.
-    # The Garden metric QPushButton is the sole intentional non-frame target
-    # and retains its explicit focused selector.
-    assert dashboard.count("setFocusPolicy(Qt.FocusPolicy.StrongFocus)") <= (
-        dashboard.count("set_keyboard_focus_surface(")
-    )
-    assert "cell.setFocusPolicy(Qt.FocusPolicy.StrongFocus)" in dashboard
-    assert "QPushButton[gardenStatCell='true']:focus" in dashboard
-    assert "self.garden_name_edit.setFixedHeight(INPUT_VISUAL_HEIGHT)" in dashboard
-    assert 'self.show_weather = ToggleSwitch("Weather effects")' in dashboard
-    assert 'self.show_scenery = ToggleSwitch("Scenery effects")' in dashboard

@@ -11,13 +11,17 @@ import sys
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CAPTURE_SOURCE = ROOT / "ankigarden" / "capture_ui_faces.py"
+DEFAULT_CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
+CAPTURE_BOOTSTRAP_SOURCE = ROOT / "ankigarden" / "capture_ui_faces.py"
+DEFAULT_CAPTURE_CONTRACT = (
+    ROOT / "ankigarden" / "capture" / "capture-contract-v25.json"
+)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CONTINUED_SUFFIX = " (continued)"
 CONTACT_SHEET_COLUMNS = 2
@@ -32,11 +36,25 @@ CONTACT_SHEET_GROUP_GAP = 30
 CONTACT_SHEET_PREVIEW_TOP = 110
 CONTACT_SHEET_PREVIEW_SIDE = 22
 CONTACT_SHEET_PREVIEW_BOTTOM = 40
-CONTACT_SHEET_PREVIEW_INSET = 8
+# Reserve the 3px frame plus the full 6px screenshot outline and two sampled
+# cream pixels between them; neither semantic boundary may overwrite another.
+CONTACT_SHEET_PREVIEW_INSET = 12
 CONTACT_SHEET_PREVIEW_FRAME_FILL = (216, 209, 190)  # #d8d1be
 CONTACT_SHEET_PREVIEW_FRAME_OUTLINE = (158, 148, 124)  # #9e947c
 CONTACT_SHEET_SCREENSHOT_OUTLINE = (73, 102, 92)  # #49665c
-CONTACT_SHEET_OUTLINE_WIDTH = 3
+CONTACT_SHEET_FRAME_OUTLINE_WIDTH = 3
+CONTACT_SHEET_OUTLINE_WIDTH = 6
+CONTACT_SHEET_PADDING_LEGEND = "Cream = contact-sheet padding outside captured UI"
+CONTACT_SHEET_QUALITY_STATUS = "Automated checks passed; visual review pending"
+LEGACY_V24_PROFILE_SURFACE_COUNTS = {
+    "representative": 26,
+    "full": 126,
+}
+LEGACY_V24_PROFILE_CONTACT_SHEET_PAGE_COUNTS = {
+    "representative": 4,
+    "full": 17,
+}
+CONTACT_SHEET_PADDING_RGBA = (216, 209, 190, 255)
 MIN_LOGICAL_CAPTURE_DIMENSION = 100
 MAX_PNG_PIXELS = 100_000_000
 CAPTURE_SCALE_FACTOR = 1.0
@@ -46,6 +64,10 @@ MEMORY_PROBE_CLASSES = (
     "DialogShell",
     "PlantStoryDialog",
     "GardenDialog",
+    "PurchaseConfirmationDialog",
+    "FertilizerReplacementDialog",
+    "GrowthChargeConfirmationDialog",
+    "StarterConfirmationDialog",
 )
 COMPACT_HOME_BANNED_COPY = (
     "today",
@@ -64,11 +86,18 @@ MISSING_ARTWORK_CAPTURE_TYPES = (
 )
 RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
     "full-garden": ("full-garden-scene",),
+    "collection-loadout-detail": ("loadout-preview-scene",),
     "progress-overview-redirect-growth": (
         "direct-growth-label",
         "direct-growth-value",
     ),
+    "streak-achievement-earned-next": (
+        "streak-achievement-disclosure",
+        "streak-completed-achievement",
+        "streak-next-achievement",
+    ),
     "collection-preview-restored": ("restored-preview-banner",),
+    "reduced-motion-enabled": ("reduced-motion-control",),
     "nursery-item-owned": ("owned-item-card",),
     "missing-artwork-graphical-fallback": ("missing-art-weather",),
     "collection-environment-mechanics": (
@@ -117,6 +146,9 @@ def _file_sha256(path: Path) -> str:
 class CaptureContract:
     version: int
     groups: tuple[tuple[str, tuple[str, ...]], ...]
+    profile: str = "representative"
+    scenario_schema_version: int = 1
+    compiled_digest: str = ""
 
     @property
     def labels(self) -> tuple[str, ...]:
@@ -125,6 +157,90 @@ class CaptureContract:
             for _group, labels in self.groups
             for label in labels
         )
+
+    @property
+    def digest(self) -> str:
+        if self.compiled_digest:
+            return self.compiled_digest
+        payload = {
+            "capture_contract_version": self.version,
+            "capture_profile": self.profile,
+            "groups": [
+                {"name": name, "labels": list(labels)}
+                for name, labels in self.groups
+            ],
+            "scenario_schema_version": self.scenario_schema_version,
+        }
+        return hashlib.sha256(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+
+def _is_current_v25_source(source_path: Path) -> bool:
+    try:
+        resolved = source_path.resolve()
+    except OSError:
+        return False
+    return resolved in {
+        DEFAULT_CAPTURE_SOURCE.resolve(),
+        CAPTURE_BOOTSTRAP_SOURCE.resolve(),
+    }
+
+
+def _load_v25_contract_payload(
+    path: Path = DEFAULT_CAPTURE_CONTRACT,
+) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CaptureValidationError(
+            (f"could not read compiled v25 capture contract {path}: {error}",)
+        ) from error
+    if not isinstance(payload, dict):
+        raise CaptureValidationError(("compiled v25 capture contract must be an object",))
+    normalized = dict(payload)
+    expected_digest = normalized.pop("contract_digest", None)
+    actual_digest = hashlib.sha256(
+        json.dumps(
+            normalized,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    profiles = payload.get("profiles")
+    surfaces = payload.get("surfaces")
+    issues: list[str] = []
+    if payload.get("contract_version") != 25:
+        issues.append("compiled capture contract is not v25")
+    if payload.get("scenario_schema_version") != 2:
+        issues.append("compiled capture scenario schema is not v2")
+    if expected_digest != actual_digest:
+        issues.append("compiled capture contract digest is stale")
+    if not isinstance(profiles, dict) or not profiles:
+        issues.append("compiled capture contract has no profiles")
+    if not isinstance(surfaces, list) or not surfaces:
+        issues.append("compiled capture contract has no surfaces")
+    if issues:
+        raise CaptureValidationError(issues)
+    return payload
+
+
+def _v25_surface_map() -> dict[str, dict[str, Any]]:
+    payload = _load_v25_contract_payload()
+    result = {
+        str(row.get("id")): dict(row)
+        for row in payload.get("surfaces", ())
+        if isinstance(row, dict) and row.get("active") is True
+    }
+    if len(result) != int(payload.get("surface_count", -1)):
+        raise CaptureValidationError(("compiled v25 surface count is stale",))
+    return result
 
 
 @dataclass(frozen=True)
@@ -153,8 +269,49 @@ def _assignment_value(module: ast.Module, name: str) -> ast.expr:
     raise CaptureValidationError((f"capture source is missing {name}",))
 
 
-def load_capture_contract(source_path: Path = DEFAULT_CAPTURE_SOURCE) -> CaptureContract:
-    """Read the release capture contract without importing Anki or Qt."""
+def load_capture_contract(
+    source_path: Path = DEFAULT_CAPTURE_SOURCE,
+    *,
+    profile: str = "representative",
+) -> CaptureContract:
+    """Read one canonical capture profile without importing Anki or Qt."""
+
+    profile = str(profile).strip().lower()
+    if _is_current_v25_source(source_path):
+        payload = _load_v25_contract_payload()
+        raw_profile = dict(payload.get("profiles", {}).get(profile, {}) or {})
+        raw_groups = raw_profile.get("groups")
+        if not isinstance(raw_groups, list) or not raw_groups:
+            raise CaptureValidationError((f"unknown capture profile {profile!r}",))
+        groups = tuple(
+            (
+                str(group.get("name", "")),
+                tuple(str(label) for label in group.get("labels", ())),
+            )
+            for group in raw_groups
+            if isinstance(group, dict)
+        )
+        labels = [label for _name, group_labels in groups for label in group_labels]
+        if (
+            len(groups) != len(raw_groups)
+            or not labels
+            or len(labels) != len(set(labels))
+            or len(labels) != int(raw_profile.get("surface_count", -1))
+        ):
+            raise CaptureValidationError((f"compiled profile {profile!r} is malformed",))
+        return CaptureContract(
+            25,
+            groups,
+            profile,
+            2,
+            str(payload.get("contract_digest", "")),
+        )
+    assignment_name = {
+        "representative": "CAPTURE_FACE_GROUPS",
+        "full": "EXHAUSTIVE_CAPTURE_FACE_GROUPS",
+    }.get(profile)
+    if assignment_name is None:
+        raise CaptureValidationError((f"unknown capture profile {profile!r}",))
 
     try:
         source = source_path.read_text(encoding="utf-8")
@@ -163,7 +320,10 @@ def load_capture_contract(source_path: Path = DEFAULT_CAPTURE_SOURCE) -> Capture
             _assignment_value(module, "CAPTURE_CONTRACT_VERSION")
         )
         groups_value = ast.literal_eval(
-            _assignment_value(module, "CAPTURE_FACE_GROUPS")
+            _assignment_value(module, assignment_name)
+        )
+        scenario_schema_value = ast.literal_eval(
+            _assignment_value(module, "CAPTURE_SCENARIO_SCHEMA_VERSION")
         )
     except CaptureValidationError:
         raise
@@ -175,26 +335,28 @@ def load_capture_contract(source_path: Path = DEFAULT_CAPTURE_SOURCE) -> Capture
     issues: list[str] = []
     if type(version_value) is not int or version_value < 1:
         issues.append("CAPTURE_CONTRACT_VERSION must be a positive integer literal")
+    if type(scenario_schema_value) is not int or scenario_schema_value < 1:
+        issues.append("CAPTURE_SCENARIO_SCHEMA_VERSION must be a positive integer literal")
 
     normalized_groups: list[tuple[str, tuple[str, ...]]] = []
     if not isinstance(groups_value, (tuple, list)) or not groups_value:
-        issues.append("CAPTURE_FACE_GROUPS must be a non-empty literal sequence")
+        issues.append(f"{assignment_name} must be a non-empty literal sequence")
     else:
         for group_index, raw_group in enumerate(groups_value, start=1):
             if not isinstance(raw_group, (tuple, list)) or len(raw_group) != 2:
                 issues.append(
-                    f"CAPTURE_FACE_GROUPS group {group_index} must contain a name and labels"
+                    f"{assignment_name} group {group_index} must contain a name and labels"
                 )
                 continue
             raw_name, raw_labels = raw_group
             name = raw_name.strip() if isinstance(raw_name, str) else ""
             if not name:
                 issues.append(
-                    f"CAPTURE_FACE_GROUPS group {group_index} has an empty name"
+                    f"{assignment_name} group {group_index} has an empty name"
                 )
             if not isinstance(raw_labels, (tuple, list)) or not raw_labels:
                 issues.append(
-                    f"CAPTURE_FACE_GROUPS group {name or group_index!r} has no labels"
+                    f"{assignment_name} group {name or group_index!r} has no labels"
                 )
                 continue
             labels = tuple(
@@ -203,19 +365,30 @@ def load_capture_contract(source_path: Path = DEFAULT_CAPTURE_SOURCE) -> Capture
             )
             if any(not label for label in labels):
                 issues.append(
-                    f"CAPTURE_FACE_GROUPS group {name or group_index!r} has an invalid label"
+                    f"{assignment_name} group {name or group_index!r} has an invalid label"
                 )
             normalized_groups.append((name, labels))
 
     group_names = [name for name, _labels in normalized_groups]
     labels = [label for _name, group_labels in normalized_groups for label in group_labels]
     if len(group_names) != len(set(group_names)):
-        issues.append("CAPTURE_FACE_GROUPS contains duplicate group names")
+        issues.append(f"{assignment_name} contains duplicate group names")
     if len(labels) != len(set(labels)):
-        issues.append("CAPTURE_FACE_GROUPS contains duplicate labels")
+        issues.append(f"{assignment_name} contains duplicate labels")
+    required_surface_count = LEGACY_V24_PROFILE_SURFACE_COUNTS[profile]
+    if len(labels) != required_surface_count:
+        issues.append(
+            f"{profile} capture contract must contain exactly "
+            f"{required_surface_count} surfaces, found {len(labels)}"
+        )
     if issues:
         raise CaptureValidationError(issues)
-    return CaptureContract(int(version_value), tuple(normalized_groups))
+    return CaptureContract(
+        int(version_value),
+        tuple(normalized_groups),
+        profile,
+        int(scenario_schema_value),
+    )
 
 
 def load_dialog_scroll_capture_coverage(
@@ -224,6 +397,41 @@ def load_dialog_scroll_capture_coverage(
     contract: CaptureContract | None = None,
 ) -> dict[str, dict[str, str]]:
     """Load the source-owned surface, label, and page-semantic scroll proof."""
+
+    if _is_current_v25_source(source_path):
+        contract = contract or load_capture_contract(source_path)
+        surfaces = _v25_surface_map()
+        names = {
+            "PurchaseConfirmationDialog": "Purchase confirmation",
+            "NurseryDialog": "Nursery",
+            "FertilizerDialog": "Fertilizer selection",
+            "FertilizerReplacementDialog": "Fertilizer replacement",
+            "PlantStoryDialog": "Plant Story",
+            "SpeciesOverviewDialog": "Species overview",
+            "GardenSettingsDialog": "Settings",
+            "GardenProgressDialog": "Garden Progress",
+            "CollectibleDetailDialog": "Collection loadout details",
+            "GrowthChargeConfirmationDialog": "Growth Charge confirmation",
+        }
+        grouped: dict[str, dict[str, str]] = {}
+        for label in contract.labels:
+            requirements = tuple(surfaces[label].get("evidence_requirements", ()))
+            scroll = next(
+                (
+                    str(requirement).split(":", 1)[1]
+                    for requirement in requirements
+                    if str(requirement).startswith("scroll:")
+                ),
+                "",
+            )
+            if not scroll:
+                continue
+            root = scroll.split(":", 1)[0]
+            group = names.get(root, root)
+            if scroll == "GardenProgressDialog:collection":
+                group = "Collection"
+            grouped.setdefault(group, {})[label] = scroll
+        return grouped
 
     module = _source_module(source_path)
     contract = contract or load_capture_contract(source_path)
@@ -506,6 +714,19 @@ def load_expected_renderer_families(
     contract: CaptureContract | None = None,
 ) -> dict[str, str]:
     """Derive label-to-renderer ownership from source without importing Anki."""
+
+    if _is_current_v25_source(source_path):
+        contract = contract or load_capture_contract(source_path)
+        surfaces = _v25_surface_map()
+        missing = [label for label in contract.labels if label not in surfaces]
+        if missing:
+            raise CaptureValidationError((
+                "compiled renderer mapping is missing: " + ", ".join(missing),
+            ))
+        return {
+            label: str(surfaces[label].get("renderer_family", ""))
+            for label in contract.labels
+        }
 
     module = _source_module(source_path)
     contract = contract or load_capture_contract(source_path)
@@ -980,6 +1201,30 @@ def load_expected_state_evidence_contracts(
 ) -> dict[str, dict[str, Any]]:
     """Derive each label's state kind and exact fact keys from capture source."""
 
+    if _is_current_v25_source(source_path):
+        contract = contract or load_capture_contract(source_path)
+        surfaces = _v25_surface_map()
+        result: dict[str, dict[str, Any]] = {}
+        for label in contract.labels:
+            raw = surfaces[label].get("state_contract")
+            if not isinstance(raw, dict):
+                raise CaptureValidationError(
+                    (f"compiled state contract is missing for {label}",)
+                )
+            profile = raw.get("profile")
+            if (
+                not isinstance(profile, dict)
+                or profile.get("profile_id") != label
+                or not isinstance(raw.get("required_facts"), (list, tuple))
+                or not isinstance(raw.get("expected_fact_values"), dict)
+                or not isinstance(raw.get("fact_constraints"), dict)
+            ):
+                raise CaptureValidationError(
+                    (f"compiled state contract is invalid for {label}",)
+                )
+            result[label] = dict(raw)
+        return result
+
     module = _source_module(source_path)
     contract = contract or load_capture_contract(source_path)
     renderer_families = load_expected_renderer_families(
@@ -1137,6 +1382,344 @@ def load_expected_state_evidence_contracts(
             ),
         }
     return result
+
+
+def _canonical_digest(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def load_capture_scenario_contracts(
+    source_path: Path = DEFAULT_CAPTURE_SOURCE,
+    *,
+    contract: CaptureContract | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load callable, checkpoint, and fixture identities offline."""
+
+    module = _source_module(source_path)
+    contract = contract or load_capture_contract(source_path)
+    v25_surfaces = (
+        _v25_surface_map() if _is_current_v25_source(source_path) else None
+    )
+    selected_names = {
+        "EXHAUSTIVE_CAPTURE_FACE_GROUPS",
+        "EXHAUSTIVE_CAPTURE_FACE_LABELS",
+        "EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES",
+        "CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES",
+        "CAPTURE_SCENARIO_SETUP_BOUNDARY",
+        "CAPTURE_SCENARIO_FRESH_LABELS",
+        "CAPTURE_SCENARIO_NURTURED_ACTIVE_LABELS",
+        "CAPTURE_SCENARIO_DEVELOPMENT_STRESS_LABELS",
+    }
+    selected_functions = {
+        "capture_scenario_internal_setups",
+        "capture_scenario_prerequisites",
+        "capture_scenario_checkpoint",
+    }
+    namespace: dict[str, Any] = {}
+    if v25_surfaces is None:
+        selected: list[ast.stmt] = []
+        for node in module.body:
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any(
+                    isinstance(target, ast.Name) and target.id in selected_names
+                    for target in targets
+                ):
+                    selected.append(node)
+            elif isinstance(node, ast.FunctionDef) and node.name in selected_functions:
+                selected.append(node)
+        namespace = {"frozenset": frozenset, "range": range}
+        try:
+            exec(
+                compile(
+                    ast.Module(body=selected, type_ignores=[]),
+                    str(source_path),
+                    "exec",
+                ),
+                namespace,
+            )
+        except Exception as error:
+            raise CaptureValidationError(
+                (f"capture scenario metadata could not be evaluated: {error}",)
+            ) from error
+        full_labels = tuple(namespace.get("EXHAUSTIVE_CAPTURE_FACE_LABELS", ()))
+        callable_rows = tuple(
+            namespace.get("EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES", ())
+        )
+    else:
+        full_contract = load_capture_contract(source_path, profile="full")
+        full_labels = full_contract.labels
+        callable_rows = tuple(
+            (label, str(v25_surfaces[label].get("executor", "")))
+            for label in full_labels
+        )
+    callable_map = dict(callable_rows)
+    if (
+        not full_labels
+        or len(callable_rows) != len(full_labels)
+        or tuple(callable_map) != full_labels
+        or len(callable_map) != len(full_labels)
+    ):
+        raise CaptureValidationError(
+            ("capture scenario callable identities must cover the full profile",)
+        )
+
+    runner = next(
+        (
+            node for node in module.body
+            if isinstance(node, ast.ClassDef)
+            and node.name == "_UiFaceCaptureRunner"
+        ),
+        None,
+    )
+    if not isinstance(runner, ast.ClassDef):
+        raise CaptureValidationError(("capture runner class is unavailable",))
+    source_text = source_path.read_text(encoding="utf-8")
+    method_nodes = {
+        node.name: node
+        for node in runner.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    method_fragment_hashes: dict[str, str] = {}
+    method_references: dict[str, frozenset[str]] = {}
+
+    def runner_method_references(node: ast.FunctionDef) -> frozenset[str]:
+        references = {
+            child.attr
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Attribute)
+                and isinstance(child.value, ast.Name)
+                and child.value.id in {"self", "cls"}
+                and child.attr in method_nodes
+            )
+        }
+        references.update(
+            str(child.args[1].value)
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Name)
+                and child.func.id == "getattr"
+                and len(child.args) >= 2
+                and isinstance(child.args[0], ast.Name)
+                and child.args[0].id in {"self", "cls"}
+                and isinstance(child.args[1], ast.Constant)
+                and isinstance(child.args[1].value, str)
+                and child.args[1].value in method_nodes
+            )
+        )
+        return frozenset(references)
+
+    for name, node in method_nodes.items():
+        fragment = ast.get_source_segment(source_text, node)
+        if fragment is None:
+            raise CaptureValidationError(
+                (f"capture method source is unavailable for {name!r}",)
+            )
+        method_fragment_hashes[name] = hashlib.sha256(
+            fragment.encode("utf-8")
+        ).hexdigest()
+        method_references[name] = runner_method_references(node)
+
+    hidden_raw = (
+        {"_next_after": ("_next_step",)}
+        if v25_surfaces is not None else
+        namespace.get("CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES", {})
+    )
+    if not isinstance(hidden_raw, dict):
+        raise CaptureValidationError(
+            ("CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES must be a mapping",)
+        )
+    hidden_references: set[tuple[str, str]] = set()
+    for raw_caller, raw_callees in hidden_raw.items():
+        caller = str(raw_caller)
+        if caller not in method_nodes or not isinstance(raw_callees, (tuple, list)):
+            raise CaptureValidationError(
+                (f"capture scenario hidden caller is invalid: {caller!r}",)
+            )
+        for raw_callee in raw_callees:
+            callee = str(raw_callee)
+            if callee not in method_references[caller]:
+                raise CaptureValidationError(
+                    (
+                        "capture scenario hidden edge is not a runner method "
+                        f"reference: {caller} -> {callee}",
+                    )
+                )
+            hidden_references.add((caller, callee))
+    method_dependencies = {
+        name: tuple(sorted(
+            reference for reference in references
+            if (name, reference) not in hidden_references
+        ))
+        for name, references in method_references.items()
+    }
+
+    top_level_nodes: dict[str, ast.stmt] = {}
+    for node in module.body:
+        names: list[str] = []
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.append(node.name)
+        elif isinstance(node, ast.Assign):
+            names.extend(
+                target.id for target in node.targets
+                if isinstance(target, ast.Name)
+            )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.append(node.target.id)
+        for name in names:
+            top_level_nodes[name] = node
+    top_level_fragment_hashes: dict[str, str] = {}
+    top_level_dependencies: dict[str, tuple[str, ...]] = {}
+    for name, node in top_level_nodes.items():
+        fragment = ast.get_source_segment(source_text, node)
+        if fragment is None:
+            raise CaptureValidationError(
+                (f"capture top-level source is unavailable for {name!r}",)
+            )
+        top_level_fragment_hashes[name] = hashlib.sha256(
+            fragment.encode("utf-8")
+        ).hexdigest()
+        top_level_dependencies[name] = tuple(sorted({
+            child.id
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Name)
+                and isinstance(child.ctx, ast.Load)
+                and child.id in top_level_nodes
+                and child.id != name
+            )
+        }))
+    method_top_level_dependencies = {
+        name: tuple(sorted({
+            child.id
+            for child in ast.walk(node)
+            if (
+                isinstance(child, ast.Name)
+                and isinstance(child.ctx, ast.Load)
+                and child.id in top_level_nodes
+            )
+        }))
+        for name, node in method_nodes.items()
+    }
+
+    dependency_cache: dict[
+        str,
+        tuple[dict[str, str], dict[str, str]],
+    ] = {}
+
+    def method_dependency_inputs(
+        root_method: str,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        if root_method in dependency_cache:
+            methods, top_level = dependency_cache[root_method]
+            return dict(methods), dict(top_level)
+        pending = [root_method]
+        visited: set[str] = set()
+        fragments: dict[str, str] = {}
+        while pending:
+            name = pending.pop()
+            if name in visited:
+                continue
+            visited.add(name)
+            if name not in method_nodes:
+                raise CaptureValidationError(
+                    (f"capture scenario references missing method {name!r}",)
+                )
+            fragments[name] = method_fragment_hashes[name]
+            pending.extend(
+                child for child in method_dependencies[name]
+                if child not in visited
+            )
+        pending_top_level = sorted({
+            dependency
+            for method_name in visited
+            for dependency in method_top_level_dependencies[method_name]
+        })
+        visited_top_level: set[str] = set()
+        top_level_fragments: dict[str, str] = {}
+        while pending_top_level:
+            name = pending_top_level.pop()
+            if name in visited_top_level:
+                continue
+            visited_top_level.add(name)
+            digest = top_level_fragment_hashes.get(name)
+            if digest is None:
+                raise CaptureValidationError(
+                    (f"capture scenario references missing top-level input {name!r}",)
+                )
+            top_level_fragments[name] = digest
+            pending_top_level.extend(
+                dependency for dependency in top_level_dependencies[name]
+                if dependency not in visited_top_level
+            )
+        method_result = dict(sorted(fragments.items()))
+        top_level_result = dict(sorted(top_level_fragments.items()))
+        dependency_cache[root_method] = (method_result, top_level_result)
+        return dict(method_result), dict(top_level_result)
+
+    renderer_families = load_expected_renderer_families(
+        source_path,
+        contract=contract,
+    )
+    state_contracts = load_expected_state_evidence_contracts(
+        source_path,
+        contract=contract,
+    )
+    if v25_surfaces is None:
+        internal_setups = namespace["capture_scenario_internal_setups"]
+        prerequisites = namespace["capture_scenario_prerequisites"]
+        checkpoint = namespace["capture_scenario_checkpoint"]
+    else:
+        internal_setups = lambda label: tuple(
+            v25_surfaces[label].get("internal_setups", ())
+        )
+        prerequisites = lambda label: tuple(
+            v25_surfaces[label].get("prerequisites", ())
+        )
+        checkpoint = lambda label: str(v25_surfaces[label].get("checkpoint", ""))
+    results: dict[str, dict[str, Any]] = {}
+    for label in contract.labels:
+        callable_name = str(callable_map.get(label, ""))
+        setup_values = tuple(str(value) for value in internal_setups(label))
+        prerequisite_values = tuple(str(value) for value in prerequisites(label))
+        checkpoint_value = str(checkpoint(label))
+        if (
+            not callable_name
+            or not setup_values
+            or not checkpoint_value
+            or any(value not in full_labels for value in prerequisite_values)
+        ):
+            raise CaptureValidationError(
+                (f"capture scenario identity is incomplete for {label}",)
+            )
+        method_inputs, top_level_inputs = method_dependency_inputs(callable_name)
+        identity = {
+            "label": label,
+            "callable": callable_name,
+            "checkpoint": checkpoint_value,
+            "capture_prerequisites": list(prerequisite_values),
+            "internal_setups": list(setup_values),
+            "renderer_family": renderer_families[label],
+            "state_contract": state_contracts[label],
+            "method_inputs": method_inputs,
+            "top_level_inputs": top_level_inputs,
+        }
+        if v25_surfaces is not None:
+            identity["surface_spec_dependency_digest"] = str(
+                v25_surfaces[label].get("dependency_digest", "")
+            )
+        identity["digest"] = _canonical_digest(identity)
+        results[label] = identity
+    return results
 
 
 def _load_json_object(path: Path, description: str) -> dict[str, Any]:
@@ -1471,16 +2054,16 @@ def _contact_preview_issues(
                 frame_mid_y = (preview_box[1] + preview_box[3]) // 2
                 frame_outline_points = [
                     (frame_mid_x, preview_box[1] + offset)
-                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                    for offset in range(CONTACT_SHEET_FRAME_OUTLINE_WIDTH)
                 ] + [
                     (frame_mid_x, preview_box[3] - offset)
-                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                    for offset in range(CONTACT_SHEET_FRAME_OUTLINE_WIDTH)
                 ] + [
                     (preview_box[0] + offset, frame_mid_y)
-                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                    for offset in range(CONTACT_SHEET_FRAME_OUTLINE_WIDTH)
                 ] + [
                     (preview_box[2] - offset, frame_mid_y)
-                    for offset in range(CONTACT_SHEET_OUTLINE_WIDTH)
+                    for offset in range(CONTACT_SHEET_FRAME_OUTLINE_WIDTH)
                 ]
                 if any(
                     page_image.getpixel(point)
@@ -1491,10 +2074,10 @@ def _contact_preview_issues(
                         f"contact preview {label}: light preview frame outline is missing"
                     )
                 frame_fill_points = (
-                    (frame_mid_x, preview_box[1] + CONTACT_SHEET_OUTLINE_WIDTH + 1),
-                    (frame_mid_x, preview_box[3] - CONTACT_SHEET_OUTLINE_WIDTH - 1),
-                    (preview_box[0] + CONTACT_SHEET_OUTLINE_WIDTH + 1, frame_mid_y),
-                    (preview_box[2] - CONTACT_SHEET_OUTLINE_WIDTH - 1, frame_mid_y),
+                    (frame_mid_x, preview_box[1] + CONTACT_SHEET_FRAME_OUTLINE_WIDTH + 1),
+                    (frame_mid_x, preview_box[3] - CONTACT_SHEET_FRAME_OUTLINE_WIDTH - 1),
+                    (preview_box[0] + CONTACT_SHEET_FRAME_OUTLINE_WIDTH + 1, frame_mid_y),
+                    (preview_box[2] - CONTACT_SHEET_FRAME_OUTLINE_WIDTH - 1, frame_mid_y),
                 )
                 if any(
                     page_image.getpixel(point)
@@ -1548,6 +2131,8 @@ def _contact_metadata_issues(
     package_version: str,
     package_sha256: str,
     manifest_path: Path,
+    capture_profile: str,
+    capture_contract_digest: str,
 ) -> list[str]:
     """Verify generator-owned PNG text provenance for one contact page."""
 
@@ -1563,6 +2148,10 @@ def _contact_metadata_issues(
         "Anki Garden release": package_version,
         "Package SHA-256": package_sha256,
         "Contact sheet page": f"{page_number} of {page_count}",
+        "Capture profile": capture_profile,
+        "Capture contract digest": capture_contract_digest,
+        "Padding legend": CONTACT_SHEET_PADDING_LEGEND,
+        "Quality status": CONTACT_SHEET_QUALITY_STATUS,
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
@@ -1661,6 +2250,12 @@ def dialog_scroll_audit_issue_codes(
 
     registered = int(audit["registered_count"])
     active = int(audit["active_count"])
+    expected_active_value = audit.get("expected_active_count", 1)
+    if type(expected_active_value) is not int or expected_active_value not in {0, 1}:
+        issues.append("invalid-expected-active-scroll-count")
+        expected_active = 1
+    else:
+        expected_active = int(expected_active_value)
     footer_height = int(audit["footer_height"])
     footer_top = int(audit["footer_top"])
     viewport_top = int(audit["viewport_top"])
@@ -1682,7 +2277,7 @@ def dialog_scroll_audit_issue_codes(
 
     if registered < 1:
         issues.append("registered-scroll-count")
-    if active != 1:
+    if active != expected_active:
         issues.append("active-scroll-count")
     nonnegative = {
         "footer_height": footer_height,
@@ -1712,6 +2307,24 @@ def dialog_scroll_audit_issue_codes(
     if scroll_maximum < scroll_minimum:
         issues.append("invalid-scroll-range")
     scroll_span = max(0, scroll_maximum - scroll_minimum)
+    window_mode = audit.get("window_mode")
+    content_screen_limited = audit.get("content_screen_limited")
+    if window_mode is not None:
+        if window_mode not in {"canvas", "workspace", "content"}:
+            issues.append("invalid-scroll-window-mode")
+        if type(content_screen_limited) is not bool:
+            issues.append("invalid-content-screen-limited")
+        elif window_mode in {"canvas", "workspace", "content"}:
+            independently_expected = int(
+                window_mode == "workspace"
+                or (
+                    window_mode == "content"
+                    and content_screen_limited
+                    and scroll_span > 0
+                )
+            )
+            if expected_active != independently_expected:
+                issues.append("expected-active-scroll-count-mismatch")
     independently_positioned_body_end = viewport_top + max(
         0,
         last_body_child_bottom - scroll_span,
@@ -1937,6 +2550,24 @@ def _validate_memory_probe(
             issues.append(
                 f"dialog_memory_probe {field} must be {MEMORY_PROBE_CYCLES}"
             )
+    warmup = probe.get("warmup_observation")
+    if not isinstance(warmup, dict):
+        issues.append("dialog_memory_probe warmup_observation must be an object")
+    else:
+        if warmup.get("dialog_class") != "NurseryDialog":
+            issues.append(
+                "dialog_memory_probe warmup_observation has the wrong dialog class"
+            )
+        if warmup.get("visible") is not True:
+            issues.append(
+                "dialog_memory_probe warmup_observation was not visibly opened"
+            )
+        if warmup.get("closed") is not True:
+            issues.append(
+                "dialog_memory_probe warmup_observation was not closed"
+            )
+        if any(key.endswith("error") for key in warmup):
+            issues.append("dialog_memory_probe warmup_observation reports an error")
     observations = probe.get("cycle_observations")
     if not isinstance(observations, list) or len(observations) != MEMORY_PROBE_CYCLES:
         issues.append(
@@ -1977,6 +2608,22 @@ def _validate_memory_probe(
     for name in ("widget_count_before", "widget_count_after"):
         if type(probe.get(name)) is not int or probe.get(name, -1) < 0:
             issues.append(f"dialog_memory_probe {name} must be a nonnegative integer")
+    if type(probe.get("widget_count_delta")) is not int:
+        issues.append("dialog_memory_probe widget_count_delta must be an integer")
+    elif (
+        type(probe.get("widget_count_before")) is int
+        and type(probe.get("widget_count_after")) is int
+        and probe["widget_count_delta"]
+        != probe["widget_count_after"] - probe["widget_count_before"]
+    ):
+        issues.append(
+            "dialog_memory_probe widget_count_delta does not match before/after"
+        )
+    elif probe.get("widget_count_delta") != 0:
+        issues.append("dialog_memory_probe total widget delta must be exactly zero")
+    for field in ("watched_baseline_zero", "watched_after_zero"):
+        if probe.get(field) is not True:
+            issues.append(f"dialog_memory_probe {field} must be true")
     before_rss = probe.get("peak_rss_before_kib")
     after_rss = probe.get("peak_rss_after_kib")
     for name, value in (
@@ -2019,11 +2666,22 @@ def _validate_memory_probe(
                 issues.append(
                     f"dialog_memory_probe delta for {name} does not match before/after"
                 )
-        nursery_delta = class_maps["watched_class_delta"]["NurseryDialog"]
-        if type(nursery_delta) is int and nursery_delta != 0:
-            issues.append(
-                "dialog_memory_probe NurseryDialog delta must be exactly zero"
-            )
+        for name in MEMORY_PROBE_CLASSES:
+            before = class_maps["watched_class_counts_before"][name]
+            after = class_maps["watched_class_counts_after"][name]
+            delta = class_maps["watched_class_delta"][name]
+            if type(before) is int and before != 0:
+                issues.append(
+                    f"dialog_memory_probe {name} baseline must be exactly zero"
+                )
+            if type(after) is int and after != 0:
+                issues.append(
+                    f"dialog_memory_probe {name} after-count must be exactly zero"
+                )
+            if type(delta) is int and delta != 0:
+                issues.append(
+                    f"dialog_memory_probe {name} delta must be exactly zero"
+                )
 
 
 def _visual_contract_record_issues(
@@ -2153,9 +2811,9 @@ def _visual_contract_record_issues(
         elif label.startswith("popover-plot-") and not (
             popover.get("applicable") is True
             and popover.get("contained_in_scene") is True
-            and popover.get("page_scroll_value") == 0
+            and popover.get("canvas_direct") is True
         ):
-            reject("visual contract popover is outside the scene or page-scrolled")
+            reject("visual contract popover is outside the direct Garden canvas")
     elif state_kind not in {"home", "reviewer"}:
         reject("visual contract was inapplicable for a Qt-owned surface")
 
@@ -2242,7 +2900,7 @@ def _visual_contract_record_issues(
             and steady.get("overlay_free") is True
             and steady.get("scene_contained") is True
             and steady.get("onboarding_step") == "done"
-            and steady.get("page_scroll_value") == 0
+            and steady.get("canvas_direct") is True
         ):
             reject("full Garden does not prove a clean contained steady state")
 
@@ -2295,6 +2953,9 @@ def _visual_contract_record_issues(
         if not (
             geometry.get("passed") is True
             and geometry.get("parent_is_reviewer_webview") is True
+            and geometry.get("parent_contract") == "mw.reviewer.web-exact"
+            and geometry.get("reviewer_state_is_review") is True
+            and geometry.get("non_review_cleanup_registered") is True
             and geometry.get("viewport_contained") is True
             and geometry.get("size_in_range") is True
             and isinstance(bounds, list)
@@ -2414,6 +3075,235 @@ def _visual_contract_record_issues(
     return problems
 
 
+def _count_aligned_rgba_pixels(
+    payload: bytes | bytearray | memoryview,
+    *,
+    width: int,
+    height: int,
+    row_stride: int,
+    target: tuple[int, int, int, int] = CONTACT_SHEET_PADDING_RGBA,
+) -> int:
+    """Count exact RGBA pixels without matching across pixels or row padding."""
+
+    if type(width) is not int or width < 0:
+        raise ValueError("RGBA width must be a non-negative integer")
+    if type(height) is not int or height < 0:
+        raise ValueError("RGBA height must be a non-negative integer")
+    if type(row_stride) is not int or row_stride < width * 4:
+        raise ValueError("RGBA row stride is smaller than the aligned pixel row")
+    if (
+        not isinstance(target, tuple)
+        or len(target) != 4
+        or any(type(channel) is not int or not 0 <= channel <= 255 for channel in target)
+    ):
+        raise ValueError("RGBA target must contain four byte channels")
+    try:
+        pixels = memoryview(payload).cast("B")
+    except (TypeError, ValueError) as error:
+        raise ValueError("RGBA pixel buffer must be contiguous bytes") from error
+    expected_size = row_stride * height
+    if pixels.nbytes != expected_size:
+        raise ValueError(
+            f"RGBA pixel buffer must contain exactly {expected_size} bytes, "
+            f"found {pixels.nbytes}"
+        )
+
+    if width == 0 or height == 0:
+        return 0
+    aligned = Image.frombytes(
+        "RGBA",
+        (width, height),
+        pixels.tobytes(),
+        "raw",
+        "RGBA",
+        row_stride,
+        1,
+    )
+    difference = ImageChops.difference(
+        aligned,
+        Image.new("RGBA", aligned.size, target),
+    )
+    red, green, blue, alpha = difference.split()
+    nonmatching = ImageChops.lighter(
+        ImageChops.lighter(red, green),
+        ImageChops.lighter(blue, alpha),
+    )
+    return nonmatching.histogram()[0]
+
+
+def _count_image_rgba_pixels(
+    image: Image.Image,
+    *,
+    target: tuple[int, int, int, int] = CONTACT_SHEET_PADDING_RGBA,
+) -> int:
+    """Count exact pixels in an already-normalized Pillow RGBA image."""
+
+    if image.mode != "RGBA":
+        raise ValueError("pixel audit image must use RGBA channels")
+    width, height = image.size
+    row_stride = width * 4
+    return _count_aligned_rgba_pixels(
+        image.tobytes("raw", "RGBA"),
+        width=width,
+        height=height,
+        row_stride=row_stride,
+        target=target,
+    )
+
+
+def _unpainted_client_record_issues(
+    *,
+    label: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+    screenshot_path: Path | None,
+) -> list[str]:
+    """Independently reject sheet-padding cream in raw client pixels."""
+
+    problems: list[str] = []
+    sentinel = record.get("unpainted_client_pixel_audit")
+    if not isinstance(sentinel, dict):
+        return ["unpainted client pixel audit is missing"]
+    if audit is None or audit.get("unpainted_client_pixel_audit") != sentinel:
+        problems.append("unpainted client pixel audit disagrees with capture audit")
+    if screenshot_path is None or not screenshot_path.is_file():
+        return [*problems, "unpainted client PNG is unavailable"]
+    try:
+        with Image.open(screenshot_path) as opened:
+            opened.load()
+            rgba = opened.convert("RGBA")
+            width, height = rgba.size
+            scanned_rect = [0, 0, width, height]
+            expected_exemptions: list[dict[str, Any]] = []
+            if label.startswith("reviewer-"):
+                overlay = (
+                    audit.get("reviewer_overlay_geometry")
+                    if isinstance(audit, dict) else None
+                )
+                bounds = (
+                    overlay.get("overlay_bounds")
+                    if isinstance(overlay, dict) else None
+                )
+                logical_width = record.get("width")
+                logical_height = record.get("height")
+                if (
+                    isinstance(bounds, list)
+                    and len(bounds) == 4
+                    and all(type(value) is int for value in bounds)
+                    and type(logical_width) is int
+                    and logical_width > 0
+                    and type(logical_height) is int
+                    and logical_height > 0
+                ):
+                    x, y, region_width, region_height = bounds
+                    left = max(0, round(x * width / logical_width))
+                    top = max(0, round(y * height / logical_height))
+                    right = min(
+                        width,
+                        round((x + region_width) * width / logical_width),
+                    )
+                    bottom = min(
+                        height,
+                        round((y + region_height) * height / logical_height),
+                    )
+                    scanned_rect = [
+                        left,
+                        top,
+                        max(0, right - left),
+                        max(0, bottom - top),
+                    ]
+                else:
+                    scanned_rect = []
+            elif label in {
+                "starter-deck-browser-home",
+                "starter-overview-home",
+                "deck-browser-home",
+                "overview-home",
+                "active-deck-browser-home-after-nurture",
+                "active-overview-home-after-nurture",
+                "home-preview-loading",
+                "home-preview-error",
+                "home-preview-stale",
+                "watering-can-deck-browser-plot-1",
+                "watering-can-deck-browser-plot-3",
+                "watering-can-deck-browser-plot-5",
+                "watering-can-overview-plot-2",
+                "watering-can-overview-plot-4",
+                "watering-can-overview-plot-6",
+            }:
+                expected_exemptions.append({
+                    "kind": "anki-home-host-toolbar",
+                    "rect": [0, 0, width, min(height, 96)],
+                })
+            if len(scanned_rect) == 4 and scanned_rect[2] > 0 and scanned_rect[3] > 0:
+                scan_x, scan_y, scan_width, scan_height = scanned_rect
+                scanned = rgba.crop((
+                    scan_x,
+                    scan_y,
+                    scan_x + scan_width,
+                    scan_y + scan_height,
+                ))
+                total = _count_image_rgba_pixels(scanned)
+            else:
+                total = -1
+                problems.append("reviewer add-on overlay scan rectangle is invalid")
+            raw_exemptions = sentinel.get("host_region_exemptions")
+            normalized_exemptions: list[dict[str, Any]] = []
+            exempt_count = 0
+            if not isinstance(raw_exemptions, list):
+                problems.append("host-region cream exemptions must be a list")
+            else:
+                for row in raw_exemptions:
+                    if not isinstance(row, dict):
+                        problems.append("host-region cream exemption is malformed")
+                        continue
+                    normalized_exemptions.append({
+                        "kind": row.get("kind"),
+                        "rect": row.get("rect"),
+                    })
+                    rect = row.get("rect")
+                    if (
+                        isinstance(rect, list)
+                        and len(rect) == 4
+                        and all(type(value) is int for value in rect)
+                    ):
+                        x, y, region_width, region_height = rect
+                        cropped = rgba.crop((
+                            x,
+                            y,
+                            x + region_width,
+                            y + region_height,
+                        ))
+                        count = _count_image_rgba_pixels(cropped)
+                        if row.get("cream_pixel_count") != count:
+                            problems.append("host exemption cream pixel count changed")
+                        exempt_count += count
+                    else:
+                        problems.append("host-region cream exemption rectangle is malformed")
+            if normalized_exemptions != expected_exemptions:
+                problems.append("host-region cream exemptions are not the exact source contract")
+            effective = max(0, total - exempt_count) if total >= 0 else -1
+            threshold = 64 if expected_exemptions and not label.startswith("reviewer-") else 0
+            expected_fields = {
+                "color_rgb": [216, 209, 190],
+                "match": "exact-rgba-opaque",
+                "scanned_rect": scanned_rect,
+                "total_cream_pixel_count": total,
+                "exempt_cream_pixel_count": exempt_count,
+                "effective_cream_pixel_count": effective,
+                "maximum_effective_cream_pixels": threshold,
+                "passed": effective >= 0 and effective <= threshold,
+            }
+            for field, expected in expected_fields.items():
+                if sentinel.get(field) != expected:
+                    problems.append(f"unpainted client field {field} does not match pixels")
+            if effective < 0 or effective > threshold:
+                problems.append("raw capture contains excess contact-sheet cream pixels")
+    except (OSError, UnidentifiedImageError, ValueError) as error:
+        problems.append(f"could not inspect unpainted client pixels: {error}")
+    return list(dict.fromkeys(problems))
+
+
 def _native_layout_telemetry_record_issues(
     *,
     label: str,
@@ -2435,7 +3325,7 @@ def _native_layout_telemetry_record_issues(
     if telemetry.get("passed") is not True or telemetry.get("issues") != []:
         problems.append("native layout telemetry did not pass")
 
-    shell_expected = window_family not in {"AnkiQt", "GardenDashboard"}
+    shell_expected = window_family != "AnkiQt"
     applicable = telemetry.get("applicable")
     if type(applicable) is not bool:
         problems.append("native layout applicable must be boolean")
@@ -2515,6 +3405,48 @@ def _native_layout_telemetry_record_issues(
 
     rows = telemetry.get("scrollbars")
     owner_count = telemetry.get("overflowOwnerCount")
+    window_mode = telemetry.get("windowMode")
+    if window_mode not in {"canvas", "workspace", "content"}:
+        problems.append("native dialog window mode is invalid")
+        window_mode = ""
+    content_fit_pending = telemetry.get("contentFitPending")
+    if type(content_fit_pending) is not bool or content_fit_pending:
+        problems.append("native content-fit telemetry is not settled")
+    safety_scroll_active = telemetry.get("safetyScrollActive")
+    if type(safety_scroll_active) is not bool:
+        problems.append("native safety-scroll telemetry is invalid")
+        safety_scroll_active = False
+
+    def valid_bounds(value: Any, *, optional: bool = False) -> bool:
+        if value is None:
+            return optional
+        return bool(
+            isinstance(value, dict)
+            and set(value) == {"x", "y", "width", "height"}
+            and all(type(value.get(key)) is int for key in value)
+            and int(value.get("width", 0)) > 0
+            and int(value.get("height", 0)) > 0
+        )
+
+    if not valid_bounds(telemetry.get("clientBounds")):
+        problems.append("native client bounds are invalid")
+    if not valid_bounds(
+        telemetry.get("bodyBounds"),
+        optional=window_mode == "canvas",
+    ):
+        problems.append("native body bounds are invalid")
+    if not valid_bounds(telemetry.get("footerBounds"), optional=True):
+        problems.append("native footer bounds are invalid")
+    settled_size = telemetry.get("settledSize")
+    if (
+        not isinstance(settled_size, dict)
+        or set(settled_size) != {"width", "height"}
+        or type(settled_size.get("width")) is not int
+        or type(settled_size.get("height")) is not int
+        or settled_size.get("width") != record.get("width")
+        or settled_size.get("height") != record.get("height")
+    ):
+        problems.append("native settled size does not match the captured client")
     if not isinstance(rows, list):
         problems.append("native scrollbar telemetry must be a list")
         rows = []
@@ -2522,9 +3454,25 @@ def _native_layout_telemetry_record_issues(
         type(owner_count) is not int
         or owner_count < 0
         or owner_count > int(limits["maximum_overflow_owner_count"])
-        or (rows and owner_count != 1)
     ):
         problems.append("native overflow owner count is invalid")
+    elif window_mode == "canvas" and owner_count != 0:
+        problems.append("native canvas must not have an overflow owner")
+    elif window_mode == "workspace" and owner_count != 1:
+        problems.append("native workspace must have exactly one overflow owner")
+    elif window_mode == "content" and (
+        (bool(safety_scroll_active) and owner_count != 1)
+        or (not bool(safety_scroll_active) and owner_count != 0)
+    ):
+        problems.append("native content overflow owner disagrees with safety mode")
+    if window_mode != "content" and bool(safety_scroll_active):
+        problems.append("native safety scroll is active outside content mode")
+    if (
+        window_mode == "content"
+        and bool(safety_scroll_active)
+        and record.get("screen_limited") is not True
+    ):
+        problems.append("native content safety scroll lacks a physical screen limit")
     measured_owners = 0
     for row in rows:
         if not isinstance(row, dict):
@@ -2631,15 +3579,26 @@ def validate_capture_manifest(
     *,
     capture_source: Path = DEFAULT_CAPTURE_SOURCE,
 ) -> dict[str, Any]:
-    """Validate one full release manifest and all manifest-owned PNG evidence."""
+    """Validate one profile-complete manifest and all manifest-owned PNGs."""
 
-    contract = load_capture_contract(capture_source)
+    manifest_path = manifest_path.resolve()
+    payload = _load_json_object(manifest_path, "capture manifest")
+    capture_profile = str(payload.get("capture_profile", ""))
+    if capture_profile not in {"representative", "full"}:
+        raise CaptureValidationError((
+            "capture_profile must be 'representative' or 'full'",
+        ))
+    contract = load_capture_contract(capture_source, profile=capture_profile)
     renderer_families = load_expected_renderer_families(
         capture_source,
         contract=contract,
     )
     resize_layout_modes = load_expected_resize_layout_modes(capture_source)
     state_evidence_contracts = load_expected_state_evidence_contracts(
+        capture_source,
+        contract=contract,
+    )
+    scenario_contracts = load_capture_scenario_contracts(
         capture_source,
         contract=contract,
     )
@@ -2657,21 +3616,27 @@ def validate_capture_manifest(
         for surface, labels in dialog_scroll_coverage.items()
         for label, semantic in labels.items()
     }
-    manifest_path = manifest_path.resolve()
-    payload = _load_json_object(manifest_path, "capture manifest")
     session_dir = manifest_path.parent.resolve()
     expected_labels = contract.labels
     expected_count = len(expected_labels)
     issues: list[str] = []
+    advisories: list[str] = []
 
     if payload.get("capture_contract_version") != contract.version:
         issues.append(
             "capture_contract_version does not match the repository contract "
             f"({payload.get('capture_contract_version')!r} != {contract.version})"
         )
-    capture_profile = payload.get("capture_profile")
-    if capture_profile != "representative":
-        issues.append("capture_profile must be 'representative' for release evidence")
+    if payload.get("capture_contract_digest") != contract.digest:
+        issues.append("capture_contract_digest does not match the selected profile")
+    if payload.get("scenario_schema_version") != contract.scenario_schema_version:
+        issues.append("scenario_schema_version does not match the source contract")
+    expected_scenario_digest = _canonical_digest({
+        label: scenario_contracts[label]["digest"]
+        for label in expected_labels
+    })
+    if payload.get("scenario_contract_digest") != expected_scenario_digest:
+        issues.append("scenario_contract_digest does not match source scenarios")
     raw_scale = payload.get("requested_scale_factor")
     try:
         scale = float(raw_scale) if not isinstance(raw_scale, bool) else math.nan
@@ -2726,6 +3691,11 @@ def validate_capture_manifest(
     sha_pattern = re.compile(r"[0-9a-f]{64}")
     production_package_sha256 = payload.get("production_package_sha256")
     capture_environment_digest = payload.get("capture_environment_digest")
+    expected_evidence_schema_digest = _canonical_digest({
+        "validator-source": _file_sha256(Path(__file__).resolve()),
+    })
+    if payload.get("evidence_schema_digest") != expected_evidence_schema_digest:
+        issues.append("evidence_schema_digest does not match the current validator")
     if (
         not isinstance(production_package_sha256, str)
         or sha_pattern.fullmatch(production_package_sha256) is None
@@ -2741,6 +3711,14 @@ def validate_capture_manifest(
     if not isinstance(render_inputs, dict):
         issues.append("render_inputs must be an object")
     else:
+        if render_inputs.get("capture_profile") != capture_profile:
+            issues.append("render_inputs capture profile does not match the manifest")
+        if render_inputs.get("capture_contract_digest") != contract.digest:
+            issues.append("render_inputs capture contract digest does not match")
+        if render_inputs.get("scenario_contract_digest") != expected_scenario_digest:
+            issues.append("render_inputs scenario contract digest does not match")
+        if render_inputs.get("evidence_schema_digest") != expected_evidence_schema_digest:
+            issues.append("render_inputs evidence schema digest does not match")
         if render_inputs.get("environment_digest") != capture_environment_digest:
             issues.append("render_inputs environment digest does not match the manifest")
         if render_inputs.get("production_archive_sha256") != production_package_sha256:
@@ -2775,6 +3753,49 @@ def validate_capture_manifest(
     if completion.get("scope_complete") is not True or completion.get("exit_code") != 0:
         issues.append("capture completion does not report a clean successful scope")
 
+    lineage_manifest_hashes: set[str] = set()
+    source_manifests = payload.get("source_manifests", [])
+    if capture_scope == "assembled":
+        if not isinstance(source_manifests, list) or not source_manifests:
+            issues.append("assembled evidence must include a local lineage closure")
+            source_manifests = []
+        for row in source_manifests:
+            if not isinstance(row, dict):
+                issues.append("lineage manifest entry must be an object")
+                continue
+            digest = row.get("sha256")
+            path = _resolved_evidence_path(row.get("path"), session_dir)
+            if not isinstance(digest, str) or sha_pattern.fullmatch(digest) is None:
+                issues.append("lineage manifest SHA-256 is invalid")
+                continue
+            if path is None or not _inside_directory(path, session_dir / "lineage"):
+                issues.append("lineage manifest is outside the local lineage directory")
+                continue
+            if path.name != f"manifest-{digest}.json" or not path.is_file():
+                issues.append("lineage manifest filename does not match its SHA-256")
+                continue
+            if _file_sha256(path) != digest:
+                issues.append("lineage manifest content hash does not match")
+                continue
+            lineage_manifest_hashes.add(digest)
+        if len(lineage_manifest_hashes) != len(source_manifests):
+            issues.append("lineage manifest closure contains duplicates or invalid entries")
+        # Copied snapshots retain their original bytes. Resolve every nested
+        # reference by SHA through the final local index, never via an archived
+        # absolute path, so the assembled directory is relocatable.
+        for digest in sorted(lineage_manifest_hashes):
+            snapshot_path = session_dir / "lineage" / f"manifest-{digest}.json"
+            try:
+                snapshot = _load_json_object(snapshot_path, "lineage manifest")
+            except CaptureValidationError as error:
+                issues.extend(error.issues)
+                continue
+            for nested in snapshot.get("source_manifests", ()):
+                if not isinstance(nested, dict) or nested.get("sha256") not in lineage_manifest_hashes:
+                    issues.append(
+                        f"lineage manifest {digest} references an unclosed nested SHA"
+                    )
+
     failures = payload.get("failures")
     if not isinstance(failures, list):
         issues.append("failures must be a list")
@@ -2784,12 +3805,65 @@ def validate_capture_manifest(
     if not isinstance(warnings, list):
         issues.append("text_layout_warnings must be a list")
     elif warnings:
-        issues.append(f"capture manifest reports {len(warnings)} text-layout warning(s)")
+        advisories.append(
+            f"capture manifest reports {len(warnings)} review warning(s)"
+        )
+    capture_advisories = payload.get("capture_advisories", [])
+    if not isinstance(capture_advisories, list):
+        issues.append("capture_advisories must be a list")
+    else:
+        for advisory in capture_advisories:
+            if not isinstance(advisory, dict):
+                advisories.append("capture manifest contains a malformed advisory")
+                continue
+            label = str(advisory.get("label", "capture") or "capture")
+            reason = str(advisory.get("reason", "review required"))
+            advisories.append(f"{label}: {reason}")
     _validate_memory_probe(
         payload,
         issues,
-        required=capture_profile == "full",
+        required=(capture_profile == "full" and contract.version < 25),
     )
+    run_level_evidence = payload.get("run_level_evidence")
+    if not isinstance(run_level_evidence, dict):
+        issues.append("run_level_evidence must be an object")
+    else:
+        shutdown = run_level_evidence.get("clean_shutdown")
+        if not (
+            isinstance(shutdown, dict)
+            and shutdown.get("required") is True
+            and shutdown.get("passed") is True
+            and shutdown.get("status") == "passed"
+            and shutdown.get("capture_environment_digest")
+            == capture_environment_digest
+            and shutdown.get("run_level_digest")
+            == (
+                render_inputs.get("run_level_digest")
+                if isinstance(render_inputs, dict) else None
+            )
+        ):
+            issues.append("run-level clean shutdown evidence did not pass")
+        memory = run_level_evidence.get("dialog_memory_probe")
+        if capture_profile == "full" and contract.version < 25 and not (
+            isinstance(memory, dict)
+            and memory.get("required") is True
+            and memory.get("passed") is True
+            and memory.get("run_level_digest")
+            == (
+                render_inputs.get("run_level_digest")
+                if isinstance(render_inputs, dict) else None
+            )
+            and memory.get("result") == payload.get("dialog_memory_probe")
+        ):
+            issues.append("run-level full memory evidence did not pass")
+        if capture_scope == "assembled":
+            run_lineage = run_level_evidence.get("lineage")
+            if (
+                not isinstance(run_lineage, dict)
+                or run_lineage.get("source_manifest_sha256")
+                not in lineage_manifest_hashes
+            ):
+                issues.append("run-level evidence is outside the local lineage closure")
 
     raw_screenshots = payload.get("screenshots")
     if not isinstance(raw_screenshots, list):
@@ -2819,10 +3893,12 @@ def validate_capture_manifest(
     record_geometry: dict[str, tuple[int, int, float, str]] = {}
     record_audits: dict[str, dict[str, Any]] = {}
     record_scroll_audits: dict[str, dict[str, Any]] = {}
+    filename_width = max(2, len(str(expected_count)))
     for index, label in enumerate(expected_labels, start=1):
         state_contract = state_evidence_contracts[label]
+        scenario_contract = scenario_contracts[label]
         expected_state_profile = state_contract["profile"]
-        expected_name = f"{index:02d}-{label}.png"
+        expected_name = f"{index:0{filename_width}d}-{label}.png"
         screenshot_path = screenshot_paths[index - 1] if index <= len(screenshot_paths) else None
         png_evidence: PngEvidence | None = None
         if screenshot_path is None:
@@ -2890,6 +3966,42 @@ def validate_capture_manifest(
                 issues.append(
                     f"capture {index:03d} {label}: capture environment digest does not match"
                 )
+            if record.get("scenario_identity_digest") != scenario_contract["digest"]:
+                issues.append(
+                    f"capture {index:03d} {label}: scenario identity digest does not match"
+                )
+            if record.get("scenario_identity_digest") != surface_inputs.get(
+                "scenario_identity_digest"
+            ):
+                issues.append(
+                    f"capture {index:03d} {label}: scenario identity differs from render inputs"
+                )
+            if record.get("surface_contract_digest") != surface_inputs.get(
+                "surface_contract_digest"
+            ):
+                issues.append(
+                    f"capture {index:03d} {label}: surface contract digest does not match"
+                )
+            if record.get("evidence_schema_digest") != expected_evidence_schema_digest:
+                issues.append(
+                    f"capture {index:03d} {label}: evidence schema digest does not match"
+                )
+        if record.get("scenario_checkpoint") != scenario_contract["checkpoint"]:
+            advisories.append(
+                f"capture {index:03d} {label}: scenario checkpoint does not match"
+            )
+        if record.get("scenario_capture_prerequisites") != scenario_contract[
+            "capture_prerequisites"
+        ]:
+            advisories.append(
+                f"capture {index:03d} {label}: capture prerequisites do not match"
+            )
+        if record.get("scenario_internal_setups") != scenario_contract[
+            "internal_setups"
+        ]:
+            advisories.append(
+                f"capture {index:03d} {label}: internal setup closure does not match"
+            )
         lineage = record.get("lineage")
         if not isinstance(lineage, dict):
             issues.append(f"capture {index:03d} {label}: lineage is missing")
@@ -2910,11 +4022,29 @@ def validate_capture_manifest(
                         issues.append(
                             f"capture {index:03d} {label}: reused lineage {field} is invalid"
                         )
+            if capture_scope == "assembled":
+                source_manifest_digest = lineage.get("source_manifest_sha256")
+                if source_manifest_digest not in lineage_manifest_hashes:
+                    issues.append(
+                        f"capture {index:03d} {label}: lineage source is outside the local closure"
+                    )
+                source_record_digest = lineage.get("source_record_sha256")
+                if (
+                    not isinstance(source_record_digest, str)
+                    or sha_pattern.fullmatch(source_record_digest) is None
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: source record digest is invalid"
+                    )
         if record.get("stable") is not True:
-            issues.append(f"capture {index:03d} {label}: surface stability was not proven")
+            advisories.append(
+                f"capture {index:03d} {label}: surface stability was not proven"
+            )
         stable_frames = record.get("stable_frame_count")
         if type(stable_frames) is not int or stable_frames < 2:
-            issues.append(f"capture {index:03d} {label}: stable_frame_count must be at least 2")
+            advisories.append(
+                f"capture {index:03d} {label}: stable_frame_count is below two"
+            )
         for timing_field in (
             "semantic_ready_ms",
             "stable_ms",
@@ -3031,7 +4161,7 @@ def validate_capture_manifest(
             else "canonical-open"
         )
         if transition_path != expected_transition:
-            issues.append(
+            advisories.append(
                 f"capture {index:03d} {label}: transition_path must be "
                 f"{expected_transition!r}"
             )
@@ -3132,7 +4262,7 @@ def validate_capture_manifest(
             if not isinstance(record_warnings, list):
                 issues.append(f"capture {index:03d} {label}: {warning_field} must be a list")
             elif record_warnings:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: {warning_field} is not empty"
                 )
 
@@ -3148,11 +4278,11 @@ def validate_capture_manifest(
                     f"capture {index:03d} {label}: dialog scroll applicable must be boolean"
                 )
             if scroll_audit.get("passed") is not True:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: dialog scroll audit did not pass"
                 )
             if scroll_audit.get("issues") != []:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: dialog scroll issues must be empty"
                 )
             expected_scroll = dialog_scroll_by_label.get(label)
@@ -3163,12 +4293,12 @@ def validate_capture_manifest(
                     expected_surface=surface,
                     expected_page_semantic=semantic,
                 ):
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
             elif scroll_audit.get("applicable") is True:
                 for issue in dialog_scroll_audit_issue_codes(scroll_audit):
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
 
@@ -3179,6 +4309,27 @@ def validate_capture_manifest(
         ):
             issues.append(f"capture {index:03d} {label}: fixture_source is missing")
             fixture_source = ""
+        if contract.version >= 25:
+            acceptance = record.get("capture_acceptance")
+            if not isinstance(acceptance, dict):
+                issues.append(
+                    f"capture {index:03d} {label}: capture_acceptance is missing"
+                )
+            else:
+                gross_checks = acceptance.get("gross_checks")
+                if acceptance.get("policy") != "gross-failures-only":
+                    issues.append(
+                        f"capture {index:03d} {label}: capture acceptance policy is invalid"
+                    )
+                if (
+                    not isinstance(gross_checks, dict)
+                    or not gross_checks
+                    or any(value is not True for value in gross_checks.values())
+                    or acceptance.get("passed") is not True
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: gross capture acceptance did not pass"
+                    )
         fixture = record.get("fixture_validation")
         if not isinstance(fixture, dict):
             issues.append(f"capture {index:03d} {label}: fixture_validation is missing")
@@ -3192,26 +4343,28 @@ def validate_capture_manifest(
         if fixture.get("fixture_source") != fixture_source:
             issues.append(f"capture {index:03d} {label}: fixture sources disagree")
         if fixture.get("state_profile") != label:
-            issues.append(
+            advisories.append(
                 f"capture {index:03d} {label}: state_profile must match the capture label"
             )
         postcondition = fixture.get("postcondition")
         if not isinstance(postcondition, dict):
-            issues.append(f"capture {index:03d} {label}: postcondition must be an object")
+            advisories.append(
+                f"capture {index:03d} {label}: postcondition must be an object"
+            )
         else:
             if postcondition.get("profile_id") != label:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition profile_id must match label"
                 )
             kind = postcondition.get("kind")
             if kind != state_contract["kind"]:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition kind must be "
                     f"{state_contract['kind']!r}"
                 )
             facts = postcondition.get("facts")
             if not isinstance(facts, dict) or not facts:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition facts must be nonempty"
                 )
             elif set(facts) != set(state_contract["required_facts"]):
@@ -3221,7 +4374,7 @@ def validate_capture_manifest(
                 extra_facts = sorted(
                     set(facts) - set(state_contract["required_facts"])
                 )
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition fact schema mismatch "
                     f"(missing={missing_facts!r}, extra={extra_facts!r})"
                 )
@@ -3230,7 +4383,7 @@ def validate_capture_manifest(
                     "expected_fact_values"
                 ].items():
                     if facts.get(fact_name) != expected_value:
-                        issues.append(
+                        advisories.append(
                             f"capture {index:03d} {label}: postcondition fact "
                             f"{fact_name!r} must be {expected_value!r}"
                         )
@@ -3249,7 +4402,7 @@ def validate_capture_manifest(
                         or not isinstance(cleared.get("focus_owner"), str)
                         or cleared.get("progress_button_has_focus") is not False
                     ):
-                        issues.append(
+                        advisories.append(
                             f"capture {index:03d} {label}: postcondition fact "
                             "'keyboard_focus_fixture_cleared' must prove the "
                             "Progress button does not own focus"
@@ -3257,7 +4410,7 @@ def validate_capture_manifest(
             if label in resize_layout_modes:
                 expected_kind = str(expected_state_profile.get("kind", ""))
                 if kind != expected_kind:
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: resize postcondition kind must be "
                         f"{expected_kind}"
                     )
@@ -3265,12 +4418,12 @@ def validate_capture_manifest(
                     not isinstance(facts, dict)
                     or facts.get("layout_mode") != resize_layout_modes[label]
                 ):
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: resize layout_mode fact must be "
                         f"{resize_layout_modes[label]!r}"
                     )
                 if layout_mode != resize_layout_modes[label]:
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: recorded layout_mode must be "
                         f"{resize_layout_modes[label]!r}"
                     )
@@ -3278,16 +4431,16 @@ def validate_capture_manifest(
                     not isinstance(facts, dict)
                     or facts.get("geometry_acceptance") != geometry_acceptance
                 ):
-                    issues.append(
+                    advisories.append(
                         f"capture {index:03d} {label}: postcondition geometry acceptance "
                         "does not match the record"
                     )
             if postcondition.get("issues") != []:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition issues must be empty"
                 )
             if postcondition.get("passed") is not True:
-                issues.append(
+                advisories.append(
                     f"capture {index:03d} {label}: postcondition did not pass"
                 )
         expected_family = fixture.get("expected_window_family")
@@ -3318,7 +4471,7 @@ def validate_capture_manifest(
             button_heights=button_heights,
             tabular_labels=tabular_labels,
         ):
-            issues.append(
+            advisories.append(
                 f"capture {index:03d} {label}: {telemetry_issue}"
             )
         for visual_issue in _visual_contract_record_issues(
@@ -3327,8 +4480,17 @@ def validate_capture_manifest(
             record=record,
             audit=audit if isinstance(audit, dict) else None,
         ):
-            issues.append(
+            advisories.append(
                 f"capture {index:03d} {label}: {visual_issue}"
+            )
+        for pixel_issue in _unpainted_client_record_issues(
+            label=label,
+            record=record,
+            audit=audit if isinstance(audit, dict) else None,
+            screenshot_path=screenshot_path,
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: {pixel_issue}"
             )
         if logical_size is not None and dpr is not None:
             record_geometry[label] = (
@@ -3342,7 +4504,7 @@ def validate_capture_manifest(
         payload,
         dialog_scroll_coverage,
         record_scroll_audits,
-        issues,
+        advisories,
         required=capture_profile == "full",
     )
 
@@ -3364,13 +4526,13 @@ def validate_capture_manifest(
             continue
         label_set = frozenset(digest_labels)
         if label_set not in INTENTIONAL_DUPLICATE_VISUALS:
-            issues.append(
+            advisories.append(
                 "unapproved duplicate visual evidence: " + ", ".join(digest_labels)
             )
             continue
         geometries = {record_geometry.get(label) for label in digest_labels}
         if None in geometries or len(geometries) != 1:
-            issues.append(
+            advisories.append(
                 "intentional duplicate evidence has inconsistent geometry: "
                 + ", ".join(digest_labels)
             )
@@ -3382,7 +4544,9 @@ def validate_capture_manifest(
                 and type(action_audit.get("action_count")) is int
                 and action_audit.get("action_count", 0) > 0
             ):
-                issues.append("starter Nursery duplicate lacks the footer-clearance audit")
+                advisories.append(
+                    "starter Nursery duplicate lacks the footer-clearance audit"
+                )
     normalized_screenshot_paths = [path for path in screenshot_paths if path is not None]
     if len(normalized_screenshot_paths) != len(set(normalized_screenshot_paths)):
         issues.append("screenshots contains duplicate paths")
@@ -3407,8 +4571,15 @@ def validate_capture_manifest(
     return {
         "capture_contract_version": contract.version,
         "capture_count": expected_count,
+        "capture_profile": capture_profile,
+        "evidence_tier": (
+            "final-release" if capture_profile == "full" else "preflight"
+        ),
         "manifest": str(manifest_path),
+        "automated_release_gate_passed": capture_profile == "full",
+        "release_ready": False,
         "status": "valid",
+        "audit_advisories": list(dict.fromkeys(advisories)),
     }
 
 
@@ -3420,17 +4591,22 @@ def validate_contact_sheet_set(
 ) -> dict[str, Any]:
     """Validate optional contact-sheet index, PNG pages, order, and counts."""
 
-    contract = load_capture_contract(capture_source)
+    contact_sheet_set_path = contact_sheet_set_path.resolve()
+    manifest_path = manifest_path.resolve()
+    manifest_payload = _load_json_object(manifest_path, "capture manifest")
+    capture_profile = str(manifest_payload.get("capture_profile", ""))
+    if capture_profile not in {"representative", "full"}:
+        raise CaptureValidationError((
+            "contact-sheet capture profile is invalid",
+        ))
+    contract = load_capture_contract(capture_source, profile=capture_profile)
     expected_count = len(contract.labels)
     expected_group_names = [name for name, _labels in contract.groups]
     expected_pages = expected_contact_sheet_pages(contract)
     expected_label_pages = expected_contact_sheet_page_groups(contract)
-    contact_sheet_set_path = contact_sheet_set_path.resolve()
-    manifest_path = manifest_path.resolve()
     payload = _load_json_object(contact_sheet_set_path, "contact-sheet set")
     set_dir = contact_sheet_set_path.parent.resolve()
     issues: list[str] = []
-    manifest_payload = _load_json_object(manifest_path, "capture manifest")
     manifest_records = manifest_payload.get("captures")
     capture_paths: dict[str, Path] = {}
     manifest_record_labels: list[str] = []
@@ -3453,6 +4629,14 @@ def validate_contact_sheet_set(
 
     if payload.get("complete") is not True:
         issues.append("contact-sheet set is not marked complete")
+    if payload.get("capture_profile") != capture_profile:
+        issues.append("contact-sheet capture_profile does not match the manifest")
+    if payload.get("capture_contract_digest") != contract.digest:
+        issues.append("contact-sheet capture_contract_digest does not match")
+    if payload.get("padding_legend") != CONTACT_SHEET_PADDING_LEGEND:
+        issues.append("contact-sheet padding legend is missing or ambiguous")
+    if payload.get("quality_status") != CONTACT_SHEET_QUALITY_STATUS:
+        issues.append("contact-sheet quality status must keep visual review pending")
     package_version = payload.get("package_version")
     if not isinstance(package_version, str) or not package_version.strip():
         issues.append("contact-sheet package_version must be nonempty")
@@ -3483,6 +4667,15 @@ def validate_contact_sheet_set(
         issues.append(
             f"contact-sheet topology must contain {len(expected_pages)} pages, found {len(pages)}"
         )
+    if contract.version <= 24:
+        required_page_count = LEGACY_V24_PROFILE_CONTACT_SHEET_PAGE_COUNTS[
+            capture_profile
+        ]
+        if len(expected_pages) != required_page_count or len(pages) != required_page_count:
+            issues.append(
+                f"legacy {capture_profile} contact-sheet evidence must contain exactly "
+                f"{required_page_count} pages"
+            )
 
     page_paths: list[Path] = []
     counted_surfaces = 0
@@ -3546,6 +4739,8 @@ def validate_contact_sheet_set(
                             package_version=package_version,
                             package_sha256=package_sha256,
                             manifest_path=manifest_path,
+                            capture_profile=capture_profile,
+                            capture_contract_digest=contract.digest,
                         )
                     )
             if expected_filename and page_path.name != expected_filename:
@@ -3626,6 +4821,10 @@ def validate_contact_sheet_set(
         raise CaptureValidationError(issues)
     return {
         "contact_sheet_set": str(contact_sheet_set_path),
+        "capture_profile": capture_profile,
+        "evidence_tier": (
+            "final-release" if capture_profile == "full" else "preflight"
+        ),
         "page_count": len(pages),
         "surface_count": expected_count,
         "status": "valid",

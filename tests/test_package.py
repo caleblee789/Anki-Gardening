@@ -5,14 +5,17 @@ from pathlib import Path
 
 import pytest
 
+import scripts.package_addon as package_addon
 from scripts.package_addon import (
     ADDON,
     CAPABILITY_MODULE,
     CAPTURE_BUILD,
     CAPTURE_HARNESS,
+    CAPTURE_SUBTREE,
     OUTPUT,
     PACKAGE_TIMESTAMP,
     PRODUCTION_BUILD,
+    _compression_for,
     _raw_deflated_size,
     _requested_cli_build,
     _requested_cli_mode,
@@ -23,6 +26,9 @@ from scripts.package_addon import (
     package_report,
     runtime_asset_paths,
 )
+
+
+pytestmark = pytest.mark.release_evidence
 
 
 OBSOLETE_ROSE_V6_ALIASES = {
@@ -45,6 +51,26 @@ SCHEMA_21_REQUIRED_RUNTIME_FILES = frozenset({
 EXPECTED_PACKAGED_USER_FILES = frozenset({"user_files/README.txt"})
 
 
+@pytest.fixture(scope="module")
+def package_archives(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> dict[str, Path]:
+    """Build each archive variant once for all read-only package assertions."""
+
+    root = tmp_path_factory.mktemp("package-archives")
+    return {
+        "production": build(),
+        "production_rebuild": build(
+            PRODUCTION_BUILD,
+            output=root / "anki_garden_production_rebuild.ankiaddon",
+        ),
+        "capture": build(
+            CAPTURE_BUILD,
+            output=root / "anki_garden_capture.ankiaddon",
+        ),
+    }
+
+
 def _archive_capabilities(archive: zipfile.ZipFile) -> dict[str, object]:
     namespace: dict[str, object] = {}
     source = archive.read(CAPABILITY_MODULE).decode("utf-8")
@@ -59,9 +85,11 @@ def test_distribution_manifest_is_complete() -> None:
     assert payload["min_point_version"] <= 260800 <= payload["max_point_version"]
 
 
-def test_package_contains_runtime_and_excludes_mutable_data() -> None:
-    build()
-    with zipfile.ZipFile(OUTPUT) as archive:
+def test_package_contains_runtime_and_excludes_mutable_data(
+    package_archives: dict[str, Path],
+) -> None:
+    production_output = package_archives["production"]
+    with zipfile.ZipFile(production_output) as archive:
         names = set(archive.namelist())
         capabilities = _archive_capabilities(archive)
         packaged_game = archive.read("game.py").decode("utf-8")
@@ -133,21 +161,21 @@ def test_package_contains_runtime_and_excludes_mutable_data() -> None:
     # Ratchet the complete schema-20 art library to the next 0.25 MiB boundary
     # above the optimized release artifact. This preserves a small deterministic
     # build margin without allowing the former 82 MiB budget to return.
-    assert OUTPUT.stat().st_size < (78 * 1024 * 1024) + (256 * 1024)
+    assert production_output.stat().st_size < (78 * 1024 * 1024) + (256 * 1024)
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
-    tmp_path: Path,
+    package_archives: dict[str, Path],
 ) -> None:
-    production_output = build(
-        PRODUCTION_BUILD,
-        output=tmp_path / "anki_garden_production.ankiaddon",
-    )
-    output = build(CAPTURE_BUILD, output=tmp_path / "anki_garden_capture.ankiaddon")
+    production_output = package_archives["production"]
+    output = package_archives["capture"]
     derivative = capture_derivative_report(production_output, output)
 
-    with zipfile.ZipFile(output) as archive:
+    with zipfile.ZipFile(production_output) as production_archive, zipfile.ZipFile(
+        output
+    ) as archive:
         names = set(archive.namelist())
+        production_names = set(production_archive.namelist())
         capabilities = _archive_capabilities(archive)
         expected = {
             path.relative_to(ADDON).as_posix(): package_payload(path, CAPTURE_BUILD)
@@ -156,7 +184,8 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
         assert names == set(expected)
         for name, payload in expected.items():
             assert archive.read(name) == payload
-        shared_names = sorted(names.difference({CAPTURE_HARNESS, CAPABILITY_MODULE}))
+        capture_only = sorted(names - production_names)
+        shared_names = sorted(production_names.difference({CAPABILITY_MODULE}))
         digest = hashlib.sha256()
         digest.update(b"anki-garden-shared-payload-v1\0")
         for name in shared_names:
@@ -171,10 +200,12 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     assert capabilities["BUILD_MODE"] == CAPTURE_BUILD
     assert capabilities["CAPTURE_HARNESS_ENABLED"] is True
     assert capabilities["DEVELOPMENT_MUTATION_ENABLED"] is True
+    assert capabilities["CAPTURE_CONTRACT_VERSION"] == 25
+    assert capabilities["CAPTURE_RUNTIME_PACKAGE"] == "capture"
     assert derivative == {
         "capture_archive": str(output.resolve()),
         "capture_archive_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "capture_only_entries": [CAPTURE_HARNESS],
+        "capture_only_entries": capture_only,
         "mode_specific_entries": [CAPABILITY_MODULE],
         "production_archive": str(production_output.resolve()),
         "production_archive_sha256": hashlib.sha256(
@@ -184,13 +215,17 @@ def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
         "shared_payload_sha256": digest.hexdigest(),
         "shared_payloads_identical": True,
     }
+    assert CAPTURE_HARNESS in capture_only
+    assert any(name.startswith(f"{CAPTURE_SUBTREE}/") for name in capture_only)
     with pytest.raises(ValueError, match="package entries"):
         capture_derivative_report(output, output)
 
 
-def test_package_build_is_byte_reproducible(tmp_path: Path) -> None:
-    first = build(PRODUCTION_BUILD, output=tmp_path / "first.ankiaddon")
-    second = build(PRODUCTION_BUILD, output=tmp_path / "second.ankiaddon")
+def test_package_build_is_byte_reproducible(
+    package_archives: dict[str, Path],
+) -> None:
+    first = package_archives["production"]
+    second = package_archives["production_rebuild"]
 
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(
         second.read_bytes()
@@ -228,3 +263,46 @@ def test_package_cli_defaults_to_production_and_requires_explicit_capture_output
         _requested_cli_build(["--capture"])
     with pytest.raises(SystemExit):
         _requested_cli_build(["--output", str(capture_output)])
+
+
+def test_capture_build_requires_a_separate_explicit_target() -> None:
+    with pytest.raises(ValueError, match="explicit output"):
+        build(CAPTURE_BUILD)
+
+    with pytest.raises(ValueError, match="cannot overwrite"):
+        build(CAPTURE_BUILD, output=OUTPUT)
+
+
+def test_atomic_build_preserves_previous_artifact_and_removes_temporary_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / "anki_garden.ankiaddon"
+    previous = b"previous valid release candidate"
+    target.write_bytes(previous)
+
+    def fail_after_partial_write(temporary: Path, _mode: str) -> None:
+        temporary.write_bytes(b"partial replacement")
+        raise OSError("simulated package write failure")
+
+    monkeypatch.setattr(package_addon, "_write_archive", fail_after_partial_write)
+    with pytest.raises(OSError, match="simulated package write failure"):
+        package_addon.build(PRODUCTION_BUILD, output=target)
+
+    assert target.read_bytes() == previous
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
+
+
+def test_compression_uses_maximum_deflate_with_strictly_smaller_stored_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compressible = b"anki-garden" * 4096
+    incompressible = bytes(range(256))
+
+    assert _raw_deflated_size(compressible) < len(compressible)
+    assert _compression_for(compressible) == zipfile.ZIP_DEFLATED
+    assert _raw_deflated_size(incompressible) > len(incompressible)
+    assert _compression_for(incompressible) == zipfile.ZIP_STORED
+
+    monkeypatch.setattr(package_addon, "_raw_deflated_size", len)
+    assert package_addon._compression_for(b"equal-size") == zipfile.ZIP_DEFLATED

@@ -54,15 +54,48 @@ STUDIO_TEXT = {
     "progress_notifications_label": "Show reviewer rewards",
 }
 
-SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 210
-SETTINGS_CONTROLS_WIDE_MAX_WIDTH = 235
-SETTINGS_SCENERY_WIDE_MIN_WIDTH = 205
-SETTINGS_SCENERY_WIDE_MAX_WIDTH = 230
+SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
+SETTINGS_CONTROLS_WIDE_MAX_WIDTH = 220
+SETTINGS_SCENERY_WIDE_MIN_WIDTH = 180
+SETTINGS_SCENERY_WIDE_MAX_WIDTH = 220
 
 
 def _describe_control(widget: QWidget, text: str) -> None:
     widget.setToolTip(text)
     widget.setAccessibleDescription(text)
+
+
+class ElidedPreviewTitle(QLabel):
+    """A single-line preview title whose full value remains discoverable."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self._full_text = ""
+        self.setText(text)
+
+    def setText(self, text: str) -> None:
+        self._full_text = str(text or "")
+        self._sync_elision()
+
+    def fullText(self) -> str:
+        return self._full_text
+
+    def _sync_elision(self) -> None:
+        width = max(0, int(self.contentsRect().width()))
+        rendered = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        QLabel.setText(self, rendered)
+        truncated = rendered != self._full_text
+        self.setToolTip(self._full_text if truncated else "")
+        self.setAccessibleDescription(self._full_text)
+        self.setProperty("textElided", truncated)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self._sync_elision()
 
 
 class ToggleSettingRow(QFrame):
@@ -166,10 +199,10 @@ class HomeGardenPreview(QFrame):
         identity.setSpacing(2)
         eyebrow = QLabel("ANKI GARDEN")
         eyebrow.setProperty("previewEyebrow", True)
-        self.title = QLabel("My Garden")
+        self.title = ElidedPreviewTitle("My Garden")
         self.title.setProperty("previewTitle", True)
         self.title.setTextFormat(Qt.TextFormat.PlainText)
-        self.title.setWordWrap(True)
+        self.title.setWordWrap(False)
         self.title.setMinimumWidth(0)
         self.title.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -207,8 +240,6 @@ class HomeGardenPreview(QFrame):
         safe_title = str(snapshot.title or "My Garden")
         safe_support = str(snapshot.summary)
         self.title.setText(safe_title)
-        self.title.setToolTip(safe_title)
-        self.title.setAccessibleDescription(safe_title)
         self.support.setText(safe_support)
         self.support.setToolTip(safe_support)
         self.status.setText(snapshot.status_text)
@@ -345,18 +376,18 @@ class GardenStudioWidget(QWidget):
     def _build_ui(self) -> None:
         t = GARDEN_THEME
         self.setStyleSheet(f"""
-            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:15px; font-weight:700; }}
+            QLabel[settingsHeading='true'] {{ color:{t['text_primary']}; font-size:15px; font-weight:600; }}
             QLabel[settingsNote='true'] {{ color:{t['text_muted']}; font-size:13px; }}
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}
             QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
             QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
-            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:1px solid {t['subtle_border']}; border-radius:12px; }}
+            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:0; border-radius:12px; }}
             QFrame[homeGardenPreview='true']:disabled {{ border-color:{t['disabled_border']}; }}
             QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 rgba(5,20,16,238),stop:.58 rgba(5,20,16,112),stop:1 rgba(5,20,16,0)); border:0; }}
-            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:12px; font-weight:700; letter-spacing:1px; }}
-            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:700; }}
+            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:12px; font-weight:600; letter-spacing:1px; }}
+            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:600; }}
             QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
             QLabel[previewAction='true'] {{ min-height:32px; max-height:32px; padding:0 12px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
             QFrame[toggleSettingRow='true'] {{ background:transparent; border:0; }}
@@ -383,7 +414,7 @@ class GardenStudioWidget(QWidget):
         """ + tool_button_stylesheet())
         self.root_layout = QHBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(16)
+        self.root_layout.setSpacing(20)
         self.controls = QFrame()
         self.controls.setProperty("settingsControls", True)
         self.controls.setMinimumWidth(0)
@@ -441,6 +472,7 @@ class GardenStudioWidget(QWidget):
         theme_layout.addWidget(self.theme_title)
         self.manage_environment = QToolButton()
         self.manage_environment.setText("Edit appearance")
+        self.manage_environment.setFixedHeight(BUTTON_MIN_HEIGHT)
         self.manage_environment.setAccessibleDescription(
             "Open Garden appearance in Collection."
         )
@@ -535,6 +567,7 @@ class GardenStudioWidget(QWidget):
         self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
         self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.advanced_toggle.setAccessibleName("Show advanced display settings")
+        self.advanced_toggle.setFixedHeight(BUTTON_MIN_HEIGHT)
         self.advanced_panel = QFrame()
         self.advanced_panel.setProperty("settingsSection", True)
         self.advanced_panel.setSizePolicy(
@@ -634,7 +667,7 @@ class GardenStudioWidget(QWidget):
                     floor=340,
                 ),
             ),
-            spacing=16,
+            spacing=20,
             apply_mode=self._apply_studio_layout_mode,
             telemetry_target=self,
         )
@@ -673,7 +706,6 @@ class GardenStudioWidget(QWidget):
     def set_preview_garden_name(self, name: str) -> None:
         self._preview_garden_name = str(name or "My Garden")
         self.preview_name.setText(self._preview_garden_name)
-        self.preview_name.setToolTip(self._preview_garden_name)
 
     def _set_fine_tune_expanded(self, expanded: bool) -> None:
         self.fine_tune_section.setVisible(bool(expanded))

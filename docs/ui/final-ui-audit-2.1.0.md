@@ -1,18 +1,46 @@
 # Anki Garden 2.1.0 final UI audit
 
-Status: final v22 representative capture and release merge are pending.
+Status: final v25 exhaustive capture and release acceptance are pending.
 
 ## Current acceptance contract
 
-Capture contract v22 owns 26 distinct interfaces in five ordered groups. A
-release run must capture all 26 once at `QT_SCALE_FACTOR=1.0`, produce four
-validated contact-sheet pages, and report zero capture failures and zero text or
-geometry warnings. Raw manifest-owned PNGs are the runtime geometry authority.
+Capture contract v25 owns registry-derived `representative` preflight and
+`full` final-release profiles. Visual review reduced the current topology to
+16 representative and 31 full surfaces, producing two and five sheets. The 95
+retired IDs remain reserved, and no watering-can capture remains active. Totals
+are generated from the registry rather than fixed runtime rules.
+Both run at `QT_SCALE_FACTOR=1.0` and require exact compiled-contract order,
+zero gross acquisition or lifecycle failures. Text, semantic, layout, scroll,
+and duplicate-view findings are retained as non-blocking review advisories. The preflight may
+contribute unchanged overlapping surface evidence, but final acceptance
+requires a complete validated full manifest, exact-package clean-shutdown
+binding, and a formal sheet set. A normal profile uses one Anki process for all
+selected surfaces; memory-leak probing is not part of capture. Raw manifest-owned
+PNGs are the runtime geometry authority.
 
-The optional `full` profile retains the earlier 126-state sequence for targeted
-diagnosis. Automated tests own alternate loading, empty, warning, error,
-success, accessibility, stress, responsive, and memory-cycle coverage; those
-states are not repeated in the release contact sheet.
+## Latest v24 comparison evidence
+
+The newest automated v24 full attempt is preserved at
+`build/ui-face-captures/full/capture-sequence-20260825-153624`. Its assembled
+manifest contains 125 of 126 valid surfaces: 124 were reused and
+`progress-overview-redirect-growth` was replaced. The attempted replacement for
+`streak-achievement-earned-next` failed its fixture postcondition, so no prior
+pixel was substituted. The manifest also has no valid run-level authority.
+
+The underlying attempt manifest at
+`build/ui-face-captures/full/capture-sequence-20260825-153624/20260825-153742/manifest.json`
+records a passing clean shutdown but a failed Nursery memory gate. After 12
+visible-and-closed cycles, the total widget count grew by 24: 12 `QLabel` and
+12 `QPushButton` instances. That result remains a release blocker rather than
+being normalized as cache growth.
+
+The manually assembled set at
+`build/ui-face-captures/full/visual-all-surfaces-20260825-154038` contains all
+126 v24 PNGs and 17 reviewed contact sheets with no recorded visual findings.
+Its manifest explicitly records `visual_review_only: true` and
+`release_evidence: false`; its production package hash is
+`72a137563b4cb6922cc4e2b4e68f5235d219ce872edf07e0bf078b7593778e25`.
+It is comparison material only and cannot seed the first v25 formal baseline.
 
 ## Preserved incomplete attempts
 
@@ -66,7 +94,7 @@ assumptions found by that attempt were corrected before v22. The release
 sequence was then reduced to one stable state per distinct interface to avoid
 treating the contact sheet as a second exhaustive test suite.
 
-## Validation status
+## Historical validation snapshot
 
 - Focused v22 capture, validator, dialog, and transaction checks: 129 passed.
 - Full repository suite: 1,917 passed and 10 skipped.
@@ -83,7 +111,8 @@ treating the contact sheet as a second exhaustive test suite.
 
 Until separately run and recorded, the following remain open:
 
-- final v22 26/26 raw capture and 4/4 contact-sheet validation and review;
+- v25 representative raw preflight and contact-sheet validation and review;
+- final v25 full raw capture and contact-sheet validation and review;
 - exact final-package restart and interactive persistence journeys;
 - native Windows/Linux GUI behavior and true OS 125%/150% or mixed-DPI scaling;
 - forced colors, screen-reader, contrast, broader keyboard walkthrough, and
