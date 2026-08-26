@@ -32,8 +32,9 @@
   collection denominator, milestone ruler, or duplicate actions appear.
 - Loading, empty, disabled, success, stale, and recoverable-error states use one
   preview snapshot. Stale content retains the last valid scene and adds a text
-  updating indicator. Background, weather, scenery, plants, foreground, and
-  watering can share one fade/effects layer.
+  updating indicator. Background, weather, scenery, plants, and foreground
+  share one fade/effects layer. The nurtured plant remains identified in the
+  summary; no watering can is composed into the scene.
 
 ## Full Garden information hierarchy
 

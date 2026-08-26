@@ -24,6 +24,8 @@ class OnboardingStateDisplay:
     state: OnboardingState
     header_label: str
     primary_action: str | None
+    # Compatibility field retained for callers that consumed the former
+    # in-scene watering-can policy. Scenic markers are currently disabled.
     nurtured_marker_visible: bool
     onboarding_complete: bool
     step: OnboardingStep | None = None
@@ -98,7 +100,7 @@ def onboarding_state_display(
                 OnboardingState.NURTURED_PLANT_ASSIGNED,
                 "Nurtured plant",
                 "Return to Anki",
-                True,
+                False,
                 False,
                 6,
             ),
@@ -106,7 +108,7 @@ def onboarding_state_display(
                 OnboardingState.ONBOARDING_COMPLETE,
                 "Nurtured plant",
                 None,
-                True,
+                False,
                 True,
                 None,
             ),
@@ -164,7 +166,7 @@ def onboarding_state_display(
             OnboardingState.ONBOARDING_COMPLETE,
             "Nurtured plant",
             None,
-            True,
+            False,
             True,
         )
 
@@ -177,14 +179,14 @@ def onboarding_state_display(
                 OnboardingState.ONBOARDING_COMPLETE,
                 "Nurtured plant",
                 None,
-                True,
+                False,
                 True,
             )
         return OnboardingStateDisplay(
             OnboardingState.NURTURED_PLANT_ASSIGNED,
             "Nurtured plant",
             None,
-            True,
+            False,
             False,
         )
 

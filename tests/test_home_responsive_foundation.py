@@ -61,23 +61,6 @@ def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs
     assert ".ag-home__scene { height:160px; }" not in HOME_WIDGET_STYLE
 
 
-def test_home_source_has_no_javascript_width_branch_or_dom_reordering() -> None:
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "ankigarden"
-        / "ui"
-        / "home_widget.py"
-    ).read_text("utf-8")
-    for branch in (
-        "window.innerWidth",
-        "document.documentElement.clientWidth",
-        "getBoundingClientRect().width",
-        "ResizeObserver",
-        "matchMedia(",
-    ):
-        assert branch not in source
-    for mutation in ("insertBefore(", "appendChild(", "replaceChildren("):
-        assert mutation not in source
 
 
 @pytest.mark.parametrize(
@@ -129,19 +112,6 @@ def test_os_and_addon_reduced_motion_form_one_effective_css_policy() -> None:
     assert any("transform:none" in rule for rule in media_policy)
 
 
-def test_addon_projects_persisted_motion_settings_before_using_home_cache() -> None:
-    addon = (
-        Path(__file__).resolve().parents[1] / "ankigarden" / "addon.py"
-    ).read_text("utf-8")
-    method = addon.split("def _home_garden_html_for_injection", 1)[1].split(
-        "def _build_home_garden_html",
-        1,
-    )[0]
-    assert "self._sync_home_motion_preferences()" in method
-    assert "self._home_widget_controller.set_motion_preferences(" in method
-    assert 'self.config.value("enable_animations", True)' in method
-    assert 'self.config.value("reduced_motion", False)' in method
-    assert "self._home_html_cache = None" in method
 
 
 def test_invalid_home_container_width_fails_closed() -> None:

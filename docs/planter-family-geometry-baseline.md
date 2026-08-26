@@ -19,7 +19,7 @@ active.
 - `plant_layout()` resolves six explicit `BedAnchor` records from `verdant_twilight_surface_v6`. A plant's ground point is the slot support-line point, not the background or planter bitmap center.
 - Plant draw position is `stable slot ground anchor - asset soil_contact * plant draw size`. Plant draw size is calculated only from plant metadata, slot depth scale, responsive fit, and canvas aspect.
 - Plant hitboxes come from the plant asset's semantic `interaction_bounds` plus motion/44 px accessibility padding. Empty-bed and move-mode targets use `bed_footprint` separately.
-- Selection rings use `bed_footprint`; hover/keyboard outlines follow plant alpha; the nurtured marker uses the plant's `visible` rectangle; information cards use `smart_card_anchor` and the plant hit rectangle.
+- Selection rings use `bed_footprint`; hover/keyboard outlines follow plant alpha; information cards use `smart_card_anchor` and the plant hit rectangle. Retained watering-can metadata is dormant and is neither rendered nor reserved by scene layout.
 - Runtime order is deterministic: background, decorations, rear shadows 0-3, rear plants 0-3, rear occlusion, front shadows 4-5, front plants 4-5, front occlusion, interaction/selection/labels.
 - Bed IDs and render order are `far_left_soil_bed`, `far_right_soil_bed`, `middle_left_soil_bed`, `middle_right_soil_bed`, `near_left_soil_bed`, `near_right_soil_bed` for saved `slot_index` values 0 through 5. No state migration is involved.
 

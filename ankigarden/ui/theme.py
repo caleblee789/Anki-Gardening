@@ -61,16 +61,16 @@ class TypographyToken:
 # does not force them below a practical reading size.
 TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
     TextRole.BRAND_EYEBROW: TypographyToken(12, 17, 600, 0.8),
-    TextRole.DISPLAY_TITLE: TypographyToken(32, 40, 800, -0.2),
-    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 700, -0.1),
-    TextRole.SECTION_HEADING: TypographyToken(20, 28, 700),
-    TextRole.CARD_TITLE: TypographyToken(16, 23, 700),
+    TextRole.DISPLAY_TITLE: TypographyToken(32, 40, 600, -0.2),
+    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 600, -0.1),
+    TextRole.SECTION_HEADING: TypographyToken(19, 26, 600),
+    TextRole.CARD_TITLE: TypographyToken(16, 23, 600),
     TextRole.BODY: TypographyToken(14, 21, 400),
     TextRole.SECONDARY: TypographyToken(13, 19, 400),
     TextRole.METADATA: TypographyToken(12, 17, 600, 0.1),
-    TextRole.BADGE: TypographyToken(12, 17, 700, 0.3),
-    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 34, 800, tabular_numerals=True),
-    TextRole.BUTTON_LABEL: TypographyToken(14, 20, 600),
+    TextRole.BADGE: TypographyToken(12, 17, 600, 0.3),
+    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 34, 600, tabular_numerals=True),
+    TextRole.BUTTON_LABEL: TypographyToken(13, 19, 600),
 }
 
 # Public compatibility/readability aliases. All three names reference the same
@@ -151,7 +151,9 @@ PRIMARY_BUTTON_VISUAL_HEIGHT = 36
 COMPACT_BUTTON_HEIGHT = 30
 ONBOARDING_BUTTON_VISUAL_HEIGHT = 38
 ICON_BUTTON_VISUAL_SIZE = 30
-INPUT_VISUAL_HEIGHT = 36
+# Text-entry controls stay within the 38-40 px release floor. Forty pixels
+# matches the shared QLineEdit stylesheet and avoids a token/QSS split-brain.
+INPUT_VISUAL_HEIGHT = 40
 TAB_VISUAL_HEIGHT = 38
 TOGGLE_VISUAL_WIDTH = 36
 TOGGLE_VISUAL_HEIGHT = 20
@@ -277,6 +279,7 @@ KEYBOARD_FOCUS_SURFACE_PROPERTY = "keyboardFocusSurface"
 TABULAR_NUMERAL_FEATURE = "tnum"
 TABULAR_NUMERAL_CSS = "font-variant-numeric: tabular-nums;"
 _ENABLED_DESCRIPTION_PROPERTY = "gardenEnabledDescription"
+_ENABLED_CURSOR_ATTRIBUTE = "_garden_enabled_cursor"
 
 
 def _enum_value(value: Any) -> str:
@@ -537,9 +540,43 @@ def set_control_enabled(
                 original = ""
         _set_property(widget, _ENABLED_DESCRIPTION_PROPERTY, original)
 
+    cursor_setter = getattr(widget, "setCursor", None)
+    cursor_getter = getattr(widget, "cursor", None)
+    if not is_enabled and not was_disabled and callable(cursor_getter):
+        try:
+            setattr(widget, _ENABLED_CURSOR_ATTRIBUTE, cursor_getter())
+        except Exception:
+            pass
+
     set_enabled(is_enabled)
     _set_property(widget, DISABLED_STATE_PROPERTY, not is_enabled)
     _set_property(widget, DISABLED_REASON_PROPERTY, reason)
+
+    if callable(cursor_setter):
+        try:
+            if is_enabled and was_disabled:
+                saved_cursor = getattr(widget, _ENABLED_CURSOR_ATTRIBUTE, None)
+                if saved_cursor is not None:
+                    cursor_setter(saved_cursor)
+                else:
+                    unset_cursor = getattr(widget, "unsetCursor", None)
+                    if callable(unset_cursor):
+                        unset_cursor()
+                _set_property(widget, "controlCursor", "restored")
+            elif not is_enabled:
+                try:
+                    from aqt.qt import Qt
+
+                    forbidden_cursor: Any = Qt.CursorShape.ForbiddenCursor
+                except (ImportError, ModuleNotFoundError):
+                    # Dependency-light tests use a string-capable Qt-like double.
+                    forbidden_cursor = "forbidden"
+                cursor_setter(forbidden_cursor)
+                _set_property(widget, "controlCursor", "forbidden")
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            # Accessibility and enabled state remain authoritative if a host
+            # binding cannot accept a cursor enum during teardown.
+            pass
 
     if callable(description_setter):
         if is_enabled:
@@ -739,14 +776,14 @@ def button_stylesheet(
             border-radius: 8px;
             background: {t['secondary_action']};
             color: {t['text_primary']};
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
         }}
-        QPushButton:hover {{
+        QPushButton:enabled:hover {{
             background: {t['secondary_hover']};
             border-color: {hover_border};
         }}
-        QPushButton:pressed {{
+        QPushButton:enabled:pressed {{
             background: {t['secondary_pressed']};
             border-color: {pressed_border};
         }}
@@ -757,8 +794,8 @@ def button_stylesheet(
             border-color: {t['action_border']};
             color: {t['action_text']};
         }}
-        QPushButton[variant='primary']:hover {{ background: {t['action_hover']}; }}
-        QPushButton[variant='primary']:pressed {{
+        QPushButton[variant='primary']:enabled:hover {{ background: {t['action_hover']}; }}
+        QPushButton[variant='primary']:enabled:pressed {{
             background: {t['action_pressed']};
             border-color: {primary_pressed_border};
         }}
@@ -767,8 +804,8 @@ def button_stylesheet(
             border-color: {t['secondary_border']};
             color: {t['text_primary']};
         }}
-        QPushButton[variant='secondary']:hover {{ background: {t['secondary_hover']}; }}
-        QPushButton[variant='secondary']:pressed {{
+        QPushButton[variant='secondary']:enabled:hover {{ background: {t['secondary_hover']}; }}
+        QPushButton[variant='secondary']:enabled:pressed {{
             background: {t['secondary_pressed']};
             border-color: {pressed_border};
         }}
@@ -777,7 +814,7 @@ def button_stylesheet(
             border-color: transparent;
             color: {t['text_secondary']};
         }}
-        QPushButton[variant='quiet']:hover, QPushButton[variant='tertiary']:hover {{
+        QPushButton[variant='quiet']:enabled:hover, QPushButton[variant='tertiary']:enabled:hover {{
             background: {t['secondary_hover']};
             border-color: {t['subtle_border']};
             color: {t['text_primary']};
@@ -787,8 +824,8 @@ def button_stylesheet(
             border-color: #a44a4a;
             color: #ffecec;
         }}
-        QPushButton[variant='destructive']:hover {{ background: #7b3434; }}
-        QPushButton[variant='destructive']:pressed {{ background: #562424; }}
+        QPushButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
+        QPushButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
         QPushButton[compactRowAction='true'] {{
             min-height: {COMPACT_BUTTON_HEIGHT}px;
             max-height: {COMPACT_BUTTON_HEIGHT}px;
@@ -825,9 +862,9 @@ def button_stylesheet(
             background: {t['selected_surface']};
             border-color: {t['coin_accent']};
             color: {t['text_primary']};
-            font-weight: 700;
+            font-weight: 600;
         }}
-        QPushButton:disabled {{
+        QPushButton:disabled, QPushButton:disabled:hover, QPushButton:disabled:pressed {{
             background: {t['disabled_surface']};
             border-color: {t['disabled_border']};
             color: {t['disabled_text']};
@@ -856,22 +893,22 @@ def tool_button_stylesheet(
             background: {t['secondary_action']};
             border: 1px solid {t['secondary_border']};
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             text-align: left;
         }}
-        QToolButton:hover {{
+        QToolButton:enabled:hover {{
             background: {t['secondary_hover']};
             border-color: {hover_border};
         }}
-        QToolButton:pressed {{
+        QToolButton:enabled:pressed {{
             background: {t['secondary_pressed']};
             border-color: {pressed_border};
         }}
         QToolButton:checked {{
             background: {t['selected_surface']};
             border-color: {t['coin_accent']};
-            font-weight: 700;
+            font-weight: 600;
         }}
         QToolButton[variant='primary'] {{
             min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
@@ -880,10 +917,10 @@ def tool_button_stylesheet(
             border-color: {t['action_border']};
             color: {t['action_text']};
         }}
-        QToolButton[variant='primary']:hover {{
+        QToolButton[variant='primary']:enabled:hover {{
             background: {t['action_hover']};
         }}
-        QToolButton[variant='primary']:pressed {{
+        QToolButton[variant='primary']:enabled:pressed {{
             background: {t['action_pressed']};
         }}
         QToolButton[variant='quiet'], QToolButton[variant='tertiary'] {{
@@ -891,7 +928,7 @@ def tool_button_stylesheet(
             border-color: transparent;
             color: {t['text_secondary']};
         }}
-        QToolButton[variant='quiet']:hover, QToolButton[variant='tertiary']:hover {{
+        QToolButton[variant='quiet']:enabled:hover, QToolButton[variant='tertiary']:enabled:hover {{
             background: {t['secondary_hover']};
             border-color: {t['subtle_border']};
             color: {t['text_primary']};
@@ -901,8 +938,8 @@ def tool_button_stylesheet(
             border-color: #a44a4a;
             color: #ffecec;
         }}
-        QToolButton[variant='destructive']:hover {{ background: #7b3434; }}
-        QToolButton[variant='destructive']:pressed {{ background: #562424; }}
+        QToolButton[variant='destructive']:enabled:hover {{ background: #7b3434; }}
+        QToolButton[variant='destructive']:enabled:pressed {{ background: #562424; }}
         QToolButton[gardenRole='icon-button'] {{
             min-width: {ICON_BUTTON_SIZE}px;
             min-height: {ICON_BUTTON_SIZE}px;
@@ -916,7 +953,7 @@ def tool_button_stylesheet(
             padding: 0 9px;
         }}
         QToolButton[gardenRole='icon-button']:focus {{ padding: 0; }}
-        QToolButton:disabled {{
+        QToolButton:disabled, QToolButton:disabled:hover, QToolButton:disabled:pressed {{
             background: {t['disabled_surface']};
             border-color: {t['disabled_border']};
             color: {t['disabled_text']};
@@ -992,7 +1029,7 @@ def semantic_component_stylesheet(
         QTabBar[gardenRole='tabs']::tab:selected {{
             color: {t['text_primary']};
             border-bottom-color: {t['coin_accent']};
-            font-weight: 700;
+            font-weight: 600;
         }}
         QTabBar[gardenRole='tabs']:focus {{
             border: 2px solid {t['focus_ring']};
@@ -1013,7 +1050,7 @@ def semantic_component_stylesheet(
             color: {t['text_primary']};
             background: {t['selected_surface']};
             border: 2px solid {t['coin_accent']};
-            font-weight: 700;
+            font-weight: 600;
         }}
         QPushButton[gardenRole='segmented-filter']:focus,
         QAbstractButton[gardenRole='disclosure']:focus {{
@@ -1125,7 +1162,7 @@ def semantic_component_stylesheet(
             padding: {SpacingToken.XL}px;
             color: {t['text_secondary']};
             background: {t['raised_surface']};
-            border: 1px dashed {t['strong_border']};
+            border: 0;
             border-radius: 12px;
         }}
         QLabel[gardenRole='missing-art'],
@@ -1151,7 +1188,9 @@ def foundation_stylesheet(
 
     return "\n".join(
         (
-            "QWidget { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }",
+            # Native Qt controls inherit Anki's resolved application font.
+            # CSS-style fallback lists are not valid QSS and emit a warning
+            # for every dialog construction on macOS.
             button_stylesheet(context),
             tool_button_stylesheet(context),
             typography_stylesheet(context),

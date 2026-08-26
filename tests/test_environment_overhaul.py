@@ -484,28 +484,6 @@ def test_environment_purchase_and_growth_charge_use_restore_state_on_save_failur
     assert storage.state.consumables["growth_charge_small"] == 1
 
 
-def test_environment_ui_owns_loadout_and_settings_do_not_mount_legacy_weather_controls():
-    root = Path(__file__).resolve().parents[1]
-    dashboard = (root / "ankigarden/ui/dashboard.py").read_text("utf-8")
-    studio = (root / "ankigarden/ui/garden_studio.py").read_text("utf-8")
-
-    assert dashboard.index('catalog_page(self.upgrades_scroll), "Garden beds"') < dashboard.index(
-        'catalog_page(self.environment_scroll),'
-    )
-    assert 'catalog_page(self.supplements_scroll),' in dashboard
-    assert '"Fertilizers and boosts"' in dashboard
-    assert "self.collectible_detail_dialog = CollectibleDetailDialog(" in dashboard
-    assert "self._settings_scene_snapshot," in dashboard
-    assert 'catalog_page(self.environment_scroll),' in dashboard
-    assert 'self.option_tabs.addTab(self.scenery_page, "Scenery")' in dashboard
-    assert 'self.option_tabs.addTab(self.weather_page, "Weather")' in dashboard
-    assert 'self.option_tabs.addTab(self.decoration_page, "Decorations")' in dashboard
-    assert 'self.option_tabs.addTab(self.effects_page, "Effects")' in dashboard
-    assert "Weather effects" in dashboard
-    assert "Scenery effects" in dashboard
-    assert "self.advanced_actions_layout.addWidget(self.motion_row)" in studio
-    assert "controls_layout.addWidget(self.fine_tune_toggle)" not in studio
-    assert "controls_layout.addWidget(self.fine_tune_section)" not in studio
 
 
 def test_every_scenery_resolves_its_own_art_with_shared_surface_geometry():

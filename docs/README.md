@@ -20,8 +20,8 @@ implementation disagree.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
 - `ui-release-overhaul-contract.md`: current UI architecture, routing,
   transaction, responsive, accessibility, and capture contract.
-- `ui-surface-inventory.md`: ordered 26-interface v22 release inventory and the
-  optional exhaustive diagnostic boundary.
+- `ui-surface-inventory.md`: registry-derived v25 release inventory and the
+  automated/manual acceptance boundary.
 - `ui/final-ui-audit-2.1.0.md`: canonical automated/macOS Qt evidence and the
   explicitly unrun human/platform gates.
 

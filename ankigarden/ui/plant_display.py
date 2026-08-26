@@ -613,8 +613,10 @@ class SceneGeometryLayout:
         preferred_size: tuple[float, float],
         minimum_size: tuple[float, float],
         extra_obstacles: Iterable[Rect] = (),
+        *,
+        selected_accessory_regions: Iterable[Rect] = (),
     ) -> PopoverPlacement:
-        """Place a plant panel without obscuring its selected scene target."""
+        """Place a plant panel clear of the selected plant's full silhouette."""
 
         selected = self.bed(bed_id)
         if selected is None:
@@ -663,17 +665,36 @@ class SceneGeometryLayout:
                 rect.height,
             )
 
+        selected_parts = tuple(
+            part
+            for part in (
+                selected.selection_region,
+                selected.plant_bounds,
+                selected.planter_bounds,
+                *tuple(selected_accessory_regions),
+            )
+            if isinstance(part, Rect) and part.area > 0
+        )
+        selected_target = Rect(
+            min(part.x for part in selected_parts),
+            min(part.y for part in selected_parts),
+            max(part.right for part in selected_parts)
+            - min(part.x for part in selected_parts),
+            max(part.bottom for part in selected_parts)
+            - min(part.y for part in selected_parts),
+        )
+
         def candidate(side: str, width: float, height: float) -> Rect:
             if side == "right":
                 return Rect(
-                    selected.visible_region.right + gap,
+                    selected_target.right + gap,
                     anchor_y - height / 2,
                     width,
                     height,
                 )
             if side == "left":
                 return Rect(
-                    selected.visible_region.x - gap - width,
+                    selected_target.x - gap - width,
                     anchor_y - height / 2,
                     width,
                     height,
@@ -681,13 +702,13 @@ class SceneGeometryLayout:
             if side == "above":
                 return Rect(
                     anchor_x - width / 2,
-                    selected.visible_region.y - gap - height,
+                    selected_target.y - gap - height,
                     width,
                     height,
                 )
             return Rect(
                 anchor_x - width / 2,
-                selected.visible_region.bottom + gap,
+                selected_target.bottom + gap,
                 width,
                 height,
             )
@@ -697,7 +718,9 @@ class SceneGeometryLayout:
             for side in selected.popover_candidates
             if side in {"right", "left", "above", "below"}
         ) or ("right", "left", "above", "below")
-        selected_obstacle = selected.selection_region.expanded(6.0)
+        # Twelve logical pixels remain clear around the plant artwork, planter,
+        # and selected-state accessory as one protected target.
+        selected_obstacle = selected_target.expanded(12.0)
         soft = {
             bed.bed_id: bed.selection_region.expanded(5.0)
             for bed in self.beds
@@ -795,16 +818,16 @@ class SceneGeometryLayout:
             if not chosen.intersects(obstacle)
         )
         if chosen_side == "right":
-            start = (selected.visible_region.right, anchor_y)
+            start = (selected_target.right, anchor_y)
             end = (chosen.x, max(chosen.y, min(anchor_y, chosen.bottom)))
         elif chosen_side == "left":
-            start = (selected.visible_region.x, anchor_y)
+            start = (selected_target.x, anchor_y)
             end = (chosen.right, max(chosen.y, min(anchor_y, chosen.bottom)))
         elif chosen_side in {"above", "top-docked"}:
-            start = (anchor_x, selected.visible_region.y)
+            start = (anchor_x, selected_target.y)
             end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.bottom)
         else:
-            start = (anchor_x, selected.visible_region.bottom)
+            start = (anchor_x, selected_target.bottom)
             end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.y)
         return PopoverPlacement(
             rectangle=chosen,

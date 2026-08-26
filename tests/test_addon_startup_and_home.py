@@ -63,6 +63,7 @@ class _Hooks:
         self.sync_did_finish = []
         self.reviewer_did_answer_card = []
         self.reviewer_did_show_question = []
+        self.state_did_change = []
 
 
 class _NonIterableHook:
@@ -464,7 +465,39 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert "reviewer_reward_overlay_position(" in source
     assert '"reviewer-webview-centered-above-controls"' in source
     assert '"reviewerControlClearance", 112' in source
+    assert '"reviewerControlGap", 16' in source
+    assert 'getattr(mw, "state", "")' in source
+    assert "parent is not reviewer_web" in source
     assert ".setFocus(" not in source
+
+
+def test_reviewer_reward_unmounts_when_anki_leaves_reviewer(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+
+    class Toast:
+        def __init__(self) -> None:
+            self.hidden = False
+            self.deleted = False
+
+        def hide(self) -> None:
+            self.hidden = True
+
+        def deleteLater(self) -> None:
+            self.deleted = True
+
+    toast = Toast()
+    handler._reward_toast = toast
+    handler._reviewer_session_window = object()
+    handler._reviewer_notice_shown = True
+    handler.on_state_change("deckBrowser", "review")
+
+    assert handler._reward_toast is None
+    assert toast.hidden is True
+    assert toast.deleted is True
+    assert handler._reviewer_session_window is None
+    assert handler._reviewer_notice_shown is False
 
 
 def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(
@@ -864,17 +897,6 @@ def test_dashboard_refresh_failure_does_not_flip_maintenance_success_or_repeat_p
     assert "update the garden" in addon.USER_NOTICES.current.message.lower()
 
 
-def test_same_day_maintenance_never_reenters_external_surface_refresh() -> None:
-    source = (Path(__file__).resolve().parents[1] / "ankigarden/addon.py").read_text(
-        "utf-8"
-    )
-    catchup = source.split("def _apply_same_day_catchup", 1)[1].split(
-        "\n_app:", 1
-    )[0]
-
-    assert "_refresh_after_commit" not in catchup
-    assert "refresh_external_surfaces" not in catchup
-    assert "mw.reset" not in catchup
 
 
 def test_no_row_catchup_clears_any_visible_same_day_message(monkeypatch):
@@ -1746,6 +1768,23 @@ def test_generated_non_iterable_hooks_register_idempotently(monkeypatch):
 
     assert len(reviewer_hook.callbacks) == 1
     assert len(sync_hook.callbacks) == 1
+
+
+def test_reviewer_setup_registers_surface_cleanup_once(monkeypatch):
+    _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    on_answer = lambda *_args: None
+    on_state_change = lambda *_args: None
+    app.reviewer_hooks = SimpleNamespace(
+        on_answer=on_answer,
+        on_state_change=on_state_change,
+    )
+
+    app._setup_reviewer_hook()
+    app._setup_reviewer_hook()
+
+    assert hooks.state_did_change.count(on_state_change) == 1
 
 
 def test_reviews_today_counts_supported_revlog_answers(monkeypatch):

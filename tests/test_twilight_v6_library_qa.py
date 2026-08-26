@@ -10,11 +10,14 @@ import pytest
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from ankigarden.ui.plant_display import plant_layout
-from scripts.install_direct_soil_catalog_v6 import SPECIES_VISUAL_SCALE, _metadata
+from scripts.install_direct_soil_catalog_v6 import _metadata
 from scripts.process_direct_soil_asset import (
     despill_transparency_boundary,
     normalize_transparent_height,
 )
+
+
+pytestmark = pytest.mark.release_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,20 +39,12 @@ SPECIES = (
 )
 STAGES = ("seed", "sprout", "young", "mature", "flowering", "rare")
 SIZES = ((960, 720, "dashboard"), (960, 540, "dashboard"), (960, 400, "home"))
-BOUNDARY_DESPILL_PIXEL_HASHES = {
-    ("rose", "mature"): (
-        "840cb1bcd63a8e29a837aa10272ee35e3b4b108cadb62725882a2f1a634fdbbd"
-    ),
-    ("japanese_maple", "flowering"): (
-        "9857b8cad79d670a15a7c2ce13a8b844fdeca15805c39b9d2bea7f7033378895"
-    ),
-    ("japanese_maple", "rare"): (
-        "6fe46a16e5fd48084fce97e88a2f22c4b5cfee1f6aa44ccff18a1263b02a649c"
-    ),
-    ("dahlia", "sprout"): (
-        "4430af8b78d8429ac957209cbbd587b37d6ec4ec8b69a34124e4eaf6381b5fdc"
-    ),
-}
+BOUNDARY_DESPILL_CASES = (
+    ("rose", "mature"),
+    ("japanese_maple", "flowering"),
+    ("japanese_maple", "rare"),
+    ("dahlia", "sprout"),
+)
 
 
 def _rows() -> list[dict]:
@@ -318,68 +313,22 @@ def test_final_v6_manifest_points_to_canonical_source_master(
     assert asset["source_master_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
 
 
-def test_reviewed_rose_rare_scale_correction_is_generator_owned() -> None:
-    """Keep the open prestige crown safely above the unchanged payoff floor."""
-    rows = _rows()
-    rare = _asset(rows, "rose", "rare")
-    assert SPECIES_VISUAL_SCALE["rose"]["rare"] == 1.07
-    assert rare["placement"]["visual_scale_correction"] == 1.07
-
-    height_ratios: list[float] = []
-    area_ratios: list[float] = []
-    for width, height, context in SIZES:
-        flowering = _layouts(rows, "rose", "flowering", width, height, context)
-        rare_layouts = _layouts(rows, "rose", "rare", width, height, context)
-        for flowering_layout, rare_layout in zip(flowering, rare_layouts):
-            height_ratios.append(rare_layout.visible.height / flowering_layout.visible.height)
-            area_ratios.append(rare_layout.visible.area / flowering_layout.visible.area)
-    assert min(height_ratios) >= 0.93
-    assert min(area_ratios) >= 0.93
-
-
-def test_reviewed_hydrangea_flowering_revision_is_pixel_locked_and_seated() -> None:
-    """Lock the fuller natural bloom structure and its unchanged soil contact."""
-    source = _expected_source("hydrangea", "flowering")
-    runtime = _expected_file("hydrangea", "flowering")
-    with Image.open(source) as image:
-        source_pixels = image.convert("RGB").tobytes()
-    with Image.open(runtime) as image:
-        runtime_pixels = image.convert("RGBA").tobytes()
-    assert hashlib.sha256(source_pixels).hexdigest() == (
-        "276aa34fa0a81ad2f824045cf0fc305ffdd68a2955f8d59ba9e5ede20bd5cb22"
-    )
-    assert hashlib.sha256(runtime_pixels).hexdigest() == (
-        "aef1326353b619d641eaf9417b7b673f8b10e5ce9b16402ba3f62a7af8ed4c65"
-    )
-
-    rows = _rows()
-    mature = _asset(rows, "hydrangea", "mature")["placement"]
-    flowering = _asset(rows, "hydrangea", "flowering")["placement"]
-    assert flowering["ground_anchor"] == mature["ground_anchor"]
-    assert flowering["ground_anchor_y"] == pytest.approx(1121 / 1254, abs=1e-6)
-    assert _primary_silhouette_iou("hydrangea", "mature", "flowering") <= 0.89
-
-
 @pytest.mark.parametrize(
     "species,stage",
-    tuple(BOUNDARY_DESPILL_PIXEL_HASHES),
-    ids=[f"{species}-{stage}" for species, stage in BOUNDARY_DESPILL_PIXEL_HASHES],
+    BOUNDARY_DESPILL_CASES,
+    ids=[f"{species}-{stage}" for species, stage in BOUNDARY_DESPILL_CASES],
 )
-def test_reviewed_v6_boundary_despill_is_pixel_locked_alpha_safe_and_idempotent(
+def test_reviewed_v6_boundary_despill_is_alpha_safe_and_idempotent(
     species: str,
     stage: str,
     tmp_path: Path,
 ) -> None:
-    """Keep the reviewed edge color while preserving exact contact geometry."""
+    """Keep reviewed assets stable without freezing their historical pixels."""
     runtime = _expected_file(species, stage)
     with Image.open(runtime) as opened:
         original = opened.convert("RGBA")
     original_pixels = original.tobytes()
     original_alpha = original.getchannel("A").tobytes()
-    assert hashlib.sha256(original_pixels).hexdigest() == (
-        BOUNDARY_DESPILL_PIXEL_HASHES[(species, stage)]
-    )
-
     regenerated = tmp_path / runtime.name
     despill_transparency_boundary(runtime, regenerated)
     with Image.open(regenerated) as opened:

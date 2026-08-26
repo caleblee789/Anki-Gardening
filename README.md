@@ -17,7 +17,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Automated checks retain the exhaustive 126-state UI matrix, while the faster canonical contact sheet captures each of 26 distinct interfaces once at 100% scale. Runtime asset references, deterministic archive contents, exact source-to-package parity, responsive geometry, and edge states remain independent release gates.
+- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. Visual review reduced the current representative/full profiles to 16/31 structurally distinct surfaces and two/five generated sheets; 95 removed or behavioral-only IDs remain permanently reserved. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -181,11 +181,11 @@ reward-state migration. Failed reads or writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, foreground, and the watering can in one effects layer while the Garden name, plant summary, and **Open Garden** action remain legible.
+- The Deck Browser, Overview, first-run state, active-plant state, and Settings adapt one shared preview snapshot. Its compact scenic postcard keeps weather, scenery, plants, and foreground in one effects layer while the Garden name, nurtured-plant summary, and **Open Garden** action remain legible.
 - The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens **Plants**, **Fertilizers and boosts**, **Garden beds**, and **Weather and Scenery**; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
 - The full Garden header gives the Garden name primary title position, followed by **Garden Progress**, **Collection**, and secondary **Settings** navigation.
 - Long metric values keep their normal type size; the Nurtured Plant, Anki Streak, and Garden Coin groups wrap onto two rows when their measured content no longer fits.
-- Watering cans use the six-bed geometry authority and row-level opaque planter-and-soil exclusions, so they stay beside the nurtured plant, clear of planter artwork, and behind the correct foreground layer in both Garden and Home renderers.
+- The watering-can artwork remains bundled and resolvable for compact **Nurtured** badges, but Garden and preview scenes do not place it beside plants.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Optional reviewer notices are quiet, silent, non-focus-stealing reward cards with relevant plant or item art.
 - Collection is the collectible browser and Garden loadout manager. It derives categories from the registry, distinguishes explicit mysteries from ordinary locked items, manages plant placement, and owns reversible previews plus atomic equipment and visibility changes.
@@ -233,8 +233,9 @@ Build the deterministic production package with:
 
 The artifact is atomically validated and written to
 `dist/anki_garden.ankiaddon`. It excludes the capture harness and fixes all
-development-mutation capabilities off. A UI-capture package must be requested
-explicitly and written to a different path:
+development-mutation capabilities off. The complete `ankigarden/capture/`
+subtree is capture-only. A UI-capture package must be requested explicitly and
+written to a different path:
 
 ```bash
 ./.venv/bin/python scripts/package_addon.py --capture \
@@ -246,13 +247,38 @@ Capture builds cannot overwrite the production artifact.
 ## Development checks
 
 ```bash
+# Fast feedback (the default):
 ./.venv/bin/pytest -q
+
+# Slower package, capture, artwork, and live-Qt release evidence:
+./.venv/bin/pytest -q -o addopts='' -m release_evidence
+
+# Explicit union of both lanes:
+./.venv/bin/pytest -q -o addopts=''
+
+# Non-mutating v25 capture diagnostics and registry inspection:
+./.venv/bin/python scripts/capture_sequence.py --doctor
+./.venv/bin/python scripts/capture_sequence.py --list-surfaces
+./.venv/bin/python scripts/capture_sequence.py --plan-only --profile representative
+
+# Incremental representative preflight, full release capture, or isolated shutdown gate:
+./.venv/bin/python scripts/capture_sequence.py --profile representative
+./.venv/bin/python scripts/capture_sequence.py --profile full
+./.venv/bin/python scripts/capture_sequence.py --gate-only
+
 PYTHONPYCACHEPREFIX=/private/tmp/anki-garden-pycache ./.venv/bin/python -m compileall -q ankigarden scripts tests
 ./.venv/bin/python scripts/audit_assets.py
 ./.venv/bin/python scripts/package_addon.py --production
 python3 -m zipfile -t dist/anki_garden.ankiaddon
 git diff --check
 ```
+
+Capture contract and orchestration tests are deliberately small and Qt-free;
+the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
+proof is produced by the repository capture command instead of simulated by a
+large pytest matrix. The fast lane, release-evidence lane, and explicit union
+are each maintained below one minute on the canonical development machine; CI
+enforces a 60-second ceiling on each independently scheduled lane.
 
 The runtime target is Anki 25.07 through 26.08. Release acceptance installs the exact rebuilt archive into a separately keyed, disposable Anki 26.08 base/profile with sync disabled.
 

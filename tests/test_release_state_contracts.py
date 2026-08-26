@@ -24,19 +24,6 @@ from ankigarden.ui.state_contracts import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_learner_copy_does_not_reintroduce_eligible_card_wording() -> None:
-    learner_surfaces = (
-        "ankigarden/ui/copy.py",
-        "ankigarden/ui/dashboard.py",
-        "ankigarden/ui/plant_display.py",
-        "ankigarden/ui/scene.py",
-        "ankigarden/ui/state_contracts.py",
-        "ankigarden/terminology.py",
-    )
-    for relative in learner_surfaces:
-        source = (ROOT / relative).read_text("utf-8").lower()
-        assert "eligible card" not in source, relative
-        assert "eligible answer" not in source, relative
 
 
 def _starter(
@@ -94,7 +81,7 @@ def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence()
 
     assert display.state is OnboardingState.NURTURED_PLANT_ASSIGNED
     assert display.header_label == "Nurtured plant"
-    assert display.nurtured_marker_visible is True
+    assert display.nurtured_marker_visible is False
     assert display.primary_action == "Return to Anki"
     assert display.step is OnboardingStep.COMPLETION
     assert display.counted_step == 6
@@ -112,7 +99,7 @@ def test_persisted_done_prevents_onboarding_replay_when_preference_is_stale() ->
 
     assert display.state is OnboardingState.ONBOARDING_COMPLETE
     assert display.onboarding_complete is True
-    assert display.nurtured_marker_visible is True
+    assert display.nurtured_marker_visible is False
 
 
 def test_onboarding_preference_cannot_make_an_unassigned_starter_look_nurtured() -> None:

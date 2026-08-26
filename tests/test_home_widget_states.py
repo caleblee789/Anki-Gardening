@@ -1,6 +1,4 @@
 import json
-import math
-import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,10 +15,6 @@ from ankigarden.ui.home_widget import (
     render_home_widget,
 )
 from ankigarden.models.state import Achievement
-from ankigarden.ui.plant_display import (
-    NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
-    NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
-)
 from ankigarden.ui.state import garden_preview_from_values
 
 
@@ -741,7 +735,7 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
     assert 'data-testid="home-growth-progress"' in html
 
 
-def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> None:
+def test_scene_preserves_depth_order_without_scenic_watering_can() -> None:
     base = _sample_data()
     plants = (
         {"slot_index": 0, "name": "Rose", "stage": "flowering", "url": "rose.svg", "is_active": True},
@@ -764,22 +758,17 @@ def test_scene_preserves_depth_order_and_renders_nurturing_watering_can() -> Non
     assert "animation:none !important; transition:none !important" in html
     assert "ag-home__focus-marker" not in html
     assert ">★</span>" not in html
-    assert 'data-testid="home-nurturing-marker"' in html
-    assert 'data-testid="home-nurturing-marker-fallback"' in html
-    assert 'class="ag-home__marker-layer"' in html
-    assert html.index('class="ag-home__marker-layer"') < html.index(
-        'class="ag-home__details home-summary-panel"'
-    )
-    assert "/_addons/123/assets/nurtured_marker_spout_right.webp" in html
-    assert 'data-marker-slot="0"' in html
-    assert 'data-marker-side="left"' in html
-    assert 'data-marker-orientation="spout-right"' in html
-    assert "if(f){f.style.display='block';}" in html
-    assert "display:none" in html
+    assert 'data-testid="home-nurturing-marker"' not in html
+    assert 'data-testid="home-nurturing-marker-fallback"' not in html
+    assert 'data-testid="home-nurturing-marker-shadow"' not in html
+    assert 'class="ag-home__marker-layer"' not in html
+    assert "/_addons/123/assets/nurtured_marker.webp" not in html
+    assert "/_addons/123/assets/nurtured_marker_spout_right.webp" not in html
+    assert 'data-active-slot="0"' in html
     assert "Watering can:" not in html
 
 
-def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
+def test_home_preview_omits_watering_can_for_each_nurtured_slot() -> None:
     base = _sample_data()
     manifest = json.loads(
         (
@@ -822,6 +811,7 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
                 "/_addons/123/assets/nurtured_marker_spout_right.webp"
             ),
         })
+
         html = render_home_widget(
             HomeWidgetSnapshot(
                 request_id=90 + active_slot,
@@ -829,149 +819,50 @@ def test_home_watering_can_stays_close_to_each_nurtured_plant() -> None:
                 data=data,
             )
         )
-        markers = re.findall(
-            r'<img[^>]*data-testid="home-nurturing-marker"[^>]*>',
-            html,
-        )
-        assert len(markers) == 1
-        marker = markers[0]
-        marker_band = ("far", "middle", "near")[active_slot // 2]
-        assert f'data-marker-band="{marker_band}"' in html
-        assert html.index(f'data-marker-band="{marker_band}"') < html.index(
-            f'ag-home__planter-fallback--foreground" data-fallback-planter-band="{marker_band}"'
-        )
-        expected_side = re.search(
-            r'data-marker-side="(left|right)"', marker
-        ).group(1)
-        expected_orientation = (
-            "spout-right" if expected_side == "left" else "spout-left"
-        )
-        assert f'data-marker-slot="{active_slot}"' in marker
-        assert f'data-marker-side="{expected_side}"' in marker
-        assert f'data-marker-orientation="{expected_orientation}"' in marker
-        rect = [
-            float(value)
-            for value in re.search(
-                r'data-marker-rect="([^"]+)"', marker
-            ).group(1).split(",")
-        ]
-        pulse = [
-            float(value)
-            for value in re.search(
-                r'data-marker-pulse="([^"]+)"', marker
-            ).group(1).split(",")
-        ]
+
+        for forbidden in (
+            'data-testid="home-nurturing-marker"',
+            'data-testid="home-nurturing-marker-fallback"',
+            'data-testid="home-nurturing-marker-shadow"',
+            'class="ag-home__marker-layer"',
+            "data-marker-slot=",
+            "/_addons/123/assets/nurtured_marker.webp",
+            "/_addons/123/assets/nurtured_marker_spout_right.webp",
+        ):
+            assert forbidden not in html
+        expected_band = ("far", "middle", "near")[active_slot // 2]
+        expected_side = "left" if active_slot % 2 == 0 else "right"
+        expected_focal_y = ("70.0", "40.0", "10.0")[active_slot // 2]
         assert f'data-active-slot="{active_slot}"' in html
-        assert f'data-active-band="{marker_band}"' in html
-        assert (
-            f'data-active-side="{"left" if active_slot % 2 == 0 else "right"}"'
-            in html
-        )
-        assert (
-            f'--ag-home-focal-y:{("70.0", "40.0", "10.0")[active_slot // 2]}%'
-            in html
-        )
-        expected_scale = ("0.78", "0.90", "1.00")[active_slot // 2]
-        assert f'data-marker-scale="{expected_scale}"' in marker
-        shadows = re.findall(
-            r'<span[^>]*data-testid="home-nurturing-marker-shadow"[^>]*>',
-            html,
-        )
-        assert len(shadows) == 1
-        assert f'data-marker-slot="{active_slot}"' in shadows[0]
-        assert f'data-marker-scale="{expected_scale}"' in shadows[0]
-        shadow_rect = [
-            float(value)
-            for value in re.search(
-                r'data-marker-shadow="([^"]+)"', shadows[0]
-            ).group(1).split(",")
-        ]
-        assert shadow_rect[2] < rect[2]
-        assert shadow_rect[1] >= rect[1] + rect[3] * 0.80
-        canonical_scale = 635 / 1000
-        frame_top = (
-            float(("70.0", "40.0", "10.0")[active_slot // 2]) / 100 * 152
-            - 420 * canonical_scale / 2
-        )
-        marker_top = frame_top + rect[1] * canonical_scale
-        marker_bottom = frame_top + (rect[1] + rect[3]) * canonical_scale
-        shadow_bottom = frame_top + (
-            shadow_rect[1] + shadow_rect[3]
-        ) * canonical_scale
-        assert 0 <= marker_top < marker_bottom <= 152
-        assert shadow_bottom <= 152
-        target_ground = [
-            float(value)
-            for value in re.search(
-                r'data-marker-target-ground="([^"]+)"', marker
-            ).group(1).split(",")
-        ]
-        planter = [
-            float(value)
-            for value in re.search(
-                r'data-marker-planter-rect="([^"]+)"', marker
-            ).group(1).split(",")
-        ]
-        planter_exclusions = [
-            [float(value) for value in bounds.split(",")]
-            for bounds in re.search(
-                r'data-marker-planter-exclusions="([^"]+)"', marker
-            ).group(1).split(";")
-            if bounds
-        ]
-        root_clearance = re.search(
-            r'<div id="ag-home-root"[^>]*data-summary-clearance="([^"]+)"',
-            html,
-        )
-        assert root_clearance is not None
-        assert root_clearance.group(1) == "none"
-        assert 44 <= rect[2] <= 88
-        assert rect[2] == rect[3]
-        assert pulse[0] >= 0 and pulse[1] >= 0
-        assert pulse[0] + pulse[2] <= 1000
-        assert pulse[1] + pulse[3] <= 420
-        assert planter_exclusions
-        for exclusion in planter_exclusions:
-            assert (
-                pulse[0] + pulse[2] <= exclusion[0]
-                or exclusion[0] + exclusion[2] <= pulse[0]
-                or pulse[1] + pulse[3] <= exclusion[1]
-                or exclusion[1] + exclusion[3] <= pulse[1]
-            )
-        marker_center_x = rect[0] + rect[2] / 2
-        marker_ground_y = rect[1] + rect[3] * 0.916
-        plant_distance = math.hypot(
-            marker_center_x - target_ground[0],
-            marker_ground_y - target_ground[1],
-        )
-        assert (
-            plant_distance
-            <= planter[2] * NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO
-        )
-        assert abs(marker_ground_y - target_ground[1]) <= (
-            rect[2] * NURTURED_MARKER_MAX_GROUND_DELTA_RATIO
-        )
-        if expected_side == "left":
-            assert marker_center_x < target_ground[0]
-        else:
-            assert marker_center_x > target_ground[0]
+        assert f'data-active-band="{expected_band}"' in html
+        assert f'data-active-side="{expected_side}"' in html
+        assert f"--ag-home-focal-y:{expected_focal_y}%" in html
 
 
-def test_nurturing_marker_has_a_safe_graphical_fallback() -> None:
+def test_home_preview_omits_watering_can_fallback_without_asset_urls() -> None:
     base = _sample_data()
     plants = (
-        {"slot_index": 0, "name": "Rose", "stage": "seed", "url": "rose.svg", "is_active": True},
+        {
+            "slot_index": 0,
+            "name": "Rose",
+            "stage": "seed",
+            "url": "rose.svg",
+            "is_active": True,
+        },
     )
     data = HomeWidgetData(**{
         **base.__dict__,
         "scene_items": plants,
     })
 
-    html = render_home_widget(HomeWidgetSnapshot(request_id=81, phase="success", data=data))
+    html = render_home_widget(
+        HomeWidgetSnapshot(request_id=81, phase="success", data=data)
+    )
 
-    assert 'data-testid="home-nurturing-marker-fallback"' in html
+    assert 'data-testid="home-nurturing-marker-fallback"' not in html
     assert 'data-testid="home-nurturing-marker"' not in html
-    assert "display:block" in html
+    assert 'data-testid="home-nurturing-marker-shadow"' not in html
+    assert 'class="ag-home__marker-layer"' not in html
 
 
 def test_scene_uses_readable_fallback_when_plant_asset_is_missing() -> None:

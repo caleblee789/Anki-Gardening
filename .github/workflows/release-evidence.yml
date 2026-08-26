@@ -1,0 +1,57 @@
+name: Release Evidence
+
+on:
+  pull_request:
+    paths:
+      - 'ankigarden/assets/**'
+      - 'ankigarden/build_capabilities.py'
+      - 'ankigarden/capture_ui_faces.py'
+      - 'ankigarden/capture/**'
+      - 'ankigarden/config.json'
+      - 'ankigarden/garden_finds.py'
+      - 'ankigarden/hooks/reviewer.py'
+      - 'ankigarden/manifest.json'
+      - 'ankigarden/reward_presentation.py'
+      - 'ankigarden/ui/**'
+      - 'scripts/capture*.py'
+      - 'scripts/package_addon.py'
+      - 'scripts/validate_ui_capture.py'
+      - 'tests/fixtures/**'
+      - 'tests/test_capture*.py'
+      - 'tests/test_validate_ui_capture*.py'
+      - 'tests/test_*asset*.py'
+      - 'tests/test_*catalog*.py'
+      - 'tests/test_*package*.py'
+      - 'tests/test_*live*.py'
+      - 'tests/test_garden_studio_advanced_scroll_regression.py'
+      - 'tests/test_release_restart_and_render_matrix.py'
+      - 'tests/test_twilight_v6_library_qa.py'
+      - '.github/workflows/release-evidence.yml'
+      - 'pytest.ini'
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 8 * * 0'
+  workflow_dispatch:
+
+jobs:
+  release-evidence:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest pillow
+
+      - name: Run release-evidence tests
+        run: >-
+          timeout --foreground --signal=TERM 60s
+          pytest -q -o addopts='' -m release_evidence

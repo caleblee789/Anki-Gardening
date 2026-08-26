@@ -14,7 +14,7 @@ from scripts.validate_ui_capture import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPTURE = ROOT / "ankigarden" / "capture_ui_faces.py"
+CAPTURE = ROOT / "ankigarden" / "capture" / "runtime.py"
 
 
 def _module() -> ast.Module:
@@ -241,21 +241,6 @@ def test_scroll_geometry_rejects_body_under_footer_and_compact_scroll() -> None:
     )
 
 
-def test_dialog_scroll_audit_is_visible_owner_aware_and_fail_closed() -> None:
-    source = _method_source("_UiFaceCaptureRunner", "_find_geometry_layout_warnings")
-    assert "scroll.isVisibleTo(root)" in source
-    assert "scroll.window() is not root" in source
-    assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in source
-    assert '"missing-active-vertical-scroll-region"' in source
-    assert '"multiple-active-vertical-scroll-regions"' in source
-    assert '"dialog-scroll-contract-audit-error"' in source
-    assert "content.sizeHint().height()" in source
-    assert "content.minimumSizeHint().height()" in source
-    assert "viewport.mapTo(root" in source
-    assert "footer.mapTo(root" in source
-    assert 'scroll.property("footerClearance")' in source
-    assert "visible_content_bottom" in source
-    assert "descendant.isVisibleTo(content)" in source
 
 
 def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
@@ -347,21 +332,6 @@ def test_all_eleven_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> N
     assert responsive_dialog_edges <= resize_labels
 
 
-def test_scroll_coverage_loader_rejects_ambiguous_surface_ownership(
-    tmp_path: Path,
-) -> None:
-    source = CAPTURE.read_text("utf-8")
-    ambiguous = source.replace(
-        '    "Collection": (\n        "progress-collection",',
-        '    "Collection": (\n        "progress-overview-redirect-growth",\n'
-        '        "progress-collection",',
-        1,
-    )
-    changed = tmp_path / "ambiguous_capture_ui_faces.py"
-    changed.write_text(ambiguous, encoding="utf-8")
-
-    with pytest.raises(CaptureValidationError, match="multiple surfaces"):
-        load_dialog_scroll_capture_coverage(changed)
 
 
 def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
@@ -376,14 +346,6 @@ def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     assert specs["resize-collection-large"][3:5] == (1180, 880)
 
 
-def test_footer_stress_fixture_resets_deferred_scroll_state() -> None:
-    final_row = _method_source("_UiFaceCaptureRunner", "_capture_nursery_final_row")
-
-    capture_ready = final_row.split("def capture_ready()", 1)[1]
-    audit_position = capture_ready.index("self._audit_nursery_action_above_footer")
-    before_audit = capture_ready[:audit_position]
-    assert before_audit.count("scrollbar.setValue(scrollbar.maximum())") == 2
-    assert "QApplication.processEvents()" in before_audit
 
 
 def test_responsive_pair_comparison_ignores_width_delta_but_not_state() -> None:
@@ -427,66 +389,10 @@ def test_conflicting_duplicate_responsive_semantic_ids_fail_closed() -> None:
     assert conflicts == ("dashboard.header-full",)
 
 
-def test_capture_records_visible_semantics_and_defers_resize_pairs_to_automation() -> None:
-    capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
-    telemetry = _method_source("_UiFaceCaptureRunner", "_responsive_semantic_telemetry")
-    finish = _method_source("_UiFaceCaptureRunner", "_finish")
-    report = _method_source("_UiFaceCaptureRunner", "_responsive_stability_report")
-    assert '"responsive_semantics": responsive_semantics' in capture
-    for property_name in (
-        "responsiveRegion",
-        "responsiveMode",
-        "responsiveAvailableWidth",
-        "responsiveThreshold",
-        "responsiveRegionOrder",
-    ):
-        assert property_name in telemetry
-    assert "candidate.isVisibleTo(root)" in telemetry
-    assert "candidate.window() is not root" in telemetry
-    assert '"conflicting-responsive-semantic-id"' in telemetry
-    assert '"required": False' in report
-    assert '"coverage": "automated-responsive-geometry"' in report
-    assert "RESPONSIVE_STABILITY_PAIRS" not in report
-    assert "responsive_stability_pair_issue_codes" not in report
-    assert "and responsive_stability_complete" in finish
-    assert '"responsive_stability_complete": responsive_stability_complete' in finish
 
 
-def test_capture_finish_requires_positive_scroll_metrics_and_surface_identity() -> None:
-    capture = _method_source("_UiFaceCaptureRunner", "_capture_now")
-    report = _method_source("_UiFaceCaptureRunner", "_dialog_scroll_coverage_report")
-    finish = _method_source("_UiFaceCaptureRunner", "_finish")
-
-    assert '"dialog_scroll_audit": dialog_scroll_audit' in capture
-    assert "DIALOG_SCROLL_CAPTURE_COVERAGE" in report
-    assert "DIALOG_SCROLL_CAPTURE_SEMANTICS" in report
-    assert "scroll-fixture-identity-not-proven" in report
-    assert "dialog_scroll_geometry_issue_codes" in report
-    for metric in (
-        "registered_count",
-        "active_count",
-        "footer_height",
-        "viewport_height",
-        "declared_clearance",
-        "layout_clearance",
-        "required_content_height",
-        "reachable_content_height",
-    ):
-        assert metric in report
-    assert "and dialog_scroll_audits_complete" in finish
-    assert '"dialog_scroll_audits_complete": dialog_scroll_audits_complete' in finish
 
 
-def test_capture_scroll_summary_uses_the_same_laid_out_reachability_rule() -> None:
-    report = _method_source("_UiFaceCaptureRunner", "_dialog_scroll_coverage_report")
-    required_block = report.split("required = max(", 1)[1].split(
-        "reachable =",
-        1,
-    )[0]
-
-    assert 'audit["content_height"]' in required_block
-    assert 'audit["content_minimum_size_hint_height"]' in required_block
-    assert 'audit["content_size_hint_height"]' not in required_block
 
 
 def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> None:

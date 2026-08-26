@@ -82,18 +82,15 @@ Catalog item art is square transparent storybook gouache. Basic, Quality, and
 Magical Fertilizer bag names are composited deterministically for exact
 spelling; the Booster Potion is visually distinct; and Small, Standard, and
 Grand Growth Charges use one, two, and three luminous pips. Surrounding UI owns
-the catalog labels. The shared Nurturing marker is a sage-and-teal watering can.
-Its paired spout-left and spout-right variants come from the same unlettered
-source; the exact word `Nurturing` is recomposed upright in bold, centered type
-after mirroring. Both transparent 512-pixel lossless WebP assets are used by the
-full Garden, Customize, Settings, Deck Browser, and Overview scenes. The shared
-planter draw box sets marker scale, while placement tucks the can beside the
-plant silhouette and over the planter's outer edge so the cue remains visibly
-attached to the nurtured plant. Its painted base aligns to the shared soil
-anchor rather than the bottom of the planter artwork. Odd-numbered plots use the
-left side with the spout pointing right; even-numbered plots use the opposite
-side and orientation. The asset audit enforces canonical paths,
-dimensions, RGBA
+the catalog labels. The retained Nurturing artwork is a sage-and-teal watering
+can. Its paired spout-left and spout-right variants come from the same
+unlettered source; the exact word `Nurturing` is recomposed upright in bold,
+centered type after mirroring. Both transparent 512-pixel lossless WebP assets
+remain bundled, manifest-resolvable, and available for compact **Nurtured**
+badge iconography. Garden, Customize, Settings, Deck Browser, and Overview
+scenes intentionally do not place either variant beside a plant. The dormant
+placement metadata remains with the assets for compatibility and future reuse.
+The asset audit continues to enforce canonical paths, dimensions, RGBA
 transparency, and at least one visible pixel plus transparent background.
 
 ## Generation and validation

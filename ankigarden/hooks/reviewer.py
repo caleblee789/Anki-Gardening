@@ -165,6 +165,30 @@ class ReviewerHookHandler:
         self._reviewer_notice_shown = False
         self._hide_no_starter_notice()
 
+    def on_state_change(self, new_state: str, *_args: Any) -> None:
+        """Unmount Reviewer-only feedback before another Anki surface paints."""
+
+        if str(new_state or "") == "review":
+            return
+        self._hide_reward_toast()
+        self._hide_no_starter_notice()
+        self._reviewer_session_window = None
+        self._reviewer_notice_shown = False
+
+    def _hide_reward_toast(self) -> None:
+        toast = self._reward_toast
+        self._reward_toast = None
+        if toast is None:
+            return
+        try:
+            toast.hide()
+            toast.deleteLater()
+        except Exception:
+            logger.debug(
+                "Anki Garden: reviewer reward feedback could not be hidden",
+                exc_info=True,
+            )
+
     def _show_no_starter_notice(self) -> None:
         try:
             from aqt.qt import QFrame, QLabel, QTimer, Qt
@@ -807,7 +831,15 @@ class ReviewerHookHandler:
                 Qt,
             )
 
+            if str(getattr(mw, "state", "") or "") != "review":
+                self._hide_reward_toast()
+                return False
             parent = reviewer_overlay_parent(mw)
+            reviewer = getattr(mw, "reviewer", None)
+            reviewer_web = getattr(reviewer, "web", None)
+            if reviewer_web is None or parent is not reviewer_web:
+                self._hide_reward_toast()
+                return False
             previous = self._reward_toast
             if previous is not None:
                 try:
@@ -818,12 +850,33 @@ class ReviewerHookHandler:
 
             toast = QFrame(parent)
             toast.setObjectName("ankiGardenRewardToast")
+            toast.setProperty("semanticId", "reviewer.reward-toast")
             toast.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             toast.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             toast.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             toast.setProperty(
                 "findTier",
                 str(getattr(event, "tier", "") or "").strip().lower(),
+            )
+            toast.setProperty(
+                "rewardEventCount",
+                len(tuple(getattr(event, "event_ids", ()) or ())),
+            )
+            toast.setProperty(
+                "rewardFindCount",
+                max(0, int(getattr(event, "find_count", 0) or 0)),
+            )
+            toast.setProperty(
+                "rewardHasTitle",
+                bool(str(getattr(event, "title", "") or "").strip()),
+            )
+            toast.setProperty(
+                "rewardHasMessage",
+                bool(str(getattr(event, "message", "") or "").strip()),
+            )
+            toast.setProperty(
+                "rewardHasDetail",
+                bool(str(getattr(event, "reward_detail", "") or "").strip()),
             )
             accessible_parts = [
                 str(getattr(event, "title", "") or "Anki Garden update"),
@@ -843,11 +896,11 @@ class ReviewerHookHandler:
                 "QFrame#ankiGardenRewardToast[findTier=\"exceptional\"] {"
                 " background: #1d3b32; border: 1px solid #8773a8; }"
                 "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
-                " font-size: 15px; font-weight: 700; }"
+                " font-size: 14px; font-weight: 600; }"
                 "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
                 " font-size: 13px; }"
                 "QLabel#ankiGardenRewardDetail { color: #f5df9a;"
-                " font-size: 14px; font-weight: 700; }"
+                " font-size: 14px; font-weight: 600; }"
                 "QLabel#ankiGardenRewardTier { color: #bad5c3;"
                 " background: #21483d; border: 1px solid #4e7765;"
                 " border-radius: 7px; padding: 1px 6px; font-size: 12px; }"
@@ -977,6 +1030,7 @@ class ReviewerHookHandler:
                 "reviewer-webview-centered-above-controls",
             )
             toast.setProperty("reviewerControlClearance", 112)
+            toast.setProperty("reviewerControlGap", 16)
             toast.setProperty("reviewerViewportWidth", viewport_width)
             toast.setProperty("reviewerViewportHeight", viewport_height)
             toast.setProperty(
@@ -995,8 +1049,13 @@ class ReviewerHookHandler:
             def dismiss() -> None:
                 if self._reward_toast is toast:
                     self._reward_toast = None
-                toast.hide()
-                toast.deleteLater()
+                try:
+                    toast.hide()
+                    toast.deleteLater()
+                except RuntimeError:
+                    # Reviewer navigation or capture teardown may already have
+                    # deleted the native frame. Dismissal is idempotent.
+                    return
 
             QTimer.singleShot(4200, dismiss)
             return True

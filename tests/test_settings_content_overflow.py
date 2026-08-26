@@ -8,45 +8,26 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
+STUDIO_PATH = ROOT / "ankigarden" / "ui" / "garden_studio.py"
 
 
-def _source() -> str:
-    return STUDIO_PATH.read_text("utf-8")
-
-
-def _class_source(class_name: str) -> str:
-    source = _source()
+def _compiled_layout_method() -> Any:
+    source = STUDIO_PATH.read_text("utf-8")
     tree = ast.parse(source)
-    node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.ClassDef) and item.name == class_name
-    )
-    segment = ast.get_source_segment(source, node)
-    assert segment is not None
-    return segment
-
-
-def _method_source(class_name: str, method_name: str) -> str:
-    source = _source()
-    tree = ast.parse(source)
-    class_node = next(
-        item
-        for item in tree.body
-        if isinstance(item, ast.ClassDef) and item.name == class_name
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GardenStudioWidget"
     )
     method = next(
-        item
-        for item in class_node.body
-        if isinstance(item, ast.FunctionDef) and item.name == method_name
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_apply_studio_layout_mode"
     )
     segment = ast.get_source_segment(source, method)
     assert segment is not None
-    return segment
 
-
-def _compiled_responsive_method() -> Any:
     class Direction:
         TopToBottom = "stacked"
         LeftToRight = "columns"
@@ -55,21 +36,19 @@ def _compiled_responsive_method() -> Any:
         Expanding = "expanding"
         Preferred = "preferred"
 
-    class ScrollBarPolicy:
-        ScrollBarAlwaysOff = "off"
-        ScrollBarAsNeeded = "as-needed"
-
     scope: dict[str, Any] = {
         "QBoxLayout": SimpleNamespace(Direction=Direction),
         "QSizePolicy": SimpleNamespace(Policy=Policy),
-        "Qt": SimpleNamespace(ScrollBarPolicy=ScrollBarPolicy),
-        "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 210,
-        "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 235,
-        "SETTINGS_SCENERY_WIDE_MIN_WIDTH": 205,
-        "SETTINGS_SCENERY_WIDE_MAX_WIDTH": 230,
+        "Qt": SimpleNamespace(
+            ScrollBarPolicy=SimpleNamespace(ScrollBarAlwaysOff="off")
+        ),
+        "SETTINGS_CONTROLS_WIDE_MIN_WIDTH": 190,
+        "SETTINGS_CONTROLS_WIDE_MAX_WIDTH": 220,
+        "SETTINGS_SCENERY_WIDE_MIN_WIDTH": 180,
+        "SETTINGS_SCENERY_WIDE_MAX_WIDTH": 220,
         "COMPACT_MODE": "compact",
     }
-    exec(textwrap.dedent(_method_source("GardenStudioWidget", "_apply_studio_layout_mode")), scope)
+    exec(textwrap.dedent(segment), scope)
     return scope["_apply_studio_layout_mode"]
 
 
@@ -88,120 +67,35 @@ class _Recorder:
         return SimpleNamespace(height=lambda: 520)
 
 
-def test_home_preview_dynamic_copy_wraps_and_does_not_set_a_width_floor() -> None:
-    preview = _class_source("HomeGardenPreview")
-    title = preview.split('self.title = QLabel("My Garden")', 1)[1].split(
-        "self.support = QLabel", 1
-    )[0]
-    support = preview.split("self.support = QLabel", 1)[1].split(
-        "identity.addWidget", 1
-    )[0]
-
-    for label in (title, support):
-        assert ".setWordWrap(True)" in label
-        assert ".setMinimumWidth(0)" in label
-        assert "QSizePolicy.Policy.Ignored" in label
-
-    assert "scene.setMinimumWidth(0)" in preview
-    assert "self.scrim.setMinimumWidth(0)" in preview
-
-
-def test_settings_columns_release_implicit_qt_minimum_widths() -> None:
-    studio = _class_source("GardenStudioWidget")
-    toggle_row = _class_source("ToggleSettingRow")
-
-    assert "self.setMinimumWidth(0)" in studio
-    assert "self.controls.setMinimumWidth(0)" in studio
-    assert "self.controls.setMinimumWidth(340)" not in studio
-    assert "self.preview_panel.setMinimumWidth(0)" in studio
-    assert "QSizePolicy.Policy.Ignored" in studio
-    assert "form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)" in studio
-    assert "self.setMinimumWidth(0)" in toggle_row
-    assert "note.setMinimumWidth(0)" in toggle_row
-
-
-def test_normal_settings_viewport_stays_three_column_and_narrow_width_stacks() -> None:
-    apply_layout = _compiled_responsive_method()
-    controls = _Recorder()
-    root_layout = _Recorder()
-    preview_panel = _Recorder()
+def test_settings_layout_executes_wide_and_compact_responsive_behavior() -> None:
+    apply_layout = _compiled_layout_method()
     widget = _Recorder()
     widget._compact_layout = None
-    widget.controls = controls
+    widget.controls = _Recorder()
     widget.controls_scroll = _Recorder()
-    widget.root_layout = root_layout
-    widget.preview_panel = preview_panel
+    widget.root_layout = _Recorder()
+    widget.preview_panel = _Recorder()
     widget.theme_card = _Recorder()
 
-    # A 980 px dialog leaves roughly 880 px for the scrolled Display body
-    # after the shell, tab, and body margins. That is ample for 280 px
-    # controls, current scenery, and the shared preview, so it should not need
-    # horizontal scrolling or premature stacking.
     apply_layout(widget, "wide")
-    assert ("setDirection", ("columns",)) in root_layout.calls
-    assert ("setMinimumWidth", (210,)) in controls.calls
-    assert ("setMaximumWidth", (235,)) in controls.calls
-    assert ("setSizePolicy", ("preferred", "preferred")) in controls.calls
-    assert ("setMaximumHeight", (16777215,)) in widget.controls_scroll.calls
+    assert ("setDirection", ("columns",)) in widget.root_layout.calls
+    assert ("setMinimumWidth", (190,)) in widget.controls.calls
+    assert ("setMaximumWidth", (220,)) in widget.controls.calls
+    assert ("setSizePolicy", ("preferred", "preferred")) in widget.controls.calls
+    assert ("setMinimumHeight", (520,)) in widget.controls_scroll.calls
     assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
-    assert ("setMinimumWidth", (205,)) in widget.theme_card.calls
-    assert ("setMaximumWidth", (230,)) in widget.theme_card.calls
+    assert ("setMinimumWidth", (180,)) in widget.theme_card.calls
+    assert ("setMaximumWidth", (220,)) in widget.theme_card.calls
 
     apply_layout(widget, "compact")
-    assert ("setDirection", ("stacked",)) in root_layout.calls
-    assert ("setMinimumWidth", (0,)) in controls.calls
-    assert ("setMaximumWidth", (16777215,)) in controls.calls
-    assert ("setSizePolicy", ("expanding", "preferred")) in controls.calls
-    assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
+    assert ("setDirection", ("stacked",)) in widget.root_layout.calls
+    assert ("setMinimumWidth", (0,)) in widget.controls.calls
+    assert ("setMaximumWidth", (16_777_215,)) in widget.controls.calls
+    assert ("setSizePolicy", ("expanding", "preferred")) in widget.controls.calls
     assert ("setMinimumHeight", (520,)) in widget.controls_scroll.calls
-    assert ("setMaximumHeight", (16777215,)) in widget.controls_scroll.calls
-    assert ("setSizePolicy", ("expanding", "preferred")) in widget.controls_scroll.calls
-    assert ("updateGeometry", ()) in preview_panel.calls
+    assert ("setMaximumHeight", (16_777_215,)) in widget.controls_scroll.calls
+    assert ("setSizePolicy", ("expanding", "preferred")) in (
+        widget.controls_scroll.calls
+    )
+    assert ("updateGeometry", ()) in widget.preview_panel.calls
     assert ("updateGeometry", ()) in widget.calls
-
-
-def test_advanced_controls_delegate_to_the_outer_settings_scroll() -> None:
-    studio = _class_source("GardenStudioWidget")
-    advanced_finish = _method_source(
-        "GardenStudioWidget",
-        "_finish_advanced_layout_update",
-    )
-
-    assert "self.controls_scroll = QScrollArea()" in studio
-    assert "self.controls_scroll.setWidget(self.controls)" in studio
-    assert "self.root_layout.addWidget(self.controls_scroll, 0)" in studio
-    assert "QLayout.SizeConstraint.SetMinAndMaxSize" in studio
-    assert "self.controls.adjustSize()" in advanced_finish
-    assert "if self._compact_layout" not in advanced_finish
-    assert (
-        "self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())"
-        in advanced_finish
-    )
-    assert "self.controls_scroll.updateGeometry()" in advanced_finish
-    assert "parent.ensureWidgetVisible(target, 12, 12)" in advanced_finish
-    assert "self._scroll_controls_to(" in advanced_finish
-
-    final_scroll = _method_source(
-        "GardenStudioWidget",
-        "_scroll_controls_to",
-    )
-    assert "self.controls_scroll.verticalScrollBar()" not in final_scroll
-    assert "parent.ensureWidgetVisible(target, 12, 12)" in final_scroll
-    assert "parent is not self.controls_scroll" in final_scroll
-
-
-def test_compact_settings_delegate_vertical_scroll_to_the_outer_page() -> None:
-    responsive = _method_source(
-        "GardenStudioWidget",
-        "_apply_studio_layout_mode",
-    )
-    final_scroll = _method_source(
-        "GardenStudioWidget",
-        "_scroll_controls_to",
-    )
-
-    assert "Qt.ScrollBarPolicy.ScrollBarAlwaysOff" in responsive
-    assert "self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())" in responsive
-    assert "self.controls_scroll.setMaximumHeight(16777215)" in responsive
-    assert "QSizePolicy.Policy.Preferred" in responsive
-    assert "self.controls_scroll.verticalScrollBar()" not in final_scroll

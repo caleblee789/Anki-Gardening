@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from aqt.qt import (
-    QColor, QEvent, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+    QColor, QEvent, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
     QPointF, QRectF, QTimer, QToolButton, QToolTip, QLabel, QWidget, Qt, pyqtSignal,
 )
 
@@ -146,8 +146,8 @@ class GardenSceneWidget(QWidget):
         )
         self._stats_help_button.setStyleSheet(
             f"QToolButton {{ color:#e7f4e8; background:rgba(39,67,61,.96); border:1px solid rgba(226,239,222,.45); "
-            f"border-radius:{SCENE_HELP_BUTTON_SIZE // 2}px; font-weight:700; }} "
-            f"QToolButton:hover {{ background:#355a4d; border-color:#8eb09a; }} "
+            f"border-radius:{SCENE_HELP_BUTTON_SIZE // 2}px; font-weight:600; }} "
+            f"QToolButton:enabled:hover {{ background:#355a4d; border-color:#8eb09a; }} "
             f"QToolButton:focus {{ border:2px solid {GARDEN_THEME['focus_ring']}; }}"
         )
         self._stats_help_button.installEventFilter(self)
@@ -332,16 +332,16 @@ class GardenSceneWidget(QWidget):
             plant for plant in self.scene.get("plants", [])
             if isinstance(plant, dict) and bool(plant.get("is_active"))
         ), None)
-        marker_description = ""
+        nurtured_description = ""
         if active is not None:
             name = str(active.get("name") or active.get("species") or "This plant")
-            marker_description = f" Watering can: {name} is nurtured."
+            nurtured_description = f" {name} is nurtured."
         base = (
             f"Select a plant to view its actions. {KEYBOARD_HINT}"
             if self.interactive else
             "This preview is not interactive."
         )
-        self.setAccessibleDescription(base + marker_description)
+        self.setAccessibleDescription(base + nurtured_description)
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
         if watched is self._stats_help_button:
@@ -813,7 +813,7 @@ class GardenSceneWidget(QWidget):
                     Rect(
                         selected_rect.x(), selected_rect.y(),
                         selected_rect.width(), selected_rect.height(),
-                    ).expanded(8.0, 8.0)
+                    ).expanded(12.0, 12.0)
                     if selected_rect is not None else None
                 ),
             )
@@ -840,34 +840,6 @@ class GardenSceneWidget(QWidget):
                 self._status_rect.x(), self._status_rect.y(),
                 self._status_rect.width(), self._status_rect.height(),
             ))
-        active_row = next(
-            (
-                (plant, layout)
-                for plant, layout in layout_rows
-                if bool(plant.get("is_active"))
-            ),
-            None,
-        )
-        if active_row is not None:
-            _active_plant, active_layout = active_row
-            marker_protected = []
-            if self._status_rect is not None:
-                marker_protected.append(Rect(
-                    self._status_rect.x(),
-                    self._status_rect.y(),
-                    self._status_rect.width(),
-                    self._status_rect.height(),
-                ))
-            marker_reservation = geometry_layout.resolve_watering_can(
-                active_layout.slot_index,
-                active_layout,
-                obstacles=[
-                    layout.visible.expanded(4.0, 4.0)
-                    for _plant, layout in layout_rows
-                ],
-                protected_regions=marker_protected,
-            )
-            obstacles.append(marker_reservation.pulse_bounds.expanded(4.0, 4.0))
         placement = geometry_layout.resolve_popover(
             selected_slot,
             (float(card_width), float(card_height)),
@@ -1261,21 +1233,6 @@ class GardenSceneWidget(QWidget):
                         self._draw_foreground_growth(painter, x, base_y, idx, selected)
                     painter.restore()
 
-                # The watering can belongs to the nurtured plant's depth band.
-                # Paint it after the plant but before that band's foreground
-                # planter/foliage layer so near artwork can still occlude it.
-                if not self._interaction.placing:
-                    for plant, layout in row_items:
-                        if bool(plant.get("is_active")):
-                            self._draw_nurtured_marker(
-                                painter,
-                                layout,
-                                plant,
-                                scene_layouts=[
-                                    row_layout for _row, row_layout in plant_rows
-                                ],
-                            )
-
                 if planter_family:
                     self._draw_planter_family_band(
                         painter,
@@ -1475,7 +1432,7 @@ class GardenSceneWidget(QWidget):
         painter.drawRoundedRect(panel.adjusted(2, 2, -2, -2), 10, 10)
         painter.setPen(QColor(235, 248, 232, glow))
         font = painter.font()
-        font.setBold(True)
+        font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
         content_left = panel.left() + 16
         text_right = panel.right() - SCENE_HELP_BUTTON_SIZE - 24
@@ -1485,7 +1442,7 @@ class GardenSceneWidget(QWidget):
             SCENE_TEXT["live_garden_label"],
         )
         font.setBold(False)
-        font.setPointSize(max(10, font.pointSize() - 1))
+        font.setPointSize(max(12, font.pointSize() - 1))
         painter.setFont(font)
         painter.setPen(QColor(205, 225, 211))
         available_width = max(1, int(text_right - content_left))
@@ -1570,8 +1527,7 @@ class GardenSceneWidget(QWidget):
             return False
         source = self._pixmap_for(path)
         emphasized = selected or keyboard_focused
-        # Selection remains neutral/cyan-green even when the same plant is
-        # nurtured; gold is reserved for the independent nurtured marker.
+        # Selection remains neutral/cyan-green regardless of nurture state.
         color = GARDEN_THEME["focus_ring"] if emphasized else "#d7edcf"
         if source is None:
             return False
@@ -1970,21 +1926,22 @@ class GardenSceneWidget(QWidget):
                 fill_color = QColor(111, 80, 35, 118 if active else 54)
             else:
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
-                pen_color.setAlpha(245 if active else 190)
-                fill_color = QColor(54, 161, 104, 112 if active else 44)
+                pen_color.setAlpha(245 if active else 215)
+                fill_color = QColor(54, 161, 104, 112 if active else 54)
+            outline_width = 3.25 if active and not blocked else 2.25
             outline_drawn = bool(
                 callable(draw_asset_outline)
                 and draw_asset_outline(
                     painter,
                     layout,
                     color=pen_color.name(),
-                    width=3.0 if active and not blocked else 2.0,
+                    width=outline_width,
                     opacity=pen_color.alphaF(),
                     family=planter_family,
                 )
             )
             if not outline_drawn:
-                painter.setPen(QPen(pen_color, 3.0 if active and not blocked else 2.0))
+                painter.setPen(QPen(pen_color, outline_width))
                 painter.setBrush(fill_color)
                 # Legacy surfaces retain their established ellipse fallback.
                 if layout.depth_band == "far":
@@ -2048,8 +2005,8 @@ class GardenSceneWidget(QWidget):
             painter.drawRoundedRect(badge_rect, 10, 10)
             painter.setPen(badge_text)
             badge_font = painter.font()
-            badge_font.setPointSizeF(11.0)
-            badge_font.setBold(True)
+            badge_font.setPointSizeF(12.0)
+            badge_font.setWeight(QFont.Weight.DemiBold)
             painter.setFont(badge_font)
             painter.drawText(badge_rect, Qt.AlignmentFlag.AlignCenter, visual_label)
             self._painted_move_labels[int(slot)] = visual_label
@@ -2137,11 +2094,7 @@ class GardenSceneWidget(QWidget):
         name = str(plant.get("name") or plant.get("species") or "Plant")
         species = str(plant.get("species") or "plant").replace("_", " ").title()
         stage = str(plant.get("stage") or "seed").replace("_", " ").title()
-        nurtured = (
-            f" Watering can: {name} is nurtured."
-            if bool(plant.get("is_active")) else
-            ""
-        )
+        nurtured = f" {name} is nurtured." if bool(plant.get("is_active")) else ""
         if selected:
             description = (
                 f"{name}, {species}, {stage}, selected. "

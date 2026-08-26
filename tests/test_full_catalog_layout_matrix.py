@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.validate_full_catalog_layout import validate
+
+
+pytestmark = pytest.mark.release_evidence
 
 
 def test_full_catalog_layout_matrix_is_warning_free() -> None:
