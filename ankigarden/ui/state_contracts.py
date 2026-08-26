@@ -265,7 +265,7 @@ def streak_presentation(
         StreakPresentationState.NEW,
         0,
         "No active streak",
-        "Answer one card today to start.",
+        "Answer one card today to begin a streak.",
         "start",
     )
 

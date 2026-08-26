@@ -247,7 +247,7 @@ class GardenHomePreview:
     growth_goal: int = 0
     growth_text: str = ""
     metrics: tuple[GardenPreviewMetric, ...] = ()
-    action_label: str = "Open Garden"
+    action_label: str = "Open garden"
     action_command: str = "home-open"
     status_tone: str = "neutral"
     scene_opacity: float = 1.0
@@ -354,10 +354,16 @@ def garden_preview_from_values(
                 f"{max(0, int(active_growth_points or 0)):,}"
             )
         elif int(active_stage_goal or 0) > 0:
+            active_progress = growth_display(
+                max(0, int(active_growth_points or 0))
+            )
+            next_stage = str(active_progress.next_stage or "next stage").replace(
+                "_", " "
+            ).title()
             summary = (
                 f"{active_name} · {stage_label} · "
                 f"{max(0, int(active_stage_points or 0)):,} / "
-                f"{max(0, int(active_stage_goal or 0)):,}"
+                f"{max(0, int(active_stage_goal or 0)):,} toward {next_stage}"
             )
         else:
             summary = f"{active_name} · {stage_label}"
@@ -367,7 +373,8 @@ def garden_preview_from_values(
         starter_goal = max(0, int(active_stage_goal or 0))
         summary = (
             f"{planted_starter_name} · {planted_stage} · "
-            f"{starter_points:,} / {starter_goal:,}"
+            f"{starter_points:,} / {starter_goal:,} toward "
+            f"{str(growth_display(max(0, int(active_growth_points or 0))).next_stage or 'next stage').replace('_', ' ').title()}"
             if starter_goal > 0
             else f"{planted_starter_name} · {planted_stage}"
         )
@@ -378,7 +385,7 @@ def garden_preview_from_values(
     elif normalized_phase == "error":
         summary = "Your garden is still available."
     elif normalized_phase == "stale":
-        status_text = "Updating…"
+        status_text = "Refreshing…"
     elif normalized_phase == "disabled":
         status_text = "Preview hidden"
     growth_current = max(0, int(active_stage_points or 0))
@@ -457,7 +464,7 @@ def preview_with_phase(
         normalized_phase = "error"
     status = snapshot.status_text if status_text is None else str(status_text)
     if normalized_phase == "stale" and not status:
-        status = "Updating…"
+        status = "Refreshing…"
     elif normalized_phase == "disabled" and not status:
         status = "Preview hidden"
     return replace(

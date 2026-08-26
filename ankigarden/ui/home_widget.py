@@ -15,7 +15,7 @@ from .copy import (
     HOME_NO_STARTER_ACCESSIBLE,
     HOME_NO_STARTER_TITLE,
 )
-from .formatters import format_status_label
+from .formatters import format_stage_progress, format_status_label
 from .state import (
     GardenHomePreview,
     garden_preview_from_values,
@@ -149,7 +149,7 @@ class HomeWidgetStateController:
             phase="stale" if self._last_valid_data is not None else "loading",
             data=self._last_valid_data,
             error_message=(
-                "Updating…"
+                "Refreshing…"
                 if self._last_valid_data is not None else None
             ),
         )
@@ -192,7 +192,7 @@ class HomeWidgetStateController:
     def resolve_stale(
         self,
         request_id: int,
-        error_message: str = "Updating…",
+        error_message: str = "Refreshing…",
     ) -> bool:
         if request_id != self.snapshot.request_id or self._last_valid_data is None:
             return False
@@ -207,7 +207,7 @@ class HomeWidgetStateController:
 
 DEFAULT_ERROR_MESSAGE = "Garden preview unavailable."
 
-HOME_COMPACT_CONTAINER_MAX_WIDTH = 469
+HOME_COMPACT_CONTAINER_MAX_WIDTH = 488
 HOME_NARROW_CONTAINER_MAX_WIDTH = 420
 HOME_LAYOUT_STANDARD = "standard"
 HOME_LAYOUT_COMPACT = "compact"
@@ -234,8 +234,8 @@ def home_container_layout(width: int | float) -> str:
 HOME_WIDGET_STYLE = """
 <style>
 #ag-home-root {
-  width: min(calc(100% - 32px), 520px);
-  max-width: 520px;
+  width: min(calc(100% - 32px), 600px);
+  max-width: 600px;
   margin: 28px auto 18px;
   padding: 0;
   box-sizing: border-box;
@@ -250,8 +250,8 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__state {
   box-sizing: border-box;
-  min-height: 144px;
-  padding: 20px;
+  min-height: 136px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -439,9 +439,9 @@ HOME_WIDGET_STYLE = """
 /* Canonical GardenHomePreview: stable two-column summary over the artwork. */
 #ag-home-root {
   position:relative;
-  width:min(calc(100% - 32px), 720px);
-  max-width:720px;
-  height:152px;
+  width:min(calc(100% - 32px), 600px);
+  max-width:600px;
+  height:136px;
   margin:24px auto 18px;
   border-color:rgba(128,178,155,.28);
   border-radius:12px;
@@ -461,7 +461,7 @@ HOME_WIDGET_STYLE = """
   box-shadow:0 0 0 4px #071A15,0 14px 34px rgba(0,0,0,.3);
 }
 .ag-home__state {
-  min-height:152px;
+  min-height:136px;
   padding:16px;
   background:linear-gradient(90deg,rgba(5,20,16,.97),rgba(7,27,20,.86) 66%,rgba(7,27,20,.62));
 }
@@ -519,6 +519,7 @@ HOME_WIDGET_STYLE = """
   white-space:nowrap;
 }
 .ag-home__growth-track {
+  position:relative;
   width:min(100%,280px);
   height:4px;
   margin-top:7px;
@@ -528,8 +529,13 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__growth-track > span {
   display:block;
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:0;
   width:var(--ag-growth-percent,0%);
   height:100%;
+  margin:0;
   border-radius:inherit;
   background:#62D49A;
 }
@@ -557,8 +563,8 @@ HOME_WIDGET_STYLE = """
   min-height:36px !important;
   max-height:36px !important;
   min-width:104px !important;
-  width:120px;
-  max-width:120px;
+  width:116px;
+  max-width:116px;
   padding:0 12px !important;
   border-color:#5CC58B;
   background:#5CC58B;
@@ -580,9 +586,19 @@ HOME_WIDGET_STYLE = """
   #ag-home-root button:active { transform:none; }
   .ag-home__scene-frame { transition:none; }
 }
-@container (max-width: 469px) {
-  .ag-home__details { padding:14px; }
-  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 112px; gap:12px; }
+@container (max-width: 488px) {
+  #ag-home-root { height:176px; }
+  .ag-home__state { min-height:176px; }
+  .ag-home__details { padding:12px 14px; }
+  .ag-home__identity-row {
+    grid-template-columns:minmax(0,1fr);
+    gap:10px;
+  }
+  #ag-home-root button,.ag-home__open {
+    width:auto;
+    max-width:none;
+    justify-self:start;
+  }
   .ag-home__support { max-width:100%; }
   .ag-home--no-starter .ag-home__support {
     overflow:visible;
@@ -592,7 +608,7 @@ HOME_WIDGET_STYLE = """
 }
 @container (max-width:420px) {
   .ag-home__details { padding:12px; }
-  .ag-home__identity-row { gap:12px; }
+  .ag-home__identity-row { gap:8px; }
   .ag-home__support { max-width:100%; font-size:12.5px; }
   .ag-home__focus-name { font-size:18px; }
 }
@@ -651,7 +667,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             f'<span class="ag-home__sr-only">{detail}</span></div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            f'aria-label="{HOME_ACTIVE_ACTION}" onclick="pycmd(\'anki-garden:open\')">{HOME_ACTIVE_ACTION}</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
             'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
@@ -677,7 +693,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             'Your garden can still be opened.</div>'
             '<div class="ag-home__state-actions">'
             '<button data-testid="home-open" class="ag-home__open" type="button" '
-            'aria-label="Open Garden" onclick="pycmd(\'anki-garden:open\')">Open Garden</button>'
+            f'aria-label="{HOME_ACTIVE_ACTION}" onclick="pycmd(\'anki-garden:open\')">{HOME_ACTIVE_ACTION}</button>'
             '<button data-testid="home-retry" class="ag-home__secondary" type="button" '
             'aria-label="Retry garden preview" '
             'onclick="pycmd(\'anki-garden:refresh\')">Try again</button>'
@@ -726,7 +742,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             f'role="status" aria-live="polite">{partial_error}</div>'
         )
     elif preview.status_text:
-        status_copy = "Updating…" if preview.phase == "stale" else preview.status_text
+        status_copy = "Refreshing…" if preview.phase == "stale" else preview.status_text
         partial_banner = (
             '<div class="ag-home__partial-message" data-testid="home-preview-status" '
             f'role="status" aria-live="polite">{escape(status_copy)}</div>'
@@ -1026,18 +1042,17 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         if display_fully_grown:
             display_growth_current = max(0, int(data.active_growth_points))
             display_growth_goal = max(1, display_growth_current)
-            growth_text = (
-                f"{display_growth_current:,} / {display_growth_goal:,}"
-            )
+            growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
-            growth_text = (
-                f"{display_growth_current:,} / "
-                f"{display_growth_goal:,}"
+            growth_text = format_stage_progress(
+                display_growth_current,
+                display_growth_goal,
+                data.active_next_stage or "next stage",
             )
         else:
             growth_text = preview.growth_text or "0"
         preview_support = (
-            f"{preview.active_plant_name} · {stage} · {growth_text} Growth"
+            f"{preview.active_plant_name} · {stage} · {growth_text}"
         )
     elif data.planted_starter_name:
         starter_progress = growth_display(max(0, int(data.active_growth_points)))
@@ -1048,7 +1063,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         preview_support = (
             f"{data.planted_starter_name} · {starter_stage} · "
-            f"{display_growth_current:,} / {display_growth_goal:,} Growth"
+            f"{format_stage_progress(display_growth_current, display_growth_goal, starter_progress.next_stage or 'next stage')}"
         )
     else:
         preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary

@@ -103,7 +103,11 @@ def test_unpainted_audit_ignores_cross_pixel_byte_sequence(tmp_path: Path) -> No
     image.putdata(((0, 0, 216, 209), (190, 255, 0, 0)))
     screenshot = tmp_path / "cross-pixel.png"
     _save_rgba(screenshot, image)
-    sentinel = _pixel_audit(scanned_rect=[0, 0, 2, 1], total=0)
+    sentinel = _pixel_audit(
+        scanned_rect=[0, 0, 2, 1],
+        total=0,
+        threshold=4,
+    )
 
     assert _unpainted_client_record_issues(
         label="garden-onboarding",
@@ -115,6 +119,40 @@ def test_unpainted_audit_ignores_cross_pixel_byte_sequence(tmp_path: Path) -> No
         audit={"unpainted_client_pixel_audit": copy.deepcopy(sentinel)},
         screenshot_path=screenshot,
     ) == []
+
+
+@pytest.mark.parametrize(("cream_pixels", "passes"), ((4, True), (5, False)))
+def test_painted_surface_allows_only_isolated_cream_noise(
+    tmp_path: Path,
+    cream_pixels: int,
+    passes: bool,
+) -> None:
+    image = Image.new("RGBA", (8, 8), NON_CREAM_RGBA)
+    for index in range(cream_pixels):
+        image.putpixel((index, index), CONTACT_SHEET_PADDING_RGBA)
+    screenshot = tmp_path / f"painted-{cream_pixels}.png"
+    _save_rgba(screenshot, image)
+    sentinel = _pixel_audit(
+        scanned_rect=[0, 0, 8, 8],
+        total=cream_pixels,
+        threshold=4,
+    )
+
+    issues = _unpainted_client_record_issues(
+        label="move-mode",
+        record={
+            "width": 8,
+            "height": 8,
+            "unpainted_client_pixel_audit": sentinel,
+        },
+        audit={"unpainted_client_pixel_audit": copy.deepcopy(sentinel)},
+        screenshot_path=screenshot,
+    )
+
+    if passes:
+        assert issues == []
+    else:
+        assert "raw capture contains excess contact-sheet cream pixels" in issues
 
 
 def test_aligned_rgba_count_honors_pixels_and_ignores_row_padding() -> None:

@@ -87,7 +87,7 @@ def test_native_accessibility_names_nurtured_state_without_a_visual_cue() -> Non
     assert "Watering can" not in scene.accessible_description
 
 
-def test_nurtured_badge_continues_to_display_the_stored_icon() -> None:
+def test_nurtured_badge_ignores_the_retired_stored_marker_icon() -> None:
     rendered_icon = SimpleNamespace(isNull=lambda: False)
     resolved_assets: list[object] = []
 
@@ -120,9 +120,9 @@ def test_nurtured_badge_continues_to_display_the_stored_icon() -> None:
 
     set_asset(badge, asset)
 
-    assert resolved_assets == [asset]
-    assert badge.icon.visible is True
-    assert badge.icon.pixmap is rendered_icon
+    assert resolved_assets == []
+    assert badge.icon.visible is False
+    assert badge.icon.pixmap is None
 
 
 def test_watering_can_assets_remain_manifest_backed_and_packaged() -> None:

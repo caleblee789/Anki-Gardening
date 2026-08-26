@@ -83,7 +83,7 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
             HomeWidgetSnapshot(1, phase, error_message="Temporary problem")
         )
         state_rule = html.split(".ag-home__state {", 1)[1].split("}", 1)[0]
-        assert "min-height: 144px" in state_rule
+        assert "min-height: 136px" in state_rule
         assert 'class="ag-home__state"' in html
 
 
@@ -261,10 +261,11 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
             "move_badge_label": move_badge_label,
             "move_target_state": move_target_state,
             "bed_badge_rect": bed_badge_rect,
-            "GARDEN_THEME": {
-                "action_hover": "#4AAE7B",
-                "action_accent": "#329967",
-            },
+                "GARDEN_THEME": {
+                    "action_hover": "#4AAE7B",
+                    "action_accent": "#329967",
+                    "text_primary": "#F3F0DF",
+                },
         },
     )
     placements = plant_layout(480, 320, 6)
@@ -293,7 +294,7 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
 
     # Idle move mode keeps only the origin label. Destination rings remain
     # visible, while action copy waits for hover or keyboard focus.
-    assert len(painter.ellipses) == 6
+    assert len(painter.ellipses) == 3
     assert len(painter.badges) == 1
     assert painter.labels.count("+") == 0
     assert painter.labels.count("↔") == 0
@@ -1236,7 +1237,7 @@ def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> 
     assert toast.messages == []
 
 
-def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
+def test_selected_card_docks_only_in_compact_viewports() -> None:
     position = _compiled_method(
         DASHBOARD_PATH, "GardenDashboard", "_position_plant_card"
     )
@@ -1336,10 +1337,9 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
 
     position(dashboard)
 
-    assert dashboard.plant_card.parent is dock
-    assert dashboard.plant_card.shown is True
-    assert dashboard.plant_card.fixed_width == 360
-    assert dock.shown is True
+    assert dashboard.plant_card.parent is scene
+    assert dashboard.plant_card.hidden is True
+    assert dock.hidden is True
 
     scene.width = lambda: 520
     dock.width = lambda: 500
@@ -1354,7 +1354,7 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
             return 190
 
         def width(self) -> int:
-            return 876
+            return 280
 
         def height(self) -> int:
             return 264
@@ -1382,14 +1382,11 @@ def test_selected_card_uses_dock_when_no_safe_scene_geometry_exists() -> None:
     position(dashboard)
 
     assert dashboard.plant_card.parent is wide_scene
-    assert dashboard.plant_card.docked is True
-    assert dashboard.plant_card.fixed_width == 876
-    assert dashboard.plant_card.maximum_width == 876
-    assert dashboard.plant_card.geometry == (12, 190, 876, 264)
-    assert geometry_calls == [
-        (288, 264, {}),
-        (876, 264, {"minimum_width": 876, "minimum_height": 264}),
-    ]
+    assert dashboard.plant_card.docked is False
+    assert dashboard.plant_card.fixed_width == 280
+    assert dashboard.plant_card.maximum_width == 290
+    assert dashboard.plant_card.geometry == (12, 190, 280, 264)
+    assert geometry_calls == [(280, 264, {})]
     assert len(connector_calls) == 1
     assert isinstance(connector_calls[0][0], Geometry)
     assert connector_calls[0][1] == "plant-a"

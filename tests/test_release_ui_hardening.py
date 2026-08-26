@@ -207,7 +207,7 @@ def test_settings_name_failure_reports_split_commit_when_rollback_fails() -> Non
 
     save = _compiled_method(
         "GardenSettingsDialog",
-        "_save_visual_settings",
+        "_save_visual_settings_once",
         {
             "deepcopy": lambda value: dict(value),
             "MAX_GARDEN_NAME_LENGTH": 40,

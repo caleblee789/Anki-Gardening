@@ -33,14 +33,14 @@ def test_nursery_uses_registered_copy_and_manifest_geometry() -> None:
     assert nursery.landmark_id == "nursery_entrance"
     assert nursery.action_id == "garden.nursery.open"
     assert nursery.accessible_name == "Nursery"
-    assert nursery.tooltip == "Open Nursery"
+    assert nursery.tooltip == "Open nursery"
     assert nursery.bounds == (0.076, 0.142, 0.146, 0.178)
     assert len(nursery.polygon) == 13
     house = landmarks[1]
     assert house.landmark_id == "garden_house"
     assert house.action_id == "garden.collection.open"
     assert house.accessible_name == "Collection"
-    assert house.tooltip == "Open Collection"
+    assert house.tooltip == "Open collection"
     assert len(house.polygon) == 17
     assert tuple(len(path) for path in house.outline_paths) == (7, 2, 2)
 
@@ -192,7 +192,7 @@ def test_registered_future_action_is_generic_and_tooltip_is_one_line() -> None:
     )
     assert [(item.landmark_id, item.action_id, item.tooltip) for item in resolved] == [
         ("tool_shed", "garden.tools.open", "Open tool shed"),
-        ("garden_house", "garden.collection.open", "Open Collection"),
+        ("garden_house", "garden.collection.open", "Open collection"),
     ]
 
 

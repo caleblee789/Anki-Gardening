@@ -421,6 +421,8 @@ def test_booster_reward_and_rich_feedback_metadata_round_trip_safely():
     assert restored.consumables == {
         "booster_potion": 3,
         "fertilizer_basic": 0,
+        "fertilizer_quality": 0,
+        "fertilizer_premium": 0,
         "growth_charge_small": 0,
         "growth_charge_standard": 0,
         "growth_charge_grand": 0,

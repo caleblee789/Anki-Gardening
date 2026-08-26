@@ -827,6 +827,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._open_starter_nursery",
         "GardenDashboard._show_starter_confirmation",
         "GardenDashboard._begin_starter_placement",
+        "GardenDashboard._on_placement_destination_changed",
         "GardenDashboard._show_nursery_landmark",
         "GardenDashboard._activate_onboarding_action",
         "GardenDashboard._sync_nursery_recovery",
@@ -899,6 +900,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     "species-overview": (
         "GardenDashboard._open_species_overview",
         "GardenDashboard._build_species_overview_dialog",
+        "GardenDashboard._show_collection_plant_more",
     ),
     "garden-selection": (
         "PlantInfoCard.__init__",
@@ -932,8 +934,6 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._retry_failed_move",
         "GardenDashboard._done_move",
         "GardenDashboard._apply_native_destination",
-        "GardenDashboard._confirm_occupied_bed_swap",
-        "GardenDashboard._resume_move_after_swap_cancel",
         "GardenDashboard._place_plant",
         "GardenDashboard._undo_move",
     ),
@@ -945,6 +945,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     ),
     "fertilizer": (
         "GardenDashboard._open_fertilizer_menu",
+        "GardenDashboard._use_owned_fertilizer_from_dialog",
         "GardenDashboard._purchase_fertilizer_from_dialog",
         "GardenDashboard._purchase_fertilizer",
     ),
@@ -975,10 +976,12 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "NurseryDialog._item_artwork",
         "NurseryDialog._supplement_card",
         "NurseryDialog._booster_card",
+        "NurseryDialog._fertilizer_inventory_card",
         "NurseryDialog._basic_fertilizer_inventory_card",
         "NurseryDialog._growth_charge_card",
         "NurseryDialog._purchase_fertilizer",
         "NurseryDialog._use_booster",
+        "NurseryDialog._use_owned_fertilizer",
         "NurseryDialog._use_basic_fertilizer",
         "NurseryDialog._purchase_growth_charge",
         "NurseryDialog._use_growth_charge",
@@ -986,6 +989,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     "nursery-environment": (
         "NurseryDialog._environment_artwork",
         "NurseryDialog._environment_shop_card",
+        "NurseryDialog._equip_environment_from_nursery",
         "NurseryDialog._preview_environment_item",
         "NurseryDialog._open_customize_from_nursery",
         "NurseryDialog._purchase_environment",
@@ -993,6 +997,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     "nursery-spaces": (
         "NurseryDialog._space_card",
         "NurseryDialog._space_progression",
+        "NurseryDialog._return_to_garden",
         "NurseryDialog._unlock_bed",
         "NurseryDialog._release_bed_purchase",
     ),
@@ -1037,6 +1042,7 @@ CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._dismiss_onboarding",
         "GardenDashboard._on_landmark_activated",
         "GardenDashboard._on_placement_state",
+        "GardenDashboard._on_placement_destination_changed",
         "GardenDashboard._on_scene_selection",
         "GardenDashboard._open_collection",
         "GardenDashboard._open_fertilizer_menu",
@@ -1157,7 +1163,7 @@ CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
         "NurseryDialog._space_progression",
         "NurseryDialog._owned_card",
         "NurseryDialog._available_card",
-        "NurseryDialog._basic_fertilizer_inventory_card",
+        "NurseryDialog._fertilizer_inventory_card",
         "NurseryDialog._supplement_card",
         "NurseryDialog._booster_card",
         "NurseryDialog._growth_charge_card",
@@ -2117,11 +2123,11 @@ CAPTURE_LAYOUT_LIMITS: dict[str, float | int] = {
 }
 
 CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
-    "compact-row": 30,
-    "secondary": 34,
-    "primary": 36,
-    "onboarding": 38,
-    "icon": 30,
+    "compact-row": 36,
+    "secondary": 36,
+    "primary": 40,
+    "onboarding": 40,
+    "icon": 32,
 }
 
 TABULAR_NUMERAL_CAPTURE_LABELS = frozenset({
@@ -3907,7 +3913,7 @@ class _UiFaceCaptureRunner:
               const supportText = (support ? support.textContent || '' : '').trim();
               const homeActionText = (homeAction ? homeAction.textContent || '' : '').trim();
               const homeActionGeometryPassed = !homeAction
-                || homeActionText !== 'Open Garden'
+                || homeActionText !== 'Open garden'
                 || (
                   Math.round(homeActionRect.width) >= 104
                   && Math.round(homeActionRect.width) <= 120
@@ -3918,11 +3924,11 @@ class _UiFaceCaptureRunner:
                   ? normalizedCopy.includes('loading garden')
                   : fixtureState === 'preview-error'
                     ? normalizedCopy.includes('garden preview unavailable')
-                      && homeActionText === 'Open Garden'
+                      && homeActionText === 'Open garden'
                     : fixtureState === 'starter-not-selected'
                       ? homeActionText.length > 0
-                      : supportText.includes('Growth')
-                        && homeActionText === 'Open Garden'
+                      : (supportText.includes('toward') || supportText.includes('total Growth'))
+                        && homeActionText === 'Open garden'
               );
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
@@ -6046,7 +6052,16 @@ class _UiFaceCaptureRunner:
             row["cream_pixel_count"] = exempt_count
             if exempt_count >= 0:
                 exempt += exempt_count
-        threshold = 64 if label in _HOME_CAPTURE_LABELS else 0
+        # The padding guard protects against material unpainted fields, not a
+        # handful of coincidental pixels inside painterly artwork. Reviewer
+        # overlays remain exact because they do not contain scenery.
+        threshold = (
+            64
+            if label in _HOME_CAPTURE_LABELS else
+            0
+            if label in _REVIEWER_CAPTURE_LABELS else
+            4
+        )
         effective = max(0, total - exempt) if total >= 0 else -1
         passed = bool(total >= 0 and effective <= threshold)
         return {
@@ -6895,6 +6910,36 @@ class _UiFaceCaptureRunner:
                         and dashboard.scene._interaction.placing
                     ),
                     bool(dashboard is not None and dashboard.scene._interaction.placing),
+                )
+                placement_destination = (
+                    dashboard.scene._interaction.destination_slot
+                    if dashboard is not None else
+                    None
+                )
+                placement_action = (
+                    dashboard.rearrange_bar.confirm
+                    if dashboard is not None else
+                    None
+                )
+                require(
+                    "starter_destination_selected",
+                    placement_destination is not None,
+                    placement_destination,
+                )
+                require(
+                    "starter_placement_action",
+                    bool(
+                        placement_action is not None
+                        and placement_action.isVisible()
+                        and placement_action.isEnabled()
+                        and placement_action.text()
+                        == f"Place in Bed {int(placement_destination) + 1}"
+                    ) if placement_destination is not None else False,
+                    (
+                        str(placement_action.text())
+                        if placement_action is not None else
+                        ""
+                    ),
                 )
             elif state_name == "starter-completion":
                 require("onboarding_step", step_value == "completion", step_value)
@@ -7839,7 +7884,8 @@ class _UiFaceCaptureRunner:
                         and no_results.isVisible()
                         and str(no_results.property("semanticId") or "")
                         == "progress.collection-no-results"
-                        and annotation.get("empty_state_actions") == []
+                        and annotation.get("empty_state_actions")
+                        == ["Clear filters"]
                         and bool(annotation.get("filter_clear_visible", False))
                         and bool(annotation.get("passed", False))
                     ),
@@ -8279,7 +8325,7 @@ class _UiFaceCaptureRunner:
                 )
                 if state_name == "purchase-success-inventory-collection":
                     # A completed collection already owns one normal-flow
-                    # View Collection action in its empty state.  The receipt
+                    # View collection action in its empty state.  The receipt
                     # intentionally omits the duplicate secondary action.
                     secondary_action_passed = bool(
                         not dismiss_visible
@@ -10756,10 +10802,10 @@ class _UiFaceCaptureRunner:
     ) -> int:
         """Dismiss transient hover UI and return the baseline settle delay."""
 
+        del compositor_fallback
         QToolTip.hideText()
-        if label == "hover-outline" or not compositor_fallback:
-            # Direct QWidget grabs do not depend on the global cursor.  Hover
-            # fixtures place it intentionally in their own executor.
+        if label == "hover-outline":
+            # The explicit hover fixture owns its pointer state.
             return 0
         try:
             screen = None
@@ -11878,6 +11924,22 @@ class _UiFaceCaptureRunner:
                     and dashboard.scene._interaction.placing
                 ):
                     dashboard._begin_starter_placement()
+                destinations = dashboard.scene._destination_slots()
+                destination = dashboard.scene._interaction.destination_slot
+                if destination is None and destinations:
+                    destination = int(destinations[0])
+                    dashboard.scene._interaction.choose_destination(
+                        destination,
+                        destinations,
+                    )
+                if destination is not None:
+                    dashboard.scene._inline_message = (
+                        f"Bed {int(destination) + 1} selected"
+                    )
+                    dashboard._on_placement_destination_changed(
+                        int(destination)
+                    )
+                    dashboard.scene.update()
 
             self._capture_annotations["starter-placement"] = {
                 "passed": bool(
@@ -12012,7 +12074,7 @@ class _UiFaceCaptureRunner:
         current_revision = int(getattr(state_events, "revision", 0))
         error_message = {
             "error": "Garden preview unavailable",
-            "stale": "Updating…",
+            "stale": "Refreshing…",
         }.get(phase)
         fixture_snapshot = HomeWidgetSnapshot(
             request_id=original_snapshot.request_id + 1,
@@ -12504,7 +12566,28 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(self._capture_nurture_after)
 
     def _capture_nurture_after(self) -> None:
-        plant_id = self._select_plant(activate=False)
+        state = self.app.storage.state
+        active_id = str(getattr(state, "active_plant_id", "") or "")
+        eligible = sorted(
+            (
+                plant
+                for plant in tuple(getattr(state, "plants", ()) or ())
+                if str(getattr(plant, "plant_id", "") or "") != active_id
+                and bool(getattr(plant, "planted", False))
+                and not bool(getattr(plant, "fully_grown", False))
+            ),
+            key=lambda plant: (
+                int(getattr(plant, "slot_index", 0) or 0),
+                str(getattr(plant, "plant_id", "") or ""),
+            ),
+        )
+        # The broad development fixture already has one active plant. Choose a
+        # different eligible plant so this surface exercises the real product
+        # transaction and leaves authoritative state for its Home dependency.
+        plant_id = (
+            str(getattr(eligible[0], "plant_id", "") or "")
+            if eligible else self._select_plant(activate=False)
+        )
         dashboard = getattr(self.app, "dashboard", None)
         if not plant_id or dashboard is None:
             self._close_dashboard()
@@ -12513,7 +12596,6 @@ class _UiFaceCaptureRunner:
         nurture = getattr(dashboard, "_nurture_plant", None)
         if callable(nurture):
             nurture(plant_id)
-        state = self.app.storage.state
         plant = self.app.engine.plant_story(plant_id)
         first_nurture_committed = bool(
             plant is not None
@@ -12538,6 +12620,20 @@ class _UiFaceCaptureRunner:
                 "label": "selected-plant-nurtured",
                 "reason": f"Completion could not be persisted before capture: {message}",
             })
+        elif bool(getattr(self, "_development_stress_ready", False)):
+            # Full-profile ordering can establish the canonical development
+            # checkpoint before this real Nurture transaction, then restore it
+            # for a later stress surface. Advance that existing checkpoint only
+            # after both product commits succeed so dependent Home captures keep
+            # the authoritative active plant and first-Nurture memory.
+            committed_state = self.app.storage.state
+            self._development_stress_plant_id_order = tuple(
+                str(getattr(plant, "plant_id", "") or "")
+                for plant in list(getattr(committed_state, "plants", ()) or ())
+            )
+            self._development_stress_checkpoint = deepcopy(
+                committed_state.to_dict()
+            )
         refresh = getattr(dashboard, "refresh_all", None)
         if callable(refresh):
             refresh()
@@ -15342,7 +15438,9 @@ class _UiFaceCaptureRunner:
 
         def dashboard_ready() -> None:
             inventory = 0 if variant == "empty" else 2
-            growth_points = 450 if variant == "success" else 1_250
+            # Ready and success are two views of one coherent transaction:
+            # the same +100 charge crosses the Seed -> Sprout threshold.
+            growth_points = 450 if variant in {"ready", "success"} else 1_250
             planted = variant != "invalid"
             snapshot, transition_snapshot, plant = self._prepare_growth_charge_capture(
                 label,
@@ -15511,15 +15609,8 @@ class _UiFaceCaptureRunner:
                     )
                 )
                 empty_visible = bool(
-                    "All species collected" in visible_labels
-                    and any(
-                        re.fullmatch(
-                            r"\d[\d,]* of \d[\d,]* species collected",
-                            copy.strip(),
-                        )
-                        for copy in visible_labels
-                    )
-                    and "View Collection" in visible_buttons
+                    "All 10 plant species collected" in visible_labels
+                    and "View collection" in visible_buttons
                     and scrollbar.value() == 0
                 )
                 self._capture_annotations[label] = {
@@ -17272,14 +17363,22 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(self._capture_settings_warning_after)
 
     def _capture_settings_warning_after(self) -> None:
-        from ..display_telemetry import DISPLAY_TELEMETRY
-
-        DISPLAY_TELEMETRY.record_missing_or_invalid_field(
-            route="capture",
-            field="preview_artwork",
-            reason="Intentional screenshot-regression warning state",
-            required=True,
+        from ..ui.dashboard import (
+            _LOGGED_MISSING_ARTWORK,
+            _record_missing_artwork,
         )
+
+        _LOGGED_MISSING_ARTWORK.clear()
+        for category, key in (
+            ("plant", "capture_missing_plant"),
+            ("scenery", "capture_missing_scenery"),
+            ("weather", "capture_missing_weather"),
+        ):
+            _record_missing_artwork(
+                category=category,
+                item_key=key,
+                source_path=f"capture fixture: {category} artwork unavailable",
+            )
         dashboard = getattr(self.app, "dashboard", None)
         open_settings = getattr(dashboard, "_open_settings", None)
         if callable(open_settings):
@@ -17485,7 +17584,13 @@ class _UiFaceCaptureRunner:
             MAX_GARDEN_SLOTS,
         )
 
-        ok, message = self.app.engine.development_populate()
+        # This is fixture preparation, not a learner action.  Keep the normal
+        # development-control receipt intact everywhere else while preventing
+        # setup copy from entering the persisted Garden feedback queue used by
+        # later release-facing captures.
+        ok, message = self.app.engine.development_populate(
+            emit_feedback=False,
+        )
         if not ok:
             self._failures.append({
                 "label": "development-stress-state",
@@ -17493,6 +17598,17 @@ class _UiFaceCaptureRunner:
             })
             return False
         state = self.app.storage.state
+        # A resumed disposable profile may still contain a receipt produced by
+        # an older capture build.  Remove only development-fixture feedback;
+        # product-action and reward events remain untouched.
+        state.pending_feedback = [
+            event
+            for event in list(getattr(state, "pending_feedback", ()) or ())
+            if str(getattr(event, "kind", "") or "") != "development"
+            and not str(getattr(event, "event_id", "") or "").startswith(
+                "development:"
+            )
+        ]
         catalog_order = tuple(str(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
         release_ready_order = tuple(
             str(species) for species in self.app.engine.release_ready_species()
@@ -18582,7 +18698,7 @@ class _UiFaceCaptureRunner:
                 (
                     button for button in buttons
                     if _displayed_button_text(button)
-                    in {"Store plant", "Place in Garden"}
+                    in {"Move to storage", "Place in garden"}
                 ),
                 None,
             )
@@ -18607,7 +18723,7 @@ class _UiFaceCaptureRunner:
                     f"{target_name} ·"
                 )
                 and visual["action"]
-                in {"Store plant", "Place in Garden"}
+                in {"Move to storage", "Place in garden"}
                 and all(
                     bool(evidence.get("contained", False))
                     for evidence in (
@@ -19781,11 +19897,7 @@ class _UiFaceCaptureRunner:
                 raise RuntimeError(
                     "canonical Reviewer reward feedback could not be projected"
                 )
-            expected_title = (
-                presentations[0].display_name
-                if len(presentations) == 1
-                else f"{len(presentations):,} Garden rewards added"
-            )
+            expected_title = "Garden Find"
             receipt_correlations = {
                 receipt.correlation_id for receipt in all_receipts
             }
@@ -19820,7 +19932,7 @@ class _UiFaceCaptureRunner:
             )
             expected_parts = []
             if expected_coins:
-                expected_parts.append(f"+{expected_coins:,} Garden Coins")
+                expected_parts.append(f"+{expected_coins:,} coins")
             if expected_growth:
                 expected_parts.append(f"+{expected_growth:,} Growth")
             if (

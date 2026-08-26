@@ -164,9 +164,9 @@ def test_text_roles_define_legible_type_and_line_metrics() -> None:
         for token in tokens.values()
     )
     assert tokens[text_role.BODY].font_size_px >= scope["MIN_BODY_TEXT_SIZE"]
-    assert 12.5 <= tokens[text_role.BUTTON_LABEL].font_size_px <= 13.5
+    assert 13 <= tokens[text_role.BUTTON_LABEL].font_size_px <= 14
     assert tokens[text_role.SECTION_HEADING].font_size_px <= 19
-    assert all(token.font_weight <= 600 for token in tokens.values())
+    assert all(token.font_weight <= 700 for token in tokens.values())
     assert tokens[text_role.NUMERIC_DISPLAY].tabular_numerals is True
 
     stylesheet = scope["typography_stylesheet"]()
@@ -200,12 +200,12 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
         "destructive",
     }
     assert scope["BUTTON_VARIANT_TERTIARY"] == "tertiary"
-    assert scope["MIN_HIT_TARGET"] == 34
-    assert scope["BUTTON_MIN_HEIGHT"] == 34
-    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 36
-    assert scope["INPUT_VISUAL_HEIGHT"] == 40
-    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 30
-    assert scope["ICON_BUTTON_SIZE"] == 30
+    assert scope["MIN_HIT_TARGET"] == 36
+    assert scope["BUTTON_MIN_HEIGHT"] == 36
+    assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 40
+    assert scope["INPUT_VISUAL_HEIGHT"] == 36
+    assert scope["ICON_BUTTON_VISUAL_SIZE"] == 32
+    assert scope["ICON_BUTTON_SIZE"] == 32
 
     buttons = scope["button_stylesheet"]()
     tools = scope["tool_button_stylesheet"]()
@@ -218,7 +218,7 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton:focus" in buttons
     assert "font-size: 13px" in buttons
     assert "border: 2px solid" in buttons
-    assert f"border-color: {scope['GARDEN_THEME']['coin_accent']}" in buttons
+    assert f"border-color: {scope['GARDEN_THEME']['growth_accent']}" in buttons
     assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
     assert "QToolButton:enabled:hover" in tools
@@ -235,22 +235,22 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
         size.value: (tokens[size].height_px, tokens[size].horizontal_padding_px)
         for size in button_size
     } == {
-        "compact-row": (30, 10),
-        "secondary": (34, 14),
-        "primary": (36, 16),
-        "onboarding": (38, 16),
-        "icon": (30, 0),
+        "compact-row": (36, 10),
+        "secondary": (36, 14),
+        "primary": (40, 16),
+        "onboarding": (40, 16),
+        "icon": (32, 0),
     }
     widget = _Widget()
     token = scope["apply_button_size"](widget, "onboarding")
     assert token is tokens[button_size.ONBOARDING]
     assert widget.properties["buttonSize"] == "onboarding"
-    assert widget.properties["visualControlSize"] == 38
-    assert (widget.minimum_height, widget.maximum_height) == (38, 38)
+    assert widget.properties["visualControlSize"] == 40
+    assert (widget.minimum_height, widget.maximum_height) == (40, 40)
     assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
 
     scope["apply_button_size"](widget, button_size.ICON)
-    assert (widget.minimum_width, widget.maximum_width) == (30, 30)
+    assert (widget.minimum_width, widget.maximum_width) == (32, 32)
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:
@@ -260,7 +260,7 @@ def test_control_helpers_apply_variant_and_restore_disabled_description() -> Non
     normalized = scope["apply_control_variant"](widget, "tertiary")
     assert normalized is scope["ControlVariant"].QUIET
     assert widget.properties["variant"] == "quiet"
-    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
+    assert (widget.minimum_width, widget.minimum_height) == (36, 36)
 
     with pytest.raises(ValueError, match="disabled_reason"):
         scope["set_control_enabled"](widget, False)
@@ -314,7 +314,7 @@ def test_icon_helper_requires_a_descriptive_name_and_preserves_hit_target() -> N
     assert widget.tooltip == "Close"
     assert widget.properties["iconButton"] is True
     assert widget.properties["gardenRole"] == "icon-button"
-    assert (widget.minimum_width, widget.minimum_height) == (34, 34)
+    assert (widget.minimum_width, widget.minimum_height) == (32, 32)
 
 
 def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:
@@ -375,8 +375,8 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 38px" in garden
-    assert "max-height: 30px" in garden
+    assert "min-height: 40px" in garden
+    assert "max-height: 36px" in garden
     assert "QCheckBox:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
     assert scope["GARDEN_THEME"]["raised_surface"] in garden
@@ -384,9 +384,9 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
     assert scope["NURSERY_THEME"]["focus_ring"] in nursery
     assert scope["NURSERY_THEME"]["raised_surface"] in garden
     catalog = scope["nursery_catalog_stylesheet"]()
-    assert scope["NURSERY_THEME"]["shop_surface_1"] in catalog
     assert scope["NURSERY_THEME"]["shop_surface_2"] in catalog
     assert scope["NURSERY_THEME"]["shop_surface_3"] in catalog
+    assert "QFrame[nurseryCatalog='true']" in catalog
     nursery_foundation = scope["foundation_stylesheet"]("nursery")
     assert scope["NURSERY_THEME"]["action_accent"] in nursery_foundation
     assert scope["NURSERY_THEME"]["secondary_action"] in nursery_foundation

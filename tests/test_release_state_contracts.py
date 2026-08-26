@@ -168,7 +168,7 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
         "Streak ended",
         0,
     )
-    assert new.message == "Answer one card today to start."
+    assert new.message == "Answer one card today to begin a streak."
     assert at_risk.message == "Answer one card today to keep your streak."
     assert ended.message == "Answer one card to begin a new streak."
     assert ended.previous_days == 3

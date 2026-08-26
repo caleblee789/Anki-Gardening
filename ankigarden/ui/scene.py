@@ -36,6 +36,11 @@ from .landmarks import (
 )
 from .plant_display import (
     NurturedMarkerPlacement,
+    PLANT_POPOVER_COMPACT_BREAKPOINT,
+    PLANT_POPOVER_MAX_HEIGHT,
+    PLANT_POPOVER_MIN_HEIGHT,
+    PLANT_POPOVER_MIN_WIDTH,
+    PLANT_POPOVER_PREFERRED_WIDTH,
     PopoverPlacement,
     SceneGeometryLayout,
     PlantInteractionState,
@@ -74,12 +79,9 @@ SCENE_TEXT = {
 STATS_HELP_TEXT = PROGRESSION_SUMMARY
 PLANT_HOVER_OUTLINE_WIDTH = 1.65
 PLANT_HOVER_OUTLINE_OPACITY = 0.55
-PLANT_POPOVER_MIN_WIDTH = 270.0
-PLANT_POPOVER_MIN_HEIGHT = 220.0
-
-
 class GardenSceneWidget(QWidget):
     placementRequested = pyqtSignal(str, int, int)
+    placementDestinationChanged = pyqtSignal(int)
     selectionChanged = pyqtSignal(str)
     placementStateChanged = pyqtSignal(bool)
     cancelPlacementRequested = pyqtSignal()
@@ -180,8 +182,8 @@ class GardenSceneWidget(QWidget):
         self._nursery_hotspot = self._create_landmark_hotspot("nursery_entrance")
         self._nursery_hotspot.setText("")
         self._nursery_hotspot.setAccessibleName("Nursery")
-        self._nursery_hotspot.setAccessibleDescription("Open Nursery")
-        self._nursery_hotspot.setToolTip("Open Nursery")
+        self._nursery_hotspot.setAccessibleDescription("Open nursery")
+        self._nursery_hotspot.setToolTip("Open nursery")
         self.placementStateChanged.connect(lambda _active: self._sync_landmark_hotspot())
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus if self.interactive else Qt.FocusPolicy.NoFocus)
@@ -404,6 +406,19 @@ class GardenSceneWidget(QWidget):
         if token is None:
             return
         self.placementRequested.emit(request[0], request[1], token)
+
+    def confirm_selected_placement(self) -> bool:
+        """Commit a deliberately selected starter destination."""
+
+        if not self._interaction.placing or not self._starter_placement:
+            return False
+        request = self._interaction.complete_placement()
+        if request is None:
+            return False
+        self._inline_message = "Saving placement…"
+        self._emit_placement_request(request)
+        self.update()
+        return True
 
     def begin_move(self, plant_id: str, valid_slots: list[int] | None = None) -> bool:
         if not self.interactive:
@@ -858,6 +873,9 @@ class GardenSceneWidget(QWidget):
                 ),
             ),
             obstacles,
+            allow_docked=(
+                float(self.width()) < PLANT_POPOVER_COMPACT_BREAKPOINT
+            ),
         )
         self._card_popover_placement = placement
         box = placement.rectangle
@@ -1361,23 +1379,26 @@ class GardenSceneWidget(QWidget):
         plant = self._plant_hit_rects.get(plant_id)
         if not plant_id or plant_id != self._card_connector_plant_id or card is None or plant is None:
             return
-        start = plant.center()
+        plant_anchor = plant.center()
         candidates = (
-            QPointF(card.left(), max(card.top() + 18.0, min(start.y(), card.bottom() - 18.0))),
-            QPointF(card.right(), max(card.top() + 18.0, min(start.y(), card.bottom() - 18.0))),
-            QPointF(max(card.left() + 18.0, min(start.x(), card.right() - 18.0)), card.top()),
-            QPointF(max(card.left() + 18.0, min(start.x(), card.right() - 18.0)), card.bottom()),
+            QPointF(card.left(), max(card.top() + 18.0, min(plant_anchor.y(), card.bottom() - 18.0))),
+            QPointF(card.right(), max(card.top() + 18.0, min(plant_anchor.y(), card.bottom() - 18.0))),
+            QPointF(max(card.left() + 18.0, min(plant_anchor.x(), card.right() - 18.0)), card.top()),
+            QPointF(max(card.left() + 18.0, min(plant_anchor.x(), card.right() - 18.0)), card.bottom()),
         )
         end = min(
             candidates,
-            key=lambda point: (point.x() - start.x()) ** 2 + (point.y() - start.y()) ** 2,
+            key=lambda point: (
+                (point.x() - plant_anchor.x()) ** 2
+                + (point.y() - plant_anchor.y()) ** 2
+            ),
         )
-        direction_x = end.x() - start.x()
-        direction_y = end.y() - start.y()
+        direction_x = plant_anchor.x() - end.x()
+        direction_y = plant_anchor.y() - end.y()
         magnitude = max(1.0, math.hypot(direction_x, direction_y))
         start = QPointF(
-            start.x() + direction_x / magnitude * min(30.0, plant.width() * 0.35),
-            start.y() + direction_y / magnitude * min(24.0, plant.height() * 0.25),
+            end.x() + direction_x / magnitude * min(16.0, magnitude),
+            end.y() + direction_y / magnitude * min(16.0, magnitude),
         )
         painter.save()
         painter.setPen(QPen(QColor(130, 226, 172, 170), 2.0, Qt.PenStyle.SolidLine))
@@ -1906,7 +1927,7 @@ class GardenSceneWidget(QWidget):
                 and target_state == "valid"
             ):
                 label = "Place here"
-                visual_label = "Place here"
+                visual_label = "Selected" if active else "Available"
             footprint = QRectF(
                 layout.bed_footprint.x,
                 layout.bed_footprint.y,
@@ -1915,15 +1936,17 @@ class GardenSceneWidget(QWidget):
             )
             painter.save()
             if blocked:
-                if target_state == "locked":
-                    pen_color, fill_color = QColor(145, 156, 153, 128), QColor(35, 42, 42, 64)
-                else:
-                    pen_color, fill_color = QColor(211, 151, 111, 176), QColor(73, 43, 34, 72)
-            elif current:
+                painter.restore()
+                continue
+            if current:
                 pen_color, fill_color = QColor(126, 190, 201, 205), QColor(49, 93, 101, 70)
             elif swap_target:
-                pen_color = QColor(224, 190, 111, 245 if active else 205)
-                fill_color = QColor(111, 80, 35, 118 if active else 54)
+                pen_color = QColor(
+                    GARDEN_THEME["action_hover"]
+                    if active else GARDEN_THEME["action_accent"]
+                )
+                pen_color.setAlpha(245 if active else 205)
+                fill_color = QColor(54, 161, 104, 112 if active else 42)
             else:
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
                 pen_color.setAlpha(245 if active else 215)
@@ -1956,11 +1979,7 @@ class GardenSceneWidget(QWidget):
                         vertical_padding,
                     )
                 painter.drawEllipse(move_footprint)
-            # Locked and otherwise ineligible beds are dimmed but unlabelled;
-            # only current and actionable destinations receive chips.
-            if blocked:
-                painter.restore()
-                continue
+            # Only current and actionable destinations receive move treatment.
             if target_state == "valid":
                 preview = getattr(self, "_draw_move_preview", None)
                 if active and callable(preview):
@@ -1975,19 +1994,10 @@ class GardenSceneWidget(QWidget):
             badge = bed_badge_rect(layout, visual_label, self.width(), self.height(), obstacles)
             placed_badges.append(badge)
             badge_rect = QRectF(badge.x, badge.y, badge.width, badge.height)
-            if blocked:
-                if target_state == "locked":
-                    badge_pen = QColor(158, 169, 164, 128)
-                    badge_fill = QColor(26, 34, 33, 210)
-                    badge_text = QColor(218, 225, 222, 210)
-                else:
-                    badge_pen = QColor(220, 165, 129, 190)
-                    badge_fill = QColor(61, 34, 31, 220)
-                    badge_text = QColor(255, 223, 205, 230)
-            elif active:
-                badge_pen = QColor(239, 247, 184, 235)
-                badge_fill = QColor(50, 78, 47, 232)
-                badge_text = QColor(250, 253, 223)
+            if active:
+                badge_pen = QColor(GARDEN_THEME["action_hover"])
+                badge_fill = QColor(24, 70, 56, 232)
+                badge_text = QColor(GARDEN_THEME["text_primary"])
             elif swap_target:
                 badge_pen = QColor(224, 190, 111, 210)
                 badge_fill = QColor(71, 55, 31, 220)
@@ -2440,6 +2450,11 @@ class GardenSceneWidget(QWidget):
             if slot is not None:
                 if self._interaction.choose_destination(slot, self._destination_slots()):
                     self._announce_destination(slot)
+                    if self._starter_placement:
+                        self._inline_message = f"Bed {slot + 1} selected"
+                        self.placementDestinationChanged.emit(int(slot))
+                        self.update()
+                        return
                     occupied = {
                         int(plant.get("slot_index", -1))
                         for plant in self.scene.get("plants", [])

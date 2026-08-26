@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 from dataclasses import replace
@@ -23,6 +24,7 @@ from ankigarden.capture.lifecycle import FailureLedger, build_capture_plan
 from ankigarden.capture.model import CaptureResult, ProfilePlacement
 from ankigarden.capture.registry import REGISTRY, SurfaceRegistry
 from scripts import capture_sequence
+from scripts.capture_evidence import _reconstruct_renderer_ownership_proof
 from scripts.package_addon import CAPTURE_BUILD, PRODUCTION_BUILD, package_files
 from scripts.validate_ui_capture import (
     DEFAULT_CAPTURE_SOURCE,
@@ -282,6 +284,61 @@ def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
         "reviewer-transaction",
     ]
     assert tuple(label for _name, labels in plan.cohorts for label in labels) == requested
+
+
+def test_capture_renderer_dependency_map_is_closed_for_active_v25_surfaces() -> None:
+    contract = json.loads(Path(capture_sequence.CAPTURE_CONTRACT_PATH).read_text())
+    active_surfaces = [
+        row for row in contract["surfaces"] if row.get("active")
+    ]
+    labels = [row["id"] for row in active_surfaces]
+    renderer_families = {
+        row["id"]: row["renderer_family"]
+        for row in active_surfaces
+    }
+    dashboard_source = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "ui" / "dashboard.py"
+    ).read_bytes()
+    capture_source = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    ).read_bytes()
+    proof = _reconstruct_renderer_ownership_proof(
+        capture_source=capture_source,
+        dashboard_source=dashboard_source,
+        labels=labels,
+        renderer_families=renderer_families,
+        production_archive_sha256="0" * 64,
+    )
+
+    assert "GardenDashboard" in proof["class_owners"]
+    assert "NurseryDialog" in proof["class_owners"]
+
+
+def test_diagnostics_fixture_records_missing_artwork_with_keyword_arguments() -> None:
+    runtime_path = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    )
+    runtime_tree = ast.parse(runtime_path.read_text())
+    fixture_method = next(
+        node
+        for node in ast.walk(runtime_tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_capture_settings_warning_after"
+    )
+    recorder_call = next(
+        node
+        for node in ast.walk(fixture_method)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_record_missing_artwork"
+    )
+
+    assert recorder_call.args == []
+    assert {keyword.arg for keyword in recorder_call.keywords} == {
+        "category",
+        "item_key",
+        "source_path",
+    }
 
 
 def test_failure_ledger_isolates_local_checkpoint_and_run_gate_failures() -> None:

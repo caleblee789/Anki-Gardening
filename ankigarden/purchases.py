@@ -223,8 +223,10 @@ def _without_period(value: str) -> str:
 def _compact_effect(value: str) -> str:
     effect = _without_period(value)
     replacements = (
-        (" per eligible Anki card answer", " per card"),
-        (" per Anki card answer", " per card"),
+        (" per eligible Anki card answer", " per answer"),
+        (" per Anki card answer", " per answer"),
+        (" per card answer", " per answer"),
+        (" per card", " per answer"),
         (" when used", ""),
     )
     for old, new in replacements:
@@ -331,21 +333,29 @@ def purchase_presentation(
     success_message = f"{item_name} added."
     next_actions = ("Keep browsing",)
     update_label = ""
+    show_item_name = False
 
     if quote.kind is PurchaseKind.SPECIES:
         species_name = item_name[:-5] if item_name.lower().endswith(" seed") else item_name
         title = f"Buy {item_name}?"
         outcome = f"Adds {species_name} to your collection."
         success_message = f"{species_name} added."
-        next_actions = ("Place in Garden", "View Collection")
+        next_actions = ("Place in garden", "View collection")
     elif quote.kind is PurchaseKind.GROWTH_CHARGE:
         title = f"Buy {item_name}?"
-        outcome = f"Adds one {item_name} to your inventory."
+        outcome = f"Quantity: {max(1, int(quote.quantity)):,}"
+        show_item_name = True
         success_message = f"{item_name} added."
-        next_actions = ("Use charge", "Keep browsing")
+        next_actions = ("Use growth charge", "Keep browsing")
     elif quote.kind is PurchaseKind.FERTILIZER:
         fertilizer_target = target_name or "your nurtured plant"
-        if quote.replacement_required:
+        if quote.disposition is PurchaseDisposition.INVENTORY:
+            title = f"Buy {item_name}?"
+            outcome = f"Adds one {item_name} to your inventory."
+            activity_label = f"Purchased {item_name} for inventory"
+            success_message = f"{item_name} added to inventory."
+            next_actions = ("Keep browsing",)
+        elif quote.replacement_required:
             action = PurchaseAction.PURCHASE_REPLACE
             current_name = str(quote.current_item_name or "Fertilizer")
             title = f"Replace {current_name}?"
@@ -354,8 +364,8 @@ def purchase_presentation(
                 quote.current_duration,
             )
             outcome = (
-                f"{item_name} starts immediately. You will lose {lost_time} of "
-                f"{current_name}."
+                f"{item_name} will start immediately.\n"
+                f"{current_name} has {lost_time} remaining."
             )
             activity_label = f"Replaced Fertilizer with {item_name} on {fertilizer_target}"
             success_message = f"{item_name} applied."
@@ -377,13 +387,14 @@ def purchase_presentation(
             )
             activity_label = f"Applied {item_name} to {fertilizer_target}"
             success_message = f"{item_name} applied."
-        next_actions = ("View plant", "Keep browsing")
+        if quote.disposition is not PurchaseDisposition.INVENTORY:
+            next_actions = ("View plant", "Keep browsing")
     elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
         outcome = "Adds it to Weather and Scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
-        next_actions = ("View Collection", "Keep browsing")
+        next_actions = ("View collection", "Keep browsing")
     else:
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
@@ -392,11 +403,13 @@ def purchase_presentation(
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
-        next_actions = ("View Garden", "Keep browsing")
+        next_actions = ("View garden", "Keep browsing")
 
     primary_label, primary_accessible, processing_label = _priced_action(
         action, quote.total_price
     )
+    if quote.kind is PurchaseKind.GROWTH_CHARGE:
+        primary_label = f"Buy for {quote.total_price:,}"
     display_title = title
     display_outcome = outcome
     visible_facts = tuple(facts)
@@ -407,17 +420,18 @@ def purchase_presentation(
     primary_route = ""
     terminal = False
     retry = False
-    show_item_name = False
     show_category = False
 
     if quote.replacement_required:
         current_short = str(quote.current_item_name or "Fertilizer").removesuffix(
             " Fertilizer"
         )
-        new_short = item_name.removesuffix(" Fertilizer")
         secondary_label = f"Keep {current_short}"
-        primary_label = f"Buy {new_short}"
-        primary_accessible = f"Buy {item_name} for {quote.total_price:,} Garden Coins"
+        primary_label = f"Replace for {quote.total_price:,}"
+        primary_accessible = (
+            f"Replace {quote.current_item_name or 'current fertilizer'} with "
+            f"{item_name} for {quote.total_price:,} Garden Coins"
+        )
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
         display_title = "Purchase failed"
@@ -442,10 +456,11 @@ def purchase_presentation(
         retry = True
     elif effective_status is PurchaseStatus.INSUFFICIENT_COINS:
         display_title = "Not enough Garden Coins"
-        display_outcome = (
-            f"{item_name} costs {quote.total_price:,} Garden Coins.\n"
-            f"Current balance: {max(0, quote.balance_before):,}"
+        shortfall = max(
+            0,
+            int(quote.total_price) - max(0, int(quote.balance_before)),
         )
+        display_outcome = f"You need {shortfall:,} more to buy {item_name}."
         visible_facts = ()
         badges = []
         balance_after = None
@@ -553,7 +568,13 @@ def purchase_presentation(
         )
         show_item_name = effective_status is PurchaseStatus.STALE_PRICE
         badges = []
-        primary_label = "Buy" if action is PurchaseAction.PURCHASE else primary_label
+        primary_label = (
+            f"Buy for {quote.total_price:,}"
+            if quote.kind is PurchaseKind.GROWTH_CHARGE
+            else "Buy"
+            if action is PurchaseAction.PURCHASE
+            else primary_label
+        )
         primary_accessible = (
             f"{primary_label} for {max(0, quote.total_price):,} Garden Coins"
         )
@@ -576,7 +597,12 @@ def purchase_presentation(
         badges=tuple(badges),
         more_details=tuple(more_details),
         preview_style=preview_style,
-        target_name="",
+        target_name=(
+            target_name
+            if quote.kind is PurchaseKind.FERTILIZER
+            and quote.disposition is not PurchaseDisposition.INVENTORY
+            else ""
+        ),
         price=quote.total_price,
         balance_before=quote.balance_before,
         balance_after=balance_after,

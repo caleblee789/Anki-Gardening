@@ -549,7 +549,7 @@ class AnkiGardenApp:
                 logger.warning("Anki Garden: transient dashboard-open failure; retry %s/2", failures)
             else:
                 # This request is over. Discard its destination as well as its
-                # retry state so a later ordinary Open Garden action cannot
+                # retry state so a later ordinary Open garden action cannot
                 # inherit a stale request to open Settings.
                 self._settings_open_pending = False
                 self._starter_open_pending = False

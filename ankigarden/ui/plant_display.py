@@ -28,6 +28,19 @@ SCENE_WIDE_BLEND_END = 1600.0
 STATUS_OVERLAY_MIN_WIDTH = 520.0
 STATUS_OVERLAY_HEIGHT = 68.0
 
+# Desktop plant details use one bounded component regardless of the selected
+# bed.  Compact/mobile docking is an explicit viewport decision; it is never a
+# collision fallback for an otherwise desktop scene.
+PLANT_POPOVER_PREFERRED_WIDTH = 280.0
+PLANT_POPOVER_MIN_WIDTH = 260.0
+PLANT_POPOVER_MIN_HEIGHT = 220.0
+PLANT_POPOVER_MAX_WIDTH = 310.0
+PLANT_POPOVER_MAX_HEIGHT = 340.0
+PLANT_POPOVER_MAX_SCENE_RATIO = 0.35
+PLANT_POPOVER_EDGE_PADDING = 16.0
+PLANT_POPOVER_CLEARANCE = 12.0
+PLANT_POPOVER_COMPACT_BREAKPOINT = 760.0
+
 THEME_INTEGRATION_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "verdant_twilight": {
         "rear": {"contrast": .97, "saturation": .94, "tint": "#E6A46F", "tint_alpha": .03},
@@ -615,14 +628,20 @@ class SceneGeometryLayout:
         extra_obstacles: Iterable[Rect] = (),
         *,
         selected_accessory_regions: Iterable[Rect] = (),
+        allow_docked: bool | None = None,
     ) -> PopoverPlacement:
-        """Place a plant panel clear of the selected plant's full silhouette."""
+        """Place one bounded plant panel clear of its selected plant.
+
+        Desktop scenes always resolve an anchored right/left/above/below
+        placement.  A docked panel is available only to an explicitly compact
+        viewport, never because a particular bed has less anchor space.
+        """
 
         selected = self.bed(bed_id)
         if selected is None:
             raise ValueError(f"unknown garden bed {bed_id}")
         popover_inset = min(
-            16.0,
+            PLANT_POPOVER_EDGE_PADDING,
             self.scene_bounds.width / 4.0,
             self.scene_bounds.height / 4.0,
         )
@@ -632,29 +651,56 @@ class SceneGeometryLayout:
             max(1.0, self.scene_bounds.width - popover_inset * 2.0),
             max(1.0, self.scene_bounds.height - popover_inset * 2.0),
         )
-        minimum_width = min(
-            popover_bounds.width,
-            max(1.0, float(minimum_size[0])),
+        compact_viewport = bool(
+            self.scene_bounds.width < PLANT_POPOVER_COMPACT_BREAKPOINT
+            or popover_bounds.width < PLANT_POPOVER_MIN_WIDTH
         )
+        docking_allowed = (
+            compact_viewport if allow_docked is None else bool(allow_docked)
+        )
+        if docking_allowed:
+            minimum_width = min(
+                popover_bounds.width,
+                max(1.0, float(minimum_size[0])),
+            )
+            preferred_width = min(
+                popover_bounds.width,
+                PLANT_POPOVER_MAX_WIDTH,
+                max(minimum_width, float(preferred_size[0])),
+            )
+        else:
+            desktop_width_cap = min(
+                popover_bounds.width,
+                PLANT_POPOVER_MAX_WIDTH,
+                self.scene_bounds.width * PLANT_POPOVER_MAX_SCENE_RATIO,
+            )
+            preferred_width = min(
+                desktop_width_cap,
+                PLANT_POPOVER_PREFERRED_WIDTH,
+            )
+            # Desktop placement changes location, never component width.
+            minimum_width = preferred_width
         minimum_height = min(
             popover_bounds.height,
+            PLANT_POPOVER_MAX_HEIGHT,
             max(1.0, float(minimum_size[1])),
-        )
-        preferred_width = min(
-            popover_bounds.width,
-            max(minimum_width, float(preferred_size[0])),
         )
         preferred_height = min(
             popover_bounds.height,
+            PLANT_POPOVER_MAX_HEIGHT,
             max(minimum_height, float(preferred_size[1])),
         )
+        if not docking_allowed:
+            # The caller has already measured the real Qt content. Avoid
+            # solving a collision by clipping that content to a shorter card.
+            minimum_height = preferred_height
         sizes = [(preferred_width, preferred_height)]
         if (
             abs(preferred_width - minimum_width) > 1e-6
             or abs(preferred_height - minimum_height) > 1e-6
         ):
             sizes.append((minimum_width, minimum_height))
-        gap = 12.0
+        gap = PLANT_POPOVER_CLEARANCE
         anchor_x, anchor_y = selected.popover_anchor
 
         def clamp(rect: Rect) -> Rect:
@@ -688,14 +734,14 @@ class SceneGeometryLayout:
             if side == "right":
                 return Rect(
                     selected_target.right + gap,
-                    anchor_y - height / 2,
+                    selected_target.y,
                     width,
                     height,
                 )
             if side == "left":
                 return Rect(
                     selected_target.x - gap - width,
-                    anchor_y - height / 2,
+                    selected_target.y,
                     width,
                     height,
                 )
@@ -713,14 +759,15 @@ class SceneGeometryLayout:
                 height,
             )
 
-        sides = tuple(
-            side
-            for side in selected.popover_candidates
-            if side in {"right", "left", "above", "below"}
-        ) or ("right", "left", "above", "below")
+        # Floating-UI-style deterministic order: right-start, left-start,
+        # above, then below.  Clamping supplies the shift behavior while the
+        # later candidates provide flip behavior.
+        sides = ("right", "left", "above", "below")
         # Twelve logical pixels remain clear around the plant artwork, planter,
         # and selected-state accessory as one protected target.
-        selected_obstacle = selected_target.expanded(12.0)
+        selected_obstacle = selected_target.expanded(
+            PLANT_POPOVER_CLEARANCE
+        )
         soft = {
             bed.bed_id: bed.selection_region.expanded(5.0)
             for bed in self.beds
@@ -765,8 +812,9 @@ class SceneGeometryLayout:
         if scored:
             _, chosen_side, chosen = min(scored, key=lambda row: row[0])
 
-        docked = chosen is None
-        if chosen is None:
+        docked = False
+        if chosen is None and docking_allowed:
+            docked = True
             dock_height = min(
                 preferred_height,
                 max(minimum_height, popover_bounds.height * 0.44),
@@ -812,6 +860,48 @@ class SceneGeometryLayout:
                     dock_candidates,
                     key=lambda row: row[1].intersection_area(selected_obstacle),
                 )
+        elif chosen is None:
+            # A dense desktop scene still receives the same compact anchored
+            # component. Choose the least-obstructive shifted placement rather
+            # than changing its anatomy into a bottom sheet.
+            fallback_candidates: list[
+                tuple[tuple[float, ...], str, Rect]
+            ] = []
+            for side_index, side in enumerate(sides):
+                for size_index, (width, height) in enumerate(sizes):
+                    raw = candidate(side, width, height)
+                    rectangle = clamp(raw)
+                    selected_overlap = rectangle.intersection_area(
+                        selected_obstacle
+                    )
+                    hard_overlap = sum(
+                        rectangle.intersection_area(obstacle)
+                        for obstacle in hard
+                    )
+                    soft_overlap = sum(
+                        rectangle.intersection_area(obstacle)
+                        for obstacle in soft.values()
+                    )
+                    clamp_shift = (
+                        abs(rectangle.x - raw.x)
+                        + abs(rectangle.y - raw.y)
+                    )
+                    fallback_candidates.append((
+                        (
+                            hard_overlap,
+                            selected_overlap,
+                            soft_overlap,
+                            float(side_index),
+                            float(size_index),
+                            clamp_shift,
+                        ),
+                        side,
+                        rectangle,
+                    ))
+            _, chosen_side, chosen = min(
+                fallback_candidates,
+                key=lambda row: row[0],
+            )
 
         avoided = tuple(
             bed_key for bed_key, obstacle in sorted(soft.items())

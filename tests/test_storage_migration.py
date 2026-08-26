@@ -58,7 +58,7 @@ def _completed_request(index: int) -> CompletedPurchaseRequest:
             new_balance=max(0, 1_000 - index),
             disposition=PurchaseDisposition.INVENTORY,
             message="Small Growth Charge added to Supplements & Boosters.",
-            next_actions=("Use Growth Charge",),
+            next_actions=("Use growth charge",),
         ),
         occurred_at="2026-08-16T12:00:00+00:00",
     )

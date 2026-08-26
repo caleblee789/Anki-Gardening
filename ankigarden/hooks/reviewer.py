@@ -50,24 +50,21 @@ def reviewer_reward_overlay_position(
     margin: int = 16,
     reviewer_controls_clearance: int = 112,
 ) -> tuple[int, int]:
-    """Center a reward above reviewer controls with explicit clearance."""
+    """Anchor reward feedback at right, above Anki's answer controls."""
 
     viewport_width = max(1, int(viewport_width))
     viewport_height = max(1, int(viewport_height))
     overlay_width = max(1, int(overlay_width))
     overlay_height = max(1, int(overlay_height))
     margin = max(0, int(margin))
-    maximum_x = max(0, viewport_width - overlay_width)
-    maximum_y = max(0, viewport_height - overlay_height)
-    centered_x = (viewport_width - overlay_width) // 2
-    preferred_y = (
-        viewport_height
-        - max(margin, int(reviewer_controls_clearance))
-        - overlay_height
-    )
-    return (
-        max(0, min(maximum_x, centered_x)),
-        max(0, min(maximum_y, max(margin, preferred_y))),
+    controls_clearance = max(margin, int(reviewer_controls_clearance))
+    return bounded_reviewer_overlay_position(
+        viewport_width,
+        viewport_height,
+        overlay_width,
+        overlay_height,
+        preferred_y=viewport_height - overlay_height - controls_clearance,
+        margin=margin,
     )
 
 
@@ -219,12 +216,11 @@ class ReviewerHookHandler:
                 max(1, parent_width - 24),
             )
             notice.setFixedWidth(notice_width)
-            x, y = bounded_reviewer_overlay_position(
+            x, y = reviewer_reward_overlay_position(
                 parent_width,
                 parent_height,
                 notice.width(),
                 notice.height(),
-                preferred_y=16,
                 margin=12,
             )
             notice.move(x, y)
@@ -409,7 +405,7 @@ class ReviewerHookHandler:
             logger.exception("Anki Garden: review progress could not be saved")
             message = (
                 "Your card answer is safe in Anki, but Garden couldn’t save its Growth. "
-                "Open Garden to try again."
+                "Open garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -540,7 +536,7 @@ class ReviewerHookHandler:
         coins_total, growth_total, environment_total = self._typed_reward_totals(unique)
         reward_parts = []
         if coins_total:
-            reward_parts.append(f"+{coins_total:,} Garden Coins")
+            reward_parts.append(f"+{coins_total:,} coins")
         if growth_total:
             reward_parts.append(f"+{growth_total:,} Growth")
         nonreward_messages = tuple(dict.fromkeys(
@@ -559,16 +555,13 @@ class ReviewerHookHandler:
         asset_key = str(getattr(preferred, "asset_key", "") or "")
 
         if presentations:
-            if len(presentations) == 1:
-                find = presentations[0]
-                title = str(find.display_name)
-                tier = self._display_tier(find.tier)
-                if str(find.pool_id) == "environment" and environment_total:
-                    message = "Added to Weather and Scenery"
-                elif not message:
-                    message = str(find.description)
-            else:
-                title = f"{len(presentations):,} Garden rewards added"
+            find = presentations[0]
+            title = "Garden Find"
+            tier = self._display_tier(find.tier)
+            if str(find.pool_id) == "environment" and environment_total:
+                message = "Added to Weather and Scenery"
+            elif not message:
+                message = str(find.description)
             first_find = presentations[0]
             asset_key = str(first_find.artwork_ref or asset_key)
             asset_category = (
@@ -581,15 +574,15 @@ class ReviewerHookHandler:
 
         find_count = max(len(find_events), len(presentations))
         if find_count > 1:
-            title = f"{find_count:,} Garden rewards added"
+            title = "Garden Find"
             message = " · ".join(reward_parts) or "Garden rewards added"
         if not message:
             message = self._aggregate_reward_messages(unique)
 
         if not title:
-            title = "Garden rewards added" if len(unique) > 1 else "Review rewards"
+            title = "Garden rewards" if len(unique) > 1 else "Review reward"
         elif "sync" in title.casefold():
-            title = "Garden rewards added"
+            title = "Garden rewards"
         return ReviewerRewardFeedback(
             event_id=combined_id,
             event_ids=event_ids,
@@ -889,32 +882,32 @@ class ReviewerHookHandler:
             )
             toast.setStyleSheet(
                 "QFrame#ankiGardenRewardToast {"
-                " background: #13352d; border: 1px solid #527966;"
+                " background: #13352d; border: 1px solid #416353;"
                 " border-radius: 14px; }"
-                "QFrame#ankiGardenRewardToast[findTier=\"rare\"] {"
-                " background: #173b31; border: 1px solid #647d99; }"
-                "QFrame#ankiGardenRewardToast[findTier=\"exceptional\"] {"
-                " background: #1d3b32; border: 1px solid #8773a8; }"
                 "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
-                " font-size: 14px; font-weight: 600; }"
+                " font-size: 13px; font-weight: 600; }"
                 "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
-                " font-size: 13px; }"
+                " font-size: 12px; }"
                 "QLabel#ankiGardenRewardDetail { color: #f5df9a;"
-                " font-size: 14px; font-weight: 600; }"
+                " font-size: 13px; font-weight: 600; }"
                 "QLabel#ankiGardenRewardTier { color: #bad5c3;"
                 " background: #21483d; border: 1px solid #4e7765;"
                 " border-radius: 7px; padding: 1px 6px; font-size: 12px; }"
+                "QLabel#ankiGardenRewardTier[findTier=\"rare\"] {"
+                " color:#d8e8ff; background:#263f50; border-color:#647d99; }"
+                "QLabel#ankiGardenRewardTier[findTier=\"exceptional\"] {"
+                " color:#eadfff; background:#3b324d; border-color:#8773a8; }"
                 "QLabel#ankiGardenRewardArt { background: #0b251f;"
                 " border: 1px solid #345a4c; border-radius: 11px;"
                 " color: #f5df9a; font-size: 24px; }"
             )
             row = QHBoxLayout(toast)
-            row.setContentsMargins(10, 6, 12, 6)
-            row.setSpacing(9)
+            row.setContentsMargins(10, 8, 12, 8)
+            row.setSpacing(8)
 
             art = QLabel("")
             art.setObjectName("ankiGardenRewardArt")
-            art.setFixedSize(44, 44)
+            art.setFixedSize(36, 36)
             art.setAlignment(Qt.AlignmentFlag.AlignCenter)
             art.setAccessibleName(self._reward_artwork_accessible_name(event))
             pixmap, bounds = self._reward_artwork(event, QPixmap)
@@ -943,8 +936,8 @@ class ReviewerHookHandler:
                         pass
                 art.setText("")
                 art.setPixmap(pixmap.scaled(
-                    38,
-                    38,
+                    32,
+                    32,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 ))
@@ -959,7 +952,7 @@ class ReviewerHookHandler:
                         else "growth"
                     )
                     art.setPixmap(
-                        garden_icon(icon_name, color="#f5df9a").pixmap(38, 38)
+                        garden_icon(icon_name, color="#f5df9a").pixmap(32, 32)
                     )
                 except Exception:
                     pass
@@ -980,6 +973,10 @@ class ReviewerHookHandler:
                 )
                 tier = QLabel(tier_text)
                 tier.setObjectName("ankiGardenRewardTier")
+                tier.setProperty(
+                    "findTier",
+                    str(getattr(event, "tier", "") or "").strip().lower(),
+                )
                 tier.setAccessibleName(f"Garden Find tier: {tier_text}")
                 header.addWidget(
                     tier,
@@ -1003,16 +1000,12 @@ class ReviewerHookHandler:
                 copy.addWidget(message)
             row.addLayout(copy, 1)
 
-            preferred_width = (
-                368
-                if len(tuple(getattr(event, "event_ids", ()) or ())) > 1
-                else 352
-            )
+            preferred_width = 340
             viewport_width = max(1, int(parent.width()))
             viewport_height = max(1, int(parent.height()))
             toast.setFixedWidth(min(preferred_width, max(1, viewport_width - 32)))
             toast.adjustSize()
-            preferred_height = max(66, min(78, toast.sizeHint().height()))
+            preferred_height = max(52, min(64, toast.sizeHint().height()))
             toast.setFixedHeight(
                 min(preferred_height, max(1, viewport_height - 32))
             )
@@ -1027,8 +1020,9 @@ class ReviewerHookHandler:
             toast.setProperty("reviewerOverlay", True)
             toast.setProperty(
                 "reviewerOverlayAnchor",
-                "reviewer-webview-centered-above-controls",
+                "reviewer-webview-right-above-controls",
             )
+            toast.setProperty("reviewerViewportMargin", 16)
             toast.setProperty("reviewerControlClearance", 112)
             toast.setProperty("reviewerControlGap", 16)
             toast.setProperty("reviewerViewportWidth", viewport_width)
@@ -1057,7 +1051,7 @@ class ReviewerHookHandler:
                     # deleted the native frame. Dismissal is idempotent.
                     return
 
-            QTimer.singleShot(4200, dismiss)
+            QTimer.singleShot(2800, dismiss)
             return True
         except Exception:
             logger.debug("Anki Garden: unable to show image reward feedback", exc_info=True)

@@ -54,7 +54,7 @@ def test_home_container_ranges_are_deterministic_at_every_boundary(
 
 def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs() -> None:
     assert HOME_WIDGET_STYLE.count("@container") == 2
-    assert "@container (max-width: 469px)" in HOME_WIDGET_STYLE
+    assert "@container (max-width: 488px)" in HOME_WIDGET_STYLE
     assert "@container (max-width:420px)" in HOME_WIDGET_STYLE
     assert "@media (max-width" not in HOME_WIDGET_STYLE
     assert ".ag-home__metrics { grid-template-columns" not in HOME_WIDGET_STYLE
