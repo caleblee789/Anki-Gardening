@@ -14,10 +14,14 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
   authoritative review history.
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
 - The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open garden** visible without duplicating Today, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
-- Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners.
+- Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners. Every add-on window now uses a native parented dialog, and visibility-sensitive controls receive parents before they can be shown; an opt-in audit can report unexpected parentless windows without creating native handles.
+- The full Garden uses one centered, contained release canvas instead of cropping the scenery to each viewport. Artwork, beds, plants, landmarks, popovers, and hit regions follow the same transform, so the complete garden remains aligned across supported aspect ratios.
+- Reviewer reward feedback defers while a modal dialog is active and presents at most two bounded cards: the newest reward plus a summary on wider viewports, or one compact card on narrow viewports. Reward cards remain silent, non-modal, and non-focus-stealing.
+- Steady-state review maintenance reuses only an unchanged scheduler-day, review-history, and ledger signature. Proven local answers use a narrow bounded lookup when safe, while sync, undo, collection reload, or ambiguity invalidates that proof and restores the complete fail-closed reconciliation path.
+- Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. Visual review reduced the current representative/full profiles to 16/31 structurally distinct surfaces and two/five generated sheets; 95 removed or behavioral-only IDs remain permanently reserved. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
+- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. Visual review reduced the current representative/full profiles to 16/31 structurally distinct surfaces and two/five generated sheets; 95 removed or behavioral-only IDs remain permanently reserved. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, and reviewer-stack identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -210,6 +214,15 @@ schema-21 scenery, plant, and planter library.
 The accepted file count, byte size, and SHA-256 are recorded from the final
 rebuilt archive only after the exact-package tests and complete UI capture pass.
 
+## Validation boundary
+
+Automated ownership, geometry, package, and isolated-startup checks do not prove
+native macOS full-screen behavior. Release acceptance must still open the Garden
+and its nested dialogs from a full-screen Anki window and confirm that no action
+switches Spaces or creates a stray top-level window. A capture report whose
+`quality_status` remains `review-required` or whose `release_ready` value is
+`false` is review evidence, not release approval.
+
 ## Diagnostics
 
 - **A plant is not receiving Growth:** open the Garden and make sure an unfinished plant is marked **Nurtured**. Reviews completed before choosing and nurturing a starter are intentionally not backfilled.
@@ -271,6 +284,27 @@ PYTHONPYCACHEPREFIX=/private/tmp/anki-garden-pycache ./.venv/bin/python -m compi
 ./.venv/bin/python scripts/package_addon.py --production
 python3 -m zipfile -t dist/anki_garden.ankiaddon
 git diff --check
+```
+
+### Optional runtime performance tracing
+
+The production package includes a bounded timing recorder that is disabled by
+default and never changes learner behavior. Before launching a sync-disabled
+disposable Anki profile, set both variables below to collect at most 256 samples
+per operation and write median, p95, and maximum timings at clean shutdown:
+
+```bash
+ANKI_GARDEN_PERF_TRACE=1
+ANKI_GARDEN_PERF_OUTPUT=/absolute/path/runtime.json
+```
+
+Summarize one run, or compare it with an earlier trace, from the repository
+root:
+
+```bash
+./.venv/bin/python scripts/profile_runtime.py /absolute/path/runtime.json
+./.venv/bin/python scripts/profile_runtime.py /absolute/path/runtime.json \
+  --baseline /absolute/path/baseline.json
 ```
 
 Capture contract and orchestration tests are deliberately small and Qt-free;
