@@ -591,7 +591,10 @@ def lookup(
     if reward is None:
         item_label = (outcome.item_id or reward_id).replace("_", " ").title()
         if outcome.reward_type == "coins":
-            description = f"+{max(0, int(outcome.amount)):,} Garden Coins"
+            description = RewardLine(
+                "coins",
+                max(0, int(outcome.amount)),
+            ).learner_text
         elif outcome.reward_type == "growth":
             description = f"+{max(0, int(outcome.amount)):,} Growth"
         else:
@@ -727,14 +730,17 @@ class AchievementPresentation:
             return self.persisted_reward_summary.replace("+", "")
         parts: list[str] = []
         if self.reward_coins:
-            parts.append(f"{self.reward_coins:,} Garden Coins")
+            unit = "Garden Coin" if self.reward_coins == 1 else "Garden Coins"
+            parts.append(f"{self.reward_coins:,} {unit}")
         if self.reward_small_growth_charges:
+            count = self.reward_small_growth_charges
             parts.append(
-                f"{self.reward_small_growth_charges} Small Growth Charge"
+                f"{count} Small Growth {'Charge' if count == 1 else 'Charges'}"
             )
         if self.reward_standard_growth_charges:
+            count = self.reward_standard_growth_charges
             parts.append(
-                f"{self.reward_standard_growth_charges} Standard Growth Charge"
+                f"{count} Standard Growth {'Charge' if count == 1 else 'Charges'}"
             )
         return " and ".join(parts) if parts else "Badge only"
 

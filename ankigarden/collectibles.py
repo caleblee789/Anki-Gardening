@@ -67,6 +67,29 @@ class CollectibleView:
         return "Locked"
 
 
+@dataclass(frozen=True)
+class CollectionSummary:
+    """Explicit category and whole-registry counts for collection copy."""
+
+    plant_species_owned: int
+    plant_species_total: int
+    collectibles_owned: int
+    collectibles_total: int
+
+
+def collection_summary(state: Any) -> CollectionSummary:
+    views = collectible_views(state)
+    plant_views = tuple(
+        view for view in views if view.definition.category == "plants"
+    )
+    return CollectionSummary(
+        plant_species_owned=sum(1 for view in plant_views if view.owned),
+        plant_species_total=len(plant_views),
+        collectibles_owned=sum(1 for view in views if view.owned),
+        collectibles_total=len(views),
+    )
+
+
 def _species_definition(species: str) -> CollectibleDefinition:
     name = species.replace("_", " ").title()
     return CollectibleDefinition(

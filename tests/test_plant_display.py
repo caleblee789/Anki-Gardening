@@ -13,6 +13,8 @@ from ankigarden.ui.plant_display import (
     SceneGeometryLayout,
     bed_badge_rect,
     compact_plant_layout,
+    contained_canvas_rect,
+    cover_project_point,
     chronological_memories,
     growth_display,
     hit_test,
@@ -29,6 +31,7 @@ from ankigarden.ui.plant_display import (
     requires_native_destination_selector,
     settings_layout_is_compact,
     smart_card_rect,
+    translated_plant_placement,
 )
 from ankigarden.models.state import PlantMemory
 
@@ -68,6 +71,42 @@ def test_growth_display_handles_fully_grown_without_parallel_rare_override():
     assert grown.fully_grown is True
     assert grown.next_stage is None
     assert grown.progress == 1.0
+
+
+def test_contained_canvas_offset_moves_artwork_beds_and_hit_regions_together():
+    viewport_width, viewport_height = 1600.0, 840.0
+    canvas = contained_canvas_rect(viewport_width, viewport_height)
+    local = plant_layout(
+        canvas.width,
+        canvas.height,
+        [{"slot_index": slot} for slot in range(6)],
+        composition_count=6,
+    )
+    translated = [
+        translated_plant_placement(row, canvas.x, canvas.y)
+        for row in local
+    ]
+    geometry = SceneGeometryLayout.from_placements(
+        viewport_width,
+        viewport_height,
+        translated,
+        scene_bounds=canvas,
+    )
+
+    assert geometry.scene_bounds == canvas
+    assert canvas.x == pytest.approx(180.0)
+    for before, after in zip(local, translated):
+        assert after.ground_anchor[0] == pytest.approx(
+            before.ground_anchor[0] + canvas.x
+        )
+        assert after.ground_anchor[1] == pytest.approx(before.ground_anchor[1])
+        bed = geometry.bed(after.slot_index)
+        assert bed is not None
+        assert canvas.contains(*bed.ground_anchor)
+        assert canvas.contains(
+            bed.hotspot.x + bed.hotspot.width / 2,
+            bed.hotspot.y + bed.hotspot.height / 2,
+        )
 
 
 @pytest.mark.parametrize(
@@ -863,8 +902,16 @@ def test_mixed_release_catalog_arrangement_stays_grounded_on_v6_soil():
     )
     assert [row.depth for row in rows] == sorted(row.depth for row in rows)
     home_surfaces = background["placement"]["surface_profile"]["variants"]["home"]["surfaces"]
+    home_variant = background["placement"]["surface_profile"]["variants"]["home"]
+    source_aspect = home_variant["width"] / home_variant["height"]
     expected_depths = [
-        surface["anchor"][1] + surface.get("seating_depth", 0.0)
+        cover_project_point(
+            surface["anchor"][0],
+            surface["anchor"][1] + surface.get("seating_depth", 0.0),
+            width=2000,
+            height=924,
+            source_aspect=source_aspect,
+        )[1]
         for surface in home_surfaces
     ]
     assert [by_slot[index].depth / 924 for index in range(6)] == pytest.approx(
@@ -887,9 +934,9 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
     }
 
     assert labels == {
-        0: ("Current location", "current"),
-        1: ("Move here", "available"),
-        2: ("Move here", "active"),
+        0: ("Current bed", "current"),
+        1: ("Swap with plant", "available"),
+        2: ("Move here", "selected"),
         3: ("Move here", "available"),
         4: ("Locked", "locked"),
         5: ("Locked", "locked"),
@@ -901,8 +948,8 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
         assert badge.width >= 44 and badge.height >= 44
         assert not any(badge.intersects(obstacle) for obstacle in obstacles)
 
-    occupied = bed_badge_rect(rows[1], "Occupied", 900, 560, obstacles)
-    assert occupied.width >= 80
+    occupied = bed_badge_rect(rows[1], "Swap with plant", 900, 560, obstacles)
+    assert occupied.width >= 120
 
 
 

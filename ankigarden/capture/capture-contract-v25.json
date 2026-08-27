@@ -1,5 +1,5 @@
 {
-  "contract_digest": "970d547e11160c380dafe8732b20b41dd81a9627ae9b76a6ee050a8ede2d2f64",
+  "contract_digest": "313dabe60fd5914da13f557d346f0afd8c95928e312381263be5f1f288d9ffbb",
   "contract_version": 25,
   "profiles": {
     "full": {
@@ -1985,7 +1985,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "46977484d4e0234b90be2af7eea37ce84ef1ee8b50b5e2975edefd8280fa91b7",
+      "dependency_digest": "03b34d9baacb3250023788cc7c9b164c013de1c79cf91e15eb340d309e795177",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2046,7 +2046,7 @@
           "window_family",
           "progress_page",
           "canonical_reward_activity",
-          "coin_activity_ledger_copy"
+          "coin_activity_ledger_semantics"
         ]
       }
     },
@@ -6538,7 +6538,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "5892b92db56cda23048a61279c353c217ae63511eaf3bdaca4dee61c8c45c356",
+      "dependency_digest": "1fcd83a9c2b824f112faae0367f1f721a34a064f591bd5b2cfaec040f2234b27",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6599,7 +6599,7 @@
           "reduced_motion": false,
           "stacked_sync": true,
           "state": "reviewer-find-stacked-sync",
-          "toast_tier": "",
+          "toast_tier": "Common",
           "window_family": "AnkiQt"
         },
         "required_facts": [
@@ -6779,7 +6779,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "fe653c57bf5dad7cf204240a96435b434feaf2772e651e4284def6fb9bb073e4",
+      "dependency_digest": "77c1c8c2d938eabba39715f81fa8ed9764557934720fd54e22bf6651b9aa5c05",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6837,6 +6837,8 @@
           "onboarding_step",
           "starter_not_created_before_placement",
           "starter_placement_mode",
+          "starter_destination_selected",
+          "starter_placement_action",
           "garden_scene_present"
         ]
       }

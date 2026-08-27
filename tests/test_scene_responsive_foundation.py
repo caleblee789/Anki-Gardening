@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from ankigarden.ui.plant_display import (
+    GARDEN_CANVAS_ASPECT,
     SCENE_COMPACT_ASPECT,
     SCENE_STANDARD_ASPECT,
     SCENE_WIDE_ASPECT,
+    contained_canvas_rect,
+    cover_project_point,
     plant_layout,
     scene_height_for_width,
     scene_preferred_aspect,
@@ -68,6 +71,54 @@ def test_scene_aspect_policy_blends_between_clamped_targets() -> None:
     assert sampled == sorted(sampled)
     assert scene_height_for_width(100) == 250
     assert scene_height_for_width(4000) == 800
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "expected"),
+    (
+        (1240, 840, (0.0, 0.0, 1240.0, 840.0)),
+        (1600, 840, (180.0, 0.0, 1240.0, 840.0)),
+        (1000, 1000, (0.0, pytest.approx(161.2903), 1000.0, pytest.approx(677.4194))),
+    ),
+)
+def test_release_canvas_is_centered_and_never_cropped(
+    width: int,
+    height: int,
+    expected: tuple[object, object, object, object],
+) -> None:
+    canvas = contained_canvas_rect(width, height)
+
+    assert (canvas.x, canvas.y, canvas.width, canvas.height) == expected
+    assert canvas.width / canvas.height == pytest.approx(GARDEN_CANVAS_ASPECT)
+    assert canvas.x >= 0 and canvas.y >= 0
+    assert canvas.right <= width and canvas.bottom <= height
+
+
+def test_source_coordinates_use_the_same_contain_transform_as_artwork() -> None:
+    scene_width, scene_height = 1240.0, 840.0
+    source_aspect = 4 / 3
+    left, top = cover_project_point(
+        0.0,
+        0.0,
+        width=scene_width,
+        height=scene_height,
+        source_aspect=source_aspect,
+    )
+    right, bottom = cover_project_point(
+        1.0,
+        1.0,
+        width=scene_width,
+        height=scene_height,
+        source_aspect=source_aspect,
+    )
+
+    assert left > 0.0
+    assert right < 1.0
+    assert top == pytest.approx(0.0)
+    assert bottom == pytest.approx(1.0)
+    assert (right - left) * scene_width / scene_height == pytest.approx(
+        source_aspect
+    )
 
 
 @pytest.mark.parametrize("boundary", [620, 1400])
@@ -237,3 +288,5 @@ def test_plant_fit_and_move_control_policy_have_no_remaining_pixel_cliffs(
                 later,
             )
         )
+    contained_canvas_rect,
+    cover_project_point,

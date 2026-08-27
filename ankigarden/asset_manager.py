@@ -524,6 +524,8 @@ class AssetPlacement:
     thumbnail_bounds: tuple[float, float, float, float] = (0.08, 0.04, 0.84, 0.92)
     thumbnail_optical_center: tuple[float, float] = (0.5, 0.5)
     thumbnail_scale: float = 1.0
+    max_visible_width: float = 1.0
+    max_visible_height: float = 1.0
     thumbnail_safe_padding: float = 0.10
     planting_zone: tuple[float, float, float, float] = (0.08, 0.92, 0.62, 0.91)
     scene_anchor: tuple[float, float] = (0.82, 0.86)
@@ -688,6 +690,12 @@ class AssetPlacement:
             thumbnail_scale=number(
                 "thumbnail_scale", defaults.thumbnail_scale, 0.5, 1.5
             ),
+            max_visible_width=number(
+                "max_visible_width", defaults.max_visible_width, 0.1, 1.0
+            ),
+            max_visible_height=number(
+                "max_visible_height", defaults.max_visible_height, 0.1, 1.0
+            ),
             thumbnail_safe_padding=number(
                 "thumbnail_safe_padding", defaults.thumbnail_safe_padding, 0.0, 0.3
             ),
@@ -726,6 +734,8 @@ class AssetPlacement:
             "thumbnail_bounds": list(self.thumbnail_bounds),
             "thumbnail_optical_center": list(self.thumbnail_optical_center),
             "thumbnail_scale": self.thumbnail_scale,
+            "max_visible_width": self.max_visible_width,
+            "max_visible_height": self.max_visible_height,
             "thumbnail_safe_padding": self.thumbnail_safe_padding,
             "planting_zone": {
                 "left": self.planting_zone[0], "right": self.planting_zone[1],

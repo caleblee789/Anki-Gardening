@@ -44,7 +44,7 @@ def test_percent_and_decimal_rounding_boundaries() -> None:
 def test_points_and_integer_boundaries() -> None:
     assert format_integer(0) == "0"
     assert format_integer(1234567890) == "1,234,567,890"
-    assert format_points(-42) == "-42 growth points"
+    assert format_points(-42) == "-42 Growth"
 
 
 def test_garden_release_formatters_have_one_stable_representation() -> None:
@@ -61,7 +61,10 @@ def test_garden_release_formatters_have_one_stable_representation() -> None:
     assert format_duration(9_060) == "2h 31m"
     assert format_streak(1) == "1 day"
     assert format_streak(7) == "7 days"
-    assert format_stage_progress(1_250, 2_000, "young") == "1,250 / 2,000 toward Young"
+    assert (
+        format_stage_progress(1_250, 2_000, "young")
+        == "1,250 / 2,000 toward Young"
+    )
     assert format_balance_after(4_850) == "Balance after: 4,850"
     assert format_available(2) == "2 available"
     assert format_shortfall(30) == "30 Garden Coins needed"

@@ -10,6 +10,119 @@ from enum import Enum
 from typing import Any
 
 
+GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
+GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
+
+
+@dataclass(frozen=True)
+class StageProgress:
+    """One renderer-neutral projection of total and within-stage Growth."""
+
+    stage: str
+    stage_index: int
+    next_stage: str | None
+    stage_start: int
+    next_threshold: int | None
+    points_remaining: int
+    progress: float
+    fully_grown: bool
+    stage_points: int
+    stage_goal: int
+    total_growth: int
+    projected_total: int
+    projected_stage: str
+    completed_stages: tuple[str, ...]
+    will_transition: bool
+    rare_stage_unlocked: bool
+
+    @property
+    def current_stage(self) -> str:
+        return self.stage
+
+    @property
+    def within_stage_growth(self) -> int:
+        return self.stage_points
+
+    @property
+    def goal(self) -> int:
+        return self.stage_goal
+
+
+def stage_progress(
+    total_growth: Any,
+    projected_total: Any | None = None,
+) -> StageProgress:
+    """Return the single stage calculation used by model, game, and UI.
+
+    ``projected_total`` is optional because most callers render current state.
+    Transaction previews pass it to receive the exact crossed-stage and rare
+    unlock projection without reproducing threshold logic.
+    """
+
+    try:
+        total = max(0, int(total_growth))
+    except (TypeError, ValueError):
+        total = 0
+    try:
+        projected = (
+            total
+            if projected_total is None
+            else max(total, max(0, int(projected_total)))
+        )
+    except (TypeError, ValueError):
+        projected = total
+
+    def stage_index_for(value: int) -> int:
+        resolved = 0
+        for index, threshold in enumerate(GROWTH_THRESHOLDS):
+            if value >= threshold:
+                resolved = index
+        return resolved
+
+    stage_index = stage_index_for(total)
+    projected_index = stage_index_for(projected)
+    stage = GROWTH_STAGES[stage_index]
+    projected_stage = GROWTH_STAGES[projected_index]
+    fully_grown = stage_index >= len(GROWTH_STAGES) - 1
+    stage_start = GROWTH_THRESHOLDS[stage_index]
+    if fully_grown:
+        next_stage = None
+        next_threshold = None
+        points_remaining = 0
+        stage_points = 0
+        stage_goal = 0
+        progress = 1.0
+    else:
+        next_stage = GROWTH_STAGES[stage_index + 1]
+        next_threshold = GROWTH_THRESHOLDS[stage_index + 1]
+        stage_points = max(0, total - stage_start)
+        stage_goal = max(1, next_threshold - stage_start)
+        points_remaining = max(0, next_threshold - total)
+        progress = max(0.0, min(1.0, stage_points / stage_goal))
+    completed_stages = tuple(
+        GROWTH_STAGES[index]
+        for index in range(stage_index + 1, projected_index + 1)
+    )
+    return StageProgress(
+        stage=stage,
+        stage_index=stage_index,
+        next_stage=next_stage,
+        stage_start=stage_start,
+        next_threshold=next_threshold,
+        points_remaining=points_remaining,
+        progress=progress,
+        fully_grown=fully_grown,
+        stage_points=stage_points,
+        stage_goal=stage_goal,
+        total_growth=total,
+        projected_total=projected,
+        projected_stage=projected_stage,
+        completed_stages=completed_stages,
+        will_transition=projected_index > stage_index,
+        rare_stage_unlocked="rare" in completed_stages,
+    )
+
+
 @dataclass(frozen=True)
 class GrowthAllocation:
     """One plant's result from an already-calculated study Growth event."""

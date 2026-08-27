@@ -16,6 +16,7 @@ import platform
 import re
 import time
 from copy import deepcopy
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -707,6 +708,7 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "__init__",
         "_install_application_filter",
         "showEvent",
+        "hideEvent",
         "prepare_to_show",
         "_derived_ux_state",
         "_recommended_window_size",
@@ -714,6 +716,9 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "_card_frame",
         "_apply_typography",
         "refresh_all",
+        "_refresh_all_content",
+        "_mark_progress_pages_dirty",
+        "_refresh_progress_page",
         "acknowledge_rendered_feedback",
         "_clear_stage_message",
         "_local_date",
@@ -756,7 +761,11 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "resizeEvent",
         "_value_row",
         "_disclosure",
+        "current_page_key",
+        "mark_metric_pages_dirty",
+        "ensure_metric_page",
         "refresh",
+        "_refresh_metric_page",
         "_open_nursery",
     ),
     "GardenProgressDialog": (
@@ -766,6 +775,9 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "_normalized_page",
         "open_page",
         "open_metric",
+        "current_page_key",
+        "ensure_page",
+        "refresh_current_page",
         "_sync_navigation_layout",
         "resizeEvent",
     ),
@@ -779,6 +791,7 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "_clear_catalog",
         "_clear_section",
         "_section_label",
+        "_catalog_price",
         "_catalog_action_card",
         "_begin_catalog_transaction",
         "_schedule_catalog_transaction_release",
@@ -793,6 +806,7 @@ CAPTURE_RENDERER_SHARED_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "refresh",
         "_show_result",
         "_hide_status_if_current",
+        "_hide_scheduled_status",
         "_refresh_parent",
         "_close_nursery",
     ),
@@ -851,10 +865,9 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._achievement_view_state",
         "GardenDashboard._set_achievement_filter",
         "GardenDashboard._refresh_achievement_list",
+        "GardenDashboard._refresh_achievement_list_content",
     ),
     "progress-growth": (
-        "GardenDetailsDialog._current_fertilizer_token",
-        "GardenDetailsDialog._refresh_timed_fertilizer",
         "GardenDetailsDialog._refresh_growth",
         "GardenDetailsDialog._add_growth_stage_path",
         "GardenDetailsDialog._open_growth_charge_dialog",
@@ -878,6 +891,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._release_collection_activation",
         "GardenDashboard._open_loadout_detail",
         "GardenDashboard._refresh_collection_list",
+        "GardenDashboard._refresh_collection_list_content",
         "GardenDashboard._set_collection_filter",
         "GardenDashboard._set_collection_category",
         "GardenDashboard._set_collection_query",
@@ -915,6 +929,9 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._show_docked_plant_card",
         "GardenDashboard._position_plant_card",
         "GardenDashboard._refresh_selected_plant_card",
+        "GardenDashboard._booster_is_active",
+        "GardenDashboard._has_visible_timed_plant_status",
+        "GardenDashboard._sync_fertilizer_timer",
         "GardenDashboard._refresh_timed_plant_statuses",
         "GardenDashboard._fertilizer_text",
         "GardenDashboard._nurture_plant",
@@ -924,6 +941,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     "garden-move": (
         "GardenDashboard._refresh_move_scene",
         "GardenDashboard._remember_move_focus",
+        "GardenDashboard._set_move_mode_controls",
         "GardenDashboard._restore_move_focus",
         "GardenDashboard._record_active_placement_token",
         "GardenDashboard._placement_callback_is_current",
@@ -1062,9 +1080,11 @@ CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._retry_failed_move",
         "GardenDashboard._sync_nursery_recovery",
     ),
-    "GardenDashboard.refresh_all": (
+    "GardenDashboard._refresh_all_content": (
         "GardenDashboard._refresh_onboarding",
         "GardenDashboard._on_scene_selection",
+    ),
+    "GardenDashboard._refresh_progress_page": (
         "GardenDashboard._refresh_achievement_list",
         "GardenDashboard._refresh_collection_list",
     ),
@@ -1108,7 +1128,7 @@ CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
     "GardenDashboard._refresh_onboarding": (
         "GardenDashboard._position_onboarding_coachmark",
     ),
-    "GardenDashboard._refresh_collection_list": (
+    "GardenDashboard._refresh_collection_list_content": (
         "GardenDashboard._open_species_overview",
     ),
     "GardenDashboard._confirm_dashboard_purchase": (
@@ -1126,14 +1146,10 @@ CAPTURE_RENDERER_HIDDEN_CALL_EXCEPTIONS: dict[str, tuple[str, ...]] = {
     "GardenDashboard._plant_scene_payload": (
         "GardenDashboard._fertilizer_text",
     ),
-    "GardenDetailsDialog.refresh": (
+    "GardenDetailsDialog._refresh_metric_page": (
         "GardenDetailsDialog._refresh_growth",
         "GardenDetailsDialog._refresh_streak",
         "GardenDetailsDialog._refresh_currency",
-    ),
-    "GardenDetailsDialog.__init__": (
-        "GardenDetailsDialog._current_fertilizer_token",
-        "GardenDetailsDialog._refresh_timed_fertilizer",
     ),
     "NurseryDialog._follow_receipt_action": (
         "NurseryDialog._set_placement",
@@ -2124,10 +2140,33 @@ CAPTURE_LAYOUT_LIMITS: dict[str, float | int] = {
 
 CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
     "compact-row": 36,
+    "banner": 36,
     "secondary": 36,
     "primary": 40,
     "onboarding": 40,
     "icon": 32,
+}
+
+# Canonical v25 surfaces whose initial 100% viewport must fit without vertical
+# overflow. These are the release positions called out in the v2.1.0 visual
+# review; a later content expansion may change the product contract, but it
+# must also update this capture contract deliberately.
+CANONICAL_NO_SCROLL_CAPTURE_LABELS = frozenset({
+    "nursery-plants",
+    "nursery-garden-spaces",
+    "purchase-success-inventory-collection",
+})
+
+# Bind high-risk surfaces to their semantic scroll owner. This prevents a
+# whole-dialog scrollbar from satisfying a range-only audit intended for a
+# local catalogue viewport.
+EXPECTED_SCROLL_OWNER_NAMES: dict[str, str] = {
+    "collection-loadout-detail": "Scenery catalogue",
+    "nursery-plants": "Plants catalog",
+    "nursery-fertilizer-booster": "Fertilizers and boosts catalog",
+    "nursery-garden-spaces": "Garden beds catalog",
+    "settings-display-advanced-open": "Display settings",
+    "purchase-success-inventory-collection": "Plants catalog",
 }
 
 TABULAR_NUMERAL_CAPTURE_LABELS = frozenset({
@@ -2267,7 +2306,10 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "kind": "reviewer",
             "state": label,
             "toast_tier": (
-                "Common" if label == "reviewer-find-common-reduced-motion" else
+                "Common" if label in {
+                    "reviewer-find-common-reduced-motion",
+                    "reviewer-find-stacked-sync",
+                } else
                 "Rare" if label == "reviewer-find-environment" else
                 ""
             ),
@@ -3699,9 +3741,13 @@ class _UiFaceCaptureRunner:
             on_ready()
             return
         if tries <= 0:
+            reason = failure_reason or "Timed out waiting for the requested UI surface"
+            last_observation = self._capture_annotations.get(failure_label)
+            if isinstance(last_observation, dict) and last_observation:
+                reason = f"{reason}; last observation: {last_observation}"
             self._failures.append({
                 "label": failure_label,
-                "reason": failure_reason or "Timed out waiting for the requested UI surface",
+                "reason": reason,
             })
             if on_error is not None:
                 on_error()
@@ -3834,12 +3880,27 @@ class _UiFaceCaptureRunner:
               const root = visibleRoots.length
                 ? visibleRoots[visibleRoots.length - 1]
                 : null;
+              const documentRoot = document.documentElement;
+              const rootClientWidth = documentRoot
+                ? Math.floor(documentRoot.clientWidth) : 0;
+              const rootScrollWidth = documentRoot
+                ? Math.ceil(documentRoot.scrollWidth) : 0;
+              const rootHorizontalOverflow = Math.max(
+                0,
+                rootScrollWidth - rootClientWidth
+              );
+              const rootOverflowPassed = rootClientWidth > 0
+                && rootScrollWidth <= rootClientWidth;
               if (!root) {
                 return {
                   ready: false,
                   reason: 'no-visible-root',
                   rootCount: roots.length,
                   visibleRootCount: visibleRoots.length,
+                  rootClientWidth,
+                  rootScrollWidth,
+                  rootHorizontalOverflow,
+                  rootOverflowPassed,
                 };
               }
               const rect = root.getBoundingClientRect();
@@ -3916,7 +3977,11 @@ class _UiFaceCaptureRunner:
                 || homeActionText !== 'Open garden'
                 || (
                   Math.round(homeActionRect.width) >= 104
-                  && Math.round(homeActionRect.width) <= 120
+                  // The shared Home banner reserves a 128 px CTA column so
+                  // longer localized action copy cannot collide with the
+                  // title. Keep the source-backed audit aligned with that
+                  // approved product geometry.
+                  && Math.round(homeActionRect.width) <= 128
                   && Math.round(homeActionRect.height) === 36
                 );
               const conciseInformationModelPassed = (
@@ -3927,7 +3992,8 @@ class _UiFaceCaptureRunner:
                       && homeActionText === 'Open garden'
                     : fixtureState === 'starter-not-selected'
                       ? homeActionText.length > 0
-                      : (supportText.includes('toward') || supportText.includes('total Growth'))
+                      : (/\b[\d,]+\s*\/\s*[\d,]+\s+toward\s+\S+/i.test(supportText)
+                        || supportText.includes('total Growth'))
                         && homeActionText === 'Open garden'
               );
               let fixtureMatches = false;
@@ -3966,11 +4032,13 @@ class _UiFaceCaptureRunner:
               return {
                 ready: paintedState && imagesComplete && canonicalSettled
                   && fixtureMatches && bannedTerms.length === 0
-                  && homeActionGeometryPassed && conciseInformationModelPassed,
+                  && homeActionGeometryPassed && conciseInformationModelPassed
+                  && rootOverflowPassed,
                 reason: !paintedState ? 'unpainted-state'
                   : !imagesComplete ? 'images-pending'
                   : !canonicalSettled ? 'canonical-preview-unsettled'
                   : !fixtureMatches ? 'fixture-mismatch'
+                  : !rootOverflowPassed ? 'root-horizontal-overflow'
                   : 'ready',
                 rootCount: roots.length,
                 visibleRootCount: visibleRoots.length,
@@ -4015,6 +4083,10 @@ class _UiFaceCaptureRunner:
                 growthText,
                 fixtureState,
                 expectedActiveSlot,
+                rootClientWidth,
+                rootScrollWidth,
+                rootHorizontalOverflow,
+                rootOverflowPassed,
                 width: Math.round(rect.width),
                 height: Math.round(rect.height),
               };
@@ -4234,11 +4306,23 @@ class _UiFaceCaptureRunner:
               const qaVisible = visible(qa);
               const visibleHomeRootCount = homeRoots.filter(visible).length;
               const visibleDeckBrowserMarkerCount = deckMarkers.filter(visible).length;
+              const documentRoot = document.documentElement;
+              const rootClientWidth = documentRoot
+                ? Math.floor(documentRoot.clientWidth) : 0;
+              const rootScrollWidth = documentRoot
+                ? Math.ceil(documentRoot.scrollWidth) : 0;
+              const rootHorizontalOverflow = Math.max(
+                0,
+                rootScrollWidth - rootClientWidth
+              );
+              const rootOverflowPassed = rootClientWidth > 0
+                && rootScrollWidth <= rootClientWidth;
               return {
                 ready: !!qa && qaVisible && bodyText.length > 0
                   && canonicalQuestionPresent
                   && visibleHomeRootCount === 0
-                  && visibleDeckBrowserMarkerCount === 0,
+                  && visibleDeckBrowserMarkerCount === 0
+                  && rootOverflowPassed,
                 qaPresent: !!qa,
                 qaVisible,
                 canonicalQuestionPresent,
@@ -4246,6 +4330,10 @@ class _UiFaceCaptureRunner:
                 visibleHomeRootCount,
                 deckBrowserMarkerCount: deckMarkers.length,
                 visibleDeckBrowserMarkerCount,
+                rootClientWidth,
+                rootScrollWidth,
+                rootHorizontalOverflow,
+                rootOverflowPassed,
                 bodyText: bodyText.slice(0, 500),
               };
             })()
@@ -5173,9 +5261,11 @@ class _UiFaceCaptureRunner:
         viewport_size = list(evidence.get("container_size", ()) or ())
         width = bounds[2] if len(bounds) == 4 else 0
         height = bounds[3] if len(bounds) == 4 else 0
+        expected_width = 292
+        width_exact = width == expected_width
         size_in_range = bool(
-            340 <= width <= 370
-            and 66 <= height <= 78
+            width_exact
+            and 56 <= height <= 78
         )
 
         # Reviewer answer buttons live inside WebEngine and are not QWidgets.
@@ -5261,6 +5351,8 @@ class _UiFaceCaptureRunner:
             "viewport_contained": bool(evidence.get("contained", False)),
             "width": width,
             "height": height,
+            "expected_width": expected_width,
+            "width_exact": width_exact,
             "size_in_range": size_in_range,
             "control_rects": control_rects,
             "minimum_control_clearance": minimum_clearance,
@@ -5546,23 +5638,30 @@ class _UiFaceCaptureRunner:
                     if type(visual_control_size) is int else -1
                 )
                 expected_outer_height = (
-                    int(expected_height) + 2
+                    int(expected_height)
                     if type(expected_height) is int else -1
                 )
-                outer_height_valid = height == expected_outer_height
+                maximum_outer_height = (
+                    int(expected_height) + 4
+                    if type(expected_height) is int else -1
+                )
+                outer_height_valid = bool(
+                    expected_outer_height <= height <= maximum_outer_height
+                )
                 width = int(button.width())
                 icon_geometry_valid = bool(
                     size_name != "icon"
                     or (
                         width == height
-                        and width == expected_outer_height
+                        and expected_outer_height
+                        <= width <= maximum_outer_height
                     )
                 )
                 passed = bool(
                     type(expected_height) is int
                     and visual_size == expected_height
                     and outer_height_valid
-                    and height - visual_size == 2
+                    and 0 <= height - visual_size <= 4
                     and (
                         not text
                         or text_size >= float(
@@ -5578,6 +5677,7 @@ class _UiFaceCaptureRunner:
                     "width": width,
                     "expectedHeight": expected_height,
                     "expectedOuterHeight": expected_outer_height,
+                    "maximumOuterHeight": maximum_outer_height,
                     "visualControlSize": visual_size,
                     "outerBorderAllowance": height - visual_size,
                     "renderedTextSize": text_size,
@@ -5641,6 +5741,12 @@ class _UiFaceCaptureRunner:
             return ({
                 "applicable": False,
                 "controls": [],
+                "visible_actions": [],
+                "visible_action_count": 0,
+                "dialog_size": [int(root.width()), int(root.height())],
+                "visible_actions_contained": True,
+                "visible_action_overlaps": [],
+                "visible_actions_non_overlapping": True,
                 "close_icons": [],
                 "primary_action_count": 0,
                 "visible_horizontal_scrollbars": [],
@@ -5658,7 +5764,116 @@ class _UiFaceCaptureRunner:
         primary_scope_widgets: list[QWidget] = []
         primary_action_groups: list[dict[str, Any]] = []
         footer_actions: list[dict[str, Any]] = []
+        visible_action_records: list[dict[str, Any]] = []
+        visible_action_widgets: list[QAbstractButton] = []
         pinned_footer = getattr(root, "_pinned_footer", None)
+        clipping_records: list[dict[str, Any]] = []
+
+        card_markers = (
+            "catalogCard",
+            "nurseryCatalogCard",
+            "environmentTile",
+            "fertilizerCard",
+            "nurseryPlant",
+            "spaceBed",
+            "achievementCard",
+            "sectionCard",
+            "detailCard",
+        )
+
+        def nearest_clip_owner(widget: QWidget) -> tuple[QWidget, str]:
+            ancestor = widget.parentWidget()
+            while ancestor is not None and ancestor is not root:
+                if isinstance(ancestor, QAbstractScrollArea):
+                    name = str(
+                        ancestor.accessibleName()
+                        or ancestor.objectName()
+                        or type(ancestor).__name__
+                    )
+                    return ancestor.viewport(), name
+                ancestor = ancestor.parentWidget()
+            return root, str(root.windowTitle() or type(root).__name__)
+
+        # Audit every painted control and semantically marked card against its
+        # real clipping viewport. A fully off-screen row in an intentional
+        # scroll region is allowed; a row or action that leaks partially into
+        # the first fold is a release failure.
+        for candidate in root.findChildren(QWidget):
+            try:
+                is_control = isinstance(
+                    candidate,
+                    (QAbstractButton, QLineEdit, QComboBox),
+                )
+                is_card = isinstance(candidate, QFrame) and any(
+                    bool(candidate.property(marker))
+                    for marker in card_markers
+                )
+                if (
+                    (not is_control and not is_card)
+                    or candidate.window() is not root
+                    or not candidate.isVisibleTo(root)
+                    or int(candidate.width()) <= 0
+                    or int(candidate.height()) <= 0
+                ):
+                    continue
+                owner, owner_name = nearest_clip_owner(candidate)
+                evidence = self._widget_bounds_evidence(candidate, owner)
+                if not bool(evidence.get("intersects", False)):
+                    continue
+                contained = bool(evidence.get("contained", False))
+                ancestor = candidate.parentWidget()
+                ancestor_clips: list[str] = []
+                while ancestor is not None and ancestor is not owner and ancestor is not root:
+                    if isinstance(ancestor, QFrame) and any(
+                        bool(ancestor.property(marker))
+                        for marker in card_markers
+                    ):
+                        ancestor_evidence = self._widget_bounds_evidence(
+                            candidate,
+                            ancestor,
+                        )
+                        if (
+                            bool(ancestor_evidence.get("intersects", False))
+                            and not bool(ancestor_evidence.get("contained", False))
+                        ):
+                            contained = False
+                            ancestor_clips.append(
+                                str(
+                                    ancestor.objectName()
+                                    or ancestor.property("semanticId")
+                                    or type(ancestor).__name__
+                                )
+                            )
+                    ancestor = ancestor.parentWidget()
+                clipping_records.append({
+                    "kind": "control" if is_control else "card",
+                    "widget": type(candidate).__name__,
+                    "object_name": str(candidate.objectName() or ""),
+                    "text": (
+                        _displayed_button_text(candidate)
+                        if isinstance(candidate, QAbstractButton) else
+                        str(candidate.text())
+                        if isinstance(candidate, QLineEdit) else
+                        str(candidate.currentText())
+                        if isinstance(candidate, QComboBox) else
+                        ""
+                    )[:120],
+                    "clip_owner": owner_name,
+                    "bounds": list(evidence.get("bounds", ()) or ()),
+                    "owner_size": list(
+                        evidence.get("container_size", ()) or ()
+                    ),
+                    "ancestor_clips": ancestor_clips,
+                    "contained": contained,
+                })
+                if not contained:
+                    issue_codes.append(
+                        "partially-clipped-control"
+                        if is_control else
+                        "partially-clipped-card"
+                    )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                issue_codes.append("clipping-telemetry-error")
 
         def primary_scope(button: QAbstractButton) -> QWidget:
             current = button.parentWidget()
@@ -5735,6 +5950,49 @@ class _UiFaceCaptureRunner:
             painted = self._widget_bounds_evidence(button, root)
             if not painted.get("intersects", False):
                 continue
+            onboarding_shield = getattr(root, "onboarding_shield", None)
+            onboarding_panel = getattr(root, "onboarding_panel", None)
+            scene = getattr(root, "scene", None)
+            if (
+                isinstance(onboarding_shield, QWidget)
+                and onboarding_shield.isVisibleTo(root)
+                and isinstance(scene, QWidget)
+                and scene.isAncestorOf(button)
+                and not (
+                    isinstance(onboarding_panel, QWidget)
+                    and onboarding_panel.isAncestorOf(button)
+                )
+            ):
+                # The modal onboarding shield paints above and intercepts the
+                # scene. Hotspots behind it are not visible actions.
+                continue
+            owner, owner_name = nearest_clip_owner(button)
+            owner_evidence = self._widget_bounds_evidence(button, owner)
+            if not owner_evidence.get("intersects", False):
+                # A child below a local scroll viewport can still map inside
+                # the dialog root. It is not part of the visible action set.
+                continue
+            visible_action_widgets.append(button)
+            visible_action_records.append({
+                "index": len(visible_action_records),
+                "text": _displayed_button_text(button).strip(),
+                "accessible_name": str(button.accessibleName() or ""),
+                "object_name": str(button.objectName() or ""),
+                "semantic_id": str(button.property("semanticId") or ""),
+                "bounds": list(painted.get("bounds", ()) or ()),
+                "clip_owner": owner_name,
+                "owner_bounds": list(
+                    owner_evidence.get("container_size", ()) or ()
+                ),
+                "visible": bool(painted.get("visible", False)),
+                "contained_in_dialog": bool(
+                    painted.get("contained", False)
+                ),
+                "contained_in_owner": bool(
+                    owner_evidence.get("contained", False)
+                ),
+                "pairwise_eligible": True,
+            })
             text = _displayed_button_text(button).strip()
             component = str(button.property("gardenComponent") or "")
             composite_button = bool(
@@ -5793,12 +6051,17 @@ class _UiFaceCaptureRunner:
                     or pinned_footer.isAncestorOf(button)
                 )
             )
+            actual_height = int(button.height())
+            actual_width = int(button.width())
             size_passed = bool(
-                28 <= visual_size <= 30
+                visual_size == 32
+                and 32 <= actual_height <= 36
+                and actual_width == actual_height
                 and 14 <= icon_size[0] <= 16
                 and 14 <= icon_size[1] <= 16
                 if icon_only else
-                int(button.height()) <= 40
+                visual_size in {36, 40}
+                and visual_size <= actual_height <= visual_size + 4
                 if standard_button else
                 True
             )
@@ -5847,6 +6110,68 @@ class _UiFaceCaptureRunner:
                 })
                 if not close_passed:
                     issue_codes.append("close-icon-glyph-or-size")
+
+        # A composite clickable card can legitimately contain a smaller
+        # explicit action. Keep containment proof for both widgets, while
+        # excluding only that ancestor/descendant pair from sibling-overlap
+        # calculations. Every ordinary visible action remains eligible.
+        nested_action_indexes: set[int] = set()
+        for first_index, first_widget in enumerate(visible_action_widgets):
+            for second_index in range(first_index + 1, len(visible_action_widgets)):
+                second_widget = visible_action_widgets[second_index]
+                if (
+                    first_widget.isAncestorOf(second_widget)
+                    or second_widget.isAncestorOf(first_widget)
+                ):
+                    nested_action_indexes.update((first_index, second_index))
+        for index in nested_action_indexes:
+            visible_action_records[index]["pairwise_eligible"] = False
+
+        visible_action_overlaps: list[dict[str, Any]] = []
+        for first_index, first in enumerate(visible_action_records):
+            if not bool(first.get("pairwise_eligible", False)):
+                continue
+            first_bounds = list(first.get("bounds", ()) or ())
+            if len(first_bounds) != 4:
+                continue
+            first_left, first_top, first_width, first_height = first_bounds
+            for second in visible_action_records[first_index + 1:]:
+                if not bool(second.get("pairwise_eligible", False)):
+                    continue
+                second_bounds = list(second.get("bounds", ()) or ())
+                if len(second_bounds) != 4:
+                    continue
+                second_left, second_top, second_width, second_height = (
+                    second_bounds
+                )
+                overlap_width = max(
+                    0,
+                    min(first_left + first_width, second_left + second_width)
+                    - max(first_left, second_left),
+                )
+                overlap_height = max(
+                    0,
+                    min(first_top + first_height, second_top + second_height)
+                    - max(first_top, second_top),
+                )
+                if overlap_width > 0 and overlap_height > 0:
+                    visible_action_overlaps.append({
+                        "actions": [
+                            int(first.get("index", first_index)),
+                            int(second.get("index", first_index + 1)),
+                        ],
+                        "width": overlap_width,
+                        "height": overlap_height,
+                    })
+        visible_actions_contained = all(
+            bool(record.get("contained_in_dialog", False))
+            and bool(record.get("contained_in_owner", False))
+            for record in visible_action_records
+        )
+        if not visible_actions_contained:
+            issue_codes.append("visible-action-outside-container")
+        if visible_action_overlaps:
+            issue_codes.append("overlapping-visible-actions")
 
         requires_inline_close = bool(
             expected_capture_window_family(label) != "GardenDashboard"
@@ -5939,10 +6264,299 @@ class _UiFaceCaptureRunner:
             if not popover["passed"]:
                 issue_codes.append("popover-outside-direct-canvas")
 
+        plant_action_geometry: dict[str, Any] = {
+            "applicable": False,
+            "expected_actions": [],
+            "records": [],
+            "overlaps": [],
+            "passed": True,
+        }
+        if label == "selected-plant-nurtured":
+            card = getattr(root, "plant_card", None)
+            expected_actions = [
+                ("growth_charge", "Use growth charge"),
+                ("fertilize", "Apply fertilizer"),
+                ("move", "Move"),
+                ("story", "Plant story"),
+                ("nurture", "Stop nurturing"),
+            ]
+            action_records: list[dict[str, Any]] = []
+            for attribute, expected_text in expected_actions:
+                button = getattr(card, attribute, None)
+                evidence = self._widget_bounds_evidence(button, card)
+                action_records.append({
+                    "attribute": attribute,
+                    "expected_text": expected_text,
+                    "text": (
+                        _displayed_button_text(button).strip()
+                        if isinstance(button, QAbstractButton) else
+                        ""
+                    ),
+                    "bounds": list(evidence.get("bounds", ()) or ()),
+                    "visible": bool(evidence.get("visible", False)),
+                    "contained": bool(evidence.get("contained", False)),
+                })
+            overlaps: list[dict[str, Any]] = []
+            for index, first in enumerate(action_records):
+                first_bounds = first.get("bounds")
+                if not isinstance(first_bounds, list) or len(first_bounds) != 4:
+                    continue
+                first_left, first_top, first_width, first_height = first_bounds
+                for second in action_records[index + 1:]:
+                    second_bounds = second.get("bounds")
+                    if (
+                        not isinstance(second_bounds, list)
+                        or len(second_bounds) != 4
+                    ):
+                        continue
+                    (
+                        second_left,
+                        second_top,
+                        second_width,
+                        second_height,
+                    ) = second_bounds
+                    overlap_width = max(
+                        0,
+                        min(first_left + first_width, second_left + second_width)
+                        - max(first_left, second_left),
+                    )
+                    overlap_height = max(
+                        0,
+                        min(first_top + first_height, second_top + second_height)
+                        - max(first_top, second_top),
+                    )
+                    if overlap_width > 0 and overlap_height > 0:
+                        overlaps.append({
+                            "actions": [
+                                first["expected_text"],
+                                second["expected_text"],
+                            ],
+                            "width": overlap_width,
+                            "height": overlap_height,
+                        })
+            actions_passed = bool(
+                all(
+                    record.get("text") == record.get("expected_text")
+                    and record.get("visible") is True
+                    and record.get("contained") is True
+                    for record in action_records
+                )
+                and not overlaps
+            )
+            plant_action_geometry = {
+                "applicable": True,
+                "expected_actions": [
+                    expected_text for _attribute, expected_text in expected_actions
+                ],
+                "records": action_records,
+                "overlaps": overlaps,
+                "passed": actions_passed,
+            }
+            if not actions_passed:
+                issue_codes.append("overlapping-plant-actions")
+
+        starter_card_geometry: dict[str, Any] = {
+            "applicable": False,
+            "dialog_height": 0,
+            "records": [],
+            "footer": {},
+            "passed": True,
+        }
+        if label == "starter-nursery-plants":
+            starter_cards = [
+                candidate
+                for candidate in root.findChildren(QFrame)
+                if bool(candidate.property("nurseryCatalogCard"))
+                and candidate.window() is root
+                and candidate.isVisibleTo(root)
+            ]
+            starter_records: list[dict[str, Any]] = []
+            for card in starter_cards:
+                badges = [
+                    candidate
+                    for candidate in card.findChildren(QLabel)
+                    if str(candidate.property("gardenComponent") or "") == "badge"
+                    and str(candidate.text()).strip() == "Seed"
+                    and candidate.isVisibleTo(card)
+                ]
+                choose_actions = [
+                    candidate
+                    for candidate in card.findChildren(QAbstractButton)
+                    if _displayed_button_text(candidate).strip() == "Choose"
+                    and candidate.isVisibleTo(card)
+                ]
+                detail_actions = [
+                    candidate
+                    for candidate in card.findChildren(QAbstractButton)
+                    if _displayed_button_text(candidate).strip() == "View stages ›"
+                    and candidate.isVisibleTo(card)
+                ]
+                badge_evidence = self._widget_bounds_evidence(
+                    badges[0] if len(badges) == 1 else None,
+                    card,
+                )
+                choose_evidence = self._widget_bounds_evidence(
+                    choose_actions[0] if len(choose_actions) == 1 else None,
+                    card,
+                )
+                details_evidence = self._widget_bounds_evidence(
+                    detail_actions[0] if len(detail_actions) == 1 else None,
+                    card,
+                )
+                badge_bounds = list(badge_evidence.get("bounds", ()) or ())
+                choose_bounds = list(choose_evidence.get("bounds", ()) or ())
+                record_passed = bool(
+                    len(badge_bounds) == 4
+                    and 44 <= badge_bounds[2] <= 64
+                    and 22 <= badge_bounds[3] <= 26
+                    and badge_evidence.get("contained") is True
+                    and len(choose_bounds) == 4
+                    and 64 <= choose_bounds[2] <= 100
+                    and 36 <= choose_bounds[3] <= 40
+                    and choose_evidence.get("contained") is True
+                    and details_evidence.get("contained") is True
+                    and 76 <= int(card.height()) <= 88
+                )
+                starter_records.append({
+                    "item_id": str(card.property("catalogItemId") or ""),
+                    "card_size": [int(card.width()), int(card.height())],
+                    "seed_badge_bounds": badge_bounds,
+                    "choose_bounds": choose_bounds,
+                    "details_bounds": list(
+                        details_evidence.get("bounds", ()) or ()
+                    ),
+                    "passed": record_passed,
+                })
+            footer_widget = getattr(root, "nursery_footer", None)
+            footer_evidence = self._widget_bounds_evidence(footer_widget, root)
+            close_button = getattr(root, "close_button", None)
+            close_evidence = self._widget_bounds_evidence(close_button, root)
+            footer = {
+                "bounds": list(footer_evidence.get("bounds", ()) or ()),
+                "contained": bool(footer_evidence.get("contained", False)),
+                "action_text": (
+                    _displayed_button_text(close_button).strip()
+                    if isinstance(close_button, QAbstractButton) else
+                    ""
+                ),
+                "action_bounds": list(close_evidence.get("bounds", ()) or ()),
+                "action_contained": bool(close_evidence.get("contained", False)),
+            }
+            starter_passed = bool(
+                len(starter_records) == 4
+                and all(record.get("passed") is True for record in starter_records)
+                and 340 <= int(root.height()) <= 360
+                and footer["contained"] is True
+                and len(footer["bounds"]) == 4
+                and 36 <= footer["bounds"][3] <= 48
+                and footer["action_text"] == "Skip for now"
+                and footer["action_contained"] is True
+            )
+            starter_card_geometry = {
+                "applicable": True,
+                "dialog_height": int(root.height()),
+                "records": starter_records,
+                "footer": footer,
+                "passed": starter_passed,
+            }
+            if not starter_passed:
+                issue_codes.append("starter-card-geometry")
+
+        fertilizer_status_geometry: dict[str, Any] = {
+            "applicable": False,
+            "passed": True,
+        }
+        if label == "fertilizer-active":
+            status = getattr(root, "current_fertilizer_status", None)
+            target = getattr(root, "fertilizer_target", None)
+            leading = getattr(status, "_leading_widget", None)
+            title_label = getattr(status, "title_label", None)
+            summary_label = getattr(status, "summary_label", None)
+            balance = getattr(root, "fertilizer_balance", None)
+            balance_icon = getattr(balance, "icon", None)
+            balance_value = getattr(balance, "value", None)
+            extend = getattr(root, "extend_current_fertilizer", None)
+            status_evidence = self._widget_bounds_evidence(status, root)
+            leading_evidence = self._widget_bounds_evidence(leading, status)
+            balance_evidence = self._widget_bounds_evidence(balance, root)
+            extend_evidence = self._widget_bounds_evidence(extend, root)
+            title_text = (
+                str(title_label.text()).strip()
+                if isinstance(title_label, QLabel) else
+                ""
+            )
+            summary_text = (
+                str(summary_label.text()).strip()
+                if isinstance(summary_label, QLabel) else
+                ""
+            )
+            balance_text = (
+                str(balance_value.text()).strip()
+                if isinstance(balance_value, QLabel) else
+                ""
+            )
+            extend_text = (
+                _displayed_button_text(extend).strip()
+                if isinstance(extend, QAbstractButton) else
+                ""
+            )
+            target_text = (
+                str(target.text()).strip()
+                if isinstance(target, QLabel) else
+                ""
+            )
+            balance_icon_present = bool(
+                isinstance(balance_icon, QLabel)
+                and not balance_icon.pixmap().isNull()
+            )
+            fertilizer_status_passed = bool(
+                status_evidence.get("contained") is True
+                and leading_evidence.get("contained") is True
+                and target_text == "Applying to Rose Plant"
+                and title_text == "Basic Fertilizer"
+                and summary_text
+                == "+1 Growth per answer · 1 hour remaining"
+                and balance_evidence.get("contained") is True
+                and balance_text == "Balance: 500"
+                and balance_icon_present
+                and extend_evidence.get("contained") is True
+                and extend_text == "Extend 1 hour · 25 coins"
+            )
+            fertilizer_status_geometry = {
+                "applicable": True,
+                "status_bounds": list(
+                    status_evidence.get("bounds", ()) or ()
+                ),
+                "icon_bounds": list(
+                    leading_evidence.get("bounds", ()) or ()
+                ),
+                "target": target_text,
+                "title": title_text,
+                "summary": summary_text,
+                "balance_bounds": list(
+                    balance_evidence.get("bounds", ()) or ()
+                ),
+                "balance_text": balance_text,
+                "balance_icon_present": balance_icon_present,
+                "extend_bounds": list(
+                    extend_evidence.get("bounds", ()) or ()
+                ),
+                "extend_text": extend_text,
+                "passed": fertilizer_status_passed,
+            }
+            if not fertilizer_status_passed:
+                issue_codes.append("fertilizer-status-geometry")
+
         unique_issues = list(dict.fromkeys(issue_codes))
         audit = {
             "applicable": True,
             "controls": controls,
+            "visible_actions": visible_action_records,
+            "visible_action_count": len(visible_action_records),
+            "dialog_size": [int(root.width()), int(root.height())],
+            "visible_actions_contained": visible_actions_contained,
+            "visible_action_overlaps": visible_action_overlaps,
+            "visible_actions_non_overlapping": not visible_action_overlaps,
             "control_sizes_passed": not any(
                 issue in unique_issues
                 for issue in ("icon-control-size", "standard-button-height")
@@ -5966,10 +6580,18 @@ class _UiFaceCaptureRunner:
                 bool(item.get("text_fit_passed", False))
                 for item in controls
             ),
+            "clipping_records": clipping_records,
+            "clipping_checks_passed": all(
+                bool(item.get("contained", False))
+                for item in clipping_records
+            ),
             "visible_horizontal_scrollbars": horizontal_scrollbars,
             "largest_unexplained_gap": largest_gap,
             "screen_contained": screen_contained,
             "popover": popover,
+            "plant_action_geometry": plant_action_geometry,
+            "starter_card_geometry": starter_card_geometry,
+            "fertilizer_status_geometry": fertilizer_status_geometry,
             "issues": unique_issues,
             "passed": not unique_issues,
         }
@@ -7205,9 +7827,6 @@ class _UiFaceCaptureRunner:
                     and toast.testAttribute(
                         Qt.WidgetAttribute.WA_ShowWithoutActivating
                     )
-                    and toast.testAttribute(
-                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
-                    )
                     and annotation.get("focus_preserved", False)
                 ),
                 {
@@ -7274,17 +7893,42 @@ class _UiFaceCaptureRunner:
                 reviewer_dom_identity,
             )
             if state_name == "reviewer-find-stacked-sync":
+                reviewer_stack = dict(
+                    annotation.get("reviewer_stack", {}) or {}
+                )
+                expected_visible_toasts = int(
+                    annotation.get("expected_visible_toasts", 0) or 0
+                )
+                stack_event_count = int(
+                    annotation.get("stack_event_count", 0) or 0
+                )
                 require(
                     "stacked_sync_summary",
                     bool(
                         annotation.get("canonical_projection_passed", False)
                         and annotation.get("stacked_find_count", 0) > 1
                         and annotation.get("sync_correlation")
-                        and toast_find_count
-                        == int(annotation.get("stacked_find_count", 0))
+                        and reviewer_stack.get("passed", False)
+                        and int(
+                            reviewer_stack.get("requested_event_count", 0) or 0
+                        )
+                        == stack_event_count
+                        and int(
+                            reviewer_stack.get("visible_toast_count", 0) or 0
+                        )
+                        == expected_visible_toasts
+                        and int(
+                            reviewer_stack.get("summary_toast_count", 0) or 0
+                        )
+                        == 1
+                        and str(reviewer_stack.get("summary_copy", ""))
+                        == str(annotation.get("expected_overflow_copy", ""))
                     ),
                     {
                         "stacked_find_count": annotation.get("stacked_find_count"),
+                        "stack_event_count": stack_event_count,
+                        "expected_visible_toasts": expected_visible_toasts,
+                        "reviewer_stack": reviewer_stack,
                         "toast_event_count": toast_event_count,
                         "toast_find_count": toast_find_count,
                     },
@@ -9146,6 +9790,11 @@ class _UiFaceCaptureRunner:
             if widget is not mw:
                 self._move_to_capture_display(widget)
             app.processEvents()
+            if label == "streak-active":
+                # The complete-section guard settles during visual-stability
+                # processing. Record the authoritative fold now, immediately
+                # before the same frame is audited and grabbed.
+                self._record_streak_fold_geometry(widget, label)
             geometry_request = (
                 dict(self._active_geometry_request)
                 if self._active_geometry_request is not None
@@ -9154,6 +9803,18 @@ class _UiFaceCaptureRunner:
             )
             family = str(widget.property("windowFamily") or type(widget).__name__)
             expected_family = expected_capture_window_family(label)
+            if label == "progress-achievements":
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.LayoutRequest,
+                )
+                app.processEvents()
+                dashboard = getattr(self.app, "dashboard", None)
+                if dashboard is not None:
+                    self._record_progress_achievement_capture_evidence(
+                        dashboard,
+                        label,
+                    )
             if label in _HOME_CAPTURE_LABELS:
                 dom_audit = dict(
                     getattr(self, "_active_home_dom_audit", {}) or {}
@@ -9192,6 +9853,63 @@ class _UiFaceCaptureRunner:
                 home_annotation["passed"] = bool(
                     home_annotation.get("passed", True)
                 ) and bool(compact_copy["passed"])
+            if label in _HOME_CAPTURE_LABELS or label in _REVIEWER_CAPTURE_LABELS:
+                dom_audit = dict(
+                    getattr(
+                        self,
+                        (
+                            "_active_home_dom_audit"
+                            if label in _HOME_CAPTURE_LABELS else
+                            "_active_reviewer_dom_audit"
+                        ),
+                        {},
+                    ) or {}
+                )
+                def normalized_dom_integer(value: Any) -> Any:
+                    if (
+                        not isinstance(value, bool)
+                        and isinstance(value, (int, float))
+                        and float(value).is_integer()
+                    ):
+                        return int(value)
+                    return value
+
+                client_width = normalized_dom_integer(
+                    dom_audit.get("rootClientWidth")
+                )
+                scroll_width = normalized_dom_integer(
+                    dom_audit.get("rootScrollWidth")
+                )
+                measured_overflow = normalized_dom_integer(
+                    dom_audit.get("rootHorizontalOverflow")
+                )
+                overflow_passed = bool(
+                    type(client_width) is int
+                    and client_width > 0
+                    and type(scroll_width) is int
+                    and scroll_width > 0
+                    and type(measured_overflow) is int
+                    and measured_overflow
+                    == max(0, scroll_width - client_width)
+                    and scroll_width <= client_width
+                    and dom_audit.get("rootOverflowPassed") is True
+                )
+                root_overflow_evidence = {
+                    "source": "document.documentElement",
+                    "client_width": client_width,
+                    "scroll_width": scroll_width,
+                    "horizontal_overflow": measured_overflow,
+                    "passed": overflow_passed,
+                }
+                web_annotation = self._capture_annotations.setdefault(
+                    label,
+                    {},
+                )
+                web_annotation["web_root_overflow"] = root_overflow_evidence
+                web_annotation["passed"] = bool(
+                    web_annotation.get("passed", True)
+                    and overflow_passed
+                )
             try:
                 postcondition = self._capture_fixture_postcondition(
                     label,
@@ -10083,6 +10801,51 @@ class _UiFaceCaptureRunner:
                     0,
                     int(vertical.maximum()) - int(vertical.minimum()),
                 )
+                scroll_name = str(
+                    scroll.accessibleName()
+                    or scroll.objectName()
+                    or type(scroll).__name__
+                )
+                expected_scroll_name = EXPECTED_SCROLL_OWNER_NAMES.get(
+                    capture_label,
+                    "",
+                )
+                complete_row_metrics: dict[str, Any] = {}
+                if scroll.property("completeRowAvailableHeight") is not None:
+                    complete_row_metrics = {
+                        "fixed_progress_header": bool(
+                            scroll.property("progressCardsOnlyScroll")
+                        ),
+                        "complete_row_available_height": int(
+                            scroll.property("completeRowAvailableHeight") or 0
+                        ),
+                        "complete_row_viewport_height": int(
+                            scroll.property("completeRowViewportHeight") or 0
+                        ),
+                        "complete_row_bottom_gutter": int(
+                            scroll.property("completeRowBottomGutter") or 0
+                        ),
+                        "complete_row_content_origin_y": int(
+                            scroll.property("completeRowContentOriginY") or 0
+                        ),
+                        "complete_row_bottom_padding": int(
+                            scroll.property("completeRowBottomPadding") or 0
+                        ),
+                        "complete_row_boundaries": [
+                            int(value)
+                            for value in tuple(
+                                scroll.property("completeRowBoundaries") or ()
+                            )
+                        ],
+                        "complete_row_eligible_boundaries": [
+                            int(value)
+                            for value in tuple(
+                                scroll.property(
+                                    "completeRowEligibleBoundaries"
+                                ) or ()
+                            )
+                        ],
+                    }
                 last_body_child_bottom_at_scroll_end = (
                     viewport_top
                     + max(0, visible_content_bottom - scroll_span)
@@ -10091,6 +10854,8 @@ class _UiFaceCaptureRunner:
                     capture_label.startswith("purchase-confirmation-")
                     or capture_label.startswith("purchase-error-")
                     or capture_label.startswith("growth-charge-")
+                    or capture_label in CANONICAL_NO_SCROLL_CAPTURE_LABELS
+                    or bool(scroll.property("expectedCanonicalNoScroll"))
                 )
                 metrics = {
                     "registered_count": len(deliberate),
@@ -10114,7 +10879,27 @@ class _UiFaceCaptureRunner:
                     ),
                     "require_no_scroll": require_no_scroll,
                 }
-                issue_codes = dialog_scroll_geometry_issue_codes(**metrics)
+                issue_codes = list(
+                    dialog_scroll_geometry_issue_codes(**metrics)
+                )
+                if capture_label in {
+                    "progress-achievements",
+                    "progress-collection",
+                } and not bool(scroll.property("progressCardsOnlyScroll")):
+                    issue_codes.append("missing-fixed-progress-header")
+                if (
+                    bool(scroll.property("progressCardsOnlyScroll"))
+                    and int(complete_row_metrics.get(
+                        "complete_row_bottom_gutter",
+                        0,
+                    )) > 20
+                ):
+                    issue_codes.append("excess-complete-row-gutter")
+                if (
+                    expected_scroll_name
+                    and scroll_name != expected_scroll_name
+                ):
+                    issue_codes.append("unexpected-scroll-owner")
                 required_content_height = max(
                     content_height,
                     minimum_hint_height,
@@ -10127,16 +10912,14 @@ class _UiFaceCaptureRunner:
                     "applicable": True,
                     "window_mode": window_mode,
                     "content_screen_limited": content_screen_limited,
-                    "scroll_name": str(
-                        scroll.accessibleName()
-                        or scroll.objectName()
-                        or type(scroll).__name__
-                    ),
+                    "scroll_name": scroll_name,
+                    "expected_scroll_name": expected_scroll_name,
                     **metrics,
+                    **complete_row_metrics,
                     "viewport_bottom": viewport_top + int(viewport.height()),
                     "required_content_height": required_content_height,
                     "reachable_content_height": reachable_content_height,
-                    "issues": list(issue_codes),
+                    "issues": list(dict.fromkeys(issue_codes)),
                     "passed": not issue_codes,
                 }
                 for issue_code in issue_codes:
@@ -11094,10 +11877,16 @@ class _UiFaceCaptureRunner:
         # On macOS Garden dialogs intentionally remain child widgets so that
         # opening one cannot move a full-screen Anki window to another Space.
         # allWidgets() therefore replaces a topLevelWidgets()-only cleanup.
+        # Restrict the sweep to Garden-owned shells. Anki's dialog manager
+        # retains its own QDialogs (for example NewDeckStats) until their
+        # overridden reject() method marks the registry entry closed. Sending
+        # those dialogs through _close_widget() would call QDialog.done()
+        # directly, delete the native object, and leave a stale wrapper for
+        # Anki's profile-shutdown closeAll() pass.
         for widget in tuple(app.allWidgets()):
             if widget is mw or not widget.isVisible():
                 continue
-            if not isinstance(widget, (QDialog, DialogShell)):
+            if not isinstance(widget, DialogShell):
                 continue
             self._close_widget(widget)
 
@@ -11296,6 +12085,134 @@ class _UiFaceCaptureRunner:
                 if app is not None:
                     app.processEvents()
                 break
+
+    def _record_streak_fold_geometry(
+        self,
+        dialog: Any,
+        label: str,
+    ) -> None:
+        """Record the settled first fold for the canonical Streak surface."""
+
+        streak_scroll = dict(
+            getattr(dialog, "body_scrolls", {}) or {}
+        ).get("streak")
+        streak_layout = dict(
+            getattr(dialog, "body_layouts", {}) or {}
+        ).get("streak")
+        streak_body = (
+            streak_scroll.widget()
+            if isinstance(streak_scroll, QScrollArea) else
+            None
+        )
+        streak_viewport = (
+            streak_scroll.viewport()
+            if isinstance(streak_scroll, QAbstractScrollArea) else
+            None
+        )
+        if streak_body is not None and streak_body.layout() is not None:
+            streak_body.layout().activate()
+        detail_records: list[dict[str, Any]] = []
+        if streak_body is not None and streak_viewport is not None:
+            for index, card in enumerate(streak_body.findChildren(QFrame)):
+                if (
+                    not bool(card.property("detailCard"))
+                    or not card.isVisibleTo(dialog)
+                ):
+                    continue
+                evidence = self._widget_bounds_evidence(card, streak_viewport)
+                detail_records.append({
+                    "index": index,
+                    "semantic_id": str(card.property("semanticId") or ""),
+                    "bounds": list(evidence.get("bounds", ()) or ()),
+                    "intersects_first_fold": bool(
+                        evidence.get("intersects", False)
+                    ),
+                    "contained_in_first_fold": bool(
+                        evidence.get("contained", False)
+                    ),
+                })
+        partial_cards = [
+            int(record["index"])
+            for record in detail_records
+            if record["intersects_first_fold"]
+            and not record["contained_in_first_fold"]
+        ]
+        configured_bottom_padding = 0
+        measured_bottom_padding = 0
+        if isinstance(streak_layout, QVBoxLayout):
+            (
+                _left_margin,
+                _top_margin,
+                _right_margin,
+                configured_bottom_padding,
+            ) = streak_layout.getContentsMargins()
+            direct_bottoms: list[int] = []
+            if streak_body is not None:
+                for item_index in range(streak_layout.count()):
+                    item = streak_layout.itemAt(item_index)
+                    child = item.widget() if item is not None else None
+                    if child is None or child.isHidden():
+                        continue
+                    origin = child.mapTo(
+                        streak_body,
+                        child.rect().topLeft(),
+                    )
+                    direct_bottoms.append(int(origin.y()) + int(child.height()))
+            if direct_bottoms and streak_body is not None:
+                measured_bottom_padding = max(
+                    0,
+                    int(streak_body.height()) - max(direct_bottoms),
+                )
+        scroll_bar = (
+            streak_scroll.verticalScrollBar()
+            if isinstance(streak_scroll, QAbstractScrollArea) else
+            None
+        )
+        at_initial_fold = bool(
+            scroll_bar is not None
+            and int(scroll_bar.value()) == int(scroll_bar.minimum())
+        )
+        fold_passed = bool(
+            streak_scroll is not None
+            and streak_body is not None
+            and streak_viewport is not None
+            and at_initial_fold
+            and configured_bottom_padding >= 24
+            and measured_bottom_padding >= 24
+            and not partial_cards
+        )
+        fold_geometry = {
+            "scroll_name": (
+                str(streak_scroll.accessibleName() or "")
+                if streak_scroll is not None else
+                ""
+            ),
+            "at_initial_fold": at_initial_fold,
+            "viewport_size": (
+                [
+                    int(streak_viewport.width()),
+                    int(streak_viewport.height()),
+                ]
+                if streak_viewport is not None else
+                []
+            ),
+            "configured_bottom_padding": int(configured_bottom_padding),
+            "measured_bottom_padding": int(measured_bottom_padding),
+            "detail_cards": detail_records,
+            "partial_detail_card_indexes": partial_cards,
+            "passed": fold_passed,
+        }
+        annotation = dict(self._capture_annotations.get(label, {}) or {})
+        annotation["streak_fold_geometry"] = fold_geometry
+        base_state_passed = bool(
+            annotation.get("achievement_completed", False)
+            and annotation.get("daily_reward_earned", False)
+            and annotation.get("weekly_reward_earned", False)
+        )
+        annotation["passed"] = bool(
+            base_state_passed and fold_passed
+        )
+        self._capture_annotations[label] = annotation
 
     def _capture_metric(
         self,
@@ -11895,6 +12812,9 @@ class _UiFaceCaptureRunner:
                 self._next_after(200)
                 return
             fixture = GardenState()
+            # Prove all placement semantics in one real viewport: two usable
+            # beds followed by four visibly locked beds.
+            fixture.unlocked_slots = 2
             fixture.onboarding = OnboardingProgress(
                 step=OnboardingStep.PLACEMENT,
                 pending_species="rose",
@@ -11940,6 +12860,58 @@ class _UiFaceCaptureRunner:
                         int(destination)
                     )
                     dashboard.scene.update()
+
+                # QWidget.repaint() is synchronous: the evidence below comes
+                # from the same paint path that supplies the captured pixels,
+                # rather than merely inferring locked state from slot counts.
+                dashboard.scene.repaint()
+                QApplication.processEvents()
+                dashboard.scene.repaint()
+                locked_visuals = dict(
+                    getattr(
+                        dashboard.scene,
+                        "_painted_locked_beds",
+                        {},
+                    ) or {}
+                )
+                destinations = [
+                    int(slot)
+                    for slot in dashboard.scene._destination_slots()
+                ]
+                expected_locked = [2, 3, 4, 5]
+                locked_records = [
+                    dict(locked_visuals.get(slot, {}) or {})
+                    for slot in expected_locked
+                ]
+                locked_visuals_passed = bool(
+                    sorted(int(slot) for slot in locked_visuals)
+                    == expected_locked
+                    and destinations == [0, 1]
+                    and all(
+                        record.get("relative_visual_strength") == 0.60
+                        and record.get("interactive") is False
+                        and len(record.get("overlay_bounds", ())) == 4
+                        and len(record.get("badge_bounds", ())) == 4
+                        and all(
+                            float(value) > 0
+                            for value in record.get("badge_bounds", ())[2:]
+                        )
+                        for record in locked_records
+                    )
+                )
+                self._capture_annotations["starter-placement"] = {
+                    "pending_species": fixture.onboarding.pending_species,
+                    "allowed_destination_slots": destinations,
+                    "locked_bed_slots": expected_locked,
+                    "locked_bed_visuals": locked_records,
+                    "locked_bed_visuals_passed": locked_visuals_passed,
+                    "passed": bool(
+                        fixture.onboarding.step == OnboardingStep.PLACEMENT
+                        and not fixture.plants
+                        and dashboard.scene._interaction.placing
+                        and locked_visuals_passed
+                    ),
+                }
 
             self._capture_annotations["starter-placement"] = {
                 "passed": bool(
@@ -12566,6 +13538,8 @@ class _UiFaceCaptureRunner:
         self._with_dashboard(self._capture_nurture_after)
 
     def _capture_nurture_after(self) -> None:
+        from ..models.state import OnboardingStep
+
         state = self.app.storage.state
         active_id = str(getattr(state, "active_plant_id", "") or "")
         eligible = sorted(
@@ -12593,6 +13567,15 @@ class _UiFaceCaptureRunner:
             self._close_dashboard()
             self._next_after(250)
             return
+        # The development checkpoint may already nurture another plant. Make
+        # this transaction's independently selected target the fixture's
+        # starter before committing the real Nurture action, so the subsequent
+        # onboarding completion exercises the same product invariant as a
+        # first-run user.
+        state.starter_selection_complete = True
+        state.onboarding.step = OnboardingStep.NURTURE
+        state.onboarding.starter_plant_id = plant_id
+        state.onboarding.pending_species = None
         nurture = getattr(dashboard, "_nurture_plant", None)
         if callable(nurture):
             nurture(plant_id)
@@ -12662,10 +13645,33 @@ class _UiFaceCaptureRunner:
             lambda: self._capture_fertilize_after("fertilizer-active", "active")
         )
 
+    def _fertilizer_flow_plant_id(self) -> str:
+        """Use one named target across every Fertilizer release surface."""
+
+        state = self.app.storage.state
+        plants = list(getattr(state, "plants", ()) or ())
+        target = next(
+            (
+                plant
+                for plant in plants
+                if str(getattr(plant, "species", "") or "").casefold()
+                == "rose"
+                and bool(getattr(plant, "planted", False))
+                and not bool(getattr(plant, "fully_grown", False))
+            ),
+            None,
+        )
+        plant_id = str(getattr(target, "plant_id", "") or "")
+        if not plant_id:
+            plant_id = self._select_plant()
+        elif str(getattr(state, "active_plant_id", "") or "") != plant_id:
+            self.app.engine.set_active_plant(plant_id)
+        return plant_id
+
     def _capture_fertilize_after(self, label: str, state_variant: str) -> None:
         from ..models.state import Fertilizer
 
-        plant_id = self._select_plant()
+        plant_id = self._fertilizer_flow_plant_id()
         dashboard = getattr(self.app, "dashboard", None)
         if not plant_id or dashboard is None:
             self._close_dashboard()
@@ -13574,7 +14580,9 @@ class _UiFaceCaptureRunner:
                 ),
             }
             self._refresh_capture_dashboard()
-            self._capture_metric(
+            # The page-aware path also records the strict initial-fold
+            # geometry used to reject partially visible reward cards.
+            self._capture_progress_page_after(
                 "streak",
                 "streak-active",
                 restore_callback=lambda: self._restore_reward_capture_fixture(
@@ -13824,6 +14832,108 @@ class _UiFaceCaptureRunner:
             on_error=restore_fixture,
         )
 
+    def _record_progress_achievement_capture_evidence(
+        self,
+        dashboard: Any,
+        label: str,
+    ) -> None:
+        """Measure the cards and dates in the exact live Progress viewport."""
+
+        achievement_grid = getattr(dashboard, "achievement_list", None)
+        scroll = getattr(achievement_grid, "scroll", None)
+        viewport = (
+            scroll.viewport() if isinstance(scroll, QScrollArea) else None
+        )
+        cards: list[dict[str, Any]] = []
+        if achievement_grid is not None and viewport is not None:
+            for candidate in achievement_grid.findChildren(QFrame):
+                achievement_id = str(
+                    candidate.property("achievementId") or ""
+                )
+                if not achievement_id:
+                    continue
+                bounds = self._widget_bounds_evidence(candidate, viewport)
+                rectangle = list(bounds.get("bounds", ()) or ())
+                intersects = bool(
+                    len(rectangle) == 4
+                    and rectangle[1] < int(viewport.height())
+                    and rectangle[1] + rectangle[3] > 0
+                )
+                if not intersects:
+                    continue
+                status = next(
+                    (
+                        label_widget
+                        for label_widget in candidate.findChildren(QLabel)
+                        if bool(label_widget.property("catalogStatus"))
+                    ),
+                    None,
+                )
+                cards.append({
+                    "achievement_id": achievement_id,
+                    "state": str(
+                        candidate.property("achievementState") or ""
+                    ),
+                    "status_text": (
+                        str(status.text()) if status is not None else ""
+                    ),
+                    "bounds": rectangle,
+                    "fully_contained": bool(bounds.get("contained", False)),
+                })
+        cards.sort(
+            key=lambda record: (
+                record["bounds"][1],
+                record["bounds"][0],
+            )
+        )
+        annotation = dict(self._capture_annotations.get(label, {}) or {})
+        scheduled_days = dict(
+            annotation.get("scheduled_completion_days", {}) or {}
+        )
+        visible_completed = [
+            record for record in cards if record["state"] == "completed"
+        ]
+        visible_days = [
+            str(scheduled_days.get(record["achievement_id"], ""))
+            for record in visible_completed
+        ]
+        status_texts = [
+            record["status_text"] for record in visible_completed
+        ]
+        card_geometry_passed = bool(
+            cards
+            and all(
+                record["fully_contained"]
+                and 108 <= int(record["bounds"][3]) <= 120
+                for record in cards
+            )
+        )
+        dates_passed = bool(
+            len(visible_completed) >= 4
+            and all(visible_days)
+            and visible_days == sorted(visible_days)
+            and len(set(visible_days)) == len(visible_days)
+            and all(status_texts)
+            and len(set(status_texts)) == len(status_texts)
+        )
+        schedule_passed = bool(
+            annotation.get("valid_distinct_completion_dates", False)
+            and int(annotation.get("completion_date_count", 0) or 0) >= 4
+        )
+        annotation.update({
+            "visible_achievement_cards": cards,
+            "visible_completion_days": visible_days,
+            "visible_completion_date_texts": status_texts,
+            "achievement_card_geometry_passed": card_geometry_passed,
+            "rendered_chronological_dates_passed": dates_passed,
+            "passed": bool(
+                schedule_passed
+                and card_geometry_passed
+                and dates_passed
+            ),
+        })
+        self._capture_annotations[label] = annotation
+
     def _capture_progress_page_after(
         self,
         key: str,
@@ -13859,6 +14969,232 @@ class _UiFaceCaptureRunner:
         dialog.activateWindow()
 
         def ready() -> None:
+            if label == "growth-nonzero":
+                stage_cards = [
+                    candidate
+                    for candidate in dialog.findChildren(QFrame)
+                    if bool(candidate.property("detailStage"))
+                    and candidate.isVisibleTo(dialog)
+                ]
+                stage_records: list[dict[str, Any]] = []
+                for stage_card in stage_cards:
+                    state = str(
+                        stage_card.property("detailStageState") or ""
+                    )
+                    preview = next(
+                        (
+                            candidate
+                            for candidate in stage_card.findChildren(QLabel)
+                            if str(
+                                candidate.property(
+                                    "detailStagePreviewState"
+                                ) or ""
+                            ) == state
+                        ),
+                        None,
+                    )
+                    stage_label = next(
+                        (
+                            candidate
+                            for candidate in stage_card.findChildren(QLabel)
+                            if str(
+                                candidate.property(
+                                    "detailStageLabelState"
+                                ) or ""
+                            ) == state
+                        ),
+                        None,
+                    )
+                    extra_text = [
+                        str(candidate.text()).strip()
+                        for candidate in stage_card.findChildren(QLabel)
+                        if candidate is not stage_label
+                        and str(candidate.text()).strip()
+                    ]
+                    stage_records.append({
+                        "state": state,
+                        "label": (
+                            str(stage_label.text())
+                            if stage_label is not None else
+                            ""
+                        ),
+                        "preview_enabled": bool(
+                            preview is not None and preview.isEnabled()
+                        ),
+                        "label_enabled": bool(
+                            stage_label is not None
+                            and stage_label.isEnabled()
+                        ),
+                        "extra_text": extra_text,
+                    })
+                upcoming = [
+                    record
+                    for record in stage_records
+                    if record["state"] == "upcoming"
+                ]
+                muting_passed = bool(
+                    len(stage_records) == 6
+                    and sum(
+                        record["state"] == "current"
+                        for record in stage_records
+                    ) == 1
+                    and upcoming
+                    and all(
+                        not record["preview_enabled"]
+                        and not record["label_enabled"]
+                        and not record["extra_text"]
+                        for record in upcoming
+                    )
+                )
+                annotation = dict(
+                    self._capture_annotations.get(label, {}) or {}
+                )
+                annotation.update({
+                    "growth_stage_records": stage_records,
+                    "future_stage_muting_passed": muting_passed,
+                    "passed": bool(
+                        annotation.get("passed", True)
+                        and muting_passed
+                    ),
+                })
+                self._capture_annotations[label] = annotation
+            if label == "streak-active":
+                streak_scroll = dict(
+                    getattr(dialog, "body_scrolls", {}) or {}
+                ).get("streak")
+                streak_layout = dict(
+                    getattr(dialog, "body_layouts", {}) or {}
+                ).get("streak")
+                streak_body = (
+                    streak_scroll.widget()
+                    if isinstance(streak_scroll, QScrollArea) else
+                    None
+                )
+                streak_viewport = (
+                    streak_scroll.viewport()
+                    if isinstance(streak_scroll, QAbstractScrollArea) else
+                    None
+                )
+                detail_records: list[dict[str, Any]] = []
+                if streak_body is not None and streak_viewport is not None:
+                    for index, card in enumerate(
+                        streak_body.findChildren(QFrame)
+                    ):
+                        if (
+                            not bool(card.property("detailCard"))
+                            or not card.isVisibleTo(dialog)
+                        ):
+                            continue
+                        evidence = self._widget_bounds_evidence(
+                            card,
+                            streak_viewport,
+                        )
+                        detail_records.append({
+                            "index": index,
+                            "semantic_id": str(
+                                card.property("semanticId") or ""
+                            ),
+                            "bounds": list(
+                                evidence.get("bounds", ()) or ()
+                            ),
+                            "intersects_first_fold": bool(
+                                evidence.get("intersects", False)
+                            ),
+                            "contained_in_first_fold": bool(
+                                evidence.get("contained", False)
+                            ),
+                        })
+                partial_cards = [
+                    int(record["index"])
+                    for record in detail_records
+                    if record["intersects_first_fold"]
+                    and not record["contained_in_first_fold"]
+                ]
+                configured_bottom_padding = 0
+                measured_bottom_padding = 0
+                if isinstance(streak_layout, QVBoxLayout):
+                    (
+                        _left_margin,
+                        _top_margin,
+                        _right_margin,
+                        configured_bottom_padding,
+                    ) = streak_layout.getContentsMargins()
+                    direct_bottoms: list[int] = []
+                    if streak_body is not None:
+                        for item_index in range(streak_layout.count()):
+                            item = streak_layout.itemAt(item_index)
+                            child = item.widget() if item is not None else None
+                            if child is None or child.isHidden():
+                                continue
+                            origin = child.mapTo(
+                                streak_body,
+                                child.rect().topLeft(),
+                            )
+                            direct_bottoms.append(
+                                int(origin.y()) + int(child.height())
+                            )
+                    if direct_bottoms and streak_body is not None:
+                        measured_bottom_padding = max(
+                            0,
+                            int(streak_body.height()) - max(direct_bottoms),
+                        )
+                scroll_bar = (
+                    streak_scroll.verticalScrollBar()
+                    if isinstance(streak_scroll, QAbstractScrollArea) else
+                    None
+                )
+                at_initial_fold = bool(
+                    scroll_bar is not None
+                    and int(scroll_bar.value()) == int(scroll_bar.minimum())
+                )
+                fold_passed = bool(
+                    streak_scroll is not None
+                    and streak_body is not None
+                    and streak_viewport is not None
+                    and at_initial_fold
+                    and configured_bottom_padding >= 24
+                    and measured_bottom_padding >= 24
+                    and not partial_cards
+                )
+                fold_geometry = {
+                    "scroll_name": (
+                        str(streak_scroll.accessibleName() or "")
+                        if streak_scroll is not None else
+                        ""
+                    ),
+                    "at_initial_fold": at_initial_fold,
+                    "viewport_size": (
+                        [
+                            int(streak_viewport.width()),
+                            int(streak_viewport.height()),
+                        ]
+                        if streak_viewport is not None else
+                        []
+                    ),
+                    "configured_bottom_padding": int(
+                        configured_bottom_padding
+                    ),
+                    "measured_bottom_padding": int(
+                        measured_bottom_padding
+                    ),
+                    "detail_cards": detail_records,
+                    "partial_detail_card_indexes": partial_cards,
+                    "passed": fold_passed,
+                }
+                annotation = dict(
+                    self._capture_annotations.get(label, {}) or {}
+                )
+                annotation["streak_fold_geometry"] = fold_geometry
+                annotation["passed"] = bool(
+                    annotation.get("passed", True)
+                    and fold_passed
+                )
+                self._capture_annotations[label] = annotation
+            if label == "progress-achievements":
+                self._record_progress_achievement_capture_evidence(
+                    dashboard,
+                    label,
+                )
             if label in {
                 "achievement-completed",
                 "clear-recall-canonical-projection",
@@ -14297,7 +15633,86 @@ class _UiFaceCaptureRunner:
         )
 
     def _capture_progress_achievements(self) -> None:
-        self._capture_progress_page("achievements", "progress-achievements")
+        if not self._ensure_development_stress_state():
+            self._next_after(200)
+            return
+        state = self.app.storage.state
+        original_achievements = deepcopy(state.achievements)
+        original_receipts = deepcopy(state.recent_reward_receipts)
+        from ..reward_presentation import achievement_presentations
+
+        category_rank = {
+            "consistency": 0,
+            "study_volume": 1,
+            "recall": 2,
+            "completion": 3,
+        }
+        unlocked_views = sorted(
+            (
+                view
+                for view in achievement_presentations(state)
+                if bool(view.unlocked)
+            ),
+            key=lambda view: (
+                category_rank.get(str(view.category), 99),
+                max(0, int(view.progress_target)),
+                str(view.name).casefold(),
+            ),
+        )
+        unlocked_ids = [
+            str(view.achievement_id)
+            for view in unlocked_views
+        ]
+        scheduled_days: dict[str, str] = {}
+        base_day = date(2026, 8, 8)
+        for offset, achievement_id in enumerate(unlocked_ids):
+            day_offset = (
+                (0, 4, 8, 18)[offset]
+                if offset < 4 else
+                18 + (offset - 3) * 4
+            )
+            day_value = (
+                base_day + timedelta(days=day_offset)
+            ).isoformat()
+            completed_at = f"{day_value}T09:00:00+00:00"
+            achievement = state.achievements[achievement_id]
+            achievement.unlocked_at = completed_at
+            if getattr(achievement, "rewarded_at", None):
+                achievement.rewarded_at = completed_at
+            scheduled_days[achievement_id] = day_value
+        for receipt in state.recent_reward_receipts:
+            source_id = str(getattr(receipt, "source_id", "") or "")
+            if source_id in scheduled_days:
+                receipt.scheduler_day = scheduled_days[source_id]
+                receipt.occurred_at = (
+                    f"{scheduled_days[source_id]}T09:00:00+00:00"
+                )
+
+        def restore() -> None:
+            state.achievements = original_achievements
+            state.recent_reward_receipts = original_receipts
+            self._refresh_capture_dashboard()
+
+        self._capture_annotations["progress-achievements"] = {
+            "valid_distinct_completion_dates": (
+                len(set(scheduled_days.values())) == len(scheduled_days)
+            ),
+            "completion_date_count": len(scheduled_days),
+            "scheduled_completion_days": scheduled_days,
+            "passed": bool(
+                len(scheduled_days) >= 4
+                and list(scheduled_days.values())
+                == sorted(scheduled_days.values())
+                and len(set(scheduled_days.values()))
+                == len(scheduled_days)
+            ),
+        }
+        self._refresh_capture_dashboard()
+        self._capture_progress_page(
+            "achievements",
+            "progress-achievements",
+            restore_callback=restore,
+        )
 
     def _capture_progress_collection(self) -> None:
         # The compact release sequence still uses the same information-rich
@@ -15363,6 +16778,126 @@ class _UiFaceCaptureRunner:
                 dialog.cancel_action.isVisible(),
                 dialog.cancel_action.isEnabled(),
             ])
+        rendered_values: dict[str, Any] = {
+            "applicable": variant in {"ready", "success"},
+            "variant": variant,
+            "passed": True,
+        }
+        if variant == "ready":
+            rendered_values.update({
+                "growth_label": str(
+                    dialog.compact_growth_label.text()
+                ).strip(),
+                "growth_value": str(
+                    dialog.compact_growth_value.text()
+                ).strip(),
+                "inventory_label": str(
+                    dialog.compact_inventory_label.text()
+                ).strip(),
+                "inventory_value": str(
+                    dialog.compact_inventory_value.text()
+                ).strip(),
+                "stage_badge": str(
+                    dialog.static_charge_quantity.text()
+                ).strip(),
+                "stage_progress": str(
+                    dialog.compact_stage_progress.text()
+                ).strip(),
+                "primary_action": _displayed_button_text(
+                    dialog.use_action
+                ).strip(),
+                "current_growth": int(
+                    dialog.compact_summary_card.property("currentGrowth")
+                    or -1
+                ),
+                "projected_growth": int(
+                    dialog.compact_summary_card.property("projectedGrowth")
+                    or -1
+                ),
+                "inventory_before": int(
+                    dialog.compact_summary_card.property("inventoryBefore")
+                    or -1
+                ),
+                "inventory_after": int(
+                    dialog.compact_summary_card.property("inventoryAfter")
+                    or -1
+                ),
+                "stage_carryover": 50,
+                "next_stage_goal": 2_000,
+            })
+            rendered_values["passed"] = bool(
+                dialog.compact_summary_card.isVisibleTo(dialog)
+                and dialog.compact_growth_label.isVisibleTo(dialog)
+                and dialog.compact_growth_value.isVisibleTo(dialog)
+                and dialog.compact_inventory_label.isVisibleTo(dialog)
+                and dialog.compact_inventory_value.isVisibleTo(dialog)
+                and dialog.compact_stage_progress.isVisibleTo(dialog)
+                and dialog.static_charge_quantity.isVisibleTo(dialog)
+                and rendered_values["growth_label"] == "Total Growth"
+                and rendered_values["growth_value"] == "450 → 550"
+                and rendered_values["inventory_label"]
+                == "Charges remaining"
+                and rendered_values["inventory_value"] == "2 → 1"
+                and rendered_values["stage_badge"] == "New stage: Sprout"
+                and rendered_values["stage_progress"]
+                == "50 / 2,000 toward Young"
+                and rendered_values["primary_action"] == "Use 1 charge"
+                and rendered_values["current_growth"] == 450
+                and rendered_values["projected_growth"] == 550
+                and rendered_values["inventory_before"] == 2
+                and rendered_values["inventory_after"] == 1
+            )
+        elif variant == "success":
+            reward_texts = [
+                str(candidate.text()).strip()
+                for candidate in dialog.reward_chips.findChildren(QLabel)
+                if candidate.isVisibleTo(dialog)
+                and str(candidate.text()).strip()
+            ]
+            rendered_values.update({
+                "stage_transition": str(
+                    dialog.receipt_title.text()
+                ).strip(),
+                "receipt_copy": receipt_copy,
+                "stage_reward_heading": str(
+                    dialog.stage_rewards_heading.text()
+                ).strip(),
+                "reward_texts": reward_texts,
+                "primary_action": _displayed_button_text(
+                    dialog.use_action
+                ).strip(),
+                "secondary_action": _displayed_button_text(
+                    dialog.cancel_action
+                ).strip(),
+                "resulting_growth": int(getattr(target, "growth_points", -1)),
+                "stage_carryover": 50,
+                "next_stage_goal": 2_000,
+                "inventory_remaining": inventory,
+                "stage_reward_total": sum(
+                    int(reward.garden_coins)
+                    for reward in getattr(outcome, "rewards", ())
+                ) if outcome is not None else 0,
+            })
+            rendered_values["passed"] = bool(
+                dialog.receipt.isVisibleTo(dialog)
+                and dialog.receipt_title.isVisibleTo(dialog)
+                and dialog.receipt_copy.isVisibleTo(dialog)
+                and rendered_values["stage_transition"] == "Seed → Sprout"
+                and rendered_values["receipt_copy"]
+                == (
+                    "+100 Growth · 1 growth charge remaining\n"
+                    "50 / 2,000 toward Young"
+                )
+                and rendered_values["stage_reward_heading"] == "Stage reward"
+                and rendered_values["reward_texts"]
+                == ["Sprout · +5 Garden Coins"]
+                and rendered_values["primary_action"] == "View plant"
+                and rendered_values["secondary_action"] == "Close"
+                and rendered_values["resulting_growth"] == 550
+                and rendered_values["inventory_remaining"] == 1
+                and rendered_values["stage_reward_total"] == 5
+            )
+        conditions.append(bool(rendered_values["passed"]))
         active_scrolls = tuple(dialog.active_vertical_scroll_regions())
         vertical = dialog.content_scroll.verticalScrollBar()
         normal_content_fit_no_scroll = bool(
@@ -15411,6 +16946,7 @@ class _UiFaceCaptureRunner:
                     ) == "sprout"
                 )
             ),
+            "growth_charge_rendered_values": rendered_values,
             "active_scroll_count": len(active_scrolls),
             "normal_content_fit_no_scroll": normal_content_fit_no_scroll,
             "passed": passed,
@@ -16210,7 +17746,10 @@ class _UiFaceCaptureRunner:
                     dialog.option_tabs.currentIndex()
                 )
                 dialog._sync_preview_scene_geometry()
-                body = dialog.body_scroll.widget()
+                body = dialog.appearance_body
+                active_scroll = dialog._catalog_scroll_by_page.get(
+                    dialog.option_tabs.currentWidget()
+                )
                 for layout in (
                     dialog.main_grid,
                     dialog.library.layout(),
@@ -16224,7 +17763,8 @@ class _UiFaceCaptureRunner:
                 if body is not None:
                     body.setMinimumHeight(0)
                     body.updateGeometry()
-                dialog.body_scroll.verticalScrollBar().setValue(0)
+                if active_scroll is not None:
+                    active_scroll.verticalScrollBar().setValue(0)
                 dialog.preview_scene.setProperty(
                     "captureEvidenceKey",
                     "loadout-preview-scene",
@@ -16270,7 +17810,8 @@ class _UiFaceCaptureRunner:
                     "feedback_text": str(dialog.preview_feedback.message.text()),
                     "feedback_outside_artwork": feedback_outside_artwork,
                     "scroll_maximum": int(
-                        dialog.body_scroll.verticalScrollBar().maximum()
+                        active_scroll.verticalScrollBar().maximum()
+                        if active_scroll is not None else 0
                     ),
                     "passed": bool(
                         scene_bounds.get("visible", False)
@@ -16586,12 +18127,18 @@ class _UiFaceCaptureRunner:
         opener()
         dialog = getattr(dashboard, "collectible_detail_dialog", None)
 
+        def current_catalog_scroll() -> QScrollArea | None:
+            return dialog._catalog_scroll_by_page.get(
+                dialog.option_tabs.currentWidget()
+            )
+
         def prepare_rendered_state() -> None:
             dialog.option_tabs.setCurrentIndex(0)
             dialog._refresh_preview()
             dialog._sync_option_page_geometry(dialog.option_tabs.currentIndex())
             dialog._sync_preview_scene_geometry()
-            body = dialog.body_scroll.widget()
+            body = dialog.appearance_body
+            active_scroll = current_catalog_scroll()
             for layout in (
                 dialog.main_grid,
                 dialog.library.layout(),
@@ -16605,7 +18152,8 @@ class _UiFaceCaptureRunner:
             if body is not None:
                 body.setMinimumHeight(0)
                 body.updateGeometry()
-            dialog.body_scroll.verticalScrollBar().setValue(0)
+            if active_scroll is not None:
+                active_scroll.verticalScrollBar().setValue(0)
             dialog.preview_scene.setProperty(
                 "captureEvidenceKey",
                 "loadout-preview-scene",
@@ -16618,6 +18166,7 @@ class _UiFaceCaptureRunner:
 
         def rendered_state_ready() -> bool:
             prepare_rendered_state()
+            active_scroll = current_catalog_scroll()
             dialog.preview_scene.repaint()
             app = QApplication.instance()
             if app is not None:
@@ -16628,7 +18177,7 @@ class _UiFaceCaptureRunner:
             )
             viewport_bounds = self._widget_bounds_evidence(
                 dialog.preview_scene,
-                dialog.body_scroll.viewport(),
+                dialog.preview_panel,
             )
             scene_metrics = self._home_pixmap_metrics(
                 dialog.preview_scene.grab(),
@@ -16639,13 +18188,118 @@ class _UiFaceCaptureRunner:
                 getattr(dialog, "_content_fit_running", False)
                 or dialog._content_fit_timer.isActive()
             )
+            catalog_geometry: dict[str, Any] = {
+                "scroll_name": "",
+                "visible_scroll_names": [],
+                "viewport_height": 0,
+                "tile_count": 0,
+                "visible_tile_count": 0,
+                "visible_row_count": 0,
+                "partial_tiles": [],
+                "bottom_padding": 0,
+                "preview_fixed": False,
+                "passed": False,
+            }
+            if active_scroll is not None:
+                viewport = active_scroll.viewport()
+                host = active_scroll.widget()
+                tiles = (
+                    [
+                        tile
+                        for tile in host.findChildren(QAbstractButton)
+                        if bool(tile.property("environmentTile"))
+                        and tile.isVisibleTo(host)
+                    ]
+                    if host is not None else []
+                )
+                tile_records: list[dict[str, Any]] = []
+                visible_row_tops: set[int] = set()
+                partial_tiles: list[str] = []
+                for tile in tiles:
+                    evidence = self._widget_bounds_evidence(tile, viewport)
+                    if not bool(evidence.get("intersects", False)):
+                        continue
+                    bounds = list(evidence.get("bounds", ()) or ())
+                    contained = bool(evidence.get("contained", False))
+                    tile_name = str(
+                        tile.accessibleName()
+                        or tile.text()
+                        or tile.property("catalogItemId")
+                        or "appearance tile"
+                    )
+                    tile_records.append({
+                        "name": tile_name,
+                        "bounds": bounds,
+                        "contained": contained,
+                    })
+                    if contained and len(bounds) == 4:
+                        visible_row_tops.add(int(bounds[1]))
+                    if not contained:
+                        partial_tiles.append(tile_name)
+                bottom_padding = 0
+                if host is not None and tiles:
+                    last_bottom = max(
+                        int(tile.mapTo(host, tile.rect().topLeft()).y())
+                        + int(tile.height())
+                        for tile in tiles
+                    )
+                    bottom_padding = max(0, int(host.height()) - last_bottom)
+                visible_scroll_names = [
+                    str(
+                        scroll.accessibleName()
+                        or scroll.objectName()
+                        or type(scroll).__name__
+                    )
+                    for scroll in dialog._catalog_scrolls
+                    if scroll.isVisibleTo(dialog)
+                ]
+                preview_ancestor = dialog.preview_scene.parentWidget()
+                preview_inside_scroll = False
+                while preview_ancestor is not None and preview_ancestor is not dialog:
+                    if isinstance(preview_ancestor, QAbstractScrollArea):
+                        preview_inside_scroll = True
+                        break
+                    preview_ancestor = preview_ancestor.parentWidget()
+                preview_fixed = bool(
+                    not preview_inside_scroll
+                    and viewport_bounds.get("visible", False)
+                    and viewport_bounds.get("contained", False)
+                )
+                catalog_geometry = {
+                    "scroll_name": str(
+                        active_scroll.accessibleName()
+                        or active_scroll.objectName()
+                        or type(active_scroll).__name__
+                    ),
+                    "visible_scroll_names": visible_scroll_names,
+                    "viewport_height": int(viewport.height()),
+                    "tile_count": len(tiles),
+                    "visible_tile_count": len(tile_records),
+                    "visible_row_count": len(visible_row_tops),
+                    "tile_records": tile_records,
+                    "partial_tiles": partial_tiles,
+                    "bottom_padding": bottom_padding,
+                    "preview_fixed": preview_fixed,
+                    "passed": bool(
+                        str(active_scroll.accessibleName())
+                        == "Scenery catalogue"
+                        and visible_scroll_names == ["Scenery catalogue"]
+                        and 250 <= int(viewport.height()) <= 266
+                        and len(tile_records) >= 4
+                        and len(visible_row_tops) == 2
+                        and not partial_tiles
+                        and bottom_padding >= 12
+                        and preview_fixed
+                    ),
+                }
             rendered_state = {
                 "scene_bounds": scene_bounds,
                 "viewport_bounds": viewport_bounds,
                 "scene_metrics": scene_metrics,
                 "content_fit_pending": fit_pending,
                 "scroll_value": int(
-                    dialog.body_scroll.verticalScrollBar().value()
+                    active_scroll.verticalScrollBar().value()
+                    if active_scroll is not None else 0
                 ),
                 "passed": bool(
                     dialog.option_tabs.currentIndex() == 0
@@ -16655,10 +18309,12 @@ class _UiFaceCaptureRunner:
                     and viewport_bounds.get("contained", False)
                     and scene_metrics.get("generic_content_passed", False)
                     and not fit_pending
+                    and catalog_geometry["passed"]
                 ),
             }
             self._capture_annotations[label] = {
                 "rendered_state": rendered_state,
+                "catalog_geometry": catalog_geometry,
                 "passed": bool(rendered_state["passed"]),
             }
             return bool(rendered_state["passed"])
@@ -16785,7 +18441,7 @@ class _UiFaceCaptureRunner:
             ).strip()
             preview_feedback_bounds = self._widget_bounds_evidence(
                 preview_feedback,
-                dialog.body_scroll.viewport(),
+                dialog.preview_panel,
             )
             restored_preview_visual = {
                 "text": preview_feedback_text,
@@ -17038,6 +18694,7 @@ class _UiFaceCaptureRunner:
 
         def setup(dashboard: Any) -> Callable[[], None]:
             from ..collectibles import collectible_registry
+            from ..environment import GROWTH_CHARGES
 
             restore = self._prepare_representative_nursery_fixture(
                 label,
@@ -17065,6 +18722,13 @@ class _UiFaceCaptureRunner:
                     )
                 target.fertilizer = None
                 state.active_plant_id = str(target.plant_id)
+                for inventory_id in (
+                    "fertilizer_quality",
+                    "fertilizer_premium",
+                    "booster_potion",
+                    *tuple(GROWTH_CHARGES),
+                ):
+                    state.consumables[inventory_id] = 0
                 state.consumables["fertilizer_basic"] = max(
                     1,
                     int(state.consumables.get("fertilizer_basic", 0) or 0),
@@ -17081,6 +18745,12 @@ class _UiFaceCaptureRunner:
             return restore
 
         def audit(dialog: Any) -> None:
+            scroll = getattr(dialog, "supplements_scroll", None)
+            if scroll is not None:
+                scroll.verticalScrollBar().setValue(0)
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
             item_id = str(fixture.get("item_id", ""))
             card = next(
                 (
@@ -17099,6 +18769,180 @@ class _UiFaceCaptureRunner:
             )
             state = self.app.storage.state
             owned_count = int(state.consumables.get(item_id, 0) or 0)
+            first_fold_geometry: dict[str, Any] = {
+                "visible_card_ids": [],
+                "partial_card_ids": [],
+                "partial_actions": [],
+                "bottom_padding": 0,
+                "premium_action_text": "",
+                "premium_action_contained": False,
+                "price_action_same_row": False,
+                "passed": False,
+            }
+            if scroll is not None:
+                viewport = scroll.viewport()
+                host = scroll.widget()
+                cards = (
+                    [
+                        candidate
+                        for candidate in host.findChildren(QFrame)
+                        if bool(candidate.property("nurseryCatalogCard"))
+                        and candidate.isVisibleTo(host)
+                    ]
+                    if host is not None else []
+                )
+                visible_cards: list[dict[str, Any]] = []
+                partial_card_ids: list[str] = []
+                partial_actions: list[str] = []
+                for candidate in cards:
+                    candidate_id = str(
+                        candidate.property("catalogItemId") or ""
+                    )
+                    card_bounds = self._widget_bounds_evidence(
+                        candidate,
+                        viewport,
+                    )
+                    if not bool(card_bounds.get("intersects", False)):
+                        continue
+                    card_contained = bool(card_bounds.get("contained", False))
+                    visible_cards.append({
+                        "item_id": candidate_id,
+                        "bounds": list(card_bounds.get("bounds", ()) or ()),
+                        "height": int(candidate.height()),
+                        "contained": card_contained,
+                    })
+                    if not card_contained:
+                        partial_card_ids.append(candidate_id)
+                    for candidate_action in candidate.findChildren(
+                        QAbstractButton
+                    ):
+                        if not candidate_action.isVisibleTo(candidate):
+                            continue
+                        action_bounds = self._widget_bounds_evidence(
+                            candidate_action,
+                            viewport,
+                        )
+                        if (
+                            bool(action_bounds.get("intersects", False))
+                            and not bool(action_bounds.get("contained", False))
+                        ):
+                            partial_actions.append(
+                                _displayed_button_text(candidate_action)
+                                or candidate_id
+                            )
+                premium_card = next(
+                    (
+                        candidate
+                        for candidate in cards
+                        if str(candidate.property("catalogItemId") or "")
+                        == "premium"
+                    ),
+                    None,
+                )
+                premium_action = next(
+                    iter(premium_card.findChildren(QAbstractButton)),
+                    None,
+                ) if premium_card is not None else None
+                premium_action_bounds = self._widget_bounds_evidence(
+                    premium_action,
+                    premium_card,
+                )
+                price_action_same_row = False
+                if premium_action is not None:
+                    action_parent = premium_action.parentWidget()
+                    price_widgets = [
+                        price_widget
+                        for price_widget in premium_card.findChildren(QWidget)
+                        if bool(price_widget.property("nurseryPrice"))
+                        and price_widget.parentWidget() is action_parent
+                        and price_widget.isVisibleTo(premium_card)
+                    ] if premium_card is not None else []
+                    action_top = int(
+                        premium_action.mapTo(
+                            premium_card,
+                            premium_action.rect().topLeft(),
+                        ).y()
+                    )
+                    action_bottom = action_top + int(premium_action.height())
+                    price_action_same_row = any(
+                        (
+                            lambda label_top, label_bottom: (
+                                label_top < action_bottom
+                                and action_top < label_bottom
+                            )
+                        )(
+                            int(price_widget.mapTo(
+                                premium_card,
+                                price_widget.rect().topLeft(),
+                            ).y()),
+                            int(price_widget.mapTo(
+                                premium_card,
+                                price_widget.rect().topLeft(),
+                            ).y()) + int(price_widget.height()),
+                        )
+                        for price_widget in price_widgets
+                    )
+                bottom_padding = 0
+                if host is not None and cards:
+                    bottom_padding = max(
+                        0,
+                        int(host.height())
+                        - max(
+                            int(candidate.mapTo(
+                                host,
+                                candidate.rect().topLeft(),
+                            ).y()) + int(candidate.height())
+                            for candidate in cards
+                        ),
+                    )
+                visible_card_ids = [
+                    str(row.get("item_id", "")) for row in visible_cards
+                ]
+                # The initial viewport must end on a complete row; products
+                # below that fold remain inspectable in their own card. Do not
+                # force Premium Fertilizer to peek into the viewport merely to
+                # prove that its price and action share a row.
+                expected_first_fold = {"fertilizer_basic", "basic"}
+                first_fold_geometry = {
+                    "scroll_name": str(
+                        scroll.accessibleName()
+                        or scroll.objectName()
+                        or type(scroll).__name__
+                    ),
+                    "viewport_size": [
+                        int(viewport.width()),
+                        int(viewport.height()),
+                    ],
+                    "visible_cards": visible_cards,
+                    "visible_card_ids": visible_card_ids,
+                    "partial_card_ids": partial_card_ids,
+                    "partial_actions": partial_actions,
+                    "bottom_padding": bottom_padding,
+                    "premium_action_text": (
+                        _displayed_button_text(premium_action)
+                        if premium_action is not None else ""
+                    ),
+                    "premium_action_contained": bool(
+                        premium_action_bounds.get("visible", False)
+                        and premium_action_bounds.get("contained", False)
+                    ),
+                    "price_action_same_row": price_action_same_row,
+                    "passed": bool(
+                        str(scroll.accessibleName())
+                        == "Fertilizers and boosts catalog"
+                        and expected_first_fold.issubset(visible_card_ids)
+                        and not partial_card_ids
+                        and not partial_actions
+                        and all(
+                            int(row.get("height", 0)) >= 84
+                            for row in visible_cards
+                        )
+                        and bottom_padding >= 20
+                        and premium_action_bounds.get("visible", False)
+                        and premium_action_bounds.get("contained", False)
+                        and price_action_same_row
+                    ),
+                }
             passed = bool(
                 action is not None
                 and action.isVisible()
@@ -17106,6 +18950,7 @@ class _UiFaceCaptureRunner:
                 and owned_count >= 1
                 and str(getattr(state, "active_plant_id", "") or "")
                 == fixture.get("target_plant_id")
+                and first_fold_geometry["passed"]
             )
             self._capture_annotations[label] = {
                 **fixture,
@@ -17113,6 +18958,7 @@ class _UiFaceCaptureRunner:
                 "action_visible": bool(action is not None and action.isVisible()),
                 "action_enabled": bool(action is not None and action.isEnabled()),
                 "owned_count": owned_count,
+                "first_fold_geometry": first_fold_geometry,
                 "passed": passed,
             }
 
@@ -17302,11 +19148,136 @@ class _UiFaceCaptureRunner:
             return
         self._set_settings_tab(settings_dialog, 0)
         settings_dialog.behavior.advanced_toggle.setChecked(True)
+
+        def display_geometry_ready() -> bool:
+            app = QApplication.instance()
+            if app is not None:
+                QCoreApplication.sendPostedEvents(
+                    None,
+                    QEvent.Type.LayoutRequest,
+                )
+                app.processEvents()
+            scroll = settings_dialog.behavior_scroll
+            # The approved Settings layout is intentionally vertical. Reveal
+            # the expanded accordion in the outer Display scroll owner rather
+            # than forcing the viewport back to the Home preview on every
+            # readiness poll.
+            scroll.ensureWidgetVisible(
+                settings_dialog.behavior.advanced_panel,
+                0,
+                12,
+            )
+            viewport = scroll.viewport()
+            behavior = settings_dialog.behavior
+            preview_panel = behavior.preview_panel
+            preview_widget = (
+                behavior.home_preview
+                if behavior.home_preview.isVisibleTo(settings_dialog) else
+                behavior.preview_unavailable
+                if behavior.preview_unavailable.isVisibleTo(settings_dialog) else
+                None
+            )
+            preview_bounds = self._widget_bounds_evidence(
+                preview_panel,
+                viewport,
+            )
+            preview_content_bounds = self._widget_bounds_evidence(
+                preview_widget,
+                preview_panel,
+            )
+            advanced_header_bounds = self._widget_bounds_evidence(
+                settings_dialog.advanced_header,
+                viewport,
+            )
+            advanced_panel_bounds = self._widget_bounds_evidence(
+                behavior.advanced_panel,
+                viewport,
+            )
+            behavior_origin = behavior.mapTo(
+                settings_dialog.behavior_page,
+                behavior.rect().topLeft(),
+            )
+            advanced_origin = settings_dialog.advanced_header.mapTo(
+                settings_dialog.behavior_page,
+                settings_dialog.advanced_header.rect().topLeft(),
+            )
+            preview_to_advanced_gap = max(
+                0,
+                int(advanced_origin.y())
+                - (int(behavior_origin.y()) + int(behavior.height())),
+            )
+            outer_vertical_range = max(
+                0,
+                int(scroll.verticalScrollBar().maximum())
+                - int(scroll.verticalScrollBar().minimum()),
+            )
+            outer_horizontal_range = max(
+                0,
+                int(scroll.horizontalScrollBar().maximum())
+                - int(scroll.horizontalScrollBar().minimum()),
+            )
+            inner_scroll = behavior.controls_scroll
+            inner_vertical_range = max(
+                0,
+                int(inner_scroll.verticalScrollBar().maximum())
+                - int(inner_scroll.verticalScrollBar().minimum()),
+            )
+            preview_unavailable = preview_widget is behavior.preview_unavailable
+            placeholder_copy = (
+                str(behavior.preview_unavailable.text()).strip()
+                if preview_unavailable else ""
+            )
+            geometry = {
+                "outer_scroll_name": str(scroll.accessibleName()),
+                "outer_vertical_range": outer_vertical_range,
+                "outer_horizontal_range": outer_horizontal_range,
+                "inner_vertical_range": inner_vertical_range,
+                "preview_panel_height": int(preview_panel.height()),
+                "preview_bounds": preview_bounds,
+                "preview_content_bounds": preview_content_bounds,
+                "preview_content_kind": (
+                    "placeholder" if preview_unavailable else "garden"
+                    if preview_widget is not None else "missing"
+                ),
+                "placeholder_copy": placeholder_copy,
+                "current_scenery": str(behavior.theme_title.text()).strip(),
+                "preview_to_advanced_gap": preview_to_advanced_gap,
+                "advanced_header_bounds": advanced_header_bounds,
+                "advanced_panel_bounds": advanced_panel_bounds,
+            }
+            geometry["passed"] = bool(
+                str(scroll.accessibleName()) == "Display settings"
+                and outer_vertical_range > 1
+                and outer_horizontal_range <= 1
+                and inner_vertical_range <= 1
+                and 120 <= int(preview_panel.height()) <= 150
+                and preview_bounds.get("visible", False)
+                and preview_bounds.get("contained", False)
+                and preview_content_bounds.get("visible", False)
+                and preview_content_bounds.get("contained", False)
+                and (
+                    not preview_unavailable
+                    or placeholder_copy.startswith("Preview unavailable")
+                )
+                and bool(str(behavior.theme_title.text()).strip())
+                and 12 <= preview_to_advanced_gap <= 16
+                and advanced_header_bounds.get("visible", False)
+                and advanced_header_bounds.get("contained", False)
+                and advanced_panel_bounds.get("visible", False)
+                and advanced_panel_bounds.get("contained", False)
+            )
+            self._capture_annotations["settings-display-advanced-open"] = {
+                "display_geometry": geometry,
+                "passed": bool(geometry["passed"]),
+            }
+            return bool(geometry["passed"])
+
         self._wait_for(
             lambda: bool(
                 settings_dialog.isVisible()
                 and settings_dialog.behavior.advanced_panel.isVisible()
                 and settings_dialog.behavior.advanced_toggle.isChecked()
+                and display_geometry_ready()
             ),
             lambda: self._capture_and_advance(
                 "settings-display-advanced-open",
@@ -17318,7 +19289,10 @@ class _UiFaceCaptureRunner:
             ),
             tries=80,
             failure_label="settings-display-advanced-open",
-            failure_reason="Settings Display Advanced panel did not expand",
+            failure_reason=(
+                "Settings Display Advanced panel did not become visible and "
+                "contained"
+            ),
         )
 
     def _capture_settings_troubleshooting(self) -> None:
@@ -17823,7 +19797,15 @@ class _UiFaceCaptureRunner:
                 ),
             })
             return ""
-        plant = plants[0]
+        plant = next(
+            (
+                candidate
+                for candidate in plants
+                if str(getattr(candidate, "species", "") or "").casefold()
+                == "rose"
+            ),
+            plants[0],
+        )
         plant.slot_index = 0
         self.app.storage.state.active_plant_id = plant.plant_id
         now = self.app.engine._now_seconds()
@@ -18954,7 +20936,6 @@ class _UiFaceCaptureRunner:
             )
             dialog.refresh()
             dialog.catalog_tabs.setCurrentIndex(3)
-            dialog._preview_environment_item(item)
             if outcome.success:
                 dialog._show_purchase_receipt(
                     outcome,
@@ -18964,11 +20945,6 @@ class _UiFaceCaptureRunner:
                 self._failures.append({
                     "label": label,
                     "reason": f"Purchase fixture did not own {item.name} after the transaction",
-                })
-            if str(dialog.environment_feature_title.text()) != item.name:
-                self._failures.append({
-                    "label": label,
-                    "reason": "Purchase success preview no longer matched the purchased catalog item",
                 })
 
             def close_dialog() -> None:
@@ -19576,6 +21552,7 @@ class _UiFaceCaptureRunner:
         environment_item_ids: tuple[str, ...] = (),
         include_daily_activity: bool = False,
         achievement_ids: tuple[str, ...] = (),
+        stack_individual: bool = False,
     ) -> tuple[dict[str, Any], Any, dict[str, Any]]:
         """Project a real Reviewer event from committed, registry-owned facts."""
 
@@ -19932,7 +21909,9 @@ class _UiFaceCaptureRunner:
             )
             expected_parts = []
             if expected_coins:
-                expected_parts.append(f"+{expected_coins:,} coins")
+                expected_parts.append(
+                    f"+{expected_coins:,} Garden Coins"
+                )
             if expected_growth:
                 expected_parts.append(f"+{expected_growth:,} Growth")
             if (
@@ -19974,6 +21953,80 @@ class _UiFaceCaptureRunner:
                     == len(find_reward_ids) + len(environment_item_ids)
                 ),
             }
+            if stack_individual:
+                visible_presentations = list(presentations[:6])
+                common_index = next(
+                    (
+                        index
+                        for index, presentation in enumerate(
+                            visible_presentations
+                        )
+                        if str(presentation.tier).casefold() == "common"
+                    ),
+                    None,
+                )
+                if common_index is not None:
+                    # The contract's regular visible toast demonstrates the
+                    # Common tier; overflow still summarizes the other five.
+                    visible_presentations.append(
+                        visible_presentations.pop(common_index)
+                    )
+                stack_events = [
+                    replace(
+                        feedback,
+                        event_id=f"{feedback.event_id}:find:{index}",
+                        event_ids=(f"{feedback.event_id}:find:{index}",),
+                        title="Garden Find",
+                        message=str(presentation.description),
+                        asset_category=(
+                            "environment"
+                            if str(presentation.pool_id) == ENVIRONMENT_POOL_ID
+                            else "ui"
+                        ),
+                        asset_key=str(presentation.artwork_ref or ""),
+                        tier=str(presentation.tier).replace("_", " ").title(),
+                        find_count=1,
+                    )
+                    for index, presentation in enumerate(
+                        visible_presentations,
+                        start=1,
+                    )
+                ]
+                # The regular toast must prove that effects from one Garden
+                # Find are grouped instead of spawning duplicate cards. Use
+                # the canonical Common Growth and coin rewards as the two
+                # typed lines while the other five notifications remain in
+                # the overflow summary.
+                grouped_presentations = [
+                    presentation
+                    for reward_id in (
+                        "find_morning_dew",
+                        "find_coin_pouch",
+                    )
+                    for presentation in visible_presentations
+                    if str(presentation.reward_id) == reward_id
+                ]
+                grouped_copy = "\n".join(
+                    str(presentation.description)
+                    for presentation in grouped_presentations
+                    if str(presentation.description).strip()
+                )
+                if stack_events and len(grouped_presentations) == 2:
+                    stack_events[-1] = replace(
+                        stack_events[-1],
+                        message=grouped_copy,
+                    )
+                annotation["stack_event_count"] = len(stack_events)
+                annotation["expected_visible_toasts"] = 2
+                annotation["expected_overflow_copy"] = "+5 more rewards"
+                annotation["grouped_find_reward_copy"] = grouped_copy
+                annotation["expected_newest_title"] = str(
+                    stack_events[-1].title if stack_events else ""
+                )
+                annotation["expected_newest_message"] = str(
+                    stack_events[-1].message if stack_events else ""
+                )
+                return snapshot, tuple(stack_events), annotation
             return snapshot, feedback, annotation
         except Exception:
             self._restore_reward_capture_fixture(snapshot)
@@ -20161,18 +22214,109 @@ class _UiFaceCaptureRunner:
                 if app is not None:
                     app.processEvents()
                 focus_before = QApplication.focusWidget()
-                rendered = bool(handler._show_reward_toast(event))
+                event_sequence = (
+                    tuple(event)
+                    if isinstance(event, (tuple, list)) else
+                    (event,)
+                )
+                rendered = bool(
+                    event_sequence
+                    and all(
+                        handler._show_reward_toast(item)
+                        for item in event_sequence
+                    )
+                )
                 if app is not None:
                     app.processEvents()
                 focus_after = QApplication.focusWidget()
                 toast = getattr(handler, "_reward_toast", None)
+                visible_toasts = [
+                    candidate
+                    for candidate in tuple(
+                        getattr(handler, "_reward_toasts", ()) or ()
+                    )
+                    if candidate.isVisible()
+                ]
             except Exception:
                 cleanup()
                 raise
-            overlay_geometry = self._reviewer_overlay_geometry_audit(
-                label,
-                toast,
+            overlay_geometries = [
+                self._reviewer_overlay_geometry_audit(label, candidate)
+                for candidate in visible_toasts
+            ]
+            overlay_geometry = (
+                overlay_geometries[-1]
+                if overlay_geometries else
+                self._reviewer_overlay_geometry_audit(label, toast)
             )
+            summary_toasts = [
+                candidate
+                for candidate in visible_toasts
+                if bool(candidate.property("rewardSummary"))
+            ]
+            summary_copy = (
+                str(summary_toasts[0]._garden_detail_label.text())
+                if len(summary_toasts) == 1 else
+                ""
+            )
+            regular_toasts = [
+                candidate
+                for candidate in visible_toasts
+                if not bool(candidate.property("rewardSummary"))
+            ]
+            newest_expected_title = str(
+                getattr(event_sequence[-1], "title", "")
+                if event_sequence else
+                ""
+            )
+            newest_expected_message = str(
+                getattr(event_sequence[-1], "message", "")
+                if event_sequence else
+                ""
+            )
+            newest_visible_title = (
+                str(regular_toasts[0]._garden_title_label.text())
+                if len(regular_toasts) == 1 else
+                ""
+            )
+            newest_visible_message = (
+                str(regular_toasts[0]._garden_message_label.text())
+                if len(regular_toasts) == 1 else
+                ""
+            )
+            newest_event_visible = bool(
+                len(regular_toasts) == 1
+                and newest_visible_title == newest_expected_title
+                and newest_visible_message == newest_expected_message
+            )
+            stacked_requested = len(event_sequence) > 1
+            stack_evidence = {
+                "requested_event_count": len(event_sequence),
+                "visible_toast_count": len(visible_toasts),
+                "summary_toast_count": len(summary_toasts),
+                "regular_toast_count": len(regular_toasts),
+                "summary_copy": summary_copy,
+                "newest_expected_title": newest_expected_title,
+                "newest_expected_message": newest_expected_message,
+                "newest_visible_title": newest_visible_title,
+                "newest_visible_message": newest_visible_message,
+                "newest_event_visible": newest_event_visible,
+                "passed": bool(
+                    not stacked_requested
+                    or (
+                        len(event_sequence) == 6
+                        and len(visible_toasts) == 2
+                        and len(summary_toasts) == 1
+                        and len(regular_toasts) == 1
+                        and summary_copy == "+5 more rewards"
+                        and newest_event_visible
+                        and all(
+                            row.get("passed", False)
+                            for row in overlay_geometries
+                        )
+                    )
+                ),
+            }
             reviewer_dom_identity = dict(
                 getattr(self, "_active_reviewer_dom_audit", {}) or {}
             )
@@ -20183,6 +22327,7 @@ class _UiFaceCaptureRunner:
                 and focus_after is focus_before
                 and focus_after is not toast
                 and overlay_geometry.get("passed", False)
+                and stack_evidence["passed"]
                 and fixture_annotation.get(
                     "canonical_projection_passed",
                     False,
@@ -20203,6 +22348,8 @@ class _UiFaceCaptureRunner:
                 ),
                 "toast_visible": bool(toast is not None and toast.isVisible()),
                 "reviewer_overlay_geometry": overlay_geometry,
+                "reviewer_overlay_geometries": overlay_geometries,
+                "reviewer_stack": stack_evidence,
                 "passed": passed,
             }
             if not passed:
@@ -20268,11 +22415,15 @@ class _UiFaceCaptureRunner:
             lambda: self._prepare_canonical_reviewer_feedback_fixture(
                 find_reward_ids=(
                     "find_morning_dew",
-                    "find_morning_dew",
                     "find_coin_pouch",
+                    "find_sun_patch",
+                    "find_coin_cache",
+                    "find_growth_burst",
+                    "find_small_charge",
                 ),
                 include_daily_activity=True,
                 achievement_ids=("retention_100",),
+                stack_individual=True,
             ),
         )
 

@@ -5,7 +5,7 @@ import math
 from typing import Any, Iterable
 
 from ..asset_manager import DEFAULT_BED_ANCHORS, BedAnchor
-from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
+from ..growth import StageProgress, stage_progress
 from .state_contracts import CURRENT_ONBOARDING_VERSION
 from .responsive import (
     COMPACT_MODE,
@@ -27,6 +27,9 @@ SCENE_WIDE_BLEND_START = 1200.0
 SCENE_WIDE_BLEND_END = 1600.0
 STATUS_OVERLAY_MIN_WIDTH = 520.0
 STATUS_OVERLAY_HEIGHT = 68.0
+GARDEN_CANVAS_WIDTH = 1240.0
+GARDEN_CANVAS_HEIGHT = 840.0
+GARDEN_CANVAS_ASPECT = GARDEN_CANVAS_WIDTH / GARDEN_CANVAS_HEIGHT
 
 # Desktop plant details use one bounded component regardless of the selected
 # bed.  Compact/mobile docking is an explicit viewport decision; it is never a
@@ -186,6 +189,43 @@ class Rect:
             max(0.0, right - left),
             max(0.0, bottom - top),
         )
+
+
+def contained_canvas_rect(
+    width: float,
+    height: float,
+    *,
+    aspect: float = GARDEN_CANVAS_ASPECT,
+    origin_x: float = 0.0,
+    origin_y: float = 0.0,
+) -> Rect:
+    """Center one complete design canvas without stretching or cropping it."""
+
+    safe_width = max(1.0, float(width))
+    safe_height = max(1.0, float(height))
+    safe_aspect = max(0.01, float(aspect))
+    available_aspect = safe_width / safe_height
+    if available_aspect > safe_aspect:
+        draw_height = safe_height
+        draw_width = draw_height * safe_aspect
+    else:
+        draw_width = safe_width
+        draw_height = draw_width / safe_aspect
+    return Rect(
+        float(origin_x) + (safe_width - draw_width) / 2.0,
+        float(origin_y) + (safe_height - draw_height) / 2.0,
+        draw_width,
+        draw_height,
+    )
+
+
+def _offset_rect(rect: Rect, x_offset: float, y_offset: float) -> Rect:
+    return Rect(
+        rect.x + float(x_offset),
+        rect.y + float(y_offset),
+        rect.width,
+        rect.height,
+    )
 
 
 def status_overlay_rect(
@@ -360,6 +400,57 @@ class PlantPlacement:
     depth_band: str = "near"
 
 
+def translated_plant_placement(
+    placement: PlantPlacement,
+    x_offset: float,
+    y_offset: float,
+) -> PlantPlacement:
+    """Move every visual and interaction coordinate by one canvas offset."""
+
+    dx = float(x_offset)
+    dy = float(y_offset)
+    grounding = replace(
+        placement.grounding,
+        contact_shadow=_offset_rect(placement.grounding.contact_shadow, dx, dy),
+        cast_shadow=_offset_rect(placement.grounding.cast_shadow, dx, dy),
+        shadow_plane=tuple((x + dx, y + dy) for x, y in placement.grounding.shadow_plane),
+        support_line=tuple((x + dx, y + dy) for x, y in placement.grounding.support_line),
+    )
+    rect_fields = (
+        "draw",
+        "visible",
+        "hit",
+        "footprint",
+        "smart_card_anchor",
+        "bed_footprint",
+        "base_rect",
+        "support_rect",
+        "foliage_rect",
+        "control_rect",
+        "contact_plane",
+        "slot_envelope",
+    )
+    translated = {
+        field: _offset_rect(getattr(placement, field), dx, dy)
+        for field in rect_fields
+    }
+    return replace(
+        placement,
+        **translated,
+        depth=placement.depth + dy,
+        z_depth=placement.z_depth + dy,
+        label_anchor=(
+            placement.label_anchor[0] + dx,
+            placement.label_anchor[1] + dy,
+        ),
+        ground_anchor=(
+            placement.ground_anchor[0] + dx,
+            placement.ground_anchor[1] + dy,
+        ),
+        grounding=grounding,
+    )
+
+
 @dataclass(frozen=True)
 class NurturedMarkerPlacement:
     """Resolved watering-can geometry shared by native and Home renderers."""
@@ -460,16 +551,24 @@ class SceneGeometryLayout:
         device_pixel_ratio: float = 1.0,
         margin: float = 12.0,
         planter_family: dict[str, Any] | None = None,
+        scene_bounds: Rect | None = None,
     ) -> "SceneGeometryLayout":
         safe_width = max(1.0, float(width))
         safe_height = max(1.0, float(height))
-        scene = Rect(0.0, 0.0, safe_width, safe_height)
-        inset = max(0.0, min(float(margin), safe_width / 4, safe_height / 4))
+        scene = (
+            scene_bounds.clipped_to(Rect(0.0, 0.0, safe_width, safe_height))
+            if isinstance(scene_bounds, Rect)
+            else Rect(0.0, 0.0, safe_width, safe_height)
+        )
+        inset = max(
+            0.0,
+            min(float(margin), scene.width / 4, scene.height / 4),
+        )
         safe = Rect(
-            inset,
-            inset,
-            max(1.0, safe_width - inset * 2),
-            max(1.0, safe_height - inset * 2),
+            scene.x + inset,
+            scene.y + inset,
+            max(1.0, scene.width - inset * 2),
+            max(1.0, scene.height - inset * 2),
         )
         beds: list[SceneBedGeometry] = []
         for placement in sorted(placements, key=lambda row: row.slot_index):
@@ -610,14 +709,53 @@ class SceneGeometryLayout:
             for candidate in self.beds
             for exclusion in candidate.planter_exclusions
         )
-        return nurtured_marker_placement(
+        offset_x = self.scene_bounds.x
+        offset_y = self.scene_bounds.y
+        local_layout = translated_plant_placement(
+            placement,
+            -offset_x,
+            -offset_y,
+        )
+        local_result = nurtured_marker_placement(
             self.scene_bounds.width,
             self.scene_bounds.height,
-            placement,
-            planter_rect=bed.planter_bounds,
-            obstacles=obstacles,
-            protected_regions=(*tuple(protected_regions), *planter_exclusions),
-            accessory_lanes=bed.watering_can_accessory_lanes,
+            local_layout,
+            planter_rect=_offset_rect(
+                bed.planter_bounds,
+                -offset_x,
+                -offset_y,
+            ),
+            obstacles=tuple(
+                _offset_rect(obstacle, -offset_x, -offset_y)
+                for obstacle in obstacles
+            ),
+            protected_regions=tuple(
+                _offset_rect(region, -offset_x, -offset_y)
+                for region in (*tuple(protected_regions), *planter_exclusions)
+            ),
+            accessory_lanes=tuple(
+                _offset_rect(lane, -offset_x, -offset_y)
+                for lane in bed.watering_can_accessory_lanes
+            ),
+        )
+        return replace(
+            local_result,
+            rect=_offset_rect(local_result.rect, offset_x, offset_y),
+            pulse_bounds=_offset_rect(
+                local_result.pulse_bounds,
+                offset_x,
+                offset_y,
+            ),
+            planter_rect=_offset_rect(
+                local_result.planter_rect,
+                offset_x,
+                offset_y,
+            ),
+            contact_shadow=_offset_rect(
+                local_result.contact_shadow,
+                offset_x,
+                offset_y,
+            ),
         )
 
     def resolve_popover(
@@ -646,8 +784,8 @@ class SceneGeometryLayout:
             self.scene_bounds.height / 4.0,
         )
         popover_bounds = Rect(
-            popover_inset,
-            popover_inset,
+            self.scene_bounds.x + popover_inset,
+            self.scene_bounds.y + popover_inset,
             max(1.0, self.scene_bounds.width - popover_inset * 2.0),
             max(1.0, self.scene_bounds.height - popover_inset * 2.0),
         )
@@ -1376,42 +1514,13 @@ def scene_render_trace(layouts: Iterable[PlantPlacement]) -> tuple[str, ...]:
     return tuple(trace)
 
 
-@dataclass(frozen=True)
-class PlantGrowthDisplay:
-    stage: str
-    stage_index: int
-    next_stage: str | None
-    stage_start: int
-    next_threshold: int | None
-    points_remaining: int
-    progress: float
-    fully_grown: bool
-    stage_points: int
-    stage_goal: int
+PlantGrowthDisplay = StageProgress
 
 
 def growth_display(growth_points: Any) -> PlantGrowthDisplay:
-    try:
-        points = max(0, int(growth_points))
-    except (TypeError, ValueError):
-        points = 0
-    stage_index = 0
-    for index, threshold in enumerate(GROWTH_THRESHOLDS):
-        if points >= threshold:
-            stage_index = index
-    stage = GROWTH_STAGES[stage_index]
-    fully_grown = stage_index >= len(GROWTH_STAGES) - 1
-    if fully_grown:
-        return PlantGrowthDisplay(
-            stage, stage_index, None, GROWTH_THRESHOLDS[stage_index], None, 0, 1.0, True, 0, 0
-        )
-    next_threshold = GROWTH_THRESHOLDS[stage_index + 1]
-    stage_start = GROWTH_THRESHOLDS[stage_index]
-    stage_points = max(0, points - stage_start)
-    stage_goal = max(1, next_threshold - stage_start)
-    progress = max(0.0, min(1.0, stage_points / stage_goal))
-    return PlantGrowthDisplay(stage, stage_index, GROWTH_STAGES[stage_index + 1], stage_start, next_threshold,
-                              max(0, next_threshold - points), progress, False, stage_points, stage_goal)
+    """Compatibility wrapper for the shared renderer-neutral projection."""
+
+    return stage_progress(growth_points)
 
 
 def _number(value: Any, default: float, low: float, high: float) -> float:
@@ -1528,14 +1637,35 @@ def cover_project_point(
     source_aspect: float = 4 / 3,
     focal: tuple[float, float] = (0.5, 0.5),
 ) -> tuple[float, float]:
-    """Project a source-normalized point through the scene's cover crop."""
+    """Project a source point through the release canvas' contain transform.
+
+    The legacy name remains because landmark helpers import it directly. The
+    runtime no longer crops the source artwork: unused width or height becomes
+    a centered gutter and every bed, plant, landmark, and hit region follows
+    the same scale.
+    """
+
     scene_aspect = max(1.0, float(width)) / max(1.0, float(height))
+    # The exported 16:9 artwork is 1672 x 941, which is microscopically
+    # narrower than mathematical 16:9.  Preserve the frozen sub-pixel planter
+    # geometry for effectively identical aspect ratios; a contain projection
+    # would only trade a 0.05 px vertical correction for a 0.05 px horizontal
+    # correction without revealing any additional artwork.  Material aspect
+    # differences still use the complete-canvas contain transform below.
+    if abs(scene_aspect - source_aspect) / source_aspect <= 0.005:
+        if scene_aspect > source_aspect:
+            scale_y = scene_aspect / source_aspect
+            return x, y * scale_y - (scale_y - 1.0) * focal[1]
+        if scene_aspect < source_aspect:
+            scale_x = source_aspect / scene_aspect
+            return x * scale_x - (scale_x - 1.0) * focal[0], y
+        return x, y
     if scene_aspect > source_aspect:
-        scale_y = scene_aspect / source_aspect
-        return x, y * scale_y - (scale_y - 1.0) * focal[1]
-    if scene_aspect < source_aspect:
         scale_x = source_aspect / scene_aspect
-        return x * scale_x - (scale_x - 1.0) * focal[0], y
+        return 0.5 + (x - 0.5) * scale_x, y
+    if scene_aspect < source_aspect:
+        scale_y = scene_aspect / source_aspect
+        return x, 0.5 + (y - 0.5) * scale_y
     return x, y
 
 
@@ -2357,6 +2487,61 @@ def slot_layout(width: float, height: float, slot_count: int,
     )
 
 
+@dataclass(frozen=True)
+class BedInteractionState:
+    """One semantic and visual projection for a garden bed interaction."""
+
+    slot_index: int
+    state: str
+    label: str
+    pointer_enabled: bool
+    occupied: bool
+
+
+def bed_interaction_state(
+    slot_index: int,
+    *,
+    origin_slot: int | None,
+    destination_slot: int | None,
+    unlocked_slots: int,
+    occupied_slots: set[int],
+    occupant_names: dict[int, str] | None = None,
+    starter_placement: bool = False,
+) -> BedInteractionState:
+    """Resolve copy, state, and pointer eligibility without scene duplication."""
+
+    slot = int(slot_index)
+    unlocked = max(0, min(6, int(unlocked_slots)))
+    occupied = slot in occupied_slots
+    names = occupant_names or {}
+    if slot >= unlocked:
+        return BedInteractionState(slot, "locked", "Locked", False, occupied)
+    if slot == origin_slot:
+        return BedInteractionState(slot, "current", "Current bed", False, occupied)
+    selected = slot == destination_slot
+    if starter_placement:
+        label = f"Bed {slot + 1} selected" if selected else "Available"
+        return BedInteractionState(
+            slot,
+            "selected" if selected else "available",
+            label,
+            True,
+            occupied,
+        )
+    if occupied:
+        occupant = str(names.get(slot) or "plant").strip()
+        label = f"Swap with {occupant}"
+    else:
+        label = "Move here"
+    return BedInteractionState(
+        slot,
+        "selected" if selected else "available",
+        label,
+        True,
+        occupied,
+    )
+
+
 def move_badge_label(
     slot_index: int,
     *,
@@ -2367,12 +2552,15 @@ def move_badge_label(
     occupant_names: dict[int, str] | None = None,
 ) -> tuple[str, str]:
     """Return compact painted copy plus a semantic bed state."""
-    if slot_index >= max(0, min(6, int(unlocked_slots))):
-        return "Locked", "locked"
-    if slot_index == origin_slot:
-        return "Current location", "current"
-    del occupied_slots, occupant_names
-    return "Move here", "active" if slot_index == destination_slot else "available"
+    state = bed_interaction_state(
+        slot_index,
+        origin_slot=origin_slot,
+        destination_slot=destination_slot,
+        unlocked_slots=unlocked_slots,
+        occupied_slots=occupied_slots,
+        occupant_names=occupant_names,
+    )
+    return state.label, state.state
 
 
 def move_target_state(
@@ -2405,12 +2593,14 @@ def bed_badge_rect(
     width: float,
     height: float,
     obstacles: Iterable[Rect] = (),
+    *,
+    canvas_bounds: Rect | None = None,
 ) -> Rect:
     """Place a compact badge from its dedicated anchor without covering plants."""
     # These controls are painted over a detailed scene and must remain legible
     # at Anki's supported display scales.  Reserve enough logical width for the
     # complete semantic label instead of relying on painter clipping.
-    badge_width = max(48.0, min(96.0, 24.0 + len(label) * 7.0))
+    badge_width = max(58.0, min(180.0, 22.0 + len(label) * 7.0))
     badge_height = 44.0
     anchor_x, anchor_y = placement.label_anchor
     candidates = (
@@ -2425,11 +2615,20 @@ def bed_badge_rect(
     )
     safe_width = max(1.0, float(width))
     safe_height = max(1.0, float(height))
+    safe = (
+        canvas_bounds.clipped_to(Rect(0.0, 0.0, safe_width, safe_height))
+        if isinstance(canvas_bounds, Rect)
+        else Rect(0.0, 0.0, safe_width, safe_height)
+    )
+    left = safe.x + 4.0
+    top = safe.y + 4.0
+    right = safe.right - 4.0
+    bottom = safe.bottom - 4.0
     blocked = list(obstacles)
     for candidate in candidates:
         clamped = Rect(
-            max(4.0, min(candidate.x, safe_width - candidate.width - 4.0)),
-            max(4.0, min(candidate.y, safe_height - candidate.height - 4.0)),
+            max(left, min(candidate.x, right - candidate.width)),
+            max(top, min(candidate.y, bottom - candidate.height)),
             candidate.width,
             candidate.height,
         )
@@ -2441,13 +2640,13 @@ def bed_badge_rect(
     # before accepting any overlap; this remains cheap (a few hundred bounded
     # candidates) and keeps rearrange controls off both plants and one another.
     x_positions = {
-        4.0,
-        safe_width - badge_width - 4.0,
+        left,
+        right - badge_width,
         anchor_x - badge_width / 2,
     }
     y_positions = {
-        4.0,
-        safe_height - badge_height - 4.0,
+        top,
+        bottom - badge_height,
         anchor_y - badge_height / 2,
         placement.visible.y - badge_height - 6.0,
     }
@@ -2469,8 +2668,8 @@ def bed_badge_rect(
     for raw_x in x_positions:
         for raw_y in y_positions:
             candidate = Rect(
-                max(4.0, min(raw_x, safe_width - badge_width - 4.0)),
-                max(4.0, min(raw_y, safe_height - badge_height - 4.0)),
+                max(left, min(raw_x, right - badge_width)),
+                max(top, min(raw_y, bottom - badge_height)),
                 badge_width,
                 badge_height,
             )

@@ -140,7 +140,7 @@ def _scenario_warnings(
             # badge only for the current and keyboard-selected beds. Treating
             # all six compact badges as visible manufactured collisions that
             # cannot occur in the runtime UI.
-            if width < 900 and state not in {"active", "current"}:
+            if width < 900 and state not in {"active", "selected", "current"}:
                 target_width = row.bed_footprint.width + 28.0
                 target_height = row.bed_footprint.height + 22.0
                 if target_width < 44 or target_height < 44:

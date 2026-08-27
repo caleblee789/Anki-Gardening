@@ -25,6 +25,9 @@ GARDEN_ICON_PATHS: dict[str, str] = {
     "warning": '<path d="M12 4 3 20h18L12 4Z"/><path d="M12 9v5M12 17h.01"/>',
     "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
     "help": '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.7 2.7 0 0 1 5.2 1c0 2-2.7 2.1-2.7 4M12 17h.01"/>',
+    "reset": '<path d="M4 7v5h5"/><path d="M5.5 10a7 7 0 1 1 .8 6.8"/>',
+    "overflow": '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+    "bed": '<path d="M4 15c2.2-2 4.8-3 8-3s5.8 1 8 3v4H4v-4Z"/><path d="M7 12V8h10v4M9 8V5h6v3"/>',
 }
 
 

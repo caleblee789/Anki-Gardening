@@ -64,7 +64,7 @@ def test_loading_state_preserves_preview_geometry_without_actions() -> None:
     assert "Loading garden preview…" not in html
     assert 'data-testid="home-open"' not in html
     assert 'data-testid="home-retry"' not in html
-    assert "height:136px" in html
+    assert "height:112px" in html
 
 
 def test_empty_state_renders_empty_message() -> None:
@@ -73,11 +73,11 @@ def test_empty_state_renders_empty_message() -> None:
     assert 'data-state="empty"' in html
     assert 'data-testid="home-empty"' in html
     assert 'role="region" aria-label="Anki Garden"' in html
-    assert "Choose a starter" in html
+    assert "Start your garden" in html
     assert "Your first plant is free." in html
     assert "Start with one free seed." not in html
     assert "Reviews completed before setup do not earn Growth." not in html
-    assert "Choose a starter for your garden." in html
+    assert "Start your garden. Your first plant is free. Choose plant." in html
     assert "Reviews completed beforehand cannot earn Growth." not in html
     assert "pycmd('anki-garden:choose-starter')" in html
     assert "Answer your first card" not in html
@@ -157,8 +157,8 @@ def test_success_state_renders_key_fields() -> None:
     assert 'aria-label="Open My Garden"' in html
     assert '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>' in html
     assert '<h2 class="ag-home__focus-name" data-testid="home-title" aria-label="My Garden"' in html
-    assert "max-width:600px" in html
-    assert "height:136px" in html
+    assert "max-width:500px" in html
+    assert "height:112px" in html
     assert "@container (max-width:420px)" in html
     assert '<aside class="ag-home__details home-summary-panel">' in html
     assert '<header class="ag-home__identity-row summary-header">' in html
@@ -166,7 +166,7 @@ def test_success_state_renders_key_fields() -> None:
     assert ".ag-home__garden-context,.ag-home__status-notice { display:none; }" in html
     assert "min-height:36px" in html
     assert "max-height:36px" in html
-    assert "min-width:104px" in html
+    assert "min-width:128px" in html
     assert "outline: 2px solid #82E2AC" in html
     assert "outline-offset: 2px" in html
     assert "box-shadow:0 0 0 4px #071A15" in html
@@ -285,16 +285,16 @@ def test_home_does_not_draw_a_duplicate_soil_ellipse_over_empty_beds() -> None:
 def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=5, phase="success", data=_sample_data()))
 
-    assert "grid-template-columns:minmax(0,280px) 120px" in html
-    assert "justify-content:space-between" in html
-    assert "gap:16px" in html
+    assert "grid-template-columns:minmax(0,240px) minmax(0,1fr) 128px" in html
+    assert "column-gap:12px" in html
+    assert 'class="ag-home__artwork-zone" aria-hidden="true"' in html
     assert "#ag-home-root button,.ag-home__open" in html
     assert '<div class="ag-home__metrics"' not in html
-    assert "height:136px" in html
-    assert "height:4px" in html
-    assert "width:min(100%,280px)" in html
+    assert "height:112px" in html
+    assert "height:6px" in html
+    assert "width:min(100%,240px)" in html
     assert "filter:brightness(1.12)" in html
-    assert "linear-gradient(90deg,rgba(4,14,11,.88)" in html
+    assert "linear-gradient(90deg,rgba(3,12,9,.98)" in html
     assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
     assert "top:var(--ag-home-focal-y,var(--ag-preview-y,50%))" in html
     assert "@container (max-width:420px)" in html
@@ -315,7 +315,8 @@ def test_home_long_unbroken_plant_name_truncates_without_displacing_button() -> 
 
     assert f'title="{name} · Flowering · 30 / 500 toward Rare"' in html
     assert f'>{name} · Flowering · 30 / 500 toward Rare</span>' in html
-    assert "text-overflow:ellipsis; white-space:nowrap" in html
+    assert "-webkit-line-clamp:2" in html
+    assert "max-height:2.7em" in html
     assert ".ag-home__support" in html
     assert "@container (max-width: 488px)" in html
 
@@ -986,6 +987,24 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
         "error": "error",
         "disabled": "neutral",
     }.get(preview.phase, "neutral")
+
+
+def test_shared_preview_coin_metric_pluralizes_the_unit() -> None:
+    one_coin = garden_preview_from_values(
+        consumer="settings",
+        garden_currency=1,
+    )
+    two_coins = garden_preview_from_values(
+        consumer="settings",
+        garden_currency=2,
+    )
+
+    assert next(
+        metric for metric in one_coin.metrics if metric.metric_id == "coins"
+    ).value == "1 coin"
+    assert next(
+        metric for metric in two_coins.metrics if metric.metric_id == "coins"
+    ).value == "2 coins"
 
 
 def test_retry_and_refresh_flow_replaces_previous_error_view() -> None:

@@ -846,6 +846,7 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                             _move_transition=None,
                             timer=timer,
                             isVisible=lambda: True,
+                            _sync_animation_timer=lambda: timer.start(16),
                             _finish_move_transition=lambda: None,
                             update=lambda: None,
                         )

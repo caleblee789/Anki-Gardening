@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 
 class DialogSizeClass(str, Enum):
@@ -53,6 +54,76 @@ class InitialFocusPolicy(str, Enum):
     FIRST_EDITABLE = "first-editable"
     SELECTED_ROUTE = "selected-route"
     EXPLICIT = "explicit"
+
+
+def resolve_widget_layout(widget: Any) -> Any | None:
+    """Return a Qt layout whether a widget exposes ``layout()`` or ``layout``.
+
+    A few established Garden content widgets keep their ``QVBoxLayout`` in a
+    public ``layout`` attribute, which shadows ``QWidget.layout()``. Shared
+    shell code must accept both shapes when it adjusts scroll-content margins.
+    """
+
+    if widget is None:
+        return None
+    candidate = getattr(widget, "layout", None)
+    return candidate() if callable(candidate) else candidate
+
+
+@dataclass(frozen=True)
+class DialogLayoutMetrics:
+    """Shared non-scrolling shell and central-body spacing contract."""
+
+    horizontal_padding: int = 24
+    header_top_padding: int = 24
+    body_top_padding: int = 16
+    body_bottom_padding: int = 24
+    footer_top_padding: int = 12
+    footer_bottom_padding: int = 16
+    card_padding: int = 16
+    section_gap: int = 24
+    row_gap: int = 12
+    action_gap: int = 8
+
+    @property
+    def body_margins(self) -> tuple[int, int, int, int]:
+        return (
+            self.horizontal_padding,
+            self.body_top_padding,
+            self.horizontal_padding,
+            self.body_bottom_padding,
+        )
+
+    @property
+    def footer_margins(self) -> tuple[int, int, int, int]:
+        return (
+            self.horizontal_padding,
+            self.footer_top_padding,
+            self.horizontal_padding,
+            self.footer_bottom_padding,
+        )
+
+
+@dataclass(frozen=True)
+class DialogScrollContract:
+    """Structural overflow rules for a four-region Garden dialog."""
+
+    header_pinned: bool = True
+    tabs_pinned: bool = True
+    footer_pinned: bool = True
+    central_body_scrolls: bool = True
+    horizontal_scrolls: bool = False
+    body_minimum_height: int = 0
+    bottom_padding: int = 24
+    scrollbar_clearance: int = 8
+    overflow_owner_count: int = 1
+
+
+GARDEN_DIALOG_LAYOUT = DialogLayoutMetrics()
+DIALOG_LAYOUT_METRICS = GARDEN_DIALOG_LAYOUT
+GardenDialogLayout = DialogLayoutMetrics
+GARDEN_DIALOG_SCROLL = DialogScrollContract()
+DIALOG_SCROLL_CONTRACT = GARDEN_DIALOG_SCROLL
 
 
 class DialogViewState(str, Enum):
@@ -241,6 +312,37 @@ class DialogSizeProfile:
 
 # Source-compatible name retained for integrations that imported the v23 type.
 DialogSizePolicy = DialogSizeProfile
+
+
+@dataclass(frozen=True)
+class ResolvedDialogGeometry:
+    """Screen-clamped minimum, initial, and maximum native client sizes."""
+
+    minimum_width: int
+    minimum_height: int
+    initial_width: int
+    initial_height: int
+    maximum_width: int
+    maximum_height: int
+
+    def __post_init__(self) -> None:
+        if not (
+            0 < self.minimum_width <= self.initial_width <= self.maximum_width
+            and 0 < self.minimum_height <= self.initial_height <= self.maximum_height
+        ):
+            raise ValueError("resolved dialog geometry must use ordered positive bounds")
+
+    @property
+    def minimum_size(self) -> tuple[int, int]:
+        return self.minimum_width, self.minimum_height
+
+    @property
+    def initial_size(self) -> tuple[int, int]:
+        return self.initial_width, self.initial_height
+
+    @property
+    def maximum_size(self) -> tuple[int, int]:
+        return self.maximum_width, self.maximum_height
 
 
 @dataclass(frozen=True)
@@ -456,7 +558,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         820,
         510,
         840,
-        520,
+        680,
         1.0,
         1.0,
         False,
@@ -532,9 +634,9 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         480,
         220,
         500,
-        270,
+        300,
         510,
-        290,
+        340,
         1.0,
         1.0,
         False,
@@ -610,8 +712,8 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # The Growth Charge quote is the smallest complete purchase: one
         # artwork row, one cost row, and its actions.  Keep that proposal a
         # true content-fit window instead of inheriting taller catalog states.
-        "growth-charge": DialogHeightProfile(220, 230, 240, 500, 500, 500),
-        "replacement": DialogHeightProfile(230, 260, 290, 500, 520, 540),
+        "growth-charge": DialogHeightProfile(270, 280, 300, 500, 500, 500),
+        "replacement": DialogHeightProfile(230, 270, 300, 500, 520, 540),
         "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
         "loading": DialogHeightProfile(210, 230, 250, 480, 500, 520),
         "warning": DialogHeightProfile(180, 210, 240, 480, 510, 540),
@@ -619,26 +721,30 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "success": DialogHeightProfile(180, 210, 240, 480, 510, 540),
     },
     DialogSizeClass.FERTILIZER: {
-        "default": DialogHeightProfile(420, 440, 480, 640, 660, 680),
-        "selection": DialogHeightProfile(420, 440, 480, 640, 660, 680),
+        "default": DialogHeightProfile(470, 490, 520, 640, 660, 680),
+        "selection": DialogHeightProfile(470, 490, 520, 640, 660, 680),
         "replacement": DialogHeightProfile(230, 260, 290, 500, 520, 540),
     },
     DialogSizeClass.SETTINGS: {
         "display": DialogHeightProfile(480, 500, 520, 800, 820, 840),
-        "advanced": DialogHeightProfile(500, 510, 520, 800, 820, 840),
+        # At normal text scaling the home preview through the expanded
+        # Advanced panel occupies 434 logical pixels. A 650 px shell keeps
+        # both semantic boundaries intact; shorter screens still clamp and
+        # retain the same outer scroll owner.
+        "advanced": DialogHeightProfile(650, 650, 680, 800, 820, 840),
         "diagnostics-clean": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-warning": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-expanded": DialogHeightProfile(430, 470, 520, 760, 780, 800),
     },
     DialogSizeClass.NURSERY: {
-        "starter": DialogHeightProfile(400, 420, 440, 925, 940, 950),
+        "starter": DialogHeightProfile(340, 350, 360, 925, 940, 950),
         "plants": DialogHeightProfile(300, 360, 520, 925, 940, 950),
         "owned": DialogHeightProfile(470, 500, 530),
-        "fertilizer": DialogHeightProfile(540, 550, 560, 925, 940, 950),
+        "fertilizer": DialogHeightProfile(500, 506, 560, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
         "weather": DialogHeightProfile(360, 460, 560, 925, 940, 950),
         "collection-complete": DialogHeightProfile(300, 315, 330, 925, 940, 950),
-        "collection-complete-receipt": DialogHeightProfile(370, 385, 410, 925, 940, 950),
+        "collection-complete-receipt": DialogHeightProfile(390, 400, 410, 925, 940, 950),
         "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
@@ -661,16 +767,16 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "uncollected": DialogHeightProfile(520, 550, 570, 800, 820, 840),
     },
     DialogSizeClass.GROWTH_CHARGE: {
-        "ready": DialogHeightProfile(250, 270, 280, 480, 500, 510),
-        "loading": DialogHeightProfile(250, 270, 280, 480, 500, 510),
+        "ready": DialogHeightProfile(310, 320, 330, 480, 500, 510),
+        "loading": DialogHeightProfile(310, 320, 330, 480, 500, 510),
         # An availability refresh adds one compact status banner.  Let that
         # real content fit up to the approved 310 px family ceiling instead
         # of manufacturing an 8 px safety scrollbar at 510 x 300.
-        "stale": DialogHeightProfile(270, 300, 310, 500, 510, 540),
+        "stale": DialogHeightProfile(310, 325, 340, 500, 510, 540),
         "empty": DialogHeightProfile(190, 210, 230, 520, 540, 560),
         "warning": DialogHeightProfile(180, 210, 240, 520, 540, 560),
         "error": DialogHeightProfile(180, 210, 240, 520, 540, 560),
-        "success": DialogHeightProfile(260, 280, 290, 480, 500, 510),
+        "success": DialogHeightProfile(300, 320, 340, 480, 500, 510),
     },
 }
 
@@ -767,15 +873,15 @@ def content_fit_geometry_limited(
     return bool(width_limited or height_limited)
 
 
-def resolved_dialog_size(
+def resolved_dialog_geometry(
     size_class: DialogSizeClass,
     available_width: int,
     available_height: int,
     *,
     preferred_width: int | None = None,
     preferred_height: int | None = None,
-) -> tuple[int, int]:
-    """Resolve a logical client size inside the current screen.
+) -> ResolvedDialogGeometry:
+    """Resolve ordered native bounds inside the available screen.
 
     Large semantic dialogs may use otherwise idle screen area, while compact
     confirmations keep their deliberate maximum.  A screen smaller than the
@@ -800,10 +906,45 @@ def resolved_dialog_size(
     if policy.grows_with_screen:
         wanted_width = max(wanted_width, screen_width)
         wanted_height = max(wanted_height, screen_height)
-    return (
-        min(usable_width, screen_width, policy.max_width, wanted_width),
-        min(usable_height, screen_height, policy.max_height, wanted_height),
+    maximum_width = max(
+        1,
+        min(usable_width, screen_width, policy.max_width),
     )
+    maximum_height = max(
+        1,
+        min(usable_height, screen_height, policy.max_height),
+    )
+    minimum_width = min(policy.min_width, maximum_width)
+    minimum_height = min(policy.min_height, maximum_height)
+    initial_width = min(maximum_width, max(minimum_width, wanted_width))
+    initial_height = min(maximum_height, max(minimum_height, wanted_height))
+    return ResolvedDialogGeometry(
+        minimum_width,
+        minimum_height,
+        initial_width,
+        initial_height,
+        maximum_width,
+        maximum_height,
+    )
+
+
+def resolved_dialog_size(
+    size_class: DialogSizeClass,
+    available_width: int,
+    available_height: int,
+    *,
+    preferred_width: int | None = None,
+    preferred_height: int | None = None,
+) -> tuple[int, int]:
+    """Return the reasonable initial size from screen-clamped dialog bounds."""
+
+    return resolved_dialog_geometry(
+        size_class,
+        available_width,
+        available_height,
+        preferred_width=preferred_width,
+        preferred_height=preferred_height,
+    ).initial_size
 
 
 def text_column_width(average_character_width: int, characters: int = 68) -> int:

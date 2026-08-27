@@ -96,7 +96,7 @@ class _ResponsiveRecorder(_Recorder):
         return SimpleNamespace(height=lambda: 520)
 
 
-def test_settings_layout_executes_wide_and_compact_responsive_behavior() -> None:
+def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
     apply_layout = _compiled_responsive_method()
     controls = _ResponsiveRecorder()
     root_layout = _ResponsiveRecorder()
@@ -110,14 +110,14 @@ def test_settings_layout_executes_wide_and_compact_responsive_behavior() -> None
     widget.theme_card = _ResponsiveRecorder()
 
     apply_layout(widget, "wide")
-    assert ("setDirection", ("columns",)) in root_layout.calls
-    assert ("setMinimumWidth", (190,)) in controls.calls
-    assert ("setMaximumWidth", (220,)) in controls.calls
-    assert ("setSizePolicy", ("preferred", "preferred")) in controls.calls
+    assert ("setDirection", ("stacked",)) in root_layout.calls
+    assert ("setMinimumWidth", (0,)) in controls.calls
+    assert ("setMaximumWidth", (16_777_215,)) in controls.calls
+    assert ("setSizePolicy", ("expanding", "preferred")) in controls.calls
     assert ("setMaximumHeight", (16_777_215,)) in widget.controls_scroll.calls
     assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
-    assert ("setMinimumWidth", (180,)) in widget.theme_card.calls
-    assert ("setMaximumWidth", (220,)) in widget.theme_card.calls
+    assert ("setMinimumWidth", (0,)) in widget.theme_card.calls
+    assert ("setMaximumWidth", (16_777_215,)) in widget.theme_card.calls
 
     apply_layout(widget, "compact")
     assert ("setDirection", ("stacked",)) in root_layout.calls
@@ -155,7 +155,19 @@ class _ControlsScroll(_Recorder):
         self.calls.append(("setMinimumHeight", (int(height),)))
 
 
+class _ScrollBar(_Recorder):
+    def maximum(self) -> int:
+        return 0
+
+
 class _OuterScroll(_Recorder):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bar = _ScrollBar()
+
+    def verticalScrollBar(self) -> _ScrollBar:
+        return self.bar
+
     def parentWidget(self) -> None:
         return None
 
@@ -196,7 +208,7 @@ def _compiled_finish_method() -> Any:
 
 
 @pytest.mark.parametrize("compact", [False, True], ids=["wide", "compact"])
-def test_advanced_expansion_grows_the_non_scrolling_viewport_in_both_modes(
+def test_advanced_expansion_grows_the_non_scrolling_viewport_without_repositioning(
     compact: bool,
 ) -> None:
     finish_update = _compiled_finish_method()
@@ -207,10 +219,10 @@ def test_advanced_expansion_grows_the_non_scrolling_viewport_in_both_modes(
     assert studio.controls_scroll.viewport_height == 572
     assert ("setMinimumHeight", (572,)) in studio.controls_scroll.calls
     assert ("updateGeometry", ()) in studio.controls_scroll.calls
-    assert (
-        "ensureWidgetVisible",
-        (studio.advanced_panel, 12, 12),
-    ) in studio.outer_scroll.calls
+    assert not any(
+        name == "ensureWidgetVisible" for name, _args in studio.outer_scroll.calls
+    )
+    assert ("setValue", (0,)) in studio.outer_scroll.bar.calls
 
 
 def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
@@ -1415,7 +1427,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
     application.processEvents()
     application.processEvents()
     assert 925 <= starter_nursery.width() <= 950
-    assert 400 <= starter_nursery.height() <= 440
+    assert 370 <= starter_nursery.height() <= 410
     assert starter_nursery.scroll.verticalScrollBar().maximum() == 0
     assert_complete_nursery_fold(starter_nursery.scroll, "Starter Nursery")
     starter_nursery.hide()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from ankigarden.ui.dialog_foundations import (
     DIALOG_SIZE_POLICIES,
+    DIALOG_LAYOUT_METRICS,
+    DIALOG_SCROLL_CONTRACT,
     DIALOG_VIEW_HEIGHT_PROFILES,
     DIALOG_VIEW_POLICIES,
     DialogCloseBlocker,
@@ -9,8 +11,10 @@ from ankigarden.ui.dialog_foundations import (
     DialogCloseReason,
     DialogCaptureTelemetryRecord,
     DialogGeometryTelemetryRecord,
+    DialogLayoutMetrics,
     DialogSizeClass,
     DialogSizeProfile,
+    DialogScrollContract,
     DialogWindowMode,
     DialogViewState,
     InitialFocusPolicy,
@@ -22,10 +26,52 @@ from ankigarden.ui.dialog_foundations import (
     merge_content_fit_preservation,
     resolve_dialog_close,
     resolved_dialog_size,
+    resolved_dialog_geometry,
     resolved_dialog_view_width,
+    resolve_widget_layout,
     should_preserve_transition_height,
     text_column_width,
 )
+
+
+def test_widget_layout_resolver_accepts_qt_methods_and_stored_layouts() -> None:
+    method_layout = object()
+    stored_layout = object()
+
+    class MethodWidget:
+        def layout(self) -> object:
+            return method_layout
+
+    class StoredWidget:
+        layout = stored_layout
+
+    assert resolve_widget_layout(MethodWidget()) is method_layout
+    assert resolve_widget_layout(StoredWidget()) is stored_layout
+    assert resolve_widget_layout(None) is None
+
+
+def test_shared_dialog_regions_use_the_release_spacing_and_scroll_contract() -> None:
+    metrics = DIALOG_LAYOUT_METRICS
+    assert isinstance(metrics, DialogLayoutMetrics)
+    assert metrics.horizontal_padding == 24
+    assert metrics.body_margins == (24, 16, 24, 24)
+    assert metrics.footer_margins == (24, 12, 24, 16)
+    assert metrics.card_padding == 16
+    assert metrics.section_gap == 24
+    assert metrics.row_gap == 12
+    assert metrics.action_gap == 8
+
+    scrolling = DIALOG_SCROLL_CONTRACT
+    assert isinstance(scrolling, DialogScrollContract)
+    assert scrolling.header_pinned is True
+    assert scrolling.tabs_pinned is True
+    assert scrolling.footer_pinned is True
+    assert scrolling.central_body_scrolls is True
+    assert scrolling.horizontal_scrolls is False
+    assert scrolling.body_minimum_height == 0
+    assert scrolling.bottom_padding == 24
+    assert scrolling.scrollbar_clearance == 8
+    assert scrolling.overflow_owner_count == 1
 
 
 def test_every_dialog_size_class_has_a_sane_policy() -> None:
@@ -88,6 +134,20 @@ def test_dialog_size_clamps_to_small_available_geometry() -> None:
     assert resolved_dialog_size(DialogSizeClass.CATALOG, 500, 360) == (452, 312)
 
 
+def test_dialog_geometry_exposes_screen_clamped_minimum_initial_and_maximum() -> None:
+    large = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 2560, 1440)
+    assert large.minimum_size == (800, 480)
+    assert large.initial_size == (820, 510)
+    assert large.maximum_size == (840, 680)
+
+    small = resolved_dialog_geometry(DialogSizeClass.SETTINGS, 760, 560)
+    assert small.minimum_size == (712, 480)
+    assert small.initial_size == (712, 510)
+    assert small.maximum_size == (712, 512)
+    assert small.maximum_width <= 760 - 48
+    assert small.maximum_height <= 560 - 48
+
+
 def test_release_dialog_families_use_authoritative_content_fit_geometry() -> None:
     expected = {
         DialogSizeClass.COMPACT_STATUS: (500, 190),
@@ -99,7 +159,7 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
         DialogSizeClass.LOADOUT: (1000, 540),
         DialogSizeClass.PLANT_STORY: (760, 500),
         DialogSizeClass.SPECIES_DETAIL: (820, 550),
-        DialogSizeClass.GROWTH_CHARGE: (500, 270),
+        DialogSizeClass.GROWTH_CHARGE: (500, 300),
         DialogSizeClass.GARDEN_WORKSPACE: (1240, 840),
     }
     for family, size in expected.items():
@@ -128,29 +188,30 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "simple": (480, 500, 520, 210, 230, 250),
             "loading": (480, 500, 520, 210, 230, 250),
             "complex": (540, 570, 600, 250, 295, 340),
-            "growth-charge": (500, 500, 500, 220, 230, 240),
+            "growth-charge": (500, 500, 500, 270, 280, 300),
+            "replacement": (500, 520, 540, 230, 270, 300),
         },
         DialogSizeClass.FERTILIZER: {
-            "default": (640, 660, 680, 420, 440, 480),
-            "selection": (640, 660, 680, 420, 440, 480),
+            "default": (640, 660, 680, 470, 490, 520),
+            "selection": (640, 660, 680, 470, 490, 520),
             "replacement": (500, 520, 540, 230, 260, 290),
         },
         DialogSizeClass.SETTINGS: {
             "display": (800, 820, 840, 480, 500, 520),
-            "advanced": (800, 820, 840, 500, 510, 520),
+            "advanced": (800, 820, 840, 650, 650, 680),
             "diagnostics-clean": (760, 780, 800, 280, 300, 320),
             "diagnostics-warning": (760, 780, 800, 280, 300, 320),
             "diagnostics-expanded": (760, 780, 800, 430, 470, 520),
         },
         DialogSizeClass.NURSERY: {
-            "starter": (925, 940, 950, 400, 420, 440),
+            "starter": (925, 940, 950, 340, 350, 360),
             "plants": (925, 940, 950, 300, 360, 520),
             "owned": (925, 940, 950, 470, 500, 530),
-            "fertilizer": (925, 940, 950, 540, 550, 560),
+            "fertilizer": (925, 940, 950, 500, 506, 560),
             "spaces": (925, 940, 950, 300, 325, 330),
             "weather": (925, 940, 950, 360, 460, 560),
             "collection-complete": (925, 940, 950, 300, 315, 330),
-            "collection-complete-receipt": (925, 940, 950, 370, 385, 410),
+            "collection-complete-receipt": (925, 940, 950, 390, 400, 410),
             "empty": (925, 940, 950, 300, 335, 370),
         },
         DialogSizeClass.PROGRESS: {
@@ -172,9 +233,10 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "uncollected": (800, 820, 840, 520, 550, 570),
         },
         DialogSizeClass.GROWTH_CHARGE: {
-            "ready": (480, 500, 510, 250, 270, 280),
-            "loading": (480, 500, 510, 250, 270, 280),
-            "stale": (500, 510, 540, 270, 300, 310),
+            "ready": (480, 500, 510, 310, 320, 330),
+            "loading": (480, 500, 510, 310, 320, 330),
+            "stale": (500, 510, 540, 310, 325, 340),
+            "success": (480, 500, 510, 300, 320, 340),
         },
     }
 

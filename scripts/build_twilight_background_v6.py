@@ -385,7 +385,7 @@ def _placement(profile: dict[str, Any]) -> dict[str, Any]:
         }
     return {
         "anchor_x": 0.5, "baseline_y": 0.5, "scale": 1.0,
-        "crop": "cover", "layer": "background",
+        "crop": "contain", "layer": "background",
         "focal_point": profile["variants"]["16:9"]["focal_point"],
         "planting_zone": profile["variants"]["16:9"]["planting_zone"],
         "bed_anchors": layouts["16:9"]["compositions"]["6"],

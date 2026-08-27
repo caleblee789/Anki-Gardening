@@ -188,6 +188,10 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
     with pytest.raises(ValueError, match="outside the shared scale"):
         scope["spacing"](13)
 
+    assert scope["GARDEN_COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
+    assert scope["COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
+    assert scope["RADIUS_SCALE"] == {"sm": 6, "md": 10, "lg": 14}
+
 
 def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
     scope = _theme_scope()
@@ -203,7 +207,7 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert scope["MIN_HIT_TARGET"] == 36
     assert scope["BUTTON_MIN_HEIGHT"] == 36
     assert scope["PRIMARY_BUTTON_VISUAL_HEIGHT"] == 40
-    assert scope["INPUT_VISUAL_HEIGHT"] == 36
+    assert scope["INPUT_VISUAL_HEIGHT"] == 40
     assert scope["ICON_BUTTON_VISUAL_SIZE"] == 32
     assert scope["ICON_BUTTON_SIZE"] == 32
 
@@ -215,15 +219,15 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton:disabled" in buttons
     assert "QPushButton:enabled:hover" in buttons
     assert "QPushButton:disabled:hover" in buttons
-    assert "QPushButton:focus" in buttons
-    assert "font-size: 13px" in buttons
+    assert "QPushButton[keyboardFocusVisible='true']:focus" in buttons
+    assert "font-size: 14px" in buttons
     assert "border: 2px solid" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['growth_accent']}" in buttons
     assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
     assert "QToolButton:enabled:hover" in tools
     assert "QToolButton:disabled:hover" in tools
-    assert "font-size: 13px" in tools
+    assert "font-size: 14px" in tools
 
 
 def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
@@ -236,6 +240,7 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
         for size in button_size
     } == {
         "compact-row": (36, 10),
+        "banner": (36, 10),
         "secondary": (36, 14),
         "primary": (40, 16),
         "onboarding": (40, 16),
@@ -251,6 +256,33 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
 
     scope["apply_button_size"](widget, button_size.ICON)
     assert (widget.minimum_width, widget.maximum_width) == (32, 32)
+
+
+def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> None:
+    scope = _theme_scope()
+    geometry = scope["ControlGeometry"]
+    tokens = scope["CONTROL_GEOMETRY_TOKENS"]
+
+    assert {
+        role.value: (tokens[role].width_px, tokens[role].height_px)
+        for role in geometry
+    } == {
+        "icon-button": (32, 32),
+        "input": (None, 40),
+        "select": (None, 40),
+        "switch": (40, 22),
+        "tab": (None, 44),
+    }
+
+    input_widget = _Widget()
+    scope["apply_input_geometry"](input_widget)
+    assert (input_widget.minimum_height, input_widget.maximum_height) == (40, 40)
+    assert input_widget.properties["gardenControl"] == "input"
+
+    switch = _Widget()
+    scope["apply_switch_geometry"](switch)
+    assert (switch.minimum_width, switch.maximum_width) == (40, 40)
+    assert (switch.minimum_height, switch.maximum_height) == (22, 22)
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:
@@ -326,8 +358,8 @@ def test_non_button_focus_surface_uses_the_shared_visible_ring_hook() -> None:
     assert ("polish", widget) in widget._style.events
 
     stylesheet = scope["semantic_component_stylesheet"]()
-    assert "QFrame[keyboardFocusSurface='true']:focus" in stylesheet
-    assert "QLabel[keyboardFocusSurface='true']:focus" in stylesheet
+    assert "QFrame[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus" in stylesheet
+    assert "QLabel[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus" in stylesheet
     assert scope["GARDEN_THEME"]["focus_ring"] in stylesheet
 
 
@@ -363,22 +395,49 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
     nursery = scope["semantic_component_stylesheet"]("nursery")
 
     for role in (
+        "dialog-shell",
+        "dialog-header",
+        "dialog-body",
+        "dialog-footer",
+        "card",
+        "input",
+        "select",
+        "switch",
         "tabs",
         "segmented-filter",
         "badge",
+        "status-badge",
+        "currency-badge",
         "progress",
+        "progress-meter",
+        "inventory-row",
+        "stage-strip",
         "disclosure",
         "tooltip",
         "banner",
+        "notice-banner",
         "toast",
+        "toast-stack",
         "empty-state",
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 40px" in garden
+    assert "min-height: 44px" in garden
     assert "max-height: 36px" in garden
-    assert "QCheckBox:focus" in garden
+    assert "QCheckBox[keyboardFocusVisible='true']:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
+    assert "QCheckBox[gardenRole='switch']::indicator" in garden
+    assert "width: 40px" in garden
+    assert "height: 22px" in garden
+    assert "QLineEdit" in garden
+    assert "QComboBox::drop-down" in garden
+    assert "min-height: 40px" in garden
+    assert (
+        f"QTabBar[gardenRole='tabs']::tab {{" in garden
+        and f"background: {scope['GARDEN_THEME']['raised_surface']}" in garden
+    )
+    assert "border-bottom: 2px solid transparent" in garden
+    assert f"border-bottom-color: {scope['GARDEN_THEME']['growth_accent']}" in garden
     assert scope["GARDEN_THEME"]["raised_surface"] in garden
     assert scope["NURSERY_THEME"]["raised_surface"] in nursery
     assert scope["NURSERY_THEME"]["focus_ring"] in nursery

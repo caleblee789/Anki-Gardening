@@ -382,3 +382,54 @@ def test_answer_lineage_survives_sync_insertion_undo_and_day_remapping() -> None
     }
     assert hinted[250] == original[200]
     assert hinted[210] not in set(original.values())
+
+
+def test_local_answer_proof_requires_one_matching_unseen_appended_row() -> None:
+    old_row = (150, 7, 3, 10, 5, 2500, 100, 1)
+    new_row = (200, 7, 4, 20, 10, 2300, 100, 1)
+
+    class Db:
+        def __init__(self):
+            self.appended = [new_row]
+
+        def all(self, query, *_args):
+            if "cid = ?" in query:
+                return [old_row, new_row]
+            return list(self.appended)
+
+    db = Db()
+    storage = object.__new__(GardenStorage)
+    storage.mw = SimpleNamespace(col=SimpleNamespace(db=db))
+    storage.state = GardenState(
+        last_processed_revlog_id=150,
+        processed_revlog_floor=99,
+        processed_revlog_ids=[150],
+    )
+    storage.current_scheduler_day_bounds_ms = lambda: (100, 300)
+
+    proof = storage.load_proven_local_answer(
+        after_id=150,
+        card_id=7,
+        ease=4,
+    )
+
+    assert proof is not None
+    assert proof.row == new_row
+    assert proof.card_day_rows == (old_row, new_row)
+
+    db.appended = [new_row, (210, 8, 3, 10, 5, 2500, 100, 1)]
+    assert storage.load_proven_local_answer(
+        after_id=150,
+        card_id=7,
+        ease=4,
+    ) is None
+
+
+def test_maintenance_signature_covers_day_high_water_and_ledger_revision() -> None:
+    storage = object.__new__(GardenStorage)
+    storage._reward_ledger = None
+    storage._ledger_revision = 12
+    storage.current_scheduler_day = lambda: "2026-08-27"
+    storage.eligible_review_history_high_water = lambda: 345
+
+    assert storage.maintenance_signature() == ("2026-08-27", 345, 12)

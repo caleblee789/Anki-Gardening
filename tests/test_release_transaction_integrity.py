@@ -238,8 +238,21 @@ def test_purchase_quotes_share_exact_current_terms(
     )
 
 
+def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
+    assert cost_label(1) == "1 coin"
+    assert cost_label(2) == "2 coins"
+
+
 @pytest.mark.parametrize(
-    ("kind", "item_id", "target_id", "title", "action", "fact_keys"),
+    (
+        "kind",
+        "item_id",
+        "target_id",
+        "title",
+        "action",
+        "primary_label",
+        "fact_keys",
+    ),
     (
         (
             PurchaseKind.SPECIES,
@@ -247,6 +260,7 @@ def test_purchase_quotes_share_exact_current_terms(
             None,
             "Buy Sunflower Seed?",
             PurchaseAction.PURCHASE,
+            "Buy for 150 coins",
             set(),
         ),
         (
@@ -255,7 +269,8 @@ def test_purchase_quotes_share_exact_current_terms(
             None,
             "Buy Small Growth Charge?",
             PurchaseAction.PURCHASE,
-            set(),
+            "Buy for 30 coins",
+            {"inventory"},
         ),
         (
             PurchaseKind.FERTILIZER,
@@ -263,6 +278,7 @@ def test_purchase_quotes_share_exact_current_terms(
             "p1",
             "Buy and apply Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
+            "Buy and apply · 25 coins",
             set(),
         ),
         (
@@ -271,6 +287,7 @@ def test_purchase_quotes_share_exact_current_terms(
             None,
             "Buy Soft Breeze?",
             PurchaseAction.PURCHASE,
+            "Buy for 100 coins",
             set(),
         ),
         (
@@ -279,6 +296,7 @@ def test_purchase_quotes_share_exact_current_terms(
             None,
             "Unlock Bed 3?",
             PurchaseAction.UNLOCK,
+            "Unlock for 150 coins",
             set(),
         ),
     ),
@@ -289,6 +307,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     target_id: str | None,
     title: str,
     action: PurchaseAction,
+    primary_label: str,
     fact_keys: set[str],
 ) -> None:
     engine, storage = _make_engine()
@@ -306,7 +325,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     assert presentation.title == title
     assert presentation.action is action
     assert {fact.key for fact in presentation.facts} == fact_keys
-    assert "·" not in presentation.primary_label
+    assert presentation.primary_label == primary_label
     assert presentation.primary_accessible_name.endswith(
         f"for {quote.total_price:,} Garden Coins"
     )
@@ -323,7 +342,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
     }
     assert presentation.next_actions == expected_next_actions[kind]
     assert presentation.badges == ()
-    assert presentation.show_item_name is (kind is PurchaseKind.GROWTH_CHARGE)
+    assert not presentation.show_item_name
     assert not presentation.show_category
     assert all(
         noise not in visible
@@ -334,7 +353,10 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         )
     )
     if kind is PurchaseKind.GROWTH_CHARGE:
-        assert presentation.outcome == "Quantity: 1"
+        assert presentation.outcome == "Adds 100 Growth to one plant."
+        assert [
+            (fact.label, fact.value) for fact in presentation.facts
+        ] == [("Owned", "0 → 1")]
 
 
 def test_fertilizer_presentations_distinguish_extension_and_replacement() -> None:
@@ -356,7 +378,7 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     extension = purchase_presentation(extension_quote)
     assert extension.action is PurchaseAction.EXTEND
     assert extension.title == "Extend Basic Fertilizer?"
-    assert extension.primary_label == "Extend"
+    assert extension.primary_label == "Extend · 25 coins"
     assert extension_quote.current_seconds_remaining == 2_700
     assert extension_quote.resulting_seconds_remaining == 6_300
     assert extension.facts == ()
@@ -370,7 +392,9 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     replacement = purchase_presentation(replacement_quote)
     assert replacement.action is PurchaseAction.PURCHASE_REPLACE
     assert replacement.title == "Replace Basic Fertilizer?"
-    assert replacement.primary_label == "Replace for 150"
+    assert replacement.primary_label == (
+        f"Replace for {replacement_quote.total_price:,} coins"
+    )
     assert replacement.secondary_label == "Keep Basic"
     assert replacement.outcome == (
         "Magical Fertilizer will start immediately.\n"
@@ -401,8 +425,8 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
         (
             PurchaseStatus.INSUFFICIENT_COINS,
             "Not enough Garden Coins",
-            "Ways to earn",
-            False,
+            "Buy for 30 coins",
+            True,
             None,
         ),
         (
@@ -452,8 +476,38 @@ def test_purchase_error_presentations_have_distinct_recovery_actions(
         assert presentation.facts == ()
         assert presentation.more_details == ()
         assert presentation.badges == ()
+    if status is PurchaseStatus.INSUFFICIENT_COINS:
+        assert presentation.show_preview
+        assert presentation.secondary_label == "Close"
+        assert presentation.primary_route == ""
     if presentation.terminal:
         assert presentation.badges == ()
+
+
+def test_purchase_copy_pluralizes_a_single_coin_price_and_deficit() -> None:
+    engine, _storage = _make_engine()
+    quote = replace(
+        engine.quote_purchase(
+            PurchaseKind.GROWTH_CHARGE,
+            "growth_charge_small",
+        ),
+        unit_price=1,
+        balance_before=0,
+        balance_after=-1,
+    )
+
+    ready = purchase_presentation(quote, ignore_status=True)
+    assert ready.primary_label == "Buy for 1 coin"
+    assert ready.primary_accessible_name == "Buy for 1 Garden Coin"
+
+    insufficient = purchase_presentation(
+        quote,
+        status=PurchaseStatus.INSUFFICIENT_COINS,
+    )
+    assert insufficient.primary_label == "Buy for 1 coin"
+    assert insufficient.outcome == (
+        "You need 1 more coin to buy Small Growth Charge."
+    )
 
 
 @pytest.mark.parametrize(
@@ -504,12 +558,15 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert "No purchase was made" not in presentation.outcome
     assert "preview" not in presentation.outcome.casefold()
     assert presentation.balance_after == 4_970
-    assert presentation.facts == ()
-    assert presentation.primary_label == "Buy for 30"
+    assert [
+        (fact.key, fact.label, fact.value)
+        for fact in presentation.facts
+    ] == [("inventory", "Owned", "0 → 1")]
+    assert presentation.primary_label == "Buy for 30 coins"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"
         assert presentation.update_label == "Balance updated"
-        assert presentation.outcome == "Quantity: 1"
+        assert presentation.outcome == "Adds 100 Growth to one plant."
     else:
         assert presentation.update_label == ""
     if status is PurchaseStatus.STALE_PRICE:
