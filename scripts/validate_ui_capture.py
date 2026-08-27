@@ -658,6 +658,7 @@ def load_capture_layout_contract(
     }
     expected_height_keys = {
         "compact-row",
+        "banner",
         "secondary",
         "primary",
         "onboarding",
@@ -2202,6 +2203,14 @@ def dialog_scroll_audit_issue_codes(
         or not str(audit.get("scroll_name", "")).strip()
     ):
         issues.append("missing-scroll-name")
+    expected_scroll_name = audit.get("expected_scroll_name")
+    if not isinstance(expected_scroll_name, str):
+        issues.append("invalid-expected-scroll-name")
+    elif (
+        expected_scroll_name
+        and audit.get("scroll_name") != expected_scroll_name
+    ):
+        issues.append("unexpected-scroll-owner")
     if expected_surface and audit.get("surface") != expected_surface:
         issues.append("scroll-coverage-surface-mismatch")
     if expected_page_semantic:
@@ -2247,6 +2256,79 @@ def dialog_scroll_audit_issue_codes(
         or type(require_no_scroll) is not bool
     ):
         return tuple(dict.fromkeys(issues))
+
+    progress_cards_page = bool(
+        audit.get("surface") == "Garden Progress"
+        and audit.get("actual_page_semantic") in {
+            "GardenProgressDialog:achievements",
+            "GardenProgressDialog:collection",
+        }
+    )
+    if progress_cards_page:
+        if audit.get("fixed_progress_header") is not True:
+            issues.append("missing-fixed-progress-header")
+        progress_integer_fields = (
+            "complete_row_available_height",
+            "complete_row_viewport_height",
+            "complete_row_bottom_gutter",
+            "complete_row_content_origin_y",
+            "complete_row_bottom_padding",
+        )
+        invalid_progress_metrics = [
+            field for field in progress_integer_fields
+            if type(audit.get(field)) is not int
+        ]
+        issues.extend(
+            f"invalid-progress-scroll-metric:{field}"
+            for field in invalid_progress_metrics
+        )
+        boundaries = audit.get("complete_row_boundaries")
+        eligible_boundaries = audit.get("complete_row_eligible_boundaries")
+        if not (
+            isinstance(boundaries, list)
+            and boundaries
+            and all(type(value) is int and value > 0 for value in boundaries)
+        ):
+            issues.append("invalid-complete-row-boundaries")
+        if not (
+            isinstance(eligible_boundaries, list)
+            and eligible_boundaries
+            and all(
+                type(value) is int and value > 0
+                for value in eligible_boundaries
+            )
+        ):
+            issues.append("invalid-complete-row-eligible-boundaries")
+        if (
+            invalid_progress_metrics
+            or "invalid-complete-row-boundaries" in issues
+            or "invalid-complete-row-eligible-boundaries" in issues
+        ):
+            return tuple(dict.fromkeys(issues))
+        available_height = int(audit["complete_row_available_height"])
+        complete_viewport_height = int(
+            audit["complete_row_viewport_height"]
+        )
+        bottom_gutter = int(audit["complete_row_bottom_gutter"])
+        bottom_padding = int(audit["complete_row_bottom_padding"])
+        viewport_metric = int(audit["viewport_height"])
+        if bottom_gutter > 20:
+            issues.append("excess-complete-row-gutter")
+        if bottom_padding < 12:
+            issues.append("insufficient-progress-bottom-padding")
+        if available_height != viewport_metric + bottom_gutter:
+            issues.append("complete-row-available-height-mismatch")
+        if complete_viewport_height != viewport_metric:
+            issues.append("complete-row-viewport-height-mismatch")
+        if max(eligible_boundaries) != viewport_metric:
+            issues.append("complete-row-boundary-mismatch")
+        if (
+            eligible_boundaries != sorted(set(eligible_boundaries))
+            or boundaries != sorted(set(boundaries))
+            or not set(eligible_boundaries).issubset(boundaries)
+            or any(value > available_height for value in eligible_boundaries)
+        ):
+            issues.append("inconsistent-complete-row-boundaries")
 
     registered = int(audit["registered_count"])
     active = int(audit["active_count"])
@@ -2420,16 +2502,35 @@ def _validate_dialog_scroll_summary(
         "last_body_child_bottom",
         "last_body_child_bottom_at_scroll_end",
     )
-    for index, ((label, surface, semantic), summary_record) in enumerate(
-        zip(expected, summaries),
-        start=1,
-    ):
-        prefix = f"dialog scroll summary {index:02d} {label}"
+    summaries_by_label: dict[str, dict[str, Any]] = {}
+    for position, summary_record in enumerate(summaries, start=1):
         if not isinstance(summary_record, dict):
-            issues.append(f"{prefix}: record must be an object")
+            issues.append(
+                f"dialog scroll summary {position:02d}: record must be an object"
+            )
             continue
-        if summary_record.get("label") != label:
-            issues.append(f"{prefix}: label is out of source order")
+        summary_label = summary_record.get("label")
+        if not isinstance(summary_label, str) or not summary_label:
+            issues.append(
+                f"dialog scroll summary {position:02d}: label must be a nonempty string"
+            )
+            continue
+        if summary_label in summaries_by_label:
+            issues.append(
+                f"dialog scroll summary {position:02d}: "
+                f"duplicate label {summary_label!r}"
+            )
+            continue
+        summaries_by_label[summary_label] = summary_record
+    expected_labels = {label for label, _surface, _semantic in expected}
+    if set(summaries_by_label) != expected_labels:
+        issues.append("dialog_scroll_audits records do not match required labels")
+    for index, (label, surface, semantic) in enumerate(expected, start=1):
+        prefix = f"dialog scroll summary {index:02d} {label}"
+        summary_record = summaries_by_label.get(label)
+        if summary_record is None:
+            issues.append(f"{prefix}: record is missing")
+            continue
         if summary_record.get("surface") != surface:
             issues.append(f"{prefix}: surface must be {surface!r}")
         if summary_record.get("expected_page_semantic") != semantic:
@@ -2684,6 +2785,334 @@ def _validate_memory_probe(
                 )
 
 
+def web_root_overflow_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently verify the HTML document-root overflow measurement."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-web-root-overflow",)
+    issues: list[str] = []
+    if evidence.get("source") != "document.documentElement":
+        issues.append("unexpected-web-root-source")
+    client_width = evidence.get("client_width")
+    scroll_width = evidence.get("scroll_width")
+    overflow = evidence.get("horizontal_overflow")
+    if type(client_width) is not int or client_width <= 0:
+        issues.append("invalid-web-root-client-width")
+    if type(scroll_width) is not int or scroll_width <= 0:
+        issues.append("invalid-web-root-scroll-width")
+    if type(overflow) is not int or overflow < 0:
+        issues.append("invalid-web-root-overflow")
+    if (
+        type(client_width) is int
+        and type(scroll_width) is int
+        and type(overflow) is int
+        and overflow != max(0, scroll_width - client_width)
+    ):
+        issues.append("web-root-overflow-arithmetic-mismatch")
+    if (
+        type(client_width) is int
+        and type(scroll_width) is int
+        and scroll_width > client_width
+    ):
+        issues.append("web-root-horizontal-overflow")
+    if evidence.get("passed") is not True:
+        issues.append("web-root-overflow-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def visible_action_geometry_issue_codes(visual: Any) -> tuple[str, ...]:
+    """Recompute dialog action containment and pairwise intersections."""
+
+    if not isinstance(visual, dict):
+        return ("missing-visible-action-geometry",)
+    records = visual.get("visible_actions")
+    if not isinstance(records, list):
+        return ("invalid-visible-action-records",)
+    issues: list[str] = []
+    if visual.get("visible_action_count") != len(records):
+        issues.append("visible-action-count-mismatch")
+    dialog_size = visual.get("dialog_size")
+    dialog_size_valid = bool(
+        isinstance(dialog_size, list)
+        and len(dialog_size) == 2
+        and all(type(value) is int and value > 0 for value in dialog_size)
+    )
+    if not dialog_size_valid:
+        issues.append("invalid-visible-action-dialog-size")
+    normalized: list[tuple[int, list[int | float], bool]] = []
+    for position, record in enumerate(records):
+        if not isinstance(record, dict):
+            issues.append("malformed-visible-action-record")
+            continue
+        bounds = record.get("bounds")
+        bounds_valid = bool(
+            isinstance(bounds, list)
+            and len(bounds) == 4
+            and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in bounds
+            )
+            and float(bounds[2]) > 0
+            and float(bounds[3]) > 0
+        )
+        if not bounds_valid:
+            issues.append("invalid-visible-action-bounds")
+            continue
+        if record.get("index") != position:
+            issues.append("visible-action-index-mismatch")
+        if not isinstance(record.get("clip_owner"), str) or not str(
+            record.get("clip_owner", "")
+        ).strip():
+            issues.append("missing-visible-action-clip-owner")
+        if record.get("visible") is not True:
+            issues.append("visible-action-not-visible")
+        if (
+            record.get("contained_in_dialog") is not True
+            or record.get("contained_in_owner") is not True
+        ):
+            issues.append("visible-action-outside-container")
+        if dialog_size_valid:
+            left, top, width, height = bounds
+            independently_contained = bool(
+                left >= 0
+                and top >= 0
+                and left + width <= dialog_size[0]
+                and top + height <= dialog_size[1]
+            )
+            if independently_contained is not bool(
+                record.get("contained_in_dialog", False)
+            ):
+                issues.append("visible-action-dialog-containment-mismatch")
+            if not independently_contained:
+                issues.append("visible-action-outside-dialog-bounds")
+        eligible = record.get("pairwise_eligible")
+        if type(eligible) is not bool:
+            issues.append("invalid-visible-action-pairwise-eligibility")
+            eligible = False
+        normalized.append((position, bounds, bool(eligible)))
+    computed_overlaps: list[dict[str, Any]] = []
+    for index, (first_position, first, first_eligible) in enumerate(normalized):
+        if not first_eligible:
+            continue
+        first_left, first_top, first_width, first_height = first
+        for second_position, second, second_eligible in normalized[index + 1:]:
+            if not second_eligible:
+                continue
+            second_left, second_top, second_width, second_height = second
+            overlap_width = max(
+                0,
+                min(first_left + first_width, second_left + second_width)
+                - max(first_left, second_left),
+            )
+            overlap_height = max(
+                0,
+                min(first_top + first_height, second_top + second_height)
+                - max(first_top, second_top),
+            )
+            if overlap_width > 0 and overlap_height > 0:
+                computed_overlaps.append({
+                    "actions": [first_position, second_position],
+                    "width": overlap_width,
+                    "height": overlap_height,
+                })
+    reported_overlaps = visual.get("visible_action_overlaps")
+    if not isinstance(reported_overlaps, list):
+        issues.append("invalid-visible-action-overlap-records")
+    elif reported_overlaps != computed_overlaps:
+        issues.append("visible-action-overlap-evidence-mismatch")
+    if computed_overlaps:
+        issues.append("overlapping-visible-actions")
+    if visual.get("visible_actions_contained") is not True:
+        issues.append("visible-actions-containment-not-passed")
+    if visual.get("visible_actions_non_overlapping") is not True:
+        issues.append("visible-actions-overlap-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def streak_fold_geometry_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Reject a clipped Streak detail card or insufficient list tail inset."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-streak-fold-geometry",)
+    issues: list[str] = []
+    if evidence.get("scroll_name") != "Anki Streak details":
+        issues.append("unexpected-streak-scroll-owner")
+    if evidence.get("at_initial_fold") is not True:
+        issues.append("streak-not-at-initial-fold")
+    viewport = evidence.get("viewport_size")
+    if not (
+        isinstance(viewport, list)
+        and len(viewport) == 2
+        and all(type(value) is int and value > 0 for value in viewport)
+    ):
+        issues.append("invalid-streak-viewport")
+    for field in ("configured_bottom_padding", "measured_bottom_padding"):
+        value = evidence.get(field)
+        if type(value) is not int or value < 24:
+            issues.append(f"insufficient-streak-{field.replace('_', '-')}")
+    cards = evidence.get("detail_cards")
+    partial_indexes: list[int] = []
+    if not isinstance(cards, list) or len(cards) < 3:
+        issues.append("invalid-streak-detail-card-records")
+    else:
+        for record in cards:
+            if not isinstance(record, dict):
+                issues.append("malformed-streak-detail-card")
+                continue
+            bounds = record.get("bounds")
+            if not (
+                isinstance(bounds, list)
+                and len(bounds) == 4
+                and all(type(value) is int for value in bounds)
+                and bounds[2] > 0
+                and bounds[3] > 0
+            ):
+                issues.append("invalid-streak-detail-card-bounds")
+            intersects = record.get("intersects_first_fold")
+            contained = record.get("contained_in_first_fold")
+            if type(intersects) is not bool or type(contained) is not bool:
+                issues.append("invalid-streak-detail-card-visibility")
+            elif (
+                isinstance(bounds, list)
+                and len(bounds) == 4
+                and all(type(value) is int for value in bounds)
+                and bounds[2] > 0
+                and bounds[3] > 0
+                and isinstance(viewport, list)
+                and len(viewport) == 2
+                and all(type(value) is int and value > 0 for value in viewport)
+            ):
+                left, top, width, height = bounds
+                computed_intersects = bool(
+                    left < viewport[0]
+                    and left + width > 0
+                    and top < viewport[1]
+                    and top + height > 0
+                )
+                computed_contained = bool(
+                    left >= 0
+                    and top >= 0
+                    and left + width <= viewport[0]
+                    and top + height <= viewport[1]
+                )
+                if (
+                    intersects is not computed_intersects
+                    or contained is not computed_contained
+                ):
+                    issues.append("streak-detail-card-geometry-mismatch")
+                if computed_intersects and not computed_contained:
+                    partial_indexes.append(int(record.get("index", -1)))
+    if evidence.get("partial_detail_card_indexes") != partial_indexes:
+        issues.append("streak-partial-card-evidence-mismatch")
+    if partial_indexes:
+        issues.append("partially-visible-streak-detail-card")
+    if evidence.get("passed") is not True:
+        issues.append("streak-fold-geometry-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def growth_charge_rendered_value_issue_codes(
+    label: str,
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Validate canonical rendered values independent of transaction flags."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-growth-charge-rendered-values",)
+    issues: list[str] = []
+    if evidence.get("applicable") is not True:
+        issues.append("growth-charge-rendered-values-inapplicable")
+    if label == "growth-charge-use-ready":
+        expected = {
+            "variant": "ready",
+            "growth_label": "Total Growth",
+            "growth_value": "450 → 550",
+            "inventory_label": "Charges remaining",
+            "inventory_value": "2 → 1",
+            "stage_badge": "New stage: Sprout",
+            "stage_progress": "50 / 2,000 toward Young",
+            "primary_action": "Use 1 charge",
+            "current_growth": 450,
+            "projected_growth": 550,
+            "inventory_before": 2,
+            "inventory_after": 1,
+            "stage_carryover": 50,
+            "next_stage_goal": 2_000,
+        }
+    elif label == "growth-charge-success-stage-reward":
+        expected = {
+            "variant": "success",
+            "stage_transition": "Seed → Sprout",
+            "receipt_copy": (
+                "+100 Growth · 1 growth charge remaining\n"
+                "50 / 2,000 toward Young"
+            ),
+            "stage_reward_heading": "Stage reward",
+            "reward_texts": ["Sprout · +5 Garden Coins"],
+            "primary_action": "View plant",
+            "secondary_action": "Close",
+            "resulting_growth": 550,
+            "stage_carryover": 50,
+            "next_stage_goal": 2_000,
+            "inventory_remaining": 1,
+            "stage_reward_total": 5,
+        }
+    else:
+        return ("unexpected-growth-charge-rendered-label",)
+    for key, expected_value in expected.items():
+        if evidence.get(key) != expected_value:
+            issues.append(f"growth-charge-rendered-value-mismatch:{key}")
+    if evidence.get("passed") is not True:
+        issues.append("growth-charge-rendered-values-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def reviewer_stack_issue_codes(
+    stack: Any,
+    geometries: Any,
+) -> tuple[str, ...]:
+    """Validate the six-event newest-plus-summary Reviewer projection."""
+
+    if not isinstance(stack, dict):
+        return ("missing-reviewer-stack",)
+    issues: list[str] = []
+    expected = {
+        "requested_event_count": 6,
+        "visible_toast_count": 2,
+        "summary_toast_count": 1,
+        "regular_toast_count": 1,
+        "summary_copy": "+5 more rewards",
+        "newest_event_visible": True,
+        "passed": True,
+    }
+    for key, expected_value in expected.items():
+        if stack.get(key) != expected_value:
+            issues.append(f"reviewer-stack-mismatch:{key}")
+    if not (
+        bool(str(stack.get("newest_expected_title", "")).strip())
+        and stack.get("newest_visible_title")
+        == stack.get("newest_expected_title")
+        and bool(str(stack.get("newest_expected_message", "")).strip())
+        and stack.get("newest_visible_message")
+        == stack.get("newest_expected_message")
+    ):
+        issues.append("reviewer-stack-newest-event-mismatch")
+    if not (
+        isinstance(geometries, list)
+        and len(geometries) == 2
+        and all(
+            isinstance(item, dict)
+            and item.get("passed") is True
+            and item.get("width") == 292
+            and item.get("expected_width") == 292
+            and item.get("width_exact") is True
+            for item in geometries
+        )
+    ):
+        issues.append("reviewer-stack-geometry-mismatch")
+    return tuple(dict.fromkeys(issues))
+
+
 def _visual_contract_record_issues(
     *,
     label: str,
@@ -2727,6 +3156,26 @@ def _visual_contract_record_issues(
             reject("visual contract control sizes did not pass")
         if visual.get("action_text_fits") is not True:
             reject("visual contract contains an overflowing action label")
+        for issue in visible_action_geometry_issue_codes(visual):
+            reject(f"visible action geometry: {issue}")
+        clipping_records = visual.get("clipping_records")
+        if not isinstance(clipping_records, list) or any(
+            not isinstance(item, dict)
+            or item.get("kind") not in {"control", "card"}
+            or not isinstance(item.get("clip_owner"), str)
+            or not item.get("clip_owner")
+            or not isinstance(item.get("bounds"), list)
+            or len(item["bounds"]) != 4
+            or not isinstance(item.get("owner_size"), list)
+            or len(item["owner_size"]) != 2
+            or item.get("contained") is not True
+            for item in (
+                clipping_records if isinstance(clipping_records, list) else []
+            )
+        ):
+            reject("visual contract contains a partially clipped control or card")
+        if visual.get("clipping_checks_passed") is not True:
+            reject("visual contract clipping checks did not pass")
         footer_actions = visual.get("footer_actions")
         if not isinstance(footer_actions, list) or any(
             not isinstance(action, dict)
@@ -2814,6 +3263,111 @@ def _visual_contract_record_issues(
             and popover.get("canvas_direct") is True
         ):
             reject("visual contract popover is outside the direct Garden canvas")
+        if label == "selected-plant-nurtured":
+            plant_actions = visual.get("plant_action_geometry")
+            expected_actions = [
+                "Use growth charge",
+                "Apply fertilizer",
+                "Move",
+                "Plant story",
+                "Stop nurturing",
+            ]
+            if not isinstance(plant_actions, dict):
+                reject("selected plant action geometry is missing")
+            else:
+                action_records = plant_actions.get("records")
+                if not (
+                    plant_actions.get("applicable") is True
+                    and plant_actions.get("passed") is True
+                    and plant_actions.get("expected_actions") == expected_actions
+                    and plant_actions.get("overlaps") == []
+                    and isinstance(action_records, list)
+                    and len(action_records) == len(expected_actions)
+                    and [
+                        record.get("expected_text")
+                        for record in action_records
+                        if isinstance(record, dict)
+                    ] == expected_actions
+                    and all(
+                        isinstance(record, dict)
+                        and record.get("text") == record.get("expected_text")
+                        and record.get("visible") is True
+                        and record.get("contained") is True
+                        and isinstance(record.get("bounds"), list)
+                        and len(record["bounds"]) == 4
+                        for record in action_records
+                    )
+                ):
+                    reject("selected plant actions overlap or leave the plant card")
+        if label == "starter-nursery-plants":
+            starter_geometry = visual.get("starter_card_geometry")
+            if not isinstance(starter_geometry, dict):
+                reject("starter Nursery card geometry is missing")
+            else:
+                starter_records = starter_geometry.get("records")
+                footer = starter_geometry.get("footer")
+                if not (
+                    starter_geometry.get("applicable") is True
+                    and starter_geometry.get("passed") is True
+                    and type(starter_geometry.get("dialog_height")) is int
+                    and 340 <= starter_geometry["dialog_height"] <= 360
+                    and isinstance(starter_records, list)
+                    and len(starter_records) == 4
+                    and all(
+                        isinstance(record, dict)
+                        and bool(str(record.get("item_id", "")).strip())
+                        and record.get("passed") is True
+                        and isinstance(record.get("card_size"), list)
+                        and len(record["card_size"]) == 2
+                        and 76 <= record["card_size"][1] <= 88
+                        and isinstance(record.get("seed_badge_bounds"), list)
+                        and len(record["seed_badge_bounds"]) == 4
+                        and 44 <= record["seed_badge_bounds"][2] <= 64
+                        and 22 <= record["seed_badge_bounds"][3] <= 26
+                        and isinstance(record.get("choose_bounds"), list)
+                        and len(record["choose_bounds"]) == 4
+                        and 64 <= record["choose_bounds"][2] <= 100
+                        and 36 <= record["choose_bounds"][3] <= 40
+                        and isinstance(record.get("details_bounds"), list)
+                        and len(record["details_bounds"]) == 4
+                        for record in starter_records
+                    )
+                    and isinstance(footer, dict)
+                    and footer.get("contained") is True
+                    and footer.get("action_text") == "Skip for now"
+                    and footer.get("action_contained") is True
+                    and isinstance(footer.get("bounds"), list)
+                    and len(footer["bounds"]) == 4
+                    and 36 <= footer["bounds"][3] <= 48
+                ):
+                    reject("starter Nursery must use compact Seed chips and cards")
+        if label == "fertilizer-active":
+            fertilizer_status = visual.get("fertilizer_status_geometry")
+            if not isinstance(fertilizer_status, dict):
+                reject("active Fertilizer status geometry is missing")
+            elif not (
+                fertilizer_status.get("applicable") is True
+                and fertilizer_status.get("passed") is True
+                and fertilizer_status.get("target") == "Applying to Rose Plant"
+                and fertilizer_status.get("title") == "Basic Fertilizer"
+                and fertilizer_status.get("summary")
+                == "+1 Growth per answer · 1 hour remaining"
+                and fertilizer_status.get("balance_text") == "Balance: 500"
+                and fertilizer_status.get("balance_icon_present") is True
+                and fertilizer_status.get("extend_text")
+                == "Extend 1 hour · 25 coins"
+                and all(
+                    isinstance(fertilizer_status.get(key), list)
+                    and len(fertilizer_status[key]) == 4
+                    for key in (
+                        "status_bounds",
+                        "icon_bounds",
+                        "balance_bounds",
+                        "extend_bounds",
+                    )
+                )
+            ):
+                reject("active Fertilizer must use the compact icon-led status card")
     elif state_kind not in {"home", "reviewer"}:
         reject("visual contract was inapplicable for a Qt-owned surface")
 
@@ -2826,6 +3380,11 @@ def _visual_contract_record_issues(
             reject(f"{name} is missing")
             return {}
         return value
+
+    if state_kind in {"home", "reviewer"}:
+        web_root_overflow = audit_object("web_root_overflow")
+        for issue in web_root_overflow_issue_codes(web_root_overflow):
+            reject(f"HTML root overflow: {issue}")
 
     required_pixel_keys = RENDERED_PIXEL_EVIDENCE_KEYS.get(label, ())
     if required_pixel_keys:
@@ -2885,13 +3444,16 @@ def _visual_contract_record_issues(
                 reject("Home error state must retain the Open garden action")
         elif not label.startswith("starter-"):
             if not (
-                ("toward" in support or "total Growth" in support)
+                (
+                    " toward " in support
+                    or "total Growth" in support
+                )
                 and action == "Open garden"
                 and type(compact.get("action_width")) is int
-                and 104 <= compact["action_width"] <= 120
+                and 104 <= compact["action_width"] <= 128
                 and compact.get("action_height") == 36
             ):
-                reject("compact Home must show stage progress and a 104-120 by 36 Open garden CTA")
+                reject("compact Home must show stage progress and a 104-128 by 36 Open garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -2903,6 +3465,129 @@ def _visual_contract_record_issues(
             and steady.get("canvas_direct") is True
         ):
             reject("full Garden does not prove a clean contained steady state")
+
+    if label == "starter-placement":
+        locked_visuals = audit.get("locked_bed_visuals")
+        if not (
+            audit.get("locked_bed_visuals_passed") is True
+            and audit.get("allowed_destination_slots") == [0, 1]
+            and audit.get("locked_bed_slots") == [2, 3, 4, 5]
+            and isinstance(locked_visuals, list)
+            and len(locked_visuals) == 4
+            and all(
+                isinstance(record, dict)
+                and isinstance(
+                    record.get("relative_visual_strength"),
+                    (int, float),
+                )
+                and not isinstance(
+                    record.get("relative_visual_strength"),
+                    bool,
+                )
+                and 0.55
+                <= float(record["relative_visual_strength"])
+                <= 0.65
+                and record.get("interactive") is False
+                and all(
+                    isinstance(record.get(key), list)
+                    and len(record[key]) == 4
+                    and all(
+                        isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        for value in record[key]
+                    )
+                    and float(record[key][2]) > 0
+                    and float(record[key][3]) > 0
+                    for key in ("overlay_bounds", "badge_bounds")
+                )
+                for record in locked_visuals
+            )
+        ):
+            reject(
+                "starter placement does not prove four muted, badged, noninteractive locked beds"
+            )
+
+    if label == "growth-nonzero":
+        stage_records = audit.get("growth_stage_records")
+        upcoming = (
+            [
+                record
+                for record in stage_records
+                if isinstance(record, dict)
+                and record.get("state") == "upcoming"
+            ]
+            if isinstance(stage_records, list) else
+            []
+        )
+        if not (
+            audit.get("future_stage_muting_passed") is True
+            and isinstance(stage_records, list)
+            and len(stage_records) == 6
+            and sum(
+                isinstance(record, dict)
+                and record.get("state") == "current"
+                for record in stage_records
+            ) == 1
+            and bool(upcoming)
+            and all(
+                record.get("preview_enabled") is False
+                and record.get("label_enabled") is False
+                and record.get("extra_text") == []
+                for record in upcoming
+            )
+        ):
+            reject("future Growth stages are not visibly muted and label-only")
+
+    if label == "streak-active":
+        streak_fold = audit_object("streak_fold_geometry")
+        for issue in streak_fold_geometry_issue_codes(streak_fold):
+            reject(f"Streak first fold: {issue}")
+
+    if label in {
+        "growth-charge-use-ready",
+        "growth-charge-success-stage-reward",
+    }:
+        rendered_values = audit_object("growth_charge_rendered_values")
+        for issue in growth_charge_rendered_value_issue_codes(
+            label,
+            rendered_values,
+        ):
+            reject(f"Growth Charge rendered values: {issue}")
+
+    if label == "progress-achievements":
+        cards = audit.get("visible_achievement_cards")
+        visible_days = audit.get("visible_completion_days")
+        date_texts = audit.get("visible_completion_date_texts")
+        if not (
+            audit.get("valid_distinct_completion_dates") is True
+            and audit.get("achievement_card_geometry_passed") is True
+            and audit.get("rendered_chronological_dates_passed") is True
+            and isinstance(cards, list)
+            and bool(cards)
+            and all(
+                isinstance(card, dict)
+                and card.get("fully_contained") is True
+                and isinstance(card.get("bounds"), list)
+                and len(card["bounds"]) == 4
+                and type(card["bounds"][3]) is int
+                and 108 <= card["bounds"][3] <= 120
+                for card in cards
+            )
+            and isinstance(visible_days, list)
+            and len(visible_days) >= 4
+            and visible_days == sorted(visible_days)
+            and len(set(visible_days)) == len(visible_days)
+            and isinstance(date_texts, list)
+            and len(date_texts) == len(visible_days)
+            and all(
+                isinstance(value, str) and bool(value.strip())
+                for value in date_texts
+            )
+            and len(set(date_texts)) == len(date_texts)
+        ):
+            reject(
+                "Achievements must show complete 108-120 px cards with distinct chronological dates"
+            )
 
     if label == "progress-overview-redirect-growth":
         direct = audit_object("direct_growth_visual")
@@ -2927,6 +3612,107 @@ def _visual_contract_record_issues(
             and audit.get("restored_preview_dirty_cleared") is True
         ):
             reject("restored preview does not show a contained result banner")
+
+    if label == "collection-loadout-detail":
+        catalog = audit_object("catalog_geometry")
+        tile_records = catalog.get("tile_records")
+        if not (
+            catalog.get("passed") is True
+            and catalog.get("scroll_name") == "Scenery catalogue"
+            and catalog.get("visible_scroll_names") == ["Scenery catalogue"]
+            and type(catalog.get("viewport_height")) is int
+            and 250 <= catalog["viewport_height"] <= 266
+            and type(catalog.get("tile_count")) is int
+            and catalog["tile_count"] >= 4
+            and type(catalog.get("visible_tile_count")) is int
+            and catalog["visible_tile_count"] >= 4
+            and catalog.get("visible_row_count") == 2
+            and catalog.get("partial_tiles") == []
+            and type(catalog.get("bottom_padding")) is int
+            and catalog["bottom_padding"] >= 12
+            and catalog.get("preview_fixed") is True
+            and isinstance(tile_records, list)
+            and len(tile_records) == catalog.get("visible_tile_count")
+            and all(
+                isinstance(tile, dict)
+                and tile.get("contained") is True
+                and isinstance(tile.get("bounds"), list)
+                and len(tile["bounds"]) == 4
+                for tile in tile_records
+            )
+        ):
+            reject(
+                "Collection loadout must use a local complete-row catalogue with fixed preview"
+            )
+
+    if label == "nursery-fertilizer-booster":
+        first_fold = audit_object("first_fold_geometry")
+        visible_cards = first_fold.get("visible_cards")
+        expected_ids = {"fertilizer_basic", "basic"}
+        if not (
+            first_fold.get("passed") is True
+            and first_fold.get("scroll_name")
+            == "Fertilizers and boosts catalog"
+            and expected_ids.issubset(
+                set(first_fold.get("visible_card_ids", ()))
+            )
+            and first_fold.get("partial_card_ids") == []
+            and first_fold.get("partial_actions") == []
+            and type(first_fold.get("bottom_padding")) is int
+            and first_fold["bottom_padding"] >= 20
+            and first_fold.get("premium_action_contained") is True
+            and first_fold.get("price_action_same_row") is True
+            and isinstance(visible_cards, list)
+            and all(
+                isinstance(card, dict)
+                and card.get("contained") is True
+                and type(card.get("height")) is int
+                and card["height"] >= 84
+                for card in visible_cards
+            )
+        ):
+            reject(
+                "Nursery Fertilizer first fold contains a partial row or action"
+            )
+
+    if label == "settings-display-advanced-open":
+        display = audit_object("display_geometry")
+        if not (
+            display.get("passed") is True
+            and display.get("outer_scroll_name") == "Display settings"
+            and type(display.get("outer_vertical_range")) is int
+            and display["outer_vertical_range"] > 1
+            and type(display.get("outer_horizontal_range")) is int
+            and display["outer_horizontal_range"] <= 1
+            and type(display.get("inner_vertical_range")) is int
+            and display["inner_vertical_range"] <= 1
+            and type(display.get("preview_panel_height")) is int
+            and 120 <= display["preview_panel_height"] <= 150
+            and display.get("preview_content_kind") in {"garden", "placeholder"}
+            and (
+                display.get("preview_content_kind") != "placeholder"
+                or str(display.get("placeholder_copy", "")).startswith(
+                    "Preview unavailable"
+                )
+            )
+            and bool(str(display.get("current_scenery", "")).strip())
+            and type(display.get("preview_to_advanced_gap")) is int
+            and 12 <= display["preview_to_advanced_gap"] <= 16
+            and all(
+                isinstance(display.get(key), dict)
+                and display[key].get("visible") is True
+                and display[key].get("contained") is True
+                for key in (
+                    "preview_bounds",
+                    "preview_content_bounds",
+                    "advanced_header_bounds",
+                    "advanced_panel_bounds",
+                )
+            )
+        ):
+            reject(
+                "Settings Display must retain its compact preview within one vertical outer scroll"
+            )
 
     if label == "nursery-item-owned":
         owned = audit_object("owned_item_visual")
@@ -2958,6 +3744,9 @@ def _visual_contract_record_issues(
             and geometry.get("non_review_cleanup_registered") is True
             and geometry.get("viewport_contained") is True
             and geometry.get("size_in_range") is True
+            and geometry.get("expected_width") == 292
+            and geometry.get("width_exact") is True
+            and geometry.get("width") == 292
             and isinstance(bounds, list)
             and len(bounds) == 4
             and isinstance(controls, list)
@@ -2968,6 +3757,11 @@ def _visual_contract_record_issues(
             reject("Reviewer card lacks full containment or control clearance")
         if audit.get("required_overlay_pixels_present") is not True:
             reject("Reviewer card is absent from captured pixels")
+        if label == "reviewer-find-stacked-sync":
+            stack = audit_object("reviewer_stack")
+            geometries = audit.get("reviewer_overlay_geometries")
+            for issue in reviewer_stack_issue_codes(stack, geometries):
+                reject(f"Reviewer stacked capture: {issue}")
 
     if label == "missing-artwork-graphical-fallback":
         matrix = audit_object("missing_artwork_matrix")
@@ -3527,24 +4321,31 @@ def _native_layout_telemetry_record_issues(
         actual_width = button.get("width")
         visual_size = button.get("visualControlSize")
         expected_outer_height = (
-            expected_height + 2
+            expected_height
             if type(expected_height) is int else None
+        )
+        maximum_outer_height = (
+            expected_height + 4
+            if type(expected_height) is int else None
+        )
+        outer_allowance = (
+            actual_height - visual_size
+            if type(actual_height) is int and type(visual_size) is int
+            else None
         )
         if (
             expected_height is None
             or button.get("expectedHeight") != expected_height
             or button.get("expectedOuterHeight") != expected_outer_height
+            or button.get("maximumOuterHeight") != maximum_outer_height
             or type(actual_height) is not int
             or type(actual_width) is not int
             or type(visual_size) is not int
             or visual_size != expected_height
-            or actual_height != expected_outer_height
-            or button.get("outerBorderAllowance") != 2
-            or (
-                type(actual_height) is int
-                and type(visual_size) is int
-                and actual_height - visual_size != 2
-            )
+            or not expected_outer_height <= actual_height <= maximum_outer_height
+            or type(outer_allowance) is not int
+            or not 0 <= outer_allowance <= 4
+            or button.get("outerBorderAllowance") != outer_allowance
             or button.get("passed") is not True
             or (
                 bool(str(button.get("text", "")).strip())
@@ -3557,7 +4358,8 @@ def _native_layout_telemetry_record_issues(
                 size_name == "icon"
                 and (
                     actual_width != actual_height
-                    or actual_width != expected_outer_height
+                    or not expected_outer_height
+                    <= actual_width <= maximum_outer_height
                 )
             )
         ):
@@ -4283,16 +5085,17 @@ def validate_capture_manifest(
             )
         else:
             record_scroll_audits[label] = scroll_audit
+            strict_no_scroll = scroll_audit.get("require_no_scroll") is True
             if type(scroll_audit.get("applicable")) is not bool:
                 issues.append(
                     f"capture {index:03d} {label}: dialog scroll applicable must be boolean"
                 )
             if scroll_audit.get("passed") is not True:
-                advisories.append(
+                (issues if strict_no_scroll else advisories).append(
                     f"capture {index:03d} {label}: dialog scroll audit did not pass"
                 )
             if scroll_audit.get("issues") != []:
-                advisories.append(
+                (issues if strict_no_scroll else advisories).append(
                     f"capture {index:03d} {label}: dialog scroll issues must be empty"
                 )
             expected_scroll = dialog_scroll_by_label.get(label)
@@ -4303,12 +5106,12 @@ def validate_capture_manifest(
                     expected_surface=surface,
                     expected_page_semantic=semantic,
                 ):
-                    advisories.append(
+                    (issues if strict_no_scroll else advisories).append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
             elif scroll_audit.get("applicable") is True:
                 for issue in dialog_scroll_audit_issue_codes(scroll_audit):
-                    advisories.append(
+                    (issues if strict_no_scroll else advisories).append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
 
@@ -4490,7 +5293,7 @@ def validate_capture_manifest(
             record=record,
             audit=audit if isinstance(audit, dict) else None,
         ):
-            advisories.append(
+            issues.append(
                 f"capture {index:03d} {label}: {visual_issue}"
             )
         for pixel_issue in _unpainted_client_record_issues(

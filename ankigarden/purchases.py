@@ -220,6 +220,17 @@ def _without_period(value: str) -> str:
     return str(value or "").strip().rstrip(".")
 
 
+def _coin_amount(value: int, *, formal: bool = False) -> str:
+    """Format a price or balance delta with locale-style grouping and grammar."""
+
+    amount = max(0, int(value))
+    if formal:
+        unit = "Garden Coin" if amount == 1 else "Garden Coins"
+    else:
+        unit = "coin" if amount == 1 else "coins"
+    return f"{amount:,} {unit}"
+
+
 def _compact_effect(value: str) -> str:
     effect = _without_period(value)
     replacements = (
@@ -254,6 +265,8 @@ def _priced_action(
     action: PurchaseAction,
     price: int,
 ) -> tuple[str, str, str]:
+    visible_price = _coin_amount(price)
+    accessible_price = _coin_amount(price, formal=True)
     short = {
         PurchaseAction.PURCHASE: "Buy",
         PurchaseAction.PURCHASE_APPLY: "Buy and apply",
@@ -268,9 +281,16 @@ def _priced_action(
         PurchaseAction.PURCHASE_REPLACE: "Applying…",
         PurchaseAction.UNLOCK: "Unlocking…",
     }[action]
+    visible = {
+        PurchaseAction.PURCHASE: f"Buy for {visible_price}",
+        PurchaseAction.PURCHASE_APPLY: f"Buy and apply · {visible_price}",
+        PurchaseAction.EXTEND: f"Extend · {visible_price}",
+        PurchaseAction.PURCHASE_REPLACE: f"Replace for {visible_price}",
+        PurchaseAction.UNLOCK: f"Unlock for {visible_price}",
+    }[action]
     return (
-        short,
-        f"{short} for {max(0, int(price)):,} Garden Coins",
+        visible,
+        f"{short} for {accessible_price}",
         processing,
     )
 
@@ -285,8 +305,13 @@ def _stale_price_copy(item_name: str, message: str, current_price: int) -> str:
     )
     if match is not None:
         old_price, new_price = match.groups()
-        return f"The price changed from {old_price} to {new_price} Garden Coins."
-    return f"{item_name} now costs {max(0, int(current_price)):,} Garden Coins."
+        old_amount = int(old_price.replace(",", ""))
+        new_amount = int(new_price.replace(",", ""))
+        return (
+            f"The price changed from {_coin_amount(old_amount, formal=True)} "
+            f"to {_coin_amount(new_amount, formal=True)}."
+        )
+    return f"{item_name} now costs {_coin_amount(current_price, formal=True)}."
 
 
 def _sentence_duration(seconds: int, fallback: str) -> str:
@@ -343,10 +368,24 @@ def purchase_presentation(
         next_actions = ("Place in garden", "View collection")
     elif quote.kind is PurchaseKind.GROWTH_CHARGE:
         title = f"Buy {item_name}?"
-        outcome = f"Quantity: {max(1, int(quote.quantity)):,}"
-        show_item_name = True
+        growth_effect = re.sub(
+            r"\s+when used$",
+            "",
+            _without_period(quote.descriptor.buff).lstrip("+"),
+            flags=re.IGNORECASE,
+        )
+        outcome = f"Adds {growth_effect or 'Growth'} to one plant."
+        # The title already carries the item identity. Repeating it beside the
+        # artwork creates a visually duplicated heading in the compact dialog.
+        show_item_name = False
         success_message = f"{item_name} added."
         next_actions = ("Use growth charge", "Keep browsing")
+        facts.append(PurchaseFact(
+            "inventory",
+            "Owned",
+            f"{max(0, int(quote.inventory_before)):,} → "
+            f"{max(0, int(quote.inventory_after)):,}",
+        ))
     elif quote.kind is PurchaseKind.FERTILIZER:
         fertilizer_target = target_name or "your nurtured plant"
         if quote.disposition is PurchaseDisposition.INVENTORY:
@@ -399,7 +438,7 @@ def purchase_presentation(
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
         title = f"Unlock {bed_name}?"
-        outcome = "Adds one permanent planting space."
+        outcome = "Adds one permanent garden bed."
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
@@ -408,8 +447,6 @@ def purchase_presentation(
     primary_label, primary_accessible, processing_label = _priced_action(
         action, quote.total_price
     )
-    if quote.kind is PurchaseKind.GROWTH_CHARGE:
-        primary_label = f"Buy for {quote.total_price:,}"
     display_title = title
     display_outcome = outcome
     visible_facts = tuple(facts)
@@ -427,10 +464,10 @@ def purchase_presentation(
             " Fertilizer"
         )
         secondary_label = f"Keep {current_short}"
-        primary_label = f"Replace for {quote.total_price:,}"
+        primary_label = f"Replace for {_coin_amount(quote.total_price)}"
         primary_accessible = (
             f"Replace {quote.current_item_name or 'current fertilizer'} with "
-            f"{item_name} for {quote.total_price:,} Garden Coins"
+            f"{item_name} for {_coin_amount(quote.total_price, formal=True)}"
         )
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
@@ -460,16 +497,23 @@ def purchase_presentation(
             0,
             int(quote.total_price) - max(0, int(quote.balance_before)),
         )
-        display_outcome = f"You need {shortfall:,} more to buy {item_name}."
+        shortfall_unit = "coin" if shortfall == 1 else "coins"
+        display_outcome = (
+            f"You need {shortfall:,} more {shortfall_unit} to buy {item_name}."
+        )
         visible_facts = ()
         badges = []
         balance_after = None
-        show_cost = False
-        show_preview = False
+        # Preserve the proposal context so the disabled Buy action explains
+        # exactly what is unavailable instead of routing away from the item.
+        show_cost = True
+        show_preview = True
         secondary_label = "Close"
-        primary_label = "Ways to earn"
-        primary_accessible = primary_label
-        primary_route = "ways_to_earn"
+        primary_label, primary_accessible, _processing = _priced_action(
+            action,
+            quote.total_price,
+        )
+        primary_route = ""
         terminal = True
     elif effective_status is PurchaseStatus.ITEM_UNAVAILABLE:
         unavailable_name = (
@@ -568,16 +612,6 @@ def purchase_presentation(
         )
         show_item_name = effective_status is PurchaseStatus.STALE_PRICE
         badges = []
-        primary_label = (
-            f"Buy for {quote.total_price:,}"
-            if quote.kind is PurchaseKind.GROWTH_CHARGE
-            else "Buy"
-            if action is PurchaseAction.PURCHASE
-            else primary_label
-        )
-        primary_accessible = (
-            f"{primary_label} for {max(0, quote.total_price):,} Garden Coins"
-        )
 
     if effective_status not in {
         PurchaseStatus.READY,

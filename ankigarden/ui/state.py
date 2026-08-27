@@ -410,7 +410,10 @@ def garden_preview_from_values(
             GardenPreviewMetric(
                 "coins",
                 "Garden Coins",
-                f"{format_garden_coins(max(0, int(garden_currency or 0)), include_unit=False)} coins",
+                (
+                    f"{format_garden_coins(max(0, int(garden_currency or 0)), include_unit=False)} "
+                    f"{'coin' if max(0, int(garden_currency or 0)) == 1 else 'coins'}"
+                ),
             ),
         )
     )

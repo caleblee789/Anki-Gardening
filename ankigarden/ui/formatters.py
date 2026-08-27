@@ -135,7 +135,7 @@ def format_percent(value: Any, places: int = 0) -> str:
         return "N/A"
 
 
-def format_points(value: Any, label: str = "growth points") -> str:
+def format_points(value: Any, label: str = "Growth") -> str:
     return f"{format_integer(value)} {label}"
 
 

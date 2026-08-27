@@ -60,7 +60,8 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
 
     assert compact_cost(1) == "1 coin"
     assert compact_cost(100) == "100 coins"
-    assert compact_shortfall(100, 0) == "Need 100 more"
+    assert compact_shortfall(1, 0) == "Need 1 more coin"
+    assert compact_shortfall(100, 0) == "Need 100 more coins"
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
     assert receipt_actions(True) == ("Place in garden",)
@@ -69,7 +70,10 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
         collection_complete=True,
         owned_count=10,
         release_ready_count=10,
-    ) == ("All 10 plant species collected", "")
+    ) == (
+        "All 10 plant species collected",
+        "You own every plant species currently available.",
+    )
     assert product_visible("purchase", "soft_breeze", "clear_skies")
     assert not product_visible("purchase", "clear_skies", "clear_skies")
     assert not product_visible("drop", "rain", "clear_skies")
@@ -94,6 +98,26 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
         minimum_window_height=500,
         maximum_window_height=500,
     ) == (None, 0, True)
+
+
+def test_nursery_bed_actions_include_the_exact_price() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
+    )
+    methods = {
+        node.name: ast.get_source_segment(source, node) or ""
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name in {"_space_card", "_space_progression"}
+    }
+
+    assert methods.keys() == {"_space_card", "_space_progression"}
+    for method_source in methods.values():
+        assert 'f"Unlock for {_compact_catalog_cost(price)}"' in method_source
 
 
 def test_rare_stage_visibility_uses_species_specific_progress() -> None:
@@ -204,6 +228,9 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
         "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0
-    assert fertilizer_status(engine, plant, now=1_000.0).duration == "30 sec left"
+    assert (
+        fertilizer_status(engine, plant, now=1_000.0).duration
+        == "30 seconds left"
+    )
     plant.fertilizer.expires_at = 999.0
     assert fertilizer_status(engine, plant, now=1_000.0).duration == "Expired"

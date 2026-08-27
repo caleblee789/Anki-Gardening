@@ -2,30 +2,30 @@
 
 FALLBACK_GARDEN_NAME = "My Garden"
 
-HOME_NO_STARTER_TITLE = "Choose a starter"
+HOME_NO_STARTER_TITLE = "Start your garden"
 HOME_NO_STARTER_BODY = "Your first plant is free."
-HOME_NO_STARTER_ACCESSIBLE = "Choose a starter for your garden."
-CHOOSE_STARTER_ACTION = "Choose starter"
+HOME_NO_STARTER_ACCESSIBLE = "Start your garden. Your first plant is free. Choose plant."
+CHOOSE_STARTER_ACTION = "Choose plant"
 
-GARDEN_SETUP_TITLE = "Choose a starter"
+GARDEN_SETUP_TITLE = "Choose your starter"
 GARDEN_SETUP_BODY = "Pick one free plant for your garden."
-GARDEN_SETUP_SECONDARY_ACTION = "Choose later"
+GARDEN_SETUP_SECONDARY_ACTION = "Skip for now"
 GARDEN_NURTURE_TITLE = "Nurture your first plant"
 GARDEN_NURTURE_BODY = (
     "Nurture this plant to send card Growth here."
 )
 GARDEN_NURTURE_ACTION = "Open plant"
 
-NURSERY_STARTER_TITLE = "Choose a starter"
+NURSERY_STARTER_TITLE = "Choose your starter"
 NURSERY_STARTER_RATIONALE = (
     "Your first plant is free and will be added to your collection."
 )
 NURSERY_STARTER_COUNT = ""
 DISABLED_STARTER_TABS = "More Nursery sections are available after choosing a starter."
 COST_FREE = "Free"
-PAID_COST_TEMPLATE = "{amount} Garden Coins"
+PAID_COST_TEMPLATE = "{amount} {unit}"
 
-STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name} as your starter?"
+STARTER_CONFIRMATION_TEMPLATE = "Choose {plant_name}?"
 REVIEWER_NO_STARTER_NOTICE = "Choose a starter to earn Growth."
 STARTER_READY_TEMPLATE = "{plant_name} is now earning Growth."
 ACTIVE_GROWTH_TITLE = "Nurtured"
@@ -72,6 +72,10 @@ def seed_title(species_name: str) -> str:
 
 
 def cost_label(amount: int) -> str:
-    """Return one learner-facing Garden Coin cost label."""
+    """Return one learner-facing price using singular-aware ``coin`` copy."""
 
-    return PAID_COST_TEMPLATE.format(amount=f"{max(0, int(amount)):,}")
+    normalized = max(0, int(amount))
+    return PAID_COST_TEMPLATE.format(
+        amount=f"{normalized:,}",
+        unit="coin" if normalized == 1 else "coins",
+    )

@@ -234,9 +234,9 @@ def home_container_layout(width: int | float) -> str:
 HOME_WIDGET_STYLE = """
 <style>
 #ag-home-root {
-  width: min(calc(100% - 32px), 600px);
-  max-width: 600px;
-  margin: 28px auto 18px;
+  width: min(calc(100% - 32px), 500px);
+  max-width: 500px;
+  margin: 24px auto 18px;
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
@@ -250,8 +250,8 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__state {
   box-sizing: border-box;
-  min-height: 136px;
-  padding: 16px;
+  min-height: 112px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -436,12 +436,12 @@ HOME_WIDGET_STYLE = """
 #ag-home-root button.ag-home__secondary:active { background:#0C261F; }
 .nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
 
-/* Canonical GardenHomePreview: stable two-column summary over the artwork. */
+/* Canonical GardenHomePreview: stable text, artwork, and action zones. */
 #ag-home-root {
   position:relative;
-  width:min(calc(100% - 32px), 600px);
-  max-width:600px;
-  height:136px;
+  width:min(calc(100% - 32px), 500px);
+  max-width:500px;
+  height:112px;
   margin:24px auto 18px;
   border-color:rgba(128,178,155,.28);
   border-radius:12px;
@@ -461,9 +461,9 @@ HOME_WIDGET_STYLE = """
   box-shadow:0 0 0 4px #071A15,0 14px 34px rgba(0,0,0,.3);
 }
 .ag-home__state {
-  min-height:136px;
-  padding:16px;
-  background:linear-gradient(90deg,rgba(5,20,16,.97),rgba(7,27,20,.86) 66%,rgba(7,27,20,.62));
+  min-height:112px;
+  padding:12px 14px;
+  background:linear-gradient(90deg,rgba(4,17,13,.99),rgba(5,22,17,.94) 42%,rgba(7,27,20,.72) 68%,rgba(7,27,20,.58));
 }
 .ag-home__body { position:relative; height:100%; }
 .ag-home__scene,.ag-home--no-starter .ag-home__scene {
@@ -479,7 +479,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__scene::after {
   z-index:88;
   background:
-    linear-gradient(90deg,rgba(4,14,11,.88) 0%,rgba(4,14,11,.54) 34%,rgba(4,14,11,.12) 60%,rgba(4,14,11,.03) 100%),
+    linear-gradient(90deg,rgba(3,12,9,.98) 0%,rgba(3,13,10,.78) 38%,rgba(4,14,11,.24) 66%,rgba(4,14,11,.03) 100%),
     linear-gradient(180deg,rgba(4,14,11,.18) 0%,transparent 58%,rgba(4,14,11,.08) 100%);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
 }
@@ -488,7 +488,7 @@ HOME_WIDGET_STYLE = """
   z-index:100;
   inset:0;
   min-height:0;
-  padding:14px 16px;
+  padding:11px 14px;
   display:flex;
   flex-direction:column;
   justify-content:flex-start;
@@ -497,32 +497,36 @@ HOME_WIDGET_STYLE = """
 .ag-home__details::before { display:none; }
 .ag-home__identity-row {
   display:grid;
-  grid-template-columns:minmax(0,280px) 120px;
-  justify-content:space-between;
-  gap:16px;
+  grid-template-columns:minmax(0,240px) minmax(0,1fr) 128px;
+  column-gap:12px;
   align-items:start;
 }
-.ag-home__identity { width:100%; max-width:280px; }
+.ag-home__identity { width:100%; max-width:240px; min-width:0; grid-column:1; }
+.ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
+.ag-home__identity-row > .ag-home__open,
+.ag-home__identity-row > button { grid-column:3; }
 .ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:12px; }
-.ag-home__focus-name { font-size:19px; line-height:1.12; }
+.ag-home__focus-name { font-size:18px; line-height:1.12; }
 .ag-home__support {
-  display:block;
-  max-width:280px;
-  margin-top:4px;
+  display:-webkit-box;
+  max-width:240px;
+  max-height:2.7em;
+  margin-top:3px;
   overflow:hidden;
   color:#D3DDD8;
   font-size:13px;
   font-weight:400;
   line-height:1.35;
   font-variant-numeric:tabular-nums;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  white-space:normal;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
 }
 .ag-home__growth-track {
   position:relative;
-  width:min(100%,280px);
-  height:4px;
-  margin-top:7px;
+  width:min(100%,240px);
+  height:6px;
+  margin-top:5px;
   overflow:hidden;
   border-radius:4px;
   background:rgba(199,210,201,.34);
@@ -562,9 +566,9 @@ HOME_WIDGET_STYLE = """
 #ag-home-root button,.ag-home__open {
   min-height:36px !important;
   max-height:36px !important;
-  min-width:104px !important;
-  width:116px;
-  max-width:116px;
+  min-width:128px !important;
+  width:128px;
+  max-width:128px;
   padding:0 12px !important;
   border-color:#5CC58B;
   background:#5CC58B;
@@ -587,30 +591,36 @@ HOME_WIDGET_STYLE = """
   .ag-home__scene-frame { transition:none; }
 }
 @container (max-width: 488px) {
-  #ag-home-root { height:176px; }
-  .ag-home__state { min-height:176px; }
-  .ag-home__details { padding:12px 14px; }
+  #ag-home-root { height:112px; }
+  .ag-home__state { min-height:112px; }
+  .ag-home__details { padding:11px 14px; }
   .ag-home__identity-row {
-    grid-template-columns:minmax(0,1fr);
+    grid-template-columns:minmax(0,1fr) 128px;
     gap:10px;
   }
+  .ag-home__artwork-zone { display:none; }
+  .ag-home__identity-row > .ag-home__open,
+  .ag-home__identity-row > button { grid-column:2; }
   #ag-home-root button,.ag-home__open {
-    width:auto;
-    max-width:none;
-    justify-self:start;
+    width:128px;
+    max-width:128px;
+    justify-self:end;
   }
   .ag-home__support { max-width:100%; }
-  .ag-home--no-starter .ag-home__support {
-    overflow:visible;
-    text-overflow:clip;
-    white-space:normal;
-  }
 }
 @container (max-width:420px) {
   .ag-home__details { padding:12px; }
   .ag-home__identity-row { gap:8px; }
-  .ag-home__support { max-width:100%; font-size:12.5px; }
+  .ag-home__support,.ag-home__growth-track { display:none; }
   .ag-home__focus-name { font-size:18px; }
+}
+@container (max-width:340px) {
+  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 112px; }
+  #ag-home-root button,.ag-home__open {
+    min-width:112px !important;
+    width:112px;
+    max-width:112px;
+  }
 }
 </style>
 """
@@ -646,12 +656,16 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             +
             f'<div id="ag-home-root" data-state="empty"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
+            '<div class="ag-home__identity-row"><div class="ag-home__identity">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
             f'<div class="ag-home__state-title">{HOME_NO_STARTER_TITLE}</div>'
             f'<div class="ag-home__state-message">{HOME_NO_STARTER_BODY}</div>'
             f'<span class="ag-home__sr-only">{HOME_NO_STARTER_ACCESSIBLE}</span>'
+            '</div>'
+            '<span class="ag-home__artwork-zone" aria-hidden="true"></span>'
             f'<button data-testid="home-open" type="button" aria-label="{CHOOSE_STARTER_ACTION}" '
-            f'onclick="pycmd(\'anki-garden:choose-starter\')">{CHOOSE_STARTER_ACTION}</button></div>'
+            f'onclick="pycmd(\'anki-garden:choose-starter\')">{CHOOSE_STARTER_ACTION}</button>'
+            '</div></div>'
             "</div>"
         )
     if phase == "error":
@@ -1147,6 +1161,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <aside class=\"ag-home__details home-summary-panel\">
       <header class=\"ag-home__identity-row summary-header\">
         {garden_identity_html}
+        <span class=\"ag-home__artwork-zone\" aria-hidden=\"true\"></span>
         <button class=\"ag-home__open\" data-testid=\"home-open\" data-anki-garden-command=\"anki-garden:{action_command}\" type=\"button\" aria-label=\"{escape(action_label, quote=True)}\"
           title=\"{escape(HOME_NO_STARTER_ACCESSIBLE if not starter_selected else action_label, quote=True)}\"
           onclick=\"event.stopPropagation();if(this.disabled)return;this.disabled=true;this.textContent='Opening…';pycmd('anki-garden:{action_command}');setTimeout(()=>{{this.disabled=false;this.textContent='{action_reset}';}},1500)\">{action_text}</button>

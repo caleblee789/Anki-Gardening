@@ -34,7 +34,7 @@ from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .scene import GardenSceneWidget
 from .plant_display import growth_display
 from .state import GardenPreviewSnapshot, garden_preview_from_values
-from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE
+from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE, WIDE_MODE
 from .theme import (
     BUTTON_MIN_HEIGHT,
     GARDEN_THEME,
@@ -50,7 +50,7 @@ STUDIO_TEXT = {
     "asset_quality_label": "Artwork detail",
     "animation_label": "Weather motion",
     "particle_label": "Weather detail",
-    "home_widget_label": "Show garden preview on Anki home",
+    "home_widget_label": "Show garden card on Anki home",
     "progress_notifications_label": "Show review rewards",
 }
 
@@ -116,9 +116,11 @@ class ToggleSettingRow(QFrame):
             QSizePolicy.Policy.Maximum,
         )
         self.setMinimumWidth(0)
+        self.setMinimumHeight(46)
+        self.setMaximumHeight(16777215)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 6)
+        layout.setContentsMargins(0, 3, 0, 3)
         layout.setSpacing(12)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         copy = QVBoxLayout()
@@ -173,13 +175,13 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
-        self.setMinimumHeight(100)
-        self.setMaximumHeight(100)
+        self.setMinimumHeight(92)
+        self.setMaximumHeight(92)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
-        scene.setMinimumHeight(100)
-        scene.setMaximumHeight(100)
+        scene.setMinimumHeight(92)
+        scene.setMaximumHeight(92)
         scene.setMinimumWidth(0)
         scene.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -202,7 +204,7 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Preferred,
         )
         scrim_layout = QHBoxLayout(self.scrim)
-        scrim_layout.setContentsMargins(14, 14, 14, 10)
+        scrim_layout.setContentsMargins(12, 10, 12, 8)
         scrim_layout.setSpacing(12)
         identity = QVBoxLayout()
         identity.setSpacing(2)
@@ -330,7 +332,7 @@ class GardenStudioWidget(QWidget):
             self._garden_snapshot().get("garden_name") or "My Garden"
         )
         self.scene = GardenSceneWidget(interactive=False)
-        self.scene.setMinimumHeight(100)
+        self.scene.setMinimumHeight(92)
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(120)
@@ -390,7 +392,7 @@ class GardenStudioWidget(QWidget):
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}
             QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
-            QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:1px solid {t['subtle_border']}; border-radius:12px; }}
+            QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
             QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
             QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:0; border-radius:12px; }}
@@ -400,21 +402,25 @@ class GardenStudioWidget(QWidget):
             QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:600; }}
             QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
             QLabel[previewAction='true'] {{ min-height:32px; max-height:32px; padding:0 12px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
-            QFrame[toggleSettingRow='true'] {{ background:transparent; border:0; }}
+            QFrame[toggleSettingRow='true'] {{
+                background:transparent;
+                border:0;
+                border-bottom:1px solid {t['subtle_border']};
+            }}
             QComboBox {{ color:{t['text_primary']}; background:#142c27; border:1px solid {t['secondary_border']}; border-radius:8px; padding:0 28px 0 8px; min-height:36px; max-height:36px; }}
             QComboBox:hover {{ border-color:#5b836f; }}
-            QComboBox:focus {{ border:2px solid {t['focus_ring']}; padding:0 27px 0 7px; }}
+            QComboBox[keyboardFocusVisible='true']:focus {{ border:2px solid {t['focus_ring']}; padding:0 27px 0 7px; }}
             QComboBox::drop-down {{ border:0; width:24px; }}
             QComboBox QAbstractItemView {{ color:{t['text_primary']}; background:#142c27; selection-background-color:{t['action_accent']}; border:1px solid {t['secondary_border']}; }}
             QSlider {{ min-height:36px; max-height:36px; border:2px solid transparent; border-radius:8px; }}
-            QSlider:focus {{ border-color:{t['focus_ring']}; }}
+            QSlider[keyboardFocusVisible='true']:focus {{ border-color:{t['focus_ring']}; }}
             QSlider::groove:horizontal {{ height:6px; background:#203d36; border-radius:3px; }}
             QSlider::sub-page:horizontal {{ background:{t['growth_accent']}; border-radius:3px; }}
             QSlider::handle:horizontal {{ width:18px; height:18px; margin:-6px 0; background:{t['focus_ring']}; border:2px solid {t['action_accent']}; border-radius:10px; }}
             QSlider::handle:horizontal:hover {{ background:#f4f8cf; border-color:{t['growth_accent']}; }}
             QSlider:disabled {{ color:#74877d; }}
             QCheckBox {{ min-height:36px; max-height:36px; color:{t['text_primary']}; border:2px solid transparent; border-radius:6px; padding:0 4px; }}
-            QCheckBox:focus {{ border-color:{t['focus_ring']}; }}
+            QCheckBox[keyboardFocusVisible='true']:focus {{ border-color:{t['focus_ring']}; }}
             QCheckBox::indicator {{ width:18px; height:18px; background:#102622; border:1px solid #527563; border-radius:5px; }}
             QCheckBox::indicator:hover {{ border-color:#78a189; }}
             QCheckBox::indicator:checked {{ background:{t['growth_accent']}; border:4px solid #17342e; }}
@@ -422,9 +428,9 @@ class GardenStudioWidget(QWidget):
             QCheckBox[toggleSwitch='true']::indicator {{ width:32px; height:18px; border-radius:9px; border:1px solid {t['strong_border']}; background:#20312c; }}
             QCheckBox[toggleSwitch='true']::indicator:checked {{ border:1px solid {t['growth_accent']}; background:{t['action_accent']}; }}
         """ + tool_button_stylesheet())
-        self.root_layout = QHBoxLayout(self)
+        self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(20)
+        self.root_layout.setSpacing(12)
         self.controls = QFrame()
         self.controls.setProperty("settingsControls", True)
         self.controls.setMinimumWidth(0)
@@ -459,11 +465,9 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        theme_layout = QVBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(8, 8, 8, 8)
-        theme_layout.setSpacing(4)
-        theme_heading = QLabel("Garden appearance")
-        theme_heading.setProperty("settingsHeading", True)
+        theme_layout = QHBoxLayout(self.theme_card)
+        theme_layout.setContentsMargins(12, 10, 12, 10)
+        theme_layout.setSpacing(12)
         self.theme_thumbnail = QLabel()
         self.theme_thumbnail.setFixedSize(128, 72)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -473,12 +477,17 @@ class GardenStudioWidget(QWidget):
         self.theme_title.setProperty("settingsHeading", True)
         self.theme_title.setWordWrap(True)
         self.theme_title.setMinimumWidth(0)
-        theme_layout.addWidget(theme_heading)
-        theme_layout.addWidget(
-            self.theme_thumbnail,
-            0,
-            Qt.AlignmentFlag.AlignHCenter,
+        self.theme_summary = QLabel(
+            "Clear Skies · No decorations · No effects"
         )
+        self.theme_summary.setProperty("settingsNote", True)
+        self.theme_summary.setWordWrap(True)
+        self.theme_summary.setMinimumWidth(0)
+        theme_copy = QVBoxLayout()
+        theme_copy.setContentsMargins(0, 0, 0, 0)
+        theme_copy.setSpacing(3)
+        theme_copy.addWidget(self.theme_title)
+        theme_copy.addWidget(self.theme_summary)
         self.manage_environment = QToolButton()
         self.manage_environment.setText("Edit appearance")
         self.manage_environment.setFixedHeight(BUTTON_MIN_HEIGHT)
@@ -486,12 +495,17 @@ class GardenStudioWidget(QWidget):
             "Open garden appearance in Collection."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
-        theme_action_row = QHBoxLayout()
-        theme_action_row.setContentsMargins(0, 0, 0, 0)
-        theme_action_row.setSpacing(6)
-        theme_action_row.addWidget(self.theme_title, 1)
-        theme_action_row.addWidget(self.manage_environment, 0)
-        theme_layout.addLayout(theme_action_row)
+        theme_layout.addWidget(
+            self.theme_thumbnail,
+            0,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
+        theme_layout.addLayout(theme_copy, 1)
+        theme_layout.addWidget(
+            self.manage_environment,
+            0,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
 
         self.reduced_motion = QCheckBox()
         self.reduced_motion.setAccessibleName(STUDIO_TEXT["animations_label"])
@@ -581,6 +595,11 @@ class GardenStudioWidget(QWidget):
         self.advanced_toggle.setArrowType(Qt.ArrowType.RightArrow)
         self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.advanced_toggle.setAccessibleName("Show advanced display settings")
+        # An expanded accordion is stateful content, not a selected object.
+        # Keep the shared tertiary surface when checked instead of drawing the
+        # global 2 px mint selection outline around the whole heading.
+        self.advanced_toggle.setProperty("variant", "tertiary")
+        self.advanced_toggle.setProperty("visualControlSize", BUTTON_MIN_HEIGHT)
         self.advanced_toggle.setFixedHeight(BUTTON_MIN_HEIGHT)
         self.advanced_toggle.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -588,18 +607,17 @@ class GardenStudioWidget(QWidget):
         )
         self.advanced_panel = QFrame(self)
         self.advanced_panel.setProperty("settingsAdvanced", True)
-        # This panel is reparented beneath the ordinary three-column Settings
-        # row so it can span the full dialog width. Keep its native Garden
-        # Studio styling (including the switch indicators) after reparenting.
+        # The Settings dialog reparents this full-width accordion below the
+        # ordinary Display sections. Keep its native switch styling intact.
         self.advanced_panel.setStyleSheet(self.styleSheet())
         self.advanced_panel.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Maximum,
         )
         self.advanced_actions_layout = QGridLayout(self.advanced_panel)
-        self.advanced_actions_layout.setContentsMargins(14, 12, 14, 12)
-        self.advanced_actions_layout.setHorizontalSpacing(24)
-        self.advanced_actions_layout.setVerticalSpacing(10)
+        self.advanced_actions_layout.setContentsMargins(10, 4, 10, 4)
+        self.advanced_actions_layout.setHorizontalSpacing(0)
+        self.advanced_actions_layout.setVerticalSpacing(0)
         self.advanced_actions_layout.setColumnStretch(0, 1)
         self.advanced_actions_layout.setColumnStretch(1, 1)
         self.advanced_actions_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -608,8 +626,10 @@ class GardenStudioWidget(QWidget):
             "Show brief Garden reward notifications while reviewing.",
             self.show_progress_notifications,
         )
-        self.advanced_actions_layout.addWidget(self.motion_row, 0, 0)
-        self.advanced_actions_layout.addWidget(self.notifications_row, 0, 1)
+        self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)
+        self.advanced_actions_layout.addWidget(self.notifications_row, 1, 0, 1, 2)
+        self.advanced_panel.setMinimumHeight(0)
+        self.advanced_panel.setMaximumHeight(108)
         self.advanced_panel.hide()
 
         self.preview_panel = QFrame()
@@ -629,12 +649,21 @@ class GardenStudioWidget(QWidget):
         self.home_preview = GardenHomePreview(self.scene)
         self.preview_name = self.home_preview.title
         self.preview_metrics = self.home_preview.support
+        self.preview_unavailable = QLabel(
+            "Preview unavailable\nArtwork could not be loaded."
+        )
+        self.preview_unavailable.setProperty("missingPreview", True)
+        self.preview_unavailable.setAccessibleName("Preview unavailable")
+        self.preview_unavailable.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_unavailable.setWordWrap(True)
+        self.preview_unavailable.setFixedHeight(92)
+        self.preview_unavailable.hide()
         preview_layout.addWidget(preview_title)
         preview_layout.addWidget(self.home_preview)
+        preview_layout.addWidget(self.preview_unavailable)
 
-        # Scroll only the settings column. Keeping the preview outside this
-        # scroll surface prevents an expanded Advanced section from pushing
-        # the preview above the viewport and leaving a blank right column.
+        # This compatibility wrapper is deliberately non-scrolling; the outer
+        # Settings page remains the only vertical scroll owner.
         self.controls_scroll = QScrollArea()
         self.controls_scroll.setObjectName("gardenStudioControlsScroll")
         self.controls_scroll.setAccessibleName("Display settings controls")
@@ -659,38 +688,12 @@ class GardenStudioWidget(QWidget):
         )
         self.controls_scroll.setWidget(self.controls)
 
-        self.root_layout.addWidget(self.controls_scroll, 0)
-        self.root_layout.addWidget(self.theme_card, 0)
-        self.root_layout.addWidget(self.preview_panel, 1)
-        self.root_layout.setAlignment(
-            self.controls_scroll,
-            Qt.AlignmentFlag.AlignTop,
-        )
-        self.root_layout.setAlignment(self.theme_card, Qt.AlignmentFlag.AlignTop)
-        self.root_layout.setAlignment(self.preview_panel, Qt.AlignmentFlag.AlignTop)
-        self.studio_responsive = AdaptiveRow(
-            "settings.home-preview-row",
-            (
-                AdaptiveRegion.fixed(
-                    "home-preview-toggle",
-                    SETTINGS_CONTROLS_WIDE_MIN_WIDTH,
-                    target=self.controls_scroll,
-                ),
-                AdaptiveRegion.fixed(
-                    "current-scenery",
-                    SETTINGS_SCENERY_WIDE_MIN_WIDTH,
-                    target=self.theme_card,
-                ),
-                AdaptiveRegion.measured(
-                    "shared-home-preview",
-                    self.preview_panel,
-                    floor=340,
-                ),
-            ),
-            spacing=20,
-            apply_mode=self._apply_studio_layout_mode,
-            telemetry_target=self,
-        )
+        self.root_layout.addWidget(self.controls_scroll)
+        self.root_layout.addWidget(self.preview_panel)
+        appearance_heading = QLabel("Appearance")
+        appearance_heading.setProperty("settingsHeading", True)
+        self.root_layout.addWidget(appearance_heading)
+        self.root_layout.addWidget(self.theme_card)
 
         self.asset_quality_combo.currentIndexChanged.connect(self._on_persistent_preview_change)
         self.reduced_motion.toggled.connect(self._on_reduced_motion_toggled)
@@ -713,7 +716,7 @@ class GardenStudioWidget(QWidget):
         self.reset_preview_defaults()
         self._update_slider_labels()
         self._update_motion_controls()
-        self._apply_responsive_layout(self.width())
+        self._apply_studio_layout_mode(WIDE_MODE)
 
     def _sync_switch_copy(self, checked: bool) -> None:
         sender = self.sender()
@@ -774,6 +777,7 @@ class GardenStudioWidget(QWidget):
         )
 
     def _finish_advanced_layout_update(self, expanded: bool) -> None:
+        del expanded
         self.controls_layout.invalidate()
         self.controls_layout.activate()
         self.advanced_panel.updateGeometry()
@@ -795,33 +799,19 @@ class GardenStudioWidget(QWidget):
             advanced_host_layout.activate()
             advanced_host.updateGeometry()
         self.updateGeometry()
-        target: QWidget = self.advanced_panel if expanded else self.advanced_toggle
         parent = self.parentWidget()
         while parent is not None:
             if isinstance(parent, QScrollArea) and parent is not self.controls_scroll:
-                parent.ensureWidgetVisible(target, 12, 12)
+                if parent.verticalScrollBar().maximum() == 0:
+                    parent.verticalScrollBar().setValue(0)
                 break
             parent = parent.parentWidget()
-        # QScrollArea updates its range one event-loop turn after a hidden
-        # accordion changes size. Apply the final position after that range is
-        # current so the expanded content, rather than only its toggle, is
-        # actually visible.
-        QTimer.singleShot(
-            0,
-            lambda target=target, expanded=expanded: (
-                self._sync_controls_scroll_width(),
-                self._scroll_controls_to(target, expanded),
-            ),
-        )
+        QTimer.singleShot(0, self._sync_controls_scroll_width)
 
     def _scroll_controls_to(self, target: QWidget, expanded: bool) -> None:
-        del expanded
-        parent = self.parentWidget()
-        while parent is not None:
-            if isinstance(parent, QScrollArea) and parent is not self.controls_scroll:
-                parent.ensureWidgetVisible(target, 12, 12)
-                return
-            parent = parent.parentWidget()
+        # Compatibility hook. The outer Settings page owns scrolling and a
+        # disclosure must not move the canonical viewport away from its top.
+        del target, expanded
 
     def collapse_preview_examples(self) -> None:
         """Compatibility hook used by the settings dialog when it is reopened."""
@@ -905,46 +895,34 @@ class GardenStudioWidget(QWidget):
             self._loading_controls = False
 
     def _apply_studio_layout_mode(self, mode: str) -> None:
-        compact = mode == COMPACT_MODE
-        if compact == self._compact_layout:
-            return
-        self._compact_layout = compact
-        self.root_layout.setDirection(QBoxLayout.Direction.TopToBottom if compact else QBoxLayout.Direction.LeftToRight)
-        self.controls.setMinimumWidth(
-            0 if compact else SETTINGS_CONTROLS_WIDE_MIN_WIDTH
-        )
-        self.controls.setMaximumWidth(
-            16777215 if compact else SETTINGS_CONTROLS_WIDE_MAX_WIDTH
-        )
+        del mode
+        self._compact_layout = False
+        self.root_layout.setDirection(QBoxLayout.Direction.TopToBottom)
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
+        self.controls.setMinimumWidth(0)
+        self.controls.setMaximumWidth(16777215)
         self.controls.setSizePolicy(
-            QSizePolicy.Policy.Expanding if compact else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        self.controls_scroll.setMinimumWidth(
-            0 if compact else SETTINGS_CONTROLS_WIDE_MIN_WIDTH
-        )
-        self.controls_scroll.setMaximumWidth(
-            16777215 if compact else SETTINGS_CONTROLS_WIDE_MAX_WIDTH
-        )
+        self.controls_scroll.setMinimumWidth(0)
+        self.controls_scroll.setMaximumWidth(16777215)
         self.controls_scroll.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.controls_scroll.setMinimumHeight(self.controls.sizeHint().height())
         self.controls_scroll.setMaximumHeight(16777215)
         self.controls_scroll.setSizePolicy(
-            QSizePolicy.Policy.Expanding if compact else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
         self.controls_scroll.updateGeometry()
         self.controls.updateGeometry()
-        self.theme_card.setMinimumWidth(
-            0 if compact else SETTINGS_SCENERY_WIDE_MIN_WIDTH
-        )
-        self.theme_card.setMaximumWidth(
-            16777215 if compact else SETTINGS_SCENERY_WIDE_MAX_WIDTH
-        )
+        self.theme_card.setMinimumWidth(0)
+        self.theme_card.setMaximumWidth(16777215)
         self.theme_card.setSizePolicy(
-            QSizePolicy.Policy.Expanding if compact else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
         self.theme_card.updateGeometry()
@@ -964,9 +942,8 @@ class GardenStudioWidget(QWidget):
         self.controls.updateGeometry()
 
     def _apply_responsive_layout(self, width: int) -> None:
-        if hasattr(self, "studio_responsive"):
-            telemetry = self.studio_responsive.evaluate(width)
-            self.setProperty("studioMode", telemetry.mode)
+        del width
+        self.setProperty("studioMode", WIDE_MODE)
 
     def resizeEvent(self, event: Any) -> None:
         self._apply_responsive_layout(event.size().width())
@@ -1057,6 +1034,17 @@ class GardenStudioWidget(QWidget):
             if self.garden_snapshot_provider is not None
             else str(self.preview["weather"])
         )
+        weather_label = {
+            "sunny": "Clear Skies",
+            "clear": "Clear Skies",
+            "breeze": "Soft Breeze",
+        }.get(
+            preview_weather.strip().lower(),
+            preview_weather.replace("_", " ").title() or "Clear Skies",
+        )
+        self.theme_summary.setText(
+            f"{weather_label} · No decorations · No effects"
+        )
         growth = max(0.0, min(1.0, float(snapshot.get("growth", 0.0) or 0.0)))
         if self.garden_snapshot_provider is None:
             growth = 0.85 if self.preview["growth_stage"] in ("flowering", "rare") else 0.45
@@ -1092,12 +1080,21 @@ class GardenStudioWidget(QWidget):
         )
         background_pixmap = QPixmap(str(background_path)) if background_path else QPixmap()
         if background_pixmap.isNull():
+            self.theme_thumbnail.setPixmap(QPixmap())
             self.theme_thumbnail.setText("Verdant\nTwilight")
         else:
+            self.theme_thumbnail.setText("")
             self.theme_thumbnail.setPixmap(background_pixmap.scaled(
                 self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             ))
+        preview_available = bool(
+            not background_pixmap.isNull()
+            or preview_assets
+            or self.asset_resolver is None
+        )
+        self.home_preview.setVisible(preview_available)
+        self.preview_unavailable.setVisible(not preview_available)
         stage_thresholds = dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))
         preview_points = stage_thresholds.get(
             str(self.preview["growth_stage"]),
@@ -1169,6 +1166,9 @@ class GardenStudioWidget(QWidget):
             motion_enabled=motion_enabled,
         )
         self.home_preview.set_snapshot(preview_snapshot)
+        # When the Home card is disabled, collapse its proof rather than
+        # reserving a blank preview panel in the Settings flow.
+        self.preview_panel.setVisible(self.show_home_widget.isChecked())
         self.scene.set_scene({
             "weather": preview_weather,
             "growth": growth,

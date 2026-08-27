@@ -285,6 +285,10 @@ def test_free_starter_is_atomic_requires_nurture_and_does_not_backfill_earlier_r
     nurtured, _message = engine.set_active_plant(plant.plant_id)
     assert nurtured
     assert storage.state.active_plant_id == plant.plant_id
+    # This test isolates activation/no-backfill semantics from the independent
+    # Garden Find lottery, whose valid first-answer reward can include direct
+    # Growth. Keep the lottery boundary beyond this one review.
+    storage.state.garden_find_activation_ms = storage.now_ms + 1
     after_nurture = engine.register_review({
         "queue": 2,
         "ease": 3,

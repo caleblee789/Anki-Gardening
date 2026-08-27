@@ -15,13 +15,16 @@ from ..environment import (
     SCENERY_CATALOG,
     WEATHER_CATALOG,
 )
-from ..growth import CompletedGrowthChargeRequest
+from ..growth import (
+    CompletedGrowthChargeRequest,
+    GROWTH_STAGES,
+    GROWTH_THRESHOLDS,
+    stage_progress,
+)
 from ..purchases import CompletedPurchaseRequest
 
 STATE_VERSION = 21
 ONBOARDING_PROGRESS_VERSION = 1
-GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
-GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
 WEATHER_TYPES = set(WEATHER_CATALOG)
 CURRENT_CATALOG_SPECIES_ORDER = (
     "bonsai",
@@ -137,15 +140,11 @@ class Plant:
 
     @property
     def growth_stage(self) -> str:
-        stage = GROWTH_STAGES[0]
-        for index, threshold in enumerate(GROWTH_THRESHOLDS):
-            if self.growth_points >= threshold:
-                stage = GROWTH_STAGES[index]
-        return stage
+        return stage_progress(self.growth_points).stage
 
     @property
     def fully_grown(self) -> bool:
-        return self.growth_points >= GROWTH_THRESHOLDS[-1]
+        return stage_progress(self.growth_points).fully_grown
 
     @property
     def planted(self) -> bool:

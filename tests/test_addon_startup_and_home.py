@@ -453,6 +453,163 @@ def test_reviewer_overlay_uses_reviewer_webview_and_clears_answer_controls(
     assert y + 104 <= 570
 
 
+def test_reviewer_toast_queue_caps_six_events_and_compacts_narrow_viewports(
+    monkeypatch,
+):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+
+    wide = [
+        reviewer_module.GardenToastStack.project(count, 667)
+        for count in range(1, 7)
+    ]
+    assert reviewer_module.GardenToastStack.MAX_VISIBLE == 2
+    assert reviewer_module.GardenToastStack.PREFERRED_WIDTH == 292
+    assert reviewer_module.GardenToastStack.GAP == 8
+    assert reviewer_module.GardenToastStack.toast_width(667) == 292
+    assert max(item.visible_count for item in wide) == 2
+    assert wide[1].summary_visible is False
+    assert wide[-1] == reviewer_module.ReviewerToastProjection(
+        visible_count=2,
+        overflow_count=5,
+        compact=False,
+        summary_visible=True,
+    )
+
+    narrow = reviewer_module.GardenToastStack.project(6, 420)
+    assert narrow == reviewer_module.ReviewerToastProjection(
+        visible_count=1,
+        overflow_count=5,
+        compact=True,
+        summary_visible=False,
+    )
+
+    class _ToastPart:
+        def setText(self, _text):
+            return None
+
+        def setPixmap(self, _pixmap):
+            return None
+
+        def show(self):
+            return None
+
+        def hide(self):
+            return None
+
+    class _ToastTimer:
+        def start(self, _milliseconds):
+            return None
+
+        def stop(self):
+            return None
+
+    class _Toast:
+        def __init__(self, projection):
+            self.properties = {
+                "rewardSummary": False,
+                "compactToast": projection.compact,
+                "rewardOverflowCount": (
+                    projection.overflow_count if projection.compact else 0
+                ),
+            }
+            self._garden_title_label = _ToastPart()
+            self._garden_detail_label = _ToastPart()
+            self._garden_message_label = _ToastPart()
+            self._garden_overflow_label = _ToastPart()
+            self._garden_tier_label = _ToastPart()
+            self._garden_art_label = _ToastPart()
+            self._garden_dismiss_timer = _ToastTimer()
+
+        def property(self, name):
+            return self.properties.get(name)
+
+        def setProperty(self, name, value):
+            self.properties[name] = value
+
+        def setAccessibleName(self, _name):
+            return None
+
+        def width(self):
+            return 292
+
+        def height(self):
+            return 64
+
+        def move(self, _x, _y):
+            return None
+
+        def hide(self):
+            return None
+
+        def deleteLater(self):
+            return None
+
+        def raise_(self):
+            return None
+
+    parent = SimpleNamespace(width=lambda: 667, height=lambda: 570)
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), SimpleNamespace())
+    for _event in range(6):
+        projection = handler._prepare_reward_toast_queue(parent, 667, object())
+        newest = _Toast(projection)
+        handler._reward_toasts.append(newest)
+        handler._reward_toast = newest
+
+    assert len(handler._reward_toasts) == 2
+    summary, newest = handler._reward_toasts
+    assert summary.property("rewardSummary") is True
+    assert summary.property("rewardOverflowCount") == 5
+    assert newest.property("rewardSummary") is False
+
+    compact_parent = SimpleNamespace(width=lambda: 420, height=lambda: 570)
+    compact_handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(),
+    )
+    for _event in range(6):
+        projection = compact_handler._prepare_reward_toast_queue(
+            compact_parent,
+            420,
+            object(),
+        )
+        newest = _Toast(projection)
+        compact_handler._reward_toasts.append(newest)
+        compact_handler._reward_toast = newest
+
+    assert len(compact_handler._reward_toasts) == 1
+    compact = compact_handler._reward_toasts[0]
+    assert compact.property("compactToast") is True
+    assert compact.property("rewardOverflowCount") == 5
+
+
+def test_reviewer_modal_deferral_retries_on_next_question(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    aqt_mod.mw.app = SimpleNamespace(activeModalWidget=lambda: object())
+    assert reviewer_module.reviewer_modal_active(aqt_mod.mw) is True
+    aqt_mod.mw.app = SimpleNamespace(activeModalWidget=lambda: None)
+    assert reviewer_module.reviewer_modal_active(aqt_mod.mw) is False
+    storage = SimpleNamespace(
+        state=SimpleNamespace(starter_selection_complete=True),
+        due_obligations=lambda: (),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+    retried: list[str] = []
+    handler._reward_feedback_deferred_for_modal = True
+    handler._show_optional_progress_feedback = lambda: retried.append("retried")
+
+    monkeypatch.setattr(reviewer_module, "reviewer_modal_active", lambda _mw: True)
+    handler.on_question()
+    assert retried == []
+    assert handler._reward_feedback_deferred_for_modal is True
+
+    monkeypatch.setattr(reviewer_module, "reviewer_modal_active", lambda _mw: False)
+    handler.on_question()
+    assert retried == ["retried"]
+    assert handler._reward_feedback_deferred_for_modal is False
+
+
 def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     monkeypatch,
 ):
@@ -462,12 +619,20 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
 
     assert "reviewer_overlay_parent(mw)" in source
     assert "WA_ShowWithoutActivating" in source
-    assert "WA_TransparentForMouseEvents" in source
+    assert "WA_TransparentForMouseEvents" not in source
     assert "Qt.FocusPolicy.NoFocus" in source
-    assert "preferred_width = 340" in source
-    assert "max(52, min(64" in source
+    assert "class RewardToastFrame" in source
+    assert "def enterEvent" in source
+    assert "def leaveEvent" in source
+    assert "GardenToastStack.AUTO_DISMISS_MS" in source
+    assert "GardenToastStack.HOVER_RESUME_MS" in source
+    assert "GardenToastStack.toast_width(viewport_width)" in source
+    assert "maximum_height = 64 if projection.compact else 72" in source
     assert "Qt.AlignmentFlag.AlignBaseline" in source
     assert "reviewer_reward_overlay_position(" in source
+    assert "reviewer_modal_active(mw)" in source
+    assert "_prepare_reward_toast_queue(" in source
+    assert "setMouseTracking(True)" in source
     assert '"reviewer-webview-right-above-controls"' in source
     assert '"reviewerViewportMargin", 16' in source
     assert '"reviewerControlClearance", 112' in source
@@ -475,6 +640,7 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert 'getattr(mw, "state", "")' in source
     assert "parent is not reviewer_web" in source
     assert ".setFocus(" not in source
+    assert "keyPressEvent" not in source
 
 
 def test_reviewer_reward_unmounts_when_anki_leaves_reviewer(monkeypatch):
@@ -681,7 +847,7 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
     feedback = shown[0]
     assert feedback.event_ids == tuple(event.event_id for event in events)
     assert feedback.title == "Garden Find"
-    assert feedback.message == "+7 coins · +40 Growth"
+    assert feedback.message == "+7 Garden Coins · +40 Growth"
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (7, 40)
     assert feedback.tier == "Common"
@@ -770,7 +936,12 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
 
     assert grouped is not None
     assert grouped.title == "Garden Find"
-    assert grouped.message == "+6 coins · +80 Growth"
+    assert grouped.message == "+6 Garden Coins · +80 Growth"
+
+    handler._typed_reward_totals = lambda _events: (1, 0, 0)
+    singular = handler._consolidated_reward_feedback(events[:1])
+    assert singular is not None
+    assert singular.message == "+1 Garden Coin"
 
 
 def test_reviewer_ack_failure_does_not_repeat_presented_rewards_when_new_feedback_arrives(
@@ -2133,3 +2304,253 @@ def test_same_day_catchup_revlog_mapping_matches_live_queue_semantics(monkeypatc
     assert game.queue_and_lapse_from_revlog_type(2, 3) == (1, 1)
     assert game.queue_and_lapse_from_revlog_type(3, 1) == (2, 1)
     assert game.queue_and_lapse_from_revlog_type(4, 3) is None
+
+
+def test_maintenance_reuses_only_an_unchanged_authoritative_signature(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    calls: list[str] = []
+    signature = ["2026-08-27", 200, 7]
+    app.storage.maintenance_signature = lambda: tuple(signature)
+    app.storage.ensure_revlog_ledger_ready = lambda: calls.append("ledger")
+    app.engine.rollover_if_needed = lambda: calls.append("rollover")
+    app.engine.reconcile_reward_history = lambda: calls.append("history") or (
+        True,
+        "ok",
+    )
+    app._apply_same_day_catchup = lambda: calls.append("catch-up") or (0, 0)
+    app.reviewer_hooks = SimpleNamespace(
+        mark_history_reconciled=lambda: calls.append("proof"),
+        invalidate_history=lambda reason: calls.append(f"invalidate:{reason}"),
+    )
+
+    assert app._run_garden_maintenance("home rendering") is True
+    assert app._run_garden_maintenance("dashboard open") is True
+    assert calls == ["ledger", "rollover", "history", "catch-up", "proof", "proof"]
+
+    signature[1] = 201
+    assert app._run_garden_maintenance("home rendering") is True
+    assert calls[-5:] == ["ledger", "rollover", "history", "catch-up", "proof"]
+
+    app._invalidate_maintenance_cache("explicit test invalidation")
+    assert app._run_garden_maintenance("home rendering") is True
+    assert calls[-5:] == ["ledger", "rollover", "history", "catch-up", "proof"]
+
+
+def test_reviewer_uses_proven_local_answer_without_a_full_day_scan(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    row = (200, 7, 3, 10, 5, 2500, 100, 1)
+    calls: list[object] = []
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(
+                last_processed_revlog_id=100,
+                processed_revlog_floor=99,
+                processed_revlog_ids=[],
+                pending_reanswer_lineages={},
+                starter_selection_complete=False,
+            )
+            self.mw = aqt_mod.mw
+
+        def ensure_revlog_ledger_ready(self):
+            calls.append("ledger")
+
+        def pending_reanswer_lineages(self):
+            return {}
+
+        def load_proven_local_answer(self, **kwargs):
+            calls.append(("local", kwargs))
+            return SimpleNamespace(row=row, card_day_rows=(row,))
+
+        def max_revlog_id(self):
+            raise AssertionError("the proven local path must not query max(id)")
+
+        def load_new_revlog_entries(self, _after_id):
+            raise AssertionError("the proven local path must not scan the full day")
+
+        def answer_lineage_bindings_for_cards(self, card_ids):
+            calls.append(("bindings", set(card_ids)))
+            return {}
+
+        def deck_ids_for_cards(self, card_ids):
+            calls.append(("decks", set(card_ids)))
+            return {7: 55}
+
+        def current_scheduler_day(self):
+            return "2026-08-27"
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.payloads = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            self.payloads.extend(payloads)
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            self.storage.state.processed_revlog_ids.append(latest_revlog_id)
+            return 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(engine, storage)
+    handler.mark_history_reconciled()
+
+    handler.on_answer(None, SimpleNamespace(id=7), 3)
+
+    assert [payload["revlog_id"] for payload in engine.payloads] == [200]
+    assert engine.payloads[0]["deck_id"] == 55
+    assert calls == [
+        "ledger",
+        ("local", {"after_id": 100, "card_id": 7, "ease": 3}),
+        ("bindings", {7}),
+        ("decks", {7}),
+    ]
+
+
+def test_ambiguous_local_answer_revokes_proof_and_uses_full_day_fallback(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    row = (200, 7, 4, 20, 10, 2300, 100, 1)
+    calls: list[object] = []
+
+    class Storage:
+        def __init__(self):
+            self.state = SimpleNamespace(
+                last_processed_revlog_id=100,
+                processed_revlog_floor=99,
+                processed_revlog_ids=[],
+                pending_reanswer_lineages={},
+                starter_selection_complete=False,
+            )
+            self.mw = aqt_mod.mw
+
+        def ensure_revlog_ledger_ready(self):
+            return None
+
+        def pending_reanswer_lineages(self):
+            return {}
+
+        def load_proven_local_answer(self, **_kwargs):
+            calls.append("local-ambiguous")
+            return None
+
+        def max_revlog_id(self):
+            calls.append("max")
+            return 200
+
+        def load_new_revlog_entries(self, _after_id):
+            calls.append("full-day")
+            return [row]
+
+        def current_scheduler_day(self):
+            return "2026-08-27"
+
+        def due_obligations(self):
+            return SimpleNamespace(complete=False)
+
+    class Engine:
+        def __init__(self, storage):
+            self.storage = storage
+            self.credited: list[int] = []
+
+        def apply_same_day_reviews(self, payloads, *, latest_revlog_id):
+            self.credited.extend(payload["revlog_id"] for payload in payloads)
+            self.storage.state.last_processed_revlog_id = latest_revlog_id
+            return 10
+
+        def evaluate_all_due(self, _status):
+            return False, ""
+
+    invalidations: list[str] = []
+    storage = Storage()
+    engine = Engine(storage)
+    handler = reviewer_module.ReviewerHookHandler(
+        engine,
+        storage,
+        history_invalidated=invalidations.append,
+    )
+    handler.mark_history_reconciled()
+
+    handler.on_answer(None, SimpleNamespace(id=7), 4)
+
+    assert calls == ["local-ambiguous", "max", "full-day"]
+    assert invalidations == ["local answer was ambiguous"]
+    assert engine.credited == [200]
+    assert handler._local_answer_fast_path_ready is True
+
+
+def test_sync_undo_and_collection_reload_explicitly_revoke_history_proof(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    events: list[str] = []
+    app.reviewer_hooks = SimpleNamespace(
+        invalidate_history=lambda reason: events.append(f"invalidate:{reason}")
+    )
+    app._run_garden_maintenance = lambda source: events.append(f"run:{source}") or True
+    app.engine.record_review_undo = lambda **_kwargs: events.append("undo-record") or False
+    app.storage.current_time_ms = lambda: 123
+
+    app._on_sync_finished()
+    app._on_state_did_undo(SimpleNamespace(changes=SimpleNamespace(study_queues=True)))
+    app._on_collection_did_load()
+
+    assert events == [
+        "invalidate:sync completion",
+        "run:sync completion",
+        "invalidate:review undo",
+        "undo-record",
+        "invalidate:collection reload",
+    ]
+
+
+def test_runtime_timing_finishes_for_early_reviewer_and_maintenance_failures(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+
+    class Recorder:
+        def __init__(self):
+            self.finished: list[tuple[str, object]] = []
+
+        def begin(self):
+            return "marker"
+
+        def finish(self, name, marker):
+            self.finished.append((name, marker))
+
+    recorder = Recorder()
+    monkeypatch.setattr(addon, "RUNTIME_PERFORMANCE", recorder)
+    monkeypatch.setattr(reviewer_module, "RUNTIME_PERFORMANCE", recorder)
+
+    app = _new_app(addon)
+    app.storage.ensure_revlog_ledger_ready = lambda: (_ for _ in ()).throw(
+        RuntimeError("unavailable")
+    )
+    assert app._run_garden_maintenance("unknown source") is False
+
+    storage = SimpleNamespace(
+        state=SimpleNamespace(last_processed_revlog_id=0),
+        ensure_revlog_ledger_ready=lambda: (_ for _ in ()).throw(
+            RuntimeError("unavailable")
+        ),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+    handler.on_answer(None, SimpleNamespace(id=1), 3)
+
+    assert recorder.finished == [
+        ("maintenance.other", "marker"),
+        ("review.answer", "marker"),
+    ]

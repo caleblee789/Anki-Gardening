@@ -22,6 +22,7 @@ from .display_telemetry import DISPLAY_TELEMETRY
 from .game import GardenGameEngine
 from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
+from .performance import RUNTIME_PERFORMANCE
 from .storage import GardenStorage, RevlogReadError, SchedulerBoundaryError
 from .ui.dashboard import GardenDashboard
 from .ui.state import GardenUiCoordinator
@@ -36,6 +37,15 @@ logger = logging.getLogger(__name__)
 CALEB_ADDONS_MENU_TITLE = "Caleb M. Add-ons Settings"
 CALEB_ADDONS_MENU_OBJECT_NAME = "caleb_m_addons_menu"
 GARDEN_SETTINGS_ACTION_TEXT = "Anki Garden settings"
+
+_MAINTENANCE_PERFORMANCE_ROUTES = {
+    "startup": "startup",
+    "dashboard open": "dashboard",
+    "sync completion": "sync",
+    "collection load": "collection",
+    "home retry": "home",
+    "home rendering": "home",
+}
 
 
 def _qt_action_text(action: Any) -> str:
@@ -107,10 +117,12 @@ class AnkiGardenApp:
         self.engine = GardenGameEngine(self.config, self.storage)
         self.state_events = GardenUiCoordinator(mw)
         self.state_events.stateChanged.connect(self._invalidate_home_cache)
+        self.state_events.stateChanged.connect(self._invalidate_maintenance_cache)
         self.reviewer_hooks = ReviewerHookHandler(
             self.engine,
             self.storage,
             state_changed=self.state_events.notify,
+            history_invalidated=self._invalidate_maintenance_cache,
         )
         self.dashboard: Optional[GardenDashboard] = None
         self._settings_action: Optional[QAction] = None
@@ -120,9 +132,13 @@ class AnkiGardenApp:
         self._undo_hooked = False
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
+        self._collection_hooked = False
+        self._collection_callback = self._on_collection_did_load
         self._home_widget_controller = HomeWidgetStateController()
         self._home_html_cache: str | None = None
         self._home_html_revision = -1
+        self._maintenance_signature_cache: tuple[Any, ...] | None = None
+        self._maintenance_invalidation_generation = 0
         self._dashboard_open_pending = False
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
@@ -132,6 +148,41 @@ class AnkiGardenApp:
     def _invalidate_home_cache(self, _reason: str = "") -> None:
         self._home_html_cache = None
         self._home_html_revision = -1
+
+    def _invalidate_maintenance_cache(self, _reason: str = "") -> None:
+        self._maintenance_signature_cache = None
+        self._maintenance_invalidation_generation = int(
+            getattr(self, "_maintenance_invalidation_generation", 0)
+        ) + 1
+
+    def _invalidate_review_history(self, reason: str) -> None:
+        self._invalidate_maintenance_cache(reason)
+        invalidator = getattr(
+            getattr(self, "reviewer_hooks", None),
+            "invalidate_history",
+            None,
+        )
+        if callable(invalidator):
+            invalidator(reason)
+
+    def _mark_review_history_reconciled(self) -> None:
+        marker = getattr(
+            getattr(self, "reviewer_hooks", None),
+            "mark_history_reconciled",
+            None,
+        )
+        if callable(marker):
+            marker()
+
+    def _maintenance_signature(self) -> tuple[Any, ...] | None:
+        resolver = getattr(self.storage, "maintenance_signature", None)
+        if not callable(resolver):
+            return None
+        signature = tuple(resolver())
+        return (
+            *signature,
+            int(getattr(self, "_maintenance_invalidation_generation", 0)),
+        )
 
     def setup(self) -> None:
         try:
@@ -143,6 +194,7 @@ class AnkiGardenApp:
         self._setup_reviewer_hook()
         self._setup_review_undo_hook()
         self._setup_sync_hooks()
+        self._setup_collection_hooks()
         self._run_garden_maintenance("startup")
         self._maybe_start_ui_face_capture()
 
@@ -163,7 +215,33 @@ class AnkiGardenApp:
             logger.exception("Anki Garden: unable to start UI-face capture mode")
 
     def _run_garden_maintenance(self, source: str) -> bool:
+        route = _MAINTENANCE_PERFORMANCE_ROUTES.get(str(source), "other")
+        started = RUNTIME_PERFORMANCE.begin()
+        try:
+            return self._perform_garden_maintenance(source)
+        finally:
+            RUNTIME_PERFORMANCE.finish(f"maintenance.{route}", started)
+
+    def _perform_garden_maintenance(self, source: str) -> bool:
         """Run rollover and revlog catch-up behind one fail-closed boundary."""
+        try:
+            signature_before = self._maintenance_signature()
+        except Exception:
+            logger.debug(
+                "Anki Garden: maintenance reuse signature unavailable during %s",
+                source,
+                exc_info=True,
+            )
+            self._invalidate_review_history("maintenance signature unavailable")
+            signature_before = None
+        if (
+            signature_before is not None
+            and signature_before
+            == getattr(self, "_maintenance_signature_cache", None)
+        ):
+            USER_NOTICES.clear(key="review_history")
+            self._mark_review_history_reconciled()
+            return True
         try:
             prepare_ledger = getattr(self.storage, "ensure_revlog_ledger_ready", None)
             if callable(prepare_ledger):
@@ -184,6 +262,7 @@ class AnkiGardenApp:
                     raise RevlogReadError(str(reconciliation[1]))
             catchup_result = self._apply_same_day_catchup()
         except SchedulerBoundaryError:
+            self._invalidate_review_history("scheduler boundary unavailable")
             # Anki constructs add-ons before the collection scheduler is fully
             # available. That startup state is expected and will be retried by
             # the first collection-backed entry point, so do not emit a scary
@@ -200,6 +279,7 @@ class AnkiGardenApp:
                 )
             return False
         except Exception:
+            self._invalidate_review_history("maintenance failed")
             logger.exception("Anki Garden: maintenance deferred during %s", source)
             USER_NOTICES.publish(
                 "Garden progress is temporarily paused while review history is unavailable. "
@@ -212,6 +292,19 @@ class AnkiGardenApp:
             review_count, growth_gain = catchup_result
         else:
             review_count, growth_gain = 0, 0
+        try:
+            signature_after = self._maintenance_signature()
+        except Exception:
+            logger.debug(
+                "Anki Garden: completed maintenance could not be cached during %s",
+                source,
+                exc_info=True,
+            )
+            self._invalidate_review_history("maintenance signature refresh failed")
+            signature_after = None
+        if signature_after is not None:
+            self._maintenance_signature_cache = signature_after
+            self._mark_review_history_reconciled()
         self._refresh_dashboard_after_maintenance(
             max(0, int(review_count)), max(0, int(growth_gain))
         )
@@ -281,6 +374,7 @@ class AnkiGardenApp:
         op_changes = getattr(changes, "changes", None)
         if not bool(getattr(op_changes, "study_queues", False)):
             return
+        self._invalidate_review_history("review undo")
         try:
             recorded = self.engine.record_review_undo(
                 undo_at_ms=self.storage.current_time_ms(),
@@ -584,7 +678,31 @@ class AnkiGardenApp:
             logger.exception("Anki Garden: failed to attach sync hooks")
 
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
+        self._invalidate_review_history("sync completion")
         self._run_garden_maintenance("sync completion")
+
+    def _setup_collection_hooks(self) -> None:
+        if getattr(self, "_collection_hooked", False):
+            return
+        try:
+            from aqt import gui_hooks
+
+            hook = getattr(gui_hooks, "collection_did_load", None)
+            if hook is not None:
+                callback = getattr(
+                    self,
+                    "_collection_callback",
+                    self._on_collection_did_load,
+                )
+                hook.append(callback)
+                self._collection_callback = callback
+                self._collection_hooked = True
+        except Exception:
+            logger.exception("Anki Garden: failed to attach collection reload hook")
+
+    def _on_collection_did_load(self, *_args: object, **_kwargs: object) -> None:
+        self._invalidate_home_cache("collection reload")
+        self._invalidate_review_history("collection reload")
 
     def _setup_home_screen_widget(self) -> None:
         if self._home_widget_hooked:
@@ -1186,6 +1304,16 @@ class AnkiGardenApp:
                 self.storage.state, "pending_reanswer_lineages", {}
             ),
         )
+        deck_ids = None
+        deck_resolver = getattr(self.storage, "deck_ids_for_cards", None)
+        if callable(deck_resolver):
+            try:
+                deck_ids = deck_resolver({int(row[1]) for row in rows})
+            except Exception:
+                logger.debug(
+                    "Anki Garden: batched catch-up deck lookup unavailable",
+                    exc_info=True,
+                )
         for row in rows:
             rid = int(row[0])
             latest_id = max(latest_id, int(rid))
@@ -1194,6 +1322,7 @@ class AnkiGardenApp:
                 collection,
                 answer_identity=identities.get(rid, ""),
                 scheduler_day=scheduler_day,
+                deck_ids=deck_ids,
             )
             # Manual and rescheduled revlog rows are not answered cards and must
             # advance the cursor without producing Garden progress.

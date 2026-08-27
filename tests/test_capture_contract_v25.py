@@ -286,6 +286,7 @@ def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
     assert tuple(label for _name, labels in plan.cohorts for label in labels) == requested
 
 
+@pytest.mark.release_evidence
 def test_capture_renderer_dependency_map_is_closed_for_active_v25_surfaces() -> None:
     contract = json.loads(Path(capture_sequence.CAPTURE_CONTRACT_PATH).read_text())
     active_surfaces = [

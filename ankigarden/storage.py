@@ -974,6 +974,14 @@ class HistoricalReviewSnapshot:
     answer_lineage_bindings: Mapping[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class LocalAnswerProof:
+    """One unambiguous appended answer plus its card/day lineage context."""
+
+    row: tuple[Any, ...]
+    card_day_rows: tuple[tuple[Any, ...], ...]
+
+
 class GardenStorage:
     _reward_ledger: RewardLedger | None = None
     _ledger_revision: int = 0
@@ -1807,6 +1815,27 @@ class GardenStorage:
     def current_time_ms() -> int:
         return int(datetime.now().timestamp() * 1000)
 
+    def maintenance_signature(self) -> tuple[str, int, int]:
+        """Return the cheap authorities that make one reconciliation reusable.
+
+        Sync and undo can add or remove rows below the scalar high-water, so
+        their hooks explicitly invalidate the caller's session generation.
+        This signature covers the remaining steady-state authorities without
+        serializing the complete Garden state or rereading full history.
+        """
+
+        if self.reward_ledger_has_staged_writes():
+            raise RevlogReadError(
+                "Garden maintenance cannot be reused during a pending transaction."
+            )
+        scheduler_day = self.current_scheduler_day()
+        high_water = self.eligible_review_history_high_water()
+        if self.current_scheduler_day() != scheduler_day:
+            raise SchedulerBoundaryError(
+                "Anki's scheduler day changed while maintenance was sampled."
+            )
+        return scheduler_day, high_water, max(0, int(self._ledger_revision))
+
     def max_revlog_id(self) -> int:
         collection = getattr(self.mw, "col", None)
         if collection is None or getattr(collection, "db", None) is None:
@@ -1819,6 +1848,108 @@ class GardenStorage:
             raise RevlogReadError(
                 "Anki Garden could not read the latest review-history id."
             ) from error
+
+    def load_proven_local_answer(
+        self,
+        *,
+        after_id: int,
+        card_id: int,
+        ease: int,
+    ) -> LocalAnswerProof | None:
+        """Read a locally appended answer only when its identity is unique.
+
+        The caller may use this narrow query only after a complete session
+        reconciliation and must revoke that proof on sync, undo, collection
+        reload, or any error. This method rejects multiple appended rows,
+        callback/card mismatches, and same-card ledger ambiguity; explicit
+        invalidation handles history mutations below the processed cursor.
+        Callers use the established full-day fallback whenever proof is absent.
+        """
+
+        normalized_after = max(0, int(after_id))
+        normalized_card = max(0, int(card_id))
+        normalized_ease = int(ease)
+        if normalized_card <= 0 or normalized_ease <= 0:
+            return None
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            raise RevlogReadError("Anki review history is not available yet.")
+        day_start, day_end = self.current_scheduler_day_bounds_ms()
+        lower_bound = max(max(0, int(day_start) - 1), normalized_after)
+        bounded_limit = min(MAX_PROCESSED_REVLOG_IDS, 2)
+        try:
+            appended = collection.db.all(
+                "select id, cid, ease, ivl, lastIvl, factor, time, type "
+                "from revlog where id > ? and id < ? "
+                "and type in (0, 1, 2, 3) order by id asc limit ?",
+                lower_bound,
+                int(day_end),
+                bounded_limit,
+            )
+            if len(appended) != 1:
+                return None
+            row = tuple(appended[0])
+            if (
+                len(row) < 8
+                or int(row[0]) <= normalized_after
+                or int(row[1]) != normalized_card
+                or int(row[2]) != normalized_ease
+            ):
+                return None
+            card_rows = collection.db.all(
+                "select id, cid, ease, ivl, lastIvl, factor, time, type "
+                "from revlog where id > ? and id < ? and cid = ? "
+                "and type in (0, 1, 2, 3) order by id asc limit ?",
+                max(0, int(day_start) - 1),
+                int(day_end),
+                normalized_card,
+                MAX_PROCESSED_REVLOG_IDS + 1,
+            )
+            if len(card_rows) > MAX_PROCESSED_REVLOG_IDS:
+                return None
+            normalized_card_rows = [tuple(item) for item in card_rows]
+            unseen = unprocessed_revlog_entries(self.state, normalized_card_rows)
+            if len(unseen) != 1 or int(unseen[0][0]) != int(row[0]):
+                return None
+            return LocalAnswerProof(row, tuple(normalized_card_rows))
+        except (RevlogReadError, SchedulerBoundaryError):
+            raise
+        except Exception as error:
+            logger.exception("Anki Garden: unable to prove the local review answer")
+            raise RevlogReadError(
+                "Anki Garden could not prove the local review answer."
+            ) from error
+
+    def deck_ids_for_cards(self, card_ids: Any) -> dict[int, int]:
+        """Resolve review deck identities in bounded SQL batches."""
+
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            return {}
+        normalized = sorted({
+            int(card_id)
+            for card_id in card_ids
+            if isinstance(card_id, int)
+            and not isinstance(card_id, bool)
+            and int(card_id) > 0
+        })
+        result: dict[int, int] = {}
+        chunk_size = 900
+        for offset in range(0, len(normalized), chunk_size):
+            chunk = normalized[offset:offset + chunk_size]
+            placeholders = ",".join("?" for _item in chunk)
+            rows = collection.db.all(
+                "select id, did from cards where id in (" + placeholders + ")",
+                *chunk,
+            )
+            for row in rows:
+                try:
+                    card_id, deck_id = int(row[0]), int(row[1])
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if card_id in chunk:
+                    result[card_id] = deck_id
+        return result
 
     def eligible_review_history_high_water(self) -> int:
         """Snapshot the newest eligible revlog identity for a consistent scan."""

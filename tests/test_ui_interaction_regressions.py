@@ -10,13 +10,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from ankigarden.game import GardenGameEngine
-from ankigarden.models.state import GardenState, Plant, PlantMemory
+from ankigarden.models.state import GardenState, OnboardingStep, Plant, PlantMemory
 from ankigarden.purchases import PurchaseKind
 from ankigarden.ui.home_widget import HomeWidgetData, HomeWidgetSnapshot, render_home_widget
 from ankigarden.ui.plant_display import (
     PlantInteractionState,
     Rect,
     bed_badge_rect,
+    bed_interaction_state,
     chronological_memories,
     move_badge_label,
     move_target_state,
@@ -83,7 +84,7 @@ def test_transient_home_states_retain_a_stable_minimum_height() -> None:
             HomeWidgetSnapshot(1, phase, error_message="Temporary problem")
         )
         state_rule = html.split(".ag-home__state {", 1)[1].split("}", 1)[0]
-        assert "min-height: 136px" in state_rule
+        assert "min-height: 112px" in state_rule
         assert 'class="ag-home__state"' in html
 
 
@@ -260,12 +261,14 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
             "Qt": SimpleNamespace(AlignmentFlag=SimpleNamespace(AlignCenter=0)),
             "move_badge_label": move_badge_label,
             "move_target_state": move_target_state,
+            "bed_interaction_state": bed_interaction_state,
             "bed_badge_rect": bed_badge_rect,
-                "GARDEN_THEME": {
-                    "action_hover": "#4AAE7B",
-                    "action_accent": "#329967",
-                    "text_primary": "#F3F0DF",
-                },
+            "Rect": Rect,
+            "GARDEN_THEME": {
+                "action_hover": "#4AAE7B",
+                "action_accent": "#329967",
+                "text_primary": "#F3F0DF",
+            },
         },
     )
     placements = plant_layout(480, 320, 6)
@@ -284,6 +287,12 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
         _destination_slots=lambda: [1, 2],
         width=lambda: 480,
         height=lambda: 320,
+        _garden_canvas_rect=lambda: SimpleNamespace(
+            x=lambda: 0.0,
+            y=lambda: 0.0,
+            width=lambda: 480.0,
+            height=lambda: 320.0,
+        ),
         _layout_plants=lambda _width, _height: [
             (plant, placements[int(plant["slot_index"])]) for plant in plants
         ],
@@ -298,25 +307,25 @@ def test_move_mode_labels_only_actionable_beds_and_dims_ineligible_beds() -> Non
     assert len(painter.badges) == 1
     assert painter.labels.count("+") == 0
     assert painter.labels.count("↔") == 0
-    assert painter.labels == ["Current"]
+    assert painter.labels == ["Current bed"]
     for label in ("Occupied", "Invalid", "Locked"):
         assert label not in painter.labels
-    assert painter.label_font_sizes == [("Current", 12.0)]
+    assert painter.label_font_sizes == [("Current bed", 12.0)]
 
     scene._hovered_move_slot = 1
     hover_painter = _FakePainter()
     draw_slots(scene, hover_painter)
-    assert set(hover_painter.labels) == {"Current", "Move here"}
+    assert set(hover_painter.labels) == {"Current bed", "Swap with Juniper"}
     assert len(hover_painter.badges) == 2
 
     scene._hovered_move_slot = None
     interaction.destination_slot = 2
     keyboard_painter = _FakePainter()
     draw_slots(scene, keyboard_painter)
-    assert set(keyboard_painter.labels) == {"Current", "Move here"}
+    assert set(keyboard_painter.labels) == {"Current bed", "Move here"}
     assert len(keyboard_painter.badges) == 2
     assert dict(keyboard_painter.label_font_sizes) == {
-        "Current": 12.0,
+        "Current bed": 12.0,
         "Move here": 12.0,
     }
 
@@ -461,7 +470,7 @@ def _move_scene() -> Any:
     return scene
 
 
-def test_mouse_and_keyboard_origin_activation_use_complete_cancel_teardown() -> None:
+def test_current_origin_is_inert_and_escape_cancels_move() -> None:
     class MouseButton:
         LeftButton = "left"
 
@@ -493,16 +502,24 @@ def test_mouse_and_keyboard_origin_activation_use_complete_cancel_teardown() -> 
     mouse_event = SimpleNamespace(button=lambda: "left", position=lambda: object())
     mouse_press(mouse_scene, mouse_event)
 
-    assert not mouse_scene._interaction.placing
-    assert mouse_scene._allowed_move_slots is None
-    assert mouse_scene.cancelPlacementRequested.values == [()]
-    assert mouse_scene.placementStateChanged.values[-1] == (False,)
+    assert mouse_scene._interaction.placing
+    assert mouse_scene._allowed_move_slots == {0, 1}
+    assert mouse_scene._inline_message == "Current bed."
+    assert mouse_scene.cancelPlacementRequested.values == []
 
     keyboard_scene = _move_scene()
     keyboard_scene.interactive = True
     keyboard_scene._plant_ids = lambda: ["p0"]
     keyboard_event = SimpleNamespace(key=lambda: "return")
     key_press(keyboard_scene, keyboard_event)
+
+    assert keyboard_scene._interaction.placing
+    assert keyboard_scene._allowed_move_slots == {0, 1}
+    assert keyboard_scene._inline_message == "Current bed."
+    assert keyboard_scene.cancelPlacementRequested.values == []
+
+    escape_event = SimpleNamespace(key=lambda: "escape")
+    key_press(keyboard_scene, escape_event)
 
     assert not keyboard_scene._interaction.placing
     assert keyboard_scene._allowed_move_slots is None
@@ -721,7 +738,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 
 
 
-def test_visible_settings_are_raised_without_resetting_staged_controls() -> None:
+def test_visible_settings_are_left_untouched_without_resetting_staged_controls() -> None:
     open_settings = _compiled_method(
         DASHBOARD_PATH,
         "GardenDashboard",
@@ -748,7 +765,7 @@ def test_visible_settings_are_raised_without_resetting_staged_controls() -> None
 
     visible = Settings(True)
     open_settings(SimpleNamespace(settings_dialog=visible, engine=object(), config=object()))
-    assert visible.calls == ["raise"]
+    assert visible.calls == []
 
     hidden = Settings(False)
     open_settings(SimpleNamespace(settings_dialog=hidden, engine=object(), config=object()))
@@ -865,12 +882,16 @@ def test_nursery_bed_purchase_guard_blocks_double_activation_and_recovers() -> N
 
 
 def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() -> None:
-    class Timer:
-        callbacks: list[Any] = []
+    class StatusTimer:
+        def __init__(self) -> None:
+            self.started: list[int] = []
+            self.stops = 0
 
-        @classmethod
-        def singleShot(cls, _delay: int, callback: Any) -> None:
-            cls.callbacks.append(callback)
+        def start(self, delay: int) -> None:
+            self.started.append(delay)
+
+        def stop(self) -> None:
+            self.stops += 1
 
     class Priority:
         POLITE = "polite"
@@ -892,7 +913,6 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
             "FeedbackTone": Tone,
             "SemanticRole": SimpleNamespace(BANNER="banner"),
             "set_semantic_role": lambda *_args, **_kwargs: None,
-            "QTimer": Timer,
         },
     )
     hide_status = _compiled_method(
@@ -948,9 +968,12 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
 
     status = Status()
     nursery_toast = NurseryToast()
+    status_timer = StatusTimer()
     announcements: list[tuple[str, str]] = []
     nursery = SimpleNamespace(
         _status_generation=0,
+        _scheduled_status_generation=0,
+        _status_hide_timer=status_timer,
         status=status,
         nursery_toast=nursery_toast,
         accessibility_announcer=SimpleNamespace(
@@ -976,9 +999,11 @@ def test_nursery_status_is_local_focusable_and_recovery_button_is_conditional() 
     assert announcements[-1] == ("Not enough Garden Coins.", "polite")
 
     show_result(nursery, True, "Garden space unlocked.")
-    assert len(Timer.callbacks) == 1
+    assert status_timer.started == [3500]
+    scheduled_generation = nursery._scheduled_status_generation
     show_result(nursery, False, "A newer purchase failed.")
-    Timer.callbacks.pop()()
+    assert status_timer.stops == 2
+    hide_status(nursery, scheduled_generation)
     assert status.visible is True
     assert status.text == "A newer purchase failed."
 
@@ -1384,12 +1409,11 @@ def test_selected_card_docks_only_in_compact_viewports() -> None:
     assert dashboard.plant_card.parent is wide_scene
     assert dashboard.plant_card.docked is False
     assert dashboard.plant_card.fixed_width == 280
-    assert dashboard.plant_card.maximum_width == 290
+    assert dashboard.plant_card.maximum_width == 300
     assert dashboard.plant_card.geometry == (12, 190, 280, 264)
     assert geometry_calls == [(280, 264, {})]
     assert len(connector_calls) == 1
-    assert isinstance(connector_calls[0][0], Geometry)
-    assert connector_calls[0][1] == "plant-a"
+    assert connector_calls[0] == (None,)
     assert dock.shown is False
 
 
@@ -1466,13 +1490,14 @@ def test_move_state_event_updates_only_the_move_scene() -> None:
     dashboard = SimpleNamespace(
         _home_surface_dirty=False,
         isVisible=lambda: True,
+        _mark_progress_pages_dirty=lambda: calls.append("dirty"),
         _refresh_move_scene=lambda: calls.append("move"),
         refresh_all=lambda: calls.append("full"),
     )
 
     state_changed(dashboard, "plant move")
 
-    assert calls == ["move"]
+    assert calls == ["dirty", "move"]
     assert dashboard._home_surface_dirty is True
 
 
@@ -1547,6 +1572,60 @@ def test_successful_post_commit_event_clears_only_prior_display_notice() -> None
         assert USER_NOTICES.current.message == "Review history is temporarily unavailable."
     finally:
         USER_NOTICES.clear()
+
+
+def test_first_nurture_dismisses_setup_card_before_the_shared_refresh() -> None:
+    nurture = _compiled_method(
+        DASHBOARD_PATH,
+        "GardenDashboard",
+        "_nurture_plant",
+        {"OnboardingStep": OnboardingStep},
+    )
+
+    for initial_active_id in (None, "starter"):
+        calls: list[str] = []
+        state = SimpleNamespace(
+            active_plant_id=initial_active_id,
+            onboarding=SimpleNamespace(step=OnboardingStep.NURTURE),
+        )
+        starter = SimpleNamespace(
+            plant_id="starter",
+            name="Briar",
+            planted=True,
+        )
+
+        class Engine:
+            def set_active_plant(self, plant_id: str) -> tuple[bool, str]:
+                calls.append("commit")
+                state.active_plant_id = plant_id
+                state.onboarding.step = OnboardingStep.COMPLETION
+                return True, "Briar is now nurtured."
+
+            def plant_story(self, plant_id: str) -> Any:
+                return starter if plant_id == starter.plant_id else None
+
+        dashboard = SimpleNamespace(
+            storage=SimpleNamespace(state=state),
+            engine=Engine(),
+            scene=SimpleNamespace(
+                dismiss_selection=lambda: calls.append("dismiss-card"),
+                keep_card_open=lambda _plant_id: calls.append("keep-card"),
+                show_nurture_feedback=lambda _plant_id: calls.append("pulse"),
+            ),
+            toast_region=SimpleNamespace(
+                show_message=lambda *_args, **_kwargs: calls.append("toast")
+            ),
+            _refresh_after_commit=lambda _context: calls.append("shared-refresh"),
+            _refresh_selected_plant_card=lambda: calls.append("refresh-card"),
+            _complete_first_nurture_guidance=lambda: calls.append("completion"),
+            _undo_nurture_plant_id="",
+        )
+
+        nurture(dashboard, starter.plant_id)
+
+        assert calls.index("dismiss-card") < calls.index("shared-refresh")
+        assert "keep-card" not in calls
+        assert "refresh-card" not in calls
 
 
 def test_prepare_to_show_renders_feedback_without_acknowledging_it() -> None:
@@ -1864,6 +1943,9 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         _record_active_placement_token=lambda: setattr(
             dashboard, "_active_placement_token", 19
         ),
+        _set_move_mode_controls=lambda enabled: setattr(
+            dashboard, "move_controls_enabled", enabled
+        ),
         _position_scene_overlays=lambda: None,
         _refresh_selected_plant_card=lambda: None,
         toast_region=toast,
@@ -1998,6 +2080,10 @@ def test_missing_or_corrupt_surface_suppresses_all_landmark_hotspots() -> None:
                 background_path, False, {}, ""
             ),
             _pixmap_for=lambda path: (pixmap_calls.append(path), pixmap)[1],
+            _garden_canvas_rect=lambda: SimpleNamespace(
+                width=lambda: 900,
+                height=lambda: 600,
+            ),
             width=lambda: 900,
             height=lambda: 600,
         )

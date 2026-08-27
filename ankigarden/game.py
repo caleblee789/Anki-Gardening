@@ -59,6 +59,7 @@ from .growth import (
     GrowthChargeRequest,
     GrowthChargeStatus,
     GrowthChargeTargetState,
+    stage_progress,
     StageRewardProjection,
 )
 from .models.state import (
@@ -108,6 +109,15 @@ from .storage import DueObligationStatus, RevlogReadError, SchedulerBoundaryErro
 
 
 logger = logging.getLogger(__name__)
+
+
+def _garden_coin_amount(value: int, *, signed: bool = False) -> str:
+    """Format formal reward and balance copy with correct plurality."""
+
+    amount = max(0, int(value))
+    prefix = "+" if signed else ""
+    unit = "Garden Coin" if amount == 1 else "Garden Coins"
+    return f"{prefix}{amount:,} {unit}"
 
 
 class _StateSnapshot(dict[str, Any]):
@@ -1873,7 +1883,7 @@ class GardenGameEngine:
     def _reward_bundle_description(bundle: RewardBundle) -> str:
         parts: list[str] = []
         if bundle.coins:
-            parts.append(f"+{bundle.coins:,} Garden Coins")
+            parts.append(_garden_coin_amount(bundle.coins, signed=True))
         if bundle.small_growth_charges:
             parts.append(
                 f"+{bundle.small_growth_charges} Small Growth Charge"
@@ -2809,7 +2819,7 @@ class GardenGameEngine:
                 reward,
                 feedback=(
                     f"{plant.name} reached {new_stage.title()} and earned "
-                    f"{reward} Garden Coins."
+                    f"{_garden_coin_amount(reward)}."
                 ),
                 plant_id=plant.plant_id,
             )
@@ -2949,7 +2959,8 @@ class GardenGameEngine:
                 receipt.amount for receipt in receipts if receipt.reward_type == "growth"
             )
             feedback = (
-                f"You finished all due cards and earned {total_coins} Garden Coins"
+                "You finished all due cards and earned "
+                f"{_garden_coin_amount(total_coins)}"
                 + (f" and {weather_growth} Growth." if weather_growth else ".")
             )
             self._queue_reward_feedback(
@@ -3291,7 +3302,9 @@ class GardenGameEngine:
             effective_status = PurchaseStatus.INSUFFICIENT_COINS
             shortfall = price - balance
             effective_message = (
-                f"You need {shortfall:,} more Garden Coins to buy {item_name}."
+                f"You need {shortfall:,} more "
+                f"{'Garden Coin' if shortfall == 1 else 'Garden Coins'} "
+                f"to buy {item_name}."
             )
         token = self._purchase_quote_token({
             "schema": 1,
@@ -3494,7 +3507,7 @@ class GardenGameEngine:
                 duration=duration,
                 stacking="Same tier extends remaining time.",
                 replacement="Different tier replaces it and discards remaining time.",
-                unlock_requirement=f"Nursery: {spec.price:,} Garden Coins.",
+                unlock_requirement=f"Nursery: {_garden_coin_amount(spec.price)}.",
             )
             inventory_key = f"fertilizer_{tier}"
             inventory_before = max(
@@ -3697,7 +3710,7 @@ class GardenGameEngine:
         price = self.BED_PRICES.get(current_index)
         descriptor = EffectDescriptor(
             function=f"Unlocks bed {current_index + 1} for one plant.",
-            buff="Adds 1 planting space; no Growth effect.",
+            buff="Adds one garden bed; no Growth effect.",
             activation_condition="Available after saving.",
             duration="Stays unlocked.",
             stacking="Beds unlock sequentially.",
@@ -3911,7 +3924,7 @@ class GardenGameEngine:
             return self._purchase_failure(
                 quote,
                 PurchaseStatus.INSUFFICIENT_COINS,
-                f"{quote.item_name} costs {quote.total_price:,} Garden Coins.",
+                f"{quote.item_name} costs {_garden_coin_amount(quote.total_price)}.",
                 balance=self.state.currency_balance,
             )
 
@@ -4188,11 +4201,7 @@ class GardenGameEngine:
 
     @staticmethod
     def _growth_stage_for_points(points: int) -> str:
-        stage = GROWTH_STAGES[0]
-        for index, threshold in enumerate(GROWTH_THRESHOLDS):
-            if int(points) >= threshold:
-                stage = GROWTH_STAGES[index]
-        return stage
+        return stage_progress(points).stage
 
     def quote_growth_charge(
         self,

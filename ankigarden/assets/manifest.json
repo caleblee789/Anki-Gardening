@@ -339,7 +339,7 @@
         "anchor_x": 0.5,
         "baseline_y": 0.5,
         "scale": 1.0,
-        "crop": "cover",
+        "crop": "contain",
         "layer": "background",
         "focal_point": [
           0.5,

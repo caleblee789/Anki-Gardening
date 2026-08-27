@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -170,6 +171,14 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
     assert projection.reward_event_key == "achievement:streak_7"
     assert projection.reward_coins == 10
     assert projection.historical_backfill is True
+    assert replace(
+        projection,
+        reward_coins=1,
+        reward_small_growth_charges=2,
+        reward_standard_growth_charges=1,
+    ).reward_summary == (
+        "1 Garden Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
+    )
 
     state.daily_stats.reviewed = 29
     state.daily_stats.correct = 26

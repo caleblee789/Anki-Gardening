@@ -67,7 +67,7 @@ class _Recorder:
         return SimpleNamespace(height=lambda: 520)
 
 
-def test_settings_layout_executes_wide_and_compact_responsive_behavior() -> None:
+def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
     apply_layout = _compiled_layout_method()
     widget = _Recorder()
     widget._compact_layout = None
@@ -78,14 +78,15 @@ def test_settings_layout_executes_wide_and_compact_responsive_behavior() -> None
     widget.theme_card = _Recorder()
 
     apply_layout(widget, "wide")
-    assert ("setDirection", ("columns",)) in widget.root_layout.calls
-    assert ("setMinimumWidth", (190,)) in widget.controls.calls
-    assert ("setMaximumWidth", (220,)) in widget.controls.calls
-    assert ("setSizePolicy", ("preferred", "preferred")) in widget.controls.calls
+    assert ("setDirection", ("stacked",)) in widget.root_layout.calls
+    assert ("setMinimumWidth", (0,)) in widget.controls.calls
+    assert ("setMaximumWidth", (16_777_215,)) in widget.controls.calls
+    assert ("setSizePolicy", ("expanding", "preferred")) in widget.controls.calls
     assert ("setMinimumHeight", (520,)) in widget.controls_scroll.calls
+    assert ("setMaximumHeight", (16_777_215,)) in widget.controls_scroll.calls
     assert ("setVerticalScrollBarPolicy", ("off",)) in widget.controls_scroll.calls
-    assert ("setMinimumWidth", (180,)) in widget.theme_card.calls
-    assert ("setMaximumWidth", (220,)) in widget.theme_card.calls
+    assert ("setMinimumWidth", (0,)) in widget.theme_card.calls
+    assert ("setMaximumWidth", (16_777_215,)) in widget.theme_card.calls
 
     apply_layout(widget, "compact")
     assert ("setDirection", ("stacked",)) in widget.root_layout.calls

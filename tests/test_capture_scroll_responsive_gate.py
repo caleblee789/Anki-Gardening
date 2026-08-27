@@ -98,6 +98,50 @@ def _valid_scroll_geometry() -> dict[str, Any]:
     }
 
 
+def _valid_progress_scroll_audit() -> dict[str, Any]:
+    return {
+        "applicable": True,
+        "surface": "Garden Progress",
+        "expected_page_semantic": "GardenProgressDialog:achievements",
+        "actual_page_semantic": "GardenProgressDialog:achievements",
+        "scroll_name": "Achievement progress scroll area",
+        "expected_scroll_name": "",
+        "registered_count": 5,
+        "active_count": 1,
+        "expected_active_count": 1,
+        "window_mode": "workspace",
+        "content_screen_limited": False,
+        "footer_visible": False,
+        "footer_height": 0,
+        "footer_top": 0,
+        "viewport_top": 134,
+        "viewport_height": 418,
+        "viewport_bottom": 552,
+        "declared_clearance": 0,
+        "layout_clearance": 0,
+        "content_height": 866,
+        "content_size_hint_height": 866,
+        "content_minimum_size_hint_height": 866,
+        "scroll_minimum": 0,
+        "scroll_maximum": 448,
+        "last_body_child_bottom": 848,
+        "last_body_child_bottom_at_scroll_end": 534,
+        "require_no_scroll": False,
+        "required_content_height": 866,
+        "reachable_content_height": 866,
+        "fixed_progress_header": True,
+        "complete_row_available_height": 420,
+        "complete_row_viewport_height": 418,
+        "complete_row_bottom_gutter": 2,
+        "complete_row_content_origin_y": 0,
+        "complete_row_bottom_padding": 18,
+        "complete_row_boundaries": [148, 266, 418, 570],
+        "complete_row_eligible_boundaries": [148, 266, 418],
+        "issues": [],
+        "passed": True,
+    }
+
+
 def test_scroll_geometry_accepts_short_and_reachable_long_content() -> None:
     check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
         "dialog_scroll_geometry_issue_codes"
@@ -190,6 +234,7 @@ def test_capture_and_validator_reject_the_same_invalid_scroll_metrics() -> None:
     audit = {
         "applicable": True,
         "scroll_name": "Test scroll",
+        "expected_scroll_name": "",
         **geometry,
         "viewport_bottom": 0,
         "required_content_height": 0,
@@ -402,6 +447,7 @@ def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> No
         "expected_page_semantic": "GardenProgressDialog:collection",
         "actual_page_semantic": "GardenProgressDialog:collection",
         "scroll_name": "Collection scroll",
+        "expected_scroll_name": "",
         "registered_count": 1,
         "active_count": 1,
         "footer_visible": True,
@@ -445,3 +491,67 @@ def test_validator_recomputes_positive_scroll_geometry_and_page_identity() -> No
     assert "unreachable-scroll-content" in dialog_scroll_audit_issue_codes(
         unreachable,
     )
+
+
+def test_progress_scroll_audit_proves_fixed_header_complete_fold_and_padding() -> None:
+    audit = _valid_progress_scroll_audit()
+
+    assert dialog_scroll_audit_issue_codes(
+        audit,
+        expected_surface="Garden Progress",
+        expected_page_semantic="GardenProgressDialog:achievements",
+    ) == ()
+
+
+def test_progress_scroll_audit_rejects_large_gutter_and_missing_contracts() -> None:
+    audit = {
+        **_valid_progress_scroll_audit(),
+        "fixed_progress_header": False,
+        "complete_row_available_height": 570,
+        "complete_row_bottom_gutter": 152,
+        "complete_row_bottom_padding": 11,
+    }
+
+    issues = dialog_scroll_audit_issue_codes(audit)
+
+    assert "missing-fixed-progress-header" in issues
+    assert "excess-complete-row-gutter" in issues
+    assert "insufficient-progress-bottom-padding" in issues
+
+
+def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() -> None:
+    home_source = _method_source("_UiFaceCaptureRunner", "_wait_for_home_surface")
+    settings_source = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_settings_display_advanced_ready",
+    )
+    module = _module()
+    no_scroll_assignment = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "CANONICAL_NO_SCROLL_CAPTURE_LABELS"
+            for target in node.targets
+        )
+    )
+    assert isinstance(no_scroll_assignment.value, ast.Call)
+    no_scroll_labels = ast.literal_eval(no_scroll_assignment.value.args[0])
+
+    assert "Math.round(homeActionRect.width) <= 128" in home_source
+    assert "settings-display-advanced-open" not in no_scroll_labels
+    assert "scroll.ensureWidgetVisible(" in settings_source
+    assert "outer_vertical_range > 1" in settings_source
+    assert "outer_horizontal_range <= 1" in settings_source
+    assert "inner_vertical_range <= 1" in settings_source
+    assert "scroll.verticalScrollBar().setValue(0)" not in settings_source
+
+
+def test_loadout_first_fold_reserves_two_complete_native_tile_rows() -> None:
+    dashboard_source = (ROOT / "ankigarden" / "ui" / "dashboard.py").read_text(
+        "utf-8"
+    )
+
+    assert "self.option_tabs.setFixedHeight(304)" in dashboard_source
+    assert "scroll.setFixedHeight(270)" in dashboard_source
