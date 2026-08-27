@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -11,22 +13,33 @@ DASHBOARD_PATH = (
 )
 
 
+@lru_cache(maxsize=1)
+def _dashboard_source() -> str:
+    return DASHBOARD_PATH.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def _dashboard_tree() -> ast.Module:
+    return ast.parse(_dashboard_source(), filename=str(DASHBOARD_PATH))
+
+
 def _compiled_method(
     class_name: str,
     method_name: str,
     namespace: dict[str, Any] | None = None,
 ) -> Any:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
+    tree = _dashboard_tree()
     owner = next(
         node
         for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == class_name
     )
-    method = next(
-        node
-        for node in owner.body
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
+    method = deepcopy(
+        next(
+            node
+            for node in owner.body
+            if isinstance(node, ast.FunctionDef) and node.name == method_name
+        )
     )
     method.decorator_list = []
     module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
@@ -36,21 +49,17 @@ def _compiled_method(
 
 
 def _dialog_shell_node() -> ast.ClassDef:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
     return next(
         node
-        for node in tree.body
+        for node in _dashboard_tree().body
         if isinstance(node, ast.ClassDef) and node.name == "DialogShell"
     )
 
 
 def _method_node(class_name: str, method_name: str) -> ast.FunctionDef:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
     owner = next(
         node
-        for node in tree.body
+        for node in _dashboard_tree().body
         if isinstance(node, ast.ClassDef) and node.name == class_name
     )
     return next(
@@ -75,7 +84,7 @@ def _assigned_call(
 
 
 def test_dialog_shell_uses_the_native_parented_qdialog_contract() -> None:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
+    source = _dashboard_source()
     shell = _dialog_shell_node()
     shell_source = ast.get_source_segment(source, shell) or ""
 
@@ -110,8 +119,7 @@ def test_dialog_shell_uses_the_native_parented_qdialog_contract() -> None:
 
 
 def test_every_garden_window_route_uses_the_shared_dialog_contract() -> None:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
+    tree = _dashboard_tree()
     bases = {
         node.name: {ast.unparse(base) for base in node.bases}
         for node in tree.body
@@ -205,8 +213,8 @@ def test_visibility_sensitive_children_have_parents_at_construction() -> None:
 
 
 def test_visibility_audit_is_opt_in_and_never_creates_native_handles() -> None:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
+    source = _dashboard_source()
+    tree = _dashboard_tree()
     audit = next(
         node
         for node in tree.body
@@ -268,7 +276,7 @@ def test_dialog_presentation_uses_show_without_native_window_manipulation() -> N
 
 
 def test_view_profile_and_disposal_never_move_or_detach_dialogs() -> None:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
+    source = _dashboard_source()
     shell = _dialog_shell_node()
     apply_profile = next(
         node
@@ -280,7 +288,7 @@ def test_view_profile_and_disposal_never_move_or_detach_dialogs() -> None:
     assert "self.move(" not in apply_source
     assert "_recenter_over_parent" not in apply_source
 
-    tree = ast.parse(source, filename=str(DASHBOARD_PATH))
+    tree = _dashboard_tree()
     dispose = next(
         node
         for node in tree.body

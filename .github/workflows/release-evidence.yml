@@ -44,7 +44,9 @@ jobs:
       matrix:
         include:
           - shard: package
-            test_paths: tests/test_package.py
+            test_paths: >-
+              tests/test_package.py
+              tests/test_capture_contract_v25.py
           - shard: artwork
             test_paths: tests/test_twilight_v6_library_qa.py
           - shard: dialogs

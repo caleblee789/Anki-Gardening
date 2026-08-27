@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -11,10 +12,19 @@ ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 
 
+@lru_cache(maxsize=1)
+def _dashboard_source() -> str:
+    return DASHBOARD_PATH.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=1)
+def _dashboard_tree() -> ast.Module:
+    return ast.parse(_dashboard_source(), filename=str(DASHBOARD_PATH))
+
+
 def _method_node(class_name: str, method_name: str) -> ast.FunctionDef:
-    tree = ast.parse(DASHBOARD_PATH.read_text(encoding="utf-8"))
     class_node = next(
-        node for node in tree.body
+        node for node in _dashboard_tree().body
         if isinstance(node, ast.ClassDef) and node.name == class_name
     )
     return next(
@@ -24,7 +34,7 @@ def _method_node(class_name: str, method_name: str) -> ast.FunctionDef:
 
 
 def _method_source(class_name: str, method_name: str) -> str:
-    source = DASHBOARD_PATH.read_text(encoding="utf-8")
+    source = _dashboard_source()
     return ast.get_source_segment(source, _method_node(class_name, method_name)) or ""
 
 
