@@ -57,7 +57,7 @@ def test_shared_dialog_regions_use_the_release_spacing_and_scroll_contract() -> 
     assert metrics.body_margins == (24, 16, 24, 24)
     assert metrics.footer_margins == (24, 12, 24, 16)
     assert metrics.card_padding == 16
-    assert metrics.section_gap == 24
+    assert metrics.section_gap == 16
     assert metrics.row_gap == 12
     assert metrics.action_gap == 8
 

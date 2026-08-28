@@ -81,7 +81,7 @@ class DialogLayoutMetrics:
     footer_top_padding: int = 12
     footer_bottom_padding: int = 16
     card_padding: int = 16
-    section_gap: int = 24
+    section_gap: int = 16
     row_gap: int = 12
     action_gap: int = 8
 

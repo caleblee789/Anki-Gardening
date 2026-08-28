@@ -2134,16 +2134,18 @@ CAPTURE_LAYOUT_LIMITS: dict[str, float | int] = {
     "maximum_content_footer_gap_px": 48,
     "maximum_nursery_root_offset_px": 16,
     "maximum_action_width_ratio": 0.50,
-    "minimum_rendered_text_px": 12.0,
+    # Eyebrow labels are an intentional 11 px role in the release type scale.
+    # Normal body and metadata roles remain 12 px or larger.
+    "minimum_rendered_text_px": 11.0,
     "maximum_overflow_owner_count": 1,
 }
 
 CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
-    "compact-row": 36,
+    "compact-row": 32,
     "banner": 36,
     "secondary": 36,
     "primary": 40,
-    "onboarding": 40,
+    "onboarding": 36,
     "icon": 32,
 }
 

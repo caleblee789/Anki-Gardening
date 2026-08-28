@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import runpy
 from pathlib import Path
 from typing import Any
@@ -182,15 +183,32 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
 
     assert values == sorted(set(values))
     assert values[0] == 0
-    assert values[-1] == 48
+    assert values[-1] == 32
+    assert scope["SPACING_SCALE"] == {
+        "xs": 4,
+        "sm": 8,
+        "md": 12,
+        "lg": 16,
+        "xl": 24,
+        "xxl": 32,
+    }
     assert scope["spacing"]("md") == 12
     assert scope["spacing"](spacing_token.XL) == 24
+    assert scope["spacing"]("display") == 32
     with pytest.raises(ValueError, match="outside the shared scale"):
         scope["spacing"](13)
 
     assert scope["GARDEN_COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
     assert scope["COLOR_TOKENS"] is scope["SEMANTIC_COLORS"]
-    assert scope["RADIUS_SCALE"] == {"sm": 6, "md": 10, "lg": 14}
+    assert scope["RADIUS_SCALE"] == {"sm": 8, "md": 12, "lg": 16}
+    assert scope["CONTROL_HEIGHT_SCALE"] == {
+        "compact": 32,
+        "default": 36,
+        "primary": 40,
+    }
+    assert scope["PROGRESS_BAR_HEIGHT"] == 6
+    assert len(set(scope["GREEN_SURFACE_LEVELS"])) == 4
+    assert scope["SEMANTIC_COLORS"]["gold"] != scope["SEMANTIC_COLORS"]["warning"]
 
 
 def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
@@ -219,15 +237,18 @@ def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> 
     assert "QPushButton:disabled" in buttons
     assert "QPushButton:enabled:hover" in buttons
     assert "QPushButton:disabled:hover" in buttons
+    assert "QPushButton[pending='true']" in buttons
     assert "QPushButton[keyboardFocusVisible='true']:focus" in buttons
-    assert "font-size: 14px" in buttons
+    assert "font-size: 13px" in buttons
     assert "border: 2px solid" in buttons
     assert f"border-color: {scope['GARDEN_THEME']['growth_accent']}" in buttons
-    assert f"border: 2px solid {scope['GARDEN_THEME']['focus_ring']}" in buttons
+    assert f"border-color: {scope['GARDEN_THEME']['focus_ring']}" in buttons
+    assert "QPushButton[keyboardFocusVisible='true']:focus {\n            border-color:" in buttons
     assert "QToolButton[gardenRole='icon-button']" in tools
     assert "QToolButton:enabled:hover" in tools
     assert "QToolButton:disabled:hover" in tools
-    assert "font-size: 14px" in tools
+    assert "QToolButton[pending='true']" in tools
+    assert "font-size: 13px" in tools
 
 
 def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
@@ -239,23 +260,43 @@ def test_button_size_tokens_are_exact_and_apply_without_forcing_width() -> None:
         size.value: (tokens[size].height_px, tokens[size].horizontal_padding_px)
         for size in button_size
     } == {
-        "compact-row": (36, 10),
+        "compact-row": (32, 10),
         "banner": (36, 10),
         "secondary": (36, 14),
         "primary": (40, 16),
-        "onboarding": (40, 16),
+        "onboarding": (36, 16),
         "icon": (32, 0),
     }
     widget = _Widget()
     token = scope["apply_button_size"](widget, "onboarding")
     assert token is tokens[button_size.ONBOARDING]
     assert widget.properties["buttonSize"] == "onboarding"
-    assert widget.properties["visualControlSize"] == 40
-    assert (widget.minimum_height, widget.maximum_height) == (40, 40)
+    assert widget.properties["visualControlSize"] == 36
+    assert (widget.minimum_height, widget.maximum_height) == (36, 36)
     assert (widget.minimum_width, widget.maximum_width) == (0, 16_777_215)
 
     scope["apply_button_size"](widget, button_size.ICON)
     assert (widget.minimum_width, widget.maximum_width) == (32, 32)
+
+
+def test_capture_button_calibration_matches_release_button_tokens() -> None:
+    scope = _theme_scope()
+    button_size = scope["ButtonSize"]
+    tokens = scope["BUTTON_SIZE_TOKENS"]
+    runtime_tree = ast.parse(
+        (ROOT / "ankigarden/capture/runtime.py").read_text(encoding="utf-8")
+    )
+    capture_heights = next(
+        ast.literal_eval(node.value)
+        for node in runtime_tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "CAPTURE_BUTTON_HEIGHTS"
+    )
+
+    assert capture_heights == {
+        size.value: tokens[size].height_px for size in button_size
+    }
 
 
 def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> None:
@@ -271,7 +312,7 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
         "input": (None, 40),
         "select": (None, 40),
         "switch": (40, 22),
-        "tab": (None, 44),
+        "tab": (None, 42),
     }
 
     input_widget = _Widget()
@@ -422,11 +463,13 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 44px" in garden
-    assert "max-height: 36px" in garden
+    assert "min-height: 42px" in garden
+    assert "max-height: 32px" in garden
     assert "QCheckBox[keyboardFocusVisible='true']:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
     assert "QCheckBox[gardenRole='switch']::indicator" in garden
+    assert "min-height: 6px" in garden
+    assert "max-height: 6px" in garden
     assert "width: 40px" in garden
     assert "height: 22px" in garden
     assert "QLineEdit" in garden
