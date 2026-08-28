@@ -218,6 +218,15 @@ class PlacementChange:
         return {"before": dict(self.before), "after": dict(self.after)}
 
 
+@dataclass(frozen=True)
+class StarterPlacementChange:
+    """Opaque receipt for one atomic first-run placement transaction."""
+
+    plant_id: str
+    _before: _StateSnapshot = field(repr=False, compare=False)
+    _after: dict[str, Any] = field(repr=False, compare=False)
+
+
 @dataclass
 class PlacementDraft:
     selected_plant_id: str
@@ -4503,7 +4512,7 @@ class GardenGameEngine:
         return True, "Choose a starter."
 
     def select_starter_species(self, species: str) -> tuple[bool, str]:
-        """Persist a Nursery choice without creating or placing a plant."""
+        """Persist a reversible Nursery choice and advance directly to placement."""
 
         species = str(species).lower()
         progress = self.state.onboarding
@@ -4513,21 +4522,16 @@ class GardenGameEngine:
             return False, "Open the Starter Nursery before choosing a plant."
         if species not in self.release_ready_species():
             return False, "That starter is not currently stocked in the Nursery."
-        if (
-            progress.step == OnboardingStep.CONFIRMATION
-            and progress.pending_species == species
-        ):
-            return True, "Starter selected."
         snapshot = self._state_snapshot()
         self.state.onboarding = OnboardingProgress(
-            step=OnboardingStep.CONFIRMATION,
+            step=OnboardingStep.PLACEMENT,
             pending_species=species,
         )
         try:
             self._persist_or_restore(snapshot)
         except Exception:
             return False, "Couldn’t save your garden. Nothing was changed."
-        return True, "Starter selected."
+        return True, "Choose a bed."
 
     def confirm_starter_species(self) -> tuple[bool, str]:
         progress = self.state.onboarding
@@ -4553,7 +4557,7 @@ class GardenGameEngine:
         previous = {
             OnboardingStep.NURSERY: OnboardingStep.INTRODUCTION,
             OnboardingStep.CONFIRMATION: OnboardingStep.NURSERY,
-            OnboardingStep.PLACEMENT: OnboardingStep.CONFIRMATION,
+            OnboardingStep.PLACEMENT: OnboardingStep.NURSERY,
         }.get(progress.step)
         if previous is None:
             return False, "Back is not available on this setup step."
@@ -4562,7 +4566,7 @@ class GardenGameEngine:
             step=previous,
             pending_species=(
                 progress.pending_species
-                if previous in {OnboardingStep.NURSERY, OnboardingStep.CONFIRMATION}
+                if previous == OnboardingStep.NURSERY
                 else None
             ),
         )
@@ -4572,7 +4576,11 @@ class GardenGameEngine:
             return False, "Couldn’t save your garden. Nothing was changed."
         return True, "Back."
 
-    def _create_starter_at(self, species: str, slot: int) -> tuple[bool, str, Plant | None]:
+    def _create_starter_at_with_change(
+        self,
+        species: str,
+        slot: int,
+    ) -> tuple[bool, str, Plant | None, StarterPlacementChange | None]:
         """Create, place, and advance a starter in one durable transaction."""
 
         species = str(species).lower()
@@ -4581,11 +4589,11 @@ class GardenGameEngine:
         except (TypeError, ValueError):
             destination = -1
         if self.state.starter_selection_complete or self.state.plants:
-            return False, "Your starter plant has already been chosen.", None
+            return False, "Your starter plant has already been chosen.", None, None
         if species not in self.release_ready_species():
-            return False, "That starter is not currently stocked in the Nursery.", None
+            return False, "That starter is not currently stocked in the Nursery.", None, None
         if not 0 <= destination < min(MAX_GARDEN_SLOTS, int(self.state.unlocked_slots)):
-            return False, "Choose an unlocked garden bed for your starter.", None
+            return False, "Choose an unlocked garden bed for your starter.", None, None
 
         snapshot = self._state_snapshot()
         today = self._scheduler_day()
@@ -4628,10 +4636,34 @@ class GardenGameEngine:
         try:
             self._persist_or_restore(snapshot)
         except Exception:
-            return False, "Couldn’t save your garden. Nothing was changed.", None
-        return True, f"{plant.name} is growing in Bed {destination + 1}.", plant
+            return False, "Couldn’t save your garden. Nothing was changed.", None, None
+        change = StarterPlacementChange(
+            plant_id=plant.plant_id,
+            _before=_StateSnapshot(deepcopy(snapshot), snapshot.ledger_checkpoint),
+            _after=deepcopy(self.state.to_dict()),
+        )
+        return (
+            True,
+            f"{plant.name} is growing in Bed {destination + 1}.",
+            plant,
+            change,
+        )
 
-    def place_starter(self, slot: int) -> tuple[bool, str, Plant | None]:
+    def _create_starter_at(self, species: str, slot: int) -> tuple[bool, str, Plant | None]:
+        """Compatibility wrapper that discards the internal Undo receipt."""
+
+        ok, message, plant, _change = self._create_starter_at_with_change(
+            species,
+            slot,
+        )
+        return ok, message, plant
+
+    def place_starter_with_change(
+        self,
+        slot: int,
+    ) -> tuple[bool, str, Plant | None, StarterPlacementChange | None]:
+        """Place the selected starter and return its opaque atomic Undo receipt."""
+
         try:
             requested_slot = int(slot)
         except (TypeError, ValueError):
@@ -4644,10 +4676,43 @@ class GardenGameEngine:
         } and progress.starter_plant_id:
             existing = self.plant_story(progress.starter_plant_id)
             if existing is not None and existing.slot_index == requested_slot:
-                return True, "Your starter is already planted in that garden bed.", existing
+                return (
+                    True,
+                    "Your starter is already planted in that garden bed.",
+                    existing,
+                    None,
+                )
         if progress.step != OnboardingStep.PLACEMENT or not progress.pending_species:
-            return False, "Confirm a starter before choosing its garden bed.", None
-        return self._create_starter_at(progress.pending_species, requested_slot)
+            return False, "Choose a starter before selecting its garden bed.", None, None
+        return self._create_starter_at_with_change(
+            progress.pending_species,
+            requested_slot,
+        )
+
+    def place_starter(self, slot: int) -> tuple[bool, str, Plant | None]:
+        """Compatibility wrapper for callers that do not expose starter Undo."""
+
+        ok, message, plant, _change = self.place_starter_with_change(slot)
+        return ok, message, plant
+
+    def undo_starter_placement(
+        self,
+        change: StarterPlacementChange,
+    ) -> tuple[bool, str]:
+        """Restore placement only while the durable state matches its receipt."""
+
+        if not isinstance(change, StarterPlacementChange):
+            return False, "Starter placement can no longer be undone."
+        if self.state.to_dict() != change._after:
+            return False, "Starter placement can no longer be undone."
+        current = self._state_snapshot()
+        self._restore_state(change._before)
+        try:
+            self.storage.save()
+        except Exception:
+            self._restore_state(current)
+            return False, "Couldn’t undo starter placement. Your garden is unchanged."
+        return True, "Starter placement undone."
 
     def choose_starter(self, species: str) -> tuple[bool, str, Plant | None]:
         """Compatibility path for callers predating explicit starter placement.

@@ -225,6 +225,31 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
     assert expected_colors.items() <= scope["SEMANTIC_COLORS"].items()
 
 
+def test_plant_popover_palette_is_centralized_and_semantic() -> None:
+    theme = _theme_scope()["GARDEN_THEME"]
+    expected = {
+        "plant_popover_bg",
+        "plant_popover_raised",
+        "plant_popover_border",
+        "plant_popover_status_surface",
+        "plant_popover_status_border",
+        "plant_popover_status_text",
+        "plant_popover_progress_track",
+        "plant_popover_divider",
+        "plant_popover_danger_surface",
+        "plant_popover_danger_hover",
+        "plant_popover_danger_pressed",
+        "plant_popover_danger_border",
+        "plant_popover_danger_text",
+        "plant_popover_shadow",
+    }
+
+    assert expected <= theme.keys()
+    assert theme["plant_popover_bg"] != theme["plant_popover_raised"]
+    assert theme["plant_popover_status_surface"] != theme["action_accent"]
+    assert theme["plant_popover_danger_surface"] != theme["danger"]
+
+
 def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
     scope = _theme_scope()
     control_variant = scope["ControlVariant"]

@@ -519,10 +519,11 @@ class Achievement:
 
 
 class OnboardingStep(str, Enum):
-    """The persisted six-step Garden setup state machine.
+    """The persisted five-surface Garden setup state machine.
 
     Anki Home is deliberately not represented here: it is an entry/resume
-    surface rather than a counted Garden step.
+    surface rather than a counted Garden step. ``CONFIRMATION`` remains
+    permanently reserved for decoding older state, but has no visible UI.
     """
 
     INTRODUCTION = "introduction"
@@ -1259,6 +1260,9 @@ def _onboarding_progress(
     if step in {OnboardingStep.CONFIRMATION, OnboardingStep.PLACEMENT} and pending is None:
         issues.append("onboarding.pending_species: required for current step")
         step = OnboardingStep.NURSERY
+    elif step == OnboardingStep.CONFIRMATION:
+        issues.append("onboarding.step: retired confirmation advanced to placement")
+        step = OnboardingStep.PLACEMENT
     if not plants and step in {
         OnboardingStep.NURTURE,
         OnboardingStep.COMPLETION,

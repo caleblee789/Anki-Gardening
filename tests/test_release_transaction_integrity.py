@@ -356,7 +356,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         assert presentation.outcome == "Adds 100 Growth to one plant."
         assert [
             (fact.label, fact.value) for fact in presentation.facts
-        ] == [("Owned", "0 → 1")]
+        ] == [("Inventory", "0 → 1")]
 
 
 def test_fertilizer_presentations_distinguish_extension_and_replacement() -> None:
@@ -395,7 +395,7 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     assert replacement.primary_label == (
         f"Replace for {replacement_quote.total_price:,} coins"
     )
-    assert replacement.secondary_label == "Keep Basic"
+    assert replacement.secondary_label == "Keep current"
     assert replacement.outcome == (
         "Magical Fertilizer will start immediately.\n"
         "Basic Fertilizer has 45 minutes remaining."
@@ -561,7 +561,7 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
     assert [
         (fact.key, fact.label, fact.value)
         for fact in presentation.facts
-    ] == [("inventory", "Owned", "0 → 1")]
+    ] == [("inventory", "Inventory", "0 → 1")]
     assert presentation.primary_label == "Buy for 30 coins"
     if status is PurchaseStatus.STALE_BALANCE:
         assert presentation.title == "Buy Small Growth Charge?"

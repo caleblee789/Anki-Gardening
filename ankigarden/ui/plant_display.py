@@ -34,15 +34,19 @@ GARDEN_CANVAS_ASPECT = GARDEN_CANVAS_WIDTH / GARDEN_CANVAS_HEIGHT
 # Desktop plant details use one bounded component regardless of the selected
 # bed.  Compact/mobile docking is an explicit viewport decision; it is never a
 # collision fallback for an otherwise desktop scene.
-PLANT_POPOVER_PREFERRED_WIDTH = 280.0
-PLANT_POPOVER_MIN_WIDTH = 260.0
-PLANT_POPOVER_MIN_HEIGHT = 220.0
-PLANT_POPOVER_MAX_WIDTH = 310.0
-PLANT_POPOVER_MAX_HEIGHT = 340.0
-PLANT_POPOVER_MAX_SCENE_RATIO = 0.35
-PLANT_POPOVER_EDGE_PADDING = 16.0
-PLANT_POPOVER_CLEARANCE = 12.0
-PLANT_POPOVER_COMPACT_BREAKPOINT = 760.0
+PLANT_POPOVER_PREFERRED_WIDTH = 304.0
+PLANT_POPOVER_MIN_WIDTH = 288.0
+PLANT_POPOVER_MIN_HEIGHT = 1.0
+PLANT_POPOVER_MAX_WIDTH = 320.0
+PLANT_POPOVER_MAX_HEIGHT = 420.0
+PLANT_POPOVER_MAX_SCENE_RATIO = 1.0
+PLANT_POPOVER_EDGE_PADDING = 12.0
+PLANT_POPOVER_CLEARANCE = 14.0
+# Compatibility name for callers that still need an emergency-width check.
+# Docking is based on actual measured fit, not a broad desktop breakpoint.
+PLANT_POPOVER_COMPACT_BREAKPOINT = (
+    PLANT_POPOVER_MIN_WIDTH + PLANT_POPOVER_EDGE_PADDING * 2.0
+)
 
 THEME_INTEGRATION_PROFILES: dict[str, dict[str, dict[str, Any]]] = {
     "verdant_twilight": {
@@ -570,6 +574,19 @@ class SceneGeometryLayout:
             max(1.0, scene.width - inset * 2),
             max(1.0, scene.height - inset * 2),
         )
+
+        def contained_target(rectangle: Rect, bounds: Rect) -> Rect:
+            """Translate a target inside its bounds before reducing its size."""
+
+            target_width = min(rectangle.width, bounds.width)
+            target_height = min(rectangle.height, bounds.height)
+            return Rect(
+                max(bounds.x, min(rectangle.x, bounds.right - target_width)),
+                max(bounds.y, min(rectangle.y, bounds.bottom - target_height)),
+                target_width,
+                target_height,
+            )
+
         beds: list[SceneBedGeometry] = []
         for placement in sorted(placements, key=lambda row: row.slot_index):
             envelope = (
@@ -581,21 +598,21 @@ class SceneGeometryLayout:
             selection = placement.visible.expanded(5.0, 4.0)
             minimum_width = max(44.0, selection.width)
             minimum_height = max(44.0, selection.height)
-            selection = Rect(
+            selection = contained_target(Rect(
                 selection.x - (minimum_width - selection.width) / 2,
                 selection.y - (minimum_height - selection.height) / 2,
                 minimum_width,
                 minimum_height,
-            ).clipped_to(envelope).clipped_to(safe)
+            ), envelope.clipped_to(safe))
             bed_target = placement.bed_footprint.expanded(8.0, 6.0)
             target_width = max(44.0, bed_target.width)
             target_height = max(44.0, bed_target.height)
-            bed_target = Rect(
+            bed_target = contained_target(Rect(
                 bed_target.x - (target_width - bed_target.width) / 2,
                 bed_target.y - (target_height - bed_target.height) / 2,
                 target_width,
                 target_height,
-            ).clipped_to(envelope).clipped_to(safe)
+            ), envelope.clipped_to(safe))
             planter = planter_draw_rect(placement, planter_family)
             planter_exclusions = tuple(
                 region.clipped_to(scene)
@@ -789,9 +806,10 @@ class SceneGeometryLayout:
             max(1.0, self.scene_bounds.width - popover_inset * 2.0),
             max(1.0, self.scene_bounds.height - popover_inset * 2.0),
         )
+        requested_minimum_height = max(1.0, float(minimum_size[1]))
         compact_viewport = bool(
-            self.scene_bounds.width < PLANT_POPOVER_COMPACT_BREAKPOINT
-            or popover_bounds.width < PLANT_POPOVER_MIN_WIDTH
+            popover_bounds.width < PLANT_POPOVER_MIN_WIDTH
+            or popover_bounds.height < requested_minimum_height
         )
         docking_allowed = (
             compact_viewport if allow_docked is None else bool(allow_docked)
@@ -814,10 +832,18 @@ class SceneGeometryLayout:
             )
             preferred_width = min(
                 desktop_width_cap,
-                PLANT_POPOVER_PREFERRED_WIDTH,
+                max(
+                    PLANT_POPOVER_MIN_WIDTH,
+                    float(preferred_size[0]),
+                ),
             )
-            # Desktop placement changes location, never component width.
-            minimum_width = preferred_width
+            minimum_width = min(
+                preferred_width,
+                max(
+                    PLANT_POPOVER_MIN_WIDTH,
+                    float(minimum_size[0]),
+                ),
+            )
         minimum_height = min(
             popover_bounds.height,
             PLANT_POPOVER_MAX_HEIGHT,
@@ -853,7 +879,11 @@ class SceneGeometryLayout:
             part
             for part in (
                 selected.selection_region,
-                selected.plant_bounds,
+                # ``plant_bounds`` is the complete transparent asset canvas.
+                # Anchor clearance follows painted pixels and the outlined
+                # bed so empty image padding cannot force an overlapping
+                # fallback for small seed/sprout artwork.
+                selected.visible_region,
                 selected.planter_bounds,
                 *tuple(selected_accessory_regions),
             )
@@ -901,7 +931,7 @@ class SceneGeometryLayout:
         # above, then below.  Clamping supplies the shift behavior while the
         # later candidates provide flip behavior.
         sides = ("right", "left", "above", "below")
-        # Twelve logical pixels remain clear around the plant artwork, planter,
+        # Fourteen logical pixels remain clear around the plant artwork, planter,
         # and selected-state accessory as one protected target.
         selected_obstacle = selected_target.expanded(
             PLANT_POPOVER_CLEARANCE
@@ -919,31 +949,32 @@ class SceneGeometryLayout:
 
         scored: list[tuple[tuple[float, ...], str, Rect]] = []
         preferred_area = max(1.0, preferred_width * preferred_height)
-        for side_index, side in enumerate(sides):
-            for size_index, (width, height) in enumerate(sizes):
-                raw = candidate(side, width, height)
-                rectangle = clamp(raw)
-                if rectangle.intersects(selected_obstacle):
-                    continue
-                if any(rectangle.intersects(obstacle) for obstacle in hard):
-                    continue
-                soft_overlap = sum(
-                    rectangle.intersection_area(obstacle)
-                    for obstacle in soft.values()
-                )
-                shrink_ratio = 1.0 - rectangle.area / preferred_area
-                clamp_shift = abs(rectangle.x - raw.x) + abs(rectangle.y - raw.y)
-                scored.append((
-                    (
-                        soft_overlap,
-                        max(0.0, shrink_ratio),
-                        float(side_index),
-                        float(size_index),
-                        clamp_shift,
-                    ),
-                    side,
-                    rectangle,
-                ))
+        if not compact_viewport:
+            for side_index, side in enumerate(sides):
+                for size_index, (width, height) in enumerate(sizes):
+                    raw = candidate(side, width, height)
+                    rectangle = clamp(raw)
+                    if rectangle.intersects(selected_obstacle):
+                        continue
+                    if any(rectangle.intersects(obstacle) for obstacle in hard):
+                        continue
+                    soft_overlap = sum(
+                        rectangle.intersection_area(obstacle)
+                        for obstacle in soft.values()
+                    )
+                    shrink_ratio = 1.0 - rectangle.area / preferred_area
+                    clamp_shift = abs(rectangle.x - raw.x) + abs(rectangle.y - raw.y)
+                    scored.append((
+                        (
+                            max(0.0, shrink_ratio),
+                            soft_overlap,
+                            float(side_index),
+                            float(size_index),
+                            clamp_shift,
+                        ),
+                        side,
+                        rectangle,
+                    ))
 
         chosen_side = ""
         chosen: Rect | None = None
@@ -953,6 +984,8 @@ class SceneGeometryLayout:
         docked = False
         if chosen is None and docking_allowed:
             docked = True
+            dock_width = min(PLANT_POPOVER_MAX_WIDTH, popover_bounds.width)
+            dock_x = popover_bounds.x + (popover_bounds.width - dock_width) / 2.0
             dock_height = min(
                 preferred_height,
                 max(minimum_height, popover_bounds.height * 0.44),
@@ -961,18 +994,18 @@ class SceneGeometryLayout:
                 (
                     "bottom-docked",
                     Rect(
-                        popover_bounds.x,
+                        dock_x,
                         popover_bounds.bottom - dock_height,
-                        popover_bounds.width,
+                        dock_width,
                         dock_height,
                     ),
                 ),
                 (
                     "top-docked",
                     Rect(
-                        popover_bounds.x,
+                        dock_x,
                         popover_bounds.y,
-                        popover_bounds.width,
+                        dock_width,
                         dock_height,
                     ),
                 ),
@@ -1045,18 +1078,44 @@ class SceneGeometryLayout:
             bed_key for bed_key, obstacle in sorted(soft.items())
             if not chosen.intersects(obstacle)
         )
+        pointer_inset = min(20.0, max(0.0, chosen.height / 2.0))
+        pointer_x_inset = min(20.0, max(0.0, chosen.width / 2.0))
         if chosen_side == "right":
             start = (selected_target.right, anchor_y)
-            end = (chosen.x, max(chosen.y, min(anchor_y, chosen.bottom)))
+            end = (
+                chosen.x,
+                max(
+                    chosen.y + pointer_inset,
+                    min(anchor_y, chosen.bottom - pointer_inset),
+                ),
+            )
         elif chosen_side == "left":
             start = (selected_target.x, anchor_y)
-            end = (chosen.right, max(chosen.y, min(anchor_y, chosen.bottom)))
+            end = (
+                chosen.right,
+                max(
+                    chosen.y + pointer_inset,
+                    min(anchor_y, chosen.bottom - pointer_inset),
+                ),
+            )
         elif chosen_side in {"above", "top-docked"}:
             start = (anchor_x, selected_target.y)
-            end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.bottom)
+            end = (
+                max(
+                    chosen.x + pointer_x_inset,
+                    min(anchor_x, chosen.right - pointer_x_inset),
+                ),
+                chosen.bottom,
+            )
         else:
             start = (anchor_x, selected_target.bottom)
-            end = (max(chosen.x, min(anchor_x, chosen.right)), chosen.y)
+            end = (
+                max(
+                    chosen.x + pointer_x_inset,
+                    min(anchor_x, chosen.right - pointer_x_inset),
+                ),
+                chosen.y,
+            )
         return PopoverPlacement(
             rectangle=chosen,
             chosen_side=chosen_side,
@@ -2600,8 +2659,8 @@ def bed_badge_rect(
     # These controls are painted over a detailed scene and must remain legible
     # at Anki's supported display scales.  Reserve enough logical width for the
     # complete semantic label instead of relying on painter clipping.
-    badge_width = max(58.0, min(180.0, 22.0 + len(label) * 7.0))
-    badge_height = 44.0
+    badge_width = max(52.0, min(150.0, 18.0 + len(label) * 6.0))
+    badge_height = 26.0
     anchor_x, anchor_y = placement.label_anchor
     candidates = (
         Rect(anchor_x - badge_width / 2, anchor_y - badge_height / 2, badge_width, badge_height),

@@ -9,6 +9,12 @@ from ankigarden.ui.plant_display import (
     NURTURED_MARKER_MAX_GROUND_DELTA_RATIO,
     NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO,
     PlantInteractionState,
+    PLANT_POPOVER_CLEARANCE,
+    PLANT_POPOVER_EDGE_PADDING,
+    PLANT_POPOVER_MAX_HEIGHT,
+    PLANT_POPOVER_MAX_WIDTH,
+    PLANT_POPOVER_MIN_WIDTH,
+    PLANT_POPOVER_PREFERRED_WIDTH,
     Rect,
     SceneGeometryLayout,
     bed_badge_rect,
@@ -353,7 +359,7 @@ def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
         assert popover.maximum_content_height == popover.rectangle.height
         selected_parts = (
             bed.selection_region,
-            bed.plant_bounds,
+            bed.visible_region,
             bed.planter_bounds,
         )
         selected_target = Rect(
@@ -363,10 +369,32 @@ def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
             - min(part.x for part in selected_parts),
             max(part.bottom for part in selected_parts)
             - min(part.y for part in selected_parts),
-        ).expanded(12)
+        ).expanded(PLANT_POPOVER_CLEARANCE)
         assert not popover.rectangle.intersects(selected_target) or popover.docked
-        assert 280 <= popover.rectangle.width <= preferred[0]
+        assert PLANT_POPOVER_MIN_WIDTH <= popover.rectangle.width <= PLANT_POPOVER_MAX_WIDTH
         assert 220 <= popover.rectangle.height <= preferred[1]
+        assert popover.rectangle.height <= PLANT_POPOVER_MAX_HEIGHT
+        assert popover.rectangle.x >= PLANT_POPOVER_EDGE_PADDING
+        assert popover.rectangle.y >= PLANT_POPOVER_EDGE_PADDING
+        assert popover.rectangle.right <= 1_093 - PLANT_POPOVER_EDGE_PADDING
+        assert popover.rectangle.bottom <= 615 - PLANT_POPOVER_EDGE_PADDING
+        pointer_x, pointer_y = popover.connector_end
+        if popover.chosen_side in {"right", "left"}:
+            expected_x = (
+                popover.rectangle.x
+                if popover.chosen_side == "right"
+                else popover.rectangle.right
+            )
+            assert pointer_x == pytest.approx(expected_x)
+            assert popover.rectangle.y + 20 <= pointer_y <= popover.rectangle.bottom - 20
+        else:
+            expected_y = (
+                popover.rectangle.bottom
+                if popover.chosen_side in {"above", "top-docked"}
+                else popover.rectangle.y
+            )
+            assert pointer_y == pytest.approx(expected_y)
+            assert popover.rectangle.x + 20 <= pointer_x <= popover.rectangle.right - 20
         if popover.rectangle.width < preferred[0] or popover.rectangle.height < preferred[1]:
             shrunk_popovers.add(layout.slot_index)
 
@@ -422,9 +450,14 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
         composition_count=6,
     )
     geometry = SceneGeometryLayout.from_placements(1_093, 615, layouts)
-    safe = Rect(16, 16, 1_093 - 32, 615 - 32)
+    safe = Rect(
+        PLANT_POPOVER_EDGE_PADDING,
+        PLANT_POPOVER_EDGE_PADDING,
+        1_093 - PLANT_POPOVER_EDGE_PADDING * 2,
+        615 - PLANT_POPOVER_EDGE_PADDING * 2,
+    )
     preferred = (320.0, 300.0)
-    minimum = (280.0, 220.0)
+    minimum = (PLANT_POPOVER_MIN_WIDTH, 220.0)
 
     lower_right_beds = [
         bed
@@ -463,7 +496,7 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
     )
     accessory_parts = (
         accessory_bed.selection_region,
-        accessory_bed.plant_bounds,
+        accessory_bed.visible_region,
         accessory_bed.planter_bounds,
         selected_marker,
     )
@@ -474,7 +507,7 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
         - min(part.x for part in accessory_parts),
         max(part.bottom for part in accessory_parts)
         - min(part.y for part in accessory_parts),
-    ).expanded(12)
+    ).expanded(PLANT_POPOVER_CLEARANCE)
     assert not accessory_popover.rectangle.intersects(accessory_union)
 
     def clamped(rect: Rect) -> Rect:
@@ -488,7 +521,7 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
     for bed in geometry.beds:
         selected_parts = (
             bed.selection_region,
-            bed.plant_bounds,
+            bed.visible_region,
             bed.planter_bounds,
         )
         selected_target = Rect(
@@ -499,16 +532,16 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
             max(part.bottom for part in selected_parts)
             - min(part.y for part in selected_parts),
         )
-        selected_obstacle = selected_target.expanded(12)
+        selected_obstacle = selected_target.expanded(PLANT_POPOVER_CLEARANCE)
         resolved = geometry.resolve_popover(
             bed.bed_id,
             preferred,
             minimum,
         )
-        assert resolved.rectangle.x >= 16
-        assert resolved.rectangle.y >= 16
-        assert resolved.rectangle.right <= 1_093 - 16
-        assert resolved.rectangle.bottom <= 615 - 16
+        assert resolved.rectangle.x >= PLANT_POPOVER_EDGE_PADDING
+        assert resolved.rectangle.y >= PLANT_POPOVER_EDGE_PADDING
+        assert resolved.rectangle.right <= 1_093 - PLANT_POPOVER_EDGE_PADDING
+        assert resolved.rectangle.bottom <= 615 - PLANT_POPOVER_EDGE_PADDING
         assert not resolved.rectangle.intersects(selected_obstacle)
 
         alternatives: list[Rect] = []
@@ -518,14 +551,14 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
         for side in ("right", "left", "above", "below"):
             if side == "right":
                 raw = Rect(
-                    selected_target.right + 12,
+                    selected_target.right + PLANT_POPOVER_CLEARANCE,
                     selected_target.y,
                     width,
                     height,
                 )
             elif side == "left":
                 raw = Rect(
-                    selected_target.x - 12 - width,
+                    selected_target.x - PLANT_POPOVER_CLEARANCE - width,
                     selected_target.y,
                     width,
                     height,
@@ -533,14 +566,14 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
             elif side == "above":
                 raw = Rect(
                     anchor_x - width / 2,
-                    selected_target.y - 12 - height,
+                    selected_target.y - PLANT_POPOVER_CLEARANCE - height,
                     width,
                     height,
                 )
             else:
                 raw = Rect(
                     anchor_x - width / 2,
-                    selected_target.bottom + 12,
+                    selected_target.bottom + PLANT_POPOVER_CLEARANCE,
                     width,
                     height,
                 )
@@ -563,6 +596,156 @@ def test_popovers_keep_six_selected_beds_visible_and_choose_least_overlap() -> N
             for candidate in alternatives
         )
         assert chosen_overlap == pytest.approx(minimum_overlap)
+
+
+@pytest.mark.parametrize(
+    "window_size",
+    ((1_536, 1_024), (1_440, 900), (1_280, 800)),
+)
+@pytest.mark.parametrize(
+    "position_label",
+    ("top-left", "top-right", "center", "bottom-left", "bottom-right"),
+)
+@pytest.mark.parametrize("toast_visible", (False, True))
+def test_required_macos_window_matrix_keeps_plant_popover_anchored(
+    window_size: tuple[int, int],
+    position_label: str,
+    toast_visible: bool,
+) -> None:
+    """Exercise the complete 3 x 5 x 2 logical-pixel placement matrix."""
+
+    manifest = json.loads(
+        (Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json").read_text(
+            "utf-8"
+        )
+    )
+    background = _release_background(manifest)
+    assets = [
+        row
+        for row in manifest["assets"]
+        if row.get("category") == "plants"
+        and isinstance(row.get("placement"), dict)
+    ][:6]
+    window_width, window_height = window_size
+    # The header/HUD live outside the direct scene canvas. These dimensions
+    # conservatively model the remaining canvas at each required window size.
+    scene_width = min(1_240, window_width - 48)
+    scene_height = window_height - 230
+    layouts = plant_layout(
+        scene_width,
+        scene_height,
+        [
+            {
+                "plant_id": f"matrix-{slot}",
+                "slot_index": slot,
+                "placement": asset["placement"],
+                "canvas_aspect": float(asset["width"]) / float(asset["height"]),
+            }
+            for slot, asset in enumerate(assets)
+        ],
+        background["placement"],
+        composition_count=6,
+    )
+    geometry = SceneGeometryLayout.from_placements(
+        scene_width,
+        scene_height,
+        layouts,
+    )
+
+    targets = (
+        ("top-left", geometry.scene_bounds.x, geometry.scene_bounds.y),
+        ("top-right", geometry.scene_bounds.right, geometry.scene_bounds.y),
+        ("bottom-left", geometry.scene_bounds.x, geometry.scene_bounds.bottom),
+        ("bottom-right", geometry.scene_bounds.right, geometry.scene_bounds.bottom),
+        (
+            "center",
+            geometry.scene_bounds.x + geometry.scene_bounds.width / 2,
+            geometry.scene_bounds.y + geometry.scene_bounds.height / 2,
+        ),
+    )
+    chosen_beds: dict[str, object] = {}
+    remaining = list(geometry.beds)
+    for label, target_x, target_y in targets:
+        chosen = min(
+            remaining,
+            key=lambda bed: (
+                (bed.popover_anchor[0] - target_x) ** 2
+                + (bed.popover_anchor[1] - target_y) ** 2
+            ),
+        )
+        chosen_beds[label] = chosen
+        remaining.remove(chosen)
+    bed = chosen_beds[position_label]
+
+    obstacles: tuple[Rect, ...] = ()
+    if toast_visible:
+        toast_width = 320.0
+        toast_x = (
+            scene_width - PLANT_POPOVER_EDGE_PADDING - toast_width
+            if bed.popover_anchor[0] < scene_width / 2
+            else PLANT_POPOVER_EDGE_PADDING
+        )
+        obstacles = (
+            Rect(
+                toast_x,
+                PLANT_POPOVER_EDGE_PADDING,
+                toast_width,
+                56.0,
+            ),
+        )
+
+    resolved = geometry.resolve_popover(
+        bed.bed_id,
+        (PLANT_POPOVER_PREFERRED_WIDTH, 333.0),
+        (PLANT_POPOVER_MIN_WIDTH, 333.0),
+        obstacles,
+    )
+    safe = Rect(
+        PLANT_POPOVER_EDGE_PADDING,
+        PLANT_POPOVER_EDGE_PADDING,
+        scene_width - PLANT_POPOVER_EDGE_PADDING * 2,
+        scene_height - PLANT_POPOVER_EDGE_PADDING * 2,
+    )
+    selected_parts = (
+        bed.selection_region,
+        bed.visible_region,
+        bed.planter_bounds,
+    )
+    selected_target = Rect(
+        min(part.x for part in selected_parts),
+        min(part.y for part in selected_parts),
+        max(part.right for part in selected_parts)
+        - min(part.x for part in selected_parts),
+        max(part.bottom for part in selected_parts)
+        - min(part.y for part in selected_parts),
+    ).expanded(PLANT_POPOVER_CLEARANCE)
+
+    assert resolved.docked is False
+    assert PLANT_POPOVER_MIN_WIDTH <= resolved.rectangle.width <= PLANT_POPOVER_MAX_WIDTH
+    assert resolved.rectangle.height == 333.0
+    assert resolved.rectangle.x >= safe.x
+    assert resolved.rectangle.y >= safe.y
+    assert resolved.rectangle.right <= safe.right
+    assert resolved.rectangle.bottom <= safe.bottom
+    assert not resolved.rectangle.intersects(selected_target)
+    assert not any(resolved.rectangle.intersects(obstacle) for obstacle in obstacles)
+    assert resolved.chosen_side in {"right", "left", "above", "below"}
+
+    pointer_x, pointer_y = resolved.connector_end
+    if resolved.chosen_side in {"right", "left"}:
+        assert resolved.rectangle.y + 20 <= pointer_y <= resolved.rectangle.bottom - 20
+        assert pointer_x == pytest.approx(
+            resolved.rectangle.x
+            if resolved.chosen_side == "right"
+            else resolved.rectangle.right
+        )
+    else:
+        assert resolved.rectangle.x + 20 <= pointer_x <= resolved.rectangle.right - 20
+        assert pointer_y == pytest.approx(
+            resolved.rectangle.bottom
+            if resolved.chosen_side == "above"
+            else resolved.rectangle.y
+        )
 
 
 def test_growth_display_sanitizes_invalid_points():
@@ -945,11 +1128,11 @@ def test_move_badges_use_dedicated_anchors_and_compact_semantic_states():
         badge = bed_badge_rect(row, labels[row.slot_index][0], 900, 560, obstacles)
         assert 0 <= badge.x < badge.right <= 900
         assert 0 <= badge.y < badge.bottom <= 560
-        assert badge.width >= 44 and badge.height >= 44
+        assert badge.width >= 52 and badge.height == 26
         assert not any(badge.intersects(obstacle) for obstacle in obstacles)
 
     occupied = bed_badge_rect(rows[1], "Swap with plant", 900, 560, obstacles)
-    assert occupied.width >= 120
+    assert occupied.width >= 108
 
 
 

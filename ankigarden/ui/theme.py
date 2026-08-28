@@ -335,6 +335,22 @@ GARDEN_THEME = {
     "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
     "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
     "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
+    # Selected-plant popover palette. Keep these component semantics here so
+    # the compact overlay never grows its own scatter of one-off colors.
+    "plant_popover_bg": "#174B3C",
+    "plant_popover_raised": "#0F3A2D",
+    "plant_popover_border": "rgba(126, 221, 179, 72)",
+    "plant_popover_status_surface": "rgba(102, 222, 164, 41)",
+    "plant_popover_status_border": "rgba(102, 222, 164, 77)",
+    "plant_popover_status_text": "#8DEBBB",
+    "plant_popover_progress_track": "rgba(234, 250, 242, 36)",
+    "plant_popover_divider": "rgba(219, 240, 229, 33)",
+    "plant_popover_danger_surface": "rgba(166, 52, 56, 56)",
+    "plant_popover_danger_hover": "rgba(178, 58, 63, 82)",
+    "plant_popover_danger_pressed": "rgba(142, 43, 48, 92)",
+    "plant_popover_danger_border": "rgba(242, 105, 110, 158)",
+    "plant_popover_danger_text": "#FFDADC",
+    "plant_popover_shadow": "#57000000",
 }
 
 # Nursery uses the same green hierarchy. Soil and wood colors remain inside
@@ -1409,16 +1425,16 @@ def semantic_component_stylesheet(
             border-color: {t['coin_accent']};
         }}
         QFrame[stageRewardChip='true'] {{
-            min-height: 24px;
-            max-height: 24px;
+            min-height: 30px;
+            max-height: 30px;
             padding: 0;
-            color: {t['action_text']};
-            background: {t['coin_accent']};
-            border: 0;
+            color: {t['coin_accent']};
+            background: {t['warning_surface']};
+            border: 1px solid {t['coin_accent']};
             border-radius: 8px;
         }}
         QFrame[stageRewardChip='true'] QLabel {{
-            color: {t['action_text']};
+            color: {t['text_primary']};
             background: transparent;
             border: 0;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;

@@ -15,7 +15,7 @@ from .copy import (
     HOME_NO_STARTER_ACCESSIBLE,
     HOME_NO_STARTER_TITLE,
 )
-from .formatters import format_stage_progress, format_status_label
+from .formatters import format_growth, format_status_label
 from .state import (
     GardenHomePreview,
     garden_preview_from_values,
@@ -28,6 +28,7 @@ from .plant_display import (
     planter_draw_rect,
     scene_surface_variant,
 )
+from .theme import GARDEN_THEME
 
 
 @dataclass(frozen=True)
@@ -207,8 +208,8 @@ class HomeWidgetStateController:
 
 DEFAULT_ERROR_MESSAGE = "Garden preview unavailable."
 
-HOME_COMPACT_CONTAINER_MAX_WIDTH = 488
-HOME_NARROW_CONTAINER_MAX_WIDTH = 420
+HOME_COMPACT_CONTAINER_MAX_WIDTH = 400
+HOME_NARROW_CONTAINER_MAX_WIDTH = 340
 HOME_LAYOUT_STANDARD = "standard"
 HOME_LAYOUT_COMPACT = "compact"
 HOME_LAYOUT_NARROW = "narrow"
@@ -234,24 +235,24 @@ def home_container_layout(width: int | float) -> str:
 HOME_WIDGET_STYLE = """
 <style>
 #ag-home-root {
-  width: min(calc(100% - 32px), 500px);
-  max-width: 500px;
+  width: min(calc(100% - 48px), 520px);
+  max-width: 520px;
   margin: 24px auto 18px;
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid rgba(118, 151, 126, 0.38);
+  border: 1px solid #315247;
   border-radius: 14px;
-  background: #0d201d;
-  color: #edf5ea;
+  background: #08251c;
+  color: #f4f3df;
   box-shadow: 0 5px 16px rgba(2, 11, 10, 0.16);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   container-type: inline-size;
 }
 .ag-home__state {
   box-sizing: border-box;
-  min-height: 112px;
-  padding: 12px 14px;
+  min-height: 100px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -266,11 +267,11 @@ HOME_WIDGET_STYLE = """
 }
 .ag-home__loading-track {
   width:100%;
-  height:4px;
+  height:6px;
   margin-top:14px;
   overflow:hidden;
   border-radius:4px;
-  background:#183a30;
+  background:#123d31;
 }
 .ag-home__loading-track::after {
   content:"";
@@ -278,7 +279,7 @@ HOME_WIDGET_STYLE = """
   width:42%;
   height:100%;
   border-radius:4px;
-  background:#5cc58b;
+  background:#63d99f;
 }
 .ag-home__partial-message {
   box-sizing: border-box;
@@ -287,7 +288,7 @@ HOME_WIDGET_STYLE = """
   margin: 0;
   padding: 10px 16px;
   background: rgba(105, 70, 32, 0.34);
-  color: #f1d59b;
+  color: #e7b94a;
 }
 .ag-home__body {
   display:flex;
@@ -325,7 +326,7 @@ HOME_WIDGET_STYLE = """
   height:180px;
   flex:none;
   overflow: hidden;
-  background:#142b25;
+  background:#0d3026;
   pointer-events:none;
   user-select:none;
   -webkit-user-select:none;
@@ -343,7 +344,7 @@ HOME_WIDGET_STYLE = """
   background-position:center;
   background-repeat:no-repeat;
   background-size:100% 100%;
-  background-color:#17332d;
+  background-color:#123d31;
   opacity:var(--ag-scene-opacity,1);
   transition:opacity 140ms ease;
 }
@@ -353,7 +354,7 @@ HOME_WIDGET_STYLE = """
   min-width:0;
   min-height:62px;
   padding:2px 12px;
-  background:linear-gradient(155deg,#102a25,#0a1d1a 82%);
+  background:linear-gradient(155deg,#0d3026,#08251c 82%);
 }
 .ag-home__details::before {
   content:"";
@@ -363,32 +364,32 @@ HOME_WIDGET_STYLE = """
   top:-14px;
   height:14px;
   pointer-events:none;
-  background:linear-gradient(to bottom,transparent,#102a25);
+  background:linear-gradient(to bottom,transparent,#0d3026);
 }
 .ag-home__details,.ag-home__details * { box-sizing:border-box; }
 .ag-home__identity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:10px; min-width:0; }
 .ag-home__identity { min-width:0; }
-.ag-home__garden-context { display:block; margin-top:2px; color:#aebfb4; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ag-home__eyebrow { margin-bottom:1px; color:#d8b875; font-size:12px; font-weight:600; letter-spacing:.09em; line-height:1.2; text-transform:uppercase; }
+.ag-home__garden-context { display:block; margin-top:2px; color:#95a89f; font-size:12px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ag-home__eyebrow { margin-bottom:1px; color:#e7b94a; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:16px; text-transform:uppercase; }
 .ag-home__focus-name {
   display:block;
   overflow:hidden;
   margin:0;
-  color:#f3f7f2;
+  color:#f4f3df;
   font-size:18px;
   font-weight:600;
   line-height:1.05;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(105,70,32,.24); color:#f1d59b; font-size:12px; line-height:1.3; overflow-wrap:anywhere; }
+.ag-home__status-notice { box-sizing:border-box; width:calc(100% + 24px); margin:4px -12px 2px; padding:5px 12px; background:rgba(231,185,74,.14); color:#e7b94a; font-size:12px; line-height:16px; overflow-wrap:anywhere; }
 .ag-home__stage-up {
   box-sizing: border-box;
   width: 100%;
   margin: 0;
   padding: 8px 10px;
   background: rgba(117, 82, 35, 0.34);
-  color: #f4d58a;
+  color: #e7b94a;
   font-weight: 600;
   overflow-wrap: anywhere;
   text-align: center;
@@ -404,10 +405,10 @@ HOME_WIDGET_STYLE = """
   flex:none;
   margin: 0;
   padding: 0 14px;
-  border: 1px solid #5b9a70;
+  border: 1px solid #63d99f;
   border-radius: 8px;
-  background: #2d7653;
-  color: #f7fff8;
+  background: #63d99f;
+  color: #08251c;
   font-size:13px;
   font-weight: 600;
   white-space:nowrap;
@@ -416,54 +417,54 @@ HOME_WIDGET_STYLE = """
 }
 #ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root button.ag-home__open:disabled::after { content:""; margin:0; }
-#ag-home-root button:hover { background: #357f5b; }
-#ag-home-root button:active { background:#225e42; transform:translateY(1px); }
+#ag-home-root button:hover { background: #75e3ae; }
+#ag-home-root button:active { background:#4fc98e; transform:translateY(1px); }
 #ag-home-root button:disabled { cursor:wait; background:#172721; border-color:#30443b; color:#83968b; }
 #ag-home-root button:focus-visible {
-  outline: 2px solid #82E2AC;
+  outline: 2px solid #75E3AE;
   outline-offset: 2px;
-  box-shadow:0 0 0 4px #071A15;
+  box-shadow:0 0 0 4px #081814;
 }
 .ag-home__open { flex:none; min-width:104px !important; min-height:36px !important; padding:0 12px !important; border-radius:8px !important; font-size:13px !important; }
 .ag-home__state-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 #ag-home-root button.ag-home__secondary {
-  border-color:#4F806E;
-  background:#123228;
-  color:#F4F7F5;
+  border-color:#70998A;
+  background:#123D31;
+  color:#F4F3DF;
   box-shadow:none;
 }
-#ag-home-root button.ag-home__secondary:hover { background:#173B30; }
-#ag-home-root button.ag-home__secondary:active { background:#0C261F; }
-.nightMode #ag-home-root { background:#0d201d; color:#edf5ea; border-color:rgba(118,157,132,.48); }
+#ag-home-root button.ag-home__secondary:hover { background:#174B3C; }
+#ag-home-root button.ag-home__secondary:active { background:#0D3026; }
+.nightMode #ag-home-root { background:#08251C; color:#F4F3DF; border-color:#315247; }
 
 /* Canonical GardenHomePreview: stable text, artwork, and action zones. */
 #ag-home-root {
   position:relative;
-  width:min(calc(100% - 32px), 500px);
-  max-width:500px;
-  height:112px;
+  width:min(calc(100% - 48px), 520px);
+  max-width:520px;
+  height:100px;
   margin:24px auto 18px;
-  border-color:rgba(128,178,155,.28);
+  border-color:#315247;
   border-radius:12px;
-  background:#071A15;
+  background:#081814;
   box-shadow:0 10px 28px rgba(0,0,0,.24);
   cursor:default;
   transition:transform 120ms ease,border-color 120ms ease,box-shadow 120ms ease;
 }
 #ag-home-root:hover {
   transform:translateY(-2px);
-  border-color:#4F806E;
+  border-color:#70998A;
   box-shadow:0 14px 34px rgba(0,0,0,.3);
 }
 #ag-home-root:focus-visible {
-  outline:2px solid #82E2AC;
+  outline:2px solid #75E3AE;
   outline-offset:2px;
-  box-shadow:0 0 0 4px #071A15,0 14px 34px rgba(0,0,0,.3);
+  box-shadow:0 0 0 4px #081814,0 14px 34px rgba(0,0,0,.3);
 }
 .ag-home__state {
-  min-height:112px;
-  padding:12px 14px;
-  background:linear-gradient(90deg,rgba(4,17,13,.99),rgba(5,22,17,.94) 42%,rgba(7,27,20,.72) 68%,rgba(7,27,20,.58));
+  min-height:100px;
+  padding:16px;
+  background:linear-gradient(90deg,rgba(3,13,10,.995),rgba(4,17,13,.96) 45%,rgba(6,23,18,.68) 70%,rgba(7,27,20,.38));
 }
 .ag-home__body { position:relative; height:100%; }
 .ag-home__scene,.ag-home--no-starter .ag-home__scene {
@@ -479,7 +480,7 @@ HOME_WIDGET_STYLE = """
 .ag-home__scene::after {
   z-index:88;
   background:
-    linear-gradient(90deg,rgba(3,12,9,.98) 0%,rgba(3,13,10,.78) 38%,rgba(4,14,11,.24) 66%,rgba(4,14,11,.03) 100%),
+    linear-gradient(90deg,rgba(3,12,9,.99) 0%,rgba(3,13,10,.86) 42%,rgba(4,14,11,.42) 66%,rgba(4,14,11,.05) 100%),
     linear-gradient(180deg,rgba(4,14,11,.18) 0%,transparent 58%,rgba(4,14,11,.08) 100%);
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);
 }
@@ -488,7 +489,7 @@ HOME_WIDGET_STYLE = """
   z-index:100;
   inset:0;
   min-height:0;
-  padding:11px 14px;
+  padding:12px 16px;
   display:flex;
   flex-direction:column;
   justify-content:flex-start;
@@ -497,36 +498,49 @@ HOME_WIDGET_STYLE = """
 .ag-home__details::before { display:none; }
 .ag-home__identity-row {
   display:grid;
-  grid-template-columns:minmax(0,240px) minmax(0,1fr) 128px;
+  grid-template-columns:minmax(0,260px) minmax(0,1fr) 112px;
   column-gap:12px;
   align-items:start;
 }
-.ag-home__identity { width:100%; max-width:240px; min-width:0; grid-column:1; }
+.ag-home__identity { width:100%; max-width:260px; min-width:0; grid-column:1; }
 .ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
 .ag-home__identity-row > .ag-home__open,
 .ag-home__identity-row > button { grid-column:3; }
-.ag-home__eyebrow { margin-bottom:3px; color:#E7C96A; font-size:12px; }
-.ag-home__focus-name { font-size:18px; line-height:1.12; }
+.ag-home__eyebrow { margin-bottom:2px; color:#E7B94A; font-size:11px; font-weight:650; letter-spacing:.08em; }
+.ag-home__focus-name { font-size:20px; line-height:1.2; font-weight:650; }
 .ag-home__support {
-  display:-webkit-box;
-  max-width:240px;
-  max-height:2.7em;
-  margin-top:3px;
+  display:block;
+  max-width:260px;
+  margin-top:1px;
   overflow:hidden;
-  color:#D3DDD8;
+  color:#B7C4BD;
   font-size:13px;
   font-weight:400;
-  line-height:1.35;
+  line-height:18px;
   font-variant-numeric:tabular-nums;
-  white-space:normal;
-  -webkit-box-orient:vertical;
-  -webkit-line-clamp:2;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.ag-home__progress-copy {
+  display:block;
+  max-width:260px;
+  margin-top:1px;
+  overflow:hidden;
+  color:#95A89F;
+  font-size:12px;
+  line-height:16px;
+  font-variant-numeric:tabular-nums;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 .ag-home__growth-track {
-  position:relative;
-  width:min(100%,240px);
+  position:absolute;
+  left:16px;
+  right:144px;
+  bottom:9px;
+  width:auto;
   height:6px;
-  margin-top:5px;
+  margin:0;
   overflow:hidden;
   border-radius:4px;
   background:rgba(199,210,201,.34);
@@ -541,7 +555,7 @@ HOME_WIDGET_STYLE = """
   height:100%;
   margin:0;
   border-radius:inherit;
-  background:#62D49A;
+  background:#63D99F;
 }
 .ag-home__garden-context,.ag-home__status-notice { display:none; }
 .ag-home__partial-message,.ag-home__stage-up {
@@ -566,19 +580,19 @@ HOME_WIDGET_STYLE = """
 #ag-home-root button,.ag-home__open {
   min-height:36px !important;
   max-height:36px !important;
-  min-width:128px !important;
-  width:128px;
-  max-width:128px;
+  min-width:112px !important;
+  width:112px;
+  max-width:112px;
   padding:0 12px !important;
-  border-color:#5CC58B;
-  background:#5CC58B;
-  color:#062017;
-  font-size:14px !important;
+  border-color:#63D99F;
+  background:#63D99F;
+  color:#08251C;
+  font-size:13px !important;
   font-weight:600;
   box-shadow:0 4px 14px rgba(0,0,0,.22);
 }
-#ag-home-root button:hover { background:#71D39C; }
-#ag-home-root button:active { background:#49AA75; }
+#ag-home-root button:hover { background:#75E3AE; }
+#ag-home-root button:active { background:#4FC98E; }
 #ag-home-root button.ag-home__open::after { content:""; display:none; }
 #ag-home-root[data-motion="reduced"] { transition:none; }
 #ag-home-root[data-motion="reduced"]:hover { transform:none; }
@@ -590,40 +604,72 @@ HOME_WIDGET_STYLE = """
   #ag-home-root button:active { transform:none; }
   .ag-home__scene-frame { transition:none; }
 }
-@container (max-width: 488px) {
-  #ag-home-root { height:112px; }
-  .ag-home__state { min-height:112px; }
-  .ag-home__details { padding:11px 14px; }
+@container (max-width: 400px) {
+  #ag-home-root { height:100px; }
+  .ag-home__state { min-height:100px; }
+  .ag-home__details { padding:12px 14px; }
   .ag-home__identity-row {
-    grid-template-columns:minmax(0,1fr) 128px;
+    grid-template-columns:minmax(0,1fr) 112px;
     gap:10px;
   }
   .ag-home__artwork-zone { display:none; }
   .ag-home__identity-row > .ag-home__open,
   .ag-home__identity-row > button { grid-column:2; }
   #ag-home-root button,.ag-home__open {
-    width:128px;
-    max-width:128px;
+    width:112px;
+    max-width:112px;
     justify-self:end;
   }
   .ag-home__support { max-width:100%; }
-}
-@container (max-width:420px) {
-  .ag-home__details { padding:12px; }
-  .ag-home__identity-row { gap:8px; }
-  .ag-home__support,.ag-home__growth-track { display:none; }
-  .ag-home__focus-name { font-size:18px; }
+  .ag-home__growth-track { left:14px; right:140px; bottom:9px; }
 }
 @container (max-width:340px) {
-  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 112px; }
+  .ag-home__details { padding:12px; }
+  .ag-home__identity-row { gap:8px; }
+  .ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }
+  .ag-home__focus-name { font-size:18px; }
+}
+@container (max-width:300px) {
+  .ag-home__identity-row { grid-template-columns:minmax(0,1fr) 100px; }
   #ag-home-root button,.ag-home__open {
-    min-width:112px !important;
-    width:112px;
-    max-width:112px;
+    min-width:100px !important;
+    width:100px;
+    max-width:100px;
   }
 }
 </style>
 """
+
+# The Home surface is HTML/CSS, but it consumes the same semantic authority as
+# the Qt views. Literal fallbacks keep the stylesheet readable in snapshots;
+# this binding step makes token changes propagate instead of forking a WebView
+# palette.
+for _home_literal, _home_token in (
+    ("#081814", GARDEN_THEME["garden_background"]),
+    ("#08251C", GARDEN_THEME["dialog_surface"]),
+    ("#0D3026", GARDEN_THEME["raised_surface"]),
+    ("#123D31", GARDEN_THEME["selected_surface"]),
+    ("#174B3C", GARDEN_THEME["elevated_surface"]),
+    ("#315247", GARDEN_THEME["subtle_border"]),
+    ("#70998A", GARDEN_THEME["strong_border"]),
+    ("#F4F3DF", GARDEN_THEME["text_primary"]),
+    ("#B7C4BD", GARDEN_THEME["text_secondary"]),
+    ("#95A89F", GARDEN_THEME["text_muted"]),
+    ("#63D99F", GARDEN_THEME["action_accent"]),
+    ("#75E3AE", GARDEN_THEME["action_hover"]),
+    ("#4FC98E", GARDEN_THEME["action_pressed"]),
+    ("#E7B94A", GARDEN_THEME["coin_accent"]),
+    ("#172721", GARDEN_THEME["disabled_surface"]),
+    ("#30443B", GARDEN_THEME["disabled_border"]),
+    ("#83968B", GARDEN_THEME["disabled_text"]),
+):
+    HOME_WIDGET_STYLE = HOME_WIDGET_STYLE.replace(
+        _home_literal,
+        _home_token,
+    ).replace(
+        _home_literal.lower(),
+        _home_token,
+    )
 
 
 def _plant_fallback(_stage: Any) -> str:
@@ -1051,6 +1097,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     display_growth_current = max(0, int(preview.growth_current))
     display_growth_goal = max(0, int(preview.growth_goal))
     display_fully_grown = bool(data.active_fully_grown)
+    preview_identity = ""
+    preview_progress = ""
     if preview.active_plant_name:
         stage = format_status_label(preview.active_stage or preview.stage_text or "Plant")
         if display_fully_grown:
@@ -1058,16 +1106,15 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             display_growth_goal = max(1, display_growth_current)
             growth_text = f"{display_growth_current:,} total Growth"
         elif display_growth_goal > 0:
-            growth_text = format_stage_progress(
+            growth_text = format_growth(
                 display_growth_current,
                 display_growth_goal,
-                data.active_next_stage or "next stage",
             )
         else:
             growth_text = preview.growth_text or "0"
-        preview_support = (
-            f"{preview.active_plant_name} · {stage} · {growth_text}"
-        )
+        preview_identity = f"{preview.active_plant_name} · {stage}"
+        preview_progress = growth_text
+        preview_support = f"{preview_identity} · {preview_progress}"
     elif data.planted_starter_name:
         starter_progress = growth_display(max(0, int(data.active_growth_points)))
         display_growth_current = max(0, int(starter_progress.stage_points))
@@ -1075,12 +1122,15 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         starter_stage = format_status_label(
             data.planted_starter_stage or starter_progress.stage or "Seed"
         )
-        preview_support = (
-            f"{data.planted_starter_name} · {starter_stage} · "
-            f"{format_stage_progress(display_growth_current, display_growth_goal, starter_progress.next_stage or 'next stage')}"
+        preview_identity = f"{data.planted_starter_name} · {starter_stage}"
+        preview_progress = format_growth(
+            display_growth_current,
+            display_growth_goal,
         )
+        preview_support = f"{preview_identity} · {preview_progress}"
     else:
         preview_support = HOME_NO_STARTER_BODY if not starter_selected else preview.summary
+        preview_identity = preview_support
     garden_identity_html = (
         '<div class="ag-home__identity">'
         '<div class="ag-home__eyebrow" aria-hidden="true">Anki Garden</div>'
@@ -1088,7 +1138,12 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         f'aria-label="{escape(preview_title, quote=True)}" '
         f'title="{escape(preview_title, quote=True)}">{escape(preview_title)}</h2>'
         f'<span class="ag-home__support" data-testid="home-support" '
-        f'title="{escape(preview_support, quote=True)}">{escape(preview_support)}</span>'
+        f'title="{escape(preview_support, quote=True)}">{escape(preview_identity)}</span>'
+        + (
+            f'<span class="ag-home__progress-copy" data-testid="home-progress-copy">'
+            f'{escape(preview_progress)}</span>'
+            if preview_progress else ""
+        )
         + (
             '<div class="ag-home__growth-track" data-testid="home-growth-progress" '
             f'role="progressbar" aria-label="{escape(preview_support, quote=True)}" '

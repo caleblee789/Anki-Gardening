@@ -66,14 +66,15 @@ def test_onboarding_state_contract_keeps_selection_planting_and_nurture_distinct
     assert no_starter.state is OnboardingState.NO_STARTER
     assert no_starter.header_label == "No plant selected"
     assert selected.state is OnboardingState.STARTER_SELECTED
-    assert selected.header_label == "Starter selected"
+    assert selected.header_label == "Ready to place"
+    assert selected.step is OnboardingStep.PLACEMENT
     assert selected.counted_step == 3
     assert planted.state is OnboardingState.STARTER_PLANTED_NOT_NURTURED
     assert planted.header_label == "Ready to nurture"
     assert planted.primary_action == "Nurture"
     assert planted.nurtured_marker_visible is False
     assert planted.onboarding_complete is False
-    assert planted.counted_step == 5
+    assert planted.counted_step == 4
 
 
 def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence() -> None:
@@ -84,7 +85,25 @@ def test_zero_growth_active_plant_is_nurtured_without_using_growth_as_evidence()
     assert display.nurtured_marker_visible is False
     assert display.primary_action == "Return to Anki"
     assert display.step is OnboardingStep.COMPLETION
-    assert display.counted_step == 6
+    assert display.counted_step == 5
+
+
+def test_legacy_confirmation_state_recovers_directly_to_placement() -> None:
+    legacy = GardenState(
+        onboarding=OnboardingProgress(
+            step=OnboardingStep.CONFIRMATION,
+            pending_species="bonsai",
+        )
+    ).to_dict()
+
+    restored = GardenState.from_dict(legacy)
+
+    assert restored.onboarding.step is OnboardingStep.PLACEMENT
+    assert restored.onboarding.pending_species == "bonsai"
+    display = onboarding_state_display(restored, 0)
+    assert display.step is OnboardingStep.PLACEMENT
+    assert display.counted_step == 3
+    assert display.total_steps == 5
 
 
 def test_persisted_done_prevents_onboarding_replay_when_preference_is_stale() -> None:

@@ -713,7 +713,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # artwork row, one cost row, and its actions.  Keep that proposal a
         # true content-fit window instead of inheriting taller catalog states.
         "growth-charge": DialogHeightProfile(270, 280, 300, 500, 500, 500),
-        "replacement": DialogHeightProfile(230, 270, 300, 500, 520, 540),
+        "replacement": DialogHeightProfile(230, 300, 340, 500, 520, 540),
         "complex": DialogHeightProfile(250, 295, 340, 540, 570, 600),
         "loading": DialogHeightProfile(210, 230, 250, 480, 500, 520),
         "warning": DialogHeightProfile(180, 210, 240, 480, 510, 540),
@@ -742,18 +742,20 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "owned": DialogHeightProfile(470, 500, 530),
         "fertilizer": DialogHeightProfile(500, 506, 560, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
-        "weather": DialogHeightProfile(360, 460, 560, 925, 940, 950),
+        # Weather cards need the canonical 940 x 488 viewport to keep a full
+        # 16:9 product row in view without compressing its description.
+        "weather": DialogHeightProfile(488, 488, 500, 925, 940, 950),
         "collection-complete": DialogHeightProfile(300, 315, 330, 925, 940, 950),
         "collection-complete-receipt": DialogHeightProfile(390, 400, 410, 925, 940, 950),
         "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
-        "growth": DialogHeightProfile(570, 570, 570, 950, 950, 950),
-        "streak": DialogHeightProfile(570, 570, 570, 950, 950, 950),
-        "currency": DialogHeightProfile(570, 570, 570, 950, 950, 950),
+        "growth": DialogHeightProfile(460, 480, 500, 940, 940, 960),
+        "streak": DialogHeightProfile(440, 460, 480, 940, 940, 960),
+        "currency": DialogHeightProfile(340, 380, 440, 940, 950, 960),
         "achievements": DialogHeightProfile(570, 570, 570, 950, 950, 950),
         "collection": DialogHeightProfile(570, 570, 570, 950, 950, 950),
-        "collection-empty": DialogHeightProfile(570, 570, 570, 950, 950, 950),
+        "collection-empty": DialogHeightProfile(360, 400, 460, 940, 950, 960),
     },
     DialogSizeClass.LOADOUT: {
         "default": DialogHeightProfile(520, 540, 560, 980, 1000, 1020),

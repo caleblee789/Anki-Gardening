@@ -66,6 +66,28 @@ RUNTIME_ROOTS = (
     "assets/support/",
 )
 
+# Largest logical display boxes used by the release UI for independently
+# composited raster artwork.  Scene plates have their own responsive viewport
+# family below; vector weather overlays are resolution independent.  Keeping
+# this table next to the production asset audit makes the Retina requirement a
+# release gate instead of a capture-review convention.
+RETINA_RASTER_MAX_CSS_SIZE = {
+    "plants": (300, 300),
+    "decorations": (160, 160),
+    "ui": (96, 96),
+}
+
+# Each responsive scenery plate must provide at least two source pixels for
+# every logical pixel in the largest component preview that selects it.  The
+# interactive garden uses the authored responsive plate as its design canvas;
+# these limits cover the places where a plate is independently resampled into
+# Home, Settings, Appearance, and Nursery artwork.
+RETINA_SCENERY_MAX_CSS_SIZE = {
+    "4:3": (640, 480),
+    "16:9": (820, 460),
+    "home": (440, 100),
+}
+
 
 class _AuditConfig:
     def value(self, _key: str, default: Any = None) -> Any:
@@ -145,6 +167,26 @@ def _validate_file(row: dict[str, Any]) -> None:
             )
 
 
+def _validate_retina_density(rows: list[dict[str, Any]]) -> None:
+    """Reject required raster artwork that would be enlarged in UI controls."""
+
+    for row in rows:
+        category = str(row.get("category", ""))
+        maximum = RETINA_RASTER_MAX_CSS_SIZE.get(category)
+        if maximum is None or str(row.get("format", "")).lower() == "svg":
+            continue
+        width = int(row.get("width", 0))
+        height = int(row.get("height", 0))
+        required_width = maximum[0] * 2
+        required_height = maximum[1] * 2
+        if width < required_width or height < required_height:
+            raise ValueError(
+                "Retina artwork is undersized: "
+                f"{row.get('asset_id', '')} is {width}x{height}, "
+                f"requires at least {required_width}x{required_height}"
+            )
+
+
 def _validate_background(rows: list[dict[str, Any]]) -> None:
     backgrounds = [row for row in rows if row.get("category") == "backgrounds"]
     expected_ids = [
@@ -197,6 +239,14 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
             with Image.open(ADDON / expected_file) as image:
                 if image.size != expected_size:
                     raise ValueError(f"scenery dimensions drifted: {item_id}/{variant}")
+                maximum = RETINA_SCENERY_MAX_CSS_SIZE[variant]
+                required_size = (maximum[0] * 2, maximum[1] * 2)
+                if image.width < required_size[0] or image.height < required_size[1]:
+                    raise ValueError(
+                        "Retina scenery artwork is undersized: "
+                        f"{item_id}/{variant} is {image.width}x{image.height}, "
+                        f"requires at least {required_size[0]}x{required_size[1]}"
+                    )
             expected_occlusion = f"{target_root}/{item_id}_{filename_variant}_occlusion.webp"
             if files.get("occlusion_file") != expected_occlusion:
                 raise ValueError(f"scenery occlusion path is noncanonical: {item_id}/{variant}")
@@ -345,6 +395,7 @@ def audit() -> dict[str, int]:
 
     for row in rows:
         _validate_file(row)
+    _validate_retina_density(rows)
     _validate_background(rows)
     _validate_plants(rows)
     _validate_support_assets(rows)

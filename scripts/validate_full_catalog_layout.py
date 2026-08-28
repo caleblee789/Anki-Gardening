@@ -14,6 +14,7 @@ os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
 from ankigarden.ui.plant_display import (
     Rect,
+    SceneGeometryLayout,
     bed_badge_rect,
     move_badge_label,
     plant_layout,
@@ -122,6 +123,11 @@ def _scenario_warnings(
         layouts, width, height, range(count)
     )
     if move_mode and not use_native_selector:
+        scene_geometry = SceneGeometryLayout.from_placements(
+            width,
+            height,
+            layouts,
+        )
         occupied = set(range(count))
         names = {slot: f"Plant {slot + 1}" for slot in occupied}
         obstacles = [row.visible.expanded(4, 3) for row in active]
@@ -135,22 +141,27 @@ def _scenario_warnings(
                 occupied_slots=occupied,
                 occupant_names=names,
             )
+            # Runtime pointer selection uses the expanded bed hotspot; the
+            # compact label is presentation only. Keep the interaction target
+            # at least 44 px without forcing the badge back into an oversized
+            # overlay that obscures the artwork.
+            bed_geometry = scene_geometry.bed(row.slot_index)
+            if (
+                bed_geometry is None
+                or bed_geometry.hotspot.width < 44
+                or bed_geometry.hotspot.height < 44
+            ):
+                warnings.add("small move target")
             # This mirrors GardenScene._draw_slot_placeholders: compact scenes
             # keep every expanded bed footprint clickable but paint a numbered
             # badge only for the current and keyboard-selected beds. Treating
             # all six compact badges as visible manufactured collisions that
             # cannot occur in the runtime UI.
             if width < 900 and state not in {"active", "selected", "current"}:
-                target_width = row.bed_footprint.width + 28.0
-                target_height = row.bed_footprint.height + 22.0
-                if target_width < 44 or target_height < 44:
-                    warnings.add("small move target")
                 continue
             visual_label = str(row.slot_index + 1)
             badge = bed_badge_rect(row, visual_label, width, height, obstacles + badges)
             badges.append(badge)
-            if badge.width < 44 or badge.height < 44:
-                warnings.add("small move target")
             if badge.x < 0 or badge.y < 0 or badge.right > width or badge.bottom > height:
                 warnings.add("hidden move control")
             if any(_overlap_ratio(badge, obstacle) > .25 for obstacle in obstacles):

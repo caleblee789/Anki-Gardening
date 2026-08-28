@@ -148,7 +148,6 @@ def test_every_garden_window_route_uses_the_shared_dialog_contract() -> None:
         "GardenDetailsDialog",
         "CollectibleDetailDialog",
         "PlantStoryDialog",
-        "StarterConfirmationDialog",
         "GrowthChargeConfirmationDialog",
         "PurchaseConfirmationDialog",
         "FertilizerReplacementDialog",

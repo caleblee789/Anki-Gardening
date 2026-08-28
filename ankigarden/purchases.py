@@ -382,7 +382,7 @@ def purchase_presentation(
         next_actions = ("Use growth charge", "Keep browsing")
         facts.append(PurchaseFact(
             "inventory",
-            "Owned",
+            "Inventory",
             f"{max(0, int(quote.inventory_before)):,} → "
             f"{max(0, int(quote.inventory_after)):,}",
         ))
@@ -460,10 +460,7 @@ def purchase_presentation(
     show_category = False
 
     if quote.replacement_required:
-        current_short = str(quote.current_item_name or "Fertilizer").removesuffix(
-            " Fertilizer"
-        )
-        secondary_label = f"Keep {current_short}"
+        secondary_label = "Keep current"
         primary_label = f"Replace for {_coin_amount(quote.total_price)}"
         primary_accessible = (
             f"Replace {quote.current_item_name or 'current fertilizer'} with "

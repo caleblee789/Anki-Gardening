@@ -4,8 +4,8 @@ FALLBACK_GARDEN_NAME = "My Garden"
 
 HOME_NO_STARTER_TITLE = "Start your garden"
 HOME_NO_STARTER_BODY = "Your first plant is free."
-HOME_NO_STARTER_ACCESSIBLE = "Start your garden. Your first plant is free. Choose plant."
-CHOOSE_STARTER_ACTION = "Choose plant"
+HOME_NO_STARTER_ACCESSIBLE = "Start your garden. Your first plant is free. Choose starter."
+CHOOSE_STARTER_ACTION = "Choose starter"
 
 GARDEN_SETUP_TITLE = "Choose your starter"
 GARDEN_SETUP_BODY = "Pick one free plant for your garden."

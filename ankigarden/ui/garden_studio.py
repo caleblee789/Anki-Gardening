@@ -16,6 +16,7 @@ from aqt.qt import (
     QLayout,
     QLabel,
     QPixmap,
+    QProgressBar,
     QScrollArea,
     QSizePolicy,
     QSlider,
@@ -116,8 +117,8 @@ class ToggleSettingRow(QFrame):
             QSizePolicy.Policy.Maximum,
         )
         self.setMinimumWidth(0)
-        self.setMinimumHeight(46)
-        self.setMaximumHeight(16777215)
+        self.setMinimumHeight(54)
+        self.setMaximumHeight(56)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 3, 0, 3)
@@ -175,13 +176,13 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
-        self.setMinimumHeight(92)
-        self.setMaximumHeight(92)
+        self.setMinimumHeight(100)
+        self.setMaximumHeight(100)
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(0)
-        scene.setMinimumHeight(92)
-        scene.setMaximumHeight(92)
+        scene.setMinimumHeight(100)
+        scene.setMaximumHeight(100)
         scene.setMinimumWidth(0)
         scene.setSizePolicy(
             QSizePolicy.Policy.Ignored,
@@ -204,10 +205,11 @@ class HomeGardenPreview(QFrame):
             QSizePolicy.Policy.Preferred,
         )
         scrim_layout = QHBoxLayout(self.scrim)
-        scrim_layout.setContentsMargins(12, 10, 12, 8)
+        scrim_layout.setContentsMargins(16, 8, 16, 8)
         scrim_layout.setSpacing(12)
         identity = QVBoxLayout()
         identity.setSpacing(2)
+        identity.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         eyebrow = QLabel("ANKI GARDEN")
         eyebrow.setProperty("previewEyebrow", True)
         self.title = ElidedPreviewTitle("My Garden")
@@ -222,11 +224,27 @@ class HomeGardenPreview(QFrame):
         self.support = QLabel("")
         self.support.setProperty("previewSupport", True)
         self.support.setTextFormat(Qt.TextFormat.PlainText)
-        self.support.setWordWrap(True)
+        self.support.setWordWrap(False)
+        self.support.setMaximumWidth(260)
         self.support.setMinimumWidth(0)
         self.support.setSizePolicy(
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
+        )
+        self.progress_copy = QLabel("")
+        self.progress_copy.setProperty("previewProgress", True)
+        self.progress_copy.setTextFormat(Qt.TextFormat.PlainText)
+        self.progress_copy.setWordWrap(False)
+        self.progress_copy.setMinimumWidth(0)
+        self.progress_copy.setAccessibleName("Home preview plant progress")
+        self.progress_track = QProgressBar()
+        self.progress_track.setProperty("previewProgressTrack", True)
+        self.progress_track.setTextVisible(False)
+        self.progress_track.setFixedHeight(4)
+        self.progress_track.setRange(0, 1)
+        self.progress_track.setValue(0)
+        self.progress_track.setAccessibleName(
+            "Home preview plant progress bar"
         )
         self.status = QLabel("")
         self.status.setProperty("previewStatus", True)
@@ -238,11 +256,18 @@ class HomeGardenPreview(QFrame):
         identity.addWidget(eyebrow)
         identity.addWidget(self.title)
         identity.addWidget(self.support)
+        identity.addWidget(self.progress_copy)
+        identity.addWidget(self.progress_track)
         identity.addWidget(self.status)
         scrim_layout.addLayout(identity, 1)
         self.action = QLabel(HOME_ACTIVE_ACTION)
         self.action.setProperty("previewAction", True)
         self.action.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.action.setFixedSize(112, 36)
+        self.action.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
         self.action.setAccessibleName(f"Home preview action: {HOME_ACTIVE_ACTION}")
         scrim_layout.addWidget(self.action, 0, Qt.AlignmentFlag.AlignBottom)
         grid.addWidget(self.scrim, 0, 0, Qt.AlignmentFlag.AlignBottom)
@@ -250,9 +275,28 @@ class HomeGardenPreview(QFrame):
     def set_snapshot(self, snapshot: GardenPreviewSnapshot) -> None:
         safe_title = str(snapshot.title or "My Garden")
         safe_support = str(snapshot.summary)
+        summary_parts = safe_support.split(" · ", 2)
+        identity_copy = (
+            " · ".join(summary_parts[:2])
+            if len(summary_parts) >= 3 else
+            safe_support
+        )
+        progress_copy = (
+            summary_parts[2]
+            if len(summary_parts) >= 3 else
+            str(snapshot.growth_text or "")
+        )
         self.title.setText(safe_title)
-        self.support.setText(safe_support)
+        self.support.setText(identity_copy)
         self.support.setToolTip(safe_support)
+        progress_available = bool(progress_copy)
+        self.progress_copy.setText(progress_copy)
+        self.progress_copy.setVisible(progress_available)
+        goal = max(0, int(snapshot.growth_goal or 0))
+        current = max(0, int(snapshot.growth_current or 0))
+        self.progress_track.setRange(0, max(1, goal))
+        self.progress_track.setValue(min(current, max(1, goal)))
+        self.progress_track.setVisible(progress_available and goal > 0)
         self.status.setText(snapshot.status_text)
         self.status.setVisible(bool(snapshot.status_text))
         self._scene_opacity.setOpacity(snapshot.scene_opacity)
@@ -391,17 +435,20 @@ class GardenStudioWidget(QWidget):
             QLabel[settingsNote='true'] {{ color:{t['text_muted']}; font-size:13px; }}
             QLabel[settingValue='true'] {{ color:#d9e7df; background:#17342e; border-radius:8px; padding:3px 7px; min-width:58px; }}
             QFrame[settingsSection='true'] {{ border:0; }}
-            QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
-            QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
+            QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+            QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
-            QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:12px; }}
-            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:0; border-radius:12px; }}
+            QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
+            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:0; border-radius:10px; }}
             QFrame[homeGardenPreview='true']:disabled {{ border-color:{t['disabled_border']}; }}
-            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 rgba(5,20,16,238),stop:.58 rgba(5,20,16,112),stop:1 rgba(5,20,16,0)); border:0; }}
-            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:12px; font-weight:600; letter-spacing:1px; }}
-            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:19px; font-weight:600; }}
+            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 rgba(3,13,10,252),stop:.48 rgba(4,17,13,230),stop:.72 rgba(6,23,18,116),stop:1 rgba(7,27,20,28)); border:0; }}
+            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:11px; font-weight:650; letter-spacing:.88px; }}
+            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:20px; font-weight:650; }}
             QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
-            QLabel[previewAction='true'] {{ min-height:32px; max-height:32px; padding:0 12px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
+            QLabel[previewProgress='true'] {{ color:{t['text_secondary']}; font-size:12px; }}
+            QProgressBar[previewProgressTrack='true'] {{ min-height:4px; max-height:4px; background:{t['subtle_border']}; border:0; border-radius:2px; }}
+            QProgressBar[previewProgressTrack='true']::chunk {{ background:{t['growth_accent']}; border-radius:2px; }}
+            QLabel[previewAction='true'] {{ min-height:36px; max-height:36px; padding:0 16px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
             QFrame[toggleSettingRow='true'] {{
                 background:transparent;
                 border:0;
@@ -430,7 +477,7 @@ class GardenStudioWidget(QWidget):
         """ + tool_button_stylesheet())
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
-        self.root_layout.setSpacing(12)
+        self.root_layout.setSpacing(8)
         self.controls = QFrame()
         self.controls.setProperty("settingsControls", True)
         self.controls.setMinimumWidth(0)
@@ -465,11 +512,13 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
+        self.theme_card.setMinimumHeight(70)
+        self.theme_card.setMaximumHeight(70)
         theme_layout = QHBoxLayout(self.theme_card)
-        theme_layout.setContentsMargins(12, 10, 12, 10)
-        theme_layout.setSpacing(12)
+        theme_layout.setContentsMargins(8, 8, 8, 8)
+        theme_layout.setSpacing(10)
         self.theme_thumbnail = QLabel()
-        self.theme_thumbnail.setFixedSize(128, 72)
+        self.theme_thumbnail.setFixedSize(96, 54)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
@@ -629,7 +678,7 @@ class GardenStudioWidget(QWidget):
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)
         self.advanced_actions_layout.addWidget(self.notifications_row, 1, 0, 1, 2)
         self.advanced_panel.setMinimumHeight(0)
-        self.advanced_panel.setMaximumHeight(108)
+        self.advanced_panel.setMaximumHeight(120)
         self.advanced_panel.hide()
 
         self.preview_panel = QFrame()
@@ -640,12 +689,19 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Ignored,
             QSizePolicy.Policy.Preferred,
         )
+        self.preview_panel.setMinimumHeight(100)
+        self.preview_panel.setMaximumHeight(100)
         preview_layout = QVBoxLayout(self.preview_panel)
-        preview_layout.setContentsMargins(10, 10, 10, 10)
-        preview_layout.setSpacing(6)
-        preview_title = QLabel("Preview")
-        preview_title.setProperty("settingsHeading", True)
-        preview_title.setMinimumWidth(0)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(0)
+        # The banner composition is self-identifying and already exposes a
+        # stable accessible name through ``preview_panel``. Keep this legacy
+        # heading available to integrations without spending another visual
+        # row above the canonical 100 px Home banner.
+        self.preview_title = QLabel("Preview")
+        self.preview_title.setProperty("settingsHeading", True)
+        self.preview_title.setMinimumWidth(0)
+        self.preview_title.hide()
         self.home_preview = GardenHomePreview(self.scene)
         self.preview_name = self.home_preview.title
         self.preview_metrics = self.home_preview.support
@@ -656,9 +712,9 @@ class GardenStudioWidget(QWidget):
         self.preview_unavailable.setAccessibleName("Preview unavailable")
         self.preview_unavailable.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_unavailable.setWordWrap(True)
-        self.preview_unavailable.setFixedHeight(92)
+        self.preview_unavailable.setFixedHeight(100)
         self.preview_unavailable.hide()
-        preview_layout.addWidget(preview_title)
+        preview_layout.addWidget(self.preview_title)
         preview_layout.addWidget(self.home_preview)
         preview_layout.addWidget(self.preview_unavailable)
 
@@ -1192,6 +1248,10 @@ class GardenStudioWidget(QWidget):
             # percentage could contradict the real garden, so keep the status
             # overlay out of this read-only preview.
             "show_status_overlay": False,
+            # The Settings banner previews scenery and Home composition, not
+            # garden availability. Keep real locked-bed badges on interactive
+            # Garden surfaces while omitting them from this compact artwork.
+            "show_locked_bed_badges": False,
             "plants": scene_plants,
         })
 

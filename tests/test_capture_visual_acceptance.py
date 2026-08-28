@@ -131,6 +131,12 @@ def _streak_fold() -> dict[str, object]:
 def test_streak_fold_rejects_partial_card_and_short_bottom_padding() -> None:
     assert streak_fold_geometry_issue_codes(_streak_fold()) == ()
 
+    complete_fold_without_visible_detail_cards = _streak_fold()
+    complete_fold_without_visible_detail_cards["detail_cards"] = []
+    assert streak_fold_geometry_issue_codes(
+        complete_fold_without_visible_detail_cards
+    ) == ()
+
     partial = _streak_fold()
     partial["detail_cards"][2]["bounds"] = [584, 390, 280, 96]
     partial["detail_cards"][2]["contained_in_first_fold"] = False
@@ -157,7 +163,8 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "growth_value": "450 → 550",
         "inventory_label": "Charges remaining",
         "inventory_value": "2 → 1",
-        "stage_badge": "New stage: Sprout",
+        "stage_badge": "Sprout",
+        "stage_badge_accessible": "New stage: Sprout",
         "stage_progress": "50 / 2,000 toward Young",
         "primary_action": "Use 1 charge",
         "current_growth": 450,
@@ -187,10 +194,10 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "stage_transition": "Seed → Sprout",
         "receipt_copy": (
             "+100 Growth · 1 growth charge remaining\n"
-            "50 / 2,000 toward Young"
+            "Next-stage progress · 50 / 2,000 toward Young"
         ),
         "stage_reward_heading": "Stage reward",
-        "reward_texts": ["Sprout · +5 Garden Coins"],
+        "reward_texts": ["Stage reward", "+5 Garden Coins"],
         "primary_action": "View plant",
         "secondary_action": "Close",
         "resulting_growth": 550,
@@ -220,7 +227,7 @@ def test_reviewer_stack_proves_six_events_newest_plus_summary_at_292px() -> None
         "visible_toast_count": 2,
         "summary_toast_count": 1,
         "regular_toast_count": 1,
-        "summary_copy": "+5 more rewards",
+        "summary_copy": "+5 more rewards ›",
         "newest_expected_title": "Garden Find",
         "newest_expected_message": "A Small Growth Charge was added.",
         "newest_visible_title": "Garden Find",

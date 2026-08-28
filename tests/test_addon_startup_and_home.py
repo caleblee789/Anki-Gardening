@@ -627,7 +627,9 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert "GardenToastStack.AUTO_DISMISS_MS" in source
     assert "GardenToastStack.HOVER_RESUME_MS" in source
     assert "GardenToastStack.toast_width(viewport_width)" in source
-    assert "maximum_height = 64 if projection.compact else 72" in source
+    assert "stack_budget = max(56, int(viewport_height * 0.40))" in source
+    assert "maximum_height = min(" in source
+    assert "per_toast_budget" in source
     assert "Qt.AlignmentFlag.AlignBaseline" in source
     assert "reviewer_reward_overlay_position(" in source
     assert "reviewer_modal_active(mw)" in source

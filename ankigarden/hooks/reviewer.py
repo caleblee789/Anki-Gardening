@@ -13,6 +13,7 @@ from ..notices import USER_NOTICES
 from ..performance import RUNTIME_PERFORMANCE
 from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
+from ..ui.theme import GARDEN_THEME
 
 
 logger = logging.getLogger(__name__)
@@ -336,7 +337,7 @@ class ReviewerHookHandler:
 
     def _set_reward_summary(self, toast: Any, count: int, empty_pixmap: Any) -> None:
         count = max(1, int(count))
-        overflow_copy = f"+{count} more rewards"
+        overflow_copy = f"+{count} more rewards ›"
         toast.setProperty("rewardSummary", True)
         toast.setProperty("compactToast", False)
         toast.setProperty("rewardOverflowCount", count)
@@ -348,7 +349,8 @@ class ReviewerHookHandler:
         toast._garden_overflow_label.hide()
         toast._garden_tier_label.hide()
         toast._garden_art_label.setPixmap(empty_pixmap)
-        toast._garden_art_label.setText("+")
+        toast._garden_art_label.setText("")
+        toast._garden_art_label.hide()
         toast._garden_dismiss_timer.start(GardenToastStack.AUTO_DISMISS_MS)
 
     def _prepare_reward_toast_queue(
@@ -453,9 +455,9 @@ class ReviewerHookHandler:
             notice.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             notice.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             notice.setStyleSheet(
-                "QFrame#ankiGardenReviewerStarterNotice { background:#17342e; "
-                "border:1px solid #557665; border-radius:8px; padding:7px 10px; }"
-                "QLabel { color:#e8f1eb; font-size:12px; }"
+                f"QFrame#ankiGardenReviewerStarterNotice {{ background:{GARDEN_THEME['elevated_surface']}; "
+                f"border:1px solid {GARDEN_THEME['subtle_border']}; border-radius:8px; padding:7px 10px; }}"
+                f"QLabel {{ color:{GARDEN_THEME['text_primary']}; font-size:12px; }}"
             )
             label = QLabel(REVIEWER_NO_STARTER_NOTICE, notice)
             label.setWordWrap(True)
@@ -1215,6 +1217,7 @@ class ReviewerHookHandler:
                 QHBoxLayout,
                 QLabel,
                 QPixmap,
+                QPushButton,
                 QTimer,
                 QVBoxLayout,
                 Qt,
@@ -1234,6 +1237,17 @@ class ReviewerHookHandler:
                     if timer is not None:
                         timer.start(GardenToastStack.HOVER_RESUME_MS)
                     super().leaveEvent(hover_event)
+
+                def mouseReleaseEvent(self, mouse_event: Any) -> None:
+                    callback = getattr(self, "_garden_dismiss_callback", None)
+                    if (
+                        mouse_event.button() == Qt.MouseButton.LeftButton
+                        and callable(callback)
+                    ):
+                        callback()
+                        mouse_event.accept()
+                        return
+                    super().mouseReleaseEvent(mouse_event)
 
             if str(getattr(mw, "state", "") or "") != "review":
                 self._hide_reward_toast()
@@ -1263,6 +1277,7 @@ class ReviewerHookHandler:
             toast.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
             toast.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             toast.setMouseTracking(True)
+            toast.setCursor(Qt.CursorShape.PointingHandCursor)
             toast.setProperty("rewardSummary", False)
             toast.setProperty("compactToast", projection.compact)
             toast.setProperty(
@@ -1309,26 +1324,31 @@ class ReviewerHookHandler:
             )
             toast.setStyleSheet(
                 "QFrame#ankiGardenRewardToast {"
-                " background: #13352d; border: 1px solid #416353;"
+                f" background: {GARDEN_THEME['elevated_surface']}; border: 1px solid {GARDEN_THEME['subtle_border']};"
                 " border-radius: 14px; }"
-                "QLabel#ankiGardenRewardTitle { color: #f5df9a;"
+                f"QLabel#ankiGardenRewardTitle {{ color: {GARDEN_THEME['coin_accent']};"
                 " font-size: 13px; font-weight: 600; }"
-                "QLabel#ankiGardenRewardMessage { color: #e8f1eb;"
+                f"QLabel#ankiGardenRewardMessage {{ color: {GARDEN_THEME['text_primary']};"
                 " font-size: 12px; }"
-                "QLabel#ankiGardenRewardDetail { color: #f5df9a;"
+                f"QLabel#ankiGardenRewardDetail {{ color: {GARDEN_THEME['coin_accent']};"
                 " font-size: 13px; font-weight: 600; }"
-                "QLabel#ankiGardenRewardOverflow { color: #bad5c3;"
+                f"QLabel#ankiGardenRewardOverflow {{ color: {GARDEN_THEME['text_secondary']};"
                 " font-size: 12px; font-weight: 600; }"
-                "QLabel#ankiGardenRewardTier { color: #bad5c3;"
-                " background: #21483d; border: 1px solid #4e7765;"
-                " border-radius: 7px; padding: 1px 6px; font-size: 12px; }"
+                f"QLabel#ankiGardenRewardTier {{ color: {GARDEN_THEME['text_secondary']};"
+                f" background: {GARDEN_THEME['selected_surface']}; border: 1px solid {GARDEN_THEME['strong_border']};"
+                " border-radius: 6px; padding: 1px 5px; font-size: 11px; }"
                 "QLabel#ankiGardenRewardTier[findTier=\"rare\"] {"
-                " color:#d8e8ff; background:#263f50; border-color:#647d99; }"
+                f" color:{GARDEN_THEME['info']}; background:{GARDEN_THEME['selected_surface']}; border-color:{GARDEN_THEME['info']}; }}"
                 "QLabel#ankiGardenRewardTier[findTier=\"exceptional\"] {"
-                " color:#eadfff; background:#3b324d; border-color:#8773a8; }"
-                "QLabel#ankiGardenRewardArt { background: #0b251f;"
-                " border: 1px solid #345a4c; border-radius: 11px;"
-                " color: #f5df9a; font-size: 24px; }"
+                f" color:{GARDEN_THEME['coin_accent']}; background:{GARDEN_THEME['selected_surface']}; border-color:{GARDEN_THEME['coin_accent']}; }}"
+                f"QLabel#ankiGardenRewardArt {{ background: {GARDEN_THEME['garden_background']};"
+                f" border: 1px solid {GARDEN_THEME['subtle_border']}; border-radius: 11px;"
+                f" color: {GARDEN_THEME['coin_accent']}; font-size: 24px; }}"
+                "QPushButton#ankiGardenRewardClose { background: transparent;"
+                f" border: 0; border-radius: 6px; color: {GARDEN_THEME['text_secondary']};"
+                " font-size: 16px; font-weight: 600; padding: 0; }"
+                "QPushButton#ankiGardenRewardClose:hover {"
+                f" background: {GARDEN_THEME['elevated_surface']}; color: {GARDEN_THEME['text_primary']}; }}"
             )
             row = QHBoxLayout(toast)
             row.setContentsMargins(10, 8, 12, 8)
@@ -1452,6 +1472,18 @@ class ReviewerHookHandler:
             copy.addWidget(overflow)
             row.addLayout(copy, 1)
 
+            close = QPushButton("×")
+            close.setObjectName("ankiGardenRewardClose")
+            close.setFixedSize(24, 24)
+            close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            close.setAccessibleName("Dismiss Garden reward")
+            close.setCursor(Qt.CursorShape.PointingHandCursor)
+            close.clicked.connect(
+                lambda _checked=False, target=toast:
+                self._dismiss_reward_toast(target)
+            )
+            row.addWidget(close, 0, Qt.AlignmentFlag.AlignTop)
+
             if tier is None:
                 hidden_tier = QLabel("", toast)
                 hidden_tier.hide()
@@ -1463,11 +1495,32 @@ class ReviewerHookHandler:
             toast._garden_message_label = message
             toast._garden_overflow_label = overflow
             toast._garden_art_label = art
+            toast._garden_dismiss_callback = (
+                lambda target=toast: self._dismiss_reward_toast(target)
+            )
 
             toast.setFixedWidth(GardenToastStack.toast_width(viewport_width))
             toast.adjustSize()
-            maximum_height = 64 if projection.compact else 72
-            preferred_height = max(56, min(maximum_height, toast.sizeHint().height()))
+            projected_visible = max(
+                1,
+                min(
+                    GardenToastStack.MAX_VISIBLE,
+                    len(self._reward_toasts) + 1,
+                ),
+            )
+            stack_budget = max(56, int(viewport_height * 0.40))
+            per_toast_budget = max(
+                48,
+                (
+                    stack_budget
+                    - GardenToastStack.GAP * (projected_visible - 1)
+                ) // projected_visible,
+            )
+            maximum_height = min(
+                64 if projection.compact else 72,
+                per_toast_budget,
+            )
+            preferred_height = max(48, min(maximum_height, toast.sizeHint().height()))
             toast.setFixedHeight(
                 min(preferred_height, max(1, viewport_height - 32))
             )

@@ -30,7 +30,7 @@ class OnboardingStateDisplay:
     onboarding_complete: bool
     step: OnboardingStep | None = None
     counted_step: int | None = None
-    total_steps: int = 6
+    total_steps: int = 5
 
 
 def onboarding_state_display(
@@ -74,8 +74,8 @@ def onboarding_state_display(
             ),
             OnboardingStep.CONFIRMATION: (
                 OnboardingState.STARTER_SELECTED,
-                "Starter selected",
-                "Continue",
+                "Ready to place",
+                "Place starter",
                 False,
                 False,
                 3,
@@ -86,7 +86,7 @@ def onboarding_state_display(
                 "Place starter",
                 False,
                 False,
-                4,
+                3,
             ),
             OnboardingStep.NURTURE: (
                 OnboardingState.STARTER_PLANTED_NOT_NURTURED,
@@ -94,7 +94,7 @@ def onboarding_state_display(
                 "Nurture",
                 False,
                 False,
-                5,
+                4,
             ),
             OnboardingStep.COMPLETION: (
                 OnboardingState.NURTURED_PLANT_ASSIGNED,
@@ -102,7 +102,7 @@ def onboarding_state_display(
                 "Return to Anki",
                 False,
                 False,
-                6,
+                5,
             ),
             OnboardingStep.DONE: (
                 OnboardingState.ONBOARDING_COMPLETE,
@@ -114,13 +114,18 @@ def onboarding_state_display(
             ),
         }
         state, label, action, marker, complete, number = projections[persisted_step]
+        resolved_step = (
+            OnboardingStep.PLACEMENT
+            if persisted_step == OnboardingStep.CONFIRMATION
+            else persisted_step
+        )
         return OnboardingStateDisplay(
             state,
             label,
             action,
             marker,
             complete,
-            step=persisted_step,
+            step=resolved_step,
             counted_step=number,
         )
 
