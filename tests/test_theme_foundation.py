@@ -209,6 +209,20 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
     assert scope["PROGRESS_BAR_HEIGHT"] == 6
     assert len(set(scope["GREEN_SURFACE_LEVELS"])) == 4
     assert scope["SEMANTIC_COLORS"]["gold"] != scope["SEMANTIC_COLORS"]["warning"]
+    expected_colors = {
+        "bg": "#08251C",
+        "surface_deep": "#0B1F1B",
+        "surface_1": "#0D3026",
+        "surface_2": "#123D31",
+        "surface_hover": "#164C3D",
+        "primary": "#63D99F",
+        "primary_hover": "#75E4AE",
+        "primary_pressed": "#4FC58C",
+        "gold": "#E7B94A",
+        "warning_bg": "#40371E",
+        "danger": "#F07B75",
+    }
+    assert expected_colors.items() <= scope["SEMANTIC_COLORS"].items()
 
 
 def test_control_variants_keep_legacy_tertiary_and_compact_desktop_targets() -> None:
@@ -311,8 +325,8 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
         "icon-button": (32, 32),
         "input": (None, 40),
         "select": (None, 40),
-        "switch": (40, 22),
-        "tab": (None, 42),
+        "switch": (36, 20),
+        "tab": (None, 44),
     }
 
     input_widget = _Widget()
@@ -322,8 +336,29 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
 
     switch = _Widget()
     scope["apply_switch_geometry"](switch)
-    assert (switch.minimum_width, switch.maximum_width) == (40, 40)
-    assert (switch.minimum_height, switch.maximum_height) == (22, 22)
+    assert (switch.minimum_width, switch.maximum_width) == (36, 36)
+    assert (switch.minimum_height, switch.maximum_height) == (20, 20)
+
+
+def test_shared_scrollbars_paint_no_native_corner_or_line_controls() -> None:
+    stylesheet = _theme_scope()["semantic_component_stylesheet"]()
+
+    assert "QAbstractScrollArea::corner" in stylesheet
+    assert "QScrollBar:vertical" in stylesheet
+    assert "width: 6px" in stylesheet
+    assert "QScrollBar::add-line:vertical" in stylesheet
+    assert "QScrollBar::sub-line:vertical" in stylesheet
+    assert "height: 0" in stylesheet
+
+
+def test_shared_toggle_widget_paints_track_thumb_and_enabled_state() -> None:
+    source = (ROOT / "ankigarden/ui/controls.py").read_text(encoding="utf-8")
+
+    assert "class GardenToggleSwitch(QCheckBox)" in source
+    assert "painter.drawRoundedRect" in source
+    assert "painter.drawEllipse" in source
+    assert '"on" if checked else "off"' in source
+    assert "QEvent.Type.EnabledChange" in source
 
 
 def test_control_helpers_apply_variant_and_restore_disabled_description() -> None:
@@ -463,15 +498,15 @@ def test_semantic_component_hooks_cover_shared_states_and_nursery_palette() -> N
         "missing-art",
     ):
         assert f"gardenRole='{role}'" in garden
-    assert "min-height: 42px" in garden
+    assert "min-height: 44px" in garden
     assert "max-height: 32px" in garden
     assert "QCheckBox[keyboardFocusVisible='true']:focus" in garden
     assert "QCheckBox::indicator:checked" in garden
     assert "QCheckBox[gardenRole='switch']::indicator" in garden
     assert "min-height: 6px" in garden
     assert "max-height: 6px" in garden
-    assert "width: 40px" in garden
-    assert "height: 22px" in garden
+    assert "width: 36px" in garden
+    assert "height: 20px" in garden
     assert "QLineEdit" in garden
     assert "QComboBox::drop-down" in garden
     assert "min-height: 40px" in garden

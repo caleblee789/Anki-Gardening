@@ -185,9 +185,9 @@ BANNER_BUTTON_HEIGHT = 36
 ONBOARDING_BUTTON_VISUAL_HEIGHT = 36
 ICON_BUTTON_VISUAL_SIZE = 32
 INPUT_VISUAL_HEIGHT = 40
-TAB_VISUAL_HEIGHT = 42
-TOGGLE_VISUAL_WIDTH = 40
-TOGGLE_VISUAL_HEIGHT = 22
+TAB_VISUAL_HEIGHT = 44
+TOGGLE_VISUAL_WIDTH = 36
+TOGGLE_VISUAL_HEIGHT = 20
 PLANT_ACTION_MIN_HEIGHT = COMPACT_BUTTON_HEIGHT
 ICON_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
 SCENE_HELP_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
@@ -252,22 +252,23 @@ class ThemeContext(str, Enum):
 
 
 SEMANTIC_COLORS = {
-    "bg": "#081814",
+    "bg": "#08251C",
     "shell": "#08251C",
+    "surface_deep": "#0B1F1B",
     "surface_1": "#0D3026",
     "surface_2": "#123D31",
-    "surface_3": "#174B3C",
-    "surface_hover": "#174B3C",
+    "surface_3": "#0B1F1B",
+    "surface_hover": "#164C3D",
     "border": "#70998A",
     "divider": "#315247",
     "text_primary": "#F4F3DF",
     "text_secondary": "#B7C4BD",
     "text_muted": "#95A89F",
     "primary": "#63D99F",
-    "primary_hover": "#75E3AE",
-    "primary_pressed": "#4FC98E",
+    "primary_hover": "#75E4AE",
+    "primary_pressed": "#4FC58C",
     "gold": "#E7B94A",
-    "danger": "#D66A64",
+    "danger": "#F07B75",
     "warning": "#E5A94A",
     "warning_bg": "#40371E",
     "info": "#79C8E8",
@@ -275,7 +276,7 @@ SEMANTIC_COLORS = {
     # reserved for artwork accents rather than whole catalogue cards.
     "shop_surface_1": "#0D3026",
     "shop_surface_2": "#123D31",
-    "shop_surface_3": "#174B3C",
+    "shop_surface_3": "#0B1F1B",
 }
 
 GREEN_SURFACE_LEVELS: tuple[str, str, str, str] = (
@@ -298,6 +299,7 @@ GARDEN_THEME = {
     "surface_1": SEMANTIC_COLORS["surface_1"],
     "surface_2": SEMANTIC_COLORS["surface_2"],
     "surface_3": SEMANTIC_COLORS["surface_3"],
+    "surface_deep": SEMANTIC_COLORS["surface_deep"],
     "surface_hover": SEMANTIC_COLORS["surface_hover"],
     "garden_background": SEMANTIC_COLORS["bg"],
     "dialog_surface": SEMANTIC_COLORS["shell"],
@@ -1350,6 +1352,39 @@ def semantic_component_stylesheet(
         QToolButton[gardenRole='switch']:checked {{
             background: {t['growth_accent']};
             border-color: {t['growth_accent']};
+        }}
+        QCheckBox[toggleSwitch='true']::indicator {{
+            width: 0;
+            height: 0;
+            border: 0;
+        }}
+        QAbstractScrollArea::corner {{
+            background: transparent;
+            border: 0;
+        }}
+        QScrollBar:vertical {{
+            width: 6px;
+            margin: 0;
+            background: transparent;
+        }}
+        QScrollBar::handle:vertical {{
+            min-height: 30px;
+            border: 0;
+            border-radius: 3px;
+            background: {t['strong_border']};
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: {t['growth_accent']};
+        }}
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {{
+            height: 0;
+            background: transparent;
+            border: 0;
+        }}
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {{
+            background: transparent;
         }}
         QFrame[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus,
         QLabel[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus {{

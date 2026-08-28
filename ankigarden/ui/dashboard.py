@@ -113,6 +113,7 @@ from .formatters import (
     format_status_label,
 )
 from .icons import garden_icon
+from .controls import GardenToggleSwitch
 from .garden_studio import GardenStudioWidget
 from .plant_display import (
     PLANT_POPOVER_COMPACT_BREAKPOINT,
@@ -139,8 +140,6 @@ from .theme import (
     PLANT_ACTION_MIN_HEIGHT,
     PRIMARY_BUTTON_VISUAL_HEIGHT,
     TAB_VISUAL_HEIGHT,
-    TOGGLE_VISUAL_HEIGHT,
-    TOGGLE_VISUAL_WIDTH,
     FeedbackTone,
     SemanticRole,
     TextRole,
@@ -517,46 +516,6 @@ def _settings_gear_icon(size: int = 22) -> QIcon:
     path.addEllipse(QPointF(center, center), edge * 0.115, edge * 0.115)
     path.setFillRule(Qt.FillRule.OddEvenFill)
     painter.fillPath(path, QColor("#D8E3DE"))
-    painter.end()
-    return QIcon(pixmap)
-
-
-def _toggle_state_icon(checked: bool) -> QIcon:
-    """Paint the shared 40 x 22 switch with color and position state."""
-
-    pixmap = QPixmap(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    outline = QRectF(
-        0.5,
-        0.5,
-        float(TOGGLE_VISUAL_WIDTH - 1),
-        float(TOGGLE_VISUAL_HEIGHT - 1),
-    )
-    painter.setPen(
-        QPen(
-            QColor(GARDEN_THEME["growth_accent"] if checked else GARDEN_THEME["strong_border"]),
-            1.0,
-        )
-    )
-    painter.setBrush(
-        QColor(GARDEN_THEME["action_accent"] if checked else "#20312c")
-    )
-    track_radius = TOGGLE_VISUAL_HEIGHT / 2 - 0.5
-    painter.drawRoundedRect(outline, track_radius, track_radius)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(
-        QColor(GARDEN_THEME["action_text"] if checked else GARDEN_THEME["text_secondary"])
-    )
-    painter.drawEllipse(
-        QPointF(
-            float(TOGGLE_VISUAL_WIDTH - 11 if checked else 11),
-            TOGGLE_VISUAL_HEIGHT / 2,
-        ),
-        8.0,
-        8.0,
-    )
     painter.end()
     return QIcon(pixmap)
 
@@ -7592,29 +7551,8 @@ class ActionFooter(GardenDialogFooter):
         self.setProperty("gardenComponent", "action-footer")
 
 
-class ToggleSwitch(QCheckBox):
-    """Accessible switch with one left-side visual state indicator."""
-
-    def __init__(self, label: str, parent: QWidget | None = None) -> None:
-        super().__init__(label, parent)
-        self.setProperty("toggleSwitch", True)
-        self.setAccessibleName(label)
-        self.setIconSize(QSize(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT))
-        self.toggled.connect(self._sync_accessible_state)
-        self._sync_accessible_state(self.isChecked())
-
-    def _sync_accessible_state(self, checked: bool) -> None:
-        self.setText(self.accessibleName())
-        self.setIcon(_toggle_state_icon(bool(checked)))
-        self.setAccessibleDescription("On" if checked else "Off")
-
-    def setChecked(self, checked: bool) -> None:
-        """Keep visible state text correct even while callers block signals."""
-        super().setChecked(bool(checked))
-        self._sync_accessible_state(bool(checked))
-
-
-GardenSwitch = ToggleSwitch
+ToggleSwitch = GardenToggleSwitch
+GardenSwitch = GardenToggleSwitch
 
 
 class ProgressRow(QFrame):
