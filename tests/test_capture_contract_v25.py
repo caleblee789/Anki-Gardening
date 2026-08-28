@@ -119,6 +119,24 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         stable_id.startswith("watering-can-")
         for stable_id in REGISTRY.profile_labels("full")
     )
+    assert len(REGISTRY.profile_labels("representative")) == 15
+    assert len(REGISTRY.profile_labels("full")) == 30
+    assert REGISTRY.profile_page_count("representative") == 2
+    assert REGISTRY.profile_page_count("full") == 5
+    assert "starter-selection-confirmation" in compiled["retired_ids"]
+    assert REGISTRY["starter-selection-confirmation"].placements == ()
+    runtime_source = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    ).read_text("utf-8")
+    assert "_capture_starter_confirmation" not in runtime_source
+
+
+def test_selected_plant_surface_owns_popover_window_matrix_evidence() -> None:
+    required_facts = REGISTRY["selected-plant-nurtured"].state_contract[
+        "required_facts"
+    ]
+
+    assert "plant_popover_window_matrix" in required_facts
 
 
 def test_adding_one_surface_changes_topology_without_invalidating_existing_pixels() -> None:
@@ -268,6 +286,13 @@ def test_home_prefers_app_owned_webview_and_requires_exact_fallback_identity() -
         "process-id-mismatch",
     ]
 
+    runtime_source = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    ).read_text("utf-8")
+    assert "mw.showMaximized()" in runtime_source
+    assert '"screen-filling-maximized"' in runtime_source
+    assert '"home_window_fullscreen"' in runtime_source
+
 
 def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
     requested = (
@@ -284,6 +309,32 @@ def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
         "reviewer-transaction",
     ]
     assert tuple(label for _name, labels in plan.cohorts for label in labels) == requested
+
+
+def test_selected_plant_capture_runs_matrix_without_expanding_registry() -> None:
+    runtime_path = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    )
+    source = runtime_path.read_text("utf-8")
+    tree = ast.parse(source)
+    matrix = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_audit_plant_popover_window_matrix"
+    )
+    matrix_source = ast.get_source_segment(source, matrix) or ""
+
+    assert "((1_536, 1_024), (1_440, 900), (1_280, 800))" in matrix_source
+    assert '"top-left"' in matrix_source
+    assert '"top-right"' in matrix_source
+    assert '"center"' in matrix_source
+    assert '"bottom-left"' in matrix_source
+    assert '"bottom-right"' in matrix_source
+    assert "for toast_visible in (False, True)" in matrix_source
+    assert "expected_case_count" in matrix_source
+    assert len(REGISTRY.profile_labels("full")) == 30
+    assert "selected-plant-nurtured" in REGISTRY.profile_labels("full")
 
 
 @pytest.mark.release_evidence

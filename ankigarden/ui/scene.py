@@ -793,6 +793,9 @@ class GardenSceneWidget(QWidget):
         asset_paths = safe_scene.get("asset_paths", {})
         safe_scene["asset_paths"] = asset_paths if isinstance(asset_paths, dict) else {}
         safe_scene["motion_enabled"] = bool(safe_scene.get("motion_enabled", True))
+        safe_scene["show_locked_bed_badges"] = bool(
+            safe_scene.get("show_locked_bed_badges", True)
+        )
         safe_scene["debug_placement"] = bool(
             CAPTURE_HARNESS_ENABLED
             and (
@@ -1041,6 +1044,7 @@ class GardenSceneWidget(QWidget):
         *,
         minimum_width: int | None = None,
         minimum_height: int | None = None,
+        extra_obstacles: tuple[QRectF, ...] = (),
     ) -> QRectF | None:
         plant_id = self._interaction.pinned_id
         if not plant_id or self._interaction.placing:
@@ -1063,6 +1067,14 @@ class GardenSceneWidget(QWidget):
                 for other_id, hit in self._plant_hit_rects.items()
                 if other_id != plant_id
             ]
+            legacy_obstacles.extend(
+                Rect(
+                    obstacle.x(), obstacle.y(),
+                    obstacle.width(), obstacle.height(),
+                )
+                for obstacle in extra_obstacles
+                if obstacle is not None and not obstacle.isEmpty()
+            )
             legacy = smart_card_rect(
                 self.width(),
                 self.height(),
@@ -1075,7 +1087,7 @@ class GardenSceneWidget(QWidget):
                     Rect(
                         selected_rect.x(), selected_rect.y(),
                         selected_rect.width(), selected_rect.height(),
-                    ).expanded(12.0, 12.0)
+                    ).expanded(14.0, 14.0)
                     if selected_rect is not None else None
                 ),
             )
@@ -1102,6 +1114,14 @@ class GardenSceneWidget(QWidget):
                 self._status_rect.x(), self._status_rect.y(),
                 self._status_rect.width(), self._status_rect.height(),
             ))
+        obstacles.extend(
+            Rect(
+                obstacle.x(), obstacle.y(),
+                obstacle.width(), obstacle.height(),
+            )
+            for obstacle in extra_obstacles
+            if obstacle is not None and not obstacle.isEmpty()
+        )
         placement = geometry_layout.resolve_popover(
             selected_slot,
             (float(card_width), float(card_height)),
@@ -1120,10 +1140,7 @@ class GardenSceneWidget(QWidget):
                 ),
             ),
             obstacles,
-            allow_docked=(
-                geometry_layout.scene_bounds.width
-                < PLANT_POPOVER_COMPACT_BREAKPOINT
-            ),
+            allow_docked=None,
         )
         self._card_popover_placement = placement
         box = placement.rectangle
@@ -1392,7 +1409,11 @@ class GardenSceneWidget(QWidget):
                 sky.setColorAt(0.55, QColor(27, 60, 72))
                 sky.setColorAt(1.0, QColor(16, 30, 26))
             painter.fillRect(r, sky)
-            background_drawn = self._draw_background_asset(painter, r)
+            background_drawn = self._draw_background_asset(
+                painter,
+                r,
+                edge_rect=viewport,
+            )
             growth = self._clamp(self._coerce_float(self.scene.get("growth", 0.0), 0.0), 0.0, 1.0)
 
             if not background_drawn:
@@ -1605,7 +1626,10 @@ class GardenSceneWidget(QWidget):
                 self._draw_weather_motion(painter, r, str(weather), density)
 
             self._draw_landmark_affordances(painter)
-            self._draw_locked_bed_overlays(painter)
+            if bool(self.scene.get("show_locked_bed_badges", True)):
+                self._draw_locked_bed_overlays(painter)
+            else:
+                self._painted_locked_beds = {}
             if self._interaction.placing:
                 # Move choices sit above a uniform 15% scene dimmer. This keeps
                 # the artwork legible while making destination states dominant.
@@ -1695,42 +1719,52 @@ class GardenSceneWidget(QWidget):
             painter.restore()
 
     def _draw_card_connector(self, painter: QPainter) -> None:
-        """Draw a quiet spatial connector from the selected plant to its card."""
+        """Paint the card-edge pointer chosen by the shared geometry solver."""
 
         if self._interaction.placing:
             return
         plant_id = str(self._interaction.pinned_id or "")
         card = self._card_connector_rect
-        plant = self._plant_hit_rects.get(plant_id)
-        if not plant_id or plant_id != self._card_connector_plant_id or card is None or plant is None:
+        placement = self._card_popover_placement
+        if (
+            not plant_id
+            or plant_id != self._card_connector_plant_id
+            or card is None
+            or placement is None
+            or placement.docked
+        ):
             return
-        plant_anchor = plant.center()
-        candidates = (
-            QPointF(card.left(), max(card.top() + 18.0, min(plant_anchor.y(), card.bottom() - 18.0))),
-            QPointF(card.right(), max(card.top() + 18.0, min(plant_anchor.y(), card.bottom() - 18.0))),
-            QPointF(max(card.left() + 18.0, min(plant_anchor.x(), card.right() - 18.0)), card.top()),
-            QPointF(max(card.left() + 18.0, min(plant_anchor.x(), card.right() - 18.0)), card.bottom()),
-        )
-        end = min(
-            candidates,
-            key=lambda point: (
-                (point.x() - plant_anchor.x()) ** 2
-                + (point.y() - plant_anchor.y()) ** 2
-            ),
-        )
-        direction_x = plant_anchor.x() - end.x()
-        direction_y = plant_anchor.y() - end.y()
-        magnitude = max(1.0, math.hypot(direction_x, direction_y))
-        start = QPointF(
-            end.x() + direction_x / magnitude * min(16.0, magnitude),
-            end.y() + direction_y / magnitude * min(16.0, magnitude),
-        )
+        side = str(placement.chosen_side)
+        edge_x, edge_y = placement.connector_end
+        depth = 8.0
+        half_base = 5.0
+        path = QPainterPath()
+        if side == "right":
+            path.moveTo(QPointF(card.left() - depth, edge_y))
+            path.lineTo(QPointF(card.left(), edge_y - half_base))
+            path.lineTo(QPointF(card.left(), edge_y + half_base))
+        elif side == "left":
+            path.moveTo(QPointF(card.right() + depth, edge_y))
+            path.lineTo(QPointF(card.right(), edge_y - half_base))
+            path.lineTo(QPointF(card.right(), edge_y + half_base))
+        elif side == "above":
+            path.moveTo(QPointF(edge_x, card.bottom() + depth))
+            path.lineTo(QPointF(edge_x - half_base, card.bottom()))
+            path.lineTo(QPointF(edge_x + half_base, card.bottom()))
+        elif side == "below":
+            path.moveTo(QPointF(edge_x, card.top() - depth))
+            path.lineTo(QPointF(edge_x - half_base, card.top()))
+            path.lineTo(QPointF(edge_x + half_base, card.top()))
+        else:
+            return
+        path.closeSubpath()
         painter.save()
-        painter.setPen(QPen(QColor(130, 226, 172, 170), 2.0, Qt.PenStyle.SolidLine))
-        painter.drawLine(start, end)
-        painter.setBrush(QColor(130, 226, 172, 210))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(start, 3.0, 3.0)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        connector_color = QColor(GARDEN_THEME["focus_ring"])
+        connector_color.setAlpha(238)
+        painter.setPen(QPen(connector_color, 2.0))
+        painter.setBrush(QColor(GARDEN_THEME["plant_popover_bg"]))
+        painter.drawPath(path)
         painter.restore()
 
     def _draw_status_overlay(self, painter: QPainter, rect: Any, growth: float, glow: int) -> None:
@@ -1931,8 +1965,8 @@ class GardenSceneWidget(QWidget):
             painter,
             layout,
             color=GARDEN_THEME["focus_ring"],
-            width=2.5 + pulse * 1.25,
-            opacity=0.92,
+            width=2.0,
+            opacity=0.78 + pulse * 0.14,
         ):
             return
 
@@ -1944,14 +1978,14 @@ class GardenSceneWidget(QWidget):
             layout.bed_footprint.width,
             layout.bed_footprint.height,
         )
-        horizontal = max(4.0, bed.width() * (0.05 + pulse * 0.025))
-        vertical = max(2.0, bed.height() * (0.08 + pulse * 0.025))
+        horizontal = max(4.0, bed.width() * 0.05)
+        vertical = max(2.0, bed.height() * 0.08)
         ring = bed.adjusted(-horizontal, -vertical, horizontal, vertical)
         color = QColor(GARDEN_THEME["focus_ring"])
-        color.setAlpha(238)
+        color.setAlpha(round(199 + pulse * 35))
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(color, 2.5 + pulse * 1.25))
+        painter.setPen(QPen(color, 2.0))
         painter.drawEllipse(ring)
         painter.restore()
 
@@ -2187,7 +2221,7 @@ class GardenSceneWidget(QWidget):
             painter.restore()
 
     def _draw_locked_bed_overlays(self, painter: QPainter) -> None:
-        """Mute and badge locked planters after their authored art is painted."""
+        """Mark locked beds without covering the authored garden artwork."""
 
         unlocked = max(
             0,
@@ -2208,30 +2242,22 @@ class GardenSceneWidget(QWidget):
                 layout.bed_footprint.height,
             )
             planter = planter_draw_rect(layout, planter_family)
-            overlay = QRectF(
-                planter.x,
-                planter.y,
-                planter.width,
-                planter.height,
-            ).adjusted(-1.0, -1.0, 1.0, 1.0)
             painter.save()
-            # A 40% veil leaves the authored planter at approximately 60%
-            # visual strength while preserving its stone-and-soil identity.
-            painter.setPen(QPen(QColor(145, 165, 155, 118), 1.0))
-            painter.setBrush(QColor(4, 16, 14, 102))
-            radius = max(8.0, overlay.height() * 0.46)
-            painter.drawRoundedRect(overlay, radius, radius)
-
-            badge_height = max(22.0, min(30.0, bed.width() * 0.23))
-            badge_width = badge_height * 1.08
+            # The badge is the complete locked treatment. The previous
+            # planter-sized translucent rounded rectangle made adjacent beds
+            # merge into a foggy panel and obscured the source artwork.
+            badge_height = max(22.0, min(26.0, bed.width() * 0.18))
+            badge_width = badge_height
             badge_rect = QRectF(
-                overlay.center().x() - badge_width / 2,
-                overlay.center().y() - badge_height / 2,
+                planter.x + planter.width / 2 - badge_width / 2,
+                planter.y + planter.height / 2 - badge_height / 2,
                 badge_width,
                 badge_height,
             )
-            painter.setPen(QPen(QColor(218, 229, 222, 235), 1.25))
-            painter.setBrush(QColor(10, 34, 28, 242))
+            locked_border = QColor(GARDEN_THEME["text_muted"])
+            locked_border.setAlpha(150)
+            painter.setPen(QPen(locked_border, 1.0))
+            painter.setBrush(QColor(8, 37, 28, 170))
             painter.drawRoundedRect(
                 badge_rect,
                 badge_height * 0.28,
@@ -2246,10 +2272,12 @@ class GardenSceneWidget(QWidget):
                 body_height,
             )
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(226, 235, 229, 245))
+            locked_icon = QColor(GARDEN_THEME["text_muted"])
+            locked_icon.setAlpha(175)
+            painter.setBrush(locked_icon)
             painter.drawRoundedRect(body_rect, 2.0, 2.0)
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.setPen(QPen(QColor(226, 235, 229, 245), 1.8))
+            painter.setPen(QPen(locked_icon, 1.6))
             painter.drawArc(
                 QRectF(
                     body_rect.left() + body_width * 0.18,
@@ -2262,10 +2290,10 @@ class GardenSceneWidget(QWidget):
             )
             self._painted_locked_beds[int(slot)] = {
                 "overlay_bounds": [
-                    round(float(overlay.x()), 2),
-                    round(float(overlay.y()), 2),
-                    round(float(overlay.width()), 2),
-                    round(float(overlay.height()), 2),
+                    round(float(badge_rect.x()), 2),
+                    round(float(badge_rect.y()), 2),
+                    round(float(badge_rect.width()), 2),
+                    round(float(badge_rect.height()), 2),
                 ],
                 "badge_bounds": [
                     round(float(badge_rect.x()), 2),
@@ -2273,7 +2301,7 @@ class GardenSceneWidget(QWidget):
                     round(float(badge_rect.width()), 2),
                     round(float(badge_rect.height()), 2),
                 ],
-                "relative_visual_strength": 0.60,
+                "relative_visual_strength": 0.58,
                 "interactive": False,
             }
             painter.restore()
@@ -2329,13 +2357,12 @@ class GardenSceneWidget(QWidget):
             blocked = target_state in {"locked", "unavailable"}
             occupied_target = slot in occupied and not current
             swap_target = target_state == "valid" and occupied_target
-            active = (
+            hovered = target_state == "valid" and slot == hovered_slot
+            selected_destination = (
                 target_state == "valid"
-                and (
-                    slot == hovered_slot
-                    or slot == self._interaction.destination_slot
-                )
+                and slot == self._interaction.destination_slot
             )
+            active = hovered or selected_destination
             if target_state == "unavailable":
                 label = (
                     f"Occupied by {occupant_names.get(slot, 'plant')}; invalid destination"
@@ -2368,9 +2395,10 @@ class GardenSceneWidget(QWidget):
                 pen_color = QColor(GARDEN_THEME["action_hover"] if active else GARDEN_THEME["action_accent"])
                 pen_color.setAlpha(245 if active else 112)
                 fill_color = QColor(54, 161, 104, 100 if active else 18)
-            outline_width = 2.4 if active and not blocked else 1.15
+            outline_width = 2.0 if selected_destination else 1.25
             outline_drawn = bool(
                 callable(draw_asset_outline)
+                and (current or selected_destination)
                 and draw_asset_outline(
                     painter,
                     layout,
@@ -2381,7 +2409,11 @@ class GardenSceneWidget(QWidget):
                 )
             )
             if not outline_drawn:
-                painter.setPen(QPen(pen_color, outline_width))
+                pen = QPen(pen_color, outline_width)
+                if hovered and not selected_destination:
+                    pen.setStyle(Qt.PenStyle.DashLine)
+                    pen.setDashPattern([4.0, 3.0])
+                painter.setPen(pen)
                 painter.setBrush(fill_color)
                 # Legacy surfaces retain their established ellipse fallback.
                 if layout.depth_band == "far":
@@ -2864,6 +2896,19 @@ class GardenSceneWidget(QWidget):
             super().mouseMoveEvent(event)
             return
         plant_id = self._plant_at(position)
+        if self._interaction.pinned_id is not None:
+            # A pinned selection owns the highlight channel. Other plants stay
+            # clickable without flashing hover outlines behind the popover.
+            if self._interaction.hovered_id != self._interaction.pinned_id:
+                self._interaction.hover(self._interaction.pinned_id)
+                self._hover_opacity.clear()
+                self.update()
+            if plant_id:
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+            else:
+                self.unsetCursor()
+            super().mouseMoveEvent(event)
+            return
         if plant_id:
             self._hover_close_timer.stop()
             self._interaction.hover(plant_id)
@@ -3647,7 +3692,13 @@ class GardenSceneWidget(QWidget):
         painter.restore()
         return True
 
-    def _draw_background_asset(self, painter: QPainter, rect: Any) -> bool:
+    def _draw_background_asset(
+        self,
+        painter: QPainter,
+        rect: Any,
+        *,
+        edge_rect: Any | None = None,
+    ) -> bool:
         fallback_path, _placement = self._asset_record("background")
         surface_path, _occlusion_path, _surface_variant, _variant_name = self._surface_asset_record(
             rect.width(), rect.height()
@@ -3655,12 +3706,26 @@ class GardenSceneWidget(QWidget):
         path = surface_path or fallback_path
         if not path:
             return False
-        return self._draw_asset_contain(
+        box = QRectF(rect)
+        edge_box = QRectF(edge_rect) if edge_rect is not None else box
+        painter.save()
+        painter.setClipping(False)
+        edge_fill_drawn = self._draw_asset_cover(
             painter,
             path,
-            QRectF(rect),
-            opacity=0.96,
+            edge_box,
+            opacity=0.42,
         )
+        if edge_fill_drawn:
+            painter.fillRect(edge_box, QColor(4, 18, 14, 84))
+        painter.restore()
+        foreground_drawn = self._draw_asset_contain(
+            painter,
+            path,
+            box,
+            opacity=0.98,
+        )
+        return foreground_drawn or edge_fill_drawn
 
     def _draw_surface_occlusion_asset(
         self, painter: QPainter, rect: Any, *, layer: str | None = None

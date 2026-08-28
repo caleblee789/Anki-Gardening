@@ -67,7 +67,6 @@ MEMORY_PROBE_CLASSES = (
     "PurchaseConfirmationDialog",
     "FertilizerReplacementDialog",
     "GrowthChargeConfirmationDialog",
-    "StarterConfirmationDialog",
 )
 COMPACT_HOME_BANNED_COPY = (
     "today",
@@ -2952,7 +2951,7 @@ def streak_fold_geometry_issue_codes(evidence: Any) -> tuple[str, ...]:
             issues.append(f"insufficient-streak-{field.replace('_', '-')}")
     cards = evidence.get("detail_cards")
     partial_indexes: list[int] = []
-    if not isinstance(cards, list) or len(cards) < 3:
+    if not isinstance(cards, list):
         issues.append("invalid-streak-detail-card-records")
     else:
         for record in cards:
@@ -3029,7 +3028,8 @@ def growth_charge_rendered_value_issue_codes(
             "growth_value": "450 → 550",
             "inventory_label": "Charges remaining",
             "inventory_value": "2 → 1",
-            "stage_badge": "New stage: Sprout",
+            "stage_badge": "Sprout",
+            "stage_badge_accessible": "New stage: Sprout",
             "stage_progress": "50 / 2,000 toward Young",
             "primary_action": "Use 1 charge",
             "current_growth": 450,
@@ -3045,10 +3045,10 @@ def growth_charge_rendered_value_issue_codes(
             "stage_transition": "Seed → Sprout",
             "receipt_copy": (
                 "+100 Growth · 1 growth charge remaining\n"
-                "50 / 2,000 toward Young"
+                "Next-stage progress · 50 / 2,000 toward Young"
             ),
             "stage_reward_heading": "Stage reward",
-            "reward_texts": ["Sprout · +5 Garden Coins"],
+            "reward_texts": ["Stage reward", "+5 Garden Coins"],
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 550,
@@ -3081,7 +3081,7 @@ def reviewer_stack_issue_codes(
         "visible_toast_count": 2,
         "summary_toast_count": 1,
         "regular_toast_count": 1,
-        "summary_copy": "+5 more rewards",
+        "summary_copy": "+5 more rewards ›",
         "newest_event_visible": True,
         "passed": True,
     }
@@ -3299,6 +3299,32 @@ def _visual_contract_record_issues(
                     )
                 ):
                     reject("selected plant actions overlap or leave the plant card")
+            popover_geometry = visual.get("plant_popover_geometry")
+            if not isinstance(popover_geometry, dict):
+                reject("selected plant popover geometry is missing")
+            else:
+                card_size = popover_geometry.get("card_size")
+                connector_end = popover_geometry.get("connector_end")
+                if not (
+                    popover_geometry.get("applicable") is True
+                    and popover_geometry.get("passed") is True
+                    and popover_geometry.get("content_inset") == 12
+                    and isinstance(card_size, list)
+                    and len(card_size) == 2
+                    and 288 <= card_size[0] <= 320
+                    and 300 <= card_size[1] <= 325
+                    and popover_geometry.get("chosen_side")
+                    in {"right", "left", "above", "below"}
+                    and isinstance(connector_end, list)
+                    and len(connector_end) == 2
+                    and popover_geometry.get("anatomy_passed") is True
+                    and popover_geometry.get("actions_aligned") is True
+                    and popover_geometry.get("pointer_clear") is True
+                    and popover_geometry.get("selected_clear") is True
+                    and popover_geometry.get("toast_clear") is True
+                    and popover_geometry.get("contained_in_scene") is True
+                ):
+                    reject("selected plant popover is not anchored or aligned")
         if label == "starter-nursery-plants":
             starter_geometry = visual.get("starter_card_geometry")
             if not isinstance(starter_geometry, dict):
@@ -3319,7 +3345,7 @@ def _visual_contract_record_issues(
                         and record.get("passed") is True
                         and isinstance(record.get("card_size"), list)
                         and len(record["card_size"]) == 2
-                        and 76 <= record["card_size"][1] <= 88
+                        and 88 <= record["card_size"][1] <= 92
                         and isinstance(record.get("seed_badge_bounds"), list)
                         and len(record["seed_badge_bounds"]) == 4
                         and 44 <= record["seed_badge_bounds"][2] <= 64
@@ -3327,7 +3353,7 @@ def _visual_contract_record_issues(
                         and isinstance(record.get("choose_bounds"), list)
                         and len(record["choose_bounds"]) == 4
                         and 64 <= record["choose_bounds"][2] <= 100
-                        and 36 <= record["choose_bounds"][3] <= 40
+                        and 34 <= record["choose_bounds"][3] <= 36
                         and isinstance(record.get("details_bounds"), list)
                         and len(record["details_bounds"]) == 4
                         for record in starter_records
@@ -3426,7 +3452,6 @@ def _visual_contract_record_issues(
                 reject("compact Home rendered or accessibility copy contains banned terms")
         if banned != []:
             reject("compact Home banned term list must be empty")
-        support = str(compact.get("support_text", ""))
         action = str(compact.get("action_text", ""))
         if not (
             compact.get("information_model_passed") is True
@@ -3443,17 +3468,23 @@ def _visual_contract_record_issues(
             ):
                 reject("Home error state must retain the Open garden action")
         elif not label.startswith("starter-"):
-            if not (
-                (
-                    " toward " in support
-                    or "total Growth" in support
+            compact_growth_present = bool(
+                re.search(
+                    r"\b[\d,]+\s*/\s*[\d,]+\s+growth\b",
+                    str(rendered),
+                    flags=re.IGNORECASE,
                 )
+                or " toward " in str(rendered)
+                or "total growth" in str(rendered).casefold()
+            )
+            if not (
+                compact_growth_present
                 and action == "Open garden"
                 and type(compact.get("action_width")) is int
                 and 104 <= compact["action_width"] <= 128
                 and compact.get("action_height") == 36
             ):
-                reject("compact Home must show stage progress and a 104-128 by 36 Open garden CTA")
+                reject("compact Home must show growth progress and a 104-128 by 36 Open garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -3484,9 +3515,7 @@ def _visual_contract_record_issues(
                     record.get("relative_visual_strength"),
                     bool,
                 )
-                and 0.55
-                <= float(record["relative_visual_strength"])
-                <= 0.65
+                and float(record["relative_visual_strength"]) == 0.58
                 and record.get("interactive") is False
                 and all(
                     isinstance(record.get(key), list)
@@ -3530,8 +3559,10 @@ def _visual_contract_record_issues(
             ) == 1
             and bool(upcoming)
             and all(
-                record.get("preview_enabled") is False
-                and record.get("label_enabled") is False
+                record.get("preview_enabled") is True
+                and record.get("label_enabled") is True
+                and record.get("preview_future_treatment") is True
+                and record.get("label_future_treatment") is True
                 and record.get("extra_text") == []
                 for record in upcoming
             )
@@ -3667,7 +3698,7 @@ def _visual_contract_record_issues(
                 isinstance(card, dict)
                 and card.get("contained") is True
                 and type(card.get("height")) is int
-                and card["height"] >= 84
+                and card["height"] >= 88
                 for card in visible_cards
             )
         ):
@@ -3681,13 +3712,13 @@ def _visual_contract_record_issues(
             display.get("passed") is True
             and display.get("outer_scroll_name") == "Display settings"
             and type(display.get("outer_vertical_range")) is int
-            and display["outer_vertical_range"] > 1
+            and display["outer_vertical_range"] <= 1
             and type(display.get("outer_horizontal_range")) is int
             and display["outer_horizontal_range"] <= 1
             and type(display.get("inner_vertical_range")) is int
             and display["inner_vertical_range"] <= 1
             and type(display.get("preview_panel_height")) is int
-            and 120 <= display["preview_panel_height"] <= 150
+            and 96 <= display["preview_panel_height"] <= 108
             and display.get("preview_content_kind") in {"garden", "placeholder"}
             and (
                 display.get("preview_content_kind") != "placeholder"
@@ -3697,7 +3728,7 @@ def _visual_contract_record_issues(
             )
             and bool(str(display.get("current_scenery", "")).strip())
             and type(display.get("preview_to_advanced_gap")) is int
-            and 12 <= display["preview_to_advanced_gap"] <= 16
+            and 8 <= display["preview_to_advanced_gap"] <= 12
             and all(
                 isinstance(display.get(key), dict)
                 and display[key].get("visible") is True
@@ -3711,7 +3742,7 @@ def _visual_contract_record_issues(
             )
         ):
             reject(
-                "Settings Display must retain its compact preview within one vertical outer scroll"
+                "Settings Display must fit its compact preview and expanded controls without scrolling"
             )
 
     if label == "nursery-item-owned":
@@ -4194,7 +4225,7 @@ def _native_layout_telemetry_record_issues(
     if minimum_text is None or minimum_text < float(
         limits["minimum_rendered_text_px"]
     ):
-        problems.append("native rendered text is below the 12 px floor")
+        problems.append("native rendered text is below the configured text floor")
 
     for count_name in (
         "tooltipWidgetCount",

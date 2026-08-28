@@ -552,7 +552,6 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
             GardenSettingsDialog,
             NurseryDialog,
             PlantStoryDialog,
-            StarterConfirmationDialog,
         )
     except (ImportError, ModuleNotFoundError):
         pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
@@ -585,7 +584,6 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     owner.show()
     dashboard = GardenDashboard(owner, engine, storage, config)
 
-    starter = StarterConfirmationDialog(dashboard, engine, "rose")
     replacement = FertilizerReplacementDialog(
         dashboard,
         engine,
@@ -627,14 +625,6 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
     )
 
     surfaces = (
-        (
-            "starter",
-            starter,
-            ((starter.actions_responsive, "starter-actions"),),
-            (447, 449),
-            "layoutMode",
-            "wide",
-        ),
         (
             "replacement",
             replacement,
@@ -951,6 +941,154 @@ def test_live_qt_canonical_dashboard_contains_scene_without_outer_scroll(
 
     dashboard._fertilizer_timer.stop()
     dashboard.hide()
+    owner.close()
+    application.processEvents()
+
+
+def test_live_qt_plant_popover_state_matrix_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prove anatomy and action geometry across the existing plant states."""
+
+    monkeypatch.setenv("ANKI_GARDEN_SKIP_STARTUP", "1")
+    monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
+    try:
+        from aqt.qt import QApplication, QWidget
+        from ankigarden.ui.dashboard import PlantInfoCard
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("Anki's Qt runtime is not installed in the unit-test environment")
+
+    application = QApplication.instance() or QApplication([])
+    owner = QWidget()
+    owner.resize(640, 520)
+    owner.show()
+    card = PlantInfoCard(owner)
+
+    def payload(**overrides: Any) -> dict[str, Any]:
+        values: dict[str, Any] = {
+            "plant_id": "rose",
+            "name": "Rose Plant",
+            "species": "rose",
+            "stage": "sprout",
+            "next_stage": "young",
+            "growth_points": 500,
+            "stage_points": 0,
+            "stage_goal": 2_000,
+            "fully_grown": False,
+            "is_active": True,
+            "fertilizer_status": {"phase": "inactive"},
+            "growth_today": 0,
+            "asset": None,
+        }
+        values.update(overrides)
+        return values
+
+    def settle(values: dict[str, Any]) -> int:
+        card.set_selected(values)
+        card.setFixedWidth(304)
+        card.layout().invalidate()
+        card.layout().activate()
+        card.adjustSize()
+        card.show()
+        application.processEvents()
+        application.processEvents()
+        return card.height()
+
+    active_height = settle(payload())
+    assert card.width() == 304
+    assert 300 <= active_height <= 325
+    assert card.artwork.size().width() == card.artwork.size().height() == 48
+    assert card.close_btn.size().width() == card.close_btn.size().height() == 32
+    assert card.identity.y() == card.nurtured_badge.y()
+    assert card.identity.geometry().right() + 6 <= card.nurtured_badge.geometry().left()
+    heading_right = card.heading.mapTo(card, card.heading.rect().topRight()).x()
+    close_left = card.close_btn.mapTo(card, card.close_btn.rect().topLeft()).x()
+    assert heading_right + 10 <= close_left
+    assert card.stage_progress.label.text() == "Growth toward Young"
+    assert card.stage_progress.value_label.text() == "0 / 2,000"
+    assert card.stage_progress.bar.minimum() == 0
+    assert card.stage_progress.bar.maximum() == 2_000
+    assert card.stage_progress.bar.value() == 0
+
+    assert card.growth_charge.height() == 36
+    assert card.fertilize.height() == card.move.height() == 36
+    assert card.move.width() == 84
+    assert card.fertilize.geometry().right() + 8 == card.move.geometry().left()
+    assert card.growth_charge.geometry().left() == card.fertilize.geometry().left()
+    assert card.growth_charge.geometry().right() == card.move.geometry().right()
+    assert card.story.height() == card.nurture.height() == 36
+    assert card.story.geometry().left() == card.nurture.geometry().left()
+    assert card.story.geometry().right() == card.nurture.geometry().right()
+    assert card.story.property("navigationRow") is True
+    assert card.danger_section.isVisibleTo(card)
+
+    stable_geometry = card.growth_charge.geometry()
+    card.growth_charge.setEnabled(False)
+    card._repolish(card.growth_charge)
+    application.processEvents()
+    assert card.growth_charge.geometry() == stable_geometry
+    card.growth_charge.setEnabled(True)
+    card.set_action_busy("growth_charge", True)
+    application.processEvents()
+    assert card.growth_charge.geometry() == stable_geometry
+    card.set_action_busy("growth_charge", False)
+
+    for current in (0, 1_000, 2_000):
+        settle(payload(stage_points=current))
+        assert card.stage_progress.bar.value() == current
+        assert card.stage_progress.value_label.text() == f"{current:,} / 2,000"
+
+    fertilizer_height = settle(payload(
+        fertilizer_status={
+            "phase": "active",
+            "name": "Premium Fertilizer",
+            "duration": "12 min left",
+            "accessible_text": "Premium Fertilizer, 12 min left",
+        },
+    ))
+    assert card.status_row.isVisibleTo(card)
+    assert card.status_value.text() == "Premium Fertilizer · 12 min left"
+    assert fertilizer_height <= 420
+
+    long_height = settle(payload(
+        name="Extraordinarily Long Rose Plant Name",
+        stage="ancient bloom",
+        next_stage="evergreen canopy",
+        stage_points=1_500,
+    ))
+    assert card.heading.height() <= card.heading.fontMetrics().lineSpacing() * 2 + 2
+    heading_right = card.heading.mapTo(card, card.heading.rect().topRight()).x()
+    close_left = card.close_btn.mapTo(card, card.close_btn.rect().topLeft()).x()
+    assert heading_right + 10 <= close_left
+    assert card.badge_container.geometry().right() <= card.identity_region.width()
+    assert long_height <= 420
+
+    inactive_height = settle(payload(is_active=False))
+    assert card.nurture.text() == "Nurture"
+    assert card.nurture.isVisibleTo(card)
+    assert not card.growth_charge.isVisibleTo(card)
+    assert not card.fertilize.isVisibleTo(card)
+    assert not card.danger_section.isVisibleTo(card)
+    assert card.move.geometry().left() == card.nurture.geometry().left()
+    assert card.move.geometry().right() == card.nurture.geometry().right()
+    assert inactive_height < active_height
+
+    final_height = settle(payload(
+        fully_grown=True,
+        is_active=False,
+        stage="rare flowering",
+        next_stage=None,
+    ))
+    assert not card.progress_region.isVisibleTo(card)
+    assert card.choose_another.isVisibleTo(card)
+    assert card.move.isVisibleTo(card)
+    assert card.story.isVisibleTo(card)
+    assert not card.nurture.isVisibleTo(card)
+    assert not card.danger_section.isVisibleTo(card)
+    assert final_height < active_height
+
+    card.set_selected(None)
+    card.hide()
     owner.close()
     application.processEvents()
 

@@ -100,3 +100,14 @@ def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
     )
     assert ("updateGeometry", ()) in widget.preview_panel.calls
     assert ("updateGeometry", ()) in widget.calls
+
+
+def test_settings_dialog_clamps_the_studio_to_visible_content() -> None:
+    dashboard = (
+        ROOT / "ankigarden" / "ui" / "dashboard.py"
+    ).read_text("utf-8")
+
+    assert "def _sync_behavior_content_height(self)" in dashboard
+    assert "if widget is None or widget.isHidden():" in dashboard
+    assert "self.behavior.setMaximumHeight(target_height)" in dashboard
+    assert "self.behavior.show_home_widget.toggled.connect(" in dashboard

@@ -1,5 +1,5 @@
 {
-  "contract_digest": "313dabe60fd5914da13f557d346f0afd8c95928e312381263be5f1f288d9ffbb",
+  "contract_digest": "22590e9c5615d9f719d567a4629ae5e481a6ac40358d6ec4e24b28536287bffa",
   "contract_version": 25,
   "profiles": {
     "full": {
@@ -10,7 +10,6 @@
             "starter-deck-browser-home",
             "starter-garden-onboarding",
             "starter-nursery-plants",
-            "starter-selection-confirmation",
             "starter-placement"
           ],
           "name": "First run"
@@ -67,8 +66,8 @@
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 31,
-      "topology_digest": "3174f1be1d6d4d8bb25f31dc3f6ddef8abe47faad6e83e55316193358001b7ce"
+      "surface_count": 30,
+      "topology_digest": "5f06e0db76ec8242443218b26839dc47016ab5b275979ce17bfa1cc533993ff1"
     },
     "representative": {
       "contact_sheet_page_count": 2,
@@ -76,8 +75,7 @@
         {
           "labels": [
             "starter-garden-onboarding",
-            "starter-nursery-plants",
-            "starter-selection-confirmation"
+            "starter-nursery-plants"
           ],
           "name": "First run"
         },
@@ -120,12 +118,13 @@
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 16,
-      "topology_digest": "619cdd0db00107f07128abcc9b9c1c18f5f18e667f1c972f291f51ebaa105a7f"
+      "surface_count": 15,
+      "topology_digest": "80d9a726b666e64acd1c85bda364ae72102bc37feb93127f887ffc661a232975"
     }
   },
   "retired_ids": [
     "starter-overview-home",
+    "starter-selection-confirmation",
     "starter-action-above-footer",
     "deck-browser-home",
     "overview-home",
@@ -223,7 +222,7 @@
   ],
   "scenario_schema_version": 2,
   "schema_version": 1,
-  "surface_count": 31,
+  "surface_count": 30,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -537,7 +536,7 @@
     },
     {
       "acquisition_policy": "qt-widget-grab",
-      "active": true,
+      "active": false,
       "allow_foreground_fallback": false,
       "arguments": [],
       "checkpoint": "fresh-first-run",
@@ -561,22 +560,7 @@
       ],
       "owned_dependency_groups": [],
       "owned_module_dependencies": [],
-      "placements": [
-        {
-          "group": "First run",
-          "group_order": 0,
-          "order": 2,
-          "profile": "representative",
-          "within_group_order": 2
-        },
-        {
-          "group": "First run",
-          "group_order": 0,
-          "order": 3,
-          "profile": "full",
-          "within_group_order": 3
-        }
-      ],
+      "placements": [],
       "prerequisites": [],
       "readiness": [
         "semantic-state",
@@ -584,7 +568,7 @@
         "visible-nonzero-geometry"
       ],
       "renderer_family": "StarterConfirmationDialog",
-      "retired_reason": "",
+      "retired_reason": "The reversible starter choice now advances directly to placement; this stable ID remains permanently reserved for historical evidence.",
       "state_contract": {
         "expected_fact_values": {
           "ordered_fixture_label": "starter-selection-confirmation",
@@ -851,7 +835,7 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 5,
+          "order": 4,
           "profile": "full",
           "within_group_order": 0
         }
@@ -1030,7 +1014,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "5c44fd8b0ef82c608cd718f2c71a63e8f26d9201ab543af4385b96d6d2e175a7",
+      "dependency_digest": "77bad8683d3b284a48d0c723a6bd4b0a1cc616459b0bdf3b2d03dd5168175de9",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1053,14 +1037,14 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 4,
+          "order": 3,
           "profile": "representative",
           "within_group_order": 1
         },
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 7,
+          "order": 6,
           "profile": "full",
           "within_group_order": 2
         }
@@ -1094,7 +1078,8 @@
           "garden_scene_present",
           "plant_card_visible",
           "selected_plant",
-          "nurture_boundary"
+          "nurture_boundary",
+          "plant_popover_window_matrix"
         ]
       }
     },
@@ -1257,14 +1242,14 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 5,
+          "order": 4,
           "profile": "representative",
           "within_group_order": 2
         },
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 9,
+          "order": 8,
           "profile": "full",
           "within_group_order": 4
         }
@@ -1337,7 +1322,7 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 8,
+          "order": 7,
           "profile": "full",
           "within_group_order": 3
         }
@@ -1408,14 +1393,14 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 6,
+          "order": 5,
           "profile": "representative",
           "within_group_order": 3
         },
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 11,
+          "order": 10,
           "profile": "full",
           "within_group_order": 6
         }
@@ -1487,14 +1472,14 @@
         {
           "group": "Anki home",
           "group_order": 2,
-          "order": 7,
+          "order": 6,
           "profile": "representative",
           "within_group_order": 0
         },
         {
           "group": "Anki home",
           "group_order": 2,
-          "order": 12,
+          "order": 11,
           "profile": "full",
           "within_group_order": 0
         }
@@ -1712,14 +1697,14 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 8,
+          "order": 7,
           "profile": "representative",
           "within_group_order": 0
         },
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 13,
+          "order": 12,
           "profile": "full",
           "within_group_order": 0
         }
@@ -1863,7 +1848,7 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 14,
+          "order": 13,
           "profile": "full",
           "within_group_order": 1
         }
@@ -2009,7 +1994,7 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 15,
+          "order": 14,
           "profile": "full",
           "within_group_order": 2
         }
@@ -2156,7 +2141,7 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 16,
+          "order": 15,
           "profile": "full",
           "within_group_order": 3
         }
@@ -2229,14 +2214,14 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 9,
+          "order": 8,
           "profile": "representative",
           "within_group_order": 1
         },
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 17,
+          "order": 16,
           "profile": "full",
           "within_group_order": 4
         }
@@ -2312,7 +2297,7 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 18,
+          "order": 17,
           "profile": "full",
           "within_group_order": 5
         }
@@ -2384,14 +2369,14 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 10,
+          "order": 9,
           "profile": "representative",
           "within_group_order": 0
         },
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 19,
+          "order": 18,
           "profile": "full",
           "within_group_order": 0
         }
@@ -2589,7 +2574,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 20,
+          "order": 19,
           "profile": "full",
           "within_group_order": 1
         }
@@ -2663,14 +2648,14 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 11,
+          "order": 10,
           "profile": "representative",
           "within_group_order": 1
         },
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 21,
+          "order": 20,
           "profile": "full",
           "within_group_order": 2
         }
@@ -2745,7 +2730,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 22,
+          "order": 21,
           "profile": "full",
           "within_group_order": 3
         }
@@ -2819,7 +2804,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 23,
+          "order": 22,
           "profile": "full",
           "within_group_order": 4
         }
@@ -3036,14 +3021,14 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 12,
+          "order": 11,
           "profile": "representative",
           "within_group_order": 0
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 24,
+          "order": 23,
           "profile": "full",
           "within_group_order": 0
         }
@@ -3181,7 +3166,7 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 25,
+          "order": 24,
           "profile": "full",
           "within_group_order": 1
         }
@@ -3570,14 +3555,14 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 3,
+          "order": 2,
           "profile": "representative",
           "within_group_order": 0
         },
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 6,
+          "order": 5,
           "profile": "full",
           "within_group_order": 1
         }
@@ -4264,7 +4249,7 @@
         {
           "group": "Garden",
           "group_order": 1,
-          "order": 10,
+          "order": 9,
           "profile": "full",
           "within_group_order": 5
         }
@@ -6564,14 +6549,14 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 13,
+          "order": 12,
           "profile": "representative",
           "within_group_order": 1
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 26,
+          "order": 25,
           "profile": "full",
           "within_group_order": 2
         }
@@ -6803,9 +6788,9 @@
         {
           "group": "First run",
           "group_order": 0,
-          "order": 4,
+          "order": 3,
           "profile": "full",
-          "within_group_order": 4
+          "within_group_order": 3
         }
       ],
       "prerequisites": [],
@@ -7435,14 +7420,14 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 14,
+          "order": 13,
           "profile": "representative",
           "within_group_order": 2
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 27,
+          "order": 26,
           "profile": "full",
           "within_group_order": 3
         }
@@ -8277,7 +8262,7 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 28,
+          "order": 27,
           "profile": "full",
           "within_group_order": 4
         }
@@ -8762,14 +8747,14 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 15,
+          "order": 14,
           "profile": "representative",
           "within_group_order": 3
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 29,
+          "order": 28,
           "profile": "full",
           "within_group_order": 5
         }
@@ -9163,7 +9148,7 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 30,
+          "order": 29,
           "profile": "full",
           "within_group_order": 6
         }

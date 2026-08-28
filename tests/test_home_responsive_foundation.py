@@ -54,9 +54,9 @@ def test_home_container_ranges_are_deterministic_at_every_boundary(
 
 def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs() -> None:
     assert HOME_WIDGET_STYLE.count("@container") == 3
-    assert "@container (max-width: 488px)" in HOME_WIDGET_STYLE
-    assert "@container (max-width:420px)" in HOME_WIDGET_STYLE
+    assert "@container (max-width: 400px)" in HOME_WIDGET_STYLE
     assert "@container (max-width:340px)" in HOME_WIDGET_STYLE
+    assert "@container (max-width:300px)" in HOME_WIDGET_STYLE
     assert "@media (max-width" not in HOME_WIDGET_STYLE
     assert ".ag-home__metrics { grid-template-columns" not in HOME_WIDGET_STYLE
     assert ".ag-home__scene { height:160px; }" not in HOME_WIDGET_STYLE
@@ -64,18 +64,22 @@ def test_home_breakpoints_are_container_scoped_and_have_no_viewport_width_cliffs
 
 
 def test_home_banner_preserves_cta_before_hiding_optional_metadata() -> None:
-    assert "max-width:500px" in HOME_WIDGET_STYLE
+    assert "width:min(calc(100% - 48px), 520px)" in HOME_WIDGET_STYLE
+    assert "max-width:520px" in HOME_WIDGET_STYLE
     assert "margin:24px auto 18px" in HOME_WIDGET_STYLE
     assert (
-        "grid-template-columns:minmax(0,240px) minmax(0,1fr) 128px"
+        "grid-template-columns:minmax(0,260px) minmax(0,1fr) 112px"
         in HOME_WIDGET_STYLE
     )
-    assert "min-width:128px !important" in HOME_WIDGET_STYLE
-    assert ".ag-home__support,.ag-home__growth-track { display:none; }" in HOME_WIDGET_STYLE
+    assert "min-width:112px !important" in HOME_WIDGET_STYLE
+    assert (
+        ".ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }"
+        in HOME_WIDGET_STYLE
+    )
     assert HOME_WIDGET_STYLE.index(
-        "@container (max-width:420px)"
+        "@container (max-width: 400px)"
     ) < HOME_WIDGET_STYLE.index("@container (max-width:340px)")
-    assert "-webkit-line-clamp:2" in HOME_WIDGET_STYLE
+    assert "white-space:nowrap" in HOME_WIDGET_STYLE
 
 
 

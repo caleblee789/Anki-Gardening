@@ -11,6 +11,8 @@ from ankigarden.ui.icons import (
     GARDEN_ICON_PATHS,
     ICON_STROKE_WIDTH,
     ICON_VIEWBOX,
+    clear_garden_icon_pixmap_cache,
+    garden_icon_pixmap,
     garden_icon_svg,
 )
 
@@ -20,6 +22,9 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
     assert ICON_STROKE_WIDTH == 1.8
     assert {
         "close",
+        "check",
+        "chevron",
+        "rename",
         "coin",
         "growth",
         "streak",
@@ -52,9 +57,13 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
             self.height = height
             self.rendered = False
             self.painter_ended = False
+            self.device_pixel_ratio = 1.0
 
         def fill(self, _color: object) -> None:
             return None
+
+        def setDevicePixelRatio(self, value: float) -> None:
+            self.device_pixel_ratio = value
 
         def isNull(self) -> bool:
             return False
@@ -102,13 +111,41 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "PyQt6", pyqt6_module)
     monkeypatch.setitem(sys.modules, "PyQt6.QtSvg", qtsvg_module)
 
-    icon = icons.garden_icon("close", color="#abcdef")
+    clear_garden_icon_pixmap_cache()
+    icon = icons.garden_icon(
+        "close",
+        color="#abcdef",
+        logical_size=20,
+        device_pixel_ratio=2.0,
+    )
 
     assert isinstance(icon, FakeIcon)
     assert icon.source is not None
+    assert (icon.source.width, icon.source.height) == (40, 40)
+    assert icon.source.device_pixel_ratio == 2.0
     assert icon.source.rendered is True
     assert icon.source.painter_ended is True
     assert rendered_payloads
     assert b'style="color:#abcdef"' in rendered_payloads[0]
     assert b'stroke="currentColor"' in rendered_payloads[0]
     assert GARDEN_ICON_PATHS["close"].encode("utf-8") in rendered_payloads[0]
+
+    cached = garden_icon_pixmap(
+        "close",
+        20,
+        color="#abcdef",
+        device_pixel_ratio=2.0,
+    )
+    assert cached is icon.source
+    assert len(rendered_payloads) == 1
+
+    different_dpr = garden_icon_pixmap(
+        "close",
+        20,
+        color="#abcdef",
+        device_pixel_ratio=1.0,
+    )
+    assert different_dpr is not cached
+    assert (different_dpr.width, different_dpr.height) == (20, 20)
+    assert len(rendered_payloads) == 2
+    clear_garden_icon_pixmap_cache()

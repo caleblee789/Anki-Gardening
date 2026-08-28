@@ -385,7 +385,7 @@ def test_large_probes_use_semantic_growth_without_enlarging_starter() -> None:
     assert specs["resize-fertilizer-large"][3:5] == (940, 800)
     assert specs["resize-species-overview-large"][3:5] == (940, 800)
     assert specs["resize-fertilizer-replacement-large"][3:5] == (820, 535)
-    assert specs["resize-starter-confirmation-large"][3:5] == (600, 380)
+    assert not any("starter-confirmation" in label for label in specs)
     assert specs["resize-collection-minimum"][3:5] == (720, 500)
     assert specs["resize-collection-default"][3:5] == (1120, 800)
     assert specs["resize-collection-large"][3:5] == (1180, 880)
@@ -540,12 +540,19 @@ def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() ->
     no_scroll_labels = ast.literal_eval(no_scroll_assignment.value.args[0])
 
     assert "Math.round(homeActionRect.width) <= 128" in home_source
-    assert "settings-display-advanced-open" not in no_scroll_labels
-    assert "scroll.ensureWidgetVisible(" in settings_source
-    assert "outer_vertical_range > 1" in settings_source
+    assert "settings-display-advanced-open" in no_scroll_labels
+    assert "scroll.ensureWidgetVisible(" not in settings_source
+    assert "outer_vertical_range <= 1" in settings_source
     assert "outer_horizontal_range <= 1" in settings_source
     assert "inner_vertical_range <= 1" in settings_source
-    assert "scroll.verticalScrollBar().setValue(0)" not in settings_source
+    assert "scroll.verticalScrollBar().setValue(0)" in settings_source
+
+    starter_postcondition = _method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_fixture_postcondition",
+    )
+    assert "Plant in Bed" in starter_postcondition
+    assert "Place in Bed" not in starter_postcondition
 
 
 def test_loadout_first_fold_reserves_two_complete_native_tile_rows() -> None:
@@ -554,4 +561,4 @@ def test_loadout_first_fold_reserves_two_complete_native_tile_rows() -> None:
     )
 
     assert "self.option_tabs.setFixedHeight(304)" in dashboard_source
-    assert "scroll.setFixedHeight(270)" in dashboard_source
+    assert "scroll.setFixedHeight(260)" in dashboard_source

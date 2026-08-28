@@ -185,6 +185,24 @@ def format_stage_progress(value: Any, maximum: Any, destination: str) -> str:
     )
 
 
+def format_growth_destination(destination: str) -> str:
+    """Format the shared heading that names the next plant stage."""
+
+    return f"Growth to {format_status_label(destination)}"
+
+
+def format_growth_remaining(value: Any) -> str:
+    """Format Growth still required inside the current stage."""
+
+    return f"{format_integer(value)} Growth remaining"
+
+
+def format_growth_unlock(value: Any) -> str:
+    """Format a total-Growth unlock threshold."""
+
+    return f"Unlocks at {format_integer(value)} total Growth"
+
+
 def format_balance_after(value: Any) -> str:
     """Format the standard decision-relevant post-purchase balance."""
 

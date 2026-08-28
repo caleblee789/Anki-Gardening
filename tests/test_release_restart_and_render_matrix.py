@@ -167,32 +167,39 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     original_save = storage.save
     storage.save = lambda: (_ for _ in ()).throw(OSError("disk full"))
     try:
-        assert engine.select_starter_species("rose")[0] is False
+        assert engine.select_starter_species("bonsai")[0] is False
     finally:
         storage.save = original_save
     assert storage.state.to_dict() == before_failed_choice
 
-    assert engine.select_starter_species("rose")[0]
-    engine, storage = _restart(engine, storage)
-    assert storage.state.onboarding.step is OnboardingStep.CONFIRMATION
-    assert storage.state.onboarding.pending_species == "rose"
-    assert storage.state.plants == []
-
-    assert engine.confirm_starter_species()[0]
+    assert engine.select_starter_species("bonsai")[0]
     engine, storage = _restart(engine, storage)
     assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
-    assert storage.state.onboarding.pending_species == "rose"
+    assert storage.state.onboarding.pending_species == "bonsai"
     assert storage.state.plants == []
 
-    ok, _message, starter = engine.place_starter(0)
-    assert ok and starter is not None
+    ok, _message, starter, placement_change = engine.place_starter_with_change(0)
+    assert ok and starter is not None and placement_change is not None
+    original_name = storage.state.garden_name
+    storage.state.garden_name = "Changed after placement"
+    assert engine.undo_starter_placement(placement_change)[0] is False
+    storage.state.garden_name = original_name
+    assert engine.undo_starter_placement(placement_change)[0]
+    assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
+    assert storage.state.onboarding.pending_species == "bonsai"
+    assert storage.state.plants == []
+
+    ok, _message, starter, placement_change = engine.place_starter_with_change(0)
+    assert ok and starter is not None and placement_change is not None
     starter_id = starter.plant_id
-    repeated_ok, _repeated_message, repeated_starter = engine.place_starter(0)
-    assert repeated_ok and repeated_starter is starter
+    repeated_ok, _repeated_message, repeated_starter, repeated_change = (
+        engine.place_starter_with_change(0)
+    )
+    assert repeated_ok and repeated_starter is starter and repeated_change is None
     assert [plant.plant_id for plant in storage.state.plants] == [starter_id]
     engine, storage = _restart(engine, storage, acknowledge_feedback=True)
     assert storage.state.starter_selection_complete is True
-    assert [plant.species for plant in storage.state.plants] == ["rose"]
+    assert [plant.species for plant in storage.state.plants] == ["bonsai"]
     assert storage.state.active_plant_id is None
     assert storage.state.onboarding.step is OnboardingStep.NURTURE
     assert onboarding_state_display(storage.state, 0).state is (
@@ -422,6 +429,12 @@ class _PainterPath:
     def moveTo(self, *_args: Any) -> None:
         pass
 
+    def lineTo(self, *_args: Any) -> None:
+        pass
+
+    def closeSubpath(self) -> None:
+        pass
+
     def cubicTo(self, *_args: Any) -> None:
         pass
 
@@ -430,6 +443,7 @@ class _Painter:
     def __init__(self) -> None:
         self.ellipses: list[Any] = []
         self.lines: list[tuple[_Point, _Point]] = []
+        self.paths: list[Any] = []
 
     def save(self) -> None:
         pass
@@ -443,11 +457,14 @@ class _Painter:
     def setPen(self, *_args: Any) -> None:
         pass
 
+    def setRenderHint(self, *_args: Any) -> None:
+        pass
+
     def drawEllipse(self, *args: Any) -> None:
         self.ellipses.append(args)
 
-    def drawPath(self, *_args: Any) -> None:
-        pass
+    def drawPath(self, *args: Any) -> None:
+        self.paths.append(args)
 
     def drawLine(self, start: _Point, end: _Point) -> None:
         self.lines.append((start, end))
@@ -478,7 +495,9 @@ _QT = SimpleNamespace(
 )
 _SCENE_NAMESPACE = {
     "Any": Any,
-    "QPainter": object,
+    "QPainter": SimpleNamespace(
+        RenderHint=SimpleNamespace(Antialiasing=object()),
+    ),
     "PlantPlacement": object,
     "QRectF": _RectF,
     "QPointF": _Point,
@@ -492,6 +511,8 @@ _SCENE_NAMESPACE = {
         "focus_ring": "#77c9a3",
         "coin_accent": "#dfbd57",
         "action_text": "#ffffff",
+        "plant_popover_border": "#77c9a3",
+        "plant_popover_bg": "#174b3c",
     },
     "math": math,
     "nurtured_badge_rect": nurtured_badge_rect,
@@ -714,6 +735,54 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                     target.hit.width,
                                     target.hit.height,
                                 )
+                                if card_rect.right <= target.hit.x:
+                                    connector_side = "left"
+                                    connector_end = (
+                                        card_rect.right,
+                                        max(
+                                            card_rect.y + 20,
+                                            min(
+                                                target.hit.y + target.hit.height / 2,
+                                                card_rect.bottom - 20,
+                                            ),
+                                        ),
+                                    )
+                                elif card_rect.x >= target.hit.right:
+                                    connector_side = "right"
+                                    connector_end = (
+                                        card_rect.x,
+                                        max(
+                                            card_rect.y + 20,
+                                            min(
+                                                target.hit.y + target.hit.height / 2,
+                                                card_rect.bottom - 20,
+                                            ),
+                                        ),
+                                    )
+                                elif card_rect.bottom <= target.hit.y:
+                                    connector_side = "above"
+                                    connector_end = (
+                                        max(
+                                            card_rect.x + 20,
+                                            min(
+                                                target.hit.x + target.hit.width / 2,
+                                                card_rect.right - 20,
+                                            ),
+                                        ),
+                                        card_rect.bottom,
+                                    )
+                                else:
+                                    connector_side = "below"
+                                    connector_end = (
+                                        max(
+                                            card_rect.x + 20,
+                                            min(
+                                                target.hit.x + target.hit.width / 2,
+                                                card_rect.right - 20,
+                                            ),
+                                        ),
+                                        card_rect.y,
+                                    )
                                 connector_scene = SimpleNamespace(
                                     _interaction=SimpleNamespace(
                                         placing=False,
@@ -726,9 +795,14 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
                                     _card_connector_plant_id=(
                                         f"{asset['asset_id']}-{selected_plot}"
                                     ),
+                                    _card_popover_placement=SimpleNamespace(
+                                        docked=False,
+                                        chosen_side=connector_side,
+                                        connector_end=connector_end,
+                                    ),
                                 )
                                 draw_connector(connector_scene, connector_painter)
-                                assert len(connector_painter.lines) == 1
+                                assert len(connector_painter.paths) == 1
 
                         if nurtured:
                             marker_painter = _Painter()

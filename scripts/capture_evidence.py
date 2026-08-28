@@ -2315,7 +2315,6 @@ _DASHBOARD_FAMILY_SYMBOLS: dict[str, frozenset[str]] = {
         "ConfirmationDialog",
         "GardenOutcomePreview",
     }),
-    "StarterConfirmationDialog": frozenset({"StarterConfirmationDialog"}),
     "PlantStoryDialog": frozenset({"PlantStoryDialog", "MemoryTimeline"}),
     # The species dialog is constructed directly as a GardenDialog by the
     # mapped GardenDashboard builder. It does not render GardenDetailsDialog;

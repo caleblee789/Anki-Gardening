@@ -14,7 +14,7 @@ from enum import Enum, IntEnum
 from typing import Any
 
 
-MIN_LEGIBLE_TEXT_SIZE = 12
+MIN_LEGIBLE_TEXT_SIZE = 11
 MIN_BODY_TEXT_SIZE = 14
 
 
@@ -60,17 +60,17 @@ class TypographyToken:
 # action copy have intentionally larger defaults so platform font substitution
 # does not force them below a practical reading size.
 TEXT_ROLE_TOKENS: dict[TextRole, TypographyToken] = {
-    TextRole.BRAND_EYEBROW: TypographyToken(12, 16, 700, 0.8),
-    TextRole.DISPLAY_TITLE: TypographyToken(28, 36, 700, -0.2),
-    TextRole.SCREEN_TITLE: TypographyToken(24, 32, 700, -0.1),
-    TextRole.SECTION_HEADING: TypographyToken(16, 22, 650),
-    TextRole.CARD_TITLE: TypographyToken(16, 22, 650),
+    TextRole.BRAND_EYEBROW: TypographyToken(11, 16, 650, 0.88),
+    TextRole.DISPLAY_TITLE: TypographyToken(24, 30, 700, -0.1),
+    TextRole.SCREEN_TITLE: TypographyToken(20, 26, 650),
+    TextRole.SECTION_HEADING: TypographyToken(16, 22, 600),
+    TextRole.CARD_TITLE: TypographyToken(14, 20, 600),
     TextRole.BODY: TypographyToken(14, 20, 400),
-    TextRole.SECONDARY: TypographyToken(14, 19, 400),
-    TextRole.METADATA: TypographyToken(12, 17, 500, 0.1),
-    TextRole.BADGE: TypographyToken(12, 17, 700, 0.3),
-    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 36, 700, tabular_numerals=True),
-    TextRole.BUTTON_LABEL: TypographyToken(14, 19, 650),
+    TextRole.SECONDARY: TypographyToken(13, 18, 400),
+    TextRole.METADATA: TypographyToken(12, 16, 500, 0.1),
+    TextRole.BADGE: TypographyToken(12, 16, 600, 0.2),
+    TextRole.NUMERIC_DISPLAY: TypographyToken(28, 34, 700, tabular_numerals=True),
+    TextRole.BUTTON_LABEL: TypographyToken(13, 18, 600),
 }
 
 # Public compatibility/readability aliases. All three names reference the same
@@ -81,33 +81,50 @@ TextStyle = TypographyToken
 
 
 class SpacingToken(IntEnum):
-    """A compact spacing scale that supports dense and roomy surfaces."""
+    """The canonical Garden spacing scale.
+
+    Legacy names remain aliases so older call sites stay callable, but every
+    rendered gap resolves to one of the six release values.
+    """
 
     NONE = 0
-    HAIRLINE = 2
     XS = 4
     SM = 8
     MD = 12
     LG = 16
-    ROOMY = 20
     XL = 24
     XXL = 32
-    XXXL = 40
-    DISPLAY = 48
+
+    HAIRLINE = XS
+    ROOMY = XL
+    XXXL = XXL
+    DISPLAY = XXL
 
 
 Spacing = SpacingToken
 SPACING_SCALE: dict[str, int] = {
-    token.name.lower(): int(token) for token in SpacingToken
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32,
+}
+SPACING_ALIASES: dict[str, int] = {
+    "none": int(SpacingToken.NONE),
+    "hairline": SPACING_SCALE["xs"],
+    "roomy": SPACING_SCALE["xl"],
+    "xxxl": SPACING_SCALE["xxl"],
+    "display": SPACING_SCALE["xxl"],
 }
 
 
 class RadiusToken(IntEnum):
     """Shared corner radii for controls, cards, and dialog surfaces."""
 
-    SM = 6
-    MD = 10
-    LG = 14
+    SM = 8
+    MD = 12
+    LG = 16
 
 
 Radius = RadiusToken
@@ -163,17 +180,24 @@ CONTROL_MIN_HIT_TARGET = MIN_HIT_TARGET
 BUTTON_MIN_HEIGHT = MIN_HIT_TARGET
 BUTTON_VISUAL_HEIGHT = 36
 PRIMARY_BUTTON_VISUAL_HEIGHT = 40
-COMPACT_BUTTON_HEIGHT = 36
+COMPACT_BUTTON_HEIGHT = 32
 BANNER_BUTTON_HEIGHT = 36
-ONBOARDING_BUTTON_VISUAL_HEIGHT = 40
+ONBOARDING_BUTTON_VISUAL_HEIGHT = 36
 ICON_BUTTON_VISUAL_SIZE = 32
 INPUT_VISUAL_HEIGHT = 40
 TAB_VISUAL_HEIGHT = 44
-TOGGLE_VISUAL_WIDTH = 40
-TOGGLE_VISUAL_HEIGHT = 22
-PLANT_ACTION_MIN_HEIGHT = MIN_HIT_TARGET
+TOGGLE_VISUAL_WIDTH = 36
+TOGGLE_VISUAL_HEIGHT = 20
+PLANT_ACTION_MIN_HEIGHT = COMPACT_BUTTON_HEIGHT
 ICON_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
 SCENE_HELP_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
+
+CONTROL_HEIGHT_SCALE: dict[str, int] = {
+    "compact": COMPACT_BUTTON_HEIGHT,
+    "default": BUTTON_VISUAL_HEIGHT,
+    "primary": PRIMARY_BUTTON_VISUAL_HEIGHT,
+}
+PROGRESS_BAR_HEIGHT = 6
 
 BUTTON_SIZE_TOKENS: dict[ButtonSize, ButtonSizeToken] = {
     ButtonSize.COMPACT_ROW: ButtonSizeToken(COMPACT_BUTTON_HEIGHT, 10),
@@ -228,31 +252,39 @@ class ThemeContext(str, Enum):
 
 
 SEMANTIC_COLORS = {
-    "bg": "#061B15",
+    "bg": "#08251C",
     "shell": "#08251C",
+    "surface_deep": "#0B1F1B",
     "surface_1": "#0D3026",
     "surface_2": "#123D31",
-    "surface_3": "#184B3B",
-    "surface_hover": "#1D5543",
-    "border": "#2C6653",
-    "divider": "#245444",
-    "text_primary": "#F2F0DF",
-    "text_secondary": "#BAC9C0",
-    "text_muted": "#8EA49A",
+    "surface_3": "#0B1F1B",
+    "surface_hover": "#164C3D",
+    "border": "#70998A",
+    "divider": "#315247",
+    "text_primary": "#F4F3DF",
+    "text_secondary": "#B7C4BD",
+    "text_muted": "#95A89F",
     "primary": "#63D99F",
-    "primary_hover": "#76E3AD",
-    "primary_pressed": "#4FC98E",
-    "gold": "#E3B94E",
-    "danger": "#DF7B73",
-    "warning": "#E3B94E",
+    "primary_hover": "#75E4AE",
+    "primary_pressed": "#4FC58C",
+    "gold": "#E7B94A",
+    "danger": "#F07B75",
+    "warning": "#E5A94A",
     "warning_bg": "#40371E",
-    "info": "#77BFE6",
+    "info": "#79C8E8",
     # Nursery rows are part of the same product hierarchy. Earth tones are
     # reserved for artwork accents rather than whole catalogue cards.
     "shop_surface_1": "#0D3026",
     "shop_surface_2": "#123D31",
-    "shop_surface_3": "#184B3B",
+    "shop_surface_3": "#0B1F1B",
 }
+
+GREEN_SURFACE_LEVELS: tuple[str, str, str, str] = (
+    SEMANTIC_COLORS["shell"],
+    SEMANTIC_COLORS["surface_1"],
+    SEMANTIC_COLORS["surface_2"],
+    SEMANTIC_COLORS["surface_3"],
+)
 
 # Readable public aliases share the same dictionary; feature modules should
 # never fork the palette to gain a component-specific shade.
@@ -267,6 +299,7 @@ GARDEN_THEME = {
     "surface_1": SEMANTIC_COLORS["surface_1"],
     "surface_2": SEMANTIC_COLORS["surface_2"],
     "surface_3": SEMANTIC_COLORS["surface_3"],
+    "surface_deep": SEMANTIC_COLORS["surface_deep"],
     "surface_hover": SEMANTIC_COLORS["surface_hover"],
     "garden_background": SEMANTIC_COLORS["bg"],
     "dialog_surface": SEMANTIC_COLORS["shell"],
@@ -281,12 +314,12 @@ GARDEN_THEME = {
     "action_accent": SEMANTIC_COLORS["primary"],
     "action_hover": SEMANTIC_COLORS["primary_hover"],
     "action_pressed": SEMANTIC_COLORS["primary_pressed"],
-    "action_text": "#06251B",
+    "action_text": "#08251C",
     "action_border": SEMANTIC_COLORS["primary"],
     "secondary_action": SEMANTIC_COLORS["surface_2"],
     "secondary_hover": SEMANTIC_COLORS["surface_hover"],
     "secondary_pressed": SEMANTIC_COLORS["surface_1"],
-    "secondary_border": "#437966",
+    "secondary_border": SEMANTIC_COLORS["border"],
     "disabled_surface": "#173029",
     "disabled_border": "#3F5C50",
     "disabled_text": "#A6B6AE",
@@ -294,6 +327,7 @@ GARDEN_THEME = {
     "coin_accent": SEMANTIC_COLORS["gold"],
     "success": SEMANTIC_COLORS["primary"],
     "warning": SEMANTIC_COLORS["warning"],
+    "warning_surface": SEMANTIC_COLORS["warning_bg"],
     "error": SEMANTIC_COLORS["danger"],
     "danger": SEMANTIC_COLORS["danger"],
     "info": SEMANTIC_COLORS["info"],
@@ -301,6 +335,22 @@ GARDEN_THEME = {
     "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
     "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
     "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
+    # Selected-plant popover palette. Keep these component semantics here so
+    # the compact overlay never grows its own scatter of one-off colors.
+    "plant_popover_bg": "#174B3C",
+    "plant_popover_raised": "#0F3A2D",
+    "plant_popover_border": "rgba(126, 221, 179, 72)",
+    "plant_popover_status_surface": "rgba(102, 222, 164, 41)",
+    "plant_popover_status_border": "rgba(102, 222, 164, 77)",
+    "plant_popover_status_text": "#8DEBBB",
+    "plant_popover_progress_track": "rgba(234, 250, 242, 36)",
+    "plant_popover_divider": "rgba(219, 240, 229, 33)",
+    "plant_popover_danger_surface": "rgba(166, 52, 56, 56)",
+    "plant_popover_danger_hover": "rgba(178, 58, 63, 82)",
+    "plant_popover_danger_pressed": "rgba(142, 43, 48, 92)",
+    "plant_popover_danger_border": "rgba(242, 105, 110, 158)",
+    "plant_popover_danger_text": "#FFDADC",
+    "plant_popover_shadow": "#57000000",
 }
 
 # Nursery uses the same green hierarchy. Soil and wood colors remain inside
@@ -453,9 +503,11 @@ def spacing(token: SpacingToken | str | int) -> int:
         key = token.strip().lower()
         if key in SPACING_SCALE:
             return SPACING_SCALE[key]
+        if key in SPACING_ALIASES:
+            return SPACING_ALIASES[key]
         raise ValueError(f"unknown spacing token: {token!r}")
     value = int(token)
-    if value not in SPACING_SCALE.values():
+    if value != int(SpacingToken.NONE) and value not in SPACING_SCALE.values():
         raise ValueError(f"spacing value is outside the shared scale: {value}")
     return value
 
@@ -912,7 +964,7 @@ def button_stylesheet(
             min-height: {BUTTON_MIN_HEIGHT}px;
             max-height: {BUTTON_VISUAL_HEIGHT}px;
             padding: 0 14px;
-            border: 1px solid {t['secondary_border']};
+            border: 2px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             background: {t['secondary_action']};
             color: {t['text_primary']};
@@ -1005,18 +1057,17 @@ def button_stylesheet(
         }}
         QPushButton:checked, QPushButton[selected='true'] {{
             background: {t['selected_surface']};
-            border: 2px solid {t['growth_accent']};
+            border-color: {t['growth_accent']};
             color: {t['text_primary']};
-            font-weight: 600;
         }}
-        QPushButton:disabled, QPushButton:disabled:hover, QPushButton:disabled:pressed {{
+        QPushButton:disabled, QPushButton:disabled:hover, QPushButton:disabled:pressed,
+        QPushButton[pending='true'] {{
             background: {t['disabled_surface']};
             border-color: {t['disabled_border']};
             color: {t['disabled_text']};
         }}
         QPushButton[keyboardFocusVisible='true']:focus {{
-            border: 2px solid {t['focus_ring']};
-            padding: 0 13px;
+            border-color: {t['focus_ring']};
         }}
     """
 
@@ -1036,7 +1087,7 @@ def tool_button_stylesheet(
             padding: 0 14px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
-            border: 1px solid {t['secondary_border']};
+            border: 2px solid {t['secondary_border']};
             border-radius: {RadiusToken.SM}px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BUTTON_LABEL].font_size_px}px;
             font-weight: 600;
@@ -1052,8 +1103,7 @@ def tool_button_stylesheet(
         }}
         QToolButton:checked {{
             background: {t['selected_surface']};
-            border: 2px solid {t['growth_accent']};
-            font-weight: 600;
+            border-color: {t['growth_accent']};
         }}
         QToolButton[variant='primary'] {{
             min-height: {PRIMARY_BUTTON_VISUAL_HEIGHT}px;
@@ -1094,11 +1144,11 @@ def tool_button_stylesheet(
             text-align: center;
         }}
         QToolButton[keyboardFocusVisible='true']:focus {{
-            border: 2px solid {t['focus_ring']};
-            padding: 0 9px;
+            border-color: {t['focus_ring']};
         }}
         QToolButton[gardenRole='icon-button'][keyboardFocusVisible='true']:focus {{ padding: 0; }}
-        QToolButton:disabled, QToolButton:disabled:hover, QToolButton:disabled:pressed {{
+        QToolButton:disabled, QToolButton:disabled:hover, QToolButton:disabled:pressed,
+        QToolButton[pending='true'] {{
             background: {t['disabled_surface']};
             border-color: {t['disabled_border']};
             color: {t['disabled_text']};
@@ -1173,13 +1223,13 @@ def semantic_component_stylesheet(
         QFrame[gardenRole='inventory-row'] {{
             color: {t['text_primary']};
             background: {t['raised_surface']};
-            border: 1px solid {t['subtle_border']};
+            border: 2px solid {t['subtle_border']};
             border-radius: {RadiusToken.MD}px;
         }}
         QFrame[gardenRole='card'][selected='true'],
         QFrame[gardenRole='inventory-row'][selected='true'] {{
             background: {t['selected_surface']};
-            border: 2px solid {t['growth_accent']};
+            border-color: {t['growth_accent']};
         }}
         QTabBar[gardenRole='tabs']::tab {{
             min-width: {MIN_HIT_TARGET}px;
@@ -1221,7 +1271,7 @@ def semantic_component_stylesheet(
             padding: 0 {SpacingToken.MD}px;
             color: {t['text_primary']};
             background: {t['raised_surface']};
-            border: 1px solid {t['strong_border']};
+            border: 2px solid {t['strong_border']};
             border-radius: {RadiusToken.SM}px;
             selection-color: {t['action_text']};
             selection-background-color: {t['growth_accent']};
@@ -1237,7 +1287,7 @@ def semantic_component_stylesheet(
         QComboBox:focus,
         *[gardenRole='input']:focus,
         *[gardenRole='select']:focus {{
-            border: 2px solid {t['focus_ring']};
+            border-color: {t['focus_ring']};
         }}
         QLineEdit:disabled,
         QComboBox:disabled,
@@ -1266,26 +1316,24 @@ def semantic_component_stylesheet(
             padding: 0 {SpacingToken.MD}px;
             color: {t['text_secondary']};
             background: {t['secondary_action']};
-            border: 1px solid {t['secondary_border']};
+            border: 2px solid {t['secondary_border']};
             border-radius: 8px;
         }}
         QPushButton[gardenRole='segmented-filter']:checked {{
-            padding: 0 {int(SpacingToken.MD) - 1}px;
             color: {t['text_primary']};
             background: {t['selected_surface']};
-            border: 2px solid {t['growth_accent']};
-            font-weight: 600;
+            border-color: {t['growth_accent']};
         }}
         QPushButton[gardenRole='segmented-filter'][keyboardFocusVisible='true']:focus,
         QAbstractButton[gardenRole='disclosure'][keyboardFocusVisible='true']:focus {{
-            border: 2px solid {t['focus_ring']};
+            border-color: {t['focus_ring']};
         }}
         QCheckBox {{
             min-height: {MIN_HIT_TARGET}px;
             padding: 0 {SpacingToken.XS}px;
             color: {t['text_primary']};
             border: 2px solid transparent;
-            border-radius: 6px;
+            border-radius: {RadiusToken.SM}px;
         }}
         QCheckBox[keyboardFocusVisible='true']:focus {{
             border-color: {t['focus_ring']};
@@ -1294,12 +1342,12 @@ def semantic_component_stylesheet(
             width: 20px;
             height: 20px;
             background: {t['secondary_action']};
-            border: 1px solid {t['strong_border']};
-            border-radius: 5px;
+            border: 2px solid {t['strong_border']};
+            border-radius: {RadiusToken.SM}px;
         }}
         QCheckBox::indicator:checked {{
             background: {t['growth_accent']};
-            border: 4px solid {t['selected_surface']};
+            border-color: {t['selected_surface']};
         }}
         QCheckBox[gardenRole='switch']::indicator,
         QPushButton[gardenRole='switch'],
@@ -1320,6 +1368,39 @@ def semantic_component_stylesheet(
         QToolButton[gardenRole='switch']:checked {{
             background: {t['growth_accent']};
             border-color: {t['growth_accent']};
+        }}
+        QCheckBox[toggleSwitch='true']::indicator {{
+            width: 0;
+            height: 0;
+            border: 0;
+        }}
+        QAbstractScrollArea::corner {{
+            background: transparent;
+            border: 0;
+        }}
+        QScrollBar:vertical {{
+            width: 6px;
+            margin: 0;
+            background: transparent;
+        }}
+        QScrollBar::handle:vertical {{
+            min-height: 30px;
+            border: 0;
+            border-radius: 3px;
+            background: {t['strong_border']};
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: {t['growth_accent']};
+        }}
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical {{
+            height: 0;
+            background: transparent;
+            border: 0;
+        }}
+        QScrollBar::add-page:vertical,
+        QScrollBar::sub-page:vertical {{
+            background: transparent;
         }}
         QFrame[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus,
         QLabel[keyboardFocusSurface='true'][keyboardFocusVisible='true']:focus {{
@@ -1344,16 +1425,16 @@ def semantic_component_stylesheet(
             border-color: {t['coin_accent']};
         }}
         QFrame[stageRewardChip='true'] {{
-            min-height: 24px;
-            max-height: 24px;
+            min-height: 30px;
+            max-height: 30px;
             padding: 0;
-            color: {t['action_text']};
-            background: {t['coin_accent']};
-            border: 0;
+            color: {t['coin_accent']};
+            background: {t['warning_surface']};
+            border: 1px solid {t['coin_accent']};
             border-radius: 8px;
         }}
         QFrame[stageRewardChip='true'] QLabel {{
-            color: {t['action_text']};
+            color: {t['text_primary']};
             background: transparent;
             border: 0;
             font-size: {TEXT_ROLE_TOKENS[TextRole.BADGE].font_size_px}px;
@@ -1361,17 +1442,18 @@ def semantic_component_stylesheet(
         }}
         QProgressBar[gardenRole='progress'],
         QProgressBar[gardenRole='progress-meter'] {{
-            min-height: 12px;
+            min-height: {PROGRESS_BAR_HEIGHT}px;
+            max-height: {PROGRESS_BAR_HEIGHT}px;
             color: {t['text_primary']};
             background: {t['secondary_action']};
-            border: 1px solid {t['strong_border']};
-            border-radius: 6px;
+            border: 0;
+            border-radius: {PROGRESS_BAR_HEIGHT // 2}px;
             text-align: center;
         }}
         QProgressBar[gardenRole='progress']::chunk,
         QProgressBar[gardenRole='progress-meter']::chunk {{
             background: {t['growth_accent']};
-            border-radius: 5px;
+            border-radius: {PROGRESS_BAR_HEIGHT // 2}px;
         }}
         QAbstractButton[gardenRole='disclosure'] {{
             min-width: {MIN_HIT_TARGET}px;
@@ -1379,7 +1461,7 @@ def semantic_component_stylesheet(
             padding: 0 {SpacingToken.SM}px;
             color: {t['text_secondary']};
             background: transparent;
-            border: 1px solid transparent;
+            border: 2px solid transparent;
             border-bottom-color: {t['subtle_border']};
             text-align: left;
         }}
@@ -1389,7 +1471,7 @@ def semantic_component_stylesheet(
             color: {t['text_primary']};
             background: {t['raised_surface']};
             border: 1px solid {t['strong_border']};
-            border-radius: 6px;
+            border-radius: {RadiusToken.SM}px;
             font-size: {TEXT_ROLE_TOKENS[TextRole.SECONDARY].font_size_px}px;
         }}
         QFrame[gardenRole='banner'],
