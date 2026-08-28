@@ -6,6 +6,10 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 >
 > Daily study, seven-day streak rewards, achievements, All Clear, plant stages, and Garden Finds → rewards → Nursery plants, spaces, supplements, Weather, and Scenery
 
+For exact current Growth, reward, consumable, Weather, Scenery, Garden Find,
+achievement, and economy rules, see the
+[progression, rewards, and effects reference](docs/progression-rewards-effects-reference.md).
+
 ## Current release highlights
 
 - A clearer first-run path explains that plant Growth and repeatable rewards begin
@@ -13,6 +17,10 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
   reliably reconstructable one-time achievements are handled separately from
   authoritative review history.
 - Home, Garden, Nursery, Garden Progress, Settings, plant cards, and reviewer notices now share consistent learner-facing copy, accessible focus states, control sizing, and reduced-motion behavior.
+- Native controls now share one semantic theme, DPR-aware icon cache, and visible
+  switch-state treatment, keeping interaction geometry and state feedback
+  consistent across Settings, Garden Progress, Collection, Nursery, and
+  transaction dialogs.
 - The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open garden** visible without duplicating Today, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
 - Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners. Every add-on window now uses a native parented dialog, and visibility-sensitive controls receive parents before they can be shown; an opt-in audit can report unexpected parentless windows without creating native handles.
 - The full Garden uses one centered, contained release canvas instead of cropping the scenery to each viewport. Artwork, beds, plants, landmarks, popovers, and hit regions follow the same transform, so the complete garden remains aligned across supported aspect ratios.
@@ -21,7 +29,7 @@ Anki Garden is a calm, local-first Anki add-on that turns card answers into a gr
 - Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. Visual review reduced the current representative/full profiles to 16/31 structurally distinct surfaces and two/five generated sheets; 95 removed or behavioral-only IDs remain permanently reserved. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, and reviewer-stack identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
+- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. Visual review reduced the current representative/full profiles to 15/30 structurally distinct surfaces and two/five generated sheets; removed or behavioral-only IDs remain permanently reserved, including the retired starter-confirmation ID. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, and reviewer-stack identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -222,6 +230,10 @@ and its nested dialogs from a full-screen Anki window and confirm that no action
 switches Spaces or creates a stray top-level window. A capture report whose
 `quality_status` remains `review-required` or whose `release_ready` value is
 `false` is review evidence, not release approval.
+
+The retained v25 manifests, contact sheets, package hashes, and still-open
+acceptance gates are recorded in the
+[current 2.1.0 UI evidence record](docs/ui/final-ui-audit-2.1.0.md).
 
 ## Diagnostics
 

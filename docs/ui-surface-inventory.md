@@ -8,13 +8,13 @@ the Qt-free `SurfaceSpec` registry compiled into
 manifest and contact-sheet paths are recorded in `ui/final-ui-audit-2.1.0.md`
 only after a complete run passes independent validation.
 
-The current v25 registry contains 16 representative and 31 full surfaces,
+The current v25 registry contains 15 representative and 30 full surfaces,
 rendered as two and five sheets. Those values are generated observations, not
-fixed acceptance constants. Ninety-five redundant or behavioral-only IDs are
-permanently retired, including every watering-can capture. Future counts are
-computed from active registry entries and their presentation groups. Both
-profiles run under `QT_SCALE_FACTOR=1.0`. Null, blank, unpainted, wrong-window,
-wrong-process, invalid-geometry/crop, open, cleanup, and checkpoint failures
+fixed acceptance constants. Redundant or behavioral-only IDs are permanently
+retired, including the starter-confirmation ID and every watering-can capture.
+Future counts are computed from active registry entries and their presentation
+groups. Both profiles run under `QT_SCALE_FACTOR=1.0`. Null, blank, unpainted,
+wrong-window, wrong-process, invalid-geometry/crop, open, cleanup, and checkpoint failures
 reject a capture. Detailed semantic, copy, layout, scroll, and duplicate-view
 findings are recorded as review advisories and never reject otherwise valid
 pixels. Raw
@@ -25,7 +25,7 @@ review aids.
 
 | Profile | Surface and entry point | Authoritative data | Primary behavior |
 |---|---|---|---|
-| First run | Garden onboarding, starter Nursery, and confirmation | Schema-21 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
+| First run | Garden onboarding, starter Nursery, and placement | Schema-21 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
 | Home | Deck Browser preview | Shared preview snapshot, scene and asset metadata | Open Garden, retry; no scene mutation |
 | Garden | Dashboard, scene, plant card, Move, and Story | Plants, slots, active plant, Growth, effects, scene geometry | Select, Nurture, Move, Story, Progress, Collection, Nursery, Settings |
 | Fertilizer | Application dialog | Engine quote, target status, interval history, balance, replay record | Apply or extend without duplicating purchase logic |
