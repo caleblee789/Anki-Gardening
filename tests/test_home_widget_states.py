@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -175,23 +176,22 @@ def test_success_state_renders_key_fields() -> None:
     assert "setTimeout" in html
 
 
-def test_home_preview_never_renders_weather_or_sun_and_uses_compact_action() -> None:
-    base = _sample_data(weather="sunny")
-    data = HomeWidgetData(**{
+def test_hidden_or_noncontent_home_states_omit_garden_feature_markup() -> None:
+    base = _sample_data(weather="cloudy")
+    hidden = HomeWidgetData(**{
         **base.__dict__,
-        "weather_url": "/_addons/123/assets/weather/sun.webp",
+        "weather_visible": False,
+        "visible_scenery": "autumn",
     })
 
-    html = render_home_widget(
-        HomeWidgetSnapshot(request_id=4, phase="success", data=data)
-    )
-
-    assert "ag-home__weather-layer" not in html
-    assert "home-weather-layer" not in html
-    assert "weather/sun.webp" not in html
-    assert "min-height:36px !important" in html
-    assert "max-height:36px !important" in html
-    assert 'data-testid="home-open"' in html
+    for snapshot in (
+        HomeWidgetSnapshot(request_id=5, phase="success", data=hidden),
+        HomeWidgetSnapshot(request_id=6, phase="disabled", data=base),
+        HomeWidgetSnapshot(request_id=7, phase="loading"),
+        HomeWidgetSnapshot(request_id=8, phase="error", error_message="Unavailable"),
+    ):
+        html = render_home_widget(snapshot)
+        assert 'data-testid="home-garden-feature"' not in html
 
 
 def test_success_state_uses_resolved_background_as_compact_scene() -> None:
@@ -292,10 +292,11 @@ def test_home_summary_panel_uses_compact_visual_hierarchy_at_each_breakpoint() -
     assert "#ag-home-root button,.ag-home__open" in html
     assert '<div class="ag-home__metrics"' not in html
     assert "height:100px" in html
-    assert "height:6px" in html
+    assert "height:4px" in html
     assert "left:16px" in html
-    assert "right:144px" in html
-    assert "bottom:9px" in html
+    assert "right:auto" in html
+    assert "width:260px" in html
+    assert "bottom:7px" in html
     assert "filter:brightness(1.12)" in html
     assert "linear-gradient(90deg,rgba(3,12,9,.99)" in html
     assert "linear-gradient(180deg,rgba(4,14,11,.18)" in html
@@ -556,7 +557,7 @@ def test_long_preview_values_keep_full_accessible_names_and_responsive_rail() ->
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=data))
 
     assert f'aria-label="{garden_name}"' in html
-    assert f'title="{plant_name} · Rare · 50,000 total Growth"' in html
+    assert f'title="{plant_name} · Full Bloom · 50,000 total Growth"' in html
     assert "365-day streak" not in html
     assert "54,321 coins" not in html
     assert "text-overflow:ellipsis" in html
@@ -646,6 +647,9 @@ def test_success_data_uses_active_plant_stage_progress() -> None:
     assert 'data-testid="home-growth-progress"' in html
     assert 'data-testid="home-progress-copy"' in html
     assert ".ag-home__growth-track {\n  position:absolute;" in html
+    assert "\n  bottom:7px;\n  width:260px;\n  height:4px;" in html
+    assert "background:rgba(99,217,159,.26)" in html
+    assert "line-height:14px" in html
     assert ".ag-home__growth-track > span {\n  display:block;\n  position:absolute;" in html
     assert "\n  left:0;\n  width:var(--ag-growth-percent,0%);" in html
     assert 'data-testid="home-today-answers"' not in html
@@ -708,6 +712,57 @@ def test_planted_starter_without_active_assignment_stays_distinct_from_nurtured(
     assert 'data-anki-garden-command="anki-garden:choose-starter"' not in html
 
 
+def test_home_builder_projects_visibility_without_mutating_selected_environment() -> None:
+    state = SimpleNamespace(
+        daily_stats=SimpleNamespace(
+            growth_earned=0,
+            base_growth=0,
+            streak_bonus_growth=0,
+            fertilizer_growth=0,
+            bonus_growth=0,
+            completed_due_cards=False,
+        ),
+        plants=[],
+        starter_selection_complete=False,
+        active_plant_id=None,
+        selected_weather="rainbow_sunshower",
+        selected_background="eclipse",
+        environment_visibility={"weather": False, "scenery": False},
+        streak_days=0,
+        currency_balance=0,
+        total_reviews=0,
+        unlocked_slots=0,
+        garden_name="Willow Garden",
+    )
+
+    hidden = build_home_widget_success_data(
+        state=state,
+        reviews_today=0,
+        scene_items=[],
+    )
+
+    assert hidden.weather_visible is False
+    assert hidden.visible_scenery == "default"
+    assert hidden.preview_snapshot is not None
+    assert hidden.preview_snapshot.selected_scenery == "default"
+    assert state.selected_weather == "rainbow_sunshower"
+    assert state.selected_background == "eclipse"
+    assert 'data-testid="home-weather-layer"' not in render_home_widget(
+        HomeWidgetSnapshot(12, "success", hidden)
+    )
+
+    state.environment_visibility = {"weather": True, "scenery": True}
+    visible = build_home_widget_success_data(
+        state=state,
+        reviews_today=0,
+        scene_items=[],
+    )
+
+    assert visible.weather_visible is True
+    assert visible.visible_scenery == "eclipse"
+    assert state.selected_background == "eclipse"
+
+
 def test_home_handles_no_nurtured_plant_without_inventing_progress() -> None:
     base = _sample_data()
     data = HomeWidgetData(**{
@@ -742,8 +797,8 @@ def test_fully_grown_active_plant_has_complete_progress() -> None:
 
     html = render_home_widget(HomeWidgetSnapshot(request_id=11, phase="success", data=data))
 
-    assert 'data-testid="home-support" title="Clover · Rare · 50,000 total Growth"' in html
-    assert "Clover · Rare · 50,000 total Growth" in html
+    assert 'data-testid="home-support" title="Clover · Full Bloom · 50,000 total Growth"' in html
+    assert "Clover · Full Bloom · 50,000 total Growth" in html
     assert 'data-testid="home-growth-progress"' in html
 
 

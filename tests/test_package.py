@@ -156,20 +156,24 @@ def test_package_contains_runtime_and_excludes_mutable_data(
         for name in packaged_assets
     )
     assert "assets/migration_manifest_v2.json" not in packaged_assets
-    # The schema-20 release ships all nine responsive scenery plates, the
-    # complete six-stage plant library, and the geometry-matched planter set.
-    # Ratchet the complete schema-20 art library to the next 0.25 MiB boundary
-    # above the optimized release artifact. This preserves a small deterministic
-    # build margin without allowing the former 82 MiB budget to return.
-    assert production_output.stat().st_size < (78 * 1024 * 1024) + (256 * 1024)
+    # The current release ships all nine responsive scenery plates, the
+    # complete six-stage plant library, the geometry-matched planter set, and
+    # the canonical Rich Compost reward artwork.
+    # The seven standardized 1024-square Feature canvases and reusable pad add
+    # roughly three MiB while keeping the complete existing art library intact.
+    # Retain a strict ceiling below the historical 82 MiB package budget.
+    assert production_output.stat().st_size < 82 * 1024 * 1024
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(
     package_archives: dict[str, Path],
 ) -> None:
+    from scripts.capture_support import capture_derivative_report as supported_report
+
     production_output = package_archives["production"]
     output = package_archives["capture"]
     derivative = capture_derivative_report(production_output, output)
+    assert supported_report(ADDON.parent, production_output, output) == derivative
 
     with zipfile.ZipFile(production_output) as production_archive, zipfile.ZipFile(
         output

@@ -104,6 +104,16 @@ def test_every_asset_declares_visible_bounds_ground_anchor_and_layout_family() -
     families = {"seed": "compact", "sprout": "compact", "young": "standard", "mature": "standard", "flowering": "expanded", "rare": "expanded"}
     for row in plants:
         placement = row["placement"]
+        assert {
+            "visible_bounds",
+            "art_bounds",
+            "visual_center",
+            "soil_contact",
+            "display_scale",
+            "contact_shadow",
+            "shadow_offset",
+            "minimum_bed_clearance",
+        } <= set(placement)
         ground = placement["soil_contact"]
         assert placement["ground_anchor"] == ground
         assert placement["ground_anchor_x"] == pytest.approx(ground[0])
@@ -111,6 +121,13 @@ def test_every_asset_declares_visible_bounds_ground_anchor_and_layout_family() -
         assert placement["layout_family"] == families[row["slot"]["stage"]]
         assert placement["art_bounds"][2] > 0
         assert placement["art_bounds"][3] > 0
+        assert 0.0 <= placement["visual_center"][0] <= 1.0
+        assert 0.0 <= placement["visual_center"][1] <= 1.0
+        assert placement["display_scale"] > 0.0
+        assert placement["contact_shadow"][0] > 0.0
+        assert placement["contact_shadow"][1] > 0.0
+        assert len(placement["shadow_offset"]) == 2
+        assert 0.0 <= placement["minimum_bed_clearance"] <= 0.5
 
 
 def test_v6_release_stage_progression_grows_through_flowering_then_uses_rare_detail() -> None:

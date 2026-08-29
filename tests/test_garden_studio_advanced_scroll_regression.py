@@ -96,17 +96,15 @@ class _ResponsiveRecorder(_Recorder):
         return SimpleNamespace(height=lambda: 520)
 
 
-def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
+def test_settings_layout_keeps_the_preview_free_vertical_organization() -> None:
     apply_layout = _compiled_responsive_method()
     controls = _ResponsiveRecorder()
     root_layout = _ResponsiveRecorder()
-    preview_panel = _ResponsiveRecorder()
     widget = _ResponsiveRecorder()
     widget._compact_layout = None
     widget.controls = controls
     widget.controls_scroll = _ResponsiveRecorder()
     widget.root_layout = root_layout
-    widget.preview_panel = preview_panel
     widget.theme_card = _ResponsiveRecorder()
 
     apply_layout(widget, "wide")
@@ -131,7 +129,10 @@ def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
         "setSizePolicy",
         ("expanding", "preferred"),
     ) in widget.controls_scroll.calls
-    assert ("updateGeometry", ()) in preview_panel.calls
+    assert "self.preview_panel" not in _class_source(
+        STUDIO_PATH,
+        "GardenStudioWidget",
+    )
     assert ("updateGeometry", ()) in widget.calls
 
 
@@ -232,7 +233,7 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
         "Plants catalog",
         "Fertilizers and boosts catalog",
         "Garden beds catalog",
-        "Weather and Scenery catalog",
+        "Garden Features and Scenery catalog",
     ):
         assert f'"{name}"' in nursery
     assert nursery.count("setAccessibleName") >= 8

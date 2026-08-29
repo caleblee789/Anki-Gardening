@@ -26,7 +26,7 @@ ASSET_ID = "bg_verdant_twilight_any_soil_master_v6"
 
 LAYER_NAMES = (
     "sky", "foliage", "ground", "architecture", "cottage_light",
-    "nursery_light", "weather",
+    "nursery_light",
 )
 
 VARIANTS: dict[str, dict[str, Any]] = {
@@ -232,7 +232,6 @@ def _profile() -> dict[str, Any]:
         "variant_contract": {
             "environment_id": "verdant_twilight_v6", "season": "any",
             "art_time": "twilight", "supported_times": ["twilight"],
-            "weather": "any", "weather_mode": "separate_overlay",
             "coordinate_contract": "aspect_locked_normalized_v3",
             "spatial_blueprint": "verdant_twilight_v6_six_soil_beds",
             "surface_geometry_reused_for_future_variants": False,
@@ -240,7 +239,7 @@ def _profile() -> dict[str, Any]:
         "layer_contract": {
             "required_masks": list(LAYER_NAMES),
             "invariant_geometry": ["planting_surfaces", "landmarks"],
-            "variant_layers": ["sky", "foliage", "ground", "architecture", "weather"],
+            "variant_layers": ["sky", "foliage", "ground", "architecture"],
             "plant_contact_shadows_baked": False,
         },
         "planter_family": PLANTER_FAMILY,
@@ -314,8 +313,6 @@ def _build_layer_mask(path: Path, layer: str, size: tuple[int, int]) -> None:
         draw.ellipse((_point(.66, width), _point(.08, height), _point(.94, width), _point(.40, height)), fill=255)
     elif layer == "nursery_light":
         draw.ellipse((_point(.06, width), _point(.08, height), _point(.34, width), _point(.42, height)), fill=255)
-    elif layer == "weather":
-        draw.rectangle((0, 0, width, height), fill=255)
     path.parent.mkdir(parents=True, exist_ok=True)
     mask.filter(ImageFilter.GaussianBlur(max(1.0, height * 0.004))).save(path, "PNG", optimize=True)
 
@@ -404,7 +401,7 @@ def _install_manifest(profile: dict[str, Any]) -> None:
         "asset_id": ASSET_ID,
         "category": "backgrounds",
         "slot": {"season": "any", "weather": "any", "time_of_day": "any", "theme": "verdant_twilight"},
-        "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked", "weather_overlay_ready"],
+        "variants": ["storybook_gouache", "surface_v6", "direct_soil", "aspect_locked"],
         "file": profile["variants"]["4:3"]["file"],
         "width": profile["variants"]["4:3"]["width"],
         "height": profile["variants"]["4:3"]["height"],

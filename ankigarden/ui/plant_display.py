@@ -13,21 +13,22 @@ from .responsive import (
     responsive_interpolate,
     responsive_progress,
 )
+from .garden_feature_layout import FEATURE_BAY_NEAR_LEFT_BED_X
 
 
 NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO = 0.90
 NURTURED_MARKER_MAX_GROUND_DELTA_RATIO = 1.50
 
-SCENE_COMPACT_ASPECT = 4 / 3
-SCENE_STANDARD_ASPECT = 16 / 9
-SCENE_WIDE_ASPECT = 12 / 5
+SCENE_COMPACT_ASPECT = 3 / 2
+SCENE_STANDARD_ASPECT = 3 / 2
+SCENE_WIDE_ASPECT = 3 / 2
 SCENE_COMPACT_BLEND_START = 520.0
 SCENE_COMPACT_BLEND_END = 720.0
 SCENE_WIDE_BLEND_START = 1200.0
 SCENE_WIDE_BLEND_END = 1600.0
 STATUS_OVERLAY_MIN_WIDTH = 520.0
 STATUS_OVERLAY_HEIGHT = 68.0
-GARDEN_CANVAS_WIDTH = 1240.0
+GARDEN_CANVAS_WIDTH = 1260.0
 GARDEN_CANVAS_HEIGHT = 840.0
 GARDEN_CANVAS_ASPECT = GARDEN_CANVAS_WIDTH / GARDEN_CANVAS_HEIGHT
 
@@ -113,24 +114,9 @@ def settings_layout_is_compact(width: int) -> bool:
 
 
 def scene_preferred_aspect(width: float) -> float:
-    """Return a continuous, clamped scene aspect for the available width."""
+    """Return the only supported native Garden aspect."""
 
-    safe_width = max(1.0, float(width))
-    compact_progress = responsive_progress(
-        safe_width,
-        SCENE_COMPACT_BLEND_START,
-        SCENE_COMPACT_BLEND_END,
-    )
-    aspect = SCENE_COMPACT_ASPECT + (
-        SCENE_STANDARD_ASPECT - SCENE_COMPACT_ASPECT
-    ) * compact_progress
-    wide_progress = responsive_progress(
-        safe_width,
-        SCENE_WIDE_BLEND_START,
-        SCENE_WIDE_BLEND_END,
-    )
-    aspect += (SCENE_WIDE_ASPECT - SCENE_STANDARD_ASPECT) * wide_progress
-    return max(SCENE_COMPACT_ASPECT, min(SCENE_WIDE_ASPECT, aspect))
+    return 3.0 / 2.0
 
 
 def scene_height_for_width(
@@ -1640,12 +1626,7 @@ def repair_unique_slot_items(items: Iterable[dict[str, Any]]) -> list[dict[str, 
 def scene_profile_name(width: float, height: float, surface_context: str = "dashboard") -> str:
     if surface_context == "home":
         return "home"
-    ratio = max(1.0, float(width)) / max(1.0, float(height))
-    if ratio <= 1.42:
-        return "4:3"
-    if ratio <= 1.66:
-        return "3:2"
-    return "16:9"
+    return "3:2"
 
 
 def scene_surface_variant(
@@ -1669,10 +1650,8 @@ def scene_surface_variant(
             breakpoints.get("ultrawide_min") if isinstance(breakpoints, dict) else None,
             2.05, 1.4, 4.0,
         )
-        if surface_context == "home" or ratio >= ultrawide_min:
+        if surface_context == "home":
             profile_name = "home"
-        elif ratio <= four_three_max:
-            profile_name = "4:3"
     profiles = contract.get("layout_profiles")
     layout_profile = profiles.get(profile_name, {}) if isinstance(profiles, dict) else {}
     variants = surface_profile.get("variants", {}) if isinstance(surface_profile, dict) else {}
@@ -1682,7 +1661,7 @@ def scene_surface_variant(
         else ""
     )
     if requested not in variants:
-        requested = "home" if profile_name == "home" else "4:3" if profile_name == "4:3" else "16:9"
+        requested = "home" if profile_name == "home" else "4:3"
     variant = variants.get(requested, {}) if isinstance(variants, dict) else {}
     return requested, dict(variant) if isinstance(variant, dict) else {}
 
@@ -1766,6 +1745,50 @@ def _placement_contract(
         )
     else:
         anchors = DEFAULT_BED_ANCHORS
+    if profile_name == "3:2":
+        # The Feature bay boundary applies only to the registered near-left
+        # bed.  Looking it up by position used to move the middle-right bed
+        # instead, which made the two middle planters overlap.  Treat the
+        # boundary as a minimum so a source-authored bed that already clears
+        # the bay remains untouched.
+        near_left_index = next(
+            (
+                index
+                for index, anchor in enumerate(anchors)
+                if anchor.surface_id == "near_left_soil_bed"
+            ),
+            None,
+        )
+        if near_left_index is not None:
+            near_left = anchors[near_left_index]
+            target_x = max(near_left.x, FEATURE_BAY_NEAR_LEFT_BED_X)
+            dx = target_x - near_left.x
+            if dx:
+                plane_x, plane_y, plane_width, plane_height = near_left.contact_plane
+                anchors = (
+                    *anchors[:near_left_index],
+                    replace(
+                        near_left,
+                        x=target_x,
+                        label_anchor=(
+                            near_left.label_anchor[0] + dx,
+                            near_left.label_anchor[1],
+                        ),
+                        contact_plane=(
+                            plane_x + dx,
+                            plane_y,
+                            plane_width,
+                            plane_height,
+                        ),
+                        shadow_plane=tuple(
+                            (x + dx, y) for x, y in near_left.shadow_plane
+                        ),
+                        support_line=tuple(
+                            (x + dx, y) for x, y in near_left.support_line
+                        ),
+                    ),
+                    *anchors[near_left_index + 1:],
+                )
     if profile.get("coordinate_space") in {"source_4_3", "source"}:
         focal_raw = profile.get("focal_point", [0.5, 0.5])
         focal = (
@@ -2083,7 +2106,27 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 contact = default_contact
             contact_w = support_rect.width * _number(contact[0], 0.78, 0.35, 0.95)
             contact_h = max(2.0, support_rect.width * _number(contact[1], 0.055, 0.035, 0.10))
-            footprint = Rect(base_x - contact_w * 0.50, base_y - contact_h * 0.38, contact_w, contact_h)
+            raw_shadow_offset = placement.get("shadow_offset", (0.0, 0.0))
+            if not isinstance(raw_shadow_offset, (list, tuple)) or len(raw_shadow_offset) != 2:
+                raw_shadow_offset = (0.0, 0.0)
+            shadow_offset_x = _number(
+                raw_shadow_offset[0],
+                0.0,
+                -0.5,
+                0.5,
+            ) * support_rect.width
+            shadow_offset_y = _number(
+                raw_shadow_offset[1],
+                0.0,
+                -0.5,
+                0.5,
+            ) * support_rect.width
+            footprint = Rect(
+                base_x - contact_w * 0.50 + shadow_offset_x,
+                base_y - contact_h * 0.38 + shadow_offset_y,
+                contact_w,
+                contact_h,
+            )
             if bed.shadow_plane:
                 shadow_plane = tuple((width * point[0], height * point[1]) for point in bed.shadow_plane)
             else:

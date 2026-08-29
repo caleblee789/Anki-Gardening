@@ -198,6 +198,29 @@ def test_reviewer_host_pixels_outside_addon_overlay_are_exempt(tmp_path: Path) -
     assert _reviewer_issues(tmp_path, cream_pixels=((0, 0),)) == []
 
 
+def test_reviewer_hud_capture_bounds_define_the_addon_pixel_region(
+    tmp_path: Path,
+) -> None:
+    image = Image.new("RGBA", (16, 16), NON_CREAM_RGBA)
+    screenshot = tmp_path / "reviewer-hud.png"
+    _save_rgba(screenshot, image)
+    sentinel = _pixel_audit(scanned_rect=[4, 4, 8, 8], total=0)
+
+    assert _unpainted_client_record_issues(
+        label="reviewer-hud-expanded",
+        record={
+            "width": 8,
+            "height": 8,
+            "unpainted_client_pixel_audit": sentinel,
+        },
+        audit={
+            "reviewer_hud_geometry": {"capture_bounds": [2, 2, 4, 4]},
+            "unpainted_client_pixel_audit": copy.deepcopy(sentinel),
+        },
+        screenshot_path=screenshot,
+    ) == []
+
+
 def test_reviewer_cream_inside_addon_overlay_fails(tmp_path: Path) -> None:
     issues = _reviewer_issues(tmp_path, cream_pixels=((6, 6),))
 
@@ -229,9 +252,14 @@ def test_reviewer_malformed_exemption_collection_fails_closed(
     assert expected in issues
 
 
+@pytest.mark.parametrize(
+    "label",
+    ("starter-deck-browser-home", "session-summary-after-review"),
+)
 @pytest.mark.parametrize(("effective_cream", "passes"), ((64, True), (65, False)))
 def test_home_host_exemption_preserves_exact_64_pixel_threshold(
     tmp_path: Path,
+    label: str,
     effective_cream: int,
     passes: bool,
 ) -> None:
@@ -266,7 +294,7 @@ def test_home_host_exemption_preserves_exact_64_pixel_threshold(
     audit = {"unpainted_client_pixel_audit": copy.deepcopy(sentinel)}
 
     issues = _unpainted_client_record_issues(
-        label="starter-deck-browser-home",
+        label=label,
         record=record,
         audit=audit,
         screenshot_path=screenshot,

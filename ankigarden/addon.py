@@ -123,6 +123,7 @@ class AnkiGardenApp:
             self.storage,
             state_changed=self.state_events.notify,
             history_invalidated=self._invalidate_maintenance_cache,
+            open_garden=self.open_dashboard,
         )
         self.dashboard: Optional[GardenDashboard] = None
         self._settings_action: Optional[QAction] = None
@@ -142,6 +143,7 @@ class AnkiGardenApp:
         self._dashboard_open_pending = False
         self._dashboard_open_attempts = 0
         self._dashboard_open_failures = 0
+        self._dashboard_focus_plant_id = ""
         self._settings_open_pending = False
         self._starter_open_pending = False
 
@@ -314,6 +316,19 @@ class AnkiGardenApp:
         self, review_count: int, growth_gain: int
     ) -> None:
         """Update a live Garden after commit without re-entering home rendering."""
+        reviewer_refresh = getattr(
+            getattr(self, "reviewer_hooks", None),
+            "refresh_from_external_state",
+            None,
+        )
+        if callable(reviewer_refresh):
+            try:
+                reviewer_refresh()
+            except Exception:
+                logger.debug(
+                    "Anki Garden: Reviewer HUD could not refresh after maintenance",
+                    exc_info=True,
+                )
         dashboard = self.dashboard
         if dashboard is None:
             return
@@ -346,10 +361,34 @@ class AnkiGardenApp:
         try:
             from aqt import gui_hooks
 
+            state_will_hook = getattr(gui_hooks, "state_will_change", None)
+            state_will_handler = getattr(
+                self.reviewer_hooks,
+                "on_state_will_change",
+                None,
+            )
+            if state_will_hook is not None and callable(state_will_handler):
+                state_will_hook.append(state_will_handler)
             state_hook = getattr(gui_hooks, "state_did_change", None)
             state_handler = getattr(self.reviewer_hooks, "on_state_change", None)
             if state_hook is not None and callable(state_handler):
                 state_hook.append(state_handler)
+            navigation_handler = getattr(
+                self.reviewer_hooks,
+                "dismiss_session_summary_for_navigation",
+                None,
+            )
+            if callable(navigation_handler):
+                for hook_name in (
+                    "browser_will_show",
+                    "add_cards_did_init",
+                    "stats_dialog_will_show",
+                    "stats_dialog_old_will_show",
+                    "dialog_manager_did_open_dialog",
+                ):
+                    hook = getattr(gui_hooks, hook_name, None)
+                    if hook is not None:
+                        hook.append(navigation_handler)
         except Exception:
             logger.debug(
                 "Anki Garden: Reviewer surface cleanup hook is unavailable",
@@ -480,7 +519,16 @@ class AnkiGardenApp:
         self._starter_open_pending = True
         self.open_dashboard()
 
-    def open_dashboard(self) -> None:
+    def open_dashboard(self, *, plant_id: str = "") -> None:
+        dismiss_summary = getattr(
+            getattr(self, "reviewer_hooks", None),
+            "dismiss_session_summary_for_navigation",
+            None,
+        )
+        if callable(dismiss_summary):
+            dismiss_summary("garden")
+        if str(plant_id or ""):
+            self._dashboard_focus_plant_id = str(plant_id)
         if getattr(self, "_dashboard_open_pending", False):
             return
         self._dashboard_open_pending = True
@@ -583,6 +631,15 @@ class AnkiGardenApp:
                     self.dashboard.show()
             if not bool(self.dashboard.isVisible()):
                 raise RuntimeError("dashboard presentation did not produce a visible window")
+            focus_plant_id = str(
+                getattr(self, "_dashboard_focus_plant_id", "") or ""
+            )
+            if focus_plant_id:
+                scene = getattr(self.dashboard, "scene", None)
+                select_plant = getattr(scene, "keep_card_open", None)
+                if callable(select_plant):
+                    select_plant(focus_plant_id)
+                self._dashboard_focus_plant_id = ""
             acknowledge = getattr(self.dashboard, "acknowledge_rendered_feedback", None)
             if callable(acknowledge):
                 acknowledge()
@@ -647,6 +704,7 @@ class AnkiGardenApp:
                 # inherit a stale request to open Settings.
                 self._settings_open_pending = False
                 self._starter_open_pending = False
+                self._dashboard_focus_plant_id = ""
                 self._notify_dashboard_open_failure(
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
                 )
@@ -1000,7 +1058,8 @@ class AnkiGardenApp:
                 stage_transition_message=transition_message,
                 background_url=self._home_background_url(),
                 garden_overlay_url=self._home_garden_overlay_url(),
-                weather_url=self._home_weather_url(),
+                weather_url=self._home_garden_feature_url(),
+                garden_feature_pad_url=self._home_garden_feature_pad_url(),
                 nurtured_marker_url=self._home_nurtured_marker_url(),
                 nurtured_marker_spout_right_url=(
                     self._home_nurtured_marker_spout_right_url()
@@ -1140,14 +1199,27 @@ class AnkiGardenApp:
             return ""
         return self._asset_web_url(path)
 
-    def _home_weather_url(self) -> str:
-        resolver = getattr(self.engine, "resolve_weather_asset", None)
+    def _home_garden_feature_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_garden_feature_asset", None)
         try:
             asset = resolver() if callable(resolver) else None
             path = asset.path if asset is not None and hasattr(asset, "path") else None
         except Exception:
             logger.debug(
-                "Anki Garden: unable to resolve home weather overlay",
+                "Anki Garden: unable to resolve Home Garden Feature",
+                exc_info=True,
+            )
+            return ""
+        return self._asset_web_url(path)
+
+    def _home_garden_feature_pad_url(self) -> str:
+        resolver = getattr(self.engine, "resolve_garden_feature_pad_asset", None)
+        try:
+            asset = resolver() if callable(resolver) else None
+            path = asset.path if asset is not None and hasattr(asset, "path") else None
+        except Exception:
+            logger.debug(
+                "Anki Garden: unable to resolve Home Garden Feature pad",
                 exc_info=True,
             )
             return ""
@@ -1276,6 +1348,16 @@ class AnkiGardenApp:
                     self.storage.state.processed_revlog_floor = previous_floor
                     self.storage.state.processed_revlog_ids = previous_ids
                     raise
+            # Sync can add, remove, or reschedule due obligations without
+            # contributing a revlog row. Refresh the global all-decks status
+            # before the open Reviewer HUD reprojects persisted Garden state.
+            try:
+                self.engine.evaluate_all_due(self.storage.due_obligations())
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to refresh all-due state after zero-row catch-up",
+                    exc_info=True,
+                )
             if self.dashboard:
                 try:
                     self.dashboard.show_same_day_catchup_feedback(0, 0)

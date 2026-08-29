@@ -3,6 +3,9 @@
   "reduced_motion": false,
   "show_home_widget": true,
   "show_progress_notifications": true,
+  "show_reviewer_hud": true,
+  "reviewer_hud_collapsed": false,
+  "reviewer_hud_dock": "right",
   "onboarding_version": 0,
   "seasonal_visuals": true,
   "visual_theme": "verdant_twilight",
@@ -11,7 +14,6 @@
     "quality_preference": "balanced"
   },
   "theme_overrides": {
-    "animation_intensity": 0.7,
-    "weather_particle_density": 1.0
+    "animation_intensity": 0.7
   }
 }

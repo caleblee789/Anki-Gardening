@@ -83,6 +83,75 @@ def _replace_full_placement(
     )
 
 
+def _runtime_tree() -> ast.Module:
+    runtime_path = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    )
+    return ast.parse(runtime_path.read_text("utf-8"))
+
+
+def _runtime_literal(name: str) -> object:
+    for node in _runtime_tree().body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in targets
+        ):
+            return ast.literal_eval(value)
+    raise AssertionError(f"missing runtime assignment {name}")
+
+
+def _compiled_runtime_function(name: str):
+    method = next(
+        node
+        for node in _runtime_tree().body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+    future = ast.ImportFrom(
+        module="__future__",
+        names=[ast.alias(name="annotations")],
+        level=0,
+    )
+    namespace: dict[str, object] = {}
+    exec(
+        compile(
+            ast.fix_missing_locations(
+                ast.Module(body=[future, method], type_ignores=[])
+            ),
+            "ankigarden/capture/runtime.py",
+            "exec",
+        ),
+        namespace,
+    )
+    return namespace[name]
+
+
+def _runtime_method_source(class_name: str, method_name: str) -> str:
+    owner = next(
+        node
+        for node in _runtime_tree().body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    method = next(
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef) and node.name == method_name
+    )
+    runtime_path = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    )
+    segment = ast.get_source_segment(runtime_path.read_text("utf-8"), method)
+    assert segment is not None
+    return segment
+
+
 def test_compiled_contract_is_current_and_validator_consumes_it() -> None:
     compiled = load_compiled_contract()
 
@@ -119,8 +188,8 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         stable_id.startswith("watering-can-")
         for stable_id in REGISTRY.profile_labels("full")
     )
-    assert len(REGISTRY.profile_labels("representative")) == 15
-    assert len(REGISTRY.profile_labels("full")) == 30
+    assert len(REGISTRY.profile_labels("representative")) == 17
+    assert len(REGISTRY.profile_labels("full")) == 33
     assert REGISTRY.profile_page_count("representative") == 2
     assert REGISTRY.profile_page_count("full") == 5
     assert "starter-selection-confirmation" in compiled["retired_ids"]
@@ -129,6 +198,415 @@ def test_current_topology_is_dynamic_and_redundant_ids_stay_reserved() -> None:
         Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
     ).read_text("utf-8")
     assert "_capture_starter_confirmation" not in runtime_source
+
+
+def test_primary_today_cards_hud_and_session_summary_surfaces_are_active() -> None:
+    representative = REGISTRY.profile_labels("representative")
+    full = REGISTRY.profile_labels("full")
+
+    assert {
+        "reviewer-hud-expanded",
+        "reviewer-reward-dock-bundle",
+        "session-summary-after-review",
+    } <= set(representative)
+    assert "progress-today-cards" not in representative
+    assert {
+        "progress-today-cards",
+        "reviewer-hud-expanded",
+        "reviewer-reward-dock-bundle",
+        "session-summary-after-review",
+    } <= set(full)
+    assert full.index("progress-today-cards") < full.index("growth-nonzero")
+
+    assert "purchase-confirmation-fertilizer-queue" in full
+    assert "fertilizer-replacement-confirmation" not in full
+    assert not REGISTRY["fertilizer-replacement-confirmation"].active
+    queue = REGISTRY["purchase-confirmation-fertilizer-queue"]
+    assert queue.renderer_family == "PurchaseConfirmationDialog"
+    assert queue.state_contract["profile"]["purchase_status"] == "ready"
+    assert "fertilizer_queue_confirmation" in queue.state_contract[
+        "required_facts"
+    ]
+
+    today = REGISTRY["progress-today-cards"]
+    assert today.renderer_family == "GardenProgressDialog"
+    assert today.state_contract["profile"]["page"] == "today"
+    assert "today_cards_progress_surface" in today.state_contract["required_facts"]
+
+    hud = REGISTRY["reviewer-hud-expanded"]
+    assert hud.state_contract["kind"] == "reviewer_hud"
+    assert hud.state_contract["profile"]["expanded"] is True
+    assert hud.state_contract["profile"]["dock"] == "right"
+    assert "ui/reviewer_hud_widget.py" in hud.owned_module_dependencies
+    assert {
+        "reviewer_hud_visible",
+        "reviewer_hud_geometry",
+        "reviewer_hud_viewport_matrix",
+        "reviewer_hud_content_matrix",
+        "reviewer_hud_resilience_matrix",
+        "reviewer_window_screen_filling",
+    } <= set(hud.state_contract["required_facts"])
+
+    summary = REGISTRY["session-summary-after-review"]
+    assert summary.renderer_family == "AnkiQt"
+    assert {
+        "session_summary_visible",
+        "session_summary_geometry",
+        "session_summary_copy",
+        "session_summary_viewport_matrix",
+        "session_summary_content_matrix",
+        "session_summary_home_counts",
+        "session_summary_window_screen_filling",
+    } <= set(summary.state_contract["required_facts"])
+
+    retired_stack = REGISTRY["reviewer-find-stacked-sync"]
+    assert retired_stack.active is False
+    assert retired_stack.placements == ()
+    assert "integrated" in retired_stack.retired_reason.casefold()
+
+    reward_dock = REGISTRY["reviewer-reward-dock-bundle"]
+    assert reward_dock.state_contract["kind"] == "reviewer_hud"
+    assert reward_dock.state_contract["profile"]["reward_event_count"] == 7
+    assert "ui/reviewer_hud_widget.py" in reward_dock.owned_module_dependencies
+    assert {
+        "reviewer_reward_dock_visible",
+        "reviewer_reward_dock_geometry",
+        "reviewer_reward_bundle",
+        "reviewer_session_footer",
+        "reviewer_reward_interaction_matrix",
+        "reviewer_hud_content_matrix",
+        "canonical_reviewer_reward_projection",
+    } <= set(reward_dock.state_contract["required_facts"])
+
+
+def test_session_summary_responsive_evidence_is_transient_not_new_surfaces() -> None:
+    specs = _runtime_literal("SESSION_SUMMARY_VIEWPORT_SPECS")
+    content_states = _runtime_literal("SESSION_SUMMARY_REQUIRED_CONTENT_STATES")
+
+    assert specs == (
+        ("1280x720", 1280, 720, False, True, False),
+        ("1440x900", 1440, 900, True, False, False),
+        ("1600x960", 1600, 960, True, False, False),
+        ("retina-1710x1041", 1710, 1041, True, False, True),
+    )
+    labels = set(REGISTRY.profile_labels("representative")) | set(
+        REGISTRY.profile_labels("full")
+    )
+    assert {row[0] for row in specs}.isdisjoint(labels)
+    assert content_states == (
+        "complete",
+        "sparse-zero-sections",
+        "long-names-six-digit-totals",
+        "highlight-overflow-max-two",
+        "missing-art-branded-fallback",
+    )
+    assert set(content_states).isdisjoint(labels)
+    assert len(REGISTRY.profile_labels("representative")) == 17
+    assert len(REGISTRY.profile_labels("full")) == 33
+
+
+def test_reward_presentation_surfaces_own_session_summary_import() -> None:
+    """Keep exact renderer ownership closed over reward presentation imports."""
+
+    for surface in REGISTRY.active_surfaces:
+        dependencies = set(surface.owned_module_dependencies)
+        if "reward_presentation.py" in dependencies:
+            assert "ui/session_summary.py" in dependencies, surface.stable_id
+
+
+def test_reviewer_hud_acceptance_matrix_is_transient_and_complete() -> None:
+    window_states = _runtime_literal("REVIEWER_HUD_REQUIRED_WINDOW_STATES")
+    viewport_specs = _runtime_literal("REVIEWER_HUD_VIEWPORT_SPECS")
+    baseline_states = _runtime_literal("REVIEWER_HUD_BASELINE_CONTENT_STATES")
+    reward_states = _runtime_literal("REVIEWER_REWARD_CONTENT_STATES")
+    resilience_states = _runtime_literal("REVIEWER_HUD_RESILIENCE_STATES")
+    required_states = _runtime_literal("REVIEWER_HUD_REQUIRED_CONTENT_STATES")
+
+    assert window_states == (
+        "1600x1000",
+        "1280x800",
+        "short-height",
+        "expanded",
+        "collapsed",
+    )
+    assert len(viewport_specs) == 4
+    assert set().union(*(set(spec[5]) for spec in viewport_specs)) == set(window_states)
+    assert required_states == (*baseline_states, *reward_states)
+    assert len(required_states) == 20
+    assert len(set(required_states)) == 20
+    assert baseline_states == (
+        "18-cards-left",
+        "1-card-left",
+        "no-session-rewards",
+        "growth-only",
+        "growth-and-coins",
+        "two-effects",
+        "three-plus-effects",
+        "short-plant-name",
+        "two-line-plant-name",
+        "checkpoint-crossing",
+        "multiple-checkpoints-one-answer",
+        "stage-change",
+        "coin-balance-248",
+        "coin-balance-9999",
+        "coin-balance-10013",
+        "short-height",
+    )
+    assert reward_states == (
+        "all-cards-complete",
+        "one-garden-find",
+        "full-bloom",
+        "full-bloom-several-secondary",
+    )
+    assert resilience_states == (
+        "no-active-plant",
+        "stored-growth",
+        "collapsed-unseen-reward",
+        "rapid-successive-rewards",
+        "collection-sync-hud-open",
+        "reviewer-reload-after-reward",
+        "history-reopen",
+    )
+
+    labels = set(REGISTRY.profile_labels("representative")) | set(
+        REGISTRY.profile_labels("full")
+    )
+    assert {spec[0] for spec in viewport_specs}.isdisjoint(labels)
+    assert set(required_states).isdisjoint(labels)
+
+    expanded = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_reviewer_hud_expanded",
+    )
+    reward = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_reviewer_reward_dock_bundle",
+    )
+    assert "_exercise_reviewer_hud_acceptance_matrix" in expanded
+    assert "reviewer_hud_viewport_matrix" in expanded
+    assert "reviewer_hud_content_matrix" in expanded
+    assert "reviewer_hud_resilience_matrix" in expanded
+    assert "_exercise_reviewer_reward_interaction_matrix" in reward
+    assert "reviewer_reward_interaction_matrix" in reward
+
+
+def test_session_summary_capture_issue_reducer_is_fail_closed() -> None:
+    check = _compiled_runtime_function("session_summary_capture_issue_codes")
+    evidence = {
+        "visible": True,
+        "contained": True,
+        "viewport_size_passed": True,
+        "parent_is_main_webview": True,
+        "focus_safe": True,
+        "shell_siblings": True,
+        "footer_viewport_clear": True,
+        "last_body_reachable": True,
+        "final_boost_reachable": True,
+        "copy_passed": True,
+        "zero_sections_passed": True,
+        "accounting_passed": True,
+        "progress_passed": True,
+        "actions_passed": True,
+        "highlights_passed": True,
+        "art_passed": True,
+        "bounds": [1274, 20, 416, 780],
+        "expected_bounds": [1274, 20, 416, 780],
+        "right_margin": 20,
+        "top_margin": 20,
+        "bottom_margin": 20,
+        "header_height": 56,
+        "scroll_count": 1,
+        "horizontal_scroll_maximum": 0,
+        "vertical_scroll_maximum": 0,
+        "information_order": [
+            "hero",
+            "today",
+            "highlights",
+            "rewards",
+            "active_boosts",
+        ],
+        "growth_breakdown_expanded": False,
+        "expanded_accounting_copy_passed": False,
+        "device_pixel_ratio": 2.0,
+    }
+
+    assert check(
+        evidence,
+        require_little_scroll=True,
+        require_retina=True,
+    ) == ()
+    assert check(
+        {**evidence, "vertical_scroll_maximum": 120},
+        require_scroll=True,
+    ) == ()
+    assert check(
+        {**evidence, "vertical_scroll_maximum": 1},
+        require_little_scroll=True,
+    ) == ("unexpected-default-scroll",)
+    assert check(evidence, require_scroll=True) == ("missing-required-scroll",)
+    assert check(
+        {
+            **evidence,
+            "footer_viewport_clear": False,
+            "art_passed": False,
+            "growth_breakdown_expanded": True,
+            "expanded_accounting_copy_passed": False,
+            "device_pixel_ratio": 1.0,
+        },
+        require_expanded=True,
+        require_retina=True,
+    ) == (
+        "footer-viewport-clear",
+        "art-passed",
+        "expanded-accounting-copy",
+        "retina-device-pixel-ratio",
+    )
+
+
+def test_session_summary_content_matrix_reducers_are_fail_closed() -> None:
+    check_state = _compiled_runtime_function(
+        "session_summary_content_state_issue_codes"
+    )
+    check_matrix = _compiled_runtime_function(
+        "session_summary_content_matrix_issue_codes"
+    )
+    state_requirements = {
+        "complete": (
+            "complete_copy",
+            "complete_progress",
+            "complete_actions",
+        ),
+        "sparse-zero-sections": (
+            "zero_sections_omitted",
+            "zero_rows_omitted",
+        ),
+        "long-names-six-digit-totals": (
+            "long_names_preserved",
+            "six_digit_totals_present",
+            "long_find_item_preserved",
+            "retina_find_art_present",
+        ),
+        "highlight-overflow-max-two": (
+            "highlight_source_overflow",
+            "highlight_max_two",
+            "highlight_overflow_preserved",
+            "highlight_priority_preserved",
+        ),
+        "missing-art-branded-fallback": (
+            "missing_art_detected",
+            "branded_fallback_present",
+        ),
+    }
+    records: dict[str, object] = {}
+    for name, requirements in state_requirements.items():
+        evidence = {
+            "visible": True,
+            "contained": True,
+            "single_scroll_owner": True,
+            "no_horizontal_overflow": True,
+            **{requirement: True for requirement in requirements},
+        }
+        assert check_state(name, evidence) == ()
+        records[name] = {**evidence, "passed": True}
+
+    assert check_state("unknown", {}) == ("unknown-content-state",)
+    assert check_state(
+        "highlight-overflow-max-two",
+        {
+            "visible": True,
+            "contained": True,
+            "single_scroll_owner": True,
+            "no_horizontal_overflow": True,
+            "highlight_source_overflow": True,
+            "highlight_max_two": False,
+            "highlight_overflow_preserved": True,
+            "highlight_priority_preserved": True,
+        },
+    ) == ("highlight-max-two",)
+    assert check_matrix(
+        records,
+        canonical_payload_restored=True,
+    ) == ()
+    assert check_matrix(
+        {
+            **records,
+            "missing-art-branded-fallback": {
+                **dict(records["missing-art-branded-fallback"]),
+                "passed": False,
+            },
+        },
+        canonical_payload_restored=False,
+    ) == (
+        "content-state-failed:missing-art-branded-fallback",
+        "canonical-payload-not-restored",
+    )
+
+
+def test_session_summary_capture_fixture_binds_exact_accounting_and_art() -> None:
+    source = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_session_summary_after_review",
+    )
+
+    assert "plant_growth_total_units=148_600" in source
+    assert "shared_growth_total_units=59_400" in source
+    assert "StoredGrowthTotal(1_250, 1_250, 0)" in source
+    assert '"Review rewards",\n                    17' in source
+    assert '"Full Bloom bonus",\n                    50' in source
+    assert 'coin_award_event_ids=("capture-coins-full-bloom",)' in source
+    assert "coin_included_in_total=True" in source
+    assert 'resolve_plant_asset(\n                "wisteria",\n                "rare"' in source
+    assert '"firefly_lantern",\n                "Firefly Lantern"' in source
+    assert "total_finds=3" in source
+    assert '"find_small_charge",\n                    "Small Growth Charge"' in source
+    assert '"ui_growth_charge_small"' in source
+    assert 'item_id="growth_charge_small"' in source
+    assert "quantity=1" in source
+    assert '"Coin Pouch"' in source
+    assert "quantity=2" in source
+    assert "reward_receipts=(" in source
+
+
+def test_session_summary_capture_runs_viewport_matrix_before_acquisition() -> None:
+    scenario = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_capture_session_summary_after_review",
+    )
+    matrix = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_exercise_session_summary_viewports",
+    )
+
+    assert "_exercise_session_summary_viewports" in scenario
+    assert "def matrix_ready(" in scenario
+    assert "matrix.get(\"passed\", False)" in scenario
+    assert "SESSION_SUMMARY_VIEWPORT_SPECS" in matrix
+    assert 'name == "1280x720"' in matrix
+    assert 'records["stable_scrollbar_gutter"]' in matrix
+    assert 'set(collapsed_body_widths.values()) == {408}' in matrix
+    assert 'find_named("ankiGardenSessionBreakdownToggle")' in matrix
+    assert "mw.showMaximized()" in matrix
+    assert "SESSION_SUMMARY_REQUIRED_CONTENT_STATES" in matrix
+    assert "def exercise_content_states" in matrix
+    assert "_set_session_summary_capture_payload" in matrix
+    assert "session_summary_content_matrix_issue_codes" in matrix
+    assert 'records["content_states"]' in matrix
+    assert "canonical_payload_restored" in matrix
+    assert '"session_summary_content_matrix": content_matrix' in scenario
+
+
+def test_capture_reviewer_entry_waits_for_stable_home_event_turns() -> None:
+    source = _runtime_method_source(
+        "_UiFaceCaptureRunner",
+        "_with_capture_reviewer",
+    )
+
+    assert source.count('mw.moveToState("review")') == 1
+    assert "def enter_reviewer" in source
+    assert "def reviewer_entry_settled" in source
+    assert 'settle_samples["count"] >= 2' in source
+    assert "QTimer.singleShot(" in source
+    assert "reviewer_entry_settled,\n                enter_reviewer" in source
 
 
 def test_selected_plant_surface_owns_popover_window_matrix_evidence() -> None:
@@ -292,13 +770,29 @@ def test_home_prefers_app_owned_webview_and_requires_exact_fallback_identity() -
     assert "mw.showMaximized()" in runtime_source
     assert '"screen-filling-maximized"' in runtime_source
     assert '"home_window_fullscreen"' in runtime_source
+    assert "growthTrackGeometryPassed" in runtime_source
+    assert '"home_progress_geometry"' in runtime_source
+    for label in (
+        "starter-deck-browser-home",
+        "active-deck-browser-home-after-nurture",
+        "session-summary-after-review",
+    ):
+        assert "home_progress_geometry" in REGISTRY[label].state_contract[
+            "required_facts"
+        ]
+
+
+def test_move_mode_semantic_copy_facts_are_declared() -> None:
+    required = set(REGISTRY["move-mode"].state_contract["required_facts"])
+
+    assert {"move_bonsai_title", "move_swap_copy"}.issubset(required)
 
 
 def test_capture_plan_keeps_checkpoint_domains_inside_one_session() -> None:
     requested = (
         "starter-garden-onboarding",
         "selected-plant-nurtured",
-        "reviewer-find-stacked-sync",
+        "reviewer-reward-dock-bundle",
     )
     plan = build_capture_plan(REGISTRY, profile="representative", requested=requested)
 
@@ -333,8 +827,30 @@ def test_selected_plant_capture_runs_matrix_without_expanding_registry() -> None
     assert '"bottom-right"' in matrix_source
     assert "for toast_visible in (False, True)" in matrix_source
     assert "expected_case_count" in matrix_source
-    assert len(REGISTRY.profile_labels("full")) == 30
+    assert len(REGISTRY.profile_labels("full")) == 33
     assert "selected-plant-nurtured" in REGISTRY.profile_labels("full")
+
+
+@pytest.mark.parametrize(
+    "telemetry_field",
+    (
+        "dpr_stroke_contracts",
+        "root_and_container_overflow_passed",
+        "reserved_scrollbar_area_passed",
+        "fixed_regions_passed",
+        "overflow_menu_containment_passed",
+        "switch_visibility_passed",
+        "settings_home_card_switch_visible",
+        "reviewer_reserved_zones_passed",
+    ),
+)
+def test_v25_runtime_emits_release_blocker_geometry_telemetry(
+    telemetry_field: str,
+) -> None:
+    runtime_path = (
+        Path(capture_sequence.REPO_ROOT) / "ankigarden" / "capture" / "runtime.py"
+    )
+    assert f'"{telemetry_field}"' in runtime_path.read_text("utf-8")
 
 
 @pytest.mark.release_evidence
@@ -412,8 +928,8 @@ def test_failure_ledger_isolates_local_checkpoint_and_run_gate_failures() -> Non
         if surface.checkpoint_cohort == cohort and surface.stable_id != checkpoint_id
     )
 
-    ledger.record(_result("reviewer-find-stacked-sync", accepted=False, classification="run-gate"))
-    assert ledger.release_blockers == ["reviewer-find-stacked-sync"]
+    ledger.record(_result("reviewer-reward-dock-bundle", accepted=False, classification="run-gate"))
+    assert ledger.release_blockers == ["reviewer-reward-dock-bundle"]
 
 
 def test_inspection_cli_is_non_mutating_and_registry_derived(capsys: pytest.CaptureFixture[str]) -> None:

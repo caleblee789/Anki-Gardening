@@ -588,7 +588,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         1.0,
         1.0,
         False,
-        False,
+        True,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.LOADOUT: DialogSizePolicy(
@@ -636,7 +636,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         500,
         300,
         510,
-        340,
+        460,
         1.0,
         1.0,
         False,
@@ -726,12 +726,12 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "replacement": DialogHeightProfile(230, 260, 290, 500, 520, 540),
     },
     DialogSizeClass.SETTINGS: {
-        "display": DialogHeightProfile(480, 500, 520, 800, 820, 840),
-        # At normal text scaling the home preview through the expanded
-        # Advanced panel occupies 434 logical pixels. A 650 px shell keeps
-        # both semantic boundaries intact; shorter screens still clamp and
-        # retain the same outer scroll owner.
-        "advanced": DialogHeightProfile(650, 650, 680, 800, 820, 840),
+        # The Display page no longer carries a 100 px live preview. Keep the
+        # shell content-fit around the remaining identity and appearance rows.
+        "display": DialogHeightProfile(390, 400, 420, 800, 820, 840),
+        # Advanced adds three compact setting rows beneath the same preview-free
+        # Display content. Shorter screens still retain the outer scroll owner.
+        "advanced": DialogHeightProfile(580, 590, 620, 800, 820, 840),
         "diagnostics-clean": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-warning": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-expanded": DialogHeightProfile(430, 470, 520, 760, 780, 800),
@@ -742,9 +742,9 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "owned": DialogHeightProfile(470, 500, 530),
         "fertilizer": DialogHeightProfile(500, 506, 560, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
-        # Weather cards need the canonical 940 x 488 viewport to keep a full
-        # 16:9 product row in view without compressing its description.
-        "weather": DialogHeightProfile(488, 488, 500, 925, 940, 950),
+        # Garden Feature cards use the canonical 940 x 488 catalog window.
+        # Keep one complete product row in view without compressing its copy.
+        "garden_features": DialogHeightProfile(488, 488, 500, 925, 940, 950),
         "collection-complete": DialogHeightProfile(300, 315, 330, 925, 940, 950),
         "collection-complete-receipt": DialogHeightProfile(390, 400, 410, 925, 940, 950),
         "empty": DialogHeightProfile(300, 335, 370),
@@ -769,12 +769,12 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "uncollected": DialogHeightProfile(520, 550, 570, 800, 820, 840),
     },
     DialogSizeClass.GROWTH_CHARGE: {
-        "ready": DialogHeightProfile(310, 320, 330, 480, 500, 510),
-        "loading": DialogHeightProfile(310, 320, 330, 480, 500, 510),
-        # An availability refresh adds one compact status banner.  Let that
-        # real content fit up to the approved 310 px family ceiling instead
-        # of manufacturing an 8 px safety scrollbar at 510 x 300.
-        "stale": DialogHeightProfile(310, 325, 340, 500, 510, 540),
+        "ready": DialogHeightProfile(350, 375, 400, 480, 500, 510),
+        "loading": DialogHeightProfile(350, 375, 400, 480, 500, 510),
+        # An availability refresh adds one compact status banner. Let the
+        # settled content determine the height instead of manufacturing a
+        # transaction-body scrollbar.
+        "stale": DialogHeightProfile(380, 410, 450, 500, 510, 540),
         "empty": DialogHeightProfile(190, 210, 230, 520, 540, 560),
         "warning": DialogHeightProfile(180, 210, 240, 520, 540, 560),
         "error": DialogHeightProfile(180, 210, 240, 520, 540, 560),
@@ -846,7 +846,11 @@ def content_fit_geometry_limited(
     establish a conservative pre-layout state, then refine it after Qt settles.
     """
 
-    if DialogWindowMode(window_mode) is not DialogWindowMode.CONTENT:
+    # Workspace dialogs may still opt into content-fit sizing. ``workspace``
+    # describes the pinned-header/body/footer composition; it is not a reason
+    # to manufacture empty body height. Only the scene canvas intentionally
+    # owns a stable viewport independent of its child size hints.
+    if DialogWindowMode(window_mode) is DialogWindowMode.CANVAS:
         return False
     width_cap = max(1, int(screen_width_cap))
     height_cap = max(1, int(screen_height_cap))

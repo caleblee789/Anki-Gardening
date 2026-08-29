@@ -285,8 +285,29 @@ def pluralize(count: Any, singular: str, plural: str | None = None) -> str:
     return plural if plural is not None else f"{singular}s"
 
 
+def format_quantity(
+    count: Any,
+    singular: str,
+    plural: str | None = None,
+) -> str:
+    """Format one exact integer quantity with shared singular/plural copy."""
+
+    normalized = int(_to_decimal(count))
+    return f"{normalized:,} {pluralize(normalized, singular, plural)}"
+
+
+def format_approximate_cards(count: Any) -> str:
+    """Format an estimated card count without reintroducing answer copy."""
+
+    normalized = max(0, int(_to_decimal(count)))
+    return f"~{format_quantity(normalized, 'card')}"
+
+
 def format_status_label(value: str) -> str:
-    return str(value).replace("_", " ").strip().title()
+    normalized = str(value).replace("_", " ").strip()
+    if normalized.casefold() == "rare":
+        return "Full Bloom"
+    return normalized.title()
 
 
 def _coerce_datetime(value: date | datetime | str) -> datetime:

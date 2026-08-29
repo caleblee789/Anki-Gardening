@@ -3028,7 +3028,7 @@ def growth_charge_rendered_value_issue_codes(
             "growth_value": "450 → 550",
             "inventory_label": "Charges remaining",
             "inventory_value": "2 → 1",
-            "stage_badge": "Sprout",
+            "stage_badge": "Result: Sprout",
             "stage_badge_accessible": "New stage: Sprout",
             "stage_progress": "50 / 2,000 toward Young",
             "primary_action": "Use 1 charge",
@@ -3048,14 +3048,14 @@ def growth_charge_rendered_value_issue_codes(
                 "Next-stage progress · 50 / 2,000 toward Young"
             ),
             "stage_reward_heading": "Stage reward",
-            "reward_texts": ["Stage reward", "+5 Garden Coins"],
+            "reward_texts": ["Stage reward", "+2 Garden Coins"],
             "primary_action": "View plant",
             "secondary_action": "Close",
             "resulting_growth": 550,
             "stage_carryover": 50,
             "next_stage_goal": 2_000,
             "inventory_remaining": 1,
-            "stage_reward_total": 5,
+            "stage_reward_total": 2,
         }
     else:
         return ("unexpected-growth-charge-rendered-label",)
@@ -3067,49 +3067,595 @@ def growth_charge_rendered_value_issue_codes(
     return tuple(dict.fromkeys(issues))
 
 
-def reviewer_stack_issue_codes(
-    stack: Any,
-    geometries: Any,
+def reviewer_reward_dock_issue_codes(
+    bundle: Any,
+    geometry: Any,
 ) -> tuple[str, ...]:
-    """Validate the six-event newest-plus-summary Reviewer projection."""
+    """Validate one seven-result bundle inside the persistent Reviewer HUD."""
 
-    if not isinstance(stack, dict):
-        return ("missing-reviewer-stack",)
+    if not isinstance(bundle, dict):
+        return ("missing-reviewer-reward-bundle",)
     issues: list[str] = []
     expected = {
-        "requested_event_count": 6,
-        "visible_toast_count": 2,
-        "summary_toast_count": 1,
-        "regular_toast_count": 1,
-        "summary_copy": "+5 more rewards ›",
-        "newest_event_visible": True,
+        "event_count": 7,
+        "active_reveal_count": 1,
+        "hero_count": 1,
+        "eyebrow": "MILESTONE REACHED",
+        "hero_title": "Full Bloom achieved",
+        "secondary_summary_count": 2,
+        "hidden_reward_count": 2,
+        "more_label": "2 more rewards ›",
+        "individual_close_button_count": 0,
+        "detached_toast_count": 0,
+        "session_footer_visible": True,
+        "integrated_divider_visible": True,
+        "same_commit_bundle": True,
+        "presented_once": True,
+        "stable_event_ids": True,
         "passed": True,
     }
     for key, expected_value in expected.items():
-        if stack.get(key) != expected_value:
-            issues.append(f"reviewer-stack-mismatch:{key}")
+        if bundle.get(key) != expected_value:
+            issues.append(f"reviewer-reward-bundle-mismatch:{key}")
     if not (
-        bool(str(stack.get("newest_expected_title", "")).strip())
-        and stack.get("newest_visible_title")
-        == stack.get("newest_expected_title")
-        and bool(str(stack.get("newest_expected_message", "")).strip())
-        and stack.get("newest_visible_message")
-        == stack.get("newest_expected_message")
-    ):
-        issues.append("reviewer-stack-newest-event-mismatch")
-    if not (
-        isinstance(geometries, list)
-        and len(geometries) == 2
+        bool(str(bundle.get("bundle_id", "")).strip())
+        and bundle.get("rendered_bundle_id") == bundle.get("bundle_id")
+        and bool(str(bundle.get("hero_event_id", "")).strip())
+        and bool(str(bundle.get("hero_subtitle", "")).strip())
+        and bundle.get("visible_summary_labels") == [
+            "+40 growth",
+            "2 discoveries",
+        ]
+        and isinstance(bundle.get("visible_summary_event_ids"), list)
+        and len(bundle["visible_summary_event_ids"]) == 2
         and all(
-            isinstance(item, dict)
-            and item.get("passed") is True
-            and item.get("width") == 292
-            and item.get("expected_width") == 292
-            and item.get("width_exact") is True
-            for item in geometries
+            isinstance(group, list)
+            for group in bundle["visible_summary_event_ids"]
         )
+        and len(bundle["visible_summary_event_ids"][0]) == 1
+        and len(bundle["visible_summary_event_ids"][1]) == 2
+        and len({
+            event_id
+            for group in bundle["visible_summary_event_ids"]
+            for event_id in group
+        }) == 3
     ):
-        issues.append("reviewer-stack-geometry-mismatch")
+        issues.append("reviewer-reward-bundle-identity-mismatch")
+    if not (
+        isinstance(geometry, dict)
+        and geometry.get("passed") is True
+        and geometry.get("dock_visible") is True
+        and geometry.get("hud_reward_visible") is True
+        and geometry.get("full_bloom_settled") is True
+        and geometry.get("reward_bundle_id") == bundle.get("bundle_id")
+        and geometry.get("contained_in_hud") is True
+        and geometry.get("in_normal_flow") is True
+        and geometry.get("overlaps_bottom_controls") is False
+        and geometry.get("horizontal_scroll_maximum") == 0
+        and 118 <= int(geometry.get("reveal_height", 0) or 0) <= 188
+        and 48 <= int(geometry.get("footer_height", 0) or 0) <= 58
+        and geometry.get("single_outer_surface") is True
+        and geometry.get("divider_visible") is True
+        and int(geometry.get("divider_count", 0) or 0) == 1
+        and geometry.get("hero_components_contained") is True
+        and geometry.get("hero_components_non_overlapping") is True
+        and geometry.get("title_details_non_overlapping") is True
+        and geometry.get("more_right_aligned") is True
+        and int(geometry.get("more_click_height", 0) or 0) >= 32
+        and geometry.get("more_visible_in_scroll_viewport") is True
+        and geometry.get("more_footer_non_overlapping") is True
+        and int(geometry.get("more_divider_clearance", -1)) >= 8
+        and int(geometry.get("compact_vertical_scroll_maximum", -1)) == 0
+    ):
+        issues.append("reviewer-reward-dock-geometry-mismatch")
+    return tuple(dict.fromkeys(issues))
+
+
+def reviewer_hud_acceptance_matrix_issue_codes(
+    label: str,
+    viewport: Any,
+    content: Any,
+    interactions: Any = None,
+    resilience: Any = None,
+) -> tuple[str, ...]:
+    """Validate the exact transient twenty-state Reviewer release matrix."""
+
+    baseline_states = {
+        "18-cards-left",
+        "1-card-left",
+        "no-session-rewards",
+        "growth-only",
+        "growth-and-coins",
+        "two-effects",
+        "three-plus-effects",
+        "short-plant-name",
+        "two-line-plant-name",
+        "checkpoint-crossing",
+        "multiple-checkpoints-one-answer",
+        "stage-change",
+        "coin-balance-248",
+        "coin-balance-9999",
+        "coin-balance-10013",
+        "short-height",
+    }
+    reward_states = {
+        "all-cards-complete",
+        "one-garden-find",
+        "full-bloom",
+        "full-bloom-several-secondary",
+    }
+    issues: list[str] = []
+    expected_content = (
+        reward_states
+        if label == "reviewer-reward-dock-bundle"
+        else baseline_states
+    )
+
+    def valid_bounds(value: Any) -> bool:
+        return bool(
+            isinstance(value, list)
+            and len(value) == 4
+            and all(isinstance(component, int) for component in value)
+            and value[2] > 0
+            and value[3] > 0
+        )
+
+    def effect_geometry_passed(row: dict[str, Any], *, overflow: bool) -> bool:
+        chip_bounds = row.get("effect_chip_bounds")
+        label_bounds = row.get("effect_label_bounds")
+        return bool(
+            isinstance(chip_bounds, list)
+            and len(chip_bounds) == 2
+            and all(valid_bounds(bounds) for bounds in chip_bounds)
+            and isinstance(label_bounds, list)
+            and len(label_bounds) == 2
+            and all(valid_bounds(bounds) for bounds in label_bounds)
+            and row.get("effect_chips_contained") is True
+            and row.get("effect_labels_contained") is True
+            and row.get("effect_labels_unclipped") is True
+            and row.get("effect_chip_overlap_pairs") == []
+            and row.get("overflow_contained") is True
+            and row.get("overflow_visible") is overflow
+        )
+
+    def measured_plant_layout_passed(
+        row: dict[str, Any],
+        *,
+        compare_short: bool,
+    ) -> bool:
+        if not (
+            valid_bounds(row.get("title_bounds"))
+            and valid_bounds(row.get("art_bounds"))
+            and valid_bounds(row.get("progress_bounds"))
+            and row.get("components_contained") is True
+            and row.get("components_ordered") is True
+            and row.get("declared_title_anchor_stable") is True
+            and row.get("title_anchor_stable") is True
+        ):
+            return False
+        if not compare_short:
+            return True
+        return bool(
+            valid_bounds(row.get("short_title_bounds"))
+            and valid_bounds(row.get("short_art_bounds"))
+            and valid_bounds(row.get("short_progress_bounds"))
+            and row.get("title_position_stable") is True
+            and row.get("art_position_stable") is True
+            and row.get("progress_position_stable") is True
+            and row.get("title_bounds") == row.get("short_title_bounds")
+            and row.get("art_bounds") == row.get("short_art_bounds")
+            and row.get("progress_bounds") == row.get("short_progress_bounds")
+        )
+
+    def checkpoint_post_commit_passed(row: dict[str, Any]) -> bool:
+        sequence = row.get("post_commit_sequence")
+        if not isinstance(sequence, dict):
+            return False
+        deferred = sequence.get("deferred_before_marker")
+        marker = sequence.get("marker_snapshot")
+        reveal = sequence.get("reveal_snapshot")
+        expected_order = [
+            "marker-reached",
+            "reward-revealed",
+            "excess-fill-complete",
+            "header-increment-settled",
+        ]
+        return bool(
+            sequence.get("passed") is True
+            and sequence.get("presented") is True
+            and isinstance(deferred, dict)
+            and deferred == {
+                "coin_update": True,
+                "session_update": True,
+                "header_balance": 248,
+                "session_growth_units": 0,
+            }
+            and isinstance(marker, dict)
+            and marker == {
+                "progress_percent": 25,
+                "reward_visible": False,
+                "header_balance": 248,
+            }
+            and isinstance(reveal, dict)
+            and reveal == {
+                "progress_percent": 25,
+                "reward_visible": True,
+                "eyebrow": "CHECKPOINT REACHED",
+                "hero_title": "Checkpoint reached",
+                "coin_copy": "+2 coins",
+                "header_balance": 248,
+            }
+            and sequence.get("sequence") == expected_order
+            and sequence.get("expected_sequence") == expected_order
+            and sequence.get("eyebrow") == "CHECKPOINT REACHED"
+            and sequence.get("hero_title") == "Checkpoint reached"
+            and sequence.get("coin_copy") == "+2 coins"
+            and sequence.get("final_progress_percent") == 38
+            and sequence.get("final_header_balance") == 250
+            and sequence.get("final_session_metric_copy")
+            == ["+18 growth", "+2 coins"]
+            and sequence.get("marker_before_reveal") is True
+            and sequence.get("reward_before_excess_fill") is True
+            and sequence.get("header_increment_deferred") is True
+        )
+
+    def routine_committed_answer_passed(row: dict[str, Any]) -> bool:
+        sequence = row.get("routine_committed_answer_sequence")
+        if not isinstance(sequence, dict):
+            return False
+        applied = sequence.get("applied")
+        settled = sequence.get("settled")
+        restored = sequence.get("restored")
+        return bool(
+            sequence.get("passed") is True
+            and sequence.get("presented") is True
+            and sequence.get("progress_before") == 10
+            and sequence.get("session_before") == 0
+            and sequence.get("session_update_deferred") is True
+            and applied == {
+                "label": "Growth applied",
+                "value": "+18 growth",
+                "result_state": "applied",
+                "progress_percent": 10,
+                "art_pulse": True,
+                "session_growth_units": 0,
+            }
+            and isinstance(settled, dict)
+            and settled == {
+                "progress_percent": 18,
+                "routine_feedback_active": False,
+                "session_growth_units": 1_800,
+                "session_metric_copy": ["+18 growth"],
+                "released_after_progress": True,
+            }
+            and isinstance(restored, dict)
+            and restored.get("label") == "Next answer"
+            and restored.get("value") == "+18 growth"
+            and restored.get("result_state") == "projection"
+            and restored.get("art_pulse") is False
+            and restored.get("reward_visible") is False
+        )
+
+    def daily_completion_transition_passed(row: dict[str, Any]) -> bool:
+        transition = row.get("daily_completion_transition")
+        if not isinstance(transition, dict):
+            return False
+        return bool(
+            transition.get("passed") is True
+            and transition.get("before") == {
+                "displayed_progress_percent": 99,
+                "heading": "Today’s cards",
+                "header_balance": 250,
+                "session_coins": 0,
+            }
+            and transition.get("initial") == {
+                "transition_active": True,
+                "completion_settling": True,
+                "displayed_progress_percent": 99,
+                "heading": "Today’s cards",
+                "coin_update_deferred": True,
+                "session_update_deferred": True,
+                "header_balance": 250,
+                "session_coins": 0,
+            }
+            and transition.get("final") == {
+                "transition_active": False,
+                "completion_status": "complete",
+                "heading": "All cards complete",
+                "reward_copy": "+10 coins",
+                "displayed_progress_percent": 100,
+                "header_balance": 260,
+                "session_coins": 10,
+                "session_metric_copy": ["+18 growth", "+10 coins"],
+            }
+        )
+
+    def short_height_composition_passed(row: dict[str, Any]) -> bool:
+        reveal = row.get("reward_reveal_bounds")
+        divider = row.get("divider_bounds")
+        footer = row.get("session_footer_bounds")
+        if not (
+            valid_bounds(reveal)
+            and valid_bounds(divider)
+            and valid_bounds(footer)
+        ):
+            return False
+        reveal_bottom = int(reveal[1]) + int(reveal[3])
+        divider_bottom = int(divider[1]) + int(divider[3])
+        return bool(
+            reveal_bottom <= int(divider[1])
+            and divider_bottom <= int(footer[1])
+            and reveal_bottom <= int(footer[1])
+            and row.get("reward_reveal_viewport_contained") is True
+            and row.get("reward_footer_non_overlapping") is True
+            and row.get("divider_between_reward_and_footer") is True
+        )
+
+    if not isinstance(content, dict):
+        issues.append("missing-reviewer-hud-content-matrix")
+    else:
+        actual_content = {
+            name
+            for name, record in content.items()
+            if name != "passed" and isinstance(record, dict)
+        }
+        if content.get("passed") is not True:
+            issues.append("reviewer-hud-content-matrix-not-passed")
+        if actual_content != expected_content:
+            issues.append("reviewer-hud-content-matrix-state-mismatch")
+        if any(
+            record.get("passed") is not True
+            for name, record in content.items()
+            if name != "passed" and isinstance(record, dict)
+        ):
+            issues.append("reviewer-hud-content-state-not-passed")
+        semantic_checks = {
+            "18-cards-left": lambda row: (
+                row.get("remaining_count") == 18
+                and row.get("copy") == "18 cards left"
+            ),
+            "1-card-left": lambda row: (
+                row.get("remaining_count") == 1
+                and row.get("copy") == "1 card left"
+                and 1 <= int(row.get("displayed_progress_percent", 0) or 0) <= 99
+                and row.get("visible_end_gap") is True
+                and daily_completion_transition_passed(row)
+            ),
+            "no-session-rewards": lambda row: (
+                row.get("dock_visible") is False
+                and row.get("session_footer_visible") is False
+            ),
+            "growth-only": lambda row: (
+                row.get("metric_keys") == ["growth"]
+                and row.get("metric_copy") == ["+18 growth"]
+                and row.get("divider_visible") is False
+                and routine_committed_answer_passed(row)
+            ),
+            "growth-and-coins": lambda row: (
+                row.get("metric_keys") == ["growth", "coins"]
+                and row.get("metric_copy") == ["+18 growth", "+2 coins"]
+                and row.get("zero_categories_omitted") is True
+            ),
+            "two-effects": lambda row: (
+                row.get("visible_effect_count") == 2
+                and effect_geometry_passed(row, overflow=False)
+            ),
+            "three-plus-effects": lambda row: (
+                row.get("visible_effect_count") == 2
+                and row.get("overflow_visible") is True
+                and row.get("overflow_text") == "1 more effect ›"
+                and row.get("overflow_right_aligned") is True
+                and effect_geometry_passed(row, overflow=True)
+            ),
+            "short-plant-name": lambda row: (
+                row.get("title") == "Rose"
+                and row.get("class_label") == "Bonsai"
+                and measured_plant_layout_passed(row, compare_short=False)
+            ),
+            "two-line-plant-name": lambda row: (
+                row.get("title_line_count") == 2
+                and row.get("title_clamped") is False
+                and row.get("class_label") == "Bonsai"
+                and measured_plant_layout_passed(row, compare_short=True)
+            ),
+            "checkpoint-crossing": lambda row: (
+                row.get("crossed_checkpoints") == [25]
+                and row.get("marker_states") == {
+                    "25": "completed",
+                    "50": "next",
+                    "75": "future",
+                    "100": "future",
+                }
+                and row.get("current_position_handle") is False
+                and row.get("excess_progress_preserved") is True
+                and checkpoint_post_commit_passed(row)
+            ),
+            "multiple-checkpoints-one-answer": lambda row: (
+                row.get("crossed_checkpoints") == [25, 50]
+                and row.get("chronological") is True
+                and row.get("final_progress_percent") == 55
+                and row.get("next_checkpoint_percent") == 75
+            ),
+            "stage-change": lambda row: (
+                row.get("stage_changed") is True
+                and row.get("celebration") == "stage-change"
+            ),
+            "coin-balance-248": lambda row: (
+                row.get("exact_value") == 248
+                and row.get("rendered_text") == "248"
+                and row.get("compacted") is False
+                and row.get("header_anchors_stable") is True
+            ),
+            "coin-balance-9999": lambda row: (
+                row.get("exact_value") == 9_999
+                and row.get("rendered_text") == "9,999"
+                and row.get("compacted") is False
+                and row.get("header_anchors_stable") is True
+            ),
+            "coin-balance-10013": lambda row: (
+                row.get("exact_value") == 10_013
+                and row.get("rendered_text") == "10,013"
+                and row.get("compacted") is False
+                and row.get("header_anchors_stable") is True
+                and row.get("large_balance_samples") == [
+                    {
+                        "exact_value": 999_999,
+                        "rendered_text": "999,999",
+                        "compacted": False,
+                        "header_anchors_stable": True,
+                        "passed": True,
+                    },
+                    {
+                        "exact_value": 1_000_000,
+                        "rendered_text": "1,000,000",
+                        "compacted": False,
+                        "header_anchors_stable": True,
+                        "passed": True,
+                    },
+                ]
+            ),
+            "short-height": lambda row: (
+                row.get("horizontal_scroll_maximum") == 0
+                and int(row.get("vertical_scroll_maximum", 0) or 0) > 0
+                and row.get("overlaps_bottom_controls") is False
+                and row.get("minimum_art_preserved") is True
+                and row.get("major_reward_visible") is True
+                and row.get("session_footer_visible") is True
+                and row.get("integrated_divider_visible") is True
+                and row.get("reward_dock_contained") is True
+                and row.get("reward_reveal_contained") is True
+                and row.get("session_footer_contained") is True
+                and short_height_composition_passed(row)
+                and row.get("sticky_header_and_dock") is True
+                and row.get("session_metric_copy")
+                == ["+18 growth", "+2 coins"]
+                and row.get("baseline_short_viewport_passed") is True
+            ),
+            "all-cards-complete": lambda row: (
+                row.get("completion_status") == "complete"
+                and row.get("heading") == "All cards complete"
+                and row.get("displayed_progress_percent") == 100
+                and row.get("reward_copy") == "+10 coins"
+            ),
+            "one-garden-find": lambda row: (
+                row.get("find_count") == 1
+                and row.get("footer_copy") == "1 find"
+            ),
+            "full-bloom": lambda row: (
+                row.get("eyebrow") == "MILESTONE REACHED"
+                and row.get("hero_title") == "Full Bloom achieved"
+                and bool(str(row.get("hero_subtitle", "")).strip())
+                and row.get("class_label") == "Bonsai"
+                and row.get("bed_visible") is False
+                and row.get("settled") is True
+                and row.get("temporary_gold_cleared") is True
+            ),
+            "full-bloom-several-secondary": lambda row: (
+                row.get("visible_summary_count") == 2
+                and row.get("visible_summary_labels") == [
+                    "+40 growth",
+                    "2 discoveries",
+                ]
+                and row.get("more_label") == "2 more rewards ›"
+                and int(row.get("more_click_height", 0) or 0) >= 32
+                and row.get("title_details_non_overlapping") is True
+            ),
+        }
+        for name in expected_content:
+            record = content.get(name)
+            check = semantic_checks.get(name)
+            if (
+                isinstance(record, dict)
+                and check is not None
+                and not check(record)
+            ):
+                issues.append(f"reviewer-hud-content-semantic-mismatch:{name}")
+
+    if label == "reviewer-hud-expanded":
+        expected_windows = {
+            "1600x1000",
+            "1280x800",
+            "short-height",
+            "expanded",
+            "collapsed",
+        }
+        expected_rows = {
+            "1600x1000-expanded",
+            "1280x800-expanded",
+            "1280x600-short-expanded",
+            "1280x800-collapsed",
+        }
+        if not isinstance(viewport, dict):
+            issues.append("missing-reviewer-hud-viewport-matrix")
+        else:
+            actual_rows = {
+                name
+                for name, record in viewport.items()
+                if name not in {"passed", "covered_requirements"}
+                and isinstance(record, dict)
+            }
+            if viewport.get("passed") is not True:
+                issues.append("reviewer-hud-viewport-matrix-not-passed")
+            if actual_rows != expected_rows:
+                issues.append("reviewer-hud-viewport-row-mismatch")
+            if set(viewport.get("covered_requirements", ()) or ()) != expected_windows:
+                issues.append("reviewer-hud-window-requirement-mismatch")
+            if any(
+                record.get("passed") is not True
+                for name, record in viewport.items()
+                if name not in {"passed", "covered_requirements"}
+                and isinstance(record, dict)
+            ):
+                issues.append("reviewer-hud-viewport-state-not-passed")
+    elif label == "reviewer-reward-dock-bundle":
+        expected_interactions = {
+            "collapsed-unseen-reward",
+            "overflow-expanded",
+            "rapid-successive-rewards",
+            "collection-sync-hud-open",
+            "reviewer-reload-after-reward",
+            "history-remount-idempotence",
+            "history-reopen",
+        }
+        if not isinstance(interactions, dict):
+            issues.append("missing-reviewer-reward-interaction-matrix")
+        else:
+            actual_interactions = {
+                name
+                for name, record in interactions.items()
+                if name != "passed" and isinstance(record, dict)
+            }
+            if interactions.get("passed") is not True:
+                issues.append("reviewer-reward-interaction-matrix-not-passed")
+            if actual_interactions != expected_interactions:
+                issues.append("reviewer-reward-interaction-state-mismatch")
+            if any(
+                record.get("passed") is not True
+                for name, record in interactions.items()
+                if name != "passed" and isinstance(record, dict)
+            ):
+                issues.append("reviewer-reward-interaction-state-not-passed")
+    else:
+        issues.append("unexpected-reviewer-hud-matrix-label")
+
+    if label == "reviewer-hud-expanded":
+        expected_resilience = {"no-active-plant", "stored-growth"}
+        if not isinstance(resilience, dict):
+            issues.append("missing-reviewer-hud-resilience-matrix")
+        else:
+            actual_resilience = {
+                name
+                for name, record in resilience.items()
+                if name != "passed" and isinstance(record, dict)
+            }
+            if actual_resilience != expected_resilience:
+                issues.append("reviewer-hud-resilience-state-mismatch")
+            if resilience.get("passed") is not True or any(
+                record.get("passed") is not True
+                for name, record in resilience.items()
+                if name != "passed" and isinstance(record, dict)
+            ):
+                issues.append("reviewer-hud-resilience-state-not-passed")
     return tuple(dict.fromkeys(issues))
 
 
@@ -3377,11 +3923,11 @@ def _visual_contract_record_issues(
                 and fertilizer_status.get("target") == "Applying to Rose Plant"
                 and fertilizer_status.get("title") == "Basic Fertilizer"
                 and fertilizer_status.get("summary")
-                == "+1 Growth per answer · 1 hour remaining"
+                == "+1 Growth per card · 1 hour remaining"
                 and fertilizer_status.get("balance_text") == "Balance: 500"
                 and fertilizer_status.get("balance_icon_present") is True
                 and fertilizer_status.get("extend_text")
-                == "Extend 1 hour · 25 coins"
+                == "Extend 1h · 30 coins"
                 and all(
                     isinstance(fertilizer_status.get(key), list)
                     and len(fertilizer_status[key]) == 4
@@ -3394,7 +3940,7 @@ def _visual_contract_record_issues(
                 )
             ):
                 reject("active Fertilizer must use the compact icon-led status card")
-    elif state_kind not in {"home", "reviewer"}:
+    elif state_kind not in {"home", "reviewer", "reviewer_hud"}:
         reject("visual contract was inapplicable for a Qt-owned surface")
 
     if audit is None:
@@ -3407,7 +3953,7 @@ def _visual_contract_record_issues(
             return {}
         return value
 
-    if state_kind in {"home", "reviewer"}:
+    if state_kind in {"home", "reviewer", "reviewer_hud"}:
         web_root_overflow = audit_object("web_root_overflow")
         for issue in web_root_overflow_issue_codes(web_root_overflow):
             reject(f"HTML root overflow: {issue}")
@@ -3588,7 +4134,17 @@ def _visual_contract_record_issues(
     if label == "progress-achievements":
         cards = audit.get("visible_achievement_cards")
         visible_days = audit.get("visible_completion_days")
+        visible_categories = audit.get("visible_completion_categories")
         date_texts = audit.get("visible_completion_date_texts")
+        category_days: dict[str, list[str]] = {}
+        if (
+            isinstance(visible_days, list)
+            and isinstance(visible_categories, list)
+            and len(visible_days) == len(visible_categories)
+        ):
+            for category, day_value in zip(visible_categories, visible_days):
+                if isinstance(category, str) and isinstance(day_value, str):
+                    category_days.setdefault(category, []).append(day_value)
         if not (
             audit.get("valid_distinct_completion_dates") is True
             and audit.get("achievement_card_geometry_passed") is True
@@ -3606,8 +4162,18 @@ def _visual_contract_record_issues(
             )
             and isinstance(visible_days, list)
             and len(visible_days) >= 4
-            and visible_days == sorted(visible_days)
             and len(set(visible_days)) == len(visible_days)
+            and isinstance(visible_categories, list)
+            and len(visible_categories) == len(visible_days)
+            and all(
+                isinstance(value, str) and bool(value.strip())
+                for value in visible_categories
+            )
+            and bool(category_days)
+            and all(
+                days == sorted(days)
+                for days in category_days.values()
+            )
             and isinstance(date_texts, list)
             and len(date_texts) == len(visible_days)
             and all(
@@ -3713,29 +4279,23 @@ def _visual_contract_record_issues(
             and display.get("outer_scroll_name") == "Display settings"
             and type(display.get("outer_vertical_range")) is int
             and display["outer_vertical_range"] <= 1
+            and display.get("outer_vertical_value") == 0
             and type(display.get("outer_horizontal_range")) is int
             and display["outer_horizontal_range"] <= 1
             and type(display.get("inner_vertical_range")) is int
             and display["inner_vertical_range"] <= 1
-            and type(display.get("preview_panel_height")) is int
-            and 96 <= display["preview_panel_height"] <= 108
-            and display.get("preview_content_kind") in {"garden", "placeholder"}
-            and (
-                display.get("preview_content_kind") != "placeholder"
-                or str(display.get("placeholder_copy", "")).startswith(
-                    "Preview unavailable"
-                )
-            )
+            and display.get("settings_preview_removed") is True
             and bool(str(display.get("current_scenery", "")).strip())
-            and type(display.get("preview_to_advanced_gap")) is int
-            and 8 <= display["preview_to_advanced_gap"] <= 12
+            and type(display.get("appearance_to_advanced_gap")) is int
+            and 8 <= display["appearance_to_advanced_gap"] <= 12
             and all(
                 isinstance(display.get(key), dict)
                 and display[key].get("visible") is True
                 and display[key].get("contained") is True
                 for key in (
-                    "preview_bounds",
-                    "preview_content_bounds",
+                    "home_setting_bounds",
+                    "home_switch_bounds",
+                    "appearance_bounds",
                     "advanced_header_bounds",
                     "advanced_panel_bounds",
                 )
@@ -3761,7 +4321,6 @@ def _visual_contract_record_issues(
 
     if label in {
         "reviewer-find-environment",
-        "reviewer-find-stacked-sync",
         "reviewer-find-common-reduced-motion",
     }:
         geometry = audit_object("reviewer_overlay_geometry")
@@ -3788,11 +4347,38 @@ def _visual_contract_record_issues(
             reject("Reviewer card lacks full containment or control clearance")
         if audit.get("required_overlay_pixels_present") is not True:
             reject("Reviewer card is absent from captured pixels")
-        if label == "reviewer-find-stacked-sync":
-            stack = audit_object("reviewer_stack")
-            geometries = audit.get("reviewer_overlay_geometries")
-            for issue in reviewer_stack_issue_codes(stack, geometries):
-                reject(f"Reviewer stacked capture: {issue}")
+    if label in {"reviewer-hud-expanded", "reviewer-reward-dock-bundle"}:
+        viewport = (
+            audit_object("reviewer_hud_viewport_matrix")
+            if label == "reviewer-hud-expanded"
+            else None
+        )
+        content = audit_object("reviewer_hud_content_matrix")
+        interactions = (
+            audit_object("reviewer_reward_interaction_matrix")
+            if label == "reviewer-reward-dock-bundle"
+            else None
+        )
+        resilience = (
+            audit_object("reviewer_hud_resilience_matrix")
+            if label == "reviewer-hud-expanded"
+            else None
+        )
+        for issue in reviewer_hud_acceptance_matrix_issue_codes(
+            label,
+            viewport,
+            content,
+            interactions,
+            resilience,
+        ):
+            reject(f"Reviewer HUD acceptance matrix: {issue}")
+    if label == "reviewer-reward-dock-bundle":
+        bundle = audit_object("reviewer_reward_bundle")
+        geometry = audit_object("reviewer_reward_dock_geometry")
+        for issue in reviewer_reward_dock_issue_codes(bundle, geometry):
+            reject(f"Reviewer reward-dock capture: {issue}")
+        if audit.get("required_overlay_pixels_present") is not True:
+            reject("Reviewer reward dock is absent from captured pixels")
 
     if label == "missing-artwork-graphical-fallback":
         matrix = audit_object("missing_artwork_matrix")
@@ -4005,9 +4591,20 @@ def _unpainted_client_record_issues(
                     audit.get("reviewer_overlay_geometry")
                     if isinstance(audit, dict) else None
                 )
+                hud = (
+                    audit.get("reviewer_hud_geometry")
+                    if isinstance(audit, dict) else None
+                )
                 bounds = (
-                    overlay.get("overlay_bounds")
-                    if isinstance(overlay, dict) else None
+                    overlay.get("capture_bounds")
+                    if isinstance(overlay, dict)
+                    and overlay.get("capture_bounds")
+                    else overlay.get("overlay_bounds")
+                    if isinstance(overlay, dict)
+                    and overlay.get("overlay_bounds")
+                    else hud.get("capture_bounds")
+                    if isinstance(hud, dict)
+                    else None
                 )
                 logical_width = record.get("width")
                 logical_height = record.get("height")
@@ -4046,6 +4643,7 @@ def _unpainted_client_record_issues(
                 "overview-home",
                 "active-deck-browser-home-after-nurture",
                 "active-overview-home-after-nurture",
+                "session-summary-after-review",
                 "home-preview-loading",
                 "home-preview-error",
                 "home-preview-stale",

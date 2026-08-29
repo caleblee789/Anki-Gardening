@@ -331,6 +331,12 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
             "baseline_y": bottom,
             "scale": 1.0,
             "display_scale": 1.0,
+            "visual_center": [
+                round(art[0] + art[2] / 2, 6),
+                round(art[1] + art[3] / 2, 6),
+            ],
+            "shadow_offset": [0.0, 0.0],
+            "minimum_bed_clearance": 0.04,
             "visible_bounds": visible,
             "ground_anchor": [0.5, round(bottom, 6)],
             "ground_anchor_x": 0.5,

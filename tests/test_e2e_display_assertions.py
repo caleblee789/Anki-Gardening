@@ -156,8 +156,7 @@ def test_journey_load_home_to_dashboard_displays_exact_seeded_kpis(monkeypatch):
     assert "12 today" not in html
     assert "8-day streak" not in html
     assert "35 coins" not in html
-    assert 'data-testid="home-weather"' not in html
-    assert "ag-home__weather-layer" not in html
+    assert 'data-testid="home-weather-layer"' not in html
 
 
 def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
@@ -187,7 +186,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
         in updated
     )
     assert "9-day streak" not in updated
-    assert 'data-testid="home-weather"' not in updated
+    assert 'data-testid="home-weather-layer"' not in updated
 
     assert (
         'data-testid="home-support" '
@@ -195,7 +194,7 @@ def test_journey_review_session_then_refresh_persists_exact_values(monkeypatch):
         in refreshed
     )
     assert "9-day streak" not in refreshed
-    assert 'data-testid="home-weather"' not in refreshed
+    assert 'data-testid="home-weather-layer"' not in refreshed
 
 
 def test_journey_navigation_between_home_contexts_keeps_values_without_duplication(monkeypatch):

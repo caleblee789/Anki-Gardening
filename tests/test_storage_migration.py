@@ -144,7 +144,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == 21
+    assert migrated.version == STATE_VERSION == 23
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE
@@ -170,10 +170,12 @@ def test_schema18_migration_preserves_purchase_replay_history_and_collapses_load
     migrated = migrate_modern_state(payload)
 
     assert migrated.completed_purchase_requests == [completed]
-    assert migrated.selected_weather == "breeze"
+    assert migrated.selected_garden_feature == "wind_chime"
     assert migrated.selected_background == "spring"
     assert migrated.loadout.decoration_id == "lantern"
-    assert migrated.environment_visibility == {"weather": False, "scenery": True}
+    assert migrated.environment_visibility == {
+        "garden_feature": False, "weather": False, "scenery": True
+    }
     assert "backgrounds" not in migrated.inventory
     assert not {"selected_weather", "selected_background", "equipped", "environment_visibility"} & migrated.to_dict().keys()
 
@@ -526,6 +528,45 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     assert fertilizer.active(1_000.0)
     assert not fertilizer.active(2_000.0)
     assert state.revlog_ledger_migration_pending
+
+
+def test_current_json_restores_multiple_experimental_fertilizer_batches_as_time(
+    tmp_path,
+    monkeypatch,
+):
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        plants=[Plant("p1", "bonsai", "Moss", 0)],
+        active_plant_id="p1",
+    ).to_dict()
+    payload["plants"][0]["fertilizer_card_batches"] = [{
+        "effect_id": "fertilizer_quality",
+        "growth_per_card_units": 200,
+        "total_cards": 150,
+        "remaining_cards": 75,
+        "activated_at": "2026-08-28T12:00:00+00:00",
+        "source_event_key": "purchase:quality:1",
+    }]
+    payload["plants"][0]["fertilizer_card_queue"] = [{
+        "effect_id": "fertilizer_premium",
+        "growth_per_card_units": 300,
+        "total_cards": 250,
+        "remaining_cards": 125,
+        "activated_at": "2026-08-28T12:01:00+00:00",
+        "source_event_key": "purchase:premium:1",
+    }]
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr("ankigarden.storage.time.time", lambda: 1_500.0)
+
+    restored = storage_at(state_path)._load()
+
+    plant = restored.plants[0]
+    assert plant.fertilizer == Fertilizer("quality", 2, 5_100.0, 1_500.0)
+    assert plant.fertilizer_history == [
+        Fertilizer("premium", 3, 12_300.0, 5_100.0)
+    ]
+    assert plant.fertilizer_card_batches == []
+    assert plant.fertilizer_card_queue == []
 
 
 @pytest.mark.parametrize(
@@ -883,7 +924,10 @@ def test_all_due_status_uses_live_review_limits_and_full_day_learning_obligation
 
     status = storage.due_obligations()
 
-    assert status == DueObligationStatus(review_count=3, learning_count=4)
+    assert status.review_count == 3
+    assert status.learning_count == 4
+    assert status.future_learning_count == 3
+    assert status.cutoff_at_ms == FakeScheduler.day_cutoff * 1_000
     query, args = next(call for call in db.calls if "count() from cards" in call[0])
     assert "queue = 1" in query and "queue = 3" in query
     assert "queue = 0" not in query and "queue < 0" not in query
@@ -895,7 +939,11 @@ def test_all_due_is_recomputed_live_and_includes_filtered_deck_tree_counts():
     regular = Tree(1, review=3, learn=0)
     storage, _db = due_storage(tree=Tree(0, children=[regular, filtered]), intraday=1)
 
-    assert storage.due_obligations() == DueObligationStatus(review_count=5, learning_count=1)
+    status = storage.due_obligations()
+    assert status.review_count == 5
+    assert status.learning_count == 1
+    assert status.future_learning_count == 0
+    assert status.cutoff_at_ms == FakeScheduler.day_cutoff * 1_000
 
     regular.review_count = 0
     filtered.review_count = 0
@@ -912,7 +960,7 @@ def test_all_due_scheduler_query_failure_fails_closed():
 
     assert not status.complete
     assert not status.available
-    assert "could not evaluate" in status.error.lower()
+    assert "could not verify" in status.error.lower()
 
 
 def test_all_due_status_is_complete_only_when_available_and_zero():

@@ -3,8 +3,11 @@ from __future__ import annotations
 import sys
 import types
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
+
+from PIL import Image, ImageDraw
 
 import ankigarden.ui.icons as icons
 from ankigarden.ui.icons import (
@@ -22,16 +25,26 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
     assert ICON_STROKE_WIDTH == 1.8
     assert {
         "close",
+        "open-garden",
         "check",
         "chevron",
+        "chevron-left",
+        "chevron-right",
+        "chevron-up",
+        "chevron-down",
         "rename",
         "coin",
+        "currency",
         "growth",
         "streak",
         "stage",
         "collection",
+        "completed-collection",
+        "completed-beds",
         "lock",
         "settings",
+        "refresh",
+        "overflow",
         "nursery",
         "plant",
         "warning",
@@ -41,9 +54,12 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
     for name in GARDEN_ICON_PATHS:
         payload = garden_icon_svg(name, color="#123456")
         assert 'viewBox="0 0 24 24"' in payload
-        assert 'style="color:#123456"' in payload
-        assert 'stroke="currentColor"' in payload
+        assert 'stroke="#123456"' in payload
+        assert 'stroke="currentColor"' not in payload
         assert 'stroke-width="1.8"' in payload
+        root = ET.fromstring(payload)
+        assert root.tag.endswith("svg")
+        assert root.attrib["viewBox"] == "0 0 24 24"
 
 
 
@@ -58,6 +74,7 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
             self.rendered = False
             self.painter_ended = False
             self.device_pixel_ratio = 1.0
+            self.device_pixel_ratio_when_rendered: float | None = None
 
         def fill(self, _color: object) -> None:
             return None
@@ -87,6 +104,9 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
             return True
 
         def render(self, painter: FakePainter) -> None:
+            painter.pixmap.device_pixel_ratio_when_rendered = (
+                painter.pixmap.device_pixel_ratio
+            )
             painter.pixmap.rendered = True
 
     aqt_module = types.ModuleType("aqt")
@@ -123,11 +143,11 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
     assert icon.source is not None
     assert (icon.source.width, icon.source.height) == (40, 40)
     assert icon.source.device_pixel_ratio == 2.0
+    assert icon.source.device_pixel_ratio_when_rendered == 1.0
     assert icon.source.rendered is True
     assert icon.source.painter_ended is True
     assert rendered_payloads
-    assert b'style="color:#abcdef"' in rendered_payloads[0]
-    assert b'stroke="currentColor"' in rendered_payloads[0]
+    assert b'stroke="#abcdef"' in rendered_payloads[0]
     assert GARDEN_ICON_PATHS["close"].encode("utf-8") in rendered_payloads[0]
 
     cached = garden_icon_pixmap(
@@ -149,3 +169,50 @@ def test_qt_icon_renderer_falls_back_to_pyqt6_qtsvg(monkeypatch) -> None:
     assert (different_dpr.width, different_dpr.height) == (20, 20)
     assert len(rendered_payloads) == 2
     clear_garden_icon_pixmap_cache()
+
+
+def test_close_svg_has_two_centered_diagonals_at_dpr_1_and_2() -> None:
+    payload = garden_icon_svg("close", color="#ffffff")
+    paths = re.findall(
+        r'<path d="M(\d+) (\d+)L(\d+) (\d+)"/>',
+        payload,
+    )
+    assert paths == [
+        ("6", "6", "18", "18"),
+        ("18", "6", "6", "18"),
+    ]
+
+    for dpr in (1, 2):
+        logical_size = 18
+        physical_size = logical_size * dpr
+        image = Image.new("L", (physical_size, physical_size), 0)
+        draw = ImageDraw.Draw(image)
+        scale = physical_size / 24
+        for x1, y1, x2, y2 in paths:
+            draw.line(
+                tuple(
+                    round(int(value) * scale)
+                    for value in (x1, y1, x2, y2)
+                ),
+                fill=255,
+                width=max(1, round(1.8 * scale)),
+            )
+        center = (physical_size - 1) / 2
+        pixels = [
+            (x, y)
+            for y in range(physical_size)
+            for x in range(physical_size)
+            if image.getpixel((x, y))
+        ]
+        quadrant_counts = (
+            sum(x < center and y < center for x, y in pixels),
+            sum(x > center and y < center for x, y in pixels),
+            sum(x < center and y > center for x, y in pixels),
+            sum(x > center and y > center for x, y in pixels),
+        )
+        assert all(count >= 2 for count in quadrant_counts)
+        bounds = image.getbbox()
+        assert bounds is not None
+        left, top, right, bottom = bounds
+        assert abs(((left + right - 1) / 2) - center) <= 1
+        assert abs(((top + bottom - 1) / 2) - center) <= 1

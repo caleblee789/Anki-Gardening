@@ -9,6 +9,7 @@ from PIL import Image
 
 from ankigarden.asset_manager import AssetManager
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
+from ankigarden.environment import GARDEN_FEATURE_CATALOG
 
 
 class DummyConfig:
@@ -84,11 +85,51 @@ def test_every_bundled_ui_catalog_item_resolves_through_production_resolver() ->
         )(),
     )
     ui_rows = [row for row in rows if row.get("category") == "ui"]
-    assert len(ui_rows) == 9
+    assert len(ui_rows) == 10
     for row in ui_rows:
         key = row["slot"]["ui_id"]
         resolved = manager.resolve_ui_asset(key)
         assert resolved is not None
+        assert resolved.path.is_file()
+
+
+def test_every_bundled_garden_feature_resolves_to_its_own_artwork() -> None:
+    root = Path(__file__).resolve().parents[1]
+    rows = json.loads((root / "ankigarden/assets/manifest.json").read_text())["assets"]
+    manager = AssetManager(
+        DummyConfig(),
+        type(
+            "Storage",
+            (),
+            {
+                "addon_dir": root / "ankigarden",
+                "assets_root": root / "ankigarden/assets",
+                "load_asset_metadata": lambda _self: {},
+                "save_asset_metadata": lambda _self, _value: None,
+            },
+        )(),
+    )
+    feature_rows = [
+        row
+        for row in rows
+        if row.get("category") == "garden_features"
+        and (row.get("slot") or {}).get("garden_feature")
+        in GARDEN_FEATURE_CATALOG
+    ]
+
+    assert {
+        row["slot"]["garden_feature"] for row in feature_rows
+    } == set(GARDEN_FEATURE_CATALOG)
+    for row in feature_rows:
+        feature_id = row["slot"]["garden_feature"]
+        resolved = manager.resolve(
+            "garden_features",
+            f"garden_feature_{feature_id}",
+            f"slot:garden_features:{feature_id}:preview",
+            quality_preference="balanced",
+        )
+        assert resolved is not None
+        assert resolved.asset_id == row["asset_id"]
         assert resolved.path.is_file()
 
 
@@ -111,6 +152,7 @@ def test_all_shipped_supplement_keys_resolve() -> None:
     keys = (
         "booster_potion",
         "fertilizer_basic",
+        "rich_compost",
         "fertilizer_quality",
         "fertilizer_premium",
         "growth_charge_small",
@@ -120,6 +162,32 @@ def test_all_shipped_supplement_keys_resolve() -> None:
         "nurtured_marker_spout_right",
     )
     assert all(manager.resolve_ui_asset(key) is not None for key in keys)
+
+
+def test_rich_compost_has_distinct_art_without_migrating_inventory_id() -> None:
+    root = Path(__file__).resolve().parents[1]
+    rows = json.loads((root / "ankigarden/assets/manifest.json").read_text())["assets"]
+    ui_rows = {
+        str(row.get("slot", {}).get("ui_id", "")): row
+        for row in rows
+        if row.get("category") == "ui"
+    }
+    basic = ui_rows["fertilizer_basic"]
+    rich = ui_rows["rich_compost"]
+
+    assert basic["asset_id"] == "ui_fertilizer_basic"
+    assert rich["asset_id"] == "ui_rich_compost"
+    assert basic["file"] != rich["file"]
+    assert (root / "ankigarden" / basic["file"]).read_bytes() != (
+        root / "ankigarden" / rich["file"]
+    ).read_bytes()
+
+    from ankigarden.garden_finds import STANDARD_FIND_REGISTRY
+
+    compost = next(item for item in STANDARD_FIND_REGISTRY if item.reward_id == "find_fertilizer")
+    assert compost.display_name == "Rich Compost"
+    assert compost.inventory_item_id == "fertilizer_basic"
+    assert compost.artwork_ref == "ui_rich_compost"
 
 
 def test_nurturing_marker_is_transparent_and_has_deterministic_exact_label_metadata() -> None:

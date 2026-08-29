@@ -112,7 +112,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "reviews_100_day",
         "Century Day",
-        "Finish a day with 100 card answers.",
+        "Complete 100 cards in one Anki day.",
         AchievementCategory.STUDY_VOLUME,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.DAILY_ANSWERS,
@@ -123,7 +123,7 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
     AchievementDefinition(
         "reviews_1000_total",
         "Deep Roots",
-        "Answer 1,000 cards.",
+        "Complete 1,000 cards.",
         AchievementCategory.STUDY_VOLUME,
         AchievementEvaluationMode.IMMEDIATE,
         AchievementProgressMetric.LIFETIME_ANSWERS,
@@ -131,43 +131,9 @@ ACHIEVEMENT_DEFINITIONS: Tuple[AchievementDefinition, ...] = (
         RewardBundle(standard_growth_charges=1),
     ),
     AchievementDefinition(
-        "retention_90",
-        "Clear Recall",
-        "Finish a day with 20 card answers and at least 90% accuracy.",
-        AchievementCategory.RECALL,
-        AchievementEvaluationMode.FINALIZED_DAY,
-        AchievementProgressMetric.DAILY_ANSWERS,
-        20,
-        RewardBundle(coins=10),
-        minimum_answers=20,
-        minimum_non_again_percent=90,
-    ),
-    AchievementDefinition(
-        "retention_100",
-        "Perfect Canopy",
-        "Answer 30 cards in a row without Again.",
-        AchievementCategory.RECALL,
-        AchievementEvaluationMode.IMMEDIATE,
-        AchievementProgressMetric.CONSECUTIVE_NON_AGAIN,
-        30,
-        RewardBundle(small_growth_charges=1),
-    ),
-    AchievementDefinition(
-        "no_lapse",
-        "No-Again Day",
-        "Finish a day with 40 card answers and no Again answers.",
-        AchievementCategory.RECALL,
-        AchievementEvaluationMode.FINALIZED_DAY,
-        AchievementProgressMetric.DAILY_ANSWERS,
-        40,
-        RewardBundle(coins=15),
-        minimum_answers=40,
-        minimum_non_again_percent=100,
-    ),
-    AchievementDefinition(
         "all_due_done",
-        "All Clear",
-        "Finish all due cards.",
+        "Review Day Complete",
+        "Complete today's cards.",
         AchievementCategory.COMPLETION,
         AchievementEvaluationMode.LIVE_ONLY,
         AchievementProgressMetric.VALID_ALL_DUE_DAYS,
@@ -350,9 +316,9 @@ def analyze_history(
 ) -> AchievementHistory:
     """Derive reconstructable one-time achievements from eligible answers.
 
-    ``current_open_day`` is deliberately not finalized for Clear Recall or
-    No-Again Day. Immediate criteria may still unlock on events from that day.
-    Ineligible events are ignored entirely, including for non-Again runs.
+    ``current_open_day`` remains open. Ineligible events are ignored entirely.
+    Rating history is retained for schema compatibility but never unlocks or
+    advances an achievement; ordinary progression is rating-neutral.
     """
 
     current_open_date = _parse_day(current_open_day, label="current_open_day")
@@ -375,8 +341,6 @@ def analyze_history(
             counts[1] += 1
             non_again_run += 1
             maximum_non_again_run = max(maximum_non_again_run, non_again_run)
-            if non_again_run == 30:
-                unlock_candidates.setdefault("retention_100", review.scheduler_day)
         if counts[0] == 100:
             unlock_candidates.setdefault("reviews_100_day", review.scheduler_day)
         if lifetime_index == 1_000:
@@ -392,12 +356,6 @@ def analyze_history(
         )
         for day_value, counts in sorted(day_counts.items())
     )
-    for summary in daily_summaries:
-        if summary.clear_recall_qualified:
-            unlock_candidates.setdefault("retention_90", summary.scheduler_day)
-        if summary.no_again_day_qualified:
-            unlock_candidates.setdefault("no_lapse", summary.scheduler_day)
-
     active_dates = sorted(
         _parse_day(day_value, label="scheduler_day")
         for day_value in day_counts

@@ -242,9 +242,9 @@ def test_truncated_or_mislabeled_containers_fail_closed(tmp_path):
         },
         {
             "asset_id": "broken_svg",
-            "category": "weather",
-            "slot": {"weather": "broken"},
-            "file": "assets/weather/broken.svg",
+            "category": "garden_features",
+            "slot": {"garden_feature": "broken"},
+            "file": "assets/garden_features/broken.svg",
             "format": "svg",
             "width": 256,
             "height": 192,
@@ -262,7 +262,7 @@ def test_truncated_or_mislabeled_containers_fail_closed(tmp_path):
 
     assert manager.resolve_ui_asset("broken_png") is None
     assert manager.resolve_ui_asset("broken_webp") is None
-    assert manager.resolve("weather", "weather_broken", "ignored") is None
+    assert manager.resolve("garden_features", "garden_feature_broken", "ignored") is None
 
 
 def test_large_png_validation_uses_bounded_reads_and_file_identity_cache(
@@ -371,20 +371,20 @@ def test_quality_preference_prefers_higher_tier(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
         {
-            "asset_id": "weather_perf",
-            "category": "weather",
-            "slot": {"weather": "breeze"},
-            "file": "assets/weather/breeze/perf.svg",
+            "asset_id": "feature_perf",
+            "category": "garden_features",
+            "slot": {"garden_feature": "wind_chime"},
+            "file": "assets/garden_features/wind_chime/perf.svg",
             "width": 1280,
             "height": 720,
             "quality_tier": "performance",
             "quality_score": 0.7,
         },
         {
-            "asset_id": "weather_ultra",
-            "category": "weather",
-            "slot": {"weather": "breeze"},
-            "file": "assets/weather/breeze/ultra.svg",
+            "asset_id": "feature_ultra",
+            "category": "garden_features",
+            "slot": {"garden_feature": "wind_chime"},
+            "file": "assets/garden_features/wind_chime/ultra.svg",
             "width": 1280,
             "height": 720,
             "quality_tier": "ultra",
@@ -396,7 +396,9 @@ def test_quality_preference_prefers_higher_tier(tmp_path):
         _touch_asset(storage, row["file"])
 
     manager = AssetManager(DummyConfig({"assets": {"quality_preference": "ultra"}}), storage)
-    picked = manager.get_or_fetch("weather", "weather_breeze", "ignored")
+    picked = manager.get_or_fetch(
+        "garden_features", "garden_feature_wind_chime", "ignored"
+    )
 
     assert picked is not None
     assert picked.name == "ultra.svg"
@@ -752,20 +754,20 @@ def test_explicit_preview_quality_overrides_config_preference(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
         {
-            "asset_id": "weather_perf",
-            "category": "weather",
-            "slot": {"weather": "sunny"},
-            "file": "assets/v2_cozy_handpainted/weather/sunny/sunny_performance.svg",
+            "asset_id": "feature_perf",
+            "category": "garden_features",
+            "slot": {"garden_feature": "seedling_sign"},
+            "file": "assets/garden_features/seedling_sign/seedling_sign_performance.svg",
             "width": 256,
             "height": 192,
             "quality_tier": "performance",
             "quality_score": 0.7,
         },
         {
-            "asset_id": "weather_balanced",
-            "category": "weather",
-            "slot": {"weather": "sunny"},
-            "file": "assets/v2_cozy_handpainted/weather/sunny/sunny_balanced.svg",
+            "asset_id": "feature_balanced",
+            "category": "garden_features",
+            "slot": {"garden_feature": "seedling_sign"},
+            "file": "assets/garden_features/seedling_sign/seedling_sign_balanced.svg",
             "width": 256,
             "height": 192,
             "quality_tier": "balanced",
@@ -777,10 +779,15 @@ def test_explicit_preview_quality_overrides_config_preference(tmp_path):
         _touch_asset(storage, row["file"])
 
     manager = AssetManager(DummyConfig({"assets": {"quality_preference": "performance"}}), storage)
-    picked = manager.get_or_fetch("weather", "weather_sunny", "ignored", quality_preference="balanced")
+    picked = manager.get_or_fetch(
+        "garden_features",
+        "garden_feature_seedling_sign",
+        "ignored",
+        quality_preference="balanced",
+    )
 
     assert picked is not None
-    assert picked.name == "sunny_balanced.svg"
+    assert picked.name == "seedling_sign_balanced.svg"
 
 
 def test_reroll_cycles_through_local_alternatives(tmp_path):
@@ -948,4 +955,4 @@ def test_config_merge_keeps_new_visual_defaults():
     merged = ConfigManager._merge(DEFAULT_CONFIG.copy(), {"enable_sounds": True})
     assert merged["enable_sounds"] is True
     assert merged["assets"]["mode"] == "local_only"
-    assert "weather_particle_density" in merged["theme_overrides"]
+    assert "weather_particle_density" not in merged["theme_overrides"]

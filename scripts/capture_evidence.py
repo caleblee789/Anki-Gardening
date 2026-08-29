@@ -1311,6 +1311,7 @@ def _renderer_method_dependencies(
     }
     active_labels = tuple(str(label) for label in labels)
     active_set = set(active_labels)
+    known_labels = exhaustive_labels | active_set
     def resolve_selectors(
         owner: str,
         raw_selectors: Any,
@@ -1324,7 +1325,7 @@ def _renderer_method_dependencies(
             selector = str(raw_selector)
             if selector.startswith("label:"):
                 declared = selector.removeprefix("label:")
-                if declared not in exhaustive_labels:
+                if declared not in known_labels:
                     raise CaptureEvidenceError(
                         f"Renderer dependency owner {owner} names unknown label {declared}"
                     )
@@ -1332,7 +1333,7 @@ def _renderer_method_dependencies(
             elif selector.startswith("prefix:"):
                 prefix = selector.removeprefix("prefix:")
                 if not prefix or not any(
-                    label.startswith(prefix) for label in exhaustive_labels
+                    label.startswith(prefix) for label in known_labels
                 ):
                     raise CaptureEvidenceError(
                         f"Renderer dependency owner {owner} has invalid prefix {prefix!r}"
@@ -2377,6 +2378,7 @@ def _entry_buckets(name: str) -> frozenset[str] | None:
         "ui/__init__.py",
         "ui/accessibility.py",
         "ui/copy.py",
+        "ui/formatters.py",
         "ui/icons.py",
         "ui/responsive.py",
         "ui/state.py",
@@ -4098,7 +4100,11 @@ def _copy_png(source: Path, destination: Path) -> None:
     os.replace(temporary, destination)
 
 
-def recover_progress_manifest(capture_dir: Path) -> Path:
+def recover_progress_manifest(
+    capture_dir: Path,
+    *,
+    output_dir: Path | None = None,
+) -> Path:
     """Recover every complete atomic sidecar after timeout or process exit.
 
     The recovered manifest is intentionally incomplete and has no fabricated
@@ -4107,12 +4113,24 @@ def recover_progress_manifest(capture_dir: Path) -> Path:
     """
 
     capture_dir = capture_dir.expanduser().resolve()
+    recovery_output_dir = (
+        capture_dir
+        if output_dir is None
+        else output_dir.expanduser().resolve()
+    )
+    recovery_output_dir.mkdir(parents=True, exist_ok=True)
     partial_path = capture_dir / "manifest.partial.json"
     _partial_path, payload = _load_manifest(partial_path)
     expected = [str(value) for value in payload.get("expected_faces", ())]
     expected_index = {label: index for index, label in enumerate(expected, start=1)}
+    partial_records = {
+        str(record.get("label", "")): record
+        for record in payload.get("captures", ())
+        if isinstance(record, dict)
+    }
     recovered: dict[str, dict[str, Any]] = {}
     rejected: list[dict[str, str]] = []
+    merged_partial_cleanup: list[str] = []
     for sidecar in sorted((capture_dir / "progress").glob("*.json")):
         try:
             _sidecar_path, sidecar_payload = _load_manifest(sidecar)
@@ -4146,8 +4164,45 @@ def recover_progress_manifest(capture_dir: Path) -> Path:
             raise CaptureEvidenceError(
                 f"Duplicate recovered capture label {label!r}: {sidecar}"
             )
-        recovered[label] = copy.deepcopy(record)
+        recovered_record = copy.deepcopy(record)
+        partial_record = partial_records.get(label)
+        if (
+            "cleanup_ms" not in recovered_record
+            and isinstance(partial_record, dict)
+            and all(
+                partial_record.get(field) == recovered_record.get(field)
+                for field in ("label", "capture_id", "path", "png_sha256")
+            )
+        ):
+            sidecar_without_cleanup = copy.deepcopy(recovered_record)
+            partial_without_cleanup = copy.deepcopy(partial_record)
+            partial_cleanup = partial_without_cleanup.pop("cleanup_ms", None)
+            sidecar_without_cleanup.pop("cleanup_ms", None)
+            if (
+                sidecar_without_cleanup == partial_without_cleanup
+                and type(partial_cleanup) in {int, float}
+                and float(partial_cleanup) >= 0.0
+            ):
+                recovered_record["cleanup_ms"] = partial_cleanup
+                merged_partial_cleanup.append(label)
+        recovered[label] = recovered_record
     records = [recovered[label] for label in expected if label in recovered]
+    relocated_pngs: list[str] = []
+    if recovery_output_dir != capture_dir:
+        for record in records:
+            source_png = _safe_manifest_path(record.get("path"), capture_dir)
+            if source_png is None or not source_png.is_file():
+                raise CaptureEvidenceError(
+                    f"Recovered PNG cannot be relocated: {record.get('path')!r}"
+                )
+            destination_png = recovery_output_dir / source_png.name
+            _copy_png(source_png, destination_png)
+            if record.get("png_sha256") != sha256_file(destination_png):
+                raise CaptureEvidenceError(
+                    f"Relocated recovered PNG changed: {destination_png}"
+                )
+            record["path"] = destination_png.name
+            relocated_pngs.append(str(record["label"]))
     payload.update({
         "capture_scope": "recovered-partial",
         "requested_faces": [str(value) for value in payload.get("requested_faces", ())],
@@ -4158,6 +4213,8 @@ def recover_progress_manifest(capture_dir: Path) -> Path:
         "recovery": {
             "source": str(partial_path),
             "accepted_sidecar_count": len(records),
+            "merged_partial_cleanup_faces": merged_partial_cleanup,
+            "relocated_png_faces": relocated_pngs,
             "rejected_sidecars": rejected,
         },
         "fixture_validations_complete": False,
@@ -4165,11 +4222,13 @@ def recover_progress_manifest(capture_dir: Path) -> Path:
         "scope_complete": False,
         "complete": False,
     })
-    recovered_path = capture_dir / "manifest.recovered.json"
+    recovered_path = recovery_output_dir / "manifest.recovered.json"
     atomic_json(recovered_path, payload)
-    atomic_json(capture_dir / "recovery-report.json", {
+    atomic_json(recovery_output_dir / "recovery-report.json", {
         "manifest": str(recovered_path),
         "recovered_faces": [str(record["label"]) for record in records],
+        "merged_partial_cleanup_faces": merged_partial_cleanup,
+        "relocated_png_faces": relocated_pngs,
         "rejected_sidecars": rejected,
         "status": "recovered" if records else "empty",
     })

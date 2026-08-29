@@ -438,7 +438,7 @@ def test_reviewer_overlay_uses_reviewer_webview_and_clears_answer_controls(
         570,
         360,
         88,
-    ) == (291, 370)
+    ) == (291, 338)
 
     x, y = reviewer_module.reviewer_reward_overlay_position(
         667,
@@ -446,9 +446,9 @@ def test_reviewer_overlay_uses_reviewer_webview_and_clears_answer_controls(
         400,
         104,
     )
-    assert (x, y) == (251, 354)
+    assert (x, y) == (251, 322)
     assert x == 667 - 400 - 16
-    assert y == 570 - 104 - 112
+    assert y == 570 - 104 - 144
     assert x + 400 <= 667
     assert y + 104 <= 570
 
@@ -637,7 +637,7 @@ def test_reviewer_reward_overlay_is_focus_safe_and_uses_bounded_card_geometry(
     assert "setMouseTracking(True)" in source
     assert '"reviewer-webview-right-above-controls"' in source
     assert '"reviewerViewportMargin", 16' in source
-    assert '"reviewerControlClearance", 112' in source
+    assert '"reviewerControlClearance", 144' in source
     assert '"reviewerControlGap", 16' in source
     assert 'getattr(mw, "state", "")' in source
     assert "parent is not reviewer_web" in source
@@ -672,6 +672,71 @@ def test_reviewer_reward_unmounts_when_anki_leaves_reviewer(monkeypatch):
     assert toast.deleted is True
     assert handler._reviewer_session_window is None
     assert handler._reviewer_notice_shown is False
+
+
+def test_reviewer_exit_summary_is_local_card_based_and_nonmodal(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    reviewer_module.mw = aqt_mod.mw
+    from ankigarden.ui.session_summary import (
+        CommittedSessionEvent,
+        SessionStartSnapshot,
+        SessionSummaryAccumulator,
+        TodayCardsSnapshot,
+        project_session_day,
+    )
+
+    legacy_tooltips: list[str] = []
+    sys.modules["aqt.utils"].tooltip = (
+        lambda message, **_kwargs: legacy_tooltips.append(str(message))
+    )
+    state = SimpleNamespace(
+        currency_balance=17,
+        daily_stats=SimpleNamespace(day="2026-08-28", reviewed=126),
+        daily_completion=SimpleNamespace(
+            status="in_progress",
+            remaining_required_reviews=18,
+            remaining_learning_steps=0,
+            future_learning_steps_before_cutoff=0,
+        ),
+        plants=[],
+    )
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=state),
+    )
+    accumulator = SessionSummaryAccumulator(
+        session_id="local-session",
+        started_at="2026-08-28T10:00:00Z",
+        anki_day_id="2026-08-28",
+        start_snapshot=SessionStartSnapshot(
+            TodayCardsSnapshot("in_progress", cards_remaining=144)
+        ),
+    )
+    for index in range(126):
+        accumulator.accept_committed(CommittedSessionEvent(
+            event_id=f"answer:local:{index}",
+            anki_day_id="2026-08-28",
+            occurred_at=f"2026-08-28T10:{index // 60:02d}:{index % 60:02d}Z",
+        ))
+    handler._session_summary_accumulator = accumulator
+    scheduled: list[object] = []
+    monkeypatch.setattr(
+        handler,
+        "_schedule_session_summary_render",
+        lambda: scheduled.append(handler._pending_session_summary),
+    )
+
+    handler.on_state_change("deckBrowser", "review")
+
+    assert legacy_tooltips == []
+    assert len(scheduled) == 1
+    payload = scheduled[0]
+    assert payload.cards_completed == 126
+    projection = project_session_day(payload.segments[0])
+    assert projection.cards_completed_value == "126"
+    assert projection.cards_completed_label == "cards completed this session"
+    assert projection.result_rows == ()
 
 
 def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears_it(
@@ -731,7 +796,7 @@ def test_reviewer_save_failure_uses_review_history_notice_key_and_success_clears
     assert notices.current.message == ""
 
 
-def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata(
+def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_metadata(
     monkeypatch,
 ):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
@@ -845,13 +910,15 @@ def test_reviewer_reward_feedback_consolidates_pending_events_with_find_metadata
 
     handler._show_optional_progress_feedback()
 
-    assert len(shown) == 1
-    feedback = shown[0]
-    assert feedback.event_ids == tuple(event.event_id for event in events)
+    assert len(shown) == 2
+    earlier, feedback = shown
+    assert earlier.event_ids == (events[0].event_id,)
+    assert earlier.message == "+2 Garden Coins"
+    assert feedback.event_ids == (events[1].event_id, events[2].event_id)
     assert feedback.title == "Garden Find"
-    assert feedback.message == "+7 Garden Coins · +40 Growth"
+    assert feedback.message == "+5 Garden Coins · +40 Growth"
     assert feedback.reward_detail == ""
-    assert (feedback.coins_total, feedback.growth_total) == (7, 40)
+    assert (feedback.coins_total, feedback.growth_total) == (5, 40)
     assert feedback.tier == "Common"
     assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
     assert feedback.amount == 0
@@ -919,7 +986,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     assert environment is not None
     assert environment.title == "Garden Find"
     assert environment.tier == "Rare"
-    assert environment.message == "Added to Weather and Scenery"
+    assert environment.message == "Added to Garden Features"
 
     grouped_finds = tuple(
         SimpleNamespace(
@@ -1087,6 +1154,10 @@ def test_no_row_catchup_clears_any_visible_same_day_message(monkeypatch):
     visible_feedback: list[tuple[int, int]] = []
     app.storage.state.last_processed_revlog_id = 100
     app.storage.load_new_revlog_entries = lambda _after_id: []
+    due_status = SimpleNamespace(complete=False, remaining_required_reviews=3)
+    app.storage.due_obligations = lambda: due_status
+    evaluated = []
+    app.engine.evaluate_all_due = lambda status: evaluated.append(status) or (False, "")
     app.dashboard = SimpleNamespace(
         show_same_day_catchup_feedback=lambda count, growth: visible_feedback.append(
             (count, growth)
@@ -1096,6 +1167,23 @@ def test_no_row_catchup_clears_any_visible_same_day_message(monkeypatch):
     app._apply_same_day_catchup()
 
     assert visible_feedback == [(0, 0)]
+    assert evaluated == [due_status]
+
+
+def test_maintenance_refreshes_reviewer_hud_without_open_dashboard(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    refreshed: list[str] = []
+    app.reviewer_hooks = SimpleNamespace(
+        refresh_from_external_state=lambda: refreshed.append("reviewer")
+    )
+    app.dashboard = None
+
+    app._refresh_dashboard_after_maintenance(0, 0)
+
+    assert refreshed == ["reviewer"]
 
 
 def test_settings_action_joins_shared_caleb_addons_menu(monkeypatch):

@@ -11,7 +11,10 @@ from ankigarden.models.state import (
     PlantMemory,
 )
 from ankigarden.reward_presentation import achievement_presentations
-from ankigarden.terminology import FERTILIZER_EXPLANATION
+from ankigarden.terminology import (
+    FERTILIZER_EXPLANATION,
+    HONEST_RATING_EXPLANATION,
+)
 from ankigarden.ui.state_contracts import (
     CURRENT_ONBOARDING_VERSION,
     OnboardingState,
@@ -146,21 +149,15 @@ def test_canonical_achievement_projection_includes_every_streak_threshold() -> N
     )
 
 
-def test_canonical_clear_recall_projection_does_not_round_a_near_miss_up() -> None:
+def test_rating_linked_achievements_are_not_presented() -> None:
     state = GardenState()
     state.daily_stats.reviewed = 29
     state.daily_stats.correct = 26
     state.daily_stats.wrong = 3
 
-    projection = next(
-        item
-        for item in achievement_presentations(state)
-        if item.achievement_id == "retention_90"
-    )
-
-    assert projection.condition_lines == (
-        "29 card answers, 89.7% accuracy",
-    )
+    assert "retention_90" not in {
+        item.achievement_id for item in achievement_presentations(state)
+    }
 
 
 def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> None:
@@ -187,13 +184,20 @@ def test_streak_presentation_distinguishes_new_active_at_risk_and_ended() -> Non
         "Streak ended",
         0,
     )
-    assert new.message == "Answer one card today to begin a streak."
-    assert at_risk.message == "Answer one card today to keep your streak."
-    assert ended.message == "Answer one card to begin a new streak."
+    assert new.message == "Complete one card today to begin a streak."
+    assert at_risk.message == "Complete one card today to keep your streak."
+    assert ended.message == "Complete one card to begin a new streak."
     assert ended.previous_days == 3
     assert ended.missed_day == date(2026, 8, 11)
 
 
-def test_fertilizer_explanation_uses_concise_card_answer_copy() -> None:
-    assert "Growth to each card answer" in FERTILIZER_EXPLANATION
-    assert "Growth per answer" not in FERTILIZER_EXPLANATION
+def test_fertilizer_explanation_uses_concise_card_copy() -> None:
+    assert FERTILIZER_EXPLANATION == (
+        "Fertilizer adds Growth per card for a limited time."
+    )
+
+
+def test_growth_help_explicitly_supports_honest_ratings() -> None:
+    assert HONEST_RATING_EXPLANATION == (
+        "Again, Hard, Good, and Easy give the same Growth. Rate cards honestly."
+    )

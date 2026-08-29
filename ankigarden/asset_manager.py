@@ -513,8 +513,11 @@ class AssetPlacement:
     soil_contact: tuple[float, float] = (0.5, 0.96)
     interaction_bounds: tuple[float, float, float, float] = (0.06, 0.02, 0.88, 0.96)
     display_scale: float = 1.0
+    visual_center: tuple[float, float] = (0.5, 0.5)
     base_type: str = "legacy"
     contact_shadow: tuple[float, float] = (0.56, 0.055)
+    shadow_offset: tuple[float, float] = (0.0, 0.0)
+    minimum_bed_clearance: float = 0.04
     geometry_version: int = 0
     review_provenance: str = ""
     vessel_class: str = "legacy"
@@ -538,7 +541,6 @@ class AssetPlacement:
         row = value if isinstance(value, dict) else {}
         defaults = {
             "backgrounds": cls(0.5, 0.5, 1.0, "cover", "background", focal_point=(0.5, 0.43)),
-            "weather": cls(0.5, 0.5, 1.0, "cover", "weather"),
             "decorations": cls(0.82, 0.86, 0.72, "contain", "decoration"),
             "plants": cls(0.5, 0.9, 1.0, "contain", "plants"),
             "ui": cls(),
@@ -556,6 +558,21 @@ class AssetPlacement:
         def pair(key: str, default: tuple[float, float]) -> tuple[float, float]:
             value = row.get(key, default)
             return pair_from(value, default)
+
+        def signed_pair(
+            key: str,
+            default: tuple[float, float],
+        ) -> tuple[float, float]:
+            value = row.get(key, default)
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                return default
+            result: list[float] = []
+            for raw, fallback in zip(value, default):
+                try:
+                    result.append(max(-0.5, min(0.5, float(raw))))
+                except (TypeError, ValueError):
+                    result.append(fallback)
+            return (result[0], result[1])
 
         def pair_from(value: Any, default: tuple[float, float]) -> tuple[float, float]:
             if not isinstance(value, (list, tuple)) or len(value) != 2:
@@ -652,6 +669,14 @@ class AssetPlacement:
             thumbnail_bounds[0] + thumbnail_bounds[2] / 2,
             thumbnail_bounds[1] + thumbnail_bounds[3] / 2,
         )
+        art_bounds = quad(
+            "art_bounds",
+            quad("visible_bounds", defaults.art_bounds),
+        )
+        visual_center_default = (
+            art_bounds[0] + art_bounds[2] / 2,
+            art_bounds[1] + art_bounds[3] / 2,
+        )
         return cls(
             anchor_x=number("anchor_x", defaults.anchor_x, 0.0, 1.0),
             baseline_y=number("baseline_y", defaults.baseline_y, 0.0, 1.0),
@@ -660,7 +685,7 @@ class AssetPlacement:
             layer=str(row.get("layer", defaults.layer)),
             visible_bounds=quad("visible_bounds", defaults.visible_bounds),
             ground_anchor=pair("ground_anchor", defaults.ground_anchor),
-            art_bounds=quad("art_bounds", quad("visible_bounds", defaults.art_bounds)),
+            art_bounds=art_bounds,
             base_bounds=quad("base_bounds", defaults.base_bounds),
             support_bounds=quad("support_bounds", quad("base_bounds", defaults.support_bounds)),
             foliage_bounds=quad("foliage_bounds", quad("visible_bounds", defaults.foliage_bounds)),
@@ -670,8 +695,16 @@ class AssetPlacement:
             soil_contact=pair("soil_contact", pair("ground_anchor", defaults.soil_contact)),
             interaction_bounds=quad("interaction_bounds", quad("visible_bounds", defaults.interaction_bounds)),
             display_scale=number("display_scale", number("scale", defaults.display_scale, 0.1, 2.5), 0.1, 2.5),
+            visual_center=pair("visual_center", visual_center_default),
             base_type=base_type,
             contact_shadow=pair("contact_shadow", contact_default),
+            shadow_offset=signed_pair("shadow_offset", defaults.shadow_offset),
+            minimum_bed_clearance=number(
+                "minimum_bed_clearance",
+                defaults.minimum_bed_clearance,
+                0.0,
+                0.5,
+            ),
             geometry_version=int(number("geometry_version", defaults.geometry_version, 0, 99)),
             review_provenance=str(row.get("review_provenance", defaults.review_provenance)),
             vessel_class=vessel_class,
@@ -723,8 +756,11 @@ class AssetPlacement:
             "soil_contact": list(self.soil_contact),
             "interaction_bounds": list(self.interaction_bounds),
             "display_scale": self.display_scale,
+            "visual_center": list(self.visual_center),
             "base_type": self.base_type,
             "contact_shadow": list(self.contact_shadow),
+            "shadow_offset": list(self.shadow_offset),
+            "minimum_bed_clearance": self.minimum_bed_clearance,
             "geometry_version": self.geometry_version,
             "review_provenance": self.review_provenance,
             "vessel_class": self.vessel_class,
@@ -780,7 +816,7 @@ class AssetManager:
         "plants": (128, 128),
         "backgrounds": (512, 384),
         "decorations": (128, 128),
-        "weather": (256, 192),
+        "garden_features": (128, 128),
         "overlays": (512, 384),
         "ui": (128, 96),
     }
@@ -1118,9 +1154,9 @@ class AssetManager:
                 "time_of_day": str(time_of_day or "any"),
                 "theme": self.normalize_theme(configured_theme),
             }
-        if category == "weather":
-            weather = key.replace("weather_", "", 1)
-            return {"weather": weather}
+        if category == "garden_features":
+            feature = key.replace("garden_feature_", "", 1)
+            return {"garden_feature": feature}
         if category == "decorations":
             return {"decoration_id": key.replace("decor_", "", 1)}
         if category == "overlays":
@@ -1270,7 +1306,13 @@ class AssetManager:
             ]
         if not preferred and category == "backgrounds":
             preferred = [e for e in entries if (e.get("slot", {}) or {}).get("season") == slot.get("season") and (e.get("slot", {}) or {}).get("weather") == slot.get("weather")]
-        if not preferred and category in {"plants", "weather", "decorations", "overlays", "ui"}:
+        if not preferred and category in {
+            "plants",
+            "garden_features",
+            "decorations",
+            "overlays",
+            "ui",
+        }:
             k = next(iter(slot.keys()))
             preferred = [e for e in entries if (e.get("slot", {}) or {}).get(k) == slot.get(k)]
 

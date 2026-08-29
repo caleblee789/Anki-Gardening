@@ -8,15 +8,15 @@ control the normal profile.
 
 1. Launch cleanly with one **Caleb M. Add-ons Settings → Anki Garden settings** action, no direct **Tools → Anki Garden** action, and no add-on warning.
 2. Confirm Deck Browser and Overview show the noninteractive scene,
-   nurtured-plant Growth, today's answer count, Anki streak, Garden Coins, the
+   nurtured-plant Growth, cards complete today, Anki streak, Garden Coins, the
    closest locked immediate achievement when useful, and **Open Garden**. Plant
    and Nursery clicks must do nothing there.
-3. With fresh schema-21 state, choose **Open Garden**, verify the introduction,
+3. With fresh schema-22 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
    direct-soil space remains empty.
-4. Before choosing a starter, answer a real card and verify study totals and the
+4. Before choosing a starter, complete a real card and verify study totals and the
    Anki streak advance while plant Growth and recurring rewards stay at zero.
    Choose and nurture a starter; confirm that earlier Growth and recurring
    rewards are not backfilled, while any reliably reconstructable one-time
@@ -24,8 +24,8 @@ control the normal profile.
 5. Confirm the Garden name is centered inside the themed frame. Activate Plant
    Growth, Anki streak, and Garden Coins by mouse and keyboard; verify each
    focused detail and its relative bar/rules. Header **Garden Progress** must
-   open the five-page Plant Growth, Anki Streak, Garden Coins, Achievements, and
-   Collection window, defaulting to Plant Growth.
+   open the six-page Today’s Cards, Plant Growth, Anki Streak, Garden Coins,
+   Achievements, and Collection window, defaulting to Today’s Cards.
 6. Hover and keyboard-focus Nursery and cottage. Confirm silhouette-following
    outlines, anchored labels, click/Enter/Space activation, and no empty-air
    rectangle. Confirm both targets are disabled while moving a plant.
@@ -55,69 +55,98 @@ control the normal profile.
     the previous arrangement, and the temporary **Undo** action restores the
     last successful move. There is no destination dropdown or Done button.
 11. Open Fertilize and verify Basic, Quality, and Magical cards show exact
-    Garden Coin cost, Growth-per-answer effect, duration, and labeled item art. Extend the same tier, reject
-    then confirm replacement by a different tier. The comparison must show both
-    exact effects/durations and the precise active time discarded, stacking at
-    narrow widths and balancing side by side when measured space fits. Force
-    expiry and repurchase.
-    Sync answers from before, during, and after each interval; confirm each uses
-    the tier active at answer time and that the direct bonus disappears at the
-    exclusive expiry without changing earned Growth. Seed a Booster Potion,
-   use and extend it, and verify +5 stacks with Fertilizer for exactly two hours.
-   Equip Snow Flurry plus Full Moon and verify newly used Potions last 35%
-   longer.
-12. Answer real Again and Good ratings. Each eligible answer gives the full 10
+    Garden Coin cost, Growth per card, one/two/four-hour duration, and labeled
+    item art. Extend the same tier’s remaining wall-clock time, then queue a
+    different tier without discarding either duration. Confirm the active and
+    queued effects reflow cleanly at narrow and wide widths. Fill the five-dose
+    limit; the next rejected dose must remain in inventory. Verify Fertilizer
+    time continues outside the reviewer and transfers at Full Bloom. Seed a
+    Booster Potion, use and extend it, and verify +5 stacks with Fertilizer for
+    100 applicable cards.
+    Equip Snow Flurry plus Full Moon before the daily lock and verify a newly
+    used Potion grants 135 cards.
+12. Complete real Again and Good cards. Each eligible card gives the full 10
     base Growth plus displayed streak, Fertilizer, Booster, Weather, and Scenery
-    bonuses to the answer-time nurtured unfinished plant. Every other planted,
-    unfinished plant receives an exact 20% allocation carried in fifths. Switch
-    with **Nurture** and verify old Growth never moves. Confirm Growth details
-    reconcile nurtured, passive, residual, Weather, Scenery, Charge, and direct
-    Garden Find totals; Garden Find Growth itself has no streak multiplier or
-    passive fan-out.
-13. Cross 25/50/75/100 stage-local milestones and one stage threshold. Confirm
+    bonuses to the nurtured unfinished plant. Every other planted plant creates
+    an exact 20% Shared Growth share. Verify a growing source receives its own
+    share and a Full Bloom source divides its share among all planted plants
+    still growing, including the nurtured plant. Switch with
+    **Nurture** and verify old Growth never moves. Confirm Growth details
+    reconcile requested, applied, redirected, Shared, Stored, Weather, Scenery,
+    Growth Charge, and Instant Growth totals. Garden Find Instant Growth has no
+    card modifier or Shared fan-out.
+13. Cross 25/50/75/100 stage-local checkpoints and one stage threshold. Confirm
     concise image-led feedback, artwork transition, Garden Coin reason, and no
-    disruptive modal. Exercise the Standard Find registry, 1%/2.5%/5% drought
-    bands, answer-75 guarantee, three-per-day cap and pause/resume behavior.
-    Independently exercise environment odds and Ultra pity, plus all three
-    scenery daily gifts. Confirm Standard and environment Finds can stack with
-    each other and predictable rewards, yet each stable answer/pool identity is
-    consumed once with no reroll. At Rare, confirm routing pauses until another
-    unfinished plant is nurtured.
-14. Exercise all due with due review, intraday learning/relearning, unseen new,
-    active filtered, suspended, and buried cards. Confirm exact inclusion,
-    exclusions, at-least-one-eligible-answer guard, one award, and no revocation.
-15. Run same-day synced-answer catch-up and refresh twice. Sync a lower ID after
+    disruptive modal. Exercise the Standard Find registry, rising protection,
+    guaranteed next-card state, guaranteed Uncommon-or-better result, three-per-day
+    cap, and pause/resume behavior. The full Garden may explain those mechanics;
+    the persistent HUD shows a Find only as a committed reward reveal and never
+    shows the cap, limit, protection state, or internal gap count. Independently exercise each environment tier's finite
+    guarantee and all completion gifts. Confirm Standard and environment Finds
+    can stack with predictable rewards, yet each stable card/pool identity is
+    consumed once with no reroll. At Full Bloom, confirm overflow and remaining
+    effects continue to the next planted unfinished plant or Stored Growth.
+14. Exercise Today’s Cards with due reviews, intraday learning/relearning,
+    unseen new, active filtered, suspended, and buried cards. Confirm exact
+    inclusion, exclusions, at-least-one-eligible-card guard, one award, and no
+    revocation. Verify in-progress copy emphasizes the global number left and
+    completion becomes `All cards complete`, the exact Coin reward, and `176
+    reviewed today`. Waiting, ineligible, and unavailable engine states remain
+    truthful and compact without exposing internal obligation names. In a
+    maximized Anki window, verify the clean expanded right-docked HUD hugs its
+    content, keeps its sticky header and session footer visible, wraps a long
+    plant name, has no horizontal scroll, and leaves Anki’s review controls
+    unobstructed. Commit six rewards from one answer and verify one integrated
+    hero bundle, at most three secondary chips, a clear remainder action, no
+    detached toast or X stack, and no replay after redraw, reload, or sync. Exit a continuous local session after at
+    least one committed card and verify one upper-right, nonmodal **Session
+    Summary** with `cards complete`, Today’s Cards start-to-exit state, exact
+    local Growth, Garden Coins, Standard Finds, milestones/discoveries, and
+    remaining effects. It must omit synced/background rewards, internal Find
+    protection, zero rows, and any backdrop; the underlying Anki page remains
+    usable.
+15. Run same-day synced-card catch-up and refresh twice. Sync a lower ID after
     a higher one and include prior-day and future/device-skew rows. Current-day
     supported rows apply exactly once; excluded rows create no Growth and are
     not consumed. Simulate review-log, scheduler-cutoff, and save failure, then
-    retry and confirm no answer is lost or duplicated.
+    retry and confirm no completed card is lost or duplicated.
 16. In the cottage's **Collection** page, inspect every shared exact mechanic,
     textual Equipped state, how-to-earn entry, locked silhouette, ordered odds,
-    and current Ultra pity. Open the reversible loadout detail; preview, cancel,
-    apply, and unequip Weather and Scenery choices, toggle each visual layer,
-    and confirm its passive still applies. Inspect all 4:3, 16:9, and home reskins:
-    plants, path, Nursery, cottage, occlusion, and hotspots must not move.
+    and deterministic progress to each environment guarantee. Before the first
+    progression event, change the Weather and Scenery freely. After it, confirm
+    artwork and mechanics stay locked and later choices display **Queued for
+    tomorrow**. Toggle each visual layer and confirm its locked effect still
+    applies. Inspect the dormant 4:3/16:9 background compatibility reskins and
+    the active Home master: plants, path, Nursery, cottage, occlusion, and
+    hotspots must not move. Live Weather itself is accepted only on Home and
+    the fixed native 3:2 placement containing 4:3 artwork; do not create a
+    capture-only Weather route for the dormant selectors.
 17. Open Plant Story and confirm enlarged actual-stage art, distinct editable
     name/species/stage labels, relative Growth bar, inline rename, oldest-to-newest
     timeline, warm early-story state, **Up next**, keyboard flow, rename
     persistence, and local date formatting.
-18. Open Settings and confirm the read-only Verdant Twilight card, real
-    noninteractive live preview, and applicable Garden display/notification
-    controls. Confirm Weather/Scenery, art quality/detail/performance, animation,
-    and Fine tune controls are absent; reduced motion remains automatic.
-19. Stage settings and verify the preview updates immediately. Confirm Cancel
-    restores persisted values, Restore defaults only stages values, Save settings
-    commits once, the confirmation clears, and settings survive restart.
+18. Open Settings and confirm the read-only Verdant Twilight card and applicable
+    Garden display/notification controls, with no duplicate garden preview.
+    The persistent reviewer HUD is on by default through its own setting; the
+    existing reviewer-reward setting controls active major dock reveals while
+    the core plant projection and committed session footer remain available.
+    Confirm Weather/Scenery, art quality/detail/performance, animation, and Fine
+    tune controls are absent; reduced motion remains automatic.
+19. Stage settings and verify unsaved-state feedback updates immediately. Confirm
+    Cancel restores persisted values, Restore defaults only stages values, Save
+    settings commits once, the confirmation clears, and settings survive restart.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
     4:3, 16:9, home, and wide compositions.
-21. Restart only the disposable Anki process and re-verify the schema-21 SQLite
-    reward authority, `starter_selection_complete`, nurtured plant, exact-fifths
-    Growth, streak, Garden Coin transactions, reward events, stable answer
-    lineages, achievement finalization, Garden Find outcomes/drought/daily cap,
-    environment Ultra pity, daily claims, environment entitlements/loadout/
-    visibility, Growth Charge and Booster inventory/current/history,
-    Fertilizer current/history intervals, collection,
+21. Restart only the disposable Anki process and re-verify the schema-22 SQLite
+    reward authority, `starter_selection_complete`, nurtured plant, exact
+    hundredth-Growth units, Stored Growth, checkpoint/Full Bloom metadata,
+    streak, Garden Coin
+    transactions, reward events, stable card lineages, achievement finalization,
+    Garden Find outcomes/daily cap, per-tier environment guarantees, Today’s
+    Cards projection, environment entitlements/locked and queued loadout/
+    visibility, Growth Charge inventory, timed Fertilizer periods/queues,
+    Booster card batches, collection,
     placements, stories, display preferences, completed-purchase replay history,
     and home visibility. Re-submit one completed purchase request and confirm
     its stored outcome returns without another debit or grant. Re-sync one

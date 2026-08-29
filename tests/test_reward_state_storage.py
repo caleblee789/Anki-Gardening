@@ -72,7 +72,7 @@ def test_schema20_reward_migration_preserves_legacy_and_starts_new_find_drought(
 
     migrated = migrate_modern_state(payload)
 
-    assert migrated.version == STATE_VERSION == 21
+    assert migrated.version == STATE_VERSION == 23
     assert migrated.reward_seed == "persisted-secret"
     assert migrated.currency_transactions[0].event_key == "legacy:event"
     assert migrated.reward_drop_history == [RewardDrop(

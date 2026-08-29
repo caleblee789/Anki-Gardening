@@ -1,6 +1,6 @@
 # Documentation index
 
-These documents describe the current schema-21 Anki Garden 2.1.0 product.
+These documents describe the current schema-22 Anki Garden 2.1.0 product.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree.
 
@@ -13,8 +13,11 @@ implementation disagree.
   sources.
 - `e2e_display_assertions.md`: exact-package isolated-Anki journeys that remain
   required for live acceptance.
-- `ui/data_contracts.md`: schema-21 persistence, reward identity, Garden Finds,
+- `ui/data_contracts.md`: schema-22 persistence, reward identity, Garden Finds,
   Growth, purchases, and migration boundaries.
+- `reviewer-hud-specification.md`: exact Today’s Cards copy, HUD geometry,
+  plant/checkpoint presentation, persistent-copy exclusions, integrated
+  reward-dock bundles, responsive behavior, and accessibility.
 - `ui/state_scenarios.md`: supported first-run, Garden, Nursery, Collection,
   Settings, responsive, and failure states.
 - `ui/entrypoint_matrix.md`: supported UI entry points.
@@ -24,6 +27,8 @@ implementation disagree.
   automated/manual acceptance boundary.
 - `ui/final-ui-audit-2.1.0.md`: canonical automated/macOS Qt evidence and the
   explicitly unrun human/platform gates.
+- `garden-features.md`: the active registry, fixed layout, migration boundary,
+  and static Home/native rendering contract.
 
 ## Visual and future-work contracts
 

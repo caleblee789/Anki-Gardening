@@ -13,6 +13,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "reduced_motion": False,
     "show_home_widget": True,
     "show_progress_notifications": True,
+    "show_reviewer_hud": True,
+    "reviewer_hud_collapsed": False,
+    "reviewer_hud_dock": "right",
     "onboarding_version": 0,
     "seasonal_visuals": True,
     "assets": {
@@ -24,13 +27,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "visual_theme": "verdant_twilight",
     "theme_overrides": {
         "animation_intensity": 0.7,
-        "weather_particle_density": 1.0,
     },
 }
 
 
 _ENUMS = {
     "visual_theme": {"verdant_twilight"},
+    "reviewer_hud_dock": {"left", "right"},
 }
 _NESTED_ENUMS = {
     ("assets", "mode"): {"local_only"},
@@ -42,9 +45,8 @@ _INT_RANGES = {
     "max_slots": (1, 6),
 }
 _FLOAT_RANGES: dict[str, tuple[float, float]] = {}
-_NESTED_FLOAT_RANGES = {
+_NESTED_FLOAT_RANGES: dict[tuple[str, ...], tuple[float, float]] = {
     ("theme_overrides", "animation_intensity"): (0.0, 1.0),
-    ("theme_overrides", "weather_particle_density"): (0.1, 2.0),
 }
 
 

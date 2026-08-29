@@ -160,9 +160,9 @@ def test_count_helpers_pluralize_and_clamp_learner_facing_values() -> None:
     assert plant_count(-1) == "0 plants"
     assert plant_count(1) == "1 plant"
     assert plant_count(1_000) == "1,000 plants"
-    assert card_answer_count(0) == "0 card answers"
-    assert card_answer_count(1) == "1 card answer"
-    assert card_answer_count(2) == "2 card answers"
+    assert card_answer_count(0) == "0 cards"
+    assert card_answer_count(1) == "1 card"
+    assert card_answer_count(2) == "2 cards"
     assert minute_count(0) == "0 minutes"
     assert minute_count(1) == "1 minute"
     assert minute_count(2) == "2 minutes"
@@ -224,7 +224,7 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per answer",
+        "+1 Growth per card",
         "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0

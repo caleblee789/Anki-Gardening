@@ -167,7 +167,6 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
 
     content_fit_families = set(expected) - {
         DialogSizeClass.GARDEN_WORKSPACE,
-        DialogSizeClass.PROGRESS,
     }
     assert all(
         DIALOG_SIZE_POLICIES[family].content_fit
@@ -175,7 +174,7 @@ def test_release_dialog_families_use_authoritative_content_fit_geometry() -> Non
     )
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].screen_margin == 24
     assert DIALOG_SIZE_POLICIES[DialogSizeClass.TRANSACTION].preserve_transition_height is True
-    assert DIALOG_SIZE_POLICIES[DialogSizeClass.PROGRESS].content_fit is False
+    assert DIALOG_SIZE_POLICIES[DialogSizeClass.PROGRESS].content_fit is True
 
 
 def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() -> None:
@@ -197,8 +196,8 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "replacement": (500, 520, 540, 230, 260, 290),
         },
         DialogSizeClass.SETTINGS: {
-            "display": (800, 820, 840, 480, 500, 520),
-            "advanced": (800, 820, 840, 650, 650, 680),
+            "display": (800, 820, 840, 390, 400, 420),
+            "advanced": (800, 820, 840, 580, 590, 620),
             "diagnostics-clean": (760, 780, 800, 280, 300, 320),
             "diagnostics-warning": (760, 780, 800, 280, 300, 320),
             "diagnostics-expanded": (760, 780, 800, 430, 470, 520),
@@ -209,7 +208,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "owned": (925, 940, 950, 470, 500, 530),
             "fertilizer": (925, 940, 950, 500, 506, 560),
             "spaces": (925, 940, 950, 300, 325, 330),
-            "weather": (925, 940, 950, 488, 488, 500),
+            "garden_features": (925, 940, 950, 488, 488, 500),
             "collection-complete": (925, 940, 950, 300, 315, 330),
             "collection-complete-receipt": (925, 940, 950, 390, 400, 410),
             "empty": (925, 940, 950, 300, 335, 370),
@@ -233,9 +232,9 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "uncollected": (800, 820, 840, 520, 550, 570),
         },
         DialogSizeClass.GROWTH_CHARGE: {
-            "ready": (480, 500, 510, 310, 320, 330),
-            "loading": (480, 500, 510, 310, 320, 330),
-            "stale": (500, 510, 540, 310, 325, 340),
+            "ready": (480, 500, 510, 350, 375, 400),
+            "loading": (480, 500, 510, 350, 375, 400),
+            "stale": (500, 510, 540, 380, 410, 450),
             "success": (480, 500, 510, 300, 320, 340),
         },
     }
@@ -327,7 +326,7 @@ def test_content_fit_constraint_detection_is_width_and_height_aware() -> None:
         screen_height_cap=220,
         natural_width=540,
         natural_height=260,
-    ) is False
+    ) is True
 
 
 def test_tabbed_empty_views_keep_the_workspace_window_mode() -> None:

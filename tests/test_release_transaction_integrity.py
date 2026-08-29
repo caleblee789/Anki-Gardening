@@ -13,9 +13,9 @@ import pytest
 from ankigarden.config import DEFAULT_CONFIG
 from ankigarden.environment import (
     CatalogItem,
+    GARDEN_FEATURE_CATALOG,
     GROWTH_CHARGES,
     SCENERY_CATALOG,
-    WEATHER_CATALOG,
 )
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import (
@@ -158,7 +158,7 @@ def _set_control_enabled_stub(
 
 @pytest.mark.parametrize(
     "purchase_kind",
-    ["fertilizer", "species", "bed", "growth_charge", "weather"],
+    ["fertilizer", "species", "bed", "growth_charge", "garden_feature"],
 )
 def test_unaffordable_purchase_never_debits_or_mutates_state(
     purchase_kind: str,
@@ -177,7 +177,7 @@ def test_unaffordable_purchase_never_debits_or_mutates_state(
     elif purchase_kind == "growth_charge":
         result = engine.purchase_growth_charge("growth_charge_small")
     else:
-        result = engine.purchase_environment("weather", "breeze")
+        result = engine.purchase_environment("garden_feature", "wind_chime")
 
     assert result[0] is False
     assert storage.state.to_dict() == before
@@ -196,8 +196,8 @@ def test_unaffordable_purchase_never_debits_or_mutates_state(
             "Small Growth Charge",
             30,
         ),
-        (PurchaseKind.FERTILIZER, "basic", "p1", "Basic Fertilizer", 25),
-        (PurchaseKind.WEATHER, "breeze", None, "Soft Breeze", 100),
+        (PurchaseKind.FERTILIZER, "basic", "p1", "Basic Fertilizer", 30),
+        (PurchaseKind.GARDEN_FEATURE, "wind_chime", None, "Wind Chime", 100),
         (PurchaseKind.SCENERY, "spring", None, "Spring Bloom", 400),
         (PurchaseKind.BED, "next", None, "Garden Bed 3", 150),
     ),
@@ -278,14 +278,14 @@ def test_price_copy_uses_lowercase_singular_and_plural_units() -> None:
             "p1",
             "Buy and apply Basic Fertilizer?",
             PurchaseAction.PURCHASE_APPLY,
-            "Buy and apply · 25 coins",
+            "Buy and apply · 30 coins",
             set(),
         ),
         (
-            PurchaseKind.WEATHER,
-            "breeze",
+            PurchaseKind.GARDEN_FEATURE,
+            "wind_chime",
             None,
-            "Buy Soft Breeze?",
+            "Buy Wind Chime?",
             PurchaseAction.PURCHASE,
             "Buy for 100 coins",
             set(),
@@ -337,7 +337,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         PurchaseKind.SPECIES: ("Place in garden", "View collection"),
         PurchaseKind.GROWTH_CHARGE: ("Use growth charge", "Keep browsing"),
         PurchaseKind.FERTILIZER: ("View plant", "Keep browsing"),
-        PurchaseKind.WEATHER: ("View collection", "Keep browsing"),
+        PurchaseKind.GARDEN_FEATURE: ("View collection", "Keep browsing"),
         PurchaseKind.BED: ("View garden", "Keep browsing"),
     }
     assert presentation.next_actions == expected_next_actions[kind]
@@ -359,7 +359,7 @@ def test_purchase_presentation_shows_only_decision_relevant_copy(
         ] == [("Inventory", "0 → 1")]
 
 
-def test_fertilizer_presentations_distinguish_extension_and_replacement() -> None:
+def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     engine, storage = _make_engine()
     storage.state.currency_balance = 500
     engine._now_seconds = lambda: 1_000.0
@@ -378,38 +378,37 @@ def test_fertilizer_presentations_distinguish_extension_and_replacement() -> Non
     extension = purchase_presentation(extension_quote)
     assert extension.action is PurchaseAction.EXTEND
     assert extension.title == "Extend Basic Fertilizer?"
-    assert extension.primary_label == "Extend · 25 coins"
+    assert extension.primary_label == "Extend · 30 coins"
     assert extension_quote.current_seconds_remaining == 2_700
     assert extension_quote.resulting_seconds_remaining == 6_300
     assert extension.facts == ()
     assert extension.outcome == "Adds 1 hour to Moss."
 
-    replacement_quote = engine.quote_purchase(
+    queued_quote = engine.quote_purchase(
         PurchaseKind.FERTILIZER,
         "premium",
         target_id="p1",
     )
-    replacement = purchase_presentation(replacement_quote)
-    assert replacement.action is PurchaseAction.PURCHASE_REPLACE
-    assert replacement.title == "Replace Basic Fertilizer?"
-    assert replacement.primary_label == (
-        f"Replace for {replacement_quote.total_price:,} coins"
+    queued = purchase_presentation(queued_quote)
+    assert queued_quote.disposition is PurchaseDisposition.QUEUED
+    assert not queued_quote.replacement_required
+    assert queued.action is PurchaseAction.PURCHASE_QUEUE
+    assert queued.title == "Queue Magical Fertilizer?"
+    assert queued.primary_label == "Buy and queue · 300 coins"
+    assert queued.outcome == (
+        "Queued for 4 hours after Basic Fertilizer."
     )
-    assert replacement.secondary_label == "Keep current"
-    assert replacement.outcome == (
-        "Magical Fertilizer will start immediately.\n"
-        "Basic Fertilizer has 45 minutes remaining."
-    )
-    assert replacement_quote.current_seconds_remaining == 2_700
+    assert queued_quote.current_seconds_remaining == 2_700
+    assert queued_quote.resulting_seconds_remaining == 17_100
 
-    failed_replacement = purchase_presentation(
-        replacement_quote,
+    failed_queue = purchase_presentation(
+        queued_quote,
         status=PurchaseStatus.PERSISTENCE_FAILURE,
     )
-    assert failed_replacement.secondary_label == "Cancel"
-    assert failed_replacement.balance_after == replacement_quote.balance_before
-    assert failed_replacement.facts == ()
-    assert failed_replacement.more_details == ()
+    assert failed_queue.secondary_label == "Cancel"
+    assert failed_queue.balance_after == queued_quote.balance_before
+    assert failed_queue.facts == ()
+    assert failed_queue.more_details == ()
 
     extended = engine.confirm_purchase(PurchaseRequest.from_quote(extension_quote))
     assert extended.success
@@ -579,7 +578,7 @@ def test_stale_purchase_terms_use_one_concise_reconfirmation(
         (PurchaseKind.SPECIES, "sunflower", None),
         (PurchaseKind.GROWTH_CHARGE, "growth_charge_small", None),
         (PurchaseKind.FERTILIZER, "basic", "p1"),
-        (PurchaseKind.WEATHER, "breeze", None),
+        (PurchaseKind.GARDEN_FEATURE, "wind_chime", None),
         (PurchaseKind.SCENERY, "spring", None),
         (PurchaseKind.BED, "next", None),
     ),
@@ -606,7 +605,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         PurchaseKind.SPECIES: "Purchased Sunflower Seed",
         PurchaseKind.GROWTH_CHARGE: "Purchased Small Growth Charge",
         PurchaseKind.FERTILIZER: "Applied Basic Fertilizer to Moss",
-        PurchaseKind.WEATHER: "Purchased Soft Breeze",
+        PurchaseKind.GARDEN_FEATURE: "Purchased Wind Chime",
         PurchaseKind.SCENERY: "Purchased Spring Bloom",
         PurchaseKind.BED: "Unlocked Garden Bed 3",
     }[kind]
@@ -615,7 +614,7 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
         PurchaseKind.SPECIES: "Sunflower added.",
         PurchaseKind.GROWTH_CHARGE: "Small Growth Charge added.",
         PurchaseKind.FERTILIZER: "Basic Fertilizer applied.",
-        PurchaseKind.WEATHER: "Soft Breeze added to your collection.",
+        PurchaseKind.GARDEN_FEATURE: "Wind Chime added to your collection.",
         PurchaseKind.SCENERY: "Spring Bloom added to your collection.",
         PurchaseKind.BED: "Bed 3 unlocked.",
     }[kind]
@@ -628,8 +627,8 @@ def test_every_purchase_kind_commits_one_atomic_debit_and_grant(
     elif kind is PurchaseKind.FERTILIZER:
         assert storage.state.plants[0].fertilizer is not None
         assert storage.state.plants[0].fertilizer.tier == item_id
-    elif kind is PurchaseKind.WEATHER:
-        assert item_id in storage.state.inventory["weather"]
+    elif kind is PurchaseKind.GARDEN_FEATURE:
+        assert item_id in storage.state.inventory["garden_features"]
     elif kind is PurchaseKind.SCENERY:
         assert item_id in storage.state.inventory["scenery"]
     else:
@@ -689,7 +688,7 @@ def test_confirm_purchase_rejects_noncanonical_uuid_without_mutation() -> None:
 def test_persistence_failure_rolls_back_and_same_request_can_be_retried() -> None:
     engine, storage = _make_engine()
     storage.state.currency_balance = 500
-    quote = engine.quote_purchase(PurchaseKind.WEATHER, "breeze")
+    quote = engine.quote_purchase(PurchaseKind.GARDEN_FEATURE, "wind_chime")
     request = PurchaseRequest.from_quote(quote, request_id=str(uuid.uuid4()))
     before = storage.state.to_dict()
     storage.fail_save = True
@@ -698,13 +697,13 @@ def test_persistence_failure_rolls_back_and_same_request_can_be_retried() -> Non
 
     assert failed.status is PurchaseStatus.PERSISTENCE_FAILURE
     assert storage.state.to_dict() == before
-    assert not engine.owns_environment("weather", "breeze")
+    assert not engine.owns_environment("garden_feature", "wind_chime")
 
     storage.fail_save = False
     retried = engine.confirm_purchase(request)
 
     assert retried.success
-    assert engine.owns_environment("weather", "breeze")
+    assert engine.owns_environment("garden_feature", "wind_chime")
     assert storage.state.currency_balance == 400
 
 
@@ -752,7 +751,7 @@ def test_confirmation_distinguishes_stale_terms_and_target_changes(
     (
         ("insufficient", PurchaseKind.GROWTH_CHARGE, "growth_charge_small", None, PurchaseStatus.INSUFFICIENT_COINS),
         ("normal", PurchaseKind.GROWTH_CHARGE, "missing", None, PurchaseStatus.ITEM_UNAVAILABLE),
-        ("normal", PurchaseKind.WEATHER, "sunny", None, PurchaseStatus.ALREADY_OWNED),
+        ("normal", PurchaseKind.GARDEN_FEATURE, "seedling_sign", None, PurchaseStatus.ALREADY_OWNED),
         ("normal", PurchaseKind.FERTILIZER, "basic", "missing", PurchaseStatus.TARGET_INVALID),
     ),
 )
@@ -773,7 +772,7 @@ def test_purchase_quotes_expose_recoverable_typed_failures(
     assert quote.message
 
 
-def test_fertilizer_replacement_requires_explicit_authorization_and_records_discard() -> None:
+def test_different_fertilizer_tier_queues_without_authorization_or_discard() -> None:
     engine, storage = _make_engine()
     storage.state.currency_balance = 500
     engine._now_seconds = lambda: 1_000.0
@@ -785,27 +784,30 @@ def test_fertilizer_replacement_requires_explicit_authorization_and_records_disc
         target_id="p1",
     )
 
-    assert quote.replacement_required
+    assert not quote.replacement_required
+    assert quote.disposition is PurchaseDisposition.QUEUED
     assert quote.current_item_name == "Basic Fertilizer"
     assert quote.current_seconds_remaining == 3_400
-    assert engine.confirm_purchase(PurchaseRequest.from_quote(quote)).status is (
-        PurchaseStatus.REPLACEMENT_REQUIRED
-    )
+    assert quote.resulting_seconds_remaining == 17_800
 
-    replaced = engine.confirm_purchase(PurchaseRequest.from_quote(
-        quote,
-        authorize_replacement=True,
-    ))
-    assert replaced.success
-    assert replaced.applied
-    assert replaced.disposition.value == "replaced"
-    assert replaced.message == "Magical Fertilizer applied."
+    queued = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
+    assert queued.success
+    assert queued.applied
+    assert queued.disposition is PurchaseDisposition.QUEUED
+    assert queued.message == "Magical Fertilizer queued."
     assert storage.state.currency_transactions[-1].reason == (
-        "Replaced Fertilizer with Magical Fertilizer on Moss"
+        "Queued Magical Fertilizer on Moss"
     )
+    active, waiting = engine.fertilizer_schedule(
+        storage.state.plants[0],
+        now=1_200.0,
+    )
+    assert active is not None and active.tier == "basic"
+    assert [period.tier for period in waiting] == ["premium"]
+    assert active.expires_at == waiting[0].started_at
 
 
-def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> None:
+def test_fertilizer_queue_debits_once_and_rolls_back_on_save_failure() -> None:
     engine, storage = _make_engine()
     storage.state.currency_balance = 500
     engine._now_seconds = lambda: 1_000.0
@@ -828,14 +830,19 @@ def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> 
         balance_before - engine.FERTILIZERS["premium"].price
     )
     assert storage.state.plants[0].fertilizer is not None
-    assert storage.state.plants[0].fertilizer.tier == "premium"
+    assert storage.state.plants[0].fertilizer.tier == "basic"
+    _active, waiting = engine.fertilizer_schedule(
+        storage.state.plants[0],
+        now=1_200.0,
+    )
+    assert [period.tier for period in waiting] == ["premium"]
 
     failing_engine, failing_storage = _make_engine()
     failing_storage.state.currency_balance = 500
     failing_engine._now_seconds = lambda: 1_000.0
     assert failing_engine.purchase_fertilizer("p1", "basic")[0]
     failing_engine._now_seconds = lambda: 1_200.0
-    before_failed_replacement = failing_storage.state.to_dict()
+    before_failed_queue = failing_storage.state.to_dict()
     failing_storage.fail_save = True
 
     ok, message = failing_engine.purchase_fertilizer(
@@ -846,7 +853,7 @@ def test_fertilizer_replacement_debits_once_and_rolls_back_on_save_failure() -> 
 
     assert not ok
     assert "No Garden Coins were spent" in message
-    assert failing_storage.state.to_dict() == before_failed_replacement
+    assert failing_storage.state.to_dict() == before_failed_queue
 
 
 def test_every_nursery_transaction_routes_through_the_shared_pending_guard() -> None:
@@ -934,28 +941,28 @@ def test_purchase_dialog_converts_unexpected_engine_failure_to_recoverable_error
     assert "content.addWidget(self.status)" not in constructor
 
 
-def test_environment_receipt_does_not_replace_the_equipped_weather_feature() -> None:
+def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> None:
     purchase_environment = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_purchase_environment",
         {
             "PurchaseKind": PurchaseKind,
-            "WEATHER_CATALOG": WEATHER_CATALOG,
+            "GARDEN_FEATURE_CATALOG": GARDEN_FEATURE_CATALOG,
             "SCENERY_CATALOG": SCENERY_CATALOG,
         },
     )
     observed: dict[str, Any] = {}
     outcome = PurchaseOutcome(
         status=PurchaseStatus.SUCCESS,
-        item_id="breeze",
-        item_name="Soft Breeze",
-        category="Weather",
+        item_id="wind_chime",
+        item_name="Wind Chime",
+        category="Garden Feature",
         quantity=1,
         amount_spent=100,
         new_balance=400,
         disposition=PurchaseDisposition.OWNED_NOT_EQUIPPED,
-        message="Soft Breeze unlocked. Preview or equip it in Collection.",
+        message="Wind Chime unlocked. Preview or equip it in Collection.",
         next_actions=("Open Collection", "Continue shopping"),
     )
     nursery = SimpleNamespace(
@@ -971,10 +978,10 @@ def test_environment_receipt_does_not_replace_the_equipped_weather_feature() -> 
         _schedule_catalog_transaction_release=lambda: observed.update(released=True),
     )
 
-    purchase_environment(nursery, "weather", "breeze")
+    purchase_environment(nursery, "garden_feature", "wind_chime")
 
-    assert observed["kind"] is PurchaseKind.WEATHER
-    assert observed["item_id"] == "breeze"
+    assert observed["kind"] is PurchaseKind.GARDEN_FEATURE
+    assert observed["item_id"] == "wind_chime"
     assert observed["released"] is True
     assert "preview_product" not in observed
 
@@ -1032,7 +1039,7 @@ def test_environment_receipt_does_not_replace_the_equipped_weather_feature() -> 
     )
 
     assert status.visible is False
-    assert toast_result["message"] == "Soft Breeze added to your collection."
+    assert toast_result["message"] == "Wind Chime added to your collection."
     assert toast_result["action_text"] == "View collection"
     assert toast_result["dismiss_text"] == "Keep browsing"
     assert callable(toast_result["dismiss_callback"])
@@ -1146,53 +1153,30 @@ def test_catalog_refresh_exception_reports_saved_change_without_duplicate_use() 
     assert nursery._catalog_transaction_pending is False
 
 
-def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() -> None:
-    confirmations: list[tuple[str, str, str]] = []
+def test_nursery_timed_fertilizer_queues_without_confirmation_and_uses_item_once() -> None:
     engine_calls: list[tuple[str, bool]] = []
     scheduled: list[Any] = []
     refreshes: list[str] = []
     results: list[tuple[bool, str]] = []
     inventory = {"fertilizer_basic": 2}
 
-    class _Confirmation:
-        @staticmethod
-        def confirm(
-            _parent: Any,
-            title: str,
-            message: str,
-            *,
-            confirm_label: str,
-            **_kwargs: Any,
-        ) -> bool:
-            confirmations.append((title, message, confirm_label))
-            return True
-
     use_fertilizer = _compiled_method(
         DASHBOARD_PATH,
         "NurseryDialog",
         "_use_owned_fertilizer",
         {
-            "ConfirmationDialog": _Confirmation,
             "collectible_registry": lambda: (
                 SimpleNamespace(
                     item_id="growth_items:fertilizer_basic",
                     name="Rich Compost",
                 ),
             ),
-            "fertilizer_status": lambda *_args, **_kwargs: SimpleNamespace(
-                active=True,
-                name="Quality Fertilizer",
-                duration="1h 00m remaining",
-                seconds_remaining=3_600,
-            ),
             "_learner_text": str,
-            "time": SimpleNamespace(time=lambda: 1_000.0),
         },
     )
     plant = SimpleNamespace(
         plant_id="p1",
         name="Moss",
-        fertilizer=SimpleNamespace(tier="quality"),
     )
     basic = SimpleNamespace(
         tier="basic",
@@ -1210,7 +1194,7 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
         assert tier == "basic"
         engine_calls.append((plant_id, replace_active))
         inventory["fertilizer_basic"] -= 1
-        return True, "Basic Fertilizer applied"
+        return True, "Basic Fertilizer queued."
 
     nursery = SimpleNamespace(_catalog_transaction_pending=False)
     begin = _compiled_method(
@@ -1229,8 +1213,6 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
     )
     nursery.engine = SimpleNamespace(
         active_plant=lambda: plant,
-        _now_seconds=lambda: 1_000.0,
-        _duration_label=lambda _seconds: "1 hour",
         FERTILIZERS={"basic": basic},
         use_fertilizer_item=use_item,
     )
@@ -1238,17 +1220,11 @@ def test_nursery_rich_compost_confirms_exact_replacement_and_uses_item_once() ->
     use_fertilizer(nursery, "basic")
     use_fertilizer(nursery, "basic")
 
-    assert engine_calls == [("p1", True)]
+    assert engine_calls == [("p1", False)]
     assert inventory == {"fertilizer_basic": 1}
     assert refreshes == ["parent", "nursery"]
     assert scheduled == [True]
-    assert confirmations[0][0] == "Replace Quality Fertilizer?"
-    assert confirmations[0][1] == (
-        "Basic Fertilizer will start immediately.\n"
-        "Quality Fertilizer has 1 hour remaining."
-    )
-    assert confirmations[0][2] == "Use Basic"
-    assert results[0] == (True, "Basic Fertilizer applied")
+    assert results[0] == (True, "Basic Fertilizer queued.")
 
 
 @pytest.mark.parametrize(

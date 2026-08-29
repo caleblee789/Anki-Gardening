@@ -186,8 +186,8 @@ ONBOARDING_BUTTON_VISUAL_HEIGHT = 36
 ICON_BUTTON_VISUAL_SIZE = 32
 INPUT_VISUAL_HEIGHT = 40
 TAB_VISUAL_HEIGHT = 44
-TOGGLE_VISUAL_WIDTH = 36
-TOGGLE_VISUAL_HEIGHT = 20
+TOGGLE_VISUAL_WIDTH = 38
+TOGGLE_VISUAL_HEIGHT = 22
 PLANT_ACTION_MIN_HEIGHT = COMPACT_BUTTON_HEIGHT
 ICON_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
 SCENE_HELP_BUTTON_SIZE = ICON_BUTTON_VISUAL_SIZE
@@ -269,8 +269,10 @@ SEMANTIC_COLORS = {
     "primary_pressed": "#4FC58C",
     "gold": "#E7B94A",
     "danger": "#F07B75",
-    "warning": "#E5A94A",
-    "warning_bg": "#40371E",
+    # Warning amber is deliberately warmer than coin gold so a caution card
+    # cannot read as a reward surface at a glance.
+    "warning": "#F2A35B",
+    "warning_bg": "#44281C",
     "info": "#79C8E8",
     # Nursery rows are part of the same product hierarchy. Earth tones are
     # reserved for artwork accents rather than whole catalogue cards.
@@ -335,6 +337,42 @@ GARDEN_THEME = {
     "shop_surface_1": SEMANTIC_COLORS["shop_surface_1"],
     "shop_surface_2": SEMANTIC_COLORS["shop_surface_2"],
     "shop_surface_3": SEMANTIC_COLORS["shop_surface_3"],
+    # Reviewer HUD depth roles. These are shared semantic aliases rather than
+    # a component-owned palette: native reviewer cards, their integrated
+    # reward dock, and capture fixtures all resolve the same values here.
+    "reviewer_hud_shell": "#171C1A",
+    "reviewer_hud_surface": "#0D3027",
+    "reviewer_hud_surface_raised": "#123B31",
+    "reviewer_hud_surface_hover": "#17483B",
+    "reviewer_hud_border": "rgba(112, 218, 169, 56)",
+    "reviewer_hud_divider": "rgba(231, 241, 233, 26)",
+    "reviewer_hud_growth": "#67DCA9",
+    "reviewer_hud_growth_strong": "#84EDBD",
+    "reviewer_hud_growth_track": "#08241E",
+    "reviewer_hud_coin": "#F3C94F",
+    "reviewer_hud_coin_soft": "rgba(243, 201, 79, 36)",
+    # Session Summary reward semantics.  The native reviewer card consumes
+    # these shared roles rather than owning ad-hoc milestone/find colors.
+    "session_summary_panel_bg": "#071F1A",
+    "session_summary_card_bg": "#0D2B24",
+    "session_summary_card_bg_raised": "#12352C",
+    "session_summary_border": "rgba(142, 205, 180, 61)",
+    "session_summary_border_subtle": "rgba(218, 235, 227, 38)",
+    "session_summary_divider": "rgba(225, 239, 232, 28)",
+    "session_summary_text_primary": "#F3F1E5",
+    "session_summary_text_secondary": "#BCC8C2",
+    "session_summary_text_muted": "#8FA199",
+    "session_summary_progress_track": "rgba(228, 242, 235, 23)",
+    "session_summary_growth": "#60D8A1",
+    "session_summary_coin": "#F2C34E",
+    "session_summary_find": "#57C4D3",
+    "session_summary_milestone": "#B39CF1",
+    "session_summary_primary": "#61DCA6",
+    "session_summary_primary_hover": "#70E4B2",
+    "session_summary_primary_pressed": "#4BC893",
+    "session_summary_primary_text": "#06241B",
+    "session_summary_highlight_surface": "#0D2B24",
+    "session_summary_chip_surface": "rgba(242, 195, 78, 26)",
     # Selected-plant popover palette. Keep these component semantics here so
     # the compact overlay never grows its own scatter of one-off colors.
     "plant_popover_bg": "#174B3C",
@@ -1061,7 +1099,7 @@ def button_stylesheet(
             color: {t['text_primary']};
         }}
         QPushButton:disabled, QPushButton:disabled:hover, QPushButton:disabled:pressed,
-        QPushButton[pending='true'] {{
+        QPushButton[pending='true'], QPushButton[busy='true'] {{
             background: {t['disabled_surface']};
             border-color: {t['disabled_border']};
             color: {t['disabled_text']};

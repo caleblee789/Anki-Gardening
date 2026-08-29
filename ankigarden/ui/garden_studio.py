@@ -29,11 +29,10 @@ from aqt.qt import (
 )
 
 from ..config import DEFAULT_CONFIG
-from ..models.state import GROWTH_STAGES, GROWTH_THRESHOLDS
 from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
+from .controls import GardenToggleSwitch
 from .scene import GardenSceneWidget
-from .plant_display import growth_display
 from .state import GardenPreviewSnapshot, garden_preview_from_values
 from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE, WIDE_MODE
 from .theme import (
@@ -49,9 +48,10 @@ STUDIO_TEXT = {
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
-    "animation_label": "Weather motion",
-    "particle_label": "Weather detail",
+    "animation_label": "Legacy motion",
+    "particle_label": "Legacy detail",
     "home_widget_label": "Show garden card on Anki home",
+    "reviewer_hud_label": "Show Garden panel while reviewing",
     "progress_notifications_label": "Show review rewards",
 }
 
@@ -117,8 +117,7 @@ class ToggleSettingRow(QFrame):
             QSizePolicy.Policy.Maximum,
         )
         self.setMinimumWidth(0)
-        self.setMinimumHeight(54)
-        self.setMaximumHeight(56)
+        self.setFixedHeight(44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 3, 0, 3)
@@ -329,7 +328,7 @@ GardenHomePreview = HomeGardenPreview
 
 
 class GardenStudioWidget(QWidget):
-    """Responsive persistent settings and an explicitly non-saved preview."""
+    """Responsive persistent display settings."""
 
     persistentChanged = pyqtSignal()
     manageEnvironmentRequested = pyqtSignal()
@@ -372,20 +371,10 @@ class GardenStudioWidget(QWidget):
             "weather_particle_density": False,
         }
         self.preview = self._default_preview()
-        self._preview_garden_name = str(
-            self._garden_snapshot().get("garden_name") or "My Garden"
-        )
-        self.scene = GardenSceneWidget(interactive=False)
-        self.scene.setMinimumHeight(92)
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(120)
-        self._preview_timer.timeout.connect(self._apply_preview)
         self._compact_layout: bool | None = None
         self._loading_controls = True
         self._build_ui()
         self._loading_controls = False
-        self._apply_preview()
 
     def _default_preview(self) -> dict[str, Any]:
         snapshot = self._garden_snapshot()
@@ -438,17 +427,6 @@ class GardenStudioWidget(QWidget):
             QFrame[settingsControls='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
             QFrame[settingsAdvanced='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
             QFrame[themeCard='true'] {{ background:transparent; border:0; }}
-            QFrame[previewPanel='true'] {{ background:{t['raised_surface']}; border:0; border-radius:10px; }}
-            QFrame[homeGardenPreview='true'] {{ background:{t['garden_background']}; border:0; border-radius:10px; }}
-            QFrame[homeGardenPreview='true']:disabled {{ border-color:{t['disabled_border']}; }}
-            QFrame[previewScrim='true'] {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 rgba(3,13,10,252),stop:.48 rgba(4,17,13,230),stop:.72 rgba(6,23,18,116),stop:1 rgba(7,27,20,28)); border:0; }}
-            QLabel[previewEyebrow='true'] {{ color:{t['coin_accent']}; font-size:11px; font-weight:650; letter-spacing:.88px; }}
-            QLabel[previewTitle='true'] {{ color:{t['text_primary']}; font-size:20px; font-weight:650; }}
-            QLabel[previewSupport='true'] {{ color:{t['text_secondary']}; font-size:13px; }}
-            QLabel[previewProgress='true'] {{ color:{t['text_secondary']}; font-size:12px; }}
-            QProgressBar[previewProgressTrack='true'] {{ min-height:4px; max-height:4px; background:{t['subtle_border']}; border:0; border-radius:2px; }}
-            QProgressBar[previewProgressTrack='true']::chunk {{ background:{t['growth_accent']}; border-radius:2px; }}
-            QLabel[previewAction='true'] {{ min-height:36px; max-height:36px; padding:0 16px; color:{t['action_text']}; background:{t['action_accent']}; border-radius:8px; font-size:13px; font-weight:600; }}
             QFrame[toggleSettingRow='true'] {{
                 background:transparent;
                 border:0;
@@ -472,8 +450,8 @@ class GardenStudioWidget(QWidget):
             QCheckBox::indicator:hover {{ border-color:#78a189; }}
             QCheckBox::indicator:checked {{ background:{t['growth_accent']}; border:4px solid #17342e; }}
             QCheckBox::indicator:disabled {{ background:{t['disabled_surface']}; border-color:{t['disabled_border']}; }}
-            QCheckBox[toggleSwitch='true']::indicator {{ width:32px; height:18px; border-radius:9px; border:1px solid {t['strong_border']}; background:#20312c; }}
-            QCheckBox[toggleSwitch='true']::indicator:checked {{ border:1px solid {t['growth_accent']}; background:{t['action_accent']}; }}
+            QCheckBox[toggleSwitch='true'] {{ min-height:36px; max-height:36px; padding:0; spacing:0; }}
+            QCheckBox[toggleSwitch='true']::indicator {{ width:0; height:0; border:0; background:transparent; }}
         """ + tool_button_stylesheet())
         self.root_layout = QVBoxLayout(self)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -512,13 +490,12 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        self.theme_card.setMinimumHeight(70)
-        self.theme_card.setMaximumHeight(70)
+        self.theme_card.setFixedHeight(56)
         theme_layout = QHBoxLayout(self.theme_card)
         theme_layout.setContentsMargins(8, 8, 8, 8)
         theme_layout.setSpacing(10)
         self.theme_thumbnail = QLabel()
-        self.theme_thumbnail.setFixedSize(96, 54)
+        self.theme_thumbnail.setFixedSize(80, 40)
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
@@ -556,7 +533,7 @@ class GardenStudioWidget(QWidget):
             Qt.AlignmentFlag.AlignVCenter,
         )
 
-        self.reduced_motion = QCheckBox()
+        self.reduced_motion = GardenToggleSwitch()
         self.reduced_motion.setAccessibleName(STUDIO_TEXT["animations_label"])
         _describe_control(
             self.reduced_motion,
@@ -587,7 +564,7 @@ class GardenStudioWidget(QWidget):
             "Adjust how much weather detail appears. Lower values use fewer effects; higher values use more.",
         )
         self.particle_value = QLabel()
-        self.particle_value.setAccessibleName("Weather detail value")
+        self.particle_value.setAccessibleName("Legacy detail value")
         self.particle_value.setProperty("settingValue", True)
         particle_row = QHBoxLayout()
         particle_row.addWidget(self.particle_slider, 1)
@@ -599,17 +576,23 @@ class GardenStudioWidget(QWidget):
             self.reduced_motion,
         )
 
-        self.show_home_widget = QCheckBox()
+        self.show_home_widget = GardenToggleSwitch()
         self.show_home_widget.setAccessibleName(STUDIO_TEXT["home_widget_label"])
         _describe_control(
             self.show_home_widget,
             "Show or hide the Garden summary on Anki home screens.",
         )
-        self.show_progress_notifications = QCheckBox()
+        self.show_progress_notifications = GardenToggleSwitch()
         self.show_progress_notifications.setAccessibleName(STUDIO_TEXT["progress_notifications_label"])
         _describe_control(
             self.show_progress_notifications,
             "Show brief Garden progress notifications after studying.",
+        )
+        self.show_reviewer_hud = GardenToggleSwitch()
+        self.show_reviewer_hud.setAccessibleName(STUDIO_TEXT["reviewer_hud_label"])
+        _describe_control(
+            self.show_reviewer_hud,
+            "Show or hide the persistent Garden panel while reviewing cards.",
         )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
@@ -628,8 +611,8 @@ class GardenStudioWidget(QWidget):
         self.fine_tune_toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.fine_tune_toggle.setMinimumHeight(BUTTON_MIN_HEIGHT)
         self.fine_tune_section, fine_tune_form = self._section(
-            "Weather effects",
-            "Adjust weather motion and density only when you need to.",
+            "Legacy visual controls",
+            "Retained internally for settings compatibility; not shown.",
         )
         # Artwork Detail previously only changed weather-overlay variants while
         # implying that all plant/background art would change. Preserve the
@@ -675,48 +658,17 @@ class GardenStudioWidget(QWidget):
             "Show brief Garden reward notifications while reviewing.",
             self.show_progress_notifications,
         )
+        self.reviewer_hud_row = ToggleSettingRow(
+            STUDIO_TEXT["reviewer_hud_label"],
+            "Keep today’s cards and plant progress visible while reviewing.",
+            self.show_reviewer_hud,
+        )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)
-        self.advanced_actions_layout.addWidget(self.notifications_row, 1, 0, 1, 2)
+        self.advanced_actions_layout.addWidget(self.reviewer_hud_row, 1, 0, 1, 2)
+        self.advanced_actions_layout.addWidget(self.notifications_row, 2, 0, 1, 2)
         self.advanced_panel.setMinimumHeight(0)
-        self.advanced_panel.setMaximumHeight(120)
+        self.advanced_panel.setMaximumHeight(164)
         self.advanced_panel.hide()
-
-        self.preview_panel = QFrame()
-        self.preview_panel.setProperty("previewPanel", True)
-        self.preview_panel.setAccessibleName("Garden preview")
-        self.preview_panel.setMinimumWidth(0)
-        self.preview_panel.setSizePolicy(
-            QSizePolicy.Policy.Ignored,
-            QSizePolicy.Policy.Preferred,
-        )
-        self.preview_panel.setMinimumHeight(100)
-        self.preview_panel.setMaximumHeight(100)
-        preview_layout = QVBoxLayout(self.preview_panel)
-        preview_layout.setContentsMargins(0, 0, 0, 0)
-        preview_layout.setSpacing(0)
-        # The banner composition is self-identifying and already exposes a
-        # stable accessible name through ``preview_panel``. Keep this legacy
-        # heading available to integrations without spending another visual
-        # row above the canonical 100 px Home banner.
-        self.preview_title = QLabel("Preview")
-        self.preview_title.setProperty("settingsHeading", True)
-        self.preview_title.setMinimumWidth(0)
-        self.preview_title.hide()
-        self.home_preview = GardenHomePreview(self.scene)
-        self.preview_name = self.home_preview.title
-        self.preview_metrics = self.home_preview.support
-        self.preview_unavailable = QLabel(
-            "Preview unavailable\nArtwork could not be loaded."
-        )
-        self.preview_unavailable.setProperty("missingPreview", True)
-        self.preview_unavailable.setAccessibleName("Preview unavailable")
-        self.preview_unavailable.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_unavailable.setWordWrap(True)
-        self.preview_unavailable.setFixedHeight(100)
-        self.preview_unavailable.hide()
-        preview_layout.addWidget(self.preview_title)
-        preview_layout.addWidget(self.home_preview)
-        preview_layout.addWidget(self.preview_unavailable)
 
         # This compatibility wrapper is deliberately non-scrolling; the outer
         # Settings page remains the only vertical scroll owner.
@@ -745,20 +697,24 @@ class GardenStudioWidget(QWidget):
         self.controls_scroll.setWidget(self.controls)
 
         self.root_layout.addWidget(self.controls_scroll)
-        self.root_layout.addWidget(self.preview_panel)
         appearance_heading = QLabel("Appearance")
         appearance_heading.setProperty("settingsHeading", True)
+        # The appearance card already names itself and exposes a stable
+        # accessible name. A second visual heading only forced the expanded
+        # Display page beneath its fixed tab row.
+        appearance_heading.hide()
         self.root_layout.addWidget(appearance_heading)
         self.root_layout.addWidget(self.theme_card)
 
-        self.asset_quality_combo.currentIndexChanged.connect(self._on_persistent_preview_change)
+        self.asset_quality_combo.currentIndexChanged.connect(self._on_persistent_change)
         self.reduced_motion.toggled.connect(self._on_reduced_motion_toggled)
         self.reduced_motion.toggled.connect(self._update_motion_controls)
         self.show_home_widget.toggled.connect(self._on_persistent_change)
         self.show_home_widget.toggled.connect(self._sync_switch_copy)
-        self.show_home_widget.toggled.connect(self._sync_preview_enabled)
         self.show_progress_notifications.toggled.connect(self._on_persistent_change)
         self.show_progress_notifications.toggled.connect(self._sync_switch_copy)
+        self.show_reviewer_hud.toggled.connect(self._on_persistent_change)
+        self.show_reviewer_hud.toggled.connect(self._sync_switch_copy)
         self.fine_tune_toggle.toggled.connect(self._set_fine_tune_expanded)
         self.advanced_toggle.toggled.connect(self._set_advanced_expanded)
         self.anim_slider.valueChanged.connect(
@@ -769,7 +725,6 @@ class GardenStudioWidget(QWidget):
         )
 
         self.apply_persistent_payload(self._config_payload())
-        self.reset_preview_defaults()
         self._update_slider_labels()
         self._update_motion_controls()
         self._apply_studio_layout_mode(WIDE_MODE)
@@ -779,12 +734,10 @@ class GardenStudioWidget(QWidget):
         if isinstance(sender, QCheckBox):
             sender.setAccessibleDescription("On" if checked else "Off")
 
-    def _sync_preview_enabled(self, checked: bool) -> None:
-        self._apply_preview()
-
     def set_preview_garden_name(self, name: str) -> None:
-        self._preview_garden_name = str(name or "My Garden")
-        self.preview_name.setText(self._preview_garden_name)
+        """Compatibility hook retained after removing the Settings preview."""
+
+        del name
 
     def _set_fine_tune_expanded(self, expanded: bool) -> None:
         self.fine_tune_section.setVisible(bool(expanded))
@@ -869,10 +822,16 @@ class GardenStudioWidget(QWidget):
         # disclosure must not move the canonical viewport away from its top.
         del target, expanded
 
-    def collapse_preview_examples(self) -> None:
-        """Compatibility hook used by the settings dialog when it is reopened."""
+    def collapse_disclosures(self) -> None:
+        """Return expandable Display sections to their default state."""
+
         self.fine_tune_toggle.setChecked(False)
         self.advanced_toggle.setChecked(False)
+
+    def collapse_preview_examples(self) -> None:
+        """Compatibility alias for the previous Settings implementation."""
+
+        self.collapse_disclosures()
 
     def _config_payload(self) -> dict[str, Any]:
         return {
@@ -883,15 +842,14 @@ class GardenStudioWidget(QWidget):
             "show_progress_notifications": self.config.value(
                 "show_progress_notifications", DEFAULT_CONFIG["show_progress_notifications"]
             ),
+            "show_reviewer_hud": self.config.value(
+                "show_reviewer_hud", DEFAULT_CONFIG["show_reviewer_hud"]
+            ),
             "assets": {"quality_preference": self.config.nested("assets", "quality_preference", default="balanced")},
-            "theme_overrides": {
-                "animation_intensity": self.config.nested("theme_overrides", "animation_intensity", default=0.7),
-                "weather_particle_density": self.config.nested("theme_overrides", "weather_particle_density", default=1.0),
-            },
+            "theme_overrides": {},
         }
 
     def apply_persistent_payload(self, payload: dict[str, Any]) -> None:
-        self._preview_timer.stop()
         self._loading_controls = True
         try:
             theme = self._normalize_theme(str(payload.get("visual_theme", "verdant_twilight")))
@@ -907,6 +865,10 @@ class GardenStudioWidget(QWidget):
             self.show_progress_notifications.setChecked(bool(payload.get(
                 "show_progress_notifications",
                 DEFAULT_CONFIG["show_progress_notifications"],
+            )))
+            self.show_reviewer_hud.setChecked(bool(payload.get(
+                "show_reviewer_hud",
+                DEFAULT_CONFIG["show_reviewer_hud"],
             )))
             overrides = payload.get("theme_overrides", {})
             self._override_values = {
@@ -924,7 +886,7 @@ class GardenStudioWidget(QWidget):
             self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
             self._update_slider_labels()
             self._update_motion_controls()
-            self._apply_preview()
+            self._refresh_appearance_card()
         finally:
             self._loading_controls = False
 
@@ -933,20 +895,20 @@ class GardenStudioWidget(QWidget):
             key: deepcopy(DEFAULT_CONFIG[key])
             for key in (
                 "visual_theme", "enable_animations", "reduced_motion",
-                "show_home_widget", "show_progress_notifications", "assets", "theme_overrides",
+                "show_home_widget", "show_progress_notifications", "show_reviewer_hud", "assets", "theme_overrides",
             )
         }
         self.apply_persistent_payload(payload)
-        self.reset_preview_defaults()
         self.persistentChanged.emit()
 
     def reset_preview_defaults(self) -> None:
-        self._preview_timer.stop()
+        """Refresh legacy preview state without rendering a Settings preview."""
+
         self._loading_controls = True
         try:
             self.preview["weather"] = str(self._garden_snapshot().get("weather") or "breeze")
             self.preview["growth_stage"] = "young"
-            self._apply_preview()
+            self._refresh_appearance_card()
         finally:
             self._loading_controls = False
 
@@ -982,7 +944,6 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Preferred,
         )
         self.theme_card.updateGeometry()
-        self.preview_panel.updateGeometry()
         self.updateGeometry()
 
     def _sync_controls_scroll_width(self) -> None:
@@ -1047,7 +1008,6 @@ class GardenStudioWidget(QWidget):
 
     def _on_persistent_preview_change(self, *_args: Any) -> None:
         self._on_persistent_change()
-        self._schedule_preview()
 
     def _on_reduced_motion_toggled(self, *_args: Any) -> None:
         if not self._loading_controls:
@@ -1066,21 +1026,20 @@ class GardenStudioWidget(QWidget):
         self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
         self._update_slider_labels()
         self._on_persistent_change()
-        self._schedule_preview()
 
     def _schedule_preview(self) -> None:
-        motion_enabled = effective_motion_enabled(
-            bool(self._animation_flags[0]),
-            self.reduced_motion.isChecked(),
-            os_reader=lambda: self._system_reduced_motion,
-        )
-        if not self._loading_controls and motion_enabled:
-            self._preview_timer.start()
-        elif not motion_enabled:
-            self._preview_timer.stop()
-            self._apply_preview()
+        """Compatibility hook retained after removing the Settings preview."""
+
+        self._refresh_appearance_card()
 
     def _apply_preview(self) -> None:
+        """Compatibility hook retained after removing the Settings preview."""
+
+        self._refresh_appearance_card()
+
+    def _refresh_appearance_card(self) -> None:
+        """Refresh the compact current-scenery summary shown in Settings."""
+
         snapshot = self._garden_snapshot()
         real_plants = snapshot.get("plants", [])
         if not isinstance(real_plants, list):
@@ -1101,11 +1060,6 @@ class GardenStudioWidget(QWidget):
         self.theme_summary.setText(
             f"{weather_label} · No decorations · No effects"
         )
-        growth = max(0.0, min(1.0, float(snapshot.get("growth", 0.0) or 0.0)))
-        if self.garden_snapshot_provider is None:
-            growth = 0.85 if self.preview["growth_stage"] in ("flowering", "rare") else 0.45
-            if self.preview["growth_stage"] in ("seed", "sprout"):
-                growth = 0.15
         quality = "balanced"
         asset_paths: dict[str, Any] = {}
         if self.asset_resolver:
@@ -1127,7 +1081,6 @@ class GardenStudioWidget(QWidget):
                     )
             except Exception:
                 asset_paths = {}
-        preview_assets = asset_paths.get("plants", {}) if isinstance(asset_paths.get("plants"), dict) else {}
         background_asset = asset_paths.get("background")
         background_path = (
             background_asset.get("path")
@@ -1144,116 +1097,6 @@ class GardenStudioWidget(QWidget):
                 self.theme_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
             ))
-        preview_available = bool(
-            not background_pixmap.isNull()
-            or preview_assets
-            or self.asset_resolver is None
-        )
-        self.home_preview.setVisible(preview_available)
-        self.preview_unavailable.setVisible(not preview_available)
-        stage_thresholds = dict(zip(GROWTH_STAGES, GROWTH_THRESHOLDS))
-        preview_points = stage_thresholds.get(
-            str(self.preview["growth_stage"]),
-            GROWTH_THRESHOLDS[0],
-        )
-        preview_growth = growth_display(preview_points)
-        if self.garden_snapshot_provider is not None:
-            scene_plants = []
-            for item in real_plants:
-                if not isinstance(item, dict):
-                    continue
-                points = max(0, int(item.get("growth_points", 0) or 0))
-                display = growth_display(points)
-                species = str(item.get("species") or "plant")
-                scene_plants.append({
-                    **item,
-                    "stage": str(item.get("stage") or display.stage),
-                    "growth_points": points,
-                    "next_stage": display.next_stage,
-                    "stage_progress": display.progress,
-                    "stage_points": display.stage_points,
-                    "stage_goal": display.stage_goal,
-                    "fully_grown": display.fully_grown,
-                    "asset": preview_assets.get(species),
-                })
-        else:
-            scene_plants = [
-                {
-                    "plant_id": f"preview-{species}", "slot_index": slot_index,
-                    "name": species.replace("_", " ").title(),
-                    "species": species, "stage": self.preview["growth_stage"],
-                    "growth_points": preview_points,
-                    "next_stage": preview_growth.next_stage, "stage_progress": preview_growth.progress,
-                    "stage_points": preview_growth.stage_points, "stage_goal": preview_growth.stage_goal,
-                    "fully_grown": preview_growth.fully_grown, "is_active": slot_index == 0,
-                    "asset": preview_assets.get(species) or (asset_paths.get("plant") if species == "rose" else None),
-                }
-                for slot_index, species in enumerate(("bonsai", "rose", "sunflower"))
-            ]
-        active = next(
-            (item for item in scene_plants if isinstance(item, dict) and item.get("is_active")),
-            scene_plants[0] if scene_plants else {},
-        )
-        motion_enabled = effective_motion_enabled(
-            bool(self._animation_flags[0]),
-            self.reduced_motion.isChecked(),
-            os_reader=lambda: self._system_reduced_motion,
-        )
-        preview_snapshot = garden_preview_from_values(
-            consumer="settings",
-            phase=(
-                "success"
-                if bool(snapshot.get("starter_selected", True)) else
-                "empty"
-            ),
-            garden_name=self._preview_garden_name,
-            active_plant_name=str(active.get("name") or "") if active else "",
-            active_stage=str(active.get("stage") or "") if active else "",
-            active_growth_points=max(0, int(active.get("growth_points", 0) or 0)) if active else 0,
-            active_stage_points=max(0, int(active.get("stage_points", 0) or 0)) if active else 0,
-            active_stage_goal=max(0, int(active.get("stage_goal", 0) or 0)) if active else 0,
-            active_fully_grown=bool(active.get("fully_grown", False)) if active else False,
-            starter_selected=bool(snapshot.get("starter_selected", True)),
-            selected_weather=preview_weather,
-            selected_scenery=str(snapshot.get("background") or self.preview["theme"]),
-            scene_items=scene_plants,
-            unlocked_slots=int(snapshot.get("unlocked_slots", 6) or 6),
-            enabled=self.show_home_widget.isChecked(),
-            motion_enabled=motion_enabled,
-        )
-        self.home_preview.set_snapshot(preview_snapshot)
-        # When the Home card is disabled, collapse its proof rather than
-        # reserving a blank preview panel in the Settings flow.
-        self.preview_panel.setVisible(self.show_home_widget.isChecked())
-        self.scene.set_scene({
-            "weather": preview_weather,
-            "growth": growth,
-            "theme": self.preview["theme"],
-            "animation_intensity": self.preview["animation_intensity"],
-            "weather_particle_density": self.preview["weather_particle_density"],
-            "motion_enabled": preview_snapshot.motion_enabled,
-            "asset_paths": {
-                "background": asset_paths.get("background"),
-                "garden_overlay": asset_paths.get("garden_overlay"),
-                "nurtured_marker": asset_paths.get("nurtured_marker"),
-                "nurtured_marker_spout_right": asset_paths.get(
-                    "nurtured_marker_spout_right"
-                ),
-                "weather": asset_paths.get("weather"),
-            },
-            "unlocked_slots": int(snapshot.get("unlocked_slots", 6) or 6),
-            "streak_days": int(snapshot.get("streak_days", 0) or 0),
-            "streak_bonus_percent": int(snapshot.get("streak_bonus_percent", 0) or 0),
-            # The Settings preview is about artwork and motion. Its old demo
-            # percentage could contradict the real garden, so keep the status
-            # overlay out of this read-only preview.
-            "show_status_overlay": False,
-            # The Settings banner previews scenery and Home composition, not
-            # garden availability. Keep real locked-bed badges on interactive
-            # Garden surfaces while omitting them from this compact artwork.
-            "show_locked_bed_badges": False,
-            "plants": scene_plants,
-        })
 
     def _garden_snapshot(self) -> dict[str, Any]:
         if self.garden_snapshot_provider is None:
@@ -1280,19 +1123,9 @@ class GardenStudioWidget(QWidget):
             "reduced_motion": animation_flags[1],
             "show_home_widget": self.show_home_widget.isChecked(),
             "show_progress_notifications": self.show_progress_notifications.isChecked(),
+            "show_reviewer_hud": self.show_reviewer_hud.isChecked(),
             "assets": {"quality_preference": quality},
-            "theme_overrides": {
-                "animation_intensity": (
-                    self.anim_slider.value() / 100.0
-                    if self._override_control_changed["animation_intensity"]
-                    else self._override_values["animation_intensity"]
-                ),
-                "weather_particle_density": (
-                    self.particle_slider.value() / 100.0
-                    if self._override_control_changed["weather_particle_density"]
-                    else self._override_values["weather_particle_density"]
-                ),
-            },
+            "theme_overrides": {},
         }
 
     def _normalize_theme(self, theme: str) -> str:

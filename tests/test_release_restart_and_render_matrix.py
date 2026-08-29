@@ -274,7 +274,17 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
         == f"purchase-request:{scenery_requests[0].request_id}"
     ]) == 1
 
-    assert engine.equip_environment("scenery", "spring")[0]
+    equipped, message = engine.equip_environment("scenery", "spring")
+    assert equipped
+    assert message == "Spring Bloom queued for tomorrow."
+    engine, storage = _restart(engine, storage)
+    assert storage.state.selected_background == "default"
+    assert storage.state.equipped["background"] == "default"
+    assert storage.state.daily_loadout.queued_scenery_id == "spring"
+    assert storage.state.daily_loadout.queued_for_day == "2026-08-09"
+
+    storage.day = "2026-08-09"
+    engine.rollover_if_needed()
     engine, storage = _restart(engine, storage)
     assert storage.state.selected_background == "spring"
     assert storage.state.equipped["background"] == "spring"
@@ -299,18 +309,22 @@ def test_committed_release_journey_survives_each_restart_without_replaying_ui_st
     config.update({
         "show_home_widget": False,
         "show_progress_notifications": False,
+        "show_reviewer_hud": False,
+        "reviewer_hud_collapsed": True,
+        "reviewer_hud_dock": "left",
         "reduced_motion": True,
         "theme_overrides": {
             "animation_intensity": 0.4,
-            "weather_particle_density": 0.6,
         },
     })
     reopened_config = ConfigManager(SimpleNamespace(addonManager=addon_manager))
     assert reopened_config.value("show_home_widget") is False
     assert reopened_config.value("show_progress_notifications") is False
+    assert reopened_config.value("show_reviewer_hud") is False
+    assert reopened_config.value("reviewer_hud_collapsed") is True
+    assert reopened_config.value("reviewer_hud_dock") == "left"
     assert reopened_config.value("reduced_motion") is True
     assert reopened_config.nested("theme_overrides", "animation_intensity") == 0.4
-    assert reopened_config.nested("theme_overrides", "weather_particle_density") == 0.6
 
 
 def _compiled_scene_method(
@@ -937,7 +951,7 @@ def test_every_species_stage_plot_selected_nurtured_and_motion_combination_is_sa
 
     assert scenarios == 60 * 6 * 2 * 2 * 2 == 2_880
     assert missing_popovers == set(), sorted(missing_popovers)
-    assert len(marker_reserved_docks) == 6, sorted(marker_reserved_docks)
+    assert marker_reserved_docks == set(), sorted(marker_reserved_docks)
     assert (
         maximum_marker_distance[0]
         <= NURTURED_MARKER_MAX_PLANT_DISTANCE_RATIO

@@ -9,6 +9,7 @@ from ankigarden.ui.formatters import (
     format_balance_delta,
     format_decimal,
     format_duration,
+    format_approximate_cards,
     format_garden_coins,
     format_growth,
     format_integer,
@@ -17,6 +18,7 @@ from ankigarden.ui.formatters import (
     format_local_datetime,
     format_percent,
     format_points,
+    format_quantity,
     format_status_label,
     format_streak,
     format_stage_progress,
@@ -77,6 +79,18 @@ def test_pluralization_and_status_labels() -> None:
     assert pluralize(2, "cactus", "cacti") == "cacti"
     assert format_status_label("gentle_rain") == "Gentle Rain"
     assert format_status_label("  in_progress  ") == "In Progress"
+    assert format_status_label("rare") == "Full Bloom"
+
+
+def test_shared_quantity_formatting_covers_cards_effects_and_finds() -> None:
+    assert format_quantity(1, "card") == "1 card"
+    assert format_quantity(14, "card") == "14 cards"
+    assert format_quantity(1_000, "effect") == "1,000 effects"
+    assert format_quantity(1, "Garden Find") == "1 Garden Find"
+    assert format_quantity(2, "discovery", "discoveries") == "2 discoveries"
+    assert format_approximate_cards(1) == "~1 card"
+    assert format_approximate_cards(14) == "~14 cards"
+    assert format_approximate_cards(-4) == "~0 cards"
 
 
 def test_datetime_timezone_conversion_is_stable() -> None:

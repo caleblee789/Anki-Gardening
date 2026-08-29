@@ -250,7 +250,7 @@ def streak_presentation(
             StreakPresentationState.AT_RISK,
             days,
             "At risk",
-            "Answer one card today to keep your streak.",
+            "Complete one card today to keep your streak.",
             "warning",
         )
 
@@ -260,7 +260,7 @@ def streak_presentation(
             StreakPresentationState.ENDED,
             0,
             "Streak ended",
-            "Answer one card to begin a new streak.",
+            "Complete one card to begin a new streak.",
             "missed",
             previous_days=days,
             missed_day=missed_day,
@@ -270,7 +270,7 @@ def streak_presentation(
         StreakPresentationState.NEW,
         0,
         "No active streak",
-        "Answer one card today to begin a streak.",
+        "Complete one card today to begin a streak.",
         "start",
     )
 

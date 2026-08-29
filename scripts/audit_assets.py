@@ -35,15 +35,6 @@ CURRENT_SPECIES = {
     "dahlia",
 }
 STAGES = {"seed", "sprout", "young", "mature", "flowering", "rare"}
-WEATHER = {
-    "sunny",
-    "cloudy",
-    "fireflies",
-    "gentle_rain",
-    "breeze",
-    "snow_flurry",
-    "rainbow_sunshower",
-}
 SCENERY = (
     "spring",
     "summer",
@@ -58,8 +49,8 @@ EXPECTED_COUNTS = {
     "backgrounds": 9,
     "decorations": 1,
     "plants": 60,
-    "ui": 9,
-    "weather": 7,
+    "ui": 10,
+    "garden_features": 8,
 }
 RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",
@@ -73,6 +64,9 @@ RUNTIME_ROOTS = (
 # release gate instead of a capture-review convention.
 RETINA_RASTER_MAX_CSS_SIZE = {
     "plants": (300, 300),
+    # The shared pad is a shallow 28% x 7% scene-height strip; feature masters
+    # in the same category are square 1024 px canvases and exceed this floor.
+    "garden_features": (210, 59),
     "decorations": (160, 160),
     "ui": (96, 96),
 }
@@ -291,6 +285,7 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"plant lacks placement metadata: {species}/{stage}")
         required = {
             "art_bounds",
+            "visible_bounds",
             "base_bounds",
             "support_bounds",
             "foliage_bounds",
@@ -298,11 +293,37 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
             "soil_contact",
             "interaction_bounds",
             "ground_anchor",
+            "visual_center",
+            "display_scale",
+            "contact_shadow",
+            "shadow_offset",
+            "minimum_bed_clearance",
         }
         if not required.issubset(placement) or placement.get("base_type") != "direct_soil":
             raise ValueError(f"plant placement is incomplete: {species}/{stage}")
         if placement.get("soil_contact") != placement.get("ground_anchor"):
             raise ValueError(f"plant soil contact drifts from its anchor: {species}/{stage}")
+        for point_name in ("soil_contact", "ground_anchor", "visual_center", "shadow_offset"):
+            point = placement.get(point_name)
+            if (
+                not isinstance(point, list)
+                or len(point) != 2
+                or not all(isinstance(value, (int, float)) for value in point)
+            ):
+                raise ValueError(f"plant {point_name} is invalid: {species}/{stage}")
+        if not 0.0 < float(placement.get("display_scale", 0.0)) <= 2.0:
+            raise ValueError(f"plant display scale is invalid: {species}/{stage}")
+        if not 0.0 <= float(placement.get("minimum_bed_clearance", -1.0)) <= 0.5:
+            raise ValueError(f"plant bed clearance is invalid: {species}/{stage}")
+        contact_shadow = placement.get("contact_shadow")
+        if (
+            not isinstance(contact_shadow, list)
+            or len(contact_shadow) != 2
+            or not all(isinstance(value, (int, float)) for value in contact_shadow)
+            or not 0.0 < float(contact_shadow[0]) <= 1.0
+            or not 0.0 < float(contact_shadow[1]) <= 0.25
+        ):
+            raise ValueError(f"plant contact shadow is invalid: {species}/{stage}")
 
         source_relative = str(row.get("source_master_file", ""))
         source = ROOT / source_relative
@@ -320,21 +341,10 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
     if decorations[0].get("file") != "assets/support/decorations/lantern.webp":
         raise ValueError("the Lantern decoration is outside its current support path")
 
-    weather_rows = [row for row in rows if row.get("category") == "weather"]
-    observed = Counter(
-        (
-            str((row.get("slot") or {}).get("weather", "")),
-            str(row.get("quality_tier", "")),
-        )
-        for row in weather_rows
-    )
-    expected = Counter((weather, "balanced") for weather in WEATHER)
-    if observed != expected:
-        raise ValueError("weather support assets must contain one automatic balanced overlay per state")
-
     ui_rows = [row for row in rows if row.get("category") == "ui"]
     expected_ui = {
         "ui_fertilizer_basic": "assets/v6_storybook_gouache/ui/fertilizer_basic.webp",
+        "ui_rich_compost": "assets/v6_storybook_gouache/ui/rich_compost.webp",
         "ui_fertilizer_quality": "assets/v6_storybook_gouache/ui/fertilizer_quality.webp",
         "ui_fertilizer_magical": "assets/v6_storybook_gouache/ui/fertilizer_premium.webp",
         "ui_booster_potion": "assets/v6_storybook_gouache/ui/booster_potion.webp",

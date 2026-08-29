@@ -1,0 +1,450 @@
+from __future__ import annotations
+
+import inspect
+from pathlib import Path
+from types import SimpleNamespace
+
+from ankigarden.game import GardenGameEngine
+from ankigarden.models.state import RewardReceipt
+from ankigarden.ui.icons import GARDEN_ICON_PATHS
+from ankigarden.ui.session_summary_card import (
+    SESSION_SUMMARY_DEFAULT_WIDTH,
+    SESSION_SUMMARY_EDGE_MARGIN,
+    SESSION_SUMMARY_FOOTER_HEIGHT,
+    SESSION_SUMMARY_FRAME_BORDER_WIDTH,
+    SESSION_SUMMARY_HEADER_HEIGHT,
+    SESSION_SUMMARY_MAX_HEIGHT,
+    SESSION_SUMMARY_MAX_WIDTH,
+    SessionSummaryCard,
+    session_effect_remaining_text,
+    session_inventory_reward_lines,
+    session_summary_geometry,
+    session_summary_palette,
+)
+from ankigarden.ui.theme import GARDEN_THEME
+
+
+SOURCE_PATH = Path(__file__).parents[1] / "ankigarden" / "ui" / "session_summary_card.py"
+
+
+def _method_source(name: str, following: str) -> str:
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    return source.split(f"def {name}", 1)[1].split(f"def {following}", 1)[0]
+
+
+def test_session_summary_geometry_uses_416_preferred_width_and_32px_narrow_allowance():
+    assert SESSION_SUMMARY_DEFAULT_WIDTH == 416
+    assert SESSION_SUMMARY_MAX_WIDTH == 416
+    assert SESSION_SUMMARY_EDGE_MARGIN == 20
+    assert SESSION_SUMMARY_MAX_HEIGHT is None
+    assert session_summary_geometry(1_200, 900, 900) == (764, 16, 416, 868)
+    assert SESSION_SUMMARY_HEADER_HEIGHT == 52
+    assert SESSION_SUMMARY_FOOTER_HEIGHT == 60
+    assert SESSION_SUMMARY_FRAME_BORDER_WIDTH == 1
+
+
+def test_session_summary_geometry_contracts_inside_small_viewports():
+    assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
+    assert session_summary_geometry(900, 800, 212) == (464, 16, 416, 212)
+    assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
+
+
+def test_session_summary_palette_has_semantic_reward_tokens_and_light_adaptation():
+    dark = session_summary_palette(None)
+    light = session_summary_palette(230)
+    assert dark["elevated_surface"] == GARDEN_THEME["session_summary_panel_bg"]
+    for key in (
+        "growth_accent",
+        "coin_accent",
+        "find_accent",
+        "milestone_accent",
+        "progress_track",
+        "highlight_surface",
+        "action_pressed",
+    ):
+        assert dark[key]
+        assert light[key]
+    assert dark["find_accent"] == GARDEN_THEME["session_summary_find"]
+    assert dark["milestone_accent"] == GARDEN_THEME["session_summary_milestone"]
+    assert light["elevated_surface"] != dark["elevated_surface"]
+
+
+def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    assert "font-size:13px" in source
+    assert "summaryTitle='true'] {font-size:18px" in source
+    assert "summaryHero='true'] {font-size:40px" in source
+    assert "summaryHeroLabel='true']" in source
+    assert "font-size:14px;font-weight:500" in source
+    assert "QPushButton:pressed, QToolButton:pressed" in source
+    assert "QPushButton[summaryPrimary='true']:pressed" in source
+    assert "QPushButton[summarySecondary='true']:pressed" in source
+
+
+def test_session_summary_card_exposes_new_footer_art_and_motion_api():
+    signature = inspect.signature(SessionSummaryCard.__init__)
+    assert tuple(signature.parameters)[:8] == (
+        "self",
+        "parent",
+        "payload",
+        "on_dismiss",
+        "on_open_garden",
+        "on_continue_reviews",
+        "engine",
+        "animations_enabled",
+    )
+    assert isinstance(SessionSummaryCard.widget, property)
+    for method in ("show", "close", "reposition", "_continue_reviews"):
+        assert callable(getattr(SessionSummaryCard, method))
+
+
+def test_card_keeps_header_footer_fixed_and_only_body_scrollable():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    assert "class SessionSummaryCard(QFrame)" in source
+    assert "WA_ShowWithoutActivating" in source
+    assert "Qt.FocusPolicy.NoFocus" in source
+    assert 'self._header.setFixedHeight(SESSION_SUMMARY_HEADER_HEIGHT)' in source
+    assert 'self._footer.setFixedHeight(SESSION_SUMMARY_FOOTER_HEIGHT)' in source
+    assert 'self._scroll.setWidget(body)' in source
+    assert "ScrollBarAsNeeded" in source
+    assert "ScrollBarAlwaysOff" in source
+    assert "stable_body_width = max(1, provisional[2] - 8)" in source
+    assert "self._body.setFixedWidth(stable_body_width)" in source
+    assert "parent.installEventFilter(self)" in source
+    assert "parent.removeEventFilter(self)" in source
+    assert "QDialog" not in source
+    assert "setModal" not in source
+    assert "activateWindow" not in source
+
+
+def test_main_body_hierarchy_matches_the_approved_summary_order():
+    method = _method_source("_rebuild_page", "_add_pager")
+    calls = [
+        "self._add_hero",
+        "self._add_today_cards",
+        "self._add_highlights",
+        "self._add_rewards_earned",
+        "self._add_active_boosts",
+    ]
+    positions = [method.index(call) for call in calls]
+    assert positions == sorted(positions)
+    assert 'setObjectName("ankiGardenSessionBody")' in method
+
+
+def test_today_progress_is_native_semantic_and_animation_ready():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    method = _method_source("_add_today_cards", "_section_heading")
+    assert 'setObjectName("ankiGardenSessionToday")' in method
+    assert "QProgressBar" in method
+    assert 'setObjectName("ankiGardenSessionTodayProgress")' in method
+    assert 'setProperty("progressFraction"' in method
+    assert "completed this session" in source
+    assert 'QPropertyAnimation(progress, b"value"' in source
+    assert "setDuration(350)" in source
+    assert "setStartValue(progress_start)" in source
+    assert 'getattr(today, "start_progress_value"' in method
+    assert 'end.status not in {"not_eligible", "unavailable"}' in method
+    assert "if show_progress:" in method
+
+
+def test_highlight_cards_are_static_prioritized_and_two_line_safe():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    method = _method_source("_add_highlight_card", "_reward_metrics")
+    assert 'setProperty("summaryHighlightKind", kind)' in method
+    assert 'setProperty("summaryStatic", True)' in method
+    assert "setCursor" not in method
+    assert "setWordWrap(True)" in source
+    assert 'setProperty("summaryTwoLineName", True)' in source
+    assert "elidedText" not in source
+    assert "Final growth stage reached" in source
+    assert "Now available in the Garden" in source
+    assert "Completed during this session" not in source
+    highlights = _method_source("_add_highlights", "_add_highlight_card")
+    assert "candidates[:2]" in highlights
+    assert "candidates[2:]" in highlights
+    assert "candidates = (*featured, *overflow)" in highlights
+    compact = _method_source("_add_compact_highlight_row", "_add_highlight_card")
+    assert 'setProperty("summaryHighlightCompact", True)' in compact
+    assert 'setProperty("summaryStatic", True)' in compact
+    assert "setCursor" not in compact
+    assert 'setFixedWidth(88)' in method
+    assert "chip_layout.addStretch" not in method
+
+
+def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    for object_name in (
+        "ankiGardenSessionRewards",
+        "ankiGardenSessionRewardCard",
+        "ankiGardenSessionBreakdownToggle",
+        "ankiGardenSessionBreakdown",
+        "ankiGardenSessionActiveBoosts",
+        "ankiGardenSessionBoostCard",
+    ):
+        assert object_name in source
+    for key in (
+        "growth_applied",
+        "garden_coins",
+        "standard_finds",
+        "shared_growth",
+        "stored_growth",
+        "garden_coins_total",
+    ):
+        assert key in source
+    assert "Direct plant growth" in source
+    assert "Shared Growth distributed" in source
+    assert "Total applied" in source
+    assert "Reward details" in source
+    assert "Additional to the session subtotal; included in " in source
+    assert "Total earned." in source
+    assert 'self._section_heading("Progress details")' in source
+    assert "Rewards earned" in source
+    assert 'setProperty("summaryBoostKind", kind)' in source
+    assert 'setProperty("summaryMetricDivider", True)' in source
+    assert 'setProperty("summaryBoostRow", True)' in source
+    assert "×{max(1, int(quantity)):,}" in source
+
+
+def test_minor_checkpoints_remain_available_in_reward_details():
+    minor = SimpleNamespace(milestone_type="checkpoint", checkpoint_percent=50)
+    major = SimpleNamespace(milestone_type="checkpoint", checkpoint_percent=75)
+    stage = SimpleNamespace(milestone_type="stage_change", checkpoint_percent=0)
+
+    assert SessionSummaryCard._minor_checkpoints(
+        SimpleNamespace(milestones=(minor, major, stage))
+    ) == (minor,)
+
+
+def test_find_rows_use_explicit_reconciled_quantities_only():
+    summary = SimpleNamespace(
+        total_finds=3,
+        find_items_reconciled=True,
+        find_items=(
+            SimpleNamespace(
+                find_id="small_charge",
+                find_name="Small Growth Charge",
+                art_asset="ui_growth_charge_small",
+                item_id="growth_charge_small",
+                quantity=3,
+            ),
+        ),
+    )
+    assert SessionSummaryCard._find_items(summary) == (
+        (
+            "small_charge",
+            "Small Growth Charge",
+            "ui_growth_charge_small",
+            3,
+        ),
+    )
+    summary.total_finds = 4
+    assert SessionSummaryCard._find_items(summary) == ()
+    summary.find_items_reconciled = False
+    assert SessionSummaryCard._find_items(summary) == ()
+
+
+def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    for property_name in (
+        "summaryArtKind",
+        "summaryArtSource",
+        "summaryArtFallback",
+        "summaryArtSourceWidth",
+        "summaryArtSourceHeight",
+        "summaryArtLogicalWidth",
+        "summaryArtLogicalHeight",
+        "summaryArtVector",
+    ):
+        assert property_name in source
+    assert "normalized_plant_pixmap" in source
+    assert "environment_preview_pixmap" in source
+    assert "from .dashboard import" not in source
+    assert '64 if kind == "full_bloom"' in source
+    assert "self._environment_art_label(source, 88, 56)" in source
+    assert "collection" not in _method_source(
+        "_environment_art_label", "_reward_art_label"
+    )
+    reward_art = _method_source("_reward_art_label", "_rebuild_footer")
+    assert '"garden_coin": "coin"' in reward_art
+    assert '"growth": "growth"' in reward_art
+    assert '"ui_growth_charge_small": "growth_charge_small"' in reward_art
+    assert 'getattr(self._engine, "resolve_item_asset", None)' in reward_art
+    assert "self._reward_art_label(art, 28)" in source
+
+
+def test_canonical_garden_feature_art_uses_the_dedicated_asset_catalog():
+    resolved = object()
+
+    class _Assets:
+        def __init__(self):
+            self.calls = []
+
+        def resolve(self, category, key, query, **kwargs):
+            self.calls.append((category, key, query, kwargs))
+            return resolved if category == "garden_features" else None
+
+    assets = _Assets()
+    engine = SimpleNamespace(
+        state=SimpleNamespace(
+            loadout=SimpleNamespace(visibility={"garden_feature": True}),
+            selected_garden_feature="seedling_sign",
+        ),
+        config=SimpleNamespace(value=lambda _key, default=None: default),
+        assets=assets,
+    )
+
+    result = GardenGameEngine.resolve_garden_feature_asset(
+        engine,
+        "firefly_lantern",
+        preview=True,
+    )
+
+    assert result is resolved
+    assert [(category, key) for category, key, _query, _kwargs in assets.calls] == [
+        ("garden_features", "garden_feature_firefly_lantern"),
+    ]
+
+
+def test_earned_garden_feature_art_can_ignore_current_loadout_visibility():
+    resolved = object()
+
+    class _Assets:
+        def resolve(self, *_args, **_kwargs):
+            return resolved
+
+    engine = SimpleNamespace(
+        state=SimpleNamespace(
+            loadout=SimpleNamespace(visibility={"garden_feature": False}),
+            selected_garden_feature="seedling_sign",
+        ),
+        config=SimpleNamespace(value=lambda _key, default=None: default),
+        assets=_Assets(),
+    )
+
+    assert GardenGameEngine.resolve_garden_feature_asset(
+        engine,
+        "firefly_lantern",
+        preview=True,
+    ) is None
+    assert GardenGameEngine.resolve_garden_feature_asset(
+        engine,
+        "firefly_lantern",
+        preview=True,
+        respect_visibility=False,
+    ) is resolved
+
+
+def test_inventory_receipts_use_the_shared_typed_reward_copy():
+    receipts = (
+        RewardReceipt(
+            event_key="full-bloom:item",
+            reward_type="inventory_item",
+            source="full_bloom",
+            source_id="plant-1",
+            scheduler_day="2026-08-28",
+            correlation_id="full-bloom",
+            occurred_at="2026-08-28T10:00:00Z",
+            amount=1,
+            item_id="growth_charge_small",
+        ),
+        RewardReceipt(
+            event_key="full-bloom:coins",
+            reward_type="coins",
+            source="full_bloom",
+            source_id="plant-1",
+            scheduler_day="2026-08-28",
+            correlation_id="full-bloom",
+            occurred_at="2026-08-28T10:00:00Z",
+            amount=20,
+        ),
+    )
+
+    assert session_inventory_reward_lines(receipts) == (
+        ("growth_charge_small", 1, "+1 Small Growth Charge"),
+    )
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    assert 'self._section_heading("Item rewards")' in source
+    assert 'f"{item_name} ×{amount:,}"' in source
+
+
+def test_footer_has_contextual_actions_no_dismiss_button_and_failure_stays_open():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    rebuild = _method_source("_rebuild_page", "_add_pager")
+    footer = _method_source("_rebuild_footer", "_open_garden")
+    continue_method = _method_source("_continue_reviews", "_natural_height")
+    assert 'QPushButton("Open Garden"' in footer
+    assert 'QPushButton("Continue Reviews"' in footer
+    assert 'QPushButton("Dismiss"' not in source
+    assert 'setObjectName("ankiGardenSessionOpenGarden")' in footer
+    assert 'setObjectName("ankiGardenSessionContinueReviews")' in footer
+    assert footer.count("setFixedHeight(40)") == 2
+    assert "and callable(self._on_continue_reviews)" in rebuild
+    assert "if succeeded:" in continue_method
+    assert "self.close()" in continue_method
+    assert 'setProperty("summaryContinueFailed", True)' in continue_method
+    assert "Reviews could not be resumed" in continue_method
+    open_method = _method_source("_open_garden", "_continue_reviews")
+    assert open_method.index("self.close()") < open_method.index("callback()")
+
+
+def test_utility_icons_cover_all_new_native_semantics():
+    assert {
+        "storage",
+        "find",
+        "environment",
+        "fertilizer",
+        "booster",
+        "reviews",
+    }.issubset(GARDEN_ICON_PATHS)
+
+
+def test_motion_is_one_shot_and_honors_the_resolved_reduced_motion_policy():
+    method = _method_source("_start_entry_animation", "close")
+    assert "if self._animation_started" in method
+    assert "if not self._animations_enabled" in method
+    assert "QGraphicsOpacityEffect" in method
+    assert 'QPropertyAnimation(self, b"pos"' in method
+    assert "QPoint(8, 0)" in method
+    assert "setDuration(200)" in method
+    highlight_motion = _method_source("_start_highlight_animation", "close")
+    assert "QPoint(0, 4)" in highlight_motion
+    assert "index * 50" in highlight_motion
+    assert "420" in highlight_motion
+    assert "else 200" in highlight_motion
+
+
+def test_effect_remaining_copy_is_live_concise_and_pluralized():
+    fertilizer = SimpleNamespace(
+        kind="fertilizer",
+        expires_at_epoch_seconds=10_000,
+        remaining_seconds=999,
+    )
+    assert session_effect_remaining_text(
+        fertilizer,
+        now_epoch_seconds=8_080,
+    ) == "32 min left"
+    assert session_effect_remaining_text(
+        fertilizer,
+        now_epoch_seconds=4_480,
+    ) == "1 hr 32 min left"
+    assert session_effect_remaining_text(
+        fertilizer,
+        now_epoch_seconds=10_000,
+    ) == ""
+    assert session_effect_remaining_text(
+        SimpleNamespace(kind="booster", remaining_cards=1)
+    ) == "1 card left"
+    assert session_effect_remaining_text(
+        SimpleNamespace(kind="booster", remaining_cards=38)
+    ) == "38 cards left"
+
+
+def test_active_fertilizer_refreshes_every_30_seconds_and_stops_on_close():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    refresh = _method_source("_refresh_active_effects", "_toggle_details")
+    close = _method_source("close", "__all__")
+    assert "setInterval(30_000)" in source
+    assert "row_widget.setVisible(visible)" in refresh
+    assert "self._active_boosts_section.setVisible(any_visible)" in refresh
+    assert "self._effect_timer.stop()" in refresh
+    assert "self._effect_timer.stop()" in close

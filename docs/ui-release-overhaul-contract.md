@@ -1,6 +1,6 @@
 # Anki Garden UI release contract
 
-Status: implemented contract for Anki Garden 2.1.0, state schema 21, and UI
+Status: implemented contract for Anki Garden 2.1.0, state schema 22, and UI
 capture contract v25. Source code and persisted behavior are authoritative.
 
 ## Authority map
@@ -9,7 +9,7 @@ capture contract v25. Source code and persisted behavior are authoritative.
   atomic replacement of the materialized `GardenState` snapshot.
 - `GardenGameEngine` owns progression, purchases, Growth Charges, loadout
   mutation, reward transitions, and rollback boundaries.
-- The SQLite reward ledger owns unbounded reward-event, answer-lineage,
+- The SQLite reward ledger owns unbounded reward-event, completed-card-lineage,
   Garden-Find-outcome, and finalized-day idempotency.
 - `achievement_presentations()`, `recent_garden_finds()`, and
   `recent_reward_summaries()` are the UI-facing reward authorities. Renderers
@@ -28,7 +28,8 @@ states are in `docs/ui/state_scenarios.md`.
 
 | Entry point | Destination and behavior |
 |---|---|
-| Deck Browser or Overview card | Fixed-height, noninteractive preview with Garden name, nurtured plant, Growth, Open Garden, starter, loading, stale, partial, and retry states; Today, Anki streak, and Garden Coins are omitted |
+| Deck Browser or Overview card | Fixed-height, noninteractive preview with Garden name, nurtured plant, Growth, Open Garden, starter, loading, stale, partial, and retry states; Today’s Cards, Anki streak, and Garden Coins are omitted |
+| Reviewer | Default-on, focus-safe Today’s Cards and plant-growth HUD with a one-click collapsed edge tab |
 | Open Garden | Full scene-first Garden with its name, three metric buttons, Collection, Settings, and interactive landmarks |
 | Plant selection | Contextual native actions for Nurture, Move, Story, Fertilizer, and Growth Charge when eligible |
 | Garden Progress or a metric | Focused Plant Growth, Anki streak, Garden Coins, Achievements, or Collection page |
@@ -36,25 +37,50 @@ states are in `docs/ui/state_scenarios.md`.
 | Nursery landmark | Four-tab Nursery for Plants, Fertilizers and boosts, Garden beds, and Weather and Scenery |
 | Settings action or Anki menu | Staged settings plus read-only Diagnostics with explicit save/discard behavior |
 
-Home and Settings previews expose no scene actions. The full Garden alone owns
-plant selection, move destinations, and landmark activation.
+Home previews expose no scene actions, and Settings does not duplicate that
+preview. The full Garden alone owns plant selection, move destinations, and
+landmark activation.
 
 ## Growth and reward flow
 
-One eligible normal Anki answer creates one engine-owned transaction:
+One eligible completed card creates one engine-owned transaction:
 
-1. Review ingestion normalizes the answer and stable lineage identity.
-2. The nurtured unfinished plant receives the full base award plus eligible
+1. Review ingestion normalizes the card event and stable lineage identity.
+2. The nurtured unfinished plant receives full Answer Growth: the base award plus eligible
    streak, Fertilizer, Booster, Weather, and Scenery modifiers.
-3. Every other planted unfinished plant receives the exact 20% passive
-   allocation, carried in fifths without loss or duplication.
-4. Stage transitions, recurring rewards, achievements, Garden Finds, and
+3. Every other planted plant creates one exact 20% Shared Growth share. A plant
+   still growing receives its own share; a Full Bloom plant’s share is divided
+   among all planted plants still growing, including the nurtured plant.
+4. Overflow continues through planted unfinished plants in stable slot order;
+   any remainder becomes Stored Growth.
+5. Checkpoints, stage transitions, recurring rewards, achievements, Garden Finds, and
    feedback are committed with state and ledger rows or rolled back together.
-5. UI surfaces render the committed result and canonical presentation models.
+6. UI surfaces render the committed result and canonical presentation models.
 
-Growth Charges and Garden-Find Growth are direct-Growth paths and do not fan
-out. Recurring daily, seventh-day, all-due, achievement, stage, and Find rewards
-use stable identities and cannot be replayed into duplicate grants.
+Growth Charges and Garden Find awards are Instant Growth paths and do not fan
+out. First-card, seventh-day, Today’s Cards, achievement, checkpoint, stage,
+and Find rewards use stable identities and cannot be replayed into duplicate
+grants.
+
+The reviewer HUD is persistent, content-driven, and enabled by default through
+`show_reviewer_hud`. Its shell remains mounted between cards. The existing
+reviewer-reward setting controls active major reward-dock reveals, while core
+plant progress and the committed session footer remain available.
+
+The HUD shows global Today’s Cards progress, prominent current-stage art,
+checkpoint progress, next-answer Growth, and at most two compact active-effect
+chips. It hides Find caps and protection state, raw shares and Shared Growth,
+environment names, and irrelevant Stored Growth. In progress, Today’s Cards
+emphasizes the global number left; completion becomes `All cards complete`, the
+exact Coin reward, and `176 reviewed today`. Internal scheduler and obligation
+identifiers never become player copy.
+
+Meaningful committed results appear in one integrated reward dock with a live,
+zero-free `This session` footer. One answer produces one stable-ID bundle with
+one event-specific hero, at most two categorized summaries, and an
+event-ID-backed remainder action. Routine Growth folds into the plant and
+session total without opening a full reveal. Detached toast stacks and
+per-event X buttons do not exist.
 
 ## Purchase and loadout flow
 
@@ -71,14 +97,22 @@ purchase follows the same quote/confirm/commit boundary:
    not mutate state; persistence failure restores the pre-request snapshot.
 
 Collection owns Weather/Scenery inspection, reversible preview, equipment, and
-visibility drafts. `apply_garden_loadout()` is the sole atomic mutation path.
-Nursery purchases never auto-equip an environment item.
+visibility drafts. The first progression event locks today's artwork and
+mechanics; later changes are **Queued for tomorrow**. `apply_garden_loadout()`
+is the sole atomic mutation path. Nursery purchases never auto-equip an
+environment item.
 
 ## Persistence and failure behavior
 
-- Schema 21 persists resumable `OnboardingProgress`, one
-  `GardenLoadoutState`, exact passive residuals, inventory, active effects, and
-  bounded purchase/Growth-Charge replay records.
+- Schema 22 persists resumable `OnboardingProgress`, exact hundredth-Growth
+  units, Stored Growth, checkpoint and Full Bloom metadata, Today’s Cards
+  projection state, locked/queued daily loadouts, independent environment
+  guarantees, timed Fertilizer periods/queues, card-counted Booster batches,
+  inventory, and bounded
+  purchase/Growth-Charge replay records.
+- Schema-21 JSON and authoritative SQLite profiles are backed up before the
+  migration; established reward authorities and historical identities remain
+  intact.
 - Supported JSON state is imported once with a backup; database verification,
   read, backup, and save failures fail closed.
 - Capture-only hover, focus, route, scroll, filter, viewport, and local preview

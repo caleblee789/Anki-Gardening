@@ -1337,6 +1337,12 @@ def _run_capture_attempt(
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
+                # Python ignores SIGPIPE, but Popen restores it by default
+                # before exec. The native macOS Anki launcher does not
+                # consistently reinstall that handler, so a closed internal
+                # WebEngine/media pipe can otherwise terminate the whole
+                # disposable capture process with exit -13.
+                restore_signals=False,
             )
             _completion, attempt_manifest, _exit_code, lifecycle = _wait_for_capture(
                 process,

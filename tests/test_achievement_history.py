@@ -29,9 +29,6 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
         "streak_365",
         "reviews_100_day",
         "reviews_1000_total",
-        "retention_90",
-        "retention_100",
-        "no_lapse",
         "all_due_done",
     ]
     rewards = {
@@ -49,25 +46,18 @@ def test_achievement_registry_is_the_exact_one_time_reward_contract() -> None:
         "streak_365": (1_000, 0, 0),
         "reviews_100_day": (25, 0, 0),
         "reviews_1000_total": (0, 0, 1),
-        "retention_90": (10, 0, 0),
-        "retention_100": (0, 1, 0),
-        "no_lapse": (15, 0, 0),
         "all_due_done": (5, 0, 0),
     }
-    assert ACHIEVEMENTS_BY_ID["retention_90"].category is AchievementCategory.RECALL
-    assert (
-        ACHIEVEMENTS_BY_ID["retention_90"].evaluation_mode
-        is AchievementEvaluationMode.FINALIZED_DAY
-    )
-    assert (
-        ACHIEVEMENTS_BY_ID["no_lapse"].evaluation_mode
-        is AchievementEvaluationMode.FINALIZED_DAY
+    assert {"retention_90", "retention_100", "no_lapse"}.isdisjoint(
+        ACHIEVEMENTS_BY_ID
     )
     assert (
         ACHIEVEMENTS_BY_ID["all_due_done"].evaluation_mode
         is AchievementEvaluationMode.LIVE_ONLY
     )
     assert not ACHIEVEMENTS_BY_ID["all_due_done"].historical_backfill
+    assert ACHIEVEMENTS_BY_ID["all_due_done"].name == "Review Day Complete"
+    assert ACHIEVEMENTS_BY_ID["all_due_done"].description == "Complete today's cards."
 
 
 def test_history_analysis_is_order_independent_and_never_finalizes_the_open_day() -> None:
@@ -82,7 +72,7 @@ def test_history_analysis_is_order_independent_and_never_finalizes_the_open_day(
             reviews.append(_review(event_id, day))
             event_id += 1
     # Neither an ineligible Again event nor an identical replay changes the
-    # eligible history, its Perfect Canopy run, or its deterministic identity.
+    # eligible history or its deterministic identity.
     reviews.append(HistoricalReview(event_id, event_id, open_day.isoformat(), 1, False))
     reviews.append(reviews[0])
 
@@ -105,15 +95,10 @@ def test_history_analysis_is_order_independent_and_never_finalizes_the_open_day(
         "streak_365": open_day.isoformat(),
         "reviews_100_day": start.isoformat(),
         "reviews_1000_total": expected_deep_roots_day,
-        "retention_90": start.isoformat(),
-        "retention_100": start.isoformat(),
-        "no_lapse": start.isoformat(),
     }
     assert "all_due_done" not in history.unlock_days
     assert history.day_summary(start.isoformat()).closed
     assert not history.day_summary(open_day.isoformat()).closed
-    assert history.day_summary(start.isoformat()).clear_recall_qualified
-    assert history.day_summary(start.isoformat()).no_again_day_qualified
     assert history.fingerprint == analyze_history(
         reviews,
         current_open_day=open_day.isoformat(),
@@ -124,6 +109,6 @@ def test_history_analysis_is_order_independent_and_never_finalizes_the_open_day(
         open_day_only,
         current_open_day=open_day.isoformat(),
     )
-    assert "retention_90" not in provisional.unlock_days
-    assert "no_lapse" not in provisional.unlock_days
-    assert provisional.unlock_day("retention_100") == open_day.isoformat()
+    assert {"retention_90", "retention_100", "no_lapse"}.isdisjoint(
+        provisional.unlock_days
+    )

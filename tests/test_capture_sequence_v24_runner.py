@@ -706,7 +706,13 @@ def test_run_attempt_stops_process_when_session_discovery_is_ambiguous(
     monkeypatch.setattr(runner.Path, "is_file", lambda _path: True)
     monkeypatch.setattr(runner.BASE, "extract_package", lambda *_args: None)
     monkeypatch.setattr(runner.BASE, "set_disposable_ui_scale", lambda *_args: None)
-    monkeypatch.setattr(runner.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    popen_kwargs: dict[str, Any] = {}
+
+    def popen(*_args: Any, **kwargs: Any) -> _FakeProcess:
+        popen_kwargs.update(kwargs)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", popen)
     monkeypatch.setattr(
         runner,
         "_wait_for_capture",
@@ -745,6 +751,7 @@ def test_run_attempt_stops_process_when_session_discovery_is_ambiguous(
             log_path=tmp_path / "anki.log",
         )
     assert process.stopped is True
+    assert popen_kwargs["restore_signals"] is False
 
 
 def test_real_planner_reuses_only_representative_overlap_for_full_profile(
