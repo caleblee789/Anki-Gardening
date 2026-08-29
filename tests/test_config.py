@@ -41,6 +41,24 @@ def test_reviewer_notifications_default_on_and_preserve_explicit_opt_out() -> No
     assert opted_out.value("show_progress_notifications") is False
 
 
+def test_reviewer_hud_defaults_on_and_persists_layout_preferences() -> None:
+    config, addon_manager = manager({
+        "show_reviewer_hud": False,
+        "reviewer_hud_collapsed": True,
+        "reviewer_hud_dock": "left",
+    })
+
+    assert config.value("show_reviewer_hud") is False
+    assert config.value("reviewer_hud_collapsed") is True
+    assert config.value("reviewer_hud_dock") == "left"
+
+    config.update({"show_reviewer_hud": True, "reviewer_hud_dock": "right"})
+
+    assert addon_manager.writes[-1]["show_reviewer_hud"] is True
+    assert addon_manager.writes[-1]["reviewer_hud_collapsed"] is True
+    assert addon_manager.writes[-1]["reviewer_hud_dock"] == "right"
+
+
 
 
 def test_reload_ignores_unknown_and_invalid_persisted_values() -> None:
@@ -125,4 +143,4 @@ def test_valid_nested_update_preserves_other_defaults() -> None:
     assert config.value("show_home_widget") is False
     assert config.nested("assets", "mode") == "local_only"
     assert config.nested("assets", "quality_preference") == "ultra"
-    assert addon_manager.writes[-1]["theme_overrides"]["weather_particle_density"] == 1.0
+    assert "weather_particle_density" not in addon_manager.writes[-1]["theme_overrides"]

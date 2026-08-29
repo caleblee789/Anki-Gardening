@@ -80,6 +80,32 @@ def test_schema18_purchase_request_history_round_trips_and_is_bounded() -> None:
     assert restored.completed_purchase_requests[-1] == records[-1]
 
 
+def test_daily_obligation_projection_defaults_and_repairs_in_place() -> None:
+    payload = GardenState().to_dict()
+    schema_version = payload["version"]
+    completion = payload["daily_completion"]
+    completion.pop("obligation_projection_initialized", None)
+    completion.pop("remaining_new_cards", None)
+    completion.pop("unresolved_obligation_disappearances", None)
+
+    restored = GardenState.from_dict(payload)
+
+    assert restored.version == schema_version
+    assert restored.daily_completion.obligation_projection_initialized is False
+    assert restored.daily_completion.remaining_new_cards == 0
+    assert restored.daily_completion.unresolved_obligation_disappearances == 0
+
+    completion["obligation_projection_initialized"] = "yes"
+    completion["remaining_new_cards"] = -4
+    completion["unresolved_obligation_disappearances"] = -2
+    repaired = GardenState.from_dict(payload)
+
+    assert repaired.version == schema_version
+    assert repaired.daily_completion.obligation_projection_initialized is False
+    assert repaired.daily_completion.remaining_new_cards == 0
+    assert repaired.daily_completion.unresolved_obligation_disappearances == 0
+
+
 def test_schema18_purchase_history_discards_malformed_and_duplicate_records() -> None:
     valid = _completed_request(1).to_dict()
     duplicate = _completed_request(1).to_dict()
@@ -144,7 +170,7 @@ def test_schema17_migration_adds_empty_purchase_history_and_preserves_state(tmp_
 
     migrated = storage_at(state_path)._load()
 
-    assert migrated.version == 21
+    assert migrated.version == STATE_VERSION == 25
     assert migrated.currency_balance == 777
     assert migrated.completed_purchase_requests == []
     assert migrated.onboarding.step is OnboardingStep.NURTURE
@@ -170,10 +196,13 @@ def test_schema18_migration_preserves_purchase_replay_history_and_collapses_load
     migrated = migrate_modern_state(payload)
 
     assert migrated.completed_purchase_requests == [completed]
-    assert migrated.selected_weather == "breeze"
+    assert migrated.selected_garden_feature == "wind_chime"
     assert migrated.selected_background == "spring"
-    assert migrated.loadout.decoration_id == "lantern"
-    assert migrated.environment_visibility == {"weather": False, "scenery": True}
+    assert not hasattr(migrated.loadout, "decoration_id")
+    assert "decoration_id" not in migrated.to_dict()["loadout"]
+    assert migrated.environment_visibility == {
+        "garden_feature": False, "weather": False, "scenery": True
+    }
     assert "backgrounds" not in migrated.inventory
     assert not {"selected_weather", "selected_background", "equipped", "environment_visibility"} & migrated.to_dict().keys()
 
@@ -528,6 +557,45 @@ def test_schema13_fertilizer_migration_uses_migration_time_as_activation_floor()
     assert state.revlog_ledger_migration_pending
 
 
+def test_current_json_restores_multiple_experimental_fertilizer_batches_as_time(
+    tmp_path,
+    monkeypatch,
+):
+    state_path = tmp_path / "garden_state.json"
+    payload = GardenState(
+        plants=[Plant("p1", "bonsai", "Moss", 0)],
+        active_plant_id="p1",
+    ).to_dict()
+    payload["plants"][0]["fertilizer_card_batches"] = [{
+        "effect_id": "fertilizer_quality",
+        "growth_per_card_units": 200,
+        "total_cards": 150,
+        "remaining_cards": 75,
+        "activated_at": "2026-08-28T12:00:00+00:00",
+        "source_event_key": "purchase:quality:1",
+    }]
+    payload["plants"][0]["fertilizer_card_queue"] = [{
+        "effect_id": "fertilizer_premium",
+        "growth_per_card_units": 300,
+        "total_cards": 250,
+        "remaining_cards": 125,
+        "activated_at": "2026-08-28T12:01:00+00:00",
+        "source_event_key": "purchase:premium:1",
+    }]
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr("ankigarden.storage.time.time", lambda: 1_500.0)
+
+    restored = storage_at(state_path)._load()
+
+    plant = restored.plants[0]
+    assert plant.fertilizer == Fertilizer("quality", 2, 5_100.0, 1_500.0)
+    assert plant.fertilizer_history == [
+        Fertilizer("premium", 3, 12_300.0, 5_100.0)
+    ]
+    assert plant.fertilizer_card_batches == []
+    assert plant.fertilizer_card_queue == []
+
+
 @pytest.mark.parametrize(
     ("fixture", "legacy_preference", "expected_step"),
     [
@@ -790,17 +858,24 @@ def test_corrupt_state_is_backed_up_before_fresh_recovery(tmp_path):
 
 
 class Tree:
-    def __init__(self, deck_id=0, review=0, learn=0, children=()):
+    def __init__(self, deck_id=0, review=0, learn=0, new=0, children=()):
         self.deck_id = deck_id
+        self.new_count = new
         self.review_count = review
         self.learn_count = learn
         self.children = list(children)
 
 
 def test_due_tree_synthetic_root_sums_children_without_double_counting_descendants():
-    child = Tree(1, review=4, learn=2, children=[Tree(2, review=99, learn=99)])
-    root = Tree(0, children=[child, Tree(3, review=3, learn=1)])
-    assert GardenStorage._due_tree_totals(root) == (7, 3)
+    child = Tree(
+        1,
+        new=1,
+        review=4,
+        learn=2,
+        children=[Tree(2, new=99, review=99, learn=99)],
+    )
+    root = Tree(0, children=[child, Tree(3, new=2, review=3, learn=1)])
+    assert GardenStorage._due_tree_totals(root) == (3, 3, 7)
 
 
 class FakeDb:
@@ -879,11 +954,20 @@ def due_storage(*, tree, intraday=0):
 
 
 def test_all_due_status_uses_live_review_limits_and_full_day_learning_obligations():
-    storage, db = due_storage(tree=Tree(1, review=3, learn=1), intraday=4)
+    storage, db = due_storage(
+        tree=Tree(1, new=1, review=3, learn=1),
+        intraday=4,
+    )
 
     status = storage.due_obligations()
 
-    assert status == DueObligationStatus(review_count=3, learning_count=4)
+    assert status.new_count == 1
+    assert status.review_count == 3
+    assert status.learning_count == 4
+    assert status.future_learning_count == 3
+    assert status.remaining == 8
+    assert status.currently_due == 5
+    assert status.cutoff_at_ms == FakeScheduler.day_cutoff * 1_000
     query, args = next(call for call in db.calls if "count() from cards" in call[0])
     assert "queue = 1" in query and "queue = 3" in query
     assert "queue = 0" not in query and "queue < 0" not in query
@@ -891,13 +975,19 @@ def test_all_due_status_uses_live_review_limits_and_full_day_learning_obligation
 
 
 def test_all_due_is_recomputed_live_and_includes_filtered_deck_tree_counts():
-    filtered = Tree(99, review=2, learn=1)
-    regular = Tree(1, review=3, learn=0)
+    filtered = Tree(99, new=1, review=2, learn=1)
+    regular = Tree(1, new=0, review=3, learn=0)
     storage, _db = due_storage(tree=Tree(0, children=[regular, filtered]), intraday=1)
 
-    assert storage.due_obligations() == DueObligationStatus(review_count=5, learning_count=1)
+    status = storage.due_obligations()
+    assert status.new_count == 1
+    assert status.review_count == 5
+    assert status.learning_count == 1
+    assert status.future_learning_count == 0
+    assert status.cutoff_at_ms == FakeScheduler.day_cutoff * 1_000
 
     regular.review_count = 0
+    filtered.new_count = 0
     filtered.review_count = 0
     filtered.learn_count = 0
     storage.mw.col.db.intraday = 0
@@ -912,11 +1002,12 @@ def test_all_due_scheduler_query_failure_fails_closed():
 
     assert not status.complete
     assert not status.available
-    assert "could not evaluate" in status.error.lower()
+    assert "could not verify" in status.error.lower()
 
 
 def test_all_due_status_is_complete_only_when_available_and_zero():
     assert DueObligationStatus().complete
+    assert not DueObligationStatus(new_count=1).complete
     assert not DueObligationStatus(review_count=1).complete
     assert not DueObligationStatus(available=False).complete
     assert not DueObligationStatus(error="failed").complete
@@ -928,6 +1019,46 @@ def test_all_due_fails_closed_without_collection():
     status = storage.due_obligations()
     assert not status.available
     assert status.error
+
+
+def test_today_cards_scope_counts_scheduler_available_new_learn_and_review():
+    storage, _db = due_storage(
+        tree=Tree(1, new=1, review=18, learn=0),
+    )
+
+    status = storage.due_obligations()
+
+    assert (status.new_count, status.learning_count, status.review_count) == (
+        1,
+        0,
+        18,
+    )
+    assert status.remaining == 19
+    assert status.currently_due == 19
+
+
+def test_due_obligations_classifies_committed_card_and_auto_buried_sibling():
+    class TransitionDb(FakeDb):
+        def all(self, query, *args):
+            self.calls.append((query, args))
+            if "select id, nid, queue, due" in query:
+                return [(101, 9001, 2, FakeScheduler.today + 1)]
+            if "queue in (-3, -2)" in query:
+                return [(202,)]
+            return []
+
+    storage = object.__new__(GardenStorage)
+    db = TransitionDb()
+    storage.mw = SimpleNamespace(
+        col=SimpleNamespace(db=db, sched=FakeScheduler(Tree(1)))
+    )
+
+    status = storage.due_obligations(committed_card_ids=(101,))
+
+    assert status.committed_card_ids == (101,)
+    assert status.card_transitions == ((101, "completed"),)
+    assert status.committed_card_classification_complete
+    assert status.buried_sibling_card_ids == (202,)
 
 
 def test_same_day_revlog_query_excludes_prior_days_and_manual_types(monkeypatch):

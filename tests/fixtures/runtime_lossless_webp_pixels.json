@@ -1,9 +1,4 @@
 {
-  "assets/support/decorations/lantern.webp": {
-    "height": 1254,
-    "visible_rgba_sha256": "93bfa9d3982bc2554d9d8856916859e2ede987e98dbeb1e0be5828f00af9d9f0",
-    "width": 1254
-  },
   "assets/v6_storybook_gouache/backgrounds/autumn/soil_master/autumn_16x9_front_occlusion.webp": {
     "height": 941,
     "visible_rgba_sha256": "ed1acbe7bdc420a85bb1197657b2e7997241b7386b5a29d3ef3e574267c1118f",

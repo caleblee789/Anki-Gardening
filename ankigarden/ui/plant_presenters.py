@@ -31,12 +31,20 @@ def fertilizer_status(
     *,
     now: float,
     description: str = (
-        "Fertilizer temporarily adds Growth to each card answer."
+        "Fertilizer adds Growth per card for a limited time."
     ),
 ) -> FertilizerStatus:
     """Project one fertilizer into stable visible and accessible fields."""
 
-    fertilizer = getattr(plant, "fertilizer", None)
+    scheduler = getattr(engine, "fertilizer_schedule", None)
+    queued: tuple[Any, ...] = ()
+    if callable(scheduler):
+        try:
+            fertilizer, queued = scheduler(plant, now=float(now))
+        except Exception:
+            fertilizer, queued = getattr(plant, "fertilizer", None), ()
+    else:
+        fertilizer = getattr(plant, "fertilizer", None)
     if fertilizer is None:
         return FertilizerStatus(
             "inactive",
@@ -52,8 +60,22 @@ def fertilizer_status(
     spec = getattr(engine, "FERTILIZERS", {}).get(tier)
     name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
     growth = max(0, int(getattr(fertilizer, "growth_per_answer", 0) or 0))
-    effect = f"+{growth:,} Growth per answer"
-    seconds = max(0, int(ceil(float(getattr(fertilizer, "expires_at", 0) or 0) - float(now))))
+    effect = f"+{growth:,} Growth per card"
+    effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
+    # Consecutive doses of the same tier are one visible extension even though
+    # their separate windows remain persisted for dose-cap accounting.
+    for period in queued:
+        starts_at = float(getattr(period, "started_at", 0) or 0)
+        if (
+            str(getattr(period, "tier", "") or "") != tier
+            or starts_at > effective_end
+        ):
+            break
+        effective_end = max(
+            effective_end,
+            float(getattr(period, "expires_at", 0) or 0),
+        )
+    seconds = max(0, int(ceil(effective_end - float(now))))
     if seconds <= 0:
         return FertilizerStatus(
             "expired",

@@ -219,7 +219,7 @@ def test_spacing_scale_is_named_monotonic_and_rejects_ad_hoc_values() -> None:
         "primary_hover": "#75E4AE",
         "primary_pressed": "#4FC58C",
         "gold": "#E7B94A",
-        "warning_bg": "#40371E",
+        "warning_bg": "#44281C",
         "danger": "#F07B75",
     }
     assert expected_colors.items() <= scope["SEMANTIC_COLORS"].items()
@@ -350,7 +350,7 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
         "icon-button": (32, 32),
         "input": (None, 40),
         "select": (None, 40),
-        "switch": (36, 20),
+        "switch": (38, 22),
         "tab": (None, 44),
     }
 
@@ -361,8 +361,8 @@ def test_non_button_geometry_tokens_apply_inputs_selects_switches_and_tabs() -> 
 
     switch = _Widget()
     scope["apply_switch_geometry"](switch)
-    assert (switch.minimum_width, switch.maximum_width) == (36, 36)
-    assert (switch.minimum_height, switch.maximum_height) == (20, 20)
+    assert (switch.minimum_width, switch.maximum_width) == (38, 38)
+    assert (switch.minimum_height, switch.maximum_height) == (22, 22)
 
 
 def test_shared_scrollbars_paint_no_native_corner_or_line_controls() -> None:

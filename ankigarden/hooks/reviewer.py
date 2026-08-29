@@ -1,22 +1,70 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
-from datetime import date
+import math
+import re
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
 from typing import Any, Callable, Mapping
+import uuid
 
 from aqt import mw
 
 from ..config import DEFAULT_CONFIG
-from ..game import difficulty_from_factor, queue_and_lapse_from_revlog_type
+from ..environment import (
+    SCENERY_CATALOG,
+    WEATHER_CATALOG,
+    canonical_garden_feature_id,
+)
+from ..game import (
+    CommittedAnswerResult,
+    difficulty_from_factor,
+    queue_and_lapse_from_revlog_type,
+)
+from ..growth import GROWTH_STAGES
+from ..garden_finds import standard_find_artwork_ref
 from ..notices import USER_NOTICES
 from ..performance import RUNTIME_PERFORMANCE
 from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
 from ..ui.copy import REVIEWER_NO_STARTER_NOTICE
+from ..ui.reviewer_hud import (
+    ReviewerHudProjection,
+    create_reviewer_hud,
+    project_reviewer_hud,
+    reviewer_hud_geometry,
+    should_start_collapsed,
+)
+from ..ui.session_summary import (
+    BoosterSnapshot,
+    CoinAward,
+    CommittedSessionEvent,
+    EffectsSnapshot,
+    EnvironmentDiscovery,
+    FertilizerSnapshot,
+    PlantGrowthDelta,
+    PlantMilestone,
+    PlantStateSnapshot,
+    ReviewContinuationTarget,
+    SessionEndSnapshot,
+    SessionStartSnapshot,
+    SessionSummaryAccumulator,
+    StandardFind,
+    TodayCardsSnapshot,
+)
 from ..ui.theme import GARDEN_THEME
 
 
 logger = logging.getLogger(__name__)
+
+
+def _standard_find_is_notable(outcome: Any) -> bool:
+    """Promote only explicitly notable or canonically rare standard finds."""
+
+    return bool(
+        getattr(outcome, "notable", False)
+        or str(getattr(outcome, "tier", "") or "").strip().casefold()
+        in {"rare", "exceptional"}
+    )
 
 
 def bounded_reviewer_overlay_position(
@@ -50,7 +98,7 @@ def reviewer_reward_overlay_position(
     overlay_height: int,
     *,
     margin: int = 16,
-    reviewer_controls_clearance: int = 112,
+    reviewer_controls_clearance: int = 144,
 ) -> tuple[int, int]:
     """Anchor reward feedback at right, above Anki's answer controls."""
 
@@ -88,6 +136,26 @@ def reviewer_overlay_parent(main_window: Any) -> Any:
     if callable(central_widget):
         candidate = central_widget()
         if candidate is not None:
+            return candidate
+    return main_window
+
+
+def session_summary_parent(main_window: Any) -> Any:
+    """Resolve Anki's current main content after the Reviewer has unmounted."""
+
+    for candidate in (
+        getattr(main_window, "web", None),
+        (
+            main_window.centralWidget()
+            if callable(getattr(main_window, "centralWidget", None))
+            else None
+        ),
+    ):
+        if (
+            candidate is not None
+            and callable(getattr(candidate, "width", None))
+            and callable(getattr(candidate, "height", None))
+        ):
             return candidate
     return main_window
 
@@ -187,25 +255,1186 @@ class ReviewerHookHandler:
         storage: Any,
         state_changed: Callable[[str], None] | None = None,
         history_invalidated: Callable[[str], None] | None = None,
+        open_garden: Callable[..., None] | None = None,
     ) -> None:
         self.engine = engine
         self.storage = storage
         self.state_changed = state_changed
         self.history_invalidated = history_invalidated
+        self.open_garden = open_garden
         self._local_answer_fast_path_ready = False
         self._last_notified_event = ""
         self._notified_event_ids: set[str] = set()
         self._reward_toast: Any | None = None
         self._reward_toasts: list[Any] = []
         self._reward_toast_overflow = 0
+        self._reward_toast_history: list[Any] = []
+        self._reward_list_panel: Any | None = None
         self._reward_feedback_deferred_for_modal = False
         self._reviewer_notice: Any | None = None
         self._reviewer_notice_shown = False
         self._reviewer_session_window: Any | None = None
+        self._reviewer_hud: Any | None = None
+        self._reviewer_hud_projection: ReviewerHudProjection | None = None
+        self._reviewer_hud_reward_state: dict[str, Any] | None = None
+        self._reviewer_hud_narrow_forced = False
+        self._reviewer_growth_pulse: Any | None = None
+        # Legacy engines can still produce the exact immutable session event
+        # without the newer ``CommittedAnswerResult`` wrapper.  Keep that
+        # event in the same pending stream so every value admitted to the live
+        # footer is also represented by an expandable reward-history bundle.
+        self._pending_reviewer_results: list[
+            tuple[CommittedAnswerResult | None, CommittedSessionEvent]
+        ] = []
+        self._presented_reviewer_result_ids: set[str] = set()
+        self._session_summary_accumulator: SessionSummaryAccumulator | None = None
+        self._session_summary_card: Any | None = None
+        self._pending_session_summary: Any | None = None
+        self._session_summary_render_scheduled = False
+        self._session_summary_escape_shortcut: Any | None = None
+        self._session_cutoff_generation = 0
+        self._session_summary_presentation_generation = 0
+        self._session_summary_continuation_in_progress = False
+        self._presented_session_summary_payload: Any | None = None
+        self._review_window_token = ""
+        self._review_window_started_after_revlog_id = 0
+        self._review_window_answer_revlog_ids: set[int] = set()
+
+    def _session_now_ms(self) -> int:
+        resolver = getattr(self.storage, "current_time_ms", None)
+        if callable(resolver):
+            try:
+                return max(0, int(resolver()))
+            except Exception:
+                pass
+        return max(0, int(datetime.now(tz=timezone.utc).timestamp() * 1_000))
+
+    def _session_now_iso(self) -> str:
+        return datetime.fromtimestamp(
+            self._session_now_ms() / 1_000,
+            tz=timezone.utc,
+        ).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _session_event_iso(answered_at_ms: Any) -> str:
+        try:
+            event_ms = max(0, int(answered_at_ms))
+        except (TypeError, ValueError):
+            event_ms = 0
+        if event_ms <= 0:
+            return datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+        return datetime.fromtimestamp(
+            event_ms / 1_000,
+            tz=timezone.utc,
+        ).isoformat(timespec="seconds")
+
+    def _today_cards_snapshot(self, *, refresh: bool) -> TodayCardsSnapshot:
+        """Freeze one state-driven Today’s Cards projection."""
+
+        state = getattr(self.storage, "state", None)
+        completion = getattr(state, "daily_completion", None)
+        if refresh:
+            try:
+                resolver = getattr(self.engine, "today_cards_status", None)
+                due = getattr(self.storage, "due_obligations", None)
+                if callable(resolver):
+                    completion = resolver(due() if callable(due) else None)
+            except Exception:
+                completion = None
+        if completion is None:
+            return TodayCardsSnapshot(
+                status="unavailable",
+                cards_total=None,
+                scope="unavailable",
+            )
+
+        status = str(getattr(completion, "status", "unavailable") or "unavailable")
+        if status not in {
+            "in_progress",
+            "waiting_for_learning",
+            "complete",
+            "not_eligible",
+            "unavailable",
+        }:
+            status = "unavailable"
+        cards_completed = max(
+            0,
+            int(
+                getattr(
+                    completion,
+                    "starting_required_cards_completed",
+                    0,
+                )
+                or 0
+            ),
+        )
+        waiting_cards = max(
+            0,
+            int(
+                getattr(completion, "future_learning_steps_before_cutoff", 0)
+                or 0
+            ),
+        )
+        next_due_at_ms = max(
+            0,
+            int(getattr(completion, "next_learning_due_at_ms", 0) or 0),
+        )
+        next_due_seconds = max(
+            0,
+            int(math.ceil((next_due_at_ms - self._session_now_ms()) / 1_000)),
+        ) if next_due_at_ms else 0
+        remaining = sum(
+            max(0, int(getattr(completion, field, 0) or 0))
+            for field in (
+                "remaining_new_cards",
+                "remaining_required_reviews",
+                "remaining_learning_steps",
+                "future_learning_steps_before_cutoff",
+            )
+        )
+        currently_due = sum(
+            max(0, int(getattr(completion, field, 0) or 0))
+            for field in (
+                "remaining_new_cards",
+                "remaining_required_reviews",
+                "remaining_learning_steps",
+            )
+        )
+        verified_remaining = (
+            None if status == "unavailable" else (0 if status in {
+                "complete", "not_eligible"
+            } else remaining)
+        )
+        if status == "unavailable":
+            cards_total = None
+        else:
+            cards_total = max(
+                0,
+                int(getattr(completion, "starting_required_cards", 0) or 0),
+            )
+            if cards_total != (
+                cards_completed + max(0, int(verified_remaining or 0))
+            ):
+                logger.debug(
+                    "Anki Garden: Today’s Cards obligation projection is inconsistent"
+                )
+                return TodayCardsSnapshot(
+                    status="unavailable",
+                    cards_total=None,
+                    scope="unavailable",
+                )
+        continuation_target = (
+            self._review_continuation_target(currently_due)
+            if (
+                status == "in_progress"
+                and currently_due > 0
+                and waiting_cards == 0
+                and currently_due == max(0, int(verified_remaining or 0))
+            )
+            else None
+        )
+        scope = "unavailable" if status == "unavailable" else "all_decks"
+        contributing_deck_count = (
+            0 if scope == "unavailable" else self._today_contributing_deck_count()
+        )
+        return TodayCardsSnapshot(
+            status=status,
+            cards_remaining=verified_remaining,
+            cards_completed=cards_completed,
+            cards_total=cards_total,
+            waiting_cards=waiting_cards,
+            currently_due_cards=currently_due,
+            next_due_in_seconds=next_due_seconds,
+            kind="reviewable",
+            scope=scope,
+            scope_label="" if scope == "unavailable" else "All decks",
+            contributing_deck_count=contributing_deck_count,
+            can_continue_reviews=continuation_target is not None,
+            continuation_target=continuation_target,
+        )
+
+    @staticmethod
+    def _due_tree_node_total(node: Any) -> int:
+        total = sum(
+            max(0, int(getattr(node, primary, getattr(node, fallback, 0)) or 0))
+            for primary, fallback in (
+                ("new_count", "new"),
+                ("learn_count", "lrn"),
+                ("review_count", "rev"),
+            )
+        )
+        try:
+            deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)
+        except (TypeError, ValueError):
+            deck_id = 0
+        if total == 0 and deck_id == 0:
+            return sum(
+                ReviewerHookHandler._due_tree_node_total(child)
+                for child in tuple(getattr(node, "children", ()) or ())
+            )
+        return total
+
+    @classmethod
+    def _due_tree_contributor_count(cls, node: Any) -> int:
+        """Count concrete deck branches contributing cards to one due tree."""
+
+        total = cls._due_tree_node_total(node)
+        if total <= 0:
+            return 0
+        children = tuple(getattr(node, "children", ()) or ())
+        child_count = sum(cls._due_tree_contributor_count(child) for child in children)
+        child_total = sum(cls._due_tree_node_total(child) for child in children)
+        try:
+            deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)
+        except (TypeError, ValueError):
+            deck_id = 0
+        direct = 1 if deck_id > 0 and total > child_total else 0
+        return max(1 if deck_id > 0 else 0, direct + child_count)
+
+    def _due_tree(self) -> Any | None:
+        collection = getattr(getattr(self.storage, "mw", None), "col", None)
+        if collection is None:
+            collection = getattr(mw, "col", None)
+        scheduler = getattr(collection, "sched", None)
+        resolver = getattr(scheduler, "deck_due_tree", None)
+        if not callable(resolver):
+            return None
+        try:
+            return resolver()
+        except Exception:
+            logger.debug(
+                "Anki Garden: review continuation tree is unavailable",
+                exc_info=True,
+            )
+            return None
+
+    def _today_contributing_deck_count(self) -> int:
+        tree = self._due_tree()
+        if tree is None:
+            return 1
+        return max(1, self._due_tree_contributor_count(tree))
+
+    @classmethod
+    def _selectable_due_subtree(cls, node: Any, required_cards: int) -> Any | None:
+        """Return the narrowest selectable subtree that owns every Today’s Card."""
+
+        required_cards = max(0, int(required_cards))
+        if required_cards <= 0 or cls._due_tree_node_total(node) != required_cards:
+            return None
+        matching_children = [
+            child
+            for child in tuple(getattr(node, "children", ()) or ())
+            if cls._due_tree_node_total(child) == required_cards
+        ]
+        if len(matching_children) == 1:
+            nested = cls._selectable_due_subtree(matching_children[0], required_cards)
+            if nested is not None:
+                return nested
+        try:
+            deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)
+        except (TypeError, ValueError):
+            deck_id = 0
+        return node if deck_id > 0 else None
+
+    def _review_continuation_target(
+        self,
+        currently_due_cards: int,
+    ) -> ReviewContinuationTarget | None:
+        tree = self._due_tree()
+        if tree is None:
+            return None
+        node = self._selectable_due_subtree(tree, currently_due_cards)
+        if node is None:
+            return None
+        try:
+            deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)
+        except (TypeError, ValueError):
+            return None
+        children = tuple(getattr(node, "children", ()) or ())
+        label = str(
+            getattr(node, "name", "")
+            or getattr(node, "deck_name", "")
+            or ""
+        )
+        return ReviewContinuationTarget(
+            kind="parent_deck" if children else "deck",
+            deck_id=deck_id,
+            label=label,
+        )
+
+    def _effects_snapshot(self, *, at_ms: int | None = None) -> EffectsSnapshot:
+        state = getattr(self.storage, "state", None)
+        current_ms = self._session_now_ms() if at_ms is None else max(0, int(at_ms))
+        current_seconds = current_ms / 1_000
+        fertilizers: list[FertilizerSnapshot] = []
+        boosters: list[BoosterSnapshot] = []
+        specs = getattr(self.engine, "FERTILIZERS", {}) or {}
+        scheduler = getattr(self.engine, "fertilizer_schedule", None)
+        for plant in tuple(getattr(state, "plants", ()) or ()):
+            plant_id = str(getattr(plant, "plant_id", "") or "")
+            if not plant_id:
+                continue
+            plant_name = str(getattr(plant, "name", "") or "Plant")
+            current = None
+            if callable(scheduler):
+                try:
+                    current, _queued = scheduler(plant, now=current_seconds)
+                except Exception:
+                    current = None
+            else:
+                candidate = getattr(plant, "fertilizer", None)
+                if candidate is not None and float(
+                    getattr(candidate, "expires_at", 0) or 0
+                ) > current_seconds:
+                    current = candidate
+            if current is not None:
+                tier = str(getattr(current, "tier", "") or "")
+                started_at = float(getattr(current, "started_at", 0) or 0)
+                expires_at = float(getattr(current, "expires_at", 0) or 0)
+                remaining = max(0, int(math.ceil(expires_at - current_seconds)))
+                if remaining:
+                    spec = specs.get(tier)
+                    name = str(
+                        getattr(spec, "name", "")
+                        or f"{tier.replace('_', ' ').title()} Fertilizer"
+                    )
+                    fertilizers.append(FertilizerSnapshot(
+                        effect_id=(
+                            f"fertilizer:{plant_id}:{tier}:"
+                            f"{int(round(started_at * 1_000))}:"
+                            f"{int(round(expires_at * 1_000))}"
+                        ),
+                        name=name,
+                        remaining_seconds=remaining,
+                        expires_at_epoch_seconds=max(0, int(math.ceil(expires_at))),
+                        plant_id=plant_id,
+                        plant_name=plant_name,
+                    ))
+
+            batches = tuple(getattr(plant, "booster_card_batches", ()) or ())
+            remaining_cards = sum(
+                max(0, int(getattr(batch, "remaining_cards", 0) or 0))
+                for batch in batches
+            )
+            if remaining_cards:
+                source_ids = tuple(dict.fromkeys(
+                    str(getattr(batch, "source_event_key", "") or "")
+                    for batch in batches
+                    if str(getattr(batch, "source_event_key", "") or "")
+                ))
+                boosters.append(BoosterSnapshot(
+                    effect_id=f"booster:{plant_id}",
+                    remaining_cards=remaining_cards,
+                    plant_id=plant_id,
+                    plant_name=plant_name,
+                    source_event_id=source_ids[0] if len(source_ids) == 1 else "",
+                ))
+        return EffectsSnapshot(tuple(fertilizers), tuple(boosters))
+
+    @staticmethod
+    def _plant_growth_units(plant: Any) -> int:
+        try:
+            return max(0, int(getattr(plant, "growth_units")))
+        except (AttributeError, TypeError, ValueError):
+            return max(0, int(getattr(plant, "growth_points", 0) or 0)) * 100
+
+    @staticmethod
+    def _owned_environment_ids(state: Any) -> frozenset[str]:
+        """Return canonical ownership plus supported migration-window aliases."""
+
+        inventory = getattr(state, "inventory", {}) or {}
+        feature_ids = tuple(inventory.get("garden_features", ()) or ())
+        legacy_weather_ids = tuple(inventory.get("weather", ()) or ())
+        owned = {
+            str(item_id)
+            for item_id in (*feature_ids, *legacy_weather_ids)
+            if str(item_id)
+        }
+        owned.update(
+            canonical_garden_feature_id(item_id)
+            for item_id in (*feature_ids, *legacy_weather_ids)
+            if canonical_garden_feature_id(item_id)
+        )
+        owned.update(
+            str(item_id)
+            for item_id in tuple(inventory.get("scenery", ()) or ())
+            if str(item_id)
+        )
+        return frozenset(owned)
+
+    def _plant_art_asset(self, plant: Any) -> str:
+        resolver = getattr(self.engine, "resolve_plant_asset", None)
+        if not callable(resolver):
+            return ""
+        try:
+            asset = resolver(
+                str(getattr(plant, "species", "") or ""),
+                str(getattr(plant, "growth_stage", "seed") or "seed"),
+            )
+            return str(getattr(asset, "path", "") or "")
+        except Exception:
+            return ""
+
+    def _session_start_snapshot(self) -> SessionStartSnapshot:
+        state = getattr(self.storage, "state", None)
+        plants = tuple(getattr(state, "plants", ()) or ())
+        milestone_ids: set[str] = set()
+        for plant in plants:
+            plant_id = str(getattr(plant, "plant_id", "") or "")
+            for claim in tuple(getattr(plant, "checkpoint_claims", ()) or ()):
+                try:
+                    next_stage, percent = str(claim).split(":", 1)
+                except ValueError:
+                    continue
+                milestone_ids.add(
+                    f"stage_checkpoint:{plant_id}:{next_stage}:{percent}"
+                )
+            milestone_ids.update(
+                f"stage:{plant_id}:{stage}"
+                for stage in tuple(getattr(plant, "stage_reward_claims", ()) or ())
+            )
+        outcomes = getattr(state, "garden_find_outcomes", {}) or {}
+        owned_environment_ids = self._owned_environment_ids(state)
+        return SessionStartSnapshot(
+            today_cards=self._today_cards_snapshot(refresh=True),
+            effects=self._effects_snapshot(),
+            coin_balance=max(0, int(getattr(state, "currency_balance", 0) or 0)),
+            stored_growth_units=max(
+                0, int(getattr(state, "stored_growth_units", 0) or 0)
+            ),
+            plants=tuple(
+                PlantStateSnapshot(
+                    str(getattr(plant, "plant_id", "") or "unknown"),
+                    self._plant_growth_units(plant),
+                    str(getattr(plant, "growth_stage", "") or ""),
+                )
+                for plant in plants
+                if str(getattr(plant, "plant_id", "") or "")
+            ),
+            existing_event_ids=frozenset((
+                *(
+                    self._transaction_identity(item)
+                    for item in tuple(
+                        getattr(state, "currency_transactions", ()) or ()
+                    )
+                ),
+                *(
+                    str(getattr(item, "event_key", "") or "")
+                    for item in tuple(
+                        getattr(state, "recent_reward_receipts", ()) or ()
+                    )
+                    if str(getattr(item, "event_key", "") or "")
+                ),
+            )),
+            existing_standard_find_event_ids=frozenset(str(key) for key in outcomes),
+            existing_milestone_event_ids=frozenset(milestone_ids),
+            owned_environment_ids=owned_environment_ids,
+        )
+
+    def _session_end_snapshot(self, *, refresh_today: bool) -> SessionEndSnapshot:
+        return SessionEndSnapshot(
+            self._today_cards_snapshot(refresh=refresh_today),
+            self._effects_snapshot(),
+        )
+
+    def _begin_session_summary(
+        self,
+        *,
+        today_cards_available: bool = True,
+    ) -> None:
+        day = self.scheduler_day(self.storage)
+        try:
+            begin_feature_session = getattr(self.engine, "begin_review_session", None)
+            if callable(begin_feature_session):
+                begin_feature_session()
+            start_snapshot = self._session_start_snapshot()
+            if not today_cards_available:
+                start_snapshot = replace(
+                    start_snapshot,
+                    today_cards=TodayCardsSnapshot(
+                        status="unavailable",
+                        cards_total=None,
+                        scope="unavailable",
+                    ),
+                )
+            self._session_summary_accumulator = SessionSummaryAccumulator(
+                session_id=(
+                    f"review-session:{self._review_window_token}"
+                    if self._review_window_token
+                    else f"review-session:{uuid.uuid4().hex}"
+                ),
+                started_at=self._session_now_iso(),
+                anki_day_id=day,
+                start_snapshot=start_snapshot,
+            )
+            self._schedule_session_cutoff_split()
+        except Exception:
+            logger.debug(
+                "Anki Garden: Session Summary could not start",
+                exc_info=True,
+            )
+            self._session_summary_accumulator = None
+
+    def _schedule_session_cutoff_split(self) -> None:
+        """Arm one in-memory cutoff check for a still-open reviewer session."""
+
+        accumulator = self._session_summary_accumulator
+        if accumulator is None:
+            return
+        bounds = getattr(self.storage, "current_scheduler_day_bounds_ms", None)
+        if not callable(bounds):
+            return
+        try:
+            _day_start_ms, cutoff_ms = bounds()
+            delay_ms = max(1, int(cutoff_ms) - self._session_now_ms() + 25)
+            from aqt.qt import QTimer
+        except Exception:
+            return
+        self._session_cutoff_generation += 1
+        generation = self._session_cutoff_generation
+        QTimer.singleShot(
+            min(delay_ms, 2_000_000_000),
+            lambda: self._on_session_cutoff(generation),
+        )
+
+    def _on_session_cutoff(self, generation: int) -> None:
+        accumulator = self._session_summary_accumulator
+        if (
+            accumulator is None
+            or int(generation) != self._session_cutoff_generation
+        ):
+            return
+        current_day = self.scheduler_day(self.storage)
+        if current_day == accumulator.current_anki_day_id:
+            # Scheduler authorities can update a fraction after the nominal
+            # boundary. Retry without blocking Anki's event loop.
+            try:
+                from aqt.qt import QTimer
+
+                QTimer.singleShot(500, lambda: self._on_session_cutoff(generation))
+            except Exception:
+                pass
+            return
+        old_end_snapshot = self._session_end_snapshot(refresh_today=False)
+        try:
+            observe = getattr(self.engine, "observe_due_start", None)
+            due = getattr(self.storage, "due_obligations", None)
+            if callable(observe):
+                observe(due() if callable(due) else None)
+        except Exception:
+            logger.debug(
+                "Anki Garden: Today’s Cards baseline was unavailable at cutoff",
+                exc_info=True,
+            )
+        self._split_session_summary_day_if_needed(
+            current_day=current_day,
+            old_end_snapshot=old_end_snapshot,
+        )
+
+    def _split_session_summary_day_if_needed(
+        self,
+        *,
+        current_day: str,
+        old_end_snapshot: SessionEndSnapshot | None = None,
+    ) -> None:
+        accumulator = self._session_summary_accumulator
+        if accumulator is None or current_day == accumulator.current_anki_day_id:
+            return
+        ended_at = self._session_now_iso()
+        try:
+            accumulator.split_anki_day(
+                ended_at=ended_at,
+                end_snapshot=(
+                    old_end_snapshot
+                    if old_end_snapshot is not None
+                    else self._session_end_snapshot(refresh_today=False)
+                ),
+                next_anki_day_id=current_day,
+                next_started_at=ended_at,
+                next_start_snapshot=self._session_start_snapshot(),
+            )
+            self._schedule_session_cutoff_split()
+        except Exception:
+            logger.debug(
+                "Anki Garden: Session Summary day split was unavailable",
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _transaction_identity(transaction: Any) -> str:
+        return str(
+            getattr(transaction, "transaction_id", "")
+            or getattr(transaction, "event_key", "")
+            or id(transaction)
+        )
+
+    @staticmethod
+    def _reward_receipt_identity(receipt: Any) -> tuple[Any, ...]:
+        return (
+            str(getattr(receipt, "event_key", "") or ""),
+            str(getattr(receipt, "reward_type", "") or ""),
+            str(getattr(receipt, "source", "") or ""),
+            str(getattr(receipt, "source_id", "") or ""),
+            str(getattr(receipt, "correlation_id", "") or ""),
+            int(getattr(receipt, "amount", 0) or 0),
+            str(getattr(receipt, "item_id", "") or ""),
+            str(getattr(receipt, "plant_id", "") or ""),
+        )
+
+    def _session_event_baseline(self) -> dict[str, Any]:
+        state = getattr(self.storage, "state", None)
+        plants = tuple(getattr(state, "plants", ()) or ())
+        return {
+            "plant_units": {
+                str(getattr(plant, "plant_id", "") or ""): self._plant_growth_units(plant)
+                for plant in plants
+                if str(getattr(plant, "plant_id", "") or "")
+            },
+            "stored_units": max(0, int(getattr(state, "stored_growth_units", 0) or 0)),
+            "transaction_ids": {
+                self._transaction_identity(item)
+                for item in tuple(getattr(state, "currency_transactions", ()) or ())
+            },
+            "find_outcome_ids": set(
+                str(key)
+                for key in (getattr(state, "garden_find_outcomes", {}) or {})
+            ),
+            "reward_receipt_ids": {
+                self._reward_receipt_identity(item)
+                for item in tuple(
+                    getattr(state, "recent_reward_receipts", ()) or ()
+                )
+            },
+            "owned_environment_ids": set(self._owned_environment_ids(state)),
+        }
+
+    def _result_plant_art_asset(self, plant: Any) -> str:
+        resolver = getattr(self.engine, "resolve_plant_asset", None)
+        if not callable(resolver) or plant is None:
+            return ""
+        try:
+            asset = resolver(
+                str(getattr(plant, "species", "") or ""),
+                str(
+                    getattr(plant, "stage", "")
+                    or getattr(plant, "growth_stage", "seed")
+                    or "seed"
+                ),
+            )
+            return str(getattr(asset, "path", "") or "")
+        except Exception:
+            return ""
+
+    def _session_event_from_result(
+        self,
+        result: CommittedAnswerResult,
+    ) -> CommittedSessionEvent | None:
+        """Translate one immutable engine result without reading mutable state."""
+
+        event_id = str(result.event_id or result.correlation_id or "")
+        if not event_id:
+            return None
+        before = {plant.plant_id: plant for plant in result.plants_before}
+        after = {plant.plant_id: plant for plant in result.plants_after}
+        shared_by_plant: dict[str, int] = {}
+        for allocation in tuple(result.award.allocations or ()):
+            if str(getattr(allocation, "role", "") or "") != "passive":
+                continue
+            plant_id = str(getattr(allocation, "plant_id", "") or "")
+            units = max(0, int(getattr(allocation, "applied_units", 0) or 0))
+            if plant_id and units:
+                shared_by_plant[plant_id] = (
+                    shared_by_plant.get(plant_id, 0) + units
+                )
+
+        plant_growth: list[PlantGrowthDelta] = []
+        shared_growth: list[PlantGrowthDelta] = []
+        for plant_id, current in after.items():
+            previous_units = max(
+                0,
+                int(getattr(before.get(plant_id), "growth_units", 0) or 0),
+            )
+            delta = max(0, int(current.growth_units) - previous_units)
+            shared = min(delta, shared_by_plant.get(plant_id, 0))
+            common = {
+                "plant_id": plant_id,
+                "plant_name": str(current.name or "Plant"),
+                "species_name": str(current.species or "").replace("_", " ").title(),
+                "art_asset": self._result_plant_art_asset(current),
+            }
+            if delta - shared > 0:
+                plant_growth.append(PlantGrowthDelta(
+                    growth_units=delta - shared,
+                    **common,
+                ))
+            if shared > 0:
+                shared_growth.append(PlantGrowthDelta(
+                    growth_units=shared,
+                    **common,
+                ))
+
+        coin_awards = tuple(
+            CoinAward(
+                event_id=str(
+                    getattr(transaction, "transaction_id", "")
+                    or getattr(transaction, "event_key", "")
+                ),
+                source_type=str(getattr(transaction, "source", "") or "garden_reward"),
+                source_label=str(getattr(transaction, "reason", "") or "Garden reward"),
+                amount=max(0, int(getattr(transaction, "delta", 0) or 0)),
+                event_key=str(getattr(transaction, "event_key", "") or ""),
+                transaction_id=str(getattr(transaction, "transaction_id", "") or ""),
+                source_id=str(getattr(transaction, "source_id", "") or ""),
+                correlation_id=str(getattr(transaction, "correlation_id", "") or event_id),
+                included_in_total=bool(
+                    getattr(transaction, "included_in_total", True)
+                ),
+            )
+            for transaction in result.currency_transactions
+            if int(getattr(transaction, "delta", 0) or 0) > 0
+        )
+        coin_by_event_key = {
+            award.event_key: award
+            for award in coin_awards
+            if award.event_key
+        }
+
+        standard_finds = tuple(
+            StandardFind(
+                event_id=str(getattr(outcome, "outcome_key", "") or outcome.answer_key),
+                find_id=str(outcome.reward_id or "garden_find"),
+                find_name=str(outcome.display_name or "Garden Find"),
+                rarity=str(outcome.tier or ""),
+                reward_type=str(outcome.reward_type or ""),
+                reward_label=str(outcome.description or ""),
+                reward_amount=max(0, int(outcome.amount or 0)),
+                art_asset=standard_find_artwork_ref(
+                    str(outcome.reward_id or ""),
+                    str(outcome.artwork_ref or ""),
+                ),
+                occurred_at=str(outcome.occurred_at or ""),
+                item_id=str(outcome.item_id or ""),
+                quantity=1,
+                notable=_standard_find_is_notable(outcome),
+            )
+            for outcome in result.garden_find_outcomes
+            if str(outcome.pool_id or "") == "standard"
+            and str(outcome.status or "") == "hit"
+        )
+
+        milestones: list[PlantMilestone] = []
+        stage_rows: dict[str, list[tuple[str, Any, str]]] = {}
+        for transaction in result.currency_transactions:
+            event_key = str(getattr(transaction, "event_key", "") or "")
+            parts = event_key.split(":")
+            if len(parts) == 4 and parts[0] == "stage_checkpoint":
+                _kind, plant_id, next_stage, percent_text = parts
+                plant = after.get(plant_id) or before.get(plant_id)
+                if plant is None:
+                    continue
+                try:
+                    percent = max(0, int(percent_text))
+                except (TypeError, ValueError):
+                    continue
+                coin = coin_by_event_key.get(event_key)
+                milestones.append(PlantMilestone(
+                    event_id=event_key,
+                    plant_id=plant_id,
+                    plant_name=str(plant.name or "Plant"),
+                    milestone_type="checkpoint",
+                    occurred_at=str(getattr(transaction, "occurred_at", "") or self._session_now_iso()),
+                    plant_art_asset=self._result_plant_art_asset(plant),
+                    plant_class=str(getattr(plant, "species", "") or "")
+                    .replace("_", " ")
+                    .title(),
+                    checkpoint_percent=percent,
+                    new_stage=next_stage,
+                    coin_reward=(coin.amount if coin is not None else 0),
+                    coin_award_event_ids=(coin.event_id,) if coin is not None else (),
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
+                ))
+            elif len(parts) == 3 and parts[0] == "stage":
+                _kind, plant_id, next_stage = parts
+                stage_rows.setdefault(plant_id, []).append((
+                    next_stage,
+                    transaction,
+                    event_key,
+                ))
+
+        for plant_id, crossings in stage_rows.items():
+            plant = after.get(plant_id) or before.get(plant_id)
+            if plant is None:
+                continue
+            ordered = sorted(
+                crossings,
+                key=lambda item: (
+                    GROWTH_STAGES.index(item[0])
+                    if item[0] in GROWTH_STAGES
+                    else len(GROWTH_STAGES),
+                    item[2],
+                ),
+            )
+            first_stage = ordered[0][0]
+            try:
+                first_index = GROWTH_STAGES.index(first_stage)
+                previous_stage = GROWTH_STAGES[max(0, first_index - 1)]
+            except ValueError:
+                previous_stage = ""
+            for next_stage, transaction, event_key in ordered:
+                coin = coin_by_event_key.get(event_key)
+                milestones.append(PlantMilestone(
+                    event_id=event_key,
+                    plant_id=plant_id,
+                    plant_name=str(plant.name or "Plant"),
+                    milestone_type=(
+                        "full_bloom" if next_stage == "rare" else "stage_change"
+                    ),
+                    occurred_at=str(
+                        getattr(transaction, "occurred_at", "")
+                        or self._session_now_iso()
+                    ),
+                    plant_art_asset=self._result_plant_art_asset(plant),
+                    plant_class=str(getattr(plant, "species", "") or "")
+                    .replace("_", " ")
+                    .title(),
+                    previous_stage=previous_stage,
+                    new_stage=next_stage,
+                    stage_path=tuple(
+                        value
+                        for value in (previous_stage, next_stage)
+                        if value
+                    ),
+                    coin_reward=(coin.amount if coin is not None else 0),
+                    coin_award_event_ids=(coin.event_id,) if coin is not None else (),
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
+                ))
+                previous_stage = next_stage
+
+        discoveries: list[EnvironmentDiscovery] = []
+        seen_discoveries: set[str] = set()
+        for receipt in result.reward_receipts:
+            if str(receipt.source or "") != "garden_find_environment":
+                continue
+            item_id = canonical_garden_feature_id(
+                receipt.item_id or receipt.source_id or ""
+            )
+            if not item_id or item_id in seen_discoveries:
+                continue
+            seen_discoveries.add(item_id)
+            item = WEATHER_CATALOG.get(item_id) or SCENERY_CATALOG.get(item_id)
+            if item is None:
+                continue
+            discoveries.append(EnvironmentDiscovery(
+                event_id=f"{receipt.event_key}:{item_id}",
+                environment_id=item_id,
+                environment_name=str(getattr(item, "name", "") or item_id.replace("_", " ").title()),
+                environment_kind=(
+                    "garden_feature"
+                    if str(getattr(item, "kind", "")) == "garden_feature"
+                    else str(getattr(item, "kind", "") or "scenery")
+                ),
+                rarity=str(getattr(item, "rarity", "") or ""),
+                art_asset=item_id,
+                effect_summary=str(getattr(item, "effect", "") or "Cosmetic environment"),
+                occurred_at=str(receipt.occurred_at or self._session_now_iso()),
+            ))
+
+        return CommittedSessionEvent(
+            event_id=event_id,
+            anki_day_id=str(result.scheduler_day or self.scheduler_day(self.storage)),
+            occurred_at=self._session_event_iso(result.occurred_at_ms),
+            cards_completed=max(0, int(result.cards_completed)),
+            plant_growth=tuple(plant_growth),
+            shared_growth=tuple(shared_growth),
+            stored_growth_delta_units=int(result.stored_growth_delta_units),
+            coin_awards=coin_awards,
+            standard_finds=standard_finds,
+            milestones=tuple(milestones),
+            environment_discoveries=tuple(discoveries),
+            reward_receipts=tuple(result.reward_receipts),
+            total_finds=max(0, int(result.standard_find_count)),
+        )
+
+    def _committed_session_event(
+        self,
+        *,
+        payload: Mapping[str, Any],
+        award: Any,
+        baseline: Mapping[str, Any],
+    ) -> CommittedSessionEvent | None:
+        """Translate one proven local commit into immutable exact facts."""
+
+        event_id = str(getattr(award, "correlation_id", "") or "")
+        if not event_id:
+            return None
+        state = getattr(self.storage, "state", None)
+        plants = tuple(getattr(state, "plants", ()) or ())
+        plants_by_id = {
+            str(getattr(plant, "plant_id", "") or ""): plant
+            for plant in plants
+            if str(getattr(plant, "plant_id", "") or "")
+        }
+        before_units = dict(baseline.get("plant_units", {}) or {})
+        after_units = {
+            plant_id: self._plant_growth_units(plant)
+            for plant_id, plant in plants_by_id.items()
+        }
+        shared_by_plant: dict[str, int] = {}
+        for allocation in tuple(getattr(award, "allocations", ()) or ()):
+            if str(getattr(allocation, "role", "") or "") != "passive":
+                continue
+            plant_id = str(getattr(allocation, "plant_id", "") or "")
+            units = max(0, int(getattr(allocation, "applied_units", 0) or 0))
+            if plant_id and units:
+                shared_by_plant[plant_id] = shared_by_plant.get(plant_id, 0) + units
+
+        def growth_delta(plant_id: str, units: int) -> PlantGrowthDelta:
+            plant = plants_by_id[plant_id]
+            return PlantGrowthDelta(
+                plant_id,
+                str(getattr(plant, "name", "") or "Plant"),
+                units,
+                str(getattr(plant, "species", "") or "").replace("_", " ").title(),
+                self._plant_art_asset(plant),
+            )
+
+        plant_growth: list[PlantGrowthDelta] = []
+        shared_growth: list[PlantGrowthDelta] = []
+        for plant_id, current in after_units.items():
+            applied = max(0, current - max(0, int(before_units.get(plant_id, 0) or 0)))
+            shared = min(applied, max(0, int(shared_by_plant.get(plant_id, 0) or 0)))
+            if applied - shared > 0:
+                plant_growth.append(growth_delta(plant_id, applied - shared))
+            if shared > 0:
+                shared_growth.append(growth_delta(plant_id, shared))
+
+        previous_transaction_ids = set(baseline.get("transaction_ids", set()) or set())
+        new_transactions = tuple(
+            item
+            for item in tuple(getattr(state, "currency_transactions", ()) or ())
+            if self._transaction_identity(item) not in previous_transaction_ids
+            and int(getattr(item, "delta", 0) or 0) > 0
+        )
+        coin_awards = tuple(
+            CoinAward(
+                event_id=self._transaction_identity(item),
+                source_type=str(getattr(item, "source", "") or "garden_reward"),
+                source_label=str(getattr(item, "reason", "") or "Garden reward"),
+                amount=int(getattr(item, "delta", 0) or 0),
+                event_key=str(getattr(item, "event_key", "") or ""),
+                transaction_id=str(getattr(item, "transaction_id", "") or ""),
+                source_id=str(getattr(item, "source_id", "") or ""),
+                correlation_id=str(
+                    getattr(item, "correlation_id", "") or event_id
+                ),
+                included_in_total=bool(
+                    getattr(item, "included_in_total", True)
+                ),
+            )
+            for item in new_transactions
+        )
+        coin_by_event_key = {
+            item.event_key: item for item in coin_awards if item.event_key
+        }
+
+        previous_find_ids = set(baseline.get("find_outcome_ids", set()) or set())
+        outcomes = getattr(state, "garden_find_outcomes", {}) or {}
+        standard_finds: list[StandardFind] = []
+        for outcome_key, outcome in outcomes.items():
+            if str(outcome_key) in previous_find_ids:
+                continue
+            if (
+                str(getattr(outcome, "pool_id", "") or "") != "standard"
+                or str(getattr(outcome, "status", "") or "") != "hit"
+            ):
+                continue
+            reward_label = str(getattr(outcome, "description", "") or "")
+            standard_finds.append(StandardFind(
+                str(outcome_key),
+                str(getattr(outcome, "reward_id", "") or "garden_find"),
+                str(getattr(outcome, "display_name", "") or "Garden Find"),
+                str(getattr(outcome, "tier", "") or ""),
+                str(getattr(outcome, "reward_type", "") or ""),
+                reward_label,
+                max(0, int(getattr(outcome, "amount", 0) or 0)),
+                standard_find_artwork_ref(
+                    str(getattr(outcome, "reward_id", "") or ""),
+                    str(getattr(outcome, "artwork_ref", "") or ""),
+                ),
+                str(getattr(outcome, "occurred_at", "") or ""),
+                str(getattr(outcome, "item_id", "") or ""),
+                1,
+                _standard_find_is_notable(outcome),
+            ))
+
+        transaction_by_key = {
+            str(getattr(item, "event_key", "") or ""): item
+            for item in new_transactions
+        }
+        milestones: list[PlantMilestone] = []
+        stage_transactions: dict[str, list[tuple[str, Any, str]]] = {}
+        for reward_key, transaction in transaction_by_key.items():
+            parts = reward_key.split(":")
+            if len(parts) == 4 and parts[0] == "stage_checkpoint":
+                _kind, plant_id, next_stage, percent_text = parts
+                plant = plants_by_id.get(plant_id)
+                if plant is None:
+                    continue
+                try:
+                    percent = max(0, int(percent_text))
+                except (TypeError, ValueError):
+                    continue
+                coin = coin_by_event_key.get(reward_key)
+                milestones.append(PlantMilestone(
+                    reward_key,
+                    plant_id,
+                    str(getattr(plant, "name", "") or "Plant"),
+                    "checkpoint",
+                    str(getattr(transaction, "occurred_at", "") or self._session_now_iso()),
+                    self._plant_art_asset(plant),
+                    plant_class=str(getattr(plant, "species", "") or "")
+                    .replace("_", " ")
+                    .title(),
+                    checkpoint_percent=percent,
+                    new_stage=next_stage,
+                    coin_reward=(coin.amount if coin is not None else 0),
+                    coin_award_event_ids=(coin.event_id,) if coin is not None else (),
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
+                ))
+            elif len(parts) == 3 and parts[0] == "stage":
+                _kind, plant_id, next_stage = parts
+                stage_transactions.setdefault(plant_id, []).append((
+                    next_stage,
+                    transaction,
+                    reward_key,
+                ))
+
+        for plant_id, crossings in stage_transactions.items():
+            plant = plants_by_id.get(plant_id)
+            if plant is None:
+                continue
+            ordered_crossings = sorted(
+                crossings,
+                key=lambda item: (
+                    GROWTH_STAGES.index(item[0])
+                    if item[0] in GROWTH_STAGES
+                    else len(GROWTH_STAGES),
+                    item[2],
+                ),
+            )
+            first_stage = ordered_crossings[0][0]
+            try:
+                first_index = GROWTH_STAGES.index(first_stage)
+                previous_stage = GROWTH_STAGES[max(0, first_index - 1)]
+            except ValueError:
+                previous_stage = ""
+            for next_stage, transaction, event_key in ordered_crossings:
+                coin = coin_by_event_key.get(event_key)
+                milestones.append(PlantMilestone(
+                    event_key,
+                    plant_id,
+                    str(getattr(plant, "name", "") or "Plant"),
+                    "full_bloom" if next_stage == "rare" else "stage_change",
+                    str(
+                        getattr(transaction, "occurred_at", "")
+                        or self._session_now_iso()
+                    ),
+                    self._plant_art_asset(plant),
+                    plant_class=str(getattr(plant, "species", "") or "")
+                    .replace("_", " ")
+                    .title(),
+                    previous_stage=previous_stage,
+                    new_stage=next_stage,
+                    stage_path=tuple(
+                        value
+                        for value in (previous_stage, next_stage)
+                        if value
+                    ),
+                    coin_reward=(coin.amount if coin is not None else 0),
+                    coin_award_event_ids=(coin.event_id,) if coin is not None else (),
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
+                ))
+                previous_stage = next_stage
+
+        owned_before = set(baseline.get("owned_environment_ids", set()) or set())
+        discoveries: list[EnvironmentDiscovery] = []
+        for item_id in tuple(getattr(award, "garden_find_ids", ()) or ()):
+            legacy_id = str(item_id or "")
+            normalized = canonical_garden_feature_id(legacy_id)
+            if (
+                not normalized
+                or normalized in owned_before
+                or legacy_id in owned_before
+            ):
+                continue
+            catalog = WEATHER_CATALOG if normalized in WEATHER_CATALOG else SCENERY_CATALOG
+            item = catalog.get(normalized)
+            if item is None:
+                continue
+            discoveries.append(EnvironmentDiscovery(
+                f"{event_id}:environment:{normalized}",
+                normalized,
+                str(getattr(item, "name", "") or normalized.replace("_", " ").title()),
+                (
+                    "garden_feature"
+                    if str(getattr(item, "kind", "")) == "garden_feature"
+                    else str(getattr(item, "kind", "") or "scenery")
+                ),
+                str(getattr(item, "rarity", "") or ""),
+                normalized,
+                str(getattr(item, "effect", "") or "Cosmetic environment"),
+                self._session_event_iso(payload.get("answered_at_ms", 0)),
+            ))
+
+        stored_after = max(0, int(getattr(state, "stored_growth_units", 0) or 0))
+        stored_before = max(0, int(baseline.get("stored_units", 0) or 0))
+        previous_receipt_ids = set(
+            baseline.get("reward_receipt_ids", set()) or set()
+        )
+        reward_receipts = tuple(
+            item
+            for item in tuple(
+                getattr(state, "recent_reward_receipts", ()) or ()
+            )
+            if self._reward_receipt_identity(item) not in previous_receipt_ids
+        )
+        return CommittedSessionEvent(
+            event_id=event_id,
+            anki_day_id=str(payload.get("scheduler_day") or self.scheduler_day(self.storage)),
+            occurred_at=self._session_event_iso(payload.get("answered_at_ms", 0)),
+            cards_completed=1,
+            plant_growth=tuple(plant_growth),
+            shared_growth=tuple(shared_growth),
+            stored_growth_delta_units=stored_after - stored_before,
+            coin_awards=coin_awards,
+            standard_finds=tuple(standard_finds),
+            milestones=tuple(milestones),
+            environment_discoveries=tuple(discoveries),
+            reward_receipts=reward_receipts,
+            total_finds=sum(item.quantity for item in standard_finds),
+        )
 
     def on_question(self, *_args: Any, **_kwargs: Any) -> None:
         """Show one non-modal eligibility reminder before a reviewer answer."""
 
+        current_day = self.scheduler_day(self.storage)
+        accumulator = self._session_summary_accumulator
+        old_end_snapshot = None
+        if (
+            accumulator is not None
+            and current_day != accumulator.current_anki_day_id
+        ):
+            # Freeze the outgoing day before observe_due_start rolls the engine
+            # into Anki's new scheduler day.
+            old_end_snapshot = self._session_end_snapshot(refresh_today=False)
         try:
             observe = getattr(self.engine, "observe_due_start", None)
             if callable(observe):
@@ -215,9 +1444,22 @@ class ReviewerHookHandler:
                 "Anki Garden: unable to record the pre-answer due baseline",
                 exc_info=True,
             )
+        if old_end_snapshot is not None:
+            self._split_session_summary_day_if_needed(
+                current_day=current_day,
+                old_end_snapshot=old_end_snapshot,
+            )
+
+        reviewer_window = getattr(mw, "reviewer", None)
+        if reviewer_window is not None and reviewer_window is not self._reviewer_session_window:
+            self._reviewer_session_window = reviewer_window
+            self._reviewer_notice_shown = False
+            self._hide_no_starter_notice()
+            self._start_reviewer_session_totals()
 
         if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
             self._hide_no_starter_notice()
+            self._ensure_reviewer_hud()
             if (
                 self._reward_feedback_deferred_for_modal
                 and not reviewer_modal_active(mw)
@@ -225,11 +1467,6 @@ class ReviewerHookHandler:
                 self._reward_feedback_deferred_for_modal = False
                 self._show_optional_progress_feedback()
             return
-        reviewer_window = getattr(mw, "reviewer", None)
-        if reviewer_window is not None and reviewer_window is not self._reviewer_session_window:
-            self._reviewer_session_window = reviewer_window
-            self._reviewer_notice_shown = False
-            self._hide_no_starter_notice()
         if self._reviewer_notice_shown:
             return
         self._reviewer_notice_shown = True
@@ -240,24 +1477,1396 @@ class ReviewerHookHandler:
 
         self._reviewer_notice_shown = False
         self._hide_no_starter_notice()
+        self._ensure_reviewer_hud()
 
-    def on_state_change(self, new_state: str, *_args: Any) -> None:
+    def refresh_from_external_state(self) -> None:
+        """Refresh an open HUD after sync/maintenance without replaying rewards."""
+
+        if str(getattr(mw, "state", "") or "") != "review":
+            return
+        self._ensure_reviewer_hud()
+
+    def on_state_will_change(
+        self,
+        new_state: str,
+        old_state: str = "",
+        *_args: Any,
+    ) -> None:
+        """Dismiss an already-presented summary before unrelated navigation."""
+
+        if self._session_summary_continuation_in_progress:
+            return
+        if str(old_state or "") != "review" or str(new_state or "") == "review":
+            self.dismiss_session_summary_for_navigation()
+
+    def on_state_change(
+        self,
+        new_state: str,
+        old_state: str = "",
+        *_args: Any,
+    ) -> None:
         """Unmount Reviewer-only feedback before another Anki surface paints."""
 
         if str(new_state or "") == "review":
+            self._hide_session_summary(clear_pending=True)
+            self._ensure_reviewer_hud()
             return
+        if str(old_state or "") == "review":
+            self._show_reviewer_session_summary()
+        elif not self._session_summary_continuation_in_progress:
+            self.dismiss_session_summary_for_navigation()
         self._hide_reward_toast()
+        self._hide_reviewer_hud()
         self._hide_no_starter_notice()
         self._reviewer_session_window = None
         self._reviewer_notice_shown = False
+        self._reviewer_hud_narrow_forced = False
+
+    def _start_reviewer_session_totals(
+        self,
+        *,
+        today_cards_available: bool = True,
+    ) -> None:
+        """Start the event-sourced local session after the first question."""
+
+        self._pending_reviewer_results = []
+        self._presented_reviewer_result_ids = set()
+        self._reviewer_hud_reward_state = None
+        self._review_window_token = uuid.uuid4().hex
+        self._review_window_started_after_revlog_id = max(
+            0,
+            int(
+                getattr(
+                    getattr(self.storage, "state", None),
+                    "last_processed_revlog_id",
+                    0,
+                )
+                or 0
+            ),
+        )
+        self._review_window_answer_revlog_ids = set()
+        self._begin_session_summary(
+            today_cards_available=today_cards_available,
+        )
+
+    def _show_reviewer_session_summary(self) -> None:
+        accumulator = self._session_summary_accumulator
+        self._session_summary_accumulator = None
+        self._review_window_token = ""
+        self._review_window_started_after_revlog_id = 0
+        self._review_window_answer_revlog_ids = set()
+        end_feature_session = getattr(self.engine, "end_review_session", None)
+        if callable(end_feature_session):
+            end_feature_session()
+        self._session_cutoff_generation += 1
+        if accumulator is None:
+            return
+        try:
+            accumulator.finalize(
+                ended_at=self._session_now_iso(),
+                end_snapshot=self._session_end_snapshot(refresh_today=True),
+            )
+            payload = accumulator.take_finalized_payload()
+        except Exception:
+            logger.debug(
+                "Anki Garden: Session Summary could not be finalized",
+                exc_info=True,
+            )
+            return
+        if payload is None:
+            return
+        self._session_summary_presentation_generation += 1
+        self._pending_session_summary = payload
+        self._refresh_post_session_surfaces()
+        self._schedule_session_summary_render()
+
+    def _refresh_post_session_surfaces(self) -> None:
+        """Refresh the visible Anki/Garden state before mounting the summary.
+
+        Session Summary is deliberately nonmodal, so the Deck Browser or
+        Overview behind it is part of the same presentation.  Publish one
+        post-commit revision before asking Anki to repaint that surface; the
+        home Garden banner and the frozen summary payload will then read the
+        same committed storage state.
+        """
+
+        if callable(self.state_changed):
+            try:
+                self.state_changed("Session summary committed")
+            except Exception:
+                logger.debug(
+                    "Anki Garden: post-session state revision could not be published",
+                    exc_info=True,
+                )
+        state_name = str(getattr(mw, "state", "") or "")
+        surface_name = {
+            "deckBrowser": "deckBrowser",
+            "overview": "overview",
+        }.get(state_name)
+        if surface_name is None:
+            return
+        try:
+            surface = getattr(mw, surface_name, None)
+            refresh = getattr(surface, "refresh", None)
+            if callable(refresh):
+                refresh()
+        except Exception:
+            # Rewards are already committed and the summary remains useful;
+            # a repaint failure must never roll state back or block dismissal.
+            logger.debug(
+                "Anki Garden: post-session Anki surface could not refresh",
+                exc_info=True,
+            )
+
+    def _hide_session_summary(self, *, clear_pending: bool = False) -> None:
+        card = self._session_summary_card
+        self._session_summary_card = None
+        if card is not None:
+            try:
+                card.close()
+            except (AttributeError, RuntimeError):
+                pass
+        shortcut = self._session_summary_escape_shortcut
+        self._session_summary_escape_shortcut = None
+        if shortcut is not None:
+            try:
+                shortcut.setEnabled(False)
+                shortcut.deleteLater()
+            except (AttributeError, RuntimeError):
+                pass
+        if clear_pending:
+            self._session_summary_presentation_generation += 1
+            self._pending_session_summary = None
+            self._session_summary_render_scheduled = False
+            self._presented_session_summary_payload = None
+
+    def _schedule_session_summary_render(self, delay_ms: int = 0) -> None:
+        if self._session_summary_render_scheduled:
+            return
+        if self._pending_session_summary is None:
+            return
+        self._session_summary_render_scheduled = True
+        generation = self._session_summary_presentation_generation
+        try:
+            from aqt.qt import QTimer
+
+            QTimer.singleShot(
+                max(0, int(delay_ms)),
+                lambda: self._present_pending_session_summary(generation),
+            )
+        except Exception:
+            self._session_summary_render_scheduled = False
+            logger.debug(
+                "Anki Garden: Session Summary render could not be scheduled",
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _anki_is_closing() -> bool:
+        try:
+            from aqt.qt import QApplication
+
+            closing = getattr(QApplication, "closingDown", None)
+            return bool(closing()) if callable(closing) else False
+        except Exception:
+            return False
+
+    def _present_pending_session_summary(
+        self,
+        expected_generation: int | None = None,
+    ) -> None:
+        if (
+            expected_generation is not None
+            and int(expected_generation)
+            != self._session_summary_presentation_generation
+        ):
+            return
+        self._session_summary_render_scheduled = False
+        payload = self._pending_session_summary
+        if payload is None:
+            return
+        if self._anki_is_closing():
+            self._pending_session_summary = None
+            return
+        if reviewer_modal_active(mw):
+            self._schedule_session_summary_render(150)
+            return
+        try:
+            from aqt.qt import QKeySequence, QShortcut, Qt
+            from ..ui.session_summary_card import SessionSummaryCard
+
+            parent = session_summary_parent(mw)
+            self._hide_session_summary(clear_pending=False)
+            card = SessionSummaryCard(
+                parent,
+                payload,
+                on_dismiss=self._dismiss_session_summary,
+                on_open_garden=self._open_garden_from_session_summary,
+                on_continue_reviews=self._continue_reviews_from_session_summary,
+                engine=self.engine,
+                animations_enabled=self._session_summary_animations_enabled(),
+            )
+            card.show()
+            shortcut = QShortcut(QKeySequence("Escape"), mw)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(self._dismiss_session_summary_on_escape)
+            self._session_summary_card = card
+            self._session_summary_escape_shortcut = shortcut
+            self._presented_session_summary_payload = payload
+            self._pending_session_summary = None
+        except Exception:
+            logger.debug(
+                "Anki Garden: Session Summary could not be rendered",
+                exc_info=True,
+            )
+
+    def _dismiss_session_summary_on_escape(self) -> None:
+        if reviewer_modal_active(mw):
+            return
+        self._dismiss_session_summary()
+
+    def _dismiss_session_summary(self) -> None:
+        self._hide_session_summary(clear_pending=True)
+
+    def dismiss_session_summary_for_navigation(self, *_args: Any) -> None:
+        """Cancel both visible and delayed summary presentation exactly once."""
+
+        if self._session_summary_continuation_in_progress:
+            return
+        self._hide_session_summary(clear_pending=True)
+
+    def _session_summary_animations_enabled(self) -> bool:
+        try:
+            from ..ui.accessibility import effective_motion_enabled
+
+            return effective_motion_enabled(
+                bool(self._hud_config_value(
+                    "enable_animations",
+                    DEFAULT_CONFIG["enable_animations"],
+                )),
+                bool(self._hud_config_value(
+                    "reduced_motion",
+                    DEFAULT_CONFIG["reduced_motion"],
+                )),
+            )
+        except Exception:
+            return False
+
+    def _continue_reviews_from_session_summary(self) -> bool:
+        """Use Anki's native Overview study transition.
+
+        The card deliberately stays mounted until the transition succeeds;
+        this gives keyboard and pointer users a recoverable failure state.
+        """
+
+        payload = self._presented_session_summary_payload
+        terminal_today = getattr(payload, "terminal_today_cards", None)
+        target = getattr(terminal_today, "continuation_target", None)
+        if (
+            terminal_today is None
+            or not bool(getattr(terminal_today, "can_continue_reviews", False))
+            or target is None
+        ):
+            return False
+
+        original_deck_id: int | None = None
+        select_deck: Callable[[int], Any] | None = None
+        target_deck_id: int | None = None
+        try:
+            refreshed = self._today_cards_snapshot(refresh=True)
+            refreshed_target = getattr(refreshed, "continuation_target", None)
+            if (
+                not bool(getattr(refreshed, "can_continue_reviews", False))
+                or refreshed_target is None
+                or str(getattr(refreshed, "scope", ""))
+                != str(getattr(terminal_today, "scope", ""))
+                or str(getattr(refreshed, "kind", ""))
+                != str(getattr(terminal_today, "kind", ""))
+                or str(getattr(refreshed_target, "kind", ""))
+                != str(getattr(target, "kind", ""))
+                or getattr(refreshed_target, "deck_id", None)
+                != getattr(target, "deck_id", None)
+            ):
+                return False
+            move_to_state = getattr(mw, "moveToState", None)
+            collection = getattr(mw, "col", None)
+            start_timebox = getattr(collection, "startTimebox", None)
+            if not callable(move_to_state) or not callable(start_timebox):
+                return False
+            decks = getattr(collection, "decks", None)
+            select_deck = getattr(decks, "select", None)
+            target_deck_id = getattr(target, "deck_id", None)
+            if target_deck_id is None or not callable(select_deck):
+                return False
+            current_id_resolver = getattr(decks, "get_current_id", None)
+            if not callable(current_id_resolver):
+                current_id_resolver = getattr(decks, "selected", None)
+            original_deck_id = (
+                int(current_id_resolver())
+                if callable(current_id_resolver)
+                else None
+            )
+            select_deck(int(target_deck_id))
+            if (
+                callable(current_id_resolver)
+                and int(current_id_resolver()) != int(target_deck_id)
+            ):
+                if original_deck_id is not None:
+                    select_deck(original_deck_id)
+                return False
+            self._session_summary_continuation_in_progress = True
+            if str(getattr(mw, "state", "") or "") != "overview":
+                move_to_state("overview")
+            if str(getattr(mw, "state", "") or "") != "overview":
+                if original_deck_id is not None:
+                    select_deck(original_deck_id)
+                return False
+            start_timebox()
+            move_to_state("review")
+            succeeded = str(getattr(mw, "state", "") or "") == "review"
+            if succeeded:
+                self._hide_session_summary(clear_pending=True)
+            elif original_deck_id is not None:
+                select_deck(original_deck_id)
+            return succeeded
+        except Exception:
+            if (
+                callable(select_deck)
+                and original_deck_id is not None
+                and str(getattr(mw, "state", "") or "") != "review"
+            ):
+                try:
+                    select_deck(original_deck_id)
+                except Exception:
+                    pass
+            logger.debug(
+                "Anki Garden: reviews could not resume from Session Summary",
+                exc_info=True,
+            )
+            return False
+        finally:
+            self._session_summary_continuation_in_progress = False
+
+    def _open_garden_from_session_summary(self) -> None:
+        callback = self.open_garden
+        self._dismiss_session_summary()
+        if not callable(callback):
+            return
+        try:
+            from aqt.qt import QTimer
+
+            QTimer.singleShot(0, callback)
+        except Exception:
+            logger.debug(
+                "Anki Garden: Garden could not open from Session Summary",
+                exc_info=True,
+            )
+
+    def _open_garden_from_reviewer_hud(self) -> None:
+        callback = self.open_garden
+        if not callable(callback):
+            return
+        try:
+            callback()
+        except Exception:
+            logger.debug(
+                "Anki Garden: Garden could not open from Reviewer HUD",
+                exc_info=True,
+            )
+
+    def _open_active_plant_from_reviewer_hud(self, plant_id: str = "") -> None:
+        callback = self.open_garden
+        if not callable(callback):
+            return
+        plant_id = str(plant_id or getattr(
+            getattr(self.storage, "state", None),
+            "active_plant_id",
+            "",
+        ) or "")
+        try:
+            callback(plant_id=plant_id)
+        except TypeError:
+            callback()
+        except Exception:
+            logger.debug(
+                "Anki Garden: active plant could not open from Reviewer HUD",
+                exc_info=True,
+            )
+
+    def _select_another_plant_from_reviewer_hud(self) -> None:
+        """Open plant selection while leaving the current reviewer state intact."""
+
+        callback = self.open_garden
+        if not callable(callback):
+            return
+        try:
+            callback(select_another_plant=True)
+        except TypeError:
+            # Compatibility with integrations that still expose the former
+            # no-argument Garden opener. They can still reach the Garden even
+            # though only the current add-on provides the direct selector.
+            callback()
+        except Exception:
+            logger.debug(
+                "Anki Garden: plant selection could not open from Reviewer HUD",
+                exc_info=True,
+            )
+
+    def _choose_plant_from_reviewer_hud(self, plant_id: str) -> bool:
+        """Atomically nurture one projected choice without leaving Reviewer."""
+
+        plant_id = str(plant_id or "")
+        setter = getattr(self.engine, "set_active_plant", None)
+        if not plant_id or not callable(setter):
+            return False
+        try:
+            ok, _message = setter(plant_id)
+        except Exception:
+            logger.debug(
+                "Anki Garden: reviewer plant choice could not be committed",
+                exc_info=True,
+            )
+            return False
+        if not bool(ok):
+            logger.debug(
+                "Anki Garden: reviewer plant choice was rejected by the engine"
+            )
+            return False
+        if callable(self.state_changed):
+            try:
+                self.state_changed("Active plant changed")
+            except Exception:
+                logger.debug(
+                    "Anki Garden: reviewer plant choice could not publish state",
+                    exc_info=True,
+                )
+        # Refresh the mounted projection in place. This deliberately leaves
+        # the current Anki card and the session accumulator untouched.
+        self._ensure_reviewer_hud()
+        return True
+
+    def _resolve_reviewer_reward_art(self, hero: Any) -> Any | None:
+        """Resolve canonical reward references without teaching the widget catalogs."""
+
+        asset_key = str(
+            hero
+            if isinstance(hero, str)
+            else getattr(hero, "artwork_ref", "")
+            or getattr(hero, "art_asset", "")
+            or ""
+        )
+        if not asset_key:
+            return None
+        kind_source = getattr(hero, "kind", "") or getattr(
+            hero, "reward_type", ""
+        )
+        kind_value = getattr(kind_source, "value", None)
+        kind = str(kind_value or kind_source or "")
+        resolver_names = (
+            (
+                "resolve_garden_feature_preview_asset",
+                "resolve_scenery_preview_asset",
+                "resolve_item_asset",
+            )
+            if kind == "environment_discovery"
+            else ("resolve_item_asset",)
+        )
+        for resolver_name in resolver_names:
+            resolver = getattr(self.engine, resolver_name, None)
+            if not callable(resolver):
+                continue
+            try:
+                resolved = resolver(asset_key)
+            except Exception:
+                continue
+            if resolved is not None:
+                return resolved
+        return None
+
+    def _hud_config_value(self, key: str, default: Any) -> Any:
+        config = getattr(self.engine, "config", None)
+        resolver = getattr(config, "value", None)
+        if not callable(resolver):
+            return default
+        try:
+            return resolver(key, default)
+        except Exception:
+            return default
+
+    def _persist_hud_preferences(self, **changes: Any) -> None:
+        config = getattr(self.engine, "config", None)
+        persist = getattr(config, "update", None)
+        if not callable(persist):
+            return
+        try:
+            persist(dict(changes))
+        except Exception:
+            logger.debug(
+                "Anki Garden: Reviewer HUD preference could not be saved",
+                exc_info=True,
+            )
+
+    def _hide_reviewer_hud(self) -> None:
+        panel = getattr(self, "_reviewer_hud", None)
+        parent = getattr(self, "_reviewer_hud_parent", None)
+        resize_filter = getattr(self, "_reviewer_hud_parent_filter", None)
+        if panel is not None:
+            export_reward_state = getattr(panel, "export_reward_state", None)
+            if callable(export_reward_state):
+                try:
+                    self._reviewer_hud_reward_state = dict(export_reward_state())
+                except Exception:
+                    logger.debug(
+                        "Anki Garden: Reviewer HUD reward state could not be preserved",
+                        exc_info=True,
+                    )
+        self._reviewer_hud = None
+        self._reviewer_hud_projection = None
+        self._reviewer_growth_pulse = None
+        self._reviewer_hud_parent = None
+        self._reviewer_hud_parent_filter = None
+        if parent is not None and resize_filter is not None:
+            try:
+                parent.removeEventFilter(resize_filter)
+                resize_filter.deleteLater()
+            except RuntimeError:
+                pass
+        if panel is None:
+            return
+        try:
+            dispose = getattr(panel, "dispose", None)
+            if callable(dispose):
+                dispose()
+            else:
+                panel.hide()
+                panel.deleteLater()
+        except Exception:
+            pass
+
+    def set_reviewer_hud_dock(self, side: str) -> None:
+        """Persist the supported left/right dock choice and repaint in place."""
+
+        dock = "left" if str(side) == "left" else "right"
+        self._persist_hud_preferences(reviewer_hud_dock=dock)
+        self._ensure_reviewer_hud(force_dock=dock)
+
+    def _toggle_reviewer_hud(self, collapsed: bool | None = None) -> None:
+        projection = getattr(self, "_reviewer_hud_projection", None)
+        if collapsed is None:
+            collapsed = not bool(getattr(projection, "collapsed", False))
+        else:
+            collapsed = bool(collapsed)
+        self._reviewer_hud_narrow_forced = True
+        self._persist_hud_preferences(reviewer_hud_collapsed=collapsed)
+        self._ensure_reviewer_hud(force_collapsed=collapsed)
+
+    def _update_reviewer_hud_session_totals(self) -> None:
+        panel = getattr(self, "_reviewer_hud", None)
+        accumulator = self._session_summary_accumulator
+        update_totals = getattr(panel, "update_session_totals", None)
+        if accumulator is None or not callable(update_totals):
+            return
+        try:
+            snapshot = accumulator.live_snapshot(
+                ended_at=self._session_now_iso(),
+                end_snapshot=self._session_end_snapshot(refresh_today=False),
+            )
+            update_totals(snapshot)
+        except Exception:
+            logger.debug(
+                "Anki Garden: Reviewer HUD session totals could not refresh",
+                exc_info=True,
+            )
+
+    def _acknowledge_reviewer_result_feedback(
+        self,
+        result: CommittedAnswerResult,
+    ) -> None:
+        peek = getattr(self.engine, "peek_feedback", None)
+        if not callable(peek):
+            return
+        try:
+            matching = [
+                event
+                for event in tuple(peek())
+                if self._feedback_correlation_id(event)
+                == str(result.correlation_id)
+            ]
+        except Exception:
+            return
+        if not matching:
+            return
+        self._notified_event_ids.update(
+            str(getattr(event, "event_id", "") or "")
+            for event in matching
+            if str(getattr(event, "event_id", "") or "")
+        )
+        self._acknowledge_presented_feedback(matching)
+
+    def _retry_reviewer_feedback_acknowledgements(self) -> None:
+        if not self._notified_event_ids:
+            return
+        peek = getattr(self.engine, "peek_feedback", None)
+        if not callable(peek):
+            return
+        try:
+            self._acknowledge_presented_feedback(list(peek()))
+        except Exception:
+            return
+
+    def _flush_pending_reviewer_results(self) -> None:
+        panel = getattr(self, "_reviewer_hud", None)
+        present_committed = getattr(panel, "present_committed_result", None)
+        present_reward = getattr(panel, "present_reward", None)
+        notify_committed = getattr(panel, "notify_committed_card", None)
+        if (
+            not callable(present_committed)
+            and not callable(present_reward)
+            and not callable(notify_committed)
+        ):
+            return
+        try:
+            from ..reward_presentation import project_committed_reward_bundle
+        except Exception:
+            return
+        reveal = bool(self._hud_config_value(
+            "show_progress_notifications",
+            DEFAULT_CONFIG.get("show_progress_notifications", True),
+        ))
+        remaining: list[
+            tuple[CommittedAnswerResult | None, CommittedSessionEvent]
+        ] = []
+        blocked = False
+        for result, session_event in self._pending_reviewer_results:
+            result_id = str(
+                (result.event_id or result.correlation_id)
+                if result is not None
+                else session_event.event_id
+            )
+            if result_id in self._presented_reviewer_result_ids:
+                continue
+            if blocked:
+                remaining.append((result, session_event))
+                continue
+            try:
+                bundle = project_committed_reward_bundle(
+                    session_event,
+                    receipts=(
+                        result.reward_receipts
+                        if result is not None
+                        else session_event.reward_receipts
+                    ),
+                )
+                if bundle is not None and callable(present_committed):
+                    applied_growth_units = (
+                        max(0, int(result.award.total_growth_units))
+                        if result is not None
+                        else (
+                            sum(
+                                max(0, int(item.growth_units))
+                                for item in session_event.plant_growth
+                            )
+                            + max(
+                                0,
+                                int(session_event.stored_growth_delta_units),
+                            )
+                        )
+                    )
+                    accepted = bool(
+                        present_committed(
+                            bundle,
+                            applied_growth_units=applied_growth_units,
+                            reveal=reveal,
+                        )
+                    )
+                elif bundle is not None:
+                    accepted = bool(present_reward(bundle, reveal=reveal))
+                elif callable(notify_committed):
+                    accepted = bool(notify_committed(result_id))
+                else:
+                    accepted = True
+                if not accepted:
+                    blocked = True
+                    remaining.append((result, session_event))
+                    continue
+            except Exception:
+                logger.debug(
+                    "Anki Garden: committed reward bundle could not enter the HUD",
+                    exc_info=True,
+                )
+                blocked = True
+                remaining.append((result, session_event))
+                continue
+            self._presented_reviewer_result_ids.add(result_id)
+            if result is not None:
+                self._acknowledge_reviewer_result_feedback(result)
+        self._pending_reviewer_results = remaining
+        self._update_reviewer_hud_session_totals()
+        self._retry_reviewer_feedback_acknowledgements()
+
+    def _ensure_reviewer_hud(
+        self,
+        *,
+        force_collapsed: bool | None = None,
+        force_dock: str | None = None,
+    ) -> None:
+        """Mount or refresh one focus-safe HUD inside the Reviewer webview."""
+
+        if str(getattr(mw, "state", "") or "") != "review":
+            self._hide_reviewer_hud()
+            return
+        if not bool(self._hud_config_value(
+            "show_reviewer_hud",
+            DEFAULT_CONFIG.get("show_reviewer_hud", True),
+        )):
+            self._hide_reviewer_hud()
+            return
+        state = getattr(self.storage, "state", None)
+        if state is None or not bool(getattr(state, "starter_selection_complete", False)):
+            self._hide_reviewer_hud()
+            return
+        parent = reviewer_overlay_parent(mw)
+        reviewer = getattr(mw, "reviewer", None)
+        reviewer_web = getattr(reviewer, "web", None)
+        if reviewer_web is None or parent is not reviewer_web:
+            self._hide_reviewer_hud()
+            return
+        try:
+            viewport_width = max(1, int(parent.width()))
+            viewport_height = max(1, int(parent.height()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            self._hide_reviewer_hud()
+            return
+
+        saved_collapsed = bool(self._hud_config_value("reviewer_hud_collapsed", False))
+        if force_collapsed is None:
+            collapsed = saved_collapsed
+            if (
+                self._reviewer_hud is None
+                and not self._reviewer_hud_narrow_forced
+                and should_start_collapsed(viewport_width, saved_collapsed)
+            ):
+                collapsed = True
+                self._reviewer_hud_narrow_forced = True
+        else:
+            collapsed = bool(force_collapsed)
+        dock = (
+            str(force_dock)
+            if force_dock is not None
+            else str(self._hud_config_value("reviewer_hud_dock", "right"))
+        )
+        projection = project_reviewer_hud(
+            self.engine,
+            state,
+            collapsed=collapsed,
+            dock=dock,
+        )
+        self._render_reviewer_hud(
+            parent,
+            projection,
+            viewport_width=viewport_width,
+            viewport_height=viewport_height,
+        )
+
+    def _render_reviewer_hud(
+        self,
+        parent: Any,
+        projection: ReviewerHudProjection,
+        *,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> None:
+        """Update one mounted HUD instead of rebuilding it per answer."""
+
+        panel = getattr(self, "_reviewer_hud", None)
+        panel_created = False
+        same_parent = False
+        if panel is not None:
+            try:
+                same_parent = panel.parentWidget() is parent
+            except RuntimeError:
+                panel = None
+        update_projection = getattr(panel, "update_projection", None)
+        if panel is None or not same_parent or not callable(update_projection):
+            if getattr(self, "_reviewer_hud", None) is not None:
+                self._hide_reviewer_hud()
+            try:
+                panel = create_reviewer_hud(
+                    parent,
+                    on_open_garden=self._open_garden_from_reviewer_hud,
+                    on_open_plant=self._open_active_plant_from_reviewer_hud,
+                    on_select_plant=self._select_another_plant_from_reviewer_hud,
+                    on_choose_plant=self._choose_plant_from_reviewer_hud,
+                    on_toggle_collapsed=self._toggle_reviewer_hud,
+                    resolve_reward_art=self._resolve_reviewer_reward_art,
+                    animations_enabled=self._session_summary_animations_enabled(),
+                )
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to mount Reviewer HUD",
+                    exc_info=True,
+                )
+                self._hide_reviewer_hud()
+                return
+            self._reviewer_hud = panel
+            self._reviewer_hud_parent = parent
+            self._reviewer_hud_parent_filter = None
+            update_projection = getattr(panel, "update_projection", None)
+            panel_created = True
+            animate = False
+        else:
+            set_callbacks = getattr(panel, "set_callbacks", None)
+            if callable(set_callbacks):
+                try:
+                    set_callbacks(
+                        on_open_garden=self._open_garden_from_reviewer_hud,
+                        on_open_plant=self._open_active_plant_from_reviewer_hud,
+                        on_select_plant=self._select_another_plant_from_reviewer_hud,
+                        on_choose_plant=self._choose_plant_from_reviewer_hud,
+                        on_toggle_collapsed=self._toggle_reviewer_hud,
+                        resolve_reward_art=self._resolve_reviewer_reward_art,
+                        animations_enabled=self._session_summary_animations_enabled(),
+                    )
+                except Exception:
+                    self._hide_reviewer_hud()
+                    return
+            animate = bool(self._pending_reviewer_results)
+
+        self._reviewer_hud_projection = projection
+        try:
+            update_projection(projection, animate=animate)
+            if panel_created and self._reviewer_hud_reward_state is not None:
+                restore_reward_state = getattr(panel, "restore_reward_state", None)
+                if callable(restore_reward_state):
+                    restore_reward_state(self._reviewer_hud_reward_state)
+                    self._reviewer_hud_reward_state = None
+            reposition = getattr(panel, "reposition", None)
+            if callable(reposition):
+                reposition(viewport_width, viewport_height)
+        except Exception:
+            logger.debug(
+                "Anki Garden: Reviewer HUD could not refresh in place",
+                exc_info=True,
+            )
+            self._hide_reviewer_hud()
+            return
+        if self._pending_reviewer_results:
+            # Let the mounted HUD accept the exact committed result before its
+            # shared accumulator snapshot advances. This keeps the applied-row,
+            # checkpoint/reveal, and changed-total feedback in causal order.
+            self._flush_pending_reviewer_results()
+        else:
+            self._update_reviewer_hud_session_totals()
+
+    def _render_reviewer_hud_legacy(
+        self,
+        parent: Any,
+        projection: ReviewerHudProjection,
+        *,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> None:
+        try:
+            from aqt.qt import (
+                QEvent,
+                QFrame,
+                QHBoxLayout,
+                QLabel,
+                QObject,
+                QPixmap,
+                QProgressBar,
+                QPushButton,
+                QScrollArea,
+                QSize,
+                QSizePolicy,
+                QTimer,
+                QVBoxLayout,
+                QWidget,
+                Qt,
+            )
+            from ..ui.icons import garden_icon
+
+            class _HudElidingLabel(QLabel):
+                """Keep one-line HUD titles bounded while preserving full copy."""
+
+                def __init__(self, text: str, owner: Any = None) -> None:
+                    super().__init__("", owner)
+                    self._full_text = str(text)
+                    self.setAccessibleName(self._full_text)
+                    self.setSizePolicy(
+                        QSizePolicy.Policy.Ignored,
+                        QSizePolicy.Policy.Preferred,
+                    )
+                    self.setMinimumWidth(0)
+                    self._refresh_text()
+
+                def resizeEvent(self, event: Any) -> None:
+                    super().resizeEvent(event)
+                    self._refresh_text()
+
+                def _refresh_text(self) -> None:
+                    available = max(1, int(self.contentsRect().width()))
+                    visible = self.fontMetrics().elidedText(
+                        self._full_text,
+                        Qt.TextElideMode.ElideRight,
+                        available,
+                    )
+                    if super().text() != visible:
+                        super().setText(visible)
+                    elided = visible != self._full_text
+                    self.setProperty("textElided", elided)
+                    self.setProperty("fullText", self._full_text)
+                    self.setToolTip(self._full_text if elided else "")
+
+            self._hide_reviewer_hud()
+            x, y, width, height = reviewer_hud_geometry(
+                viewport_width,
+                viewport_height,
+                collapsed=projection.collapsed,
+                dock=projection.dock,
+            )
+            panel = QFrame(parent)
+            panel.setObjectName("ankiGardenReviewerHud")
+            panel.setProperty("semanticId", "reviewer.hud")
+            panel.setProperty("reviewerOverlay", True)
+            panel.setProperty("hudCollapsed", projection.collapsed)
+            panel.setProperty("hudDock", projection.dock)
+            panel.setProperty("reviewerControlClearance", 112)
+            panel.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            panel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            panel.setFixedSize(width, height)
+            panel.move(x, y)
+            panel.setAccessibleName("Anki Garden review panel")
+            panel.setStyleSheet(
+                "QFrame#ankiGardenReviewerHud {"
+                f"background:{GARDEN_THEME['elevated_surface']};"
+                f"border:1px solid {GARDEN_THEME['strong_border']};"
+                "border-radius:16px;}"
+                "QFrame[hudCard='true'] {"
+                f"background:{GARDEN_THEME['raised_surface']};"
+                f"border:1px solid {GARDEN_THEME['subtle_border']};"
+                "border-radius:12px;}"
+                f"QLabel {{color:{GARDEN_THEME['text_primary']};font-size:12px;}}"
+                f"QLabel[hudMuted='true'] {{color:{GARDEN_THEME['text_secondary']};font-size:11px;}}"
+                f"QLabel[hudSection='true'] {{color:{GARDEN_THEME['text_secondary']};font-size:11px;font-weight:700;}}"
+                f"QLabel[hudPrimary='true'] {{color:{GARDEN_THEME['text_primary']};font-size:20px;font-weight:700;}}"
+                f"QLabel[hudPlantName='true'] {{color:{GARDEN_THEME['text_primary']};font-size:22px;font-weight:700;}}"
+                f"QLabel[hudCoin='true'] {{color:{GARDEN_THEME['coin_accent']};font-size:12px;font-weight:700;}}"
+                f"QLabel[hudGrowth='true'] {{color:{GARDEN_THEME['growth_accent']};font-size:13px;font-weight:700;}}"
+                f"QLabel[hudFind='true'] {{color:{GARDEN_THEME['text_primary']};font-size:11px;font-weight:600;}}"
+                f"QLabel[hudChip='true'] {{color:{GARDEN_THEME['text_primary']};background:{GARDEN_THEME['selected_surface']};"
+                f"border:1px solid {GARDEN_THEME['subtle_border']};border-radius:7px;padding:3px 6px;font-size:10.5px;font-weight:600;}}"
+                f"QProgressBar {{background:{GARDEN_THEME['garden_background']};border:0;border-radius:4px;min-height:8px;max-height:8px;text-align:center;}}"
+                f"QProgressBar::chunk {{background:{GARDEN_THEME['growth_accent']};border-radius:4px;}}"
+                "QPushButton {background:transparent;border:0;border-radius:7px;padding:0;}"
+                "QPushButton[hudPrimaryAction='true'] {"
+                f"background:{GARDEN_THEME['selected_surface']};"
+                f"border:1px solid {GARDEN_THEME['strong_border']};"
+                f"color:{GARDEN_THEME['text_primary']};"
+                "min-height:32px;padding:4px 10px;font-size:12px;font-weight:700;}"
+                f"QPushButton:hover {{background:{GARDEN_THEME['selected_surface']};}}"
+            )
+
+            def finalize_panel() -> None:
+                self._reviewer_hud = panel
+                self._reviewer_hud_projection = projection
+
+                def reposition() -> None:
+                    if getattr(self, "_reviewer_hud", None) is not panel:
+                        return
+                    try:
+                        current_width = max(1, int(parent.width()))
+                        current_height = max(1, int(parent.height()))
+                        next_geometry = reviewer_hud_geometry(
+                            current_width,
+                            current_height,
+                            collapsed=projection.collapsed,
+                            dock=projection.dock,
+                        )
+                        panel.setFixedSize(next_geometry[2], next_geometry[3])
+                        panel.move(next_geometry[0], next_geometry[1])
+                        panel.raise_()
+                    except (AttributeError, RuntimeError, TypeError, ValueError):
+                        return
+
+                class _HudParentFilter(QObject):
+                    def eventFilter(self, watched: Any, event: Any) -> bool:
+                        if event.type() in {
+                            QEvent.Type.Resize,
+                            QEvent.Type.Show,
+                        }:
+                            QTimer.singleShot(0, reposition)
+                        return False
+
+                resize_filter = _HudParentFilter(panel)
+                parent.installEventFilter(resize_filter)
+                self._reviewer_hud_parent = parent
+                self._reviewer_hud_parent_filter = resize_filter
+                panel.show()
+                reposition()
+
+            if projection.collapsed:
+                root = QVBoxLayout(panel)
+                root.setContentsMargins(4, 6, 4, 6)
+                root.setSpacing(3)
+                expand = QPushButton(panel)
+                expand.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                expand.setCursor(Qt.CursorShape.PointingHandCursor)
+                today = projection.today
+                if today.status == "complete":
+                    top = "✓"
+                elif today.status == "waiting_for_learning":
+                    top = "…"
+                elif today.status == "in_progress":
+                    try:
+                        top = today.primary.split()[0]
+                        top = "99+" if int(top.replace(",", "")) > 99 else top
+                    except (ValueError, IndexError):
+                        top = "•"
+                else:
+                    top = "—"
+                plant_percent = (
+                    f"{projection.nurture.progress_percent}%"
+                    if projection.nurture.has_target
+                    else "•"
+                )
+                expand.setText(f"{top}\nCARDS\n\n{plant_percent}\n›")
+                expand.setAccessibleName(
+                    ". ".join(
+                        part
+                        for part in (
+                            today.primary,
+                            projection.nurture.plant_name,
+                            projection.nurture.checkpoint_line,
+                            "Expand Anki Garden",
+                        )
+                        if part
+                    )
+                )
+                expand.clicked.connect(self._toggle_reviewer_hud)
+                root.addWidget(expand, 1)
+                finalize_panel()
+                return
+
+            root = QVBoxLayout(panel)
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(0)
+            header = QFrame(panel)
+            header.setFixedHeight(48)
+            header_layout = QHBoxLayout(header)
+            header_layout.setContentsMargins(12, 6, 8, 6)
+            header_layout.setSpacing(7)
+            mark = QLabel()
+            mark.setPixmap(garden_icon("growth", color=GARDEN_THEME["growth_accent"]).pixmap(20, 20))
+            mark.setAccessibleName("Anki Garden")
+            header_layout.addWidget(mark)
+            title = QLabel("Anki Garden")
+            title.setStyleSheet("font-size:15px;font-weight:700;")
+            header_layout.addWidget(title, 1)
+            coin = QLabel(f"{projection.coins:,}")
+            coin.setProperty("hudCoin", True)
+            coin.setAccessibleName(f"{projection.coins:,} Garden Coins")
+            header_layout.addWidget(coin)
+            collapse = QPushButton()
+            collapse.setFixedSize(32, 32)
+            collapse.setIcon(garden_icon(
+                "chevron-right" if projection.dock == "right" else "chevron-left",
+                color=GARDEN_THEME["text_primary"],
+            ))
+            collapse.setIconSize(QSize(18, 18))
+            collapse.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            collapse.setAccessibleName("Collapse Anki Garden")
+            collapse.setCursor(Qt.CursorShape.PointingHandCursor)
+            collapse.clicked.connect(self._toggle_reviewer_hud)
+            header_layout.addWidget(collapse)
+            root.addWidget(header)
+
+            scroll = QScrollArea(panel)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            body = QWidget()
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(12, 10, 12, 14)
+            body_layout.setSpacing(10)
+
+            today_card = QFrame()
+            today_card.setProperty("hudCard", True)
+            today_layout = QVBoxLayout(today_card)
+            today_layout.setContentsMargins(12, 11, 12, 11)
+            today_layout.setSpacing(6)
+            today_heading_row = QHBoxLayout()
+            today_heading_row.setContentsMargins(0, 0, 0, 0)
+            today_heading_row.setSpacing(6)
+            today_heading = QLabel(projection.today.heading)
+            today_heading.setProperty("hudSection", True)
+            today_heading.setWordWrap(True)
+            today_heading_row.addWidget(today_heading, 1)
+            scope = QLabel("ALL DECKS")
+            scope.setProperty("hudChip", True)
+            scope.setToolTip(
+                "Current deck limits and filtered decks are respected."
+            )
+            scope.setAccessibleName("All decks")
+            today_heading_row.addWidget(scope)
+            today_layout.addLayout(today_heading_row)
+            today_primary = QLabel(projection.today.primary)
+            today_primary.setProperty("hudPrimary", projection.today.status == "in_progress")
+            today_primary.setProperty("hudCoin", projection.today.status == "complete")
+            today_primary.setWordWrap(True)
+            today_layout.addWidget(today_primary)
+            if projection.today.progress_maximum > 0:
+                due_progress = QProgressBar()
+                due_progress.setRange(0, projection.today.progress_maximum)
+                due_progress.setValue(projection.today.progress_value)
+                due_progress.setTextVisible(False)
+                due_progress.setAccessibleName(
+                    f"{projection.today.progress_value:,} of "
+                    f"{projection.today.progress_maximum:,} starting cards complete"
+                )
+                today_layout.addWidget(due_progress)
+            for line in projection.today.secondary:
+                label = QLabel(line)
+                label.setProperty("hudMuted", True)
+                label.setWordWrap(True)
+                today_layout.addWidget(label)
+            if projection.today.finds_line:
+                find = QLabel(projection.today.finds_line)
+                find.setProperty("hudFind", True)
+                find.setWordWrap(True)
+                today_layout.addWidget(find)
+            if projection.today.finds_detail:
+                detail = QLabel(projection.today.finds_detail)
+                detail.setProperty("hudMuted", True)
+                today_layout.addWidget(detail)
+            body_layout.addWidget(today_card)
+
+            nurture_card = QFrame()
+            nurture_card.setProperty("hudCard", True)
+            nurture_layout = QVBoxLayout(nurture_card)
+            nurture_layout.setContentsMargins(12, 11, 12, 12)
+            nurture_layout.setSpacing(6)
+            if not projection.nurture.has_target:
+                empty_heading = QLabel(projection.nurture.empty_heading)
+                empty_heading.setProperty("hudSection", True)
+                nurture_layout.addWidget(empty_heading)
+                empty_message = QLabel(projection.nurture.empty_message)
+                empty_message.setWordWrap(True)
+                nurture_layout.addWidget(empty_message)
+                if projection.nurture.stored_growth_line:
+                    stored = QLabel(projection.nurture.stored_growth_line)
+                    stored.setProperty("hudGrowth", True)
+                    nurture_layout.addWidget(stored)
+                choose = QPushButton("Choose a plant")
+                choose.setProperty("hudPrimaryAction", True)
+                choose.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                choose.setCursor(Qt.CursorShape.PointingHandCursor)
+                choose.setAccessibleName("Choose a plant")
+                if callable(self.open_garden):
+                    choose.clicked.connect(
+                        lambda: QTimer.singleShot(0, self.open_garden)
+                    )
+                else:
+                    choose.setEnabled(False)
+                nurture_layout.addWidget(choose)
+            else:
+                metadata = QHBoxLayout()
+                if projection.nurture.species_name:
+                    species = _HudElidingLabel(
+                        projection.nurture.species_name
+                    )
+                    species.setProperty("hudMuted", True)
+                    metadata.addWidget(species, 1)
+                else:
+                    metadata.addStretch(1)
+                bed = QLabel(projection.nurture.bed_label)
+                bed.setProperty("hudMuted", True)
+                metadata.addWidget(bed)
+                nurture_layout.addLayout(metadata)
+                context = QLabel("CURRENTLY NURTURING")
+                context.setProperty("hudSection", True)
+                nurture_layout.addWidget(context)
+                plant_name = _HudElidingLabel(projection.nurture.plant_name)
+                plant_name.setProperty("hudPlantName", True)
+                nurture_layout.addWidget(plant_name)
+
+                art = QLabel()
+                art.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                art.setMinimumHeight(80)
+                art.setMaximumHeight(104)
+                art.setAccessibleName(
+                    f"{projection.nurture.plant_name}, {projection.nurture.stage_label}"
+                )
+                try:
+                    plant = next(
+                        item for item in getattr(self.storage.state, "plants", ())
+                        if str(getattr(item, "plant_id", "")) == projection.nurture.plant_id
+                    )
+                    asset = self.engine.resolve_plant_asset(
+                        str(getattr(plant, "species", "")),
+                        str(getattr(plant, "growth_stage", "seed")),
+                    )
+                    pixmap = QPixmap(str(getattr(asset, "path", "") or ""))
+                    if not pixmap.isNull():
+                        art.setPixmap(pixmap.scaled(
+                            96,
+                            96,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        ))
+                    else:
+                        art.setPixmap(garden_icon(
+                            "plant",
+                            color=GARDEN_THEME["growth_accent"],
+                        ).pixmap(72, 72))
+                except Exception:
+                    art.setPixmap(garden_icon("plant", color=GARDEN_THEME["growth_accent"]).pixmap(72, 72))
+                nurture_layout.addWidget(art)
+
+                stage_row = QHBoxLayout()
+                stage = QLabel(projection.nurture.stage_label)
+                stage.setProperty("hudSection", True)
+                stage_row.addWidget(stage, 1)
+                percent = QLabel(f"{projection.nurture.progress_percent}%")
+                percent.setProperty("hudMuted", True)
+                stage_row.addWidget(percent)
+                nurture_layout.addLayout(stage_row)
+                plant_progress = QProgressBar()
+                plant_progress.setRange(0, 100)
+                plant_progress.setValue(projection.nurture.progress_percent)
+                plant_progress.setTextVisible(False)
+                plant_progress.setAccessibleName(
+                    f"{projection.nurture.stage_label} "
+                    f"{projection.nurture.progress_percent} percent"
+                )
+                nurture_layout.addWidget(plant_progress)
+                markers = QLabel("25%        50%        75%")
+                markers.setProperty("hudMuted", True)
+                markers.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                markers.setAccessibleName("Stage checkpoints at 25, 50, and 75 percent")
+                nurture_layout.addWidget(markers)
+                for line in (
+                    projection.nurture.checkpoint_line,
+                    projection.nurture.estimate_line,
+                    projection.nurture.next_stage_line,
+                ):
+                    if line:
+                        label = QLabel(line)
+                        label.setProperty("hudMuted", True)
+                        label.setWordWrap(True)
+                        nurture_layout.addWidget(label)
+                if projection.nurture.next_card_line:
+                    next_card = QLabel(projection.nurture.next_card_line)
+                    next_card.setProperty("hudGrowth", True)
+                    nurture_layout.addWidget(next_card)
+                pulse = QLabel("")
+                pulse.setProperty("hudGrowth", True)
+                pulse.hide()
+                nurture_layout.addWidget(pulse)
+                self._reviewer_growth_pulse = pulse
+                if projection.nurture.shared_line:
+                    shared = QLabel(projection.nurture.shared_line)
+                    shared.setProperty("hudMuted", True)
+                    shared.setWordWrap(True)
+                    nurture_layout.addWidget(shared)
+                if projection.nurture.environment_line:
+                    environment = QLabel(projection.nurture.environment_line)
+                    environment.setProperty("hudMuted", True)
+                    environment.setWordWrap(True)
+                    nurture_layout.addWidget(environment)
+                for chip_text in projection.nurture.effect_chips[:4]:
+                    chip = QLabel(chip_text)
+                    chip.setProperty("hudChip", True)
+                    chip.setWordWrap(True)
+                    nurture_layout.addWidget(chip)
+                if projection.nurture.queued_line:
+                    queued = QLabel(projection.nurture.queued_line)
+                    queued.setProperty("hudMuted", True)
+                    queued.setWordWrap(True)
+                    nurture_layout.addWidget(queued)
+                if projection.nurture.stored_growth_line:
+                    stored = QLabel(projection.nurture.stored_growth_line)
+                    stored.setProperty("hudGrowth", True)
+                    nurture_layout.addWidget(stored)
+            body_layout.addWidget(nurture_card)
+            body_layout.addStretch(1)
+            scroll.setWidget(body)
+            root.addWidget(scroll, 1)
+
+            finalize_panel()
+        except Exception:
+            logger.debug("Anki Garden: unable to render Reviewer HUD", exc_info=True)
+            self._hide_reviewer_hud()
+
+    @staticmethod
+    def _committed_growth_snapshot(state: Any) -> dict[str, int]:
+        stats = getattr(state, "daily_stats", None)
+        return {
+            field: max(0, int(getattr(stats, field, 0) or 0))
+            for field in (
+                "answer_growth_units",
+                "applied_growth_units",
+                "redirected_growth_units",
+                "shared_growth_units",
+                "stored_growth_units",
+            )
+        }
+
+    def _show_committed_growth_feedback(
+        self,
+        before: Mapping[str, int],
+        projected_award: Any | None,
+        *,
+        legacy_total_growth: int = 0,
+    ) -> None:
+        """Render the engine-projected total plus committed routing deltas."""
+
+        state = getattr(self.storage, "state", None)
+        after = self._committed_growth_snapshot(state)
+        delta = {
+            field: max(0, int(after.get(field, 0)) - int(before.get(field, 0)))
+            for field in after
+        }
+        total_units = max(0, int(delta.get("answer_growth_units", 0)))
+        if total_units <= 0 and projected_award is not None:
+            total_units = max(
+                0,
+                int(getattr(projected_award, "total_growth_units", 0) or 0),
+            )
+        if total_units <= 0:
+            total_units = max(0, int(legacy_total_growth)) * 100
+        pulse = getattr(self, "_reviewer_growth_pulse", None)
+        projection = getattr(self, "_reviewer_hud_projection", None)
+        if (
+            total_units <= 0
+            or pulse is None
+            or bool(getattr(projection, "collapsed", False))
+        ):
+            return
+        try:
+            from aqt.qt import QTimer
+            from ..ui.reviewer_hud import format_growth_units
+
+            pulse.setText(f"{format_growth_units(total_units, signed=True)} Growth")
+            pulse.setToolTip("")
+            pulse.setAccessibleName(
+                f"{format_growth_units(total_units, signed=True)} Growth"
+            )
+            pulse.show()
+            QTimer.singleShot(1_800, pulse.hide)
+        except (AttributeError, RuntimeError):
+            return
 
     def _hide_reward_toast(self) -> None:
+        self._hide_reward_list_panel()
         toasts = list(getattr(self, "_reward_toasts", []) or [])
         toast = self._reward_toast
         if toast is not None and toast not in toasts:
             toasts.append(toast)
         self._reward_toasts = []
         self._reward_toast_overflow = 0
+        self._reward_toast_history = []
         self._reward_toast = None
         if not toasts:
             return
@@ -274,24 +2883,252 @@ class ReviewerHookHandler:
                     exc_info=True,
                 )
 
+    def _hide_reward_list_panel(self) -> None:
+        panel = getattr(self, "_reward_list_panel", None)
+        self._reward_list_panel = None
+        if panel is None:
+            return
+        try:
+            panel.hide()
+            panel.deleteLater()
+        except RuntimeError:
+            pass
+
+    def _close_reward_list_panel(self) -> None:
+        """Close the expanded list and resume the synchronized toast clock."""
+
+        self._hide_reward_list_panel()
+        self._resume_reward_toast_stack()
+
+    def _pause_reward_toast_stack(self) -> None:
+        for toast in list(getattr(self, "_reward_toasts", []) or []):
+            try:
+                timer = getattr(toast, "_garden_dismiss_timer", None)
+                if timer is not None:
+                    timer.stop()
+            except RuntimeError:
+                continue
+
+    def _resume_reward_toast_stack(self) -> None:
+        for toast in list(getattr(self, "_reward_toasts", []) or []):
+            try:
+                timer = getattr(toast, "_garden_dismiss_timer", None)
+                if timer is not None:
+                    timer.start(GardenToastStack.HOVER_RESUME_MS)
+            except RuntimeError:
+                continue
+
+    def _dismiss_reward_toast_stack(self) -> None:
+        """Dismiss one synchronized generation without intermediate jumps."""
+
+        toasts = list(getattr(self, "_reward_toasts", []) or [])
+        self._reward_toasts = []
+        self._reward_toast = None
+        self._reward_toast_overflow = 0
+        self._reward_toast_history = []
+        self._hide_reward_list_panel()
+        for toast in toasts:
+            try:
+                timer = getattr(toast, "_garden_dismiss_timer", None)
+                if timer is not None:
+                    timer.stop()
+                toast.hide()
+                toast.deleteLater()
+            except RuntimeError:
+                continue
+
+    @staticmethod
+    def _reward_history_key(event: Any) -> str:
+        event_id = str(getattr(event, "event_id", "") or "")
+        if event_id:
+            return event_id
+        event_ids = tuple(getattr(event, "event_ids", ()) or ())
+        return "|".join(str(value) for value in event_ids)
+
+    def _remember_reward_toast_event(self, event: Any) -> None:
+        key = self._reward_history_key(event)
+        history = list(getattr(self, "_reward_toast_history", []) or [])
+        if key and any(self._reward_history_key(item) == key for item in history):
+            return
+        history.append(event)
+        self._reward_toast_history = history[-20:]
+
+    def _expand_reward_summary(self, parent: Any) -> None:
+        """Open a bounded reviewer-owned list for collapsed rewards."""
+
+        try:
+            from aqt.qt import (
+                QFrame,
+                QHBoxLayout,
+                QLabel,
+                QPushButton,
+                QScrollArea,
+                QSize,
+                QVBoxLayout,
+                QWidget,
+                Qt,
+            )
+            from ..ui.icons import garden_icon
+
+            self._hide_reward_list_panel()
+            history = list(getattr(self, "_reward_toast_history", []) or [])
+            if not history:
+                return
+            panel = QFrame(parent)
+            panel.setObjectName("ankiGardenRewardList")
+            panel.setProperty("semanticId", "reviewer.reward-list")
+            panel.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+            panel.setStyleSheet(
+                "QFrame#ankiGardenRewardList {"
+                f"background:{GARDEN_THEME['elevated_surface']};"
+                f"border:1px solid {GARDEN_THEME['strong_border']};"
+                "border-radius:14px;}"
+                f"QLabel {{color:{GARDEN_THEME['text_primary']};font-size:12px;}}"
+                f"QLabel[rewardListTitle='true'] {{color:{GARDEN_THEME['coin_accent']};font-size:14px;font-weight:600;}}"
+                f"QFrame[rewardListRow='true'] {{background:{GARDEN_THEME['raised_surface']};border:0;border-radius:8px;}}"
+                "QPushButton {background:transparent;border:0;border-radius:6px;}"
+                f"QPushButton:hover {{background:{GARDEN_THEME['selected_surface']};}}"
+            )
+            root = QVBoxLayout(panel)
+            root.setContentsMargins(12, 10, 12, 12)
+            root.setSpacing(8)
+            header = QHBoxLayout()
+            title = QLabel(f"Recent Garden rewards ({len(history)})")
+            title.setProperty("rewardListTitle", True)
+            header.addWidget(title, 1)
+            close = QPushButton("")
+            close.setFixedSize(32, 32)
+            close.setIcon(garden_icon("close", color=GARDEN_THEME["text_primary"]))
+            close.setIconSize(QSize(18, 18))
+            close.setAccessibleName("Close Garden rewards list")
+            close.clicked.connect(self._close_reward_list_panel)
+            header.addWidget(close)
+            root.addLayout(header)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            body = QWidget()
+            body_layout = QVBoxLayout(body)
+            body_layout.setContentsMargins(0, 0, 10, 16)
+            body_layout.setSpacing(8)
+            for event in reversed(history):
+                row = QFrame()
+                row.setProperty("rewardListRow", True)
+                row_layout = QVBoxLayout(row)
+                row_layout.setContentsMargins(10, 8, 10, 8)
+                row_layout.setSpacing(3)
+                heading = QLabel(
+                    str(getattr(event, "title", "") or self._reward_title(event))
+                )
+                heading.setProperty("rewardListTitle", True)
+                detail = QLabel(
+                    " · ".join(
+                        part
+                        for part in (
+                            str(getattr(event, "reward_detail", "") or ""),
+                            str(getattr(event, "message", "") or ""),
+                        )
+                        if part
+                    )
+                )
+                detail.setWordWrap(True)
+                row_layout.addWidget(heading)
+                row_layout.addWidget(detail)
+                body_layout.addWidget(row)
+            body_layout.addStretch(1)
+            scroll.setWidget(body)
+            root.addWidget(scroll, 1)
+            width = min(320, max(280, int(parent.width()) - 32))
+            height = min(300, max(150, 54 + len(history) * 58))
+            hud = getattr(self, "_reviewer_hud", None)
+            hud_projection = getattr(self, "_reviewer_hud_projection", None)
+            inside_hud = hud is not None and not bool(
+                getattr(hud_projection, "collapsed", False)
+            )
+            if inside_hud:
+                try:
+                    width = min(width, max(1, int(hud.width()) - 12))
+                    height = min(height, max(1, int(hud.height()) - 72))
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    inside_hud = False
+            panel.setFixedSize(width, min(height, max(1, int(parent.height()) - 144)))
+            if inside_hud:
+                panel.move(
+                    int(hud.x()) + max(0, (int(hud.width()) - panel.width()) // 2),
+                    max(int(hud.y()) + 48, int(hud.y()) + int(hud.height()) - panel.height() - 12),
+                )
+            else:
+                panel.move(
+                    max(16, int(parent.width()) - panel.width() - 16),
+                    max(16, int(parent.height()) - panel.height() - 112),
+                )
+            panel.setProperty("rewardInsideHud", inside_hud)
+            panel.setAccessibleName("Recent Garden rewards")
+            panel.show()
+            panel.raise_()
+            self._reward_list_panel = panel
+            self._pause_reward_toast_stack()
+        except Exception:
+            logger.debug(
+                "Anki Garden: collapsed reward list could not be expanded",
+                exc_info=True,
+            )
+
     def _position_reward_toast_stack(self, parent: Any) -> None:
         """Stack at most two cards above Anki's answer controls."""
 
         viewport_width = max(1, int(parent.width()))
         viewport_height = max(1, int(parent.height()))
-        next_bottom = max(16, viewport_height - 112)
+        reserved_height = min(128, max(88, viewport_height // 5))
+        controls_top = max(0, viewport_height - reserved_height)
+        toast_bottom_cap = max(16, controls_top - 16)
+        hud = getattr(self, "_reviewer_hud", None)
+        hud_projection = getattr(self, "_reviewer_hud_projection", None)
+        inside_hud = hud is not None and not bool(
+            getattr(hud_projection, "collapsed", False)
+        )
+        if inside_hud:
+            try:
+                hud_left = int(hud.x())
+                hud_top = int(hud.y())
+                hud_width = int(hud.width())
+                hud_bottom = min(
+                    int(hud.y()) + int(hud.height()) - 12,
+                    toast_bottom_cap,
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                inside_hud = False
+        next_bottom = (
+            max(hud_top + 60, hud_bottom)
+            if inside_hud
+            else toast_bottom_cap
+        )
         live: list[Any] = []
         for toast in reversed(list(getattr(self, "_reward_toasts", []) or [])):
             try:
-                x, _preferred_y = reviewer_reward_overlay_position(
-                    viewport_width,
-                    viewport_height,
-                    toast.width(),
-                    toast.height(),
-                    margin=16,
-                )
-                y = max(16, next_bottom - int(toast.height()))
+                if inside_hud:
+                    x = max(
+                        hud_left,
+                        min(
+                            hud_left + hud_width - int(toast.width()),
+                            hud_left + max(0, (hud_width - int(toast.width())) // 2),
+                        ),
+                    )
+                    y = max(hud_top + 48, next_bottom - int(toast.height()))
+                else:
+                    x, _preferred_y = reviewer_reward_overlay_position(
+                        viewport_width,
+                        viewport_height,
+                        toast.width(),
+                        toast.height(),
+                        margin=16,
+                    )
+                    y = max(16, next_bottom - int(toast.height()))
                 toast.move(x, y)
+                toast.setProperty("rewardInsideHud", inside_hud)
                 toast.setProperty(
                     "reviewerViewportBounded",
                     bool(
@@ -337,7 +3174,7 @@ class ReviewerHookHandler:
 
     def _set_reward_summary(self, toast: Any, count: int, empty_pixmap: Any) -> None:
         count = max(1, int(count))
-        overflow_copy = f"+{count} more rewards ›"
+        overflow_copy = f"+{count} more rewards"
         toast.setProperty("rewardSummary", True)
         toast.setProperty("compactToast", False)
         toast.setProperty("rewardOverflowCount", count)
@@ -351,6 +3188,11 @@ class ReviewerHookHandler:
         toast._garden_art_label.setPixmap(empty_pixmap)
         toast._garden_art_label.setText("")
         toast._garden_art_label.hide()
+        toast._garden_activate_callback = (
+            lambda target=toast: self._expand_reward_summary(
+                getattr(target, "parentWidget", lambda: None)()
+            )
+        )
         toast._garden_dismiss_timer.start(GardenToastStack.AUTO_DISMISS_MS)
 
     def _prepare_reward_toast_queue(
@@ -414,11 +3256,20 @@ class ReviewerHookHandler:
 
     def _dismiss_reward_toast(self, toast: Any) -> None:
         try:
+            self._hide_reward_list_panel()
             if (
                 bool(toast.property("rewardSummary"))
                 or bool(toast.property("compactToast"))
             ):
                 self._reward_toast_overflow = 0
+                self._reward_toast_history = []
+            else:
+                event_key = str(toast.property("rewardEventKey") or "")
+                self._reward_toast_history = [
+                    event
+                    for event in getattr(self, "_reward_toast_history", [])
+                    if self._reward_history_key(event) != event_key
+                ]
             self._reward_toasts = [
                 item
                 for item in getattr(self, "_reward_toasts", [])
@@ -686,6 +3537,41 @@ class ReviewerHookHandler:
             return None
         return [normalized_row], normalized_context
 
+    def _current_review_revlog_id(
+        self,
+        rows: list[tuple[Any, ...]],
+        card: Any,
+        ease: int,
+        *,
+        proven_local_commit: bool,
+    ) -> int:
+        """Bind this hook invocation to one unambiguous current-window row."""
+
+        card_id = self._card_id(card)
+        floor = max(
+            0,
+            int(self._review_window_started_after_revlog_id),
+        )
+        candidates = [
+            tuple(row)
+            for row in rows
+            if len(row) >= 8
+            and int(row[0]) > floor
+            and int(row[1]) == card_id
+            and int(row[2]) == int(ease)
+            and queue_and_lapse_from_revlog_type(row[7], row[2]) is not None
+        ]
+        if len(candidates) != 1:
+            return 0
+        candidate_id = int(candidates[0][0])
+        if proven_local_commit:
+            return candidate_id
+        # A recovery read may contain older local rows or newly synced rows.
+        # Only its unique newest eligible row can be attributed to this live
+        # answer hook; ambiguity fails closed for Session Summary admission.
+        newest_id = max((int(row[0]) for row in rows), default=0)
+        return candidate_id if candidate_id == newest_id else 0
+
     def on_answer(self, reviewer: Any, card: Any, ease: int) -> None:
         started = RUNTIME_PERFORMANCE.begin()
         try:
@@ -694,6 +3580,47 @@ class ReviewerHookHandler:
             RUNTIME_PERFORMANCE.finish("review.answer", started)
 
     def _process_answer(self, reviewer: Any, card: Any, ease: int) -> None:
+        if self._session_summary_accumulator is None:
+            # The first-question hook is the authoritative pre-answer
+            # baseline. If it was unavailable, retain session rewards but do
+            # not invent Today progress from a post-answer scheduler state.
+            self._start_reviewer_session_totals(today_cards_available=False)
+        elif not self._review_window_token:
+            self._review_window_token = uuid.uuid4().hex
+            self._review_window_started_after_revlog_id = max(
+                0,
+                int(
+                    getattr(
+                        getattr(self.storage, "state", None),
+                        "last_processed_revlog_id",
+                        0,
+                    )
+                    or 0
+                ),
+            )
+        else:
+            current_day = self.scheduler_day(self.storage)
+            if (
+                current_day
+                != self._session_summary_accumulator.current_anki_day_id
+            ):
+                old_end_snapshot = self._session_end_snapshot(
+                    refresh_today=False,
+                )
+                try:
+                    observe = getattr(self.engine, "observe_due_start", None)
+                    due = getattr(self.storage, "due_obligations", None)
+                    if callable(observe):
+                        observe(due() if callable(due) else None)
+                except Exception:
+                    logger.debug(
+                        "Anki Garden: cutoff baseline could not refresh before card commit",
+                        exc_info=True,
+                    )
+                self._split_session_summary_day_if_needed(
+                    current_day=current_day,
+                    old_end_snapshot=old_end_snapshot,
+                )
         last_processed = int(
             getattr(getattr(self.storage, "state", None), "last_processed_revlog_id", 0) or 0
         )
@@ -709,6 +3636,7 @@ class ReviewerHookHandler:
             self._show_deferred_history_notice()
             return
         local_history = self._proven_local_answer(card, ease, last_processed)
+        proven_local_commit = local_history is not None
         if local_history is None:
             if bool(getattr(self, "_local_answer_fast_path_ready", False)):
                 self._report_history_invalidation("local answer was ambiguous")
@@ -755,6 +3683,14 @@ class ReviewerHookHandler:
             collection = getattr(mw, "col", None)
         latest_read_id = max(int(row[0]) for row in rows)
         scheduler_day = self.scheduler_day(self.storage)
+        current_review_revlog_id = self._current_review_revlog_id(
+            rows,
+            card,
+            ease,
+            proven_local_commit=proven_local_commit,
+        )
+        if current_review_revlog_id > 0:
+            self._review_window_answer_revlog_ids.add(current_review_revlog_id)
         binding_resolver = getattr(
             self.storage, "answer_lineage_bindings_for_cards", None
         )
@@ -786,20 +3722,115 @@ class ReviewerHookHandler:
             )
             if payload is not None
         ]
+        result_origin = (
+            "local"
+            if proven_local_commit and len(payloads) == 1
+            else "local_recovery"
+        )
+        for payload in payloads:
+            payload["origin"] = result_origin
+            if int(payload.get("revlog_id", 0) or 0) == current_review_revlog_id:
+                payload["review_window_token"] = self._review_window_token
+        session_baseline = (
+            self._session_event_baseline()
+            if proven_local_commit and len(payloads) == 1
+            else None
+        )
+        committed_before = self._committed_growth_snapshot(self.storage.state)
+        projected_award: Any | None = None
+        if len(payloads) == 1:
+            projector = getattr(self.engine, "project_review_growth", None)
+            if callable(projector):
+                try:
+                    projected_award = projector(
+                        now=max(0, int(payloads[0].get("answered_at_ms", 0) or 0)) / 1000,
+                        answer_number=max(
+                            1,
+                            int(getattr(self.storage.state.daily_stats, "reviewed", 0) or 0)
+                            + 1,
+                        ),
+                    )
+                except Exception:
+                    logger.debug(
+                        "Anki Garden: committed Growth preview was unavailable",
+                        exc_info=True,
+                    )
+        committed_growth = 0
+        committed_awards: tuple[Any, ...] = ()
+        committed_results: tuple[CommittedAnswerResult, ...] = ()
+        due_status: Any | None = None
+        due_status_resolved = False
+        try:
+            due_resolver = getattr(self.storage, "due_obligations", None)
+            if callable(due_resolver):
+                committed_card_ids = tuple(sorted({
+                    int(payload.get("card_id", 0) or 0)
+                    for payload in payloads
+                    if int(payload.get("card_id", 0) or 0) > 0
+                }))
+                try:
+                    due_status = due_resolver(
+                        committed_card_ids=committed_card_ids,
+                    )
+                except TypeError:
+                    # Compatibility for test and third-party storage adapters.
+                    # The engine still fails closed when an aggregate shrink
+                    # exceeds the number of committed answers.
+                    due_status = due_resolver()
+                due_status_resolved = True
+        except Exception:
+            logger.debug(
+                "Anki Garden: due status unavailable during answer commit",
+                exc_info=True,
+            )
         try:
             # Commit every unseen row as one state transaction. In particular,
             # never jump the cursor to only the newest answer after an earlier
             # Garden save failed.
-            self.engine.apply_same_day_reviews(
-                payloads,
-                latest_revlog_id=latest_read_id,
+            result_commit = getattr(
+                self.engine,
+                "apply_same_day_reviews_with_results",
+                None,
             )
+            if callable(result_commit):
+                committed_results = tuple(result_commit(
+                    payloads,
+                    latest_revlog_id=latest_read_id,
+                    due_status=due_status if due_status_resolved else None,
+                ))
+                committed_awards = tuple(
+                    result.award for result in committed_results
+                )
+                committed_growth = sum(
+                    max(0, int(result.award.total_growth))
+                    for result in committed_results
+                )
+            else:
+                detailed_commit = getattr(
+                    self.engine,
+                    "apply_same_day_reviews_with_awards",
+                    None,
+                )
+                if callable(detailed_commit):
+                    committed_awards = tuple(detailed_commit(
+                        payloads,
+                        latest_revlog_id=latest_read_id,
+                    ))
+                    committed_growth = sum(
+                        max(0, int(getattr(item, "total_growth", 0) or 0))
+                        for item in committed_awards
+                    )
+                else:
+                    committed_growth = self.engine.apply_same_day_reviews(
+                        payloads,
+                        latest_revlog_id=latest_read_id,
+                    )
         except Exception:
             logger.exception("Anki Garden: review progress could not be saved")
             self._report_history_invalidation("review save failed")
             message = (
-                "Your card answer is safe in Anki, but Garden couldn’t save its Growth. "
-                "Open garden to try again."
+                "Your card is safe in Anki, but Garden couldn’t save its Growth. "
+                "Open Garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -815,21 +3846,90 @@ class ReviewerHookHandler:
         if bool(getattr(getattr(self.storage, "state", None), "starter_selection_complete", False)):
             self._hide_no_starter_notice()
 
-        try:
-            self.engine.evaluate_all_due(self.storage.due_obligations())
-        except Exception:
-            logger.debug("Anki Garden: unable to evaluate all-due completion after review", exc_info=True)
+        if not committed_results or not due_status_resolved:
+            try:
+                self.engine.evaluate_all_due(
+                    due_status
+                    if due_status_resolved
+                    else self.storage.due_obligations(),
+                    record_completed_delta=True,
+                )
+            except Exception:
+                logger.debug(
+                    "Anki Garden: unable to evaluate all-due completion after review",
+                    exc_info=True,
+                )
+
+        accepted_results: list[
+            tuple[CommittedAnswerResult | None, CommittedSessionEvent]
+        ] = []
+        accumulator = self._session_summary_accumulator
+        if committed_results and accumulator is not None:
+            for result in committed_results:
+                if result.origin not in {"local", "local_recovery"}:
+                    continue
+                result_revlog_id = max(
+                    0,
+                    int(getattr(result, "occurred_at_ms", 0) or 0),
+                )
+                if result_revlog_id not in self._review_window_answer_revlog_ids:
+                    continue
+                try:
+                    session_event = self._session_event_from_result(result)
+                    if (
+                        session_event is not None
+                        and accumulator.accept_committed(session_event)
+                    ):
+                        accepted_results.append((result, session_event))
+                    self._review_window_answer_revlog_ids.discard(result_revlog_id)
+                except Exception:
+                    logger.debug(
+                        "Anki Garden: committed card could not enter Session Summary",
+                        exc_info=True,
+                    )
+        elif (
+            session_baseline is not None
+            and len(committed_awards) == 1
+            and len(payloads) == 1
+            and accumulator is not None
+        ):
+            # Compatibility for alternate engines that have not adopted the
+            # typed committed-result API yet.
+            try:
+                session_event = self._committed_session_event(
+                    payload=payloads[0],
+                    award=committed_awards[0],
+                    baseline=session_baseline,
+                )
+                if (
+                    session_event is not None
+                    and accumulator.accept_committed(session_event)
+                ):
+                    accepted_results.append((None, session_event))
+            except Exception:
+                logger.debug(
+                    "Anki Garden: committed card could not enter Session Summary",
+                    exc_info=True,
+                )
         if self.state_changed is not None:
             try:
-                self.state_changed("Card answer counted")
+                self.state_changed("Card complete")
             except Exception:
                 logger.debug("Anki Garden: unable to publish review state change", exc_info=True)
-        self._show_optional_progress_feedback()
+        self._pending_reviewer_results.extend(accepted_results)
+        self._ensure_reviewer_hud()
+        self._flush_pending_reviewer_results()
+        if not committed_results:
+            self._show_committed_growth_feedback(
+                committed_before,
+                committed_awards[0] if len(committed_awards) == 1 else projected_award,
+                legacy_total_growth=max(0, int(committed_growth or 0)),
+            )
 
     @staticmethod
     def _show_deferred_history_notice() -> None:
         message = (
-            "Your card answer is safe in Anki. Garden will add it when review history is available."
+            "Your card is safe in Anki. Garden will add it when review history is available."
         )
         if USER_NOTICES.publish(message, key="review_history"):
             try:
@@ -858,14 +3958,25 @@ class ReviewerHookHandler:
         if not unnotified:
             self._acknowledge_presented_feedback(events)
             return
-        event = self._consolidated_reward_feedback(unnotified)
-        if event is None:
-            return
-        rendered = self._show_reward_toast(event)
-        if not rendered:
-            return
-        self._last_notified_event = event.event_id
-        self._notified_event_ids.update(event.event_ids)
+        groups: list[list[Any]] = []
+        group_indexes: dict[str, int] = {}
+        for raw_event in unnotified:
+            key = (
+                self._feedback_correlation_id(raw_event)
+                or str(getattr(raw_event, "event_id", "") or "")
+            )
+            if key not in group_indexes:
+                group_indexes[key] = len(groups)
+                groups.append([])
+            groups[group_indexes[key]].append(raw_event)
+        for group in groups:
+            event = self._consolidated_reward_feedback(group)
+            if event is None:
+                continue
+            if not self._show_reward_toast(event):
+                break
+            self._last_notified_event = event.event_id
+            self._notified_event_ids.update(event.event_ids)
         self._acknowledge_presented_feedback(events)
 
     def _acknowledge_presented_feedback(self, events: list[Any]) -> None:
@@ -914,6 +4025,7 @@ class ReviewerHookHandler:
             unique.append(event)
         if not unique:
             return None
+        unique.sort(key=self._reward_stack_priority)
 
         presentations = self._garden_find_presentations(unique)
         find_events = [
@@ -938,15 +4050,15 @@ class ReviewerHookHandler:
         if growth_total:
             reward_parts.append(f"+{growth_total:,} Growth")
         nonreward_messages = tuple(dict.fromkeys(
-            str(getattr(event, "message", "") or "").strip()
+            self._player_reward_copy(getattr(event, "message", ""))
             for event in unique
             if not self._is_reward_feedback_event(event)
-            and str(getattr(event, "message", "") or "").strip()
+            and self._player_reward_copy(getattr(event, "message", ""))
         ))
         if nonreward_messages and not reward_parts:
             reward_parts.append(nonreward_messages[0])
         message = " · ".join(reward_parts)
-        title = str(getattr(preferred, "title", "") or "")
+        title = self._player_reward_copy(getattr(preferred, "title", ""))
         tier = ""
         reward_detail = ""
         asset_category = str(getattr(preferred, "asset_category", "") or "")
@@ -957,9 +4069,9 @@ class ReviewerHookHandler:
             title = "Garden Find"
             tier = self._display_tier(find.tier)
             if str(find.pool_id) == "environment" and environment_total:
-                message = "Added to Weather and Scenery"
+                message = "Added to Garden Decorations"
             elif not message:
-                message = str(find.description)
+                message = self._player_reward_copy(find.description)
             first_find = presentations[0]
             asset_key = str(first_find.artwork_ref or asset_key)
             asset_category = (
@@ -985,17 +4097,17 @@ class ReviewerHookHandler:
             event_id=combined_id,
             event_ids=event_ids,
             kind="garden_find" if find_events else "reward_summary",
-            message=message,
+            message=self._player_reward_copy(message),
             occurred_at=max(
                 str(getattr(event, "occurred_at", "")) for event in unique
             ),
             plant_id=str(getattr(preferred, "plant_id", "") or "") or None,
-            title=title,
+            title=self._player_reward_copy(title),
             asset_category=asset_category,
             asset_key=asset_key,
             correlation_id=self._feedback_correlation_id(preferred),
             tier=tier,
-            reward_detail=reward_detail,
+            reward_detail=self._player_reward_copy(reward_detail),
             coins_total=coins_total,
             growth_total=growth_total,
             environment_total=environment_total,
@@ -1046,6 +4158,62 @@ class ReviewerHookHandler:
         }
 
     @staticmethod
+    def _player_reward_copy(value: Any) -> str:
+        """Normalize legacy engine prose at the final learner-facing boundary."""
+
+        text = str(value or "").strip()
+        for before, after in (
+            ("All due cards finished", "Today’s cards complete"),
+            ("Anki day complete", "Today’s cards complete"),
+            ("All Clear", "Today’s cards complete"),
+            ("all clear", "today’s cards complete"),
+            ("Rare stage reached", "Full Bloom"),
+            ("rare stage reached", "Full Bloom"),
+            ("reached Rare", "reached Full Bloom"),
+            ("required cards", "cards"),
+            ("Required cards", "Cards"),
+        ):
+            text = text.replace(before, after)
+        text = re.sub(r"\banswers\b", "cards", text)
+        text = re.sub(r"\bAnswers\b", "Cards", text)
+        text = re.sub(r"\banswer\b", "card", text)
+        text = re.sub(r"\bAnswer\b", "Card", text)
+        return text
+
+    @classmethod
+    def _reward_stack_priority(cls, event: Any) -> tuple[int, str, str]:
+        """Apply the approved order inside one committed correlation."""
+
+        haystack = " ".join((
+            str(getattr(event, "kind", "") or ""),
+            str(getattr(event, "title", "") or ""),
+            str(getattr(event, "message", "") or ""),
+            str(getattr(event, "event_id", "") or ""),
+        )).casefold()
+        priority = 8
+        if "full bloom" in haystack or "rare stage" in haystack:
+            priority = 0
+        elif "environment" in haystack or "weather discovered" in haystack or "scenery discovered" in haystack:
+            priority = 1
+        elif "new stage" in haystack or "stage:" in haystack:
+            priority = 2
+        elif "achievement" in haystack or "unlocked" in haystack:
+            priority = 3
+        elif "checkpoint" in haystack or "milestone" in haystack:
+            priority = 4
+        elif "garden_find" in haystack or "garden find" in haystack:
+            priority = 5
+        elif "all_due" in haystack or "today’s cards" in haystack or "streak" in haystack:
+            priority = 6
+        elif str(getattr(event, "kind", "") or "") == "reward_summary":
+            priority = 7
+        return (
+            priority,
+            str(getattr(event, "occurred_at", "") or ""),
+            str(getattr(event, "event_id", "") or ""),
+        )
+
+    @staticmethod
     def _feedback_correlation_id(event: Any) -> str:
         correlation_id = str(getattr(event, "correlation_id", "") or "")
         if correlation_id:
@@ -1086,7 +4254,10 @@ class ReviewerHookHandler:
                 else None
             )
             if summary is not None and correlation_id not in rendered_correlations:
-                typed_parts = [summary.learner_text] if summary.learner_text else []
+                typed_parts = (
+                    [self._player_reward_copy(summary.learner_text)]
+                    if summary.learner_text else []
+                )
                 achievement_names = [
                     achievement_definitions[achievement_id].name
                     for achievement_id in summary.achievement_ids
@@ -1101,7 +4272,7 @@ class ReviewerHookHandler:
 
             # Non-reward feedback and pruned legacy reward summaries remain
             # opaque. Their prose is never parsed or numerically combined.
-            message = str(getattr(event, "message", "") or "").strip()
+            message = self._player_reward_copy(getattr(event, "message", ""))
             if message and message not in parts:
                 parts.append(message)
         return "; ".join(parts) or "Your Garden rewards were recorded."
@@ -1218,6 +4389,7 @@ class ReviewerHookHandler:
                 QLabel,
                 QPixmap,
                 QPushButton,
+                QSize,
                 QTimer,
                 QVBoxLayout,
                 Qt,
@@ -1227,19 +4399,23 @@ class ReviewerHookHandler:
                 """Focus-safe toast whose timeout pauses while inspected."""
 
                 def enterEvent(self, hover_event: Any) -> None:
-                    timer = getattr(self, "_garden_dismiss_timer", None)
-                    if timer is not None:
-                        timer.stop()
+                    callback = getattr(self, "_garden_pause_callback", None)
+                    if callable(callback):
+                        callback()
                     super().enterEvent(hover_event)
 
                 def leaveEvent(self, hover_event: Any) -> None:
-                    timer = getattr(self, "_garden_dismiss_timer", None)
-                    if timer is not None:
-                        timer.start(GardenToastStack.HOVER_RESUME_MS)
+                    callback = getattr(self, "_garden_resume_callback", None)
+                    if callable(callback):
+                        callback()
                     super().leaveEvent(hover_event)
 
                 def mouseReleaseEvent(self, mouse_event: Any) -> None:
-                    callback = getattr(self, "_garden_dismiss_callback", None)
+                    callback = (
+                        getattr(self, "_garden_activate_callback", None)
+                        if bool(self.property("rewardSummary"))
+                        else getattr(self, "_garden_dismiss_callback", None)
+                    )
                     if (
                         mouse_event.button() == Qt.MouseButton.LeftButton
                         and callable(callback)
@@ -1263,6 +4439,7 @@ class ReviewerHookHandler:
                 return False
 
             self._reward_feedback_deferred_for_modal = False
+            self._remember_reward_toast_event(event)
             viewport_width = max(1, int(parent.width()))
             viewport_height = max(1, int(parent.height()))
             projection = self._prepare_reward_toast_queue(
@@ -1285,6 +4462,10 @@ class ReviewerHookHandler:
                 projection.overflow_count if projection.compact else 0,
             )
             toast.setProperty("rewardNotificationCount", 1)
+            toast.setProperty(
+                "rewardEventKey",
+                self._reward_history_key(event),
+            )
             toast.setProperty(
                 "findTier",
                 str(getattr(event, "tier", "") or "").strip().lower(),
@@ -1310,10 +4491,12 @@ class ReviewerHookHandler:
                 bool(str(getattr(event, "reward_detail", "") or "").strip()),
             )
             accessible_parts = [
-                str(getattr(event, "title", "") or "Anki Garden update"),
+                self._player_reward_copy(
+                    getattr(event, "title", "") or "Anki Garden update"
+                ),
                 str(getattr(event, "tier", "") or ""),
-                str(getattr(event, "reward_detail", "") or ""),
-                str(getattr(event, "message", "") or ""),
+                self._player_reward_copy(getattr(event, "reward_detail", "")),
+                self._player_reward_copy(getattr(event, "message", "")),
             ]
             if projection.compact and projection.overflow_count:
                 accessible_parts.append(
@@ -1409,7 +4592,9 @@ class ReviewerHookHandler:
 
             copy = QVBoxLayout()
             copy.setSpacing(3)
-            title = QLabel(getattr(event, "title", "") or self._reward_title(event))
+            title = QLabel(self._player_reward_copy(
+                getattr(event, "title", "") or self._reward_title(event)
+            ))
             title.setObjectName("ankiGardenRewardTitle")
             tier_text = str(getattr(event, "tier", "") or "")
             tier: Any | None = None
@@ -1436,13 +4621,15 @@ class ReviewerHookHandler:
                 copy.addLayout(header)
             else:
                 copy.addWidget(title)
-            reward_detail = str(getattr(event, "reward_detail", "") or "")
+            reward_detail = self._player_reward_copy(
+                getattr(event, "reward_detail", "")
+            )
             reward = QLabel(reward_detail)
             reward.setObjectName("ankiGardenRewardDetail")
             reward.setWordWrap(True)
             reward.setVisible(bool(reward_detail))
             copy.addWidget(reward)
-            message_text = str(getattr(event, "message", "") or "")
+            message_text = self._player_reward_copy(getattr(event, "message", ""))
             if str(getattr(event, "kind", "") or "") == "garden_find":
                 # A correlated Find is one notification even when it awards
                 # multiple typed resources. Preserve the event model while
@@ -1472,11 +4659,20 @@ class ReviewerHookHandler:
             copy.addWidget(overflow)
             row.addLayout(copy, 1)
 
-            close = QPushButton("×")
+            close = QPushButton("")
             close.setObjectName("ankiGardenRewardClose")
-            close.setFixedSize(24, 24)
+            close.setFixedSize(32, 32)
+            from ..ui.icons import garden_icon
+
+            close.setIcon(
+                garden_icon(
+                    "close",
+                    color=GARDEN_THEME["text_secondary"],
+                )
+            )
+            close.setIconSize(QSize(18, 18))
             close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            close.setAccessibleName("Dismiss Garden reward")
+            close.setAccessibleName("Close Garden reward notification")
             close.setCursor(Qt.CursorShape.PointingHandCursor)
             close.clicked.connect(
                 lambda _checked=False, target=toast:
@@ -1498,8 +4694,23 @@ class ReviewerHookHandler:
             toast._garden_dismiss_callback = (
                 lambda target=toast: self._dismiss_reward_toast(target)
             )
+            toast._garden_pause_callback = self._pause_reward_toast_stack
+            toast._garden_resume_callback = self._resume_reward_toast_stack
+            toast._garden_hover_resume_ms = GardenToastStack.HOVER_RESUME_MS
+            if projection.compact and projection.overflow_count:
+                toast._garden_activate_callback = (
+                    lambda parent=parent: self._expand_reward_summary(parent)
+                )
 
-            toast.setFixedWidth(GardenToastStack.toast_width(viewport_width))
+            toast_width = GardenToastStack.toast_width(viewport_width)
+            hud = getattr(self, "_reviewer_hud", None)
+            hud_projection = getattr(self, "_reviewer_hud_projection", None)
+            if hud is not None and not bool(getattr(hud_projection, "collapsed", False)):
+                try:
+                    toast_width = min(toast_width, max(1, int(hud.width()) - 12))
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    pass
+            toast.setFixedWidth(toast_width)
             toast.adjustSize()
             projected_visible = max(
                 1,
@@ -1538,7 +4749,7 @@ class ReviewerHookHandler:
                 "reviewer-webview-right-above-controls",
             )
             toast.setProperty("reviewerViewportMargin", 16)
-            toast.setProperty("reviewerControlClearance", 112)
+            toast.setProperty("reviewerControlClearance", 144)
             toast.setProperty("reviewerControlGap", 16)
             toast.setProperty("reviewerToastGap", GardenToastStack.GAP)
             toast.setProperty("reviewerViewportWidth", viewport_width)
@@ -1556,14 +4767,15 @@ class ReviewerHookHandler:
             toast.raise_()
             dismiss_timer = QTimer(toast)
             dismiss_timer.setSingleShot(True)
-            dismiss_timer.timeout.connect(
-                lambda toast=toast: self._dismiss_reward_toast(toast)
-            )
+            dismiss_timer.timeout.connect(self._dismiss_reward_toast_stack)
             toast._garden_dismiss_timer = dismiss_timer
             self._reward_toasts.append(toast)
             self._reward_toast = toast
             self._position_reward_toast_stack(parent)
-            dismiss_timer.start(GardenToastStack.AUTO_DISMISS_MS)
+            for live_toast in list(self._reward_toasts):
+                timer = getattr(live_toast, "_garden_dismiss_timer", None)
+                if timer is not None:
+                    timer.start(GardenToastStack.AUTO_DISMISS_MS)
             return True
         except Exception:
             logger.debug("Anki Garden: unable to show image reward feedback", exc_info=True)
@@ -1595,6 +4807,8 @@ class ReviewerHookHandler:
             "growth": "Growth icon",
             "garden_coin": "Garden Coin icon",
             "garden_coins": "Garden Coin icon",
+            "garden_pouch": "Garden Pouch artwork",
+            "morning_dew": "Morning Dew artwork",
         }.get(str(getattr(event, "asset_key", "") or ""), "Reward artwork")
 
     def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:
@@ -1605,6 +4819,7 @@ class ReviewerHookHandler:
                 "ui_growth_charge_small": "growth_charge_small",
                 "ui_growth_charge_standard": "growth_charge_standard",
                 "ui_fertilizer_basic": "fertilizer_basic",
+                "ui_rich_compost": "rich_compost",
                 "ui_booster_potion": "booster_potion",
             }.get(asset_key, asset_key)
             resolver = getattr(self.engine, "resolve_item_asset", None)
@@ -1617,7 +4832,7 @@ class ReviewerHookHandler:
                 logger.debug("Anki Garden: unable to resolve reward item art", exc_info=True)
         if asset_category == "environment" and asset_key:
             for resolver_name in (
-                "resolve_weather_preview_asset",
+                "resolve_garden_feature_preview_asset",
                 "resolve_scenery_preview_asset",
             ):
                 resolver = getattr(self.engine, resolver_name, None)
@@ -1631,11 +4846,11 @@ class ReviewerHookHandler:
                         "Anki Garden: unable to resolve Garden Find environment art",
                         exc_info=True,
                     )
-        if asset_category in {"weather", "backgrounds"} and asset_key:
+        if asset_category in {"garden_features", "weather", "backgrounds"} and asset_key:
             resolver = getattr(
                 self.engine,
-                "resolve_weather_preview_asset"
-                if asset_category == "weather"
+                "resolve_garden_feature_preview_asset"
+                if asset_category in {"garden_features", "weather"}
                 else "resolve_scenery_preview_asset",
                 None,
             )

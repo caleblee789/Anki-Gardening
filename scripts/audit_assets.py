@@ -35,15 +35,6 @@ CURRENT_SPECIES = {
     "dahlia",
 }
 STAGES = {"seed", "sprout", "young", "mature", "flowering", "rare"}
-WEATHER = {
-    "sunny",
-    "cloudy",
-    "fireflies",
-    "gentle_rain",
-    "breeze",
-    "snow_flurry",
-    "rainbow_sunshower",
-}
 SCENERY = (
     "spring",
     "summer",
@@ -56,25 +47,36 @@ SCENERY = (
 )
 EXPECTED_COUNTS = {
     "backgrounds": 9,
-    "decorations": 1,
     "plants": 60,
-    "ui": 9,
-    "weather": 7,
+    "ui": 19,
+    "garden_features": 8,
 }
 RUNTIME_ROOTS = (
     "assets/v6_storybook_gouache/",
-    "assets/support/",
 )
 
 # Largest logical display boxes used by the release UI for independently
 # composited raster artwork.  Scene plates have their own responsive viewport
-# family below; vector weather overlays are resolution independent.  Keeping
-# this table next to the production asset audit makes the Retina requirement a
-# release gate instead of a capture-review convention.
+# family below. Keeping this table next to the production asset audit makes the
+# Retina requirement a release gate instead of a capture-review convention.
 RETINA_RASTER_MAX_CSS_SIZE = {
     "plants": (300, 300),
-    "decorations": (160, 160),
+    # The shared pad is a shallow 28% x 7% scene-height strip; decoration masters
+    # in the same category are square 1024 px canvases and exceed this floor.
+    "garden_features": (210, 59),
     "ui": (96, 96),
+}
+
+# Canvas dimensions alone can hide a tiny illustration inside a large
+# transparent master.  These floors cover the largest confident-alpha plant
+# silhouette used by the reviewer HUD at two source pixels per logical pixel.
+RETINA_PLANT_MIN_VISIBLE_HEIGHT = {
+    "seed": 164,
+    "sprout": 188,
+    "young": 212,
+    "mature": 236,
+    "flowering": 260,
+    "rare": 272,
 }
 
 # Each responsive scenery plate must provide at least two source pixels for
@@ -185,6 +187,31 @@ def _validate_retina_density(rows: list[dict[str, Any]]) -> None:
                 f"{row.get('asset_id', '')} is {width}x{height}, "
                 f"requires at least {required_width}x{required_height}"
             )
+        if category != "plants":
+            continue
+        stage = str((row.get("slot") or {}).get("stage", ""))
+        required_visible_height = RETINA_PLANT_MIN_VISIBLE_HEIGHT.get(stage)
+        if required_visible_height is None:
+            raise ValueError(
+                f"Retina plant stage is unsupported: {row.get('asset_id', '')}/{stage}"
+            )
+        path = ADDON / str(row.get("file", ""))
+        with Image.open(path) as source:
+            confident = source.convert("RGBA").getchannel("A").point(
+                lambda value: 255 if value > 20 else 0
+            )
+            bounds = confident.getbbox()
+        if bounds is None:
+            raise ValueError(
+                f"Retina plant artwork has no visible alpha: {row.get('asset_id', '')}"
+            )
+        visible_height = int(bounds[3] - bounds[1])
+        if visible_height < required_visible_height:
+            raise ValueError(
+                "Retina plant silhouette is undersized: "
+                f"{row.get('asset_id', '')} has {visible_height}px visible height, "
+                f"requires at least {required_visible_height}px for {stage}"
+            )
 
 
 def _validate_background(rows: list[dict[str, Any]]) -> None:
@@ -291,6 +318,7 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
             raise ValueError(f"plant lacks placement metadata: {species}/{stage}")
         required = {
             "art_bounds",
+            "visible_bounds",
             "base_bounds",
             "support_bounds",
             "foliage_bounds",
@@ -298,11 +326,37 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
             "soil_contact",
             "interaction_bounds",
             "ground_anchor",
+            "visual_center",
+            "display_scale",
+            "contact_shadow",
+            "shadow_offset",
+            "minimum_bed_clearance",
         }
         if not required.issubset(placement) or placement.get("base_type") != "direct_soil":
             raise ValueError(f"plant placement is incomplete: {species}/{stage}")
         if placement.get("soil_contact") != placement.get("ground_anchor"):
             raise ValueError(f"plant soil contact drifts from its anchor: {species}/{stage}")
+        for point_name in ("soil_contact", "ground_anchor", "visual_center", "shadow_offset"):
+            point = placement.get(point_name)
+            if (
+                not isinstance(point, list)
+                or len(point) != 2
+                or not all(isinstance(value, (int, float)) for value in point)
+            ):
+                raise ValueError(f"plant {point_name} is invalid: {species}/{stage}")
+        if not 0.0 < float(placement.get("display_scale", 0.0)) <= 2.0:
+            raise ValueError(f"plant display scale is invalid: {species}/{stage}")
+        if not 0.0 <= float(placement.get("minimum_bed_clearance", -1.0)) <= 0.5:
+            raise ValueError(f"plant bed clearance is invalid: {species}/{stage}")
+        contact_shadow = placement.get("contact_shadow")
+        if (
+            not isinstance(contact_shadow, list)
+            or len(contact_shadow) != 2
+            or not all(isinstance(value, (int, float)) for value in contact_shadow)
+            or not 0.0 < float(contact_shadow[0]) <= 1.0
+            or not 0.0 < float(contact_shadow[1]) <= 0.25
+        ):
+            raise ValueError(f"plant contact shadow is invalid: {species}/{stage}")
 
         source_relative = str(row.get("source_master_file", ""))
         source = ROOT / source_relative
@@ -314,27 +368,12 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
 
 
 def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
-    decorations = [row for row in rows if row.get("category") == "decorations"]
-    if len(decorations) != 1 or decorations[0].get("asset_id") != "decor_lantern":
-        raise ValueError("the current bundle must contain only the Lantern decoration")
-    if decorations[0].get("file") != "assets/support/decorations/lantern.webp":
-        raise ValueError("the Lantern decoration is outside its current support path")
-
-    weather_rows = [row for row in rows if row.get("category") == "weather"]
-    observed = Counter(
-        (
-            str((row.get("slot") or {}).get("weather", "")),
-            str(row.get("quality_tier", "")),
-        )
-        for row in weather_rows
-    )
-    expected = Counter((weather, "balanced") for weather in WEATHER)
-    if observed != expected:
-        raise ValueError("weather support assets must contain one automatic balanced overlay per state")
-
     ui_rows = [row for row in rows if row.get("category") == "ui"]
     expected_ui = {
         "ui_fertilizer_basic": "assets/v6_storybook_gouache/ui/fertilizer_basic.webp",
+        "ui_rich_compost": "assets/v6_storybook_gouache/ui/rich_compost.webp",
+        "ui_garden_pouch": "assets/v6_storybook_gouache/ui/garden_pouch.webp",
+        "ui_morning_dew": "assets/v6_storybook_gouache/ui/morning_dew.webp",
         "ui_fertilizer_quality": "assets/v6_storybook_gouache/ui/fertilizer_quality.webp",
         "ui_fertilizer_magical": "assets/v6_storybook_gouache/ui/fertilizer_premium.webp",
         "ui_booster_potion": "assets/v6_storybook_gouache/ui/booster_potion.webp",
@@ -345,6 +384,13 @@ def _validate_support_assets(rows: list[dict[str, Any]]) -> None:
         "ui_nurtured_marker_spout_right": (
             "assets/v6_storybook_gouache/ui/nurtured_marker_spout_right.webp"
         ),
+        "ui_sync_review_cards": "assets/v6_storybook_gouache/ui/sync_review_cards.webp",
+        "ui_growth_resource": "assets/v6_storybook_gouache/ui/growth_resource.webp",
+        "ui_garden_coin": "assets/v6_storybook_gouache/ui/garden_coin.webp",
+        "ui_shared_growth": "assets/v6_storybook_gouache/ui/shared_growth.webp",
+        "ui_stored_growth": "assets/v6_storybook_gouache/ui/stored_growth.webp",
+        "ui_checkpoint_badge": "assets/v6_storybook_gouache/ui/checkpoint_badge.webp",
+        "ui_garden_placeholder": "assets/v6_storybook_gouache/ui/garden_placeholder.webp",
     }
     observed_ui = {
         str(row.get("asset_id", "")): str(row.get("file", "")) for row in ui_rows

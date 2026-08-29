@@ -11,16 +11,23 @@ import uuid
 from bisect import bisect_left, bisect_right
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Iterable, Mapping
 
-from .environment import DEFAULT_SCENERY_ID, DEFAULT_WEATHER_ID
+from .environment import (
+    DEFAULT_GARDEN_FEATURE_ID,
+    DEFAULT_SCENERY_ID,
+    DEFAULT_WEATHER_ID,
+    LEGACY_WEATHER_TO_GARDEN_FEATURE,
+    canonical_garden_feature_id,
+)
 from .models.state import (
     ActivePlantPeriod,
     GardenFindOutcome,
     GardenState,
+    GROWTH_STAGES,
     GROWTH_THRESHOLDS,
     MAX_PROCESSED_REVLOG_IDS,
     OnboardingProgress,
@@ -48,7 +55,9 @@ from .reward_ledger import (
 logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
-MODERN_PREVIOUS_STATE_VERSIONS = frozenset({11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+})
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
 DEFAULT_HISTORY_PAGE_SIZE = 5_000
@@ -505,7 +514,6 @@ def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
     visibility = payload.get("environment_visibility")
     if not isinstance(visibility, dict):
         visibility = {"weather": True, "scenery": True}
-    decoration = equipped.get("decoration")
     payload["loadout"] = {
         "weather_id": payload.get(
             "selected_weather", equipped.get("weather", DEFAULT_WEATHER_ID)
@@ -513,7 +521,6 @@ def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
         "scenery_id": payload.get(
             "selected_background", equipped.get("background", DEFAULT_SCENERY_ID)
         ),
-        "decoration_id": None if decoration in (None, "", "none") else decoration,
         "visibility": {
             "weather": bool(visibility.get("weather", True)),
             "scenery": bool(visibility.get("scenery", True)),
@@ -668,6 +675,494 @@ def _migrate_reward_state_payload(payload: dict[str, Any]) -> None:
         consumables.setdefault(fertilizer_id, 0)
 
 
+def _legacy_booster_card_effect_batch(
+    value: Any,
+    *,
+    migrated_at: float,
+) -> dict[str, Any] | None:
+    """Preserve one active wall-clock Booster as a full card-counted dose.
+
+    Booster Potions became card-counted in schema 22. A legacy duration cannot
+    reveal how many cards remained, so the complete fixed dose is the only
+    migration that cannot destroy paid value. Fertilizer remains timed and is
+    deliberately not handled here.
+    """
+
+    if not isinstance(value, dict):
+        return None
+    started_at = value.get("started_at")
+    expires_at = value.get("expires_at")
+    if (
+        isinstance(started_at, bool)
+        or not isinstance(started_at, (int, float))
+        or isinstance(expires_at, bool)
+        or not isinstance(expires_at, (int, float))
+        or float(started_at) > migrated_at
+        or float(expires_at) <= migrated_at
+    ):
+        return None
+    effect_id = "booster_potion"
+    cards = 100
+    growth_units = 500
+    return {
+        "effect_id": effect_id,
+        "growth_per_card_units": growth_units,
+        "total_cards": cards,
+        "remaining_cards": cards,
+        "activated_at": datetime.fromtimestamp(
+            float(started_at), tz=timezone.utc
+        ).isoformat(),
+        "source_event_key": f"schema21:{effect_id}:{int(float(started_at) * 1000)}",
+    }
+
+
+# Schema 22 briefly stored Fertilizer as card-counted batches. Timed
+# Fertilizer is authoritative again. These values intentionally live beside
+# the migration instead of importing the game engine and creating a storage
+# dependency cycle.
+_TIMED_FERTILIZER_MIGRATION_SPECS: dict[str, tuple[str, int, int, int]] = {
+    # effect id: (tier, Growth per card, full duration seconds, default cards)
+    "fertilizer_basic": ("basic", 1, 60 * 60, 100),
+    "fertilizer_quality": ("quality", 2, 2 * 60 * 60, 150),
+    "fertilizer_premium": ("premium", 3, 4 * 60 * 60, 250),
+}
+
+
+def _finite_timestamp(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) and result >= 0.0 else None
+
+
+def _timed_fertilizer_interval(value: Any) -> tuple[float, float] | None:
+    if not isinstance(value, dict):
+        return None
+    if value.get("tier") not in {"basic", "quality", "premium"}:
+        return None
+    started_at = _finite_timestamp(value.get("started_at"))
+    expires_at = _finite_timestamp(value.get("expires_at"))
+    if started_at is None or expires_at is None or started_at >= expires_at:
+        return None
+    return started_at, expires_at
+
+
+def _restore_timed_fertilizer_payload(
+    payload: dict[str, Any],
+    *,
+    migrated_at: float,
+) -> bool:
+    """Convert experimental card batches into lossless timed windows.
+
+    Every recognized batch keeps the same fraction of its full paid duration
+    as its remaining-card fraction. Converted windows begin after both the
+    migration instant and every existing unexpired timed window, preserving
+    legacy schedules and queue order. Compatibility batch fields are cleared
+    only for rows whose value was understood.
+    """
+
+    migration_time = max(0.0, float(migrated_at))
+    changed = False
+    plants = payload.get("plants")
+    for plant in plants if isinstance(plants, list) else []:
+        if not isinstance(plant, dict):
+            continue
+
+        cursor = migration_time
+        current = plant.get("fertilizer")
+        current_interval = _timed_fertilizer_interval(current)
+        if current_interval is not None and current_interval[1] > migration_time:
+            cursor = max(cursor, current_interval[1])
+        raw_history = plant.get("fertilizer_history")
+        history = list(raw_history) if isinstance(raw_history, list) else []
+        for existing in history:
+            interval = _timed_fertilizer_interval(existing)
+            if interval is not None and interval[1] > migration_time:
+                cursor = max(cursor, interval[1])
+
+        converted: list[dict[str, Any]] = []
+        for field_name in ("fertilizer_card_batches", "fertilizer_card_queue"):
+            raw_rows = plant.get(field_name)
+            if not isinstance(raw_rows, list):
+                continue
+            retained_rows: list[Any] = []
+            for raw in raw_rows:
+                if not isinstance(raw, dict):
+                    retained_rows.append(raw)
+                    continue
+                spec = _TIMED_FERTILIZER_MIGRATION_SPECS.get(
+                    str(raw.get("effect_id", ""))
+                )
+                if spec is None:
+                    retained_rows.append(raw)
+                    continue
+                tier, growth_per_card, full_duration, default_cards = spec
+                raw_total = raw.get("total_cards")
+                total_cards = (
+                    int(raw_total)
+                    if isinstance(raw_total, int)
+                    and not isinstance(raw_total, bool)
+                    and raw_total > 0
+                    else default_cards
+                )
+                raw_remaining = raw.get("remaining_cards")
+                remaining_cards = (
+                    int(raw_remaining)
+                    if isinstance(raw_remaining, int)
+                    and not isinstance(raw_remaining, bool)
+                    else total_cards
+                )
+                remaining_cards = max(0, min(total_cards, remaining_cards))
+                if remaining_cards:
+                    duration = (
+                        float(full_duration) * float(remaining_cards) / float(total_cards)
+                    )
+                    period = {
+                        "tier": tier,
+                        "growth_per_answer": growth_per_card,
+                        "started_at": cursor,
+                        "expires_at": cursor + duration,
+                    }
+                    converted.append(period)
+                    cursor = float(period["expires_at"])
+                # A recognized row, including a fully consumed one, no longer
+                # belongs to the obsolete compatibility authority.
+                changed = True
+            if retained_rows != raw_rows:
+                plant[field_name] = retained_rows
+
+        if not converted:
+            continue
+
+        current_is_live_or_queued = (
+            current_interval is not None and current_interval[1] > migration_time
+        )
+        if not current_is_live_or_queued and converted[0]["started_at"] <= migration_time:
+            # Keep an expired legacy current window in history before using the
+            # compatibility slot for the newly active paid effect.
+            if current_interval is not None:
+                history.append(current)
+            plant["fertilizer"] = converted.pop(0)
+        history.extend(converted)
+        plant["fertilizer_history"] = history
+        changed = True
+    return changed
+
+
+def _migrate_schema22_progression_payload(
+    payload: dict[str, Any],
+    *,
+    migrated_at: float | None = None,
+) -> None:
+    """Add exact Growth, daily projection, and finite progression authorities."""
+
+    migration_time = time.time() if migrated_at is None else max(0.0, float(migrated_at))
+    payload["version"] = STATE_VERSION
+    payload.setdefault("stored_growth_units", 0)
+    payload.setdefault("checkpoint_coin_carry_units", 0)
+
+    plants = payload.get("plants")
+    plant_rows = plants if isinstance(plants, list) else []
+    active_plant_id = payload.get("active_plant_id")
+    active_remainder = 0
+    for plant in plant_rows:
+        if not isinstance(plant, dict):
+            continue
+        growth = min(
+            GROWTH_THRESHOLDS[-1],
+            _legacy_nonnegative_int(plant.get("growth_points")),
+        )
+        plant.setdefault("growth_remainder_units", 0)
+        if plant.get("plant_id") == active_plant_id:
+            active_remainder = min(
+                99, _legacy_nonnegative_int(plant.get("bonus_remainder"))
+            )
+
+        checkpoint_claims: list[str] = []
+        stage_reward_claims: list[str] = []
+        for index, stage in enumerate(GROWTH_STAGES[1:], start=1):
+            start = GROWTH_THRESHOLDS[index - 1]
+            finish = GROWTH_THRESHOLDS[index]
+            if growth >= finish:
+                stage_reward_claims.append(stage)
+            for percentage in (25, 50, 75):
+                checkpoint = start + ((finish - start) * percentage // 100)
+                if growth >= checkpoint:
+                    checkpoint_claims.append(f"{stage}:{percentage}")
+        plant.setdefault("checkpoint_claims", checkpoint_claims)
+        plant.setdefault("stage_reward_claims", stage_reward_claims)
+
+        fully_grown = growth >= GROWTH_THRESHOLDS[-1]
+        completion_day: str | None = None
+        if fully_grown:
+            memories = plant.get("memories")
+            if isinstance(memories, list):
+                for memory in reversed(memories):
+                    if (
+                        isinstance(memory, dict)
+                        and memory.get("kind") == "stage"
+                        and memory.get("new_stage") == GROWTH_STAGES[-1]
+                        and isinstance(memory.get("occurred_on"), str)
+                    ):
+                        completion_day = str(memory["occurred_on"])
+                        break
+            if completion_day is None:
+                raw_day = payload.get("last_active_day")
+                completion_day = str(raw_day) if isinstance(raw_day, str) else None
+        plant.setdefault("completed_on", completion_day)
+        plant.setdefault("completed_at_ms", 0)
+        plant.setdefault("completion_cards", 0)
+        plant.setdefault("completion_active_days", 0)
+        plant.setdefault("full_bloom_reward_claimed", fully_grown)
+
+        booster_batch = _legacy_booster_card_effect_batch(
+            plant.get("booster"),
+            migrated_at=migration_time,
+        )
+        # Fertilizer remains wall-clock timed. Preserve its current and
+        # historical windows exactly; obsolete card fields remain only as a
+        # compatibility bridge for experimental schema-22 saves.
+        plant.setdefault("fertilizer_card_batches", [])
+        plant.setdefault("fertilizer_card_queue", [])
+        plant.setdefault(
+            "booster_card_batches",
+            [booster_batch] if booster_batch is not None else [],
+        )
+        plant.setdefault("booster_card_queue", [])
+
+    _restore_timed_fertilizer_payload(payload, migrated_at=migration_time)
+
+    payload.setdefault("streak_growth_remainder_units", active_remainder)
+
+    stats = payload.get("daily_stats")
+    if not isinstance(stats, dict):
+        stats = {}
+        payload["daily_stats"] = stats
+    for field_name in (
+        "answer_growth_units",
+        "instant_growth_units",
+        "applied_growth_units",
+        "redirected_growth_units",
+        "shared_growth_units",
+        "stored_growth_units",
+    ):
+        stats.setdefault(field_name, 0)
+    for field_name in (
+        "plant_applied_growth_units",
+        "plant_shared_growth_units",
+        "plant_instant_growth_units",
+    ):
+        stats.setdefault(field_name, {})
+
+    completed = bool(stats.get("completed_due_cards", False))
+    scheduler_day = stats.get("day") if isinstance(stats.get("day"), str) else ""
+    daily_completion = payload.get("daily_completion")
+    if not isinstance(daily_completion, dict):
+        daily_completion = {}
+        payload["daily_completion"] = daily_completion
+    daily_completion.setdefault("scheduler_day", scheduler_day)
+    if not daily_completion.get("scheduler_day"):
+        daily_completion["scheduler_day"] = scheduler_day
+    daily_completion.setdefault("status", "complete" if completed else "unavailable")
+    daily_completion.setdefault("obligation_projection_initialized", False)
+    daily_completion.setdefault("starting_required_cards", 0)
+    daily_completion.setdefault("starting_required_cards_completed", 0)
+    daily_completion.setdefault("remaining_new_cards", 0)
+    daily_completion.setdefault("remaining_required_reviews", 0)
+    daily_completion.setdefault("remaining_learning_steps", 0)
+    daily_completion.setdefault("future_learning_steps_before_cutoff", 0)
+    daily_completion.setdefault("next_learning_due_at_ms", 0)
+    daily_completion.setdefault("cutoff_at_ms", 0)
+    daily_completion.setdefault(
+        "cards_completed_today", _legacy_nonnegative_int(stats.get("reviewed"))
+    )
+    daily_completion.setdefault("unresolved_obligation_disappearances", 0)
+    daily_completion.setdefault("reward_claimed", completed)
+    daily_completion.setdefault(
+        "unavailable_reason", "" if completed else "legacy_projection_unavailable"
+    )
+    payload.setdefault("daily_loadout", {
+        "scheduler_day": "",
+        "locked_at_ms": 0,
+        "weather_id": "",
+        "scenery_id": "",
+        "queued_for_day": "",
+        "queued_weather_id": "",
+        "queued_scenery_id": "",
+    })
+
+    transaction_claim = any(
+        isinstance(transaction, dict)
+        and isinstance(transaction.get("event_key"), str)
+        and str(transaction["event_key"]).startswith("all_due:")
+        for transaction in (
+            payload.get("currency_transactions")
+            if isinstance(payload.get("currency_transactions"), list)
+            else []
+        )
+    )
+    payload.setdefault(
+        "first_daily_completion_reward_claimed", completed or transaction_claim
+    )
+    legacy_ultra = max(
+        _legacy_nonnegative_int(payload.get("garden_find_ultra_misses")),
+        _legacy_nonnegative_int(payload.get("ultra_pity_misses")),
+    )
+    payload.setdefault("environment_pity_misses", {
+        "rare": 0,
+        "very_rare": 0,
+        "ultra": legacy_ultra,
+    })
+    _migrate_schema23_garden_features_payload(payload)
+
+
+def _migrate_schema23_garden_features_payload(payload: dict[str, Any]) -> None:
+    """Replace persisted Weather ownership with canonical Garden Decorations.
+
+    The transform is deliberately idempotent. It maps only known legacy item
+    identities and canonical fields, so unrelated extension-owned state is
+    preserved verbatim.
+    """
+
+    payload["version"] = STATE_VERSION
+    inventory = payload.get("inventory")
+    if not isinstance(inventory, dict):
+        inventory = {}
+        payload["inventory"] = inventory
+    legacy_owned = inventory.pop("weather", [])
+    current_owned = inventory.get("garden_features", [])
+    owned = [
+        DEFAULT_GARDEN_FEATURE_ID,
+        *(
+            legacy_owned if isinstance(legacy_owned, list) else []
+        ),
+        *(
+            current_owned if isinstance(current_owned, list) else []
+        ),
+    ]
+    inventory["garden_features"] = list(dict.fromkeys(
+        canonical_garden_feature_id(item)
+        for item in owned
+        if isinstance(item, str) and item
+    ))
+
+    loadout = payload.get("loadout")
+    if not isinstance(loadout, dict):
+        loadout = {}
+        payload["loadout"] = loadout
+    raw_feature = loadout.pop(
+        "weather_id",
+        payload.pop("selected_weather", DEFAULT_GARDEN_FEATURE_ID),
+    )
+    loadout["garden_feature_id"] = canonical_garden_feature_id(
+        loadout.get("garden_feature_id", raw_feature)
+    ) or DEFAULT_GARDEN_FEATURE_ID
+    visibility = loadout.get("visibility")
+    if not isinstance(visibility, dict):
+        visibility = {}
+    legacy_visibility = payload.get("environment_visibility")
+    legacy_visibility = (
+        legacy_visibility if isinstance(legacy_visibility, dict) else {}
+    )
+    legacy_visible = visibility.pop(
+        "weather",
+        payload.pop(
+            "show_garden_feature",
+            payload.pop(
+                "show_weather",
+                legacy_visibility.get("weather", True),
+            ),
+        ),
+    )
+    visibility.setdefault("garden_feature", bool(legacy_visible))
+    visibility.setdefault("scenery", True)
+    loadout["visibility"] = visibility
+    payload.pop("environment_visibility", None)
+
+    schedule = payload.get("daily_loadout")
+    if not isinstance(schedule, dict):
+        schedule = {}
+        payload["daily_loadout"] = schedule
+    schedule["garden_feature_id"] = canonical_garden_feature_id(
+        schedule.get("garden_feature_id", schedule.pop("weather_id", ""))
+    )
+    schedule["pending_garden_feature_id"] = canonical_garden_feature_id(
+        schedule.get(
+            "pending_garden_feature_id",
+            schedule.pop("queued_weather_id", ""),
+        )
+    )
+
+    equipped = payload.get("equipped")
+    if isinstance(equipped, dict):
+        equipped.pop("weather", None)
+        equipped["garden_feature"] = loadout["garden_feature_id"]
+
+    def migrate_item_field(records: object, *field_names: str) -> None:
+        if not isinstance(records, (list, dict)):
+            return
+        rows = records.values() if isinstance(records, dict) else records
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            for field_name in field_names:
+                value = row.get(field_name)
+                if isinstance(value, str) and value in LEGACY_WEATHER_TO_GARDEN_FEATURE:
+                    row[field_name] = canonical_garden_feature_id(value)
+            if row.get("environment_kind") == "weather":
+                row["environment_kind"] = "garden_feature"
+            if row.get("asset_category") == "weather":
+                row["asset_category"] = "garden_features"
+
+    migrate_item_field(payload.get("garden_find_outcomes"), "item_id", "reward_id")
+    migrate_item_field(payload.get("recent_reward_receipts"), "item_id", "source_id")
+    migrate_item_field(payload.get("completed_purchase_requests"), "item_id")
+    migrate_item_field(payload.get("pending_feedback"), "item_id", "asset_key")
+
+    claims = payload.get("daily_environment_claims")
+    if isinstance(claims, dict):
+        payload["daily_environment_claims"] = {
+            canonical_garden_feature_id(key): value
+            for key, value in claims.items()
+        }
+    _migrate_schema25_decoration_bonus_payload(payload)
+
+
+def _migrate_schema25_decoration_bonus_payload(payload: dict[str, Any]) -> None:
+    """Split the prior combined decoration choice without losing its value."""
+
+    payload["version"] = STATE_VERSION
+    loadout = payload.get("loadout")
+    if not isinstance(loadout, dict):
+        loadout = {}
+        payload["loadout"] = loadout
+    prior = canonical_garden_feature_id(
+        loadout.pop("garden_feature_id", loadout.pop("weather_id", ""))
+    ) or DEFAULT_GARDEN_FEATURE_ID
+    loadout.setdefault("displayed_garden_feature_id", prior)
+    loadout.setdefault("active_bonus_garden_feature_id", prior)
+    visibility = loadout.get("visibility")
+    if not isinstance(visibility, dict):
+        visibility = {}
+    visibility.setdefault("garden_feature", True)
+    visibility.setdefault("scenery", True)
+    loadout["visibility"] = visibility
+    payload.setdefault("wind_chime_progress", 0)
+    payload.setdefault("watering_station_progress", 0)
+    payload.setdefault("firefly_lantern_progress", 0)
+    payload.setdefault("prism_pending_growth_units", 0)
+    payload.setdefault("prism_released_anki_day_id", "")
+    schedule = payload.get("daily_loadout")
+    if not isinstance(schedule, dict):
+        schedule = {}
+        payload["daily_loadout"] = schedule
+    # Existing scenery remains locked, but the revised mechanical bonus starts
+    # only with the first eligible post-update answer.
+    schedule["garden_bonus_anki_day_id"] = ""
+    schedule["garden_bonus_locked_at_ms"] = 0
+    schedule["garden_feature_id"] = ""
+
+
 def migrate_previous_state(raw: Any) -> GardenState:
     """Convert the supported schema-10 release into the current state contract.
 
@@ -712,7 +1207,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
         })
     current_inventory = {
         key: value for key, value in legacy_inventory.items()
-        if key in {"pots", "backgrounds", "decorations", "weather"}
+        if key in {"pots", "backgrounds", "weather"}
     }
     payload = {
         "version": STATE_VERSION,
@@ -774,6 +1269,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
     }
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
+    _migrate_schema22_progression_payload(payload)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -783,7 +1279,7 @@ def migrate_modern_state(
     migrated_at: float | None = None,
     onboarding_version: Any = 0,
 ) -> GardenState:
-    """Add current preservation boundaries to a schema 11-20 state.
+    """Add current preservation boundaries to a previous modern state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -793,19 +1289,36 @@ def migrate_modern_state(
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11 through 20 can use the modern migration")
+        raise ValueError("only previous modern schemas can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    if source_version == 24:
+        _migrate_schema25_decoration_bonus_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
+    if source_version == 23:
+        _migrate_schema25_decoration_bonus_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
+    if source_version == 22:
+        _migrate_schema23_garden_features_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
+    if source_version == 21:
+        _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
     if source_version == 20:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_reward_state_payload(payload)
+        _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
         return GardenState.from_dict(payload)
     if source_version == 19:
         payload["version"] = STATE_VERSION
         payload.setdefault("completed_purchase_requests", [])
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
+        _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
         return GardenState.from_dict(payload)
     if source_version in {17, 18}:
         # Schemas 17 and 18 already own every progression, onboarding, and
@@ -816,6 +1329,7 @@ def migrate_modern_state(
         _migrate_loadout_payload(payload)
         _migrate_growth_accounting_payload(payload)
         _migrate_reward_state_payload(payload)
+        _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
         return GardenState.from_dict(payload)
     _add_legacy_fertilizer_activation_boundaries(
         payload,
@@ -825,6 +1339,7 @@ def migrate_modern_state(
     payload.setdefault("eligible_reward_count", 0)
     payload.setdefault("ultra_pity_misses", 0)
     payload.setdefault("daily_environment_claims", {})
+    payload.setdefault("environment_completion_counts", {})
     payload.setdefault("environment_visibility", {"weather": True, "scenery": True})
     payload.setdefault("garden_name", "My Garden")
     payload.setdefault("completed_purchase_requests", [])
@@ -888,6 +1403,7 @@ def migrate_modern_state(
     payload["revlog_ledger_migration_pending"] = True
     _migrate_loadout_payload(payload)
     _migrate_reward_state_payload(payload)
+    _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
     return _materialize_unlocked_species(GardenState.from_dict(payload))
 
 
@@ -897,14 +1413,59 @@ class DueObligationStatus:
     learning_count: int = 0
     available: bool = True
     error: str = ""
+    future_learning_count: int = 0
+    next_learning_due_at_ms: int = 0
+    cutoff_at_ms: int = 0
+    new_count: int = 0
+    committed_card_ids: tuple[int, ...] = ()
+    card_transitions: tuple[tuple[int, str], ...] = ()
+    buried_sibling_card_ids: tuple[int, ...] = ()
+
+    @property
+    def committed_card_classification_complete(self) -> bool:
+        """Whether every requested card has one usable post-answer state."""
+
+        requested = {
+            max(0, int(card_id)) for card_id in self.committed_card_ids
+            if max(0, int(card_id)) > 0
+        }
+        if not requested:
+            return False
+        transitions = {
+            max(0, int(card_id)): str(state)
+            for card_id, state in self.card_transitions
+            if max(0, int(card_id)) > 0
+        }
+        return requested == set(transitions) and all(
+            transitions[card_id] in {
+                "completed", "remaining", "buried", "suspended"
+            }
+            for card_id in requested
+        )
 
     @property
     def remaining(self) -> int:
-        return max(0, int(self.review_count)) + max(0, int(self.learning_count))
+        return (
+            max(0, int(self.new_count))
+            + max(0, int(self.learning_count))
+            + max(0, int(self.review_count))
+        )
 
     @property
     def complete(self) -> bool:
         return self.available and not self.error and self.remaining == 0
+
+    @property
+    def currently_due(self) -> int:
+        return (
+            max(0, int(self.new_count))
+            + max(0, int(self.review_count))
+            + max(
+                0,
+                int(self.learning_count)
+                - max(0, int(self.future_learning_count)),
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -1012,15 +1573,64 @@ class GardenStorage:
             try:
                 ledger = RewardLedger(self.database_path)
                 snapshot = ledger.load_state_snapshot()
-                if snapshot is None or snapshot.schema_version != STATE_VERSION:
+                if snapshot is None:
+                    raise RewardLedgerSchemaError(
+                        "The Garden state snapshot uses an unsupported schema."
+                    )
+                if snapshot.schema_version in MODERN_PREVIOUS_STATE_VERSIONS:
+                    backup = self.database_path.with_suffix(
+                        f".schema-{snapshot.schema_version}.legacy-{time.time_ns()}.sqlite3"
+                    )
+                    try:
+                        ledger.backup_to(backup)
+                    except Exception as backup_error:
+                        raise StatePreservationError(
+                            "Anki Garden could not preserve its legacy reward database."
+                        ) from backup_error
+                    state = migrate_modern_state(
+                        dict(snapshot.payload), migrated_at=time.time()
+                    )
+                    committed = ledger.commit_state(
+                        self._bounded_state_payload(state),
+                        schema_version=STATE_VERSION,
+                        expected_revision=snapshot.revision,
+                    )
+                    ledger.integrity_check()
+                    self._reward_ledger = ledger
+                    self._ledger_revision = committed.revision
+                    self._refresh_reanswer_hint_cache(state)
+                    self._refresh_recent_find_cache(state)
+                    logger.info(
+                        "Anki Garden: migrated authoritative schema %s at %s to schema %s",
+                        snapshot.schema_version, backup,
+                        STATE_VERSION,
+                    )
+                    return state
+                if snapshot.schema_version != STATE_VERSION:
                     raise RewardLedgerSchemaError(
                         "The Garden state snapshot uses an unsupported schema."
                     )
                 self._reward_ledger = ledger
-                self._ledger_revision = snapshot.revision
-                state = _materialize_unlocked_species(
-                    GardenState.from_dict(dict(snapshot.payload))
+                payload = deepcopy(dict(snapshot.payload))
+                restored_timed_fertilizer = _restore_timed_fertilizer_payload(
+                    payload,
+                    migrated_at=time.time(),
                 )
+                state = _materialize_unlocked_species(
+                    GardenState.from_dict(payload)
+                )
+                if restored_timed_fertilizer:
+                    committed = ledger.commit_state(
+                        self._bounded_state_payload(state),
+                        schema_version=STATE_VERSION,
+                        expected_revision=snapshot.revision,
+                    )
+                    self._ledger_revision = committed.revision
+                    logger.info(
+                        "Anki Garden: restored timed Fertilizer from experimental schema-22 card effects"
+                    )
+                else:
+                    self._ledger_revision = snapshot.revision
                 self._refresh_reanswer_hint_cache(state)
                 self._refresh_recent_find_cache(state)
                 return state
@@ -1529,7 +2139,12 @@ class GardenStorage:
                         version, backup, STATE_VERSION,
                     )
                     return GardenState()
-                return _materialize_unlocked_species(GardenState.from_dict(raw))
+                payload = deepcopy(raw)
+                _restore_timed_fertilizer_payload(
+                    payload,
+                    migrated_at=time.time(),
+                )
+                return _materialize_unlocked_species(GardenState.from_dict(payload))
         except StatePreservationError:
             raise
         except Exception:
@@ -1606,13 +2221,23 @@ class GardenStorage:
                 raise StatePreservationError(
                     "That development backup uses an unsupported schema."
                 )
-            state = GardenState.from_dict(dict(snapshot.payload))
+            payload = deepcopy(dict(snapshot.payload))
+            _restore_timed_fertilizer_payload(
+                payload,
+                migrated_at=time.time(),
+            )
+            state = GardenState.from_dict(payload)
             state.pending_reanswer_lineages = reanswer_hints
             return state
         raw = json.loads(candidate.read_text("utf-8"))
         if not isinstance(raw, dict) or int(raw.get("version", -1)) != STATE_VERSION:
             raise StatePreservationError("That development backup uses an unsupported schema.")
-        return GardenState.from_dict(raw)
+        payload = deepcopy(raw)
+        _restore_timed_fertilizer_payload(
+            payload,
+            migrated_at=time.time(),
+        )
+        return GardenState.from_dict(payload)
 
     def restore_development_backup(self, path: Path) -> GardenState:
         """Atomically restore both bounded state and exact reward authority."""
@@ -1656,8 +2281,21 @@ class GardenStorage:
                 raise StatePreservationError(
                     "The restored database uses an unsupported schema."
                 )
-            self._ledger_revision = snapshot.revision
-            restored = GardenState.from_dict(dict(snapshot.payload))
+            payload = deepcopy(dict(snapshot.payload))
+            restored_timed_fertilizer = _restore_timed_fertilizer_payload(
+                payload,
+                migrated_at=time.time(),
+            )
+            restored = GardenState.from_dict(payload)
+            if restored_timed_fertilizer:
+                committed = self._reward_ledger.commit_state(
+                    self._bounded_state_payload(restored),
+                    schema_version=STATE_VERSION,
+                    expected_revision=snapshot.revision,
+                )
+                self._ledger_revision = committed.revision
+            else:
+                self._ledger_revision = snapshot.revision
             self._refresh_reanswer_hint_cache(restored)
             self._refresh_recent_find_cache(restored)
             self.state = restored
@@ -1917,7 +2555,7 @@ class GardenStorage:
         except Exception as error:
             logger.exception("Anki Garden: unable to prove the local review answer")
             raise RevlogReadError(
-                "Anki Garden could not prove the local review answer."
+                "Anki Garden could not verify this card."
             ) from error
 
     def deck_ids_for_cards(self, card_ids: Any) -> dict[int, int]:
@@ -2266,6 +2904,26 @@ class GardenStorage:
             raise SchedulerBoundaryError("Anki's scheduler-day cutoff is invalid.")
         return start, cutoff
 
+    def reviews_today(self) -> int:
+        """Return the authoritative all-decks scheduler-day review count."""
+
+        collection = getattr(self.mw, "col", None)
+        if collection is None or getattr(collection, "db", None) is None:
+            raise RevlogReadError("Anki review history is not available yet.")
+        day_start_ms, day_end_ms = self.current_scheduler_day_bounds_ms()
+        try:
+            count = collection.db.scalar(
+                "select count(*) from revlog where id >= ? and id < ? "
+                "and type in (0, 1, 2, 3)",
+                int(day_start_ms),
+                int(day_end_ms),
+            )
+            return max(0, int(count or 0))
+        except Exception as error:
+            raise RevlogReadError(
+                "Anki Garden could not count today's review history."
+            ) from error
+
     def current_day_end_ms(self) -> int:
         collection = getattr(self.mw, "col", None)
         if collection is None or getattr(collection, "sched", None) is None:
@@ -2346,21 +3004,142 @@ class GardenStorage:
         except Exception:
             return 0
 
-    def due_obligations(self) -> DueObligationStatus:
-        """Return the live collection-wide all-due obligation set.
+    @staticmethod
+    def _post_answer_card_state(
+        *,
+        queue: int,
+        due: int,
+        scheduler_day_index: int,
+        cutoff_seconds: int,
+    ) -> str:
+        """Classify one committed card against the unified Today scope.
 
-        Unseen new cards are excluded. Review counts come from Anki's deck tree,
-        which applies active deck limits and includes filtered decks. Learning and
-        relearning cards remain obligations through the scheduler-day cutoff even
-        when an intraday step is not available at this exact second. Negative queue
-        values (suspended/buried) are deliberately excluded.
+        The classification is deliberately conservative. Buried and suspended
+        cards are not completed obligations, and unknown queue kinds cannot be
+        used to prove the final daily reward.
+        """
+
+        normalized_queue = int(queue)
+        normalized_due = int(due)
+        if normalized_queue in {-3, -2}:
+            return "buried"
+        if normalized_queue == -1:
+            return "suspended"
+        if normalized_queue == 0:
+            return "remaining"
+        if normalized_queue == 1:
+            return (
+                "remaining"
+                if normalized_due < max(0, int(cutoff_seconds))
+                else "completed"
+            )
+        if normalized_queue in {2, 3}:
+            return (
+                "remaining"
+                if normalized_due <= max(0, int(scheduler_day_index))
+                else "completed"
+            )
+        return "unknown"
+
+    @classmethod
+    def _committed_card_transition_snapshot(
+        cls,
+        collection: Any,
+        card_ids: Iterable[int],
+        *,
+        scheduler_day_index: int,
+        cutoff_seconds: int,
+    ) -> tuple[tuple[tuple[int, str], ...], tuple[int, ...]]:
+        """Return post-answer card states and explicitly related buried siblings."""
+
+        requested = tuple(sorted({
+            int(card_id)
+            for card_id in card_ids
+            if isinstance(card_id, int)
+            and not isinstance(card_id, bool)
+            and int(card_id) > 0
+        }))
+        if not requested:
+            return (), ()
+        rows_by_id: dict[int, tuple[int, int, int]] = {}
+        for offset in range(0, len(requested), 900):
+            chunk = requested[offset:offset + 900]
+            placeholders = ",".join("?" for _value in chunk)
+            rows = collection.db.all(
+                "select id, nid, queue, due from cards where id in "
+                f"({placeholders})",
+                *chunk,
+            )
+            for raw_card_id, raw_note_id, raw_queue, raw_due in rows:
+                try:
+                    card_id = int(raw_card_id)
+                    if card_id not in requested:
+                        continue
+                    rows_by_id[card_id] = (
+                        int(raw_note_id), int(raw_queue), int(raw_due)
+                    )
+                except (TypeError, ValueError):
+                    continue
+        transitions = tuple(
+            (
+                card_id,
+                cls._post_answer_card_state(
+                    queue=rows_by_id[card_id][1],
+                    due=rows_by_id[card_id][2],
+                    scheduler_day_index=scheduler_day_index,
+                    cutoff_seconds=cutoff_seconds,
+                ) if card_id in rows_by_id else "unknown",
+            )
+            for card_id in requested
+        )
+        note_ids = tuple(sorted({
+            note_id for note_id, _queue, _due in rows_by_id.values()
+            if note_id > 0
+        }))
+        buried_siblings: set[int] = set()
+        for offset in range(0, len(note_ids), 900):
+            chunk = note_ids[offset:offset + 900]
+            placeholders = ",".join("?" for _value in chunk)
+            rows = collection.db.all(
+                "select id from cards where nid in "
+                f"({placeholders}) and queue in (-3, -2)",
+                *chunk,
+            )
+            for row in rows:
+                raw_card_id = row[0] if isinstance(row, (tuple, list)) else row
+                try:
+                    card_id = int(raw_card_id)
+                except (TypeError, ValueError):
+                    continue
+                if card_id > 0 and card_id not in requested:
+                    buried_siblings.add(card_id)
+        return transitions, tuple(sorted(buried_siblings))
+
+    def due_obligations(
+        self,
+        *,
+        committed_card_ids: Iterable[int] = (),
+    ) -> DueObligationStatus:
+        """Return the live collection-wide Today’s Cards obligation set.
+
+        Scheduler-available New, Learn, and Review counts come from Anki's deck
+        tree, which applies active deck limits and includes filtered decks.
+        Learning and relearning cards remain obligations through the scheduler-day
+        cutoff even when an intraday step is not available at this exact second.
+        Negative queue values (suspended/buried) are deliberately excluded.
         """
         collection = getattr(self.mw, "col", None)
         if collection is None or getattr(collection, "db", None) is None or getattr(collection, "sched", None) is None:
-            return DueObligationStatus(available=False, error="Open an Anki collection to check due reviews.")
+            return DueObligationStatus(
+                available=False,
+                error=(
+                    "Anki Garden could not verify today’s cards. "
+                    "Normal Garden Growth is unaffected."
+                ),
+            )
         try:
             tree = collection.sched.deck_due_tree()
-            review_count, tree_learning = self._due_tree_totals(tree)
+            new_count, tree_learning, review_count = self._due_tree_totals(tree)
             end_ms = self.current_day_end_ms()
             today_index = self.scheduler_day_index()
             if end_ms <= 0:
@@ -2373,15 +3152,71 @@ class GardenStorage:
                 today_index,
             )
             learning_count = max(max(0, int(tree_learning)), max(0, int(intraday or 0)))
-            return DueObligationStatus(max(0, int(review_count)), learning_count)
+            future_learning = max(0, learning_count - max(0, int(tree_learning)))
+            next_due_ms = 0
+            if future_learning:
+                now_ms = max(0, int(time.time() * 1000))
+                next_due_seconds = collection.db.scalar(
+                    "select min(due) from cards where queue = 1 and due > ? and due < ?",
+                    int(now_ms / 1000),
+                    int(end_ms / 1000),
+                )
+                if next_due_seconds:
+                    next_due_ms = max(0, int(next_due_seconds) * 1000)
+            normalized_card_ids = tuple(sorted({
+                int(card_id)
+                for card_id in committed_card_ids
+                if isinstance(card_id, int)
+                and not isinstance(card_id, bool)
+                and int(card_id) > 0
+            }))
+            card_transitions: tuple[tuple[int, str], ...] = ()
+            buried_sibling_card_ids: tuple[int, ...] = ()
+            if normalized_card_ids:
+                try:
+                    (
+                        card_transitions,
+                        buried_sibling_card_ids,
+                    ) = self._committed_card_transition_snapshot(
+                        collection,
+                        normalized_card_ids,
+                        scheduler_day_index=today_index,
+                        cutoff_seconds=int(end_ms / 1000),
+                    )
+                except Exception:
+                    # Aggregate scheduler counts remain useful for progress,
+                    # but a final reward must fail closed when the committed
+                    # card identities cannot be classified.
+                    logger.debug(
+                        "Anki Garden: committed card transition classification "
+                        "unavailable",
+                        exc_info=True,
+                    )
+            return DueObligationStatus(
+                review_count=max(0, int(review_count)),
+                learning_count=learning_count,
+                new_count=max(0, int(new_count)),
+                future_learning_count=future_learning,
+                next_learning_due_at_ms=next_due_ms,
+                cutoff_at_ms=max(0, int(end_ms)),
+                committed_card_ids=normalized_card_ids,
+                card_transitions=card_transitions,
+                buried_sibling_card_ids=buried_sibling_card_ids,
+            )
         except Exception:
             logger.exception("Anki Garden: unable to evaluate all-due obligations")
-            return DueObligationStatus(available=False, error="Anki could not evaluate all due reviews.")
+            return DueObligationStatus(
+                available=False,
+                error=(
+                    "Anki Garden could not verify today’s cards. "
+                    "Normal Garden Growth is unaffected."
+                ),
+            )
 
     @classmethod
-    def _due_tree_totals(cls, tree: Any) -> tuple[int, int]:
+    def _due_tree_totals(cls, tree: Any) -> tuple[int, int, int]:
         if tree is None:
-            return 0, 0
+            return 0, 0, 0
         children = list(getattr(tree, "children", []) or [])
         try:
             deck_id = int(getattr(tree, "deck_id", getattr(tree, "did", 0)) or 0)
@@ -2389,8 +3224,22 @@ class GardenStorage:
             deck_id = 0
         if deck_id == 0 and children:
             totals = [cls._due_tree_totals(child) for child in children]
-            return sum(item[0] for item in totals), sum(item[1] for item in totals)
-        review = max(0, int(getattr(tree, "review_count", getattr(tree, "rev", 0)) or 0))
-        learning = max(0, int(getattr(tree, "learn_count", getattr(tree, "lrn", 0)) or 0))
+            return (
+                sum(item[0] for item in totals),
+                sum(item[1] for item in totals),
+                sum(item[2] for item in totals),
+            )
+        new = max(
+            0,
+            int(getattr(tree, "new_count", getattr(tree, "new", 0)) or 0),
+        )
+        review = max(
+            0,
+            int(getattr(tree, "review_count", getattr(tree, "rev", 0)) or 0),
+        )
+        learning = max(
+            0,
+            int(getattr(tree, "learn_count", getattr(tree, "lrn", 0)) or 0),
+        )
         # DeckTreeNode counts include descendants; do not sum children again.
-        return review, learning
+        return new, learning, review

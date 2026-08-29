@@ -103,7 +103,7 @@ def _repack_occlusions(payload: dict[str, Any]) -> None:
         str(row["file"])
         for row in payload.get("assets", [])
         if isinstance(row, dict)
-        and row.get("category") in {"plants", "ui", "decorations"}
+        and row.get("category") in {"plants", "ui"}
         and str(row.get("file", "")).endswith(".webp")
     ]
     _write_baseline(sorted(set(primary) | set(paths)))

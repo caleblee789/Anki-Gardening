@@ -1,70 +1,82 @@
 # Anki Garden progression, rewards, and effects
 
-> Current working-tree reference for schema 21, reviewed 2026-08-27. This
-> describes active player-facing mechanics. Development-only population tools
-> and retired compatibility fields are excluded.
+> Current working-tree reference for schema 25. This describes active
+> player-facing mechanics. Development tools and retired compatibility fields
+> are excluded.
 
-## At a glance
+## The three Growth concepts
 
-An eligible card answer normally produces:
+### Answer Growth
 
-**10 base Growth + streak Growth + Fertilizer + Booster Potion + equipped
-Weather + equipped Scenery**, capped by the nurtured plant's remaining distance
-to Rare.
+Each eligible completed card calculates:
 
-- The nurtured unfinished plant receives the full normal award.
-- Every other planted, unfinished plant separately receives exactly 20% of that
-  same award. Fractional fifths persist until they become whole Growth.
-- Garden Find Growth, all-due Growth, and Growth Charges are direct Growth.
-  They do not receive study modifiers and do not fan out to other plants.
-- Crossing a plant stage by any Growth source grants that stage's Garden Coins.
-- Garden Coins, items, achievements, and collectible unlocks can stack on the
-  same answer when their independent conditions are met.
+**10 base Growth + streak + Fertilizer + Booster Potion + Garden Bonus + Scenery**
 
-## Activation and eligible answers
+- Again, Hard, Good, and Easy give equal ordinary Growth. Rate cards honestly.
+- The nurtured unfinished plant receives the full award.
+- Every other planted plant creates a separate 20% Shared Growth share.
+- A plant still growing receives its own share. A Full Bloom plant’s share is
+  divided exactly among all planted plants still growing, including the
+  nurtured plant.
+- Shared fractions and hundredth-Growth values are preserved exactly.
 
-- Growth and repeatable rewards begin only after the learner completes starter
-  setup and chooses an unfinished plant to nurture. Earlier Growth, recurring
-  rewards, and Garden Finds are not backfilled.
-- New, learning, relearning, and review answers all count. Again, Hard, Good,
-  and Easy all give the same 10 base Growth; answer quality affects accuracy
-  statistics and recall achievements, not ordinary Growth.
-- The Anki day follows Anki's configured next-day cutoff. One eligible answer
-  makes the day active for streak purposes.
-- The current streak and derivable one-time achievements are reconstructed from
-  authoritative Anki history. All Clear, recurring rewards, ordinary Growth,
-  and Garden Finds are never historically inferred.
-- If no unfinished plant is nurtured, ordinary Growth pauses. Coin rewards,
-  non-Growth Finds, daily item gifts, and achievement tracking can still
-  continue after progression has been activated.
+### Instant Growth
 
-## Plant Growth and stages
+Garden Finds, completion effects, Growth Charges, and other fixed awards grant
+Instant Growth. It receives no card modifiers and is not shared.
 
-| Stage | Total Growth | Base stage reward | With Autumn Hearth |
-|---|---:|---:|---:|
-| Seed | 0 | — | — |
-| Sprout | 500 | 5 Coins | 6 Coins |
-| Young | 2,500 | 10 Coins | 13 Coins |
-| Mature | 8,000 | 20 Coins | 25 Coins |
-| Flowering | 20,000 | 35 Coins | 44 Coins |
-| Rare | 50,000 | 50 Coins | 63 Coins |
+### Milestone rewards
 
-- Rare is final and all Growth is capped at 50,000.
-- A single award can cross multiple stages and grants every crossed stage
-  reward. Passive Growth can also trigger a stage reward on another plant.
-- Autumn Hearth increases stage Coins only by 25%, with half-Coins rounded up.
-  It does not boost daily, achievement, all-due, or Garden Find Coins.
-- The 25%, 50%, and 75% points within a stage produce progress feedback only.
-  They do not grant currency or items.
-- Reaching Rare clears that plant as the nurture target; another unfinished
-  plant must be selected for ordinary Growth to resume.
+Today’s Cards, streak cycles, plant checkpoints, stage completion,
+achievements, and environment discoveries grant Coins, items, or collection
+progress. These rewards remain separate from Growth calculation.
 
-## Anki streak Growth
+## Activation and value protection
 
-The streak percentage applies only to the 10 base Growth. Fractional bonuses
-are carried per plant, so nothing is lost to rounding.
+- Growth and repeatable rewards begin after starter setup and the first Nurture
+  selection. Earlier progression is not backfilled.
+- New, learning, relearning, and review cards all count when eligible.
+- Every eligible completed card earns its full calculated value after
+  progression is active.
+- Growth first fills its intended plant, then continues through planted
+  unfinished plants in slot order. Any remainder enters **Stored Growth**.
+- Stored Growth waits for an explicit Nurture choice after a no-target period.
+  Overflow caused by Full Bloom continues automatically.
+- Shared Growth is calculated from the original Answer Growth, not from the
+  amount the current plant could accept.
+- Fertilizer time runs continuously after activation; Booster card counts
+  decrease only when the Potion actually applies.
 
-| Active streak | Bonus | Long-run base + streak per answer |
+## Plant Growth and checkpoints
+
+| Stage reached | Total Growth | 25% | 50% | 75% | Completion | Stage pool |
+|---|---:|---:|---:|---:|---:|---:|
+| Sprout | 500 | 1 | 1 | 1 | 2 | 5 Coins |
+| Young | 2,500 | 2 | 2 | 2 | 4 | 10 Coins |
+| Mature | 8,000 | 4 | 4 | 4 | 8 | 20 Coins |
+| Flowering | 20,000 | 7 | 7 | 7 | 14 | 35 Coins |
+| Full Bloom | 50,000 | 10 | 10 | 10 | 20 | 50 Coins |
+
+- Internal persistence retains the legacy final-stage identifier; all
+  player-facing copy says **Full Bloom**.
+- A single Growth event may cross and reward several checkpoints or stages.
+- Autumn Hearth adds 50% to checkpoint and stage Coins. Fractional bonus Coins
+  carry between payouts instead of being rounded independently.
+- The complete base total remains 120 Coins per plant.
+- The final stage shows visual progress every 10%, with Coin payouts at 25%,
+  50%, 75%, and completion.
+- Full Bloom also grants one Small Growth Charge, a permanent collection card,
+  completion statistics, and automatic selection of the next planted
+  unfinished plant.
+
+Species are cosmetic. Every species uses identical Growth and reward rules.
+
+## Anki streak
+
+The streak percentage applies only to the 10 base Growth. Hundredth-Growth
+precision preserves fractional value.
+
+| Active streak | Bonus | Base plus streak per card |
 |---|---:|---:|
 | Days 1–6 | 0% | 10 |
 | Days 7–13 | +5% | 10.5 |
@@ -73,163 +85,176 @@ are carried per plant, so nothing is lost to rounding.
 | Days 100–364 | +20% | 12 |
 | Day 365 onward | +25% | 12.5 |
 
-Missing an active Anki day resets the next active day to streak day 1.
+Missing an active Anki day resets only the bonus. Plants, Coins, Stored Growth,
+completed stages, and collection progress remain unchanged.
 
-## Recurring and stage rewards
+## Today’s Cards and recurring rewards
 
-| Trigger | Reward | Repeatability and conditions |
+An Anki day follows Anki's configured next-day cutoff.
+
+| Trigger | Reward | Conditions |
 |---|---|---|
-| First eligible answer of an Anki day | 2 Garden Coins | Once per active day |
+| First eligible completed card | 2 Garden Coins | Once per active Anki day |
 | Every seventh streak day | 10 Garden Coins | Days 7, 14, 21, and so on |
-| Finish all due cards | 10 Garden Coins | Once per eligible Anki day |
-| Plant reaches a new stage | 5 / 10 / 20 / 35 / 50 Garden Coins | Once per stage, per plant; Autumn Hearth can boost this |
-| Standard Garden Find | Coins, direct Growth, or a consumable | Up to three hits per Anki day |
-| Environment Garden Find | One unowned Weather or Scenery item | Independent of the Standard pool |
-| Achievement | Its one-time reward bundle | Once per achievement |
+| Today’s Cards complete | 10 Garden Coins plus the locked Scenery completion gift | Once per eligible Anki day |
+| First valid completion | Additional 5 Garden Coins through **Review Day Complete** | Live-only; never backfilled |
 
-The day-7 achievement and the first seven-day cycle are one integrated 10-Coin
-payout, not two separate 10-Coin rewards.
+Today’s Cards is a live collection-wide state:
 
-### All-due details
+- Scheduler-available New, Learning, and Review cards count within Anki's
+  active collection-wide deck limits, including filtered decks.
+- A New card that enters Learning remains one outstanding card until its
+  scheduler obligation is complete; repeated answers do not inflate progress.
+- Suspended and buried cards remain excluded while unavailable.
+- Restored cards can return the day to an incomplete state before reward grant.
+- If Anki Garden cannot verify the state, the reward fails closed while normal
+  Garden Growth continues.
+- The Anki-day-locked Garden Bonus and locked Scenery determine completion effects.
 
-The all-due check is live and collection-wide at award time:
+Approved HUD copy:
 
-- The day must have begun with a verified due review or learning obligation,
-  and at least one eligible answer must have been completed.
-- Due reviews and introduced learning/relearning steps before the next-day
-  cutoff count. Active filtered decks and active deck limits are respected.
-- Unseen new cards do not count until introduced. Suspended or buried cards do
-  not count while unavailable, but block completion if restored and then due.
-- If the due tree or scheduler cutoff is unavailable, the reward fails closed.
-- Cloudy Drift changes the all-due payout to 12 Coins.
-- Rainbow Sunshower adds 5 direct Growth to the currently nurtured unfinished
-  plant.
-- The first valid completion also unlocks All Clear for 5 additional Coins.
+- In progress: **18 cards remaining** and **176 cards complete**.
+- Waiting: **2 more cards will be due in 6 minutes**.
+- Complete: **TODAY’S CARDS COMPLETE**, **+10 Garden Coins earned**,
+  **176 cards complete**.
+- Ineligible: **NO COMPLETION REWARD TODAY** and **No cards were due today!**
+- Unavailable: **CARD STATUS UNAVAILABLE** and **Anki Garden could not verify
+  today’s cards. Normal Garden Growth is unaffected.**
 
-## Consumables and direct-Growth items
+The activity count is informational. It has no denominator, progress bar,
+threshold color, checkmark, or separate reward.
+
+## Post-sync rewards
+
+Before normal sync, Garden establishes a clean boundary from review history
+already present on the desktop. After sync, every newly unseen supported
+post-activation answer beyond that boundary is processed exactly once across
+its original Anki day, including delayed lower-ID rows and distinct answers for
+the same card.
+
+- Past-day answers receive normal per-answer Growth, rewards, Finds,
+  discoveries, and progression effects.
+- Today’s Cards completion is evaluated only for the current Anki day when its
+  live transition can be proven.
+- Rewards and one pending nonmodal Sync Rewards receipt commit atomically.
+- Initial setup and one-way collection replacement create a non-awarding
+  baseline instead of replaying history.
+- **Show rewards after syncing** defaults on and controls only presentation;
+  reward processing is unchanged when it is off.
+
+## Consumables
 
 | Item | Acquisition | Effect |
 |---|---|---|
-| Basic Fertilizer | Nursery: 25 Coins; Rich Compost Garden Find | +1 Growth per answer for 1 hour |
-| Quality Fertilizer | Nursery: 65 Coins | +2 Growth per answer for 2 hours |
-| Magical Fertilizer | Nursery: 150 Coins | +3 Growth per answer for 4 hours |
-| Booster Potion | Bottled Rain Find; Halloween or Full Moon daily gift; not sold | +5 Growth per answer for 2 hours |
-| Small Growth Charge | Nursery: 30 Coins; achievements, Finds, and daily Scenery gifts | +100 direct Growth when used |
-| Standard Growth Charge | Nursery: 125 Coins; achievements, Finds, and Halloween gift | +500 direct Growth when used |
-| Grand Growth Charge | Not currently obtainable; imported development inventory remains usable | +2,000 direct Growth when used |
+| Basic Fertilizer | Nursery: 30 Coins; Rich Compost Find | +1 Growth per eligible card for 1 hour |
+| Quality Fertilizer | Nursery: 100 Coins | +2 Growth per eligible card for 2 hours |
+| Magical Fertilizer | Nursery: 300 Coins | +3 Growth per eligible card for 4 hours |
+| Booster Potion | Bottled Rain Find and qualifying Scenery gifts; not sold | +5 Growth for the next 100 applicable cards |
+| Small Growth Charge | Nursery: 30 Coins; milestones, Finds, and gifts | +100 Instant Growth |
+| Standard Growth Charge | Nursery: 125 Coins; Finds and gifts | +500 Instant Growth |
+| Grand Growth Charge | Compatibility inventory only | +2,000 Instant Growth |
 
-### Timed-item rules
+### Fertilizer and Booster rules
 
-- Fertilizer and Booster Potion attach to one plant and apply only when that
-  unfinished plant is the answer-time nurture target.
-- One Fertilizer tier is active on a plant at a time. Reusing the same tier
-  extends its remaining duration. A different active tier requires
-  confirmation, replaces it, and discards the remaining future time.
-- Booster Potion stacks with Fertilizer. Another Potion extends the current
-  Booster interval rather than replacing it.
-- Snow Flurry adds 10% to each Potion duration and Full Moon Garden adds 25%;
-  the extensions are additive when equipped at use time:
+- Fertilizer uses wall-clock time, including time outside the reviewer, so more
+  cards completed during its window produce more total Growth.
+- Reusing the same Fertilizer tier extends its remaining time.
+- A different Fertilizer tier queues behind the active tier without discarding
+  either duration.
+- Booster Potion stacks with Fertilizer; another Potion extends its count.
+- Up to five paid Fertilizer doses and five Booster doses may be active or
+  queued per plant. A rejected sixth dose remains in inventory.
+- At Full Bloom, remaining Fertilizer time and Booster cards transfer to the
+  automatically selected plant. If no eligible plant exists, the remaining
+  value waits for the next Nurture choice.
+- Herbalist’s Hourglass and Full Moon Garden extend each Booster activation:
 
-  | Equipped duration effects | Time added per Potion |
+  | Locked effects when used | Booster cards |
   |---|---:|
-  | Neither | 2 hours |
-  | Snow Flurry | 2 hours 12 minutes |
-  | Full Moon Garden | 2 hours 30 minutes |
-  | Both | 2 hours 42 minutes |
+  | Neither | 100 |
+  | Herbalist’s Hourglass | 125 |
+  | Full Moon Garden | 125 |
+  | Both | 150 |
 
 ### Growth Charge rules
 
-- A Charge can target any owned, planted, unfinished plant; it need not be the
-  current nurture target.
-- Charges are consumed only in the same successful transaction that applies
-  their Growth.
-- They ignore streak, Fertilizer, Booster, Weather, Scenery, and passive
-  fan-out, but still trigger every stage and stage-Coin reward they cross.
+- A Charge can target any owned, planted, unfinished plant.
+- It is consumed only in the successful transaction that grants its value.
+- It receives no streak, Fertilizer, Booster, Garden Decoration, or Scenery modifier and
+  is not shared.
+- Overflow continues to other eligible plants or Stored Growth.
+- Every crossed checkpoint and stage still grants its milestone reward.
 
-## Weather
+## Daily loadout
 
-Exactly one Weather is equipped. Purchases are permanent unlocks but do not
-auto-equip.
+Exactly one owned Garden Decoration may be displayed, exactly one owned
+decoration supplies the Garden Bonus, and exactly one Scenery may be selected.
 
-| Weather | Rarity / acquisition | Effect while equipped |
+- The first eligible answer locks the selected Garden Bonus for the Anki day.
+- Changing the Garden Bonus after that lock queues it for the next Anki day;
+  bonuses cannot stack.
+- The displayed decoration is cosmetic and may change independently at any time.
+- Scenery selection is free before the day's first progression event. The first
+  eligible completed card, Growth Charge, or other progression event locks it
+  until the next Anki cutoff.
+- After the first eligible answer, completion gifts, Potion extensions, and
+  card effects use the locked Garden Bonus. Before that answer, the decoration
+  labeled Ready for today is authoritative.
+- Hiding artwork does not disable its locked effect.
+
+## Garden Decorations
+
+| Garden Decoration | Acquisition | Garden Bonus |
 |---|---|---|
-| Clear Skies | Common; included | Neutral; no mechanical effect |
-| Soft Breeze | Common; Nursery 100 Coins | +1 Growth on answers 1–10 each Anki day |
-| Cloudy Drift | Common; Nursery 175 Coins | +2 Coins when all due cards are finished |
-| Gentle Rain | Uncommon; Nursery 250 Coins | +1 Growth on answers 1–20 each Anki day |
-| Snow Flurry | Uncommon; Nursery 350 Coins | Booster Potions last 10% longer |
-| Firefly Evening | Rare; Rare environment Find | +5 Growth on answers 1–5 each Anki day |
-| Rainbow Sunshower | Very Rare; Very Rare environment Find | +5 direct Growth when all due cards are finished |
+| Seedling Sign | Included | None |
+| Wind Chime | Nursery: 100 Coins | +1 Growth every 10 eligible cards |
+| Harvest Bell | Nursery: 175 Coins | +5 Coins when Today’s Cards is complete |
+| Watering Station | Nursery: 250 Coins | +1 Growth every 5 eligible cards |
+| Herbalist’s Hourglass | Nursery: 350 Coins | Booster Potions add 25% more Booster cards |
+| Firefly Lantern | Rare discovery | +3 Growth every 4 eligible cards |
+| Prism Trellis | Very Rare discovery | Banks 1.5 direct Growth per eligible card and releases it when Today’s Cards is complete |
 
 ## Scenery
 
-Exactly one Scenery is equipped. Its passive stacks with the equipped Weather.
-
-| Scenery | Rarity / acquisition | Effect while equipped |
+| Scenery | Acquisition | Locked effect |
 |---|---|---|
-| Verdant Twilight | Common; included | Neutral; no mechanical effect |
-| Spring Bloom | Common; Nursery 400 Coins | +1 Growth on answers 1–25 each Anki day |
-| Golden Summer | Uncommon; Nursery 600 Coins | +1 Growth on every even-numbered answer |
-| Autumn Hearth | Uncommon; Nursery 800 Coins | +25% Coins from plant stage rewards; half-Coins round up |
-| Snow-Covered Garden | Rare; Nursery 1,200 Coins | Once daily: 1 Small Growth Charge |
-| Rainbow Horizon | Rare; Rare environment Find | +1 Growth on every answer |
-| Halloween Garden | Very Rare; Very Rare environment Find | Once daily: Small Charge 70%, Standard Charge 25%, or Booster Potion 5% |
-| Full Moon Garden | Ultra Rare; Ultra environment Find | Once daily: 1 Booster Potion; each Potion lasts 25% longer |
-| Celestial Eclipse | Ultra Rare; Ultra environment Find | +10 flat Scenery Growth per answer, effectively doubling only the 10 base Growth |
-
-Daily Scenery gifts trigger once per Anki day on the first eligible answer
-processed while that Scenery is equipped. They remain independent of both
-Garden Find pools.
-
-### Environment rules shared by Weather and Scenery
-
-- Weather and Scenery stack with each other and with streak, Fertilizer, and
-  Booster Potion on an ordinary answer.
-- Hiding a Weather or Scenery visual layer does not disable its equipped
-  passive.
-- Changing the equipped item replaces only that kind's active passive;
-  ownership remains.
-- Limited-answer effects use the answer's ordinal within the Anki day, not its
-  correctness.
-- All-due, stage-Coin, and Potion-duration effects are evaluated when their
-  respective event occurs.
+| Verdant Twilight | Included | Cosmetic only |
+| Spring Bloom | Nursery: 400 Coins | +1 Growth on the first 25 eligible cards |
+| Golden Summer | Nursery: 600 Coins | +1 Growth on even-numbered cards among the first 100 |
+| Autumn Hearth | Nursery: 500 Coins | +50% checkpoint and stage Coins with fractional carry |
+| Snow-Covered Garden | Nursery: 1,200 Coins | 1 Small Growth Charge when Today’s Cards is complete |
+| Rainbow Horizon | Rare discovery | +1 Growth on the first 100 eligible cards |
+| Halloween Garden | Very Rare discovery | Completion gift: 85% Small Charge, 10% Standard Charge, 5% Booster |
+| Full Moon Garden | Ultra discovery | Booster every fourth qualifying completion; +25 cards to Booster activations |
+| Celestial Eclipse | Ultra discovery | +2 Growth on the first 100 eligible cards |
 
 ## Garden Finds
 
-Each newly processed eligible answer checks two independent, deterministic
-pools. Reprocessing, retrying, or rerendering the same answer cannot reroll it.
-A Standard Find and an environment Find can both succeed on the same answer,
-alongside daily rewards, Scenery gifts, achievements, and stage rewards.
+Every newly processed eligible card checks independent Standard and environment
+pools. Reprocessing, retrying, or rerendering the same card cannot reroll it.
 
-### Standard pool cadence
+### Standard Finds
 
-The drought count persists across Anki days and resets after a Standard hit.
+- Protection increases the chance after long gaps and guarantees a Find by the
+  75th eligible card without one.
+- The guaranteed Find is at least Uncommon.
+- At most three Standard Finds may be earned per Anki day.
+- After the cap, Find progress pauses until the next Anki day.
+- Reward weights never change because no plant is selected. Instant Growth is
+  stored when it cannot be applied.
+- The full Garden may explain the daily cap and protection state. The persistent
+  reviewer shows a Find only as a committed reward reveal.
+- The cap, guarantee state, and internal gap counter are never shown in the HUD,
+  tooltip, collapsed view, or Session Summary.
 
-| Consecutive Standard misses before this roll | Hit chance |
-|---|---:|
-| 0–39 | 1 in 100 |
-| 40–59 | 1 in 40 |
-| 60–73 | 1 in 20 |
-| 74 | Guaranteed |
-
-- At most three Standard Finds can be earned in one Anki day.
-- After the daily cap, Standard rolls pause and the drought count does not
-  advance until a later day.
-- Direct-Growth entries are removed when no unfinished nurture target is
-  available; the remaining weights are then renormalized.
-
-### Standard reward selection
-
-These are the nominal shares after a hit when every entry is eligible:
-
-| Find | Tier | Reward | Share |
+| Find | Tier | Reward | Nominal share |
 |---|---|---|---:|
 | Coin Sprout | Common | 2 Coins | 18% |
 | Garden Pouch | Common | 4 Coins | 17% |
-| Morning Dew | Common | 40 direct Growth | 20% |
-| Sun Patch | Common | 60 direct Growth | 15% |
+| Morning Dew | Common | 40 Instant Growth | 20% |
+| Sun Patch | Common | 60 Instant Growth | 15% |
 | Hidden Coin Cache | Uncommon | 8 Coins | 9% |
-| Growth Burst | Uncommon | 100 direct Growth | 9% |
+| Growth Burst | Uncommon | 100 Instant Growth | 9% |
 | Charged Seed | Uncommon | 1 Small Growth Charge | 6% |
 | Buried Coin Cache | Rare | 20 Coins | 2% |
 | Rich Compost | Rare | 1 Basic Fertilizer | 1.5% |
@@ -237,70 +262,59 @@ These are the nominal shares after a hit when every entry is eligible:
 | Root Core | Exceptional | 1 Standard Growth Charge | 0.6% |
 | Garden Treasury | Exceptional | 40 Coins | 0.4% |
 
-Garden Find Growth goes only to the answer-time nurtured unfinished plant. It
-is capped at Rare, receives no modifiers, and has no passive fan-out.
+### Environment discoveries
 
-### Unowned-environment pool
+Each tier has an independent counter and a finite guarantee. Unlocking one tier
+resets only that tier and selects uniformly among its unowned items.
 
-Tiers are checked rarest-first. A successful tier chooses uniformly among its
-currently unowned items, so the per-item chance changes as items are collected.
-At most one environment item is granted per answer.
+| Tier | Base chance | Hard guarantee |
+|---|---:|---:|
+| Rare | 1 in 2,500 | 5,000 eligible cards |
+| Very Rare | 1 in 10,000 | 20,000 eligible cards |
+| Ultra | 1 in 25,000 | 50,000 eligible cards |
 
-| Tier | Tier chance | Items |
-|---|---:|---|
-| Ultra | Starts at 1 in 100,000 | Full Moon Garden, Celestial Eclipse |
-| Very Rare | 1 in 20,000 | Rainbow Sunshower, Halloween Garden |
-| Rare | 1 in 5,000 | Firefly Evening, Rainbow Horizon |
+A completed tier stops rolling. Collection displays deterministic progress to
+the next tier guarantee; the reviewer does not show raw counters.
 
-Ultra pity has no guarantee. Only an Ultra unlock resets it:
+## Achievements and historical recognition
 
-| Ultra misses | Ultra tier chance |
+Achievements never reward avoiding Again.
+
+| Achievement | Requirement | Reward |
+|---|---|---|
+| 7-Day Anki Streak | Reach 7 active days | 10 Coins |
+| 30-Day Anki Streak | Reach 30 active days | 100 Coins + 1 Small Charge |
+| 100-Day Anki Streak | Reach 100 active days | 300 Coins |
+| 365-Day Anki Streak | Reach 365 active days | 1,000 Coins |
+| Century Day | Complete 100 eligible cards in one Anki day | 25 Coins |
+| Deep Roots | Complete 1,000 eligible cards | 1 Standard Charge |
+| Review Day Complete | Complete Today’s Cards for the first time | 5 Coins |
+
+Historical badges are consolidated into one **Legacy Harvest**. Historical
+economic rewards are capped at 500 Coins and never grant consumables.
+
+## Beds and garden-wide output
+
+Each other planted plant creates one 20% Shared Growth share, so beds increase
+garden-wide output even after individual plants reach Full Bloom:
+
+| Planted plants | Garden output while any plant is unfinished |
 |---|---:|
-| 0–74,999 | 1 in 100,000 |
-| 75,000–84,999 | 1 in 90,000 |
-| 85,000–94,999 | 1 in 80,000 |
-| 95,000–104,999 | 1 in 70,000 |
-| 105,000–114,999 | 1 in 60,000 |
-| 115,000+ | 1 in 50,000 |
+| 1 | 100% |
+| 2 | 120% |
+| 3 | 140% |
+| 4 | 160% |
+| 5 | 180% |
+| 6 | 200% |
 
-## Achievements
+If a share’s source plant is still growing, that plant receives the share. If
+the source is at Full Bloom, its share is divided exactly among all planted
+plants still growing. The nurtured plant may therefore receive redistributed
+Shared Growth. Unplanted plants create no share.
 
-Every achievement is one-time. Hard, Good, and Easy are non-Again answers;
-Again resets the Perfect Canopy run and counts against daily recall.
-
-| Achievement | Requirement | Reward | Evaluation |
-|---|---|---|---|
-| 7-Day Anki Streak | Reach a 7-day active streak | 10 Coins | Immediate; history-derivable; integrated with that day's seven-day cycle |
-| 30-Day Anki Streak | Reach 30 days | 100 Coins + 1 Small Charge | Immediate; history-derivable |
-| 100-Day Anki Streak | Reach 100 days | 300 Coins | Immediate; history-derivable |
-| 365-Day Anki Streak | Reach 365 days | 1,000 Coins | Immediate; history-derivable |
-| Century Day | Reach 100 eligible answers in one Anki day | 25 Coins | Immediate at answer 100; history-derivable |
-| Deep Roots | Reach 1,000 lifetime eligible answers | 1 Standard Charge | Immediate; history-derivable |
-| Clear Recall | Close a day with at least 20 answers and at least 90% non-Again | 10 Coins | Finalized only after the day closes; history-derivable |
-| Perfect Canopy | Complete 30 consecutive eligible answers without Again | 1 Small Charge | Immediate; history-derivable |
-| No-Again Day | Close a day with at least 40 answers and no Again | 15 Coins | Finalized only after the day closes; history-derivable |
-| All Clear | Complete the first valid all-due day | 5 Coins | Live-only; never backfilled |
-
-## Collection and economy progression
-
-### Plant species
-
-One release-ready starter is free. Each other current species is a one-time
-Nursery purchase:
-
-| Species | Coins | Species | Coins |
-|---|---:|---|---:|
-| Bonsai | 100 | Peony | 300 |
-| Rose | 100 | Foxglove | 350 |
-| Sunflower | 150 | Japanese Maple | 400 |
-| Lavender | 200 | Wisteria | 500 |
-| Hydrangea | 250 | Dahlia | 600 |
-
-All current species use the same Growth, stage, reward, and buff rules. Species,
-personality, name, and bed position do not change earnings. Moving a plant to
-Collection preserves its Growth, timed-item history, and story.
-
-### Garden beds
+Bed cards disclose **Each other planted bed adds a 20% Shared Growth share** and
+show the current aggregate output. Six planted beds retain 200% total output
+while at least one plant remains unfinished.
 
 | Capacity | Cost |
 |---|---:|
@@ -310,37 +324,41 @@ Collection preserves its Growth, timed-item history, and story.
 | Bed 5 | 500 Coins |
 | Bed 6 | 800 Coins |
 
-Beds add placement capacity only; they do not multiply Growth. More planted,
-unfinished plants can nevertheless receive more independent 20% passive
-allocations.
+## Persistence and presentation authority
 
-### Included and compatibility-only items
+Schema 25 persists exact hundredth-Growth units, Stored Growth, milestone
+claims, Full Bloom metadata, Today’s Cards state, daily loadout locks and queue,
+environment guarantees, timed Fertilizer intervals/queues, and card-counted
+Booster batches, independent displayed Decoration and active Garden Bonus
+choices, and the pending sync receipt. Supported schema-10–24 state migrates
+fail-closed; schema-21 JSON and SQLite profiles are backed up at their
+historical migration boundary.
 
-- Clear Skies, Verdant Twilight, two beds, the ceramic planter style, and the
-  Garden Lantern are included. The planter, lantern, and visual placement are
-  cosmetic and provide no progression multiplier.
-- Existing legacy species remain loadable and keep ordinary plant mechanics,
-  but they are not current Nursery stock.
-- Grand Growth Charges already present in imported development state remain
-  usable, but no active reward or purchase path grants them.
+The engine returns the committed Growth breakdown and routing receipt. The UI
+does not independently calculate Growth, remaining cards, milestones, or reward
+state.
+
+The reviewer HUD shows global Today’s Cards progress, prominent plant/stage art,
+checkpoint progress, next-answer and committed-answer Growth, compact active
+effects, one integrated major reward reveal, and nonzero committed session
+totals. Projected quantities use `card/cards`; the immediate action remains
+`Next answer`. It keeps exact Growth lanes, environment names, Find
+cap/protection state, and irrelevant Stored Growth out of the persistent view
+while retaining those typed facts for detailed surfaces.
 
 ## Explicit non-mechanics
 
-The current system has no Quest or Vitality track, Permanent Streak XP,
-variable daily Coin track, guaranteed weekly Growth Charge, separate old
-streak-milestone payout, answer-difficulty Growth multiplier, automatic reward
-Weather, or watering progression. Seasonal and visibility settings affect
-presentation, not the equipped reward rules above.
+There is no plant decay, watering obligation, missed-day loss, rating-button
+Growth multiplier, randomized ordinary Growth, rotating quest list, additional
+currency, or unlimited environment stacking.
 
 ## Source authority
-
-This reference was reconciled against the current working tree's domain
-registries and engine:
 
 - [Game engine](../ankigarden/game.py)
 - [Environment and Growth Charge catalogs](../ankigarden/environment.py)
 - [Achievement registry](../ankigarden/achievements.py)
-- [Garden Find registries and odds](../ankigarden/garden_finds.py)
+- [Garden Find registries](../ankigarden/garden_finds.py)
 - [Growth contracts](../ankigarden/growth.py)
-- [Schema-21 state](../ankigarden/models/state.py)
-- [Detailed progression contract](ui/data_contracts.md)
+- [Schema-25 state](../ankigarden/models/state.py)
+- [Detailed data contracts](ui/data_contracts.md)
+- [Reviewer HUD specification](reviewer-hud-specification.md)

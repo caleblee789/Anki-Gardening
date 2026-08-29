@@ -38,7 +38,7 @@ ALL_PLANTS_COMPLETE = "All plants are fully grown."
 METRIC_AFFORDANCE = "Open details"
 KEYBOARD_HINT = "Use the arrow keys to explore plants. Press Enter to open the selected item."
 
-HOME_ACTIVE_ACTION = "Open garden"
+HOME_ACTIVE_ACTION = "Open Garden"
 NURTURED_STATUS = "Nurtured"
 NO_DISPLAY_ISSUES = "No display issues found"
 GROWTH_BREAKDOWN = "Growth breakdown"

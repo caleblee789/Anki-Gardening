@@ -158,12 +158,18 @@ def capture_derivative_report(
         raise CaptureError(f"Capture derivative verification failed: {error}") from error
     if not isinstance(report, dict):
         raise CaptureError("Capture derivative verifier returned an invalid report")
+    retired_capture_entries = {
+        str(entry)
+        for entry in getattr(module, "PRODUCTION_RETIRED_MODULES", ())
+    }
     if (
         report.get("shared_payloads_identical") is not True
         or "capture_ui_faces.py" not in report.get("capture_only_entries", ())
         or "capture/runtime.py" not in report.get("capture_only_entries", ())
         or any(
-            entry != "capture_ui_faces.py" and not str(entry).startswith("capture/")
+            entry != "capture_ui_faces.py"
+            and not str(entry).startswith("capture/")
+            and str(entry) not in retired_capture_entries
             for entry in report.get("capture_only_entries", ())
         )
         or report.get("mode_specific_entries") != ["build_capabilities.py"]

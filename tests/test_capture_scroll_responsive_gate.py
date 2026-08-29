@@ -301,14 +301,13 @@ def test_dialog_scroll_auditor_imports_its_concrete_scroll_type() -> None:
     assert "QScrollArea" in imported
 
 
-def test_all_eleven_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> None:
+def test_all_ten_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> None:
     coverage = _literal_assignment("DIALOG_SCROLL_CAPTURE_COVERAGE")
     semantics = _literal_assignment("DIALOG_SCROLL_CAPTURE_SEMANTICS")
     assert set(coverage) == {
         "Purchase confirmation",
         "Nursery",
         "Fertilizer selection",
-        "Fertilizer replacement",
         "Plant Story",
         "Species overview",
         "Settings",
@@ -339,6 +338,9 @@ def test_all_eleven_scroll_surfaces_retain_exhaustive_diagnostic_evidence() -> N
     assert release_labels < contract
     assert "growth-charge-use-ready" in coverage[
         "Growth Charge confirmation"
+    ]
+    assert "purchase-confirmation-fertilizer-queue" in coverage[
+        "Purchase confirmation"
     ]
     assert coverage["Collection"] == (
         "progress-collection",
@@ -543,8 +545,12 @@ def test_home_and_vertical_settings_capture_bounds_match_the_release_layout() ->
     assert "settings-display-advanced-open" in no_scroll_labels
     assert "scroll.ensureWidgetVisible(" not in settings_source
     assert "outer_vertical_range <= 1" in settings_source
+    assert "outer_vertical_value == 0" in settings_source
     assert "outer_horizontal_range <= 1" in settings_source
     assert "inner_vertical_range <= 1" in settings_source
+    assert 'not hasattr(behavior, "preview_panel")' in settings_source
+    assert "appearance_bounds.get(\"contained\", False)" in settings_source
+    assert "home_switch_bounds.get(\"contained\", False)" in settings_source
     assert "scroll.verticalScrollBar().setValue(0)" in settings_source
 
     starter_postcondition = _method_source(

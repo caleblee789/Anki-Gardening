@@ -28,6 +28,11 @@ from .acquisition import (
     select_candidate,
 )
 from .contract import load_compiled_contract
+from .fixtures import (
+    CAPTURE_DATE,
+    achievement_completion_schedule,
+    validate_achievement_completion_schedule,
+)
 from .lifecycle import classify_failure
 from .registry import (
     REGISTRY,
@@ -55,6 +60,7 @@ from aqt.qt import (
     QLabel,
     QLineEdit,
     QPainter,
+    QPixmap,
     QPushButton,
     QScrollArea,
     QTabWidget,
@@ -183,7 +189,7 @@ EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "popover-plot-6",
             "move-occupied-empty-destinations",
             "fertilizer-expiring-under-minute",
-            "fertilizer-replacement-confirmation",
+            "purchase-confirmation-fertilizer-queue",
         ),
     ),
     (
@@ -234,7 +240,7 @@ EXHAUSTIVE_CAPTURE_FACE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "production-build-controls-absent",
             "reviewer-find-common-reduced-motion",
             "reviewer-find-environment",
-            "reviewer-find-stacked-sync",
+            "reviewer-reward-dock-bundle",
         ),
     ),
     (
@@ -440,7 +446,7 @@ EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES: tuple[tuple[str, str], ...] = (
     ("popover-plot-6", "_capture_popover_slot"),
     ("move-occupied-empty-destinations", "_capture_move_mixed_destinations"),
     ("fertilizer-expiring-under-minute", "_capture_fertilizer_expiring"),
-    ("fertilizer-replacement-confirmation", "_capture_fertilizer_replacement_confirmation"),
+    ("purchase-confirmation-fertilizer-queue", "_capture_purchase_confirmation_fertilizer_queue"),
     ("watering-can-garden-plot-1", "_capture_watering_can_garden_plot"),
     ("watering-can-garden-plot-2", "_capture_watering_can_garden_plot"),
     ("watering-can-garden-plot-3", "_capture_watering_can_garden_plot"),
@@ -471,7 +477,7 @@ EXHAUSTIVE_CAPTURE_SCENARIO_CALLABLES: tuple[tuple[str, str], ...] = (
     ("production-build-controls-absent", "_capture_production_controls_absent"),
     ("reviewer-find-common-reduced-motion", "_capture_reviewer_find_common"),
     ("reviewer-find-environment", "_capture_reviewer_find_environment"),
-    ("reviewer-find-stacked-sync", "_capture_reviewer_find_stacked_sync"),
+    ("reviewer-reward-dock-bundle", "_capture_reviewer_reward_dock_bundle"),
     ("reduced-motion-enabled", "_capture_reduced_motion"),
     ("keyboard-focus-state", "_capture_keyboard_focus"),
     ("starter-placement", "_capture_starter_placement"),
@@ -554,6 +560,7 @@ CAPTURE_RENDERER_DEPENDENCY_GROUPS: dict[str, tuple[str, ...]] = {
         "label:collection-origin-plant-placement",
     ),
     "progress": ("family:GardenProgressDialog",),
+    "progress-today": ("label:progress-today-cards",),
     "progress-growth": (
         "label:growth-zero",
         "label:growth-nonzero",
@@ -580,9 +587,9 @@ CAPTURE_RENDERER_DEPENDENCY_GROUPS: dict[str, tuple[str, ...]] = {
     "settings": ("family:GardenSettingsDialog",),
     "fertilizer": (
         "family:FertilizerDialog",
-        "family:FertilizerReplacementDialog",
         "label:purchase-confirmation-fertilizer-application",
         "label:purchase-confirmation-fertilizer-extension",
+        "label:purchase-confirmation-fertilizer-queue",
         "label:purchase-success-fertilizer-applied",
     ),
     "growth-charge": (
@@ -624,9 +631,9 @@ CAPTURE_RENDERER_DEPENDENCY_GROUPS: dict[str, tuple[str, ...]] = {
     ),
     "purchase-errors": ("prefix:purchase-error-",),
     "purchase-fertilizer": (
-        "label:fertilizer-replacement-confirmation",
         "label:purchase-confirmation-fertilizer-application",
         "label:purchase-confirmation-fertilizer-extension",
+        "label:purchase-confirmation-fertilizer-queue",
     ),
     "purchase-loading": ("label:purchase-confirmation-loading-disabled",),
 }
@@ -864,6 +871,9 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._refresh_achievement_list",
         "GardenDashboard._refresh_achievement_list_content",
     ),
+    "progress-today": (
+        "GardenDetailsDialog._refresh_today",
+    ),
     "progress-growth": (
         "GardenDetailsDialog._refresh_growth",
         "GardenDetailsDialog._add_growth_stage_path",
@@ -885,6 +895,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
     ),
     "collection": (
         "GardenDashboard._open_collection",
+        "GardenDashboard.open_plant_selection",
         "GardenDashboard._release_collection_activation",
         "GardenDashboard._open_loadout_detail",
         "GardenDashboard._refresh_collection_list",
@@ -893,14 +904,19 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "GardenDashboard._set_collection_category",
         "GardenDashboard._set_collection_query",
         "GardenDashboard._set_collection_sort",
+        "GardenDashboard._set_collection_displayed_decoration",
+        "GardenDashboard._set_collection_bonus_decoration",
         "GardenDashboard._toggle_collection_sort",
         "GardenDashboard._clear_collection_filters",
         "GardenDashboard._collection_appearance_summary",
         "GardenDashboard._collection_environment_metadata",
+        "GardenDashboard._environment_discovery_progress_card",
         "GardenDashboard._collectible_registry_card",
         "GardenDashboard._collection_plant_action",
         "GardenDashboard._environment_collection_artwork",
         "GardenDashboard._environment_collection_card",
+        "GardenDashboard._set_collection_displayed_decoration",
+        "GardenDashboard._set_collection_bonus_decoration",
         "GardenDashboard._open_customize_from_collection",
         "GardenDashboard._unequip_environment",
         "GardenDashboard._open_nursery_from_collection",
@@ -1022,6 +1038,7 @@ CAPTURE_RENDERER_STATE_CLASS_METHODS: dict[str, tuple[str, ...]] = {
         "NurseryDialog._environment_artwork",
         "NurseryDialog._environment_shop_card",
         "NurseryDialog._equip_environment_from_nursery",
+        "NurseryDialog._display_environment_from_nursery",
         "NurseryDialog._preview_environment_item",
         "NurseryDialog._open_customize_from_nursery",
         "NurseryDialog._purchase_environment",
@@ -1249,7 +1266,7 @@ CAPTURE_SCENARIO_DEVELOPMENT_STRESS_LABELS = frozenset({
     "fully-grown-plant-without-fertilize",
     "move-occupied-empty-destinations",
     "fertilizer-expiring-under-minute",
-    "fertilizer-replacement-confirmation",
+    "purchase-confirmation-fertilizer-queue",
     "collection-several-discovered",
     "collection-no-filter-matches",
     "achievement-completed",
@@ -1479,6 +1496,237 @@ DEVELOPMENT_STRESS_SPECIES_ORDER: tuple[str, ...] = (
 )
 
 
+# Runtime-only responsive evidence for the existing Session Summary surface.
+# These are deliberately not registry IDs: one canonical PNG remains the
+# release artifact while the capture scenario briefly exercises the two
+# requested smaller window sizes, then restores the canonical Retina window
+# before acquisition.
+SESSION_SUMMARY_VIEWPORT_SPECS: tuple[
+    tuple[str, int, int, bool, bool, bool], ...
+] = (
+    ("1280x720", 1280, 720, False, True, False),
+    ("1440x900", 1440, 900, True, False, False),
+    ("1600x960", 1600, 960, True, False, False),
+    ("retina-1710x1041", 1710, 1041, True, False, True),
+)
+
+SESSION_SUMMARY_REQUIRED_CONTENT_STATES: tuple[str, ...] = (
+    "complete",
+    "sparse-zero-sections",
+    "long-names-six-digit-totals",
+    "highlight-overflow-max-two",
+    "missing-art-branded-fallback",
+    "finds-three-identical",
+    "finds-three-distinct",
+    "finds-unreconciled-omitted",
+    "no-finds",
+    "no-boosts",
+    "one-boost",
+    "expanded-reward-details",
+    "dark-appearance",
+    "light-appearance",
+    "hero-spacing",
+    "static-card-semantics",
+)
+
+
+# One presentation-ready receipt drives the canonical post-sync reward capture.
+# It intentionally spans two Anki days to prove the feature is not a
+# current-calendar-day-only report. These literals are also consumed by
+# source-only contract tests, so capture review can verify the claimed model
+# without starting Anki.
+SYNC_REWARD_CAPTURE_SUBTITLE = (
+    "Rewards from 42 card answers on another device."
+)
+SYNC_REWARD_CAPTURE_MODEL_FACTS: dict[str, Any] = {
+    "anki_days": ("2026-08-28", "2026-08-29"),
+    "eligible_answer_count": 42,
+    "growth_total_units": 52_000,
+    "plant_growth_units": 42_000,
+    "shared_growth_delta_units": 8_000,
+    "stored_growth_delta_units": 2_000,
+    "garden_coin_delta": 12,
+    "find_quantity": 0,
+    "environment_count": 1,
+    "progression_event_count": 2,
+    "all_clear_coin_reward": 0,
+    "fertilizer_remaining_seconds": 0,
+    "fertilizer_item_id": "",
+    "booster_cards_remaining": 0,
+    "booster_item_id": "",
+}
+
+
+# Transient native Reviewer-HUD acceptance inputs.  These labels deliberately
+# remain outside the v25 registry: the two canonical Reviewer PNGs stay the
+# release artifacts while their capture scenarios exercise every required
+# window/content state and restore the maximized canonical face before pixels
+# are acquired.
+REVIEWER_HUD_REQUIRED_WINDOW_STATES: tuple[str, ...] = (
+    "1710x1041",
+    "1600x1000",
+    "1280x800",
+    "short-height",
+    "expanded",
+    "collapsed",
+)
+REVIEWER_HUD_VIEWPORT_SPECS: tuple[
+    tuple[str, int, int, bool, bool, tuple[str, ...]], ...
+] = (
+    (
+        "1710x1041-expanded",
+        1710,
+        1041,
+        False,
+        False,
+        ("1710x1041", "expanded"),
+    ),
+    (
+        "1600x1000-expanded",
+        1600,
+        1000,
+        False,
+        False,
+        ("1600x1000", "expanded"),
+    ),
+    (
+        "1280x800-expanded",
+        1280,
+        800,
+        False,
+        False,
+        ("1280x800", "expanded"),
+    ),
+    (
+        "1280x600-short-expanded",
+        1280,
+        600,
+        False,
+        True,
+        ("short-height", "expanded"),
+    ),
+    (
+        "1280x800-collapsed",
+        1280,
+        800,
+        True,
+        False,
+        ("1280x800", "collapsed"),
+    ),
+)
+
+REVIEWER_HUD_BASELINE_CONTENT_STATES: tuple[str, ...] = (
+    "18-cards-left",
+    "1-card-left",
+    "no-session-rewards",
+    "growth-only",
+    "growth-and-coins",
+    "progress-10-percent",
+    "progress-38-percent",
+    "before-checkpoint",
+    "exact-checkpoint",
+    "checkpoint-marker-semantics",
+    "early-stage-art",
+    "mature-stage-art",
+    "zero-effects",
+    "one-effect",
+    "two-effects",
+    "three-plus-effects",
+    "long-effects-one-column",
+    "short-plant-name",
+    "two-line-plant-name",
+    "estimate-1-card",
+    "estimate-14-cards",
+    "estimate-1240-cards",
+    "checkpoint-crossing",
+    "multiple-checkpoints-one-answer",
+    "stage-change",
+    "coin-balance-248",
+    "coin-balance-9999",
+    "coin-balance-10013",
+    "coin-balance-999999",
+    "coin-balance-1000000",
+    "header-stable-grouping",
+    "short-height",
+)
+REVIEWER_REWARD_CONTENT_STATES: tuple[str, ...] = (
+    "all-cards-complete",
+    "one-garden-find",
+    "discovery-new-wording",
+    "full-bloom",
+    "full-bloom-celebration",
+    "full-bloom-settled",
+    "full-bloom-details",
+    "full-bloom-several-secondary",
+    "reward-details-action-copy",
+    "settled-height-or-safe-scroll",
+    "full-bloom-short-height",
+    "session-footer-reconciliation",
+    "reward-reveal-lifecycle",
+    "session-history-named-growth",
+)
+REVIEWER_HUD_RESILIENCE_STATES: tuple[str, ...] = (
+    "no-active-plant",
+    "stored-growth",
+    "collapsed-unseen-reward",
+    "rapid-successive-rewards",
+    "collection-sync-hud-open",
+    "reviewer-reload-after-reward",
+    "history-reopen",
+    "no-replay",
+    "details-pause-archive",
+    "archive-after-next-commit",
+)
+REVIEWER_HUD_REQUIRED_CONTENT_STATES: tuple[str, ...] = (
+    "18-cards-left",
+    "1-card-left",
+    "no-session-rewards",
+    "growth-only",
+    "growth-and-coins",
+    "progress-10-percent",
+    "progress-38-percent",
+    "before-checkpoint",
+    "exact-checkpoint",
+    "checkpoint-marker-semantics",
+    "early-stage-art",
+    "mature-stage-art",
+    "zero-effects",
+    "one-effect",
+    "two-effects",
+    "three-plus-effects",
+    "long-effects-one-column",
+    "short-plant-name",
+    "two-line-plant-name",
+    "estimate-1-card",
+    "estimate-14-cards",
+    "estimate-1240-cards",
+    "checkpoint-crossing",
+    "multiple-checkpoints-one-answer",
+    "stage-change",
+    "coin-balance-248",
+    "coin-balance-9999",
+    "coin-balance-10013",
+    "coin-balance-999999",
+    "coin-balance-1000000",
+    "header-stable-grouping",
+    "short-height",
+    "all-cards-complete",
+    "one-garden-find",
+    "discovery-new-wording",
+    "full-bloom",
+    "full-bloom-celebration",
+    "full-bloom-settled",
+    "full-bloom-details",
+    "full-bloom-several-secondary",
+    "reward-details-action-copy",
+    "settled-height-or-safe-scroll",
+    "full-bloom-short-height",
+    "session-footer-reconciliation",
+    "reward-reveal-lifecycle",
+    "session-history-named-growth",
+)
+
+
 # Automated geometry inputs only. These labels are intentionally absent from
 # ``CAPTURE_FACE_GROUPS``: canonical release evidence captures each distinct UI
 # state once at 100%, while the non-GUI responsive gate evaluates these sizes.
@@ -1648,6 +1896,7 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "purchase-confirmation-environment",
         "purchase-confirmation-fertilizer-application",
         "purchase-confirmation-fertilizer-extension",
+        "purchase-confirmation-fertilizer-queue",
         "purchase-confirmation-garden-bed",
         "purchase-confirmation-loading-disabled",
         "purchase-error-insufficient-coins",
@@ -1666,9 +1915,6 @@ DIALOG_SCROLL_CAPTURE_COVERAGE: dict[str, tuple[str, ...]] = {
         "fertilizer-unaffordable",
         "fertilizer-affordable",
         "fertilizer-active",
-    ),
-    "Fertilizer replacement": (
-        "fertilizer-replacement-confirmation",
     ),
     "Plant Story": (
         "plant-story",
@@ -1716,6 +1962,7 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "purchase-confirmation-environment": "PurchaseConfirmationDialog",
     "purchase-confirmation-fertilizer-application": "PurchaseConfirmationDialog",
     "purchase-confirmation-fertilizer-extension": "PurchaseConfirmationDialog",
+    "purchase-confirmation-fertilizer-queue": "PurchaseConfirmationDialog",
     "purchase-confirmation-garden-bed": "PurchaseConfirmationDialog",
     "purchase-confirmation-loading-disabled": "PurchaseConfirmationDialog",
     "purchase-error-insufficient-coins": "PurchaseConfirmationDialog",
@@ -1730,7 +1977,6 @@ DIALOG_SCROLL_CAPTURE_SEMANTICS: dict[str, str] = {
     "fertilizer-unaffordable": "FertilizerDialog",
     "fertilizer-affordable": "FertilizerDialog",
     "fertilizer-active": "FertilizerDialog",
-    "fertilizer-replacement-confirmation": "FertilizerReplacementDialog",
     "plant-story": "PlantStoryDialog",
     "collection-species-overview": "SpeciesOverviewDialog",
     "collection-known-not-collected-overview": "SpeciesOverviewDialog",
@@ -1914,6 +2160,256 @@ def dialog_scroll_geometry_issue_codes(
     return tuple(issues)
 
 
+def session_summary_capture_issue_codes(
+    evidence: dict[str, Any],
+    *,
+    require_expanded: bool = False,
+    require_little_scroll: bool = False,
+    require_scroll: bool = False,
+    require_retina: bool = False,
+) -> tuple[str, ...]:
+    """Return fail-closed issue codes for the Session Summary capture audit.
+
+    The live capture code owns measurement; this pure reducer makes the
+    release contract independently unit-testable without importing Anki or
+    Qt.  It intentionally validates the dense, cards-remaining fixture used by
+    the single permanent Session Summary surface.
+    """
+
+    issues: list[str] = []
+
+    for key in (
+        "visible",
+        "contained",
+        "viewport_size_passed",
+        "parent_is_main_webview",
+        "focus_safe",
+        "shell_siblings",
+        "footer_viewport_clear",
+        "last_body_reachable",
+        "final_boost_reachable",
+        "copy_passed",
+        "zero_sections_passed",
+        "accounting_passed",
+        "progress_passed",
+        "authoritative_cards_total_passed",
+        "actions_passed",
+        "highlights_passed",
+        "art_passed",
+        "boost_art_passed",
+        "boost_layout_passed",
+        "garden_item_taxonomy_passed",
+        "standard_find_identity_passed",
+        "hero_spacing_passed",
+        "static_card_semantics_passed",
+        "open_garden_capitalization_passed",
+    ):
+        if evidence.get(key) is not True:
+            issues.append(key.replace("_", "-"))
+
+    bounds = list(evidence.get("bounds", ()) or ())
+    expected_bounds = list(evidence.get("expected_bounds", ()) or ())
+    if len(bounds) != 4 or bounds != expected_bounds:
+        issues.append("panel-geometry")
+    if len(bounds) == 4 and int(bounds[2]) != 416:
+        issues.append("panel-width")
+    if int(evidence.get("right_margin", -1)) < 20:
+        issues.append("right-margin")
+    if int(evidence.get("top_margin", -1)) < 16:
+        issues.append("top-margin")
+    if int(evidence.get("bottom_margin", -1)) < 16:
+        issues.append("bottom-margin")
+    header_height = int(evidence.get("header_height", -1))
+    if evidence.get("compact_density") is True:
+        if header_height != 44:
+            issues.append("header-height")
+    elif not 52 <= header_height <= 56:
+        issues.append("header-height")
+    if int(evidence.get("scroll_count", -1)) != 1:
+        issues.append("scroll-owner-count")
+    if int(evidence.get("horizontal_scroll_maximum", -1)) != 0:
+        issues.append("horizontal-scroll")
+
+    expected_order = (
+        "hero",
+        "today",
+        "highlights",
+        "rewards",
+        "active_boosts",
+    )
+    if tuple(evidence.get("information_order", ()) or ()) != expected_order:
+        issues.append("information-order")
+
+    if require_expanded:
+        if evidence.get("growth_breakdown_expanded") is not True:
+            issues.append("growth-breakdown-not-expanded")
+        if evidence.get("expanded_accounting_copy_passed") is not True:
+            issues.append("expanded-accounting-copy")
+    elif evidence.get("growth_breakdown_expanded") is not False:
+        issues.append("growth-breakdown-not-collapsed")
+
+    scroll_maximum = int(evidence.get("vertical_scroll_maximum", -1))
+    if require_little_scroll and scroll_maximum != 0:
+        issues.append("unexpected-default-scroll")
+    if require_scroll and scroll_maximum <= 0:
+        issues.append("missing-required-scroll")
+
+    if require_retina:
+        try:
+            dpr = float(evidence.get("device_pixel_ratio", 0.0))
+        except (TypeError, ValueError):
+            dpr = 0.0
+        if not 1.9 <= dpr <= 2.1:
+            issues.append("retina-device-pixel-ratio")
+
+    return tuple(dict.fromkeys(issues))
+
+
+def session_summary_content_state_issue_codes(
+    state_name: str,
+    evidence: dict[str, Any],
+) -> tuple[str, ...]:
+    """Return fail-closed issues for one transient native content state."""
+
+    required_by_state = {
+        "complete": (
+            "complete_copy",
+            "complete_progress",
+            "complete_actions",
+        ),
+        "sparse-zero-sections": (
+            "zero_sections_omitted",
+            "zero_rows_omitted",
+        ),
+        "long-names-six-digit-totals": (
+            "long_names_preserved",
+            "six_digit_totals_present",
+            "long_find_item_preserved",
+            "retina_find_art_present",
+        ),
+        "highlight-overflow-max-two": (
+            "highlight_source_overflow",
+            "highlight_max_two",
+            "highlight_overflow_preserved",
+            "highlight_priority_preserved",
+        ),
+        "missing-art-branded-fallback": (
+            "missing_art_detected",
+            "branded_fallback_present",
+        ),
+        "finds-three-identical": (
+            "finds_reconciled",
+            "single_find_group",
+            "identical_find_quantity_aggregated",
+            "granted_item_copy_present",
+        ),
+        "finds-three-distinct": (
+            "finds_reconciled",
+            "three_find_groups",
+            "distinct_find_groups_visible",
+            "distinct_find_art_provenance",
+            "granted_item_copy_present",
+        ),
+        "finds-unreconciled-omitted": (
+            "finds_unreconciled",
+            "partial_find_list_omitted",
+            "find_total_preserved",
+        ),
+        "no-finds": (
+            "find_metric_omitted",
+            "find_rows_omitted",
+        ),
+        "no-boosts": (
+            "boost_section_omitted",
+            "boost_rows_omitted",
+        ),
+        "one-boost": (
+            "one_boost_row",
+            "single_boost_group",
+        ),
+        "expanded-reward-details": (
+            "reward_details_expanded",
+            "expanded_accounting_complete",
+            "all_find_groups_reachable",
+        ),
+        "dark-appearance": (
+            "dark_palette_applied",
+            "appearance_tokens_applied",
+        ),
+        "light-appearance": (
+            "light_palette_applied",
+            "appearance_tokens_applied",
+        ),
+        "hero-spacing": (
+            "hero_spacing_compact",
+            "hero_copy_grouped",
+        ),
+        "static-card-semantics": (
+            "highlight_cards_static",
+            "reward_metrics_static",
+            "boost_rows_static",
+            "static_cards_focus_safe",
+            "static_cards_noninteractive_cursor",
+        ),
+    }
+    required = required_by_state.get(str(state_name or ""))
+    if required is None:
+        return ("unknown-content-state",)
+
+    issues: list[str] = []
+    for key in (
+        "visible",
+        "contained",
+        "single_scroll_owner",
+        "no_horizontal_overflow",
+        "explicit_cards_total",
+        *required,
+    ):
+        if evidence.get(key) is not True:
+            issues.append(key.replace("_", "-"))
+    return tuple(dict.fromkeys(issues))
+
+
+def session_summary_content_matrix_issue_codes(
+    records: dict[str, Any],
+    *,
+    canonical_payload_restored: bool,
+) -> tuple[str, ...]:
+    """Prove the complete transient matrix and canonical restore fail-closed."""
+
+    expected = (
+        "complete",
+        "sparse-zero-sections",
+        "long-names-six-digit-totals",
+        "highlight-overflow-max-two",
+        "missing-art-branded-fallback",
+        "finds-three-identical",
+        "finds-three-distinct",
+        "finds-unreconciled-omitted",
+        "no-finds",
+        "no-boosts",
+        "one-boost",
+        "expanded-reward-details",
+        "dark-appearance",
+        "light-appearance",
+        "hero-spacing",
+        "static-card-semantics",
+    )
+    issues: list[str] = []
+    for name in expected:
+        record = records.get(name)
+        if not isinstance(record, dict):
+            issues.append(f"missing-content-state:{name}")
+        elif record.get("passed") is not True:
+            issues.append(f"content-state-failed:{name}")
+    for name in records:
+        if name not in expected:
+            issues.append(f"unexpected-content-state:{name}")
+    if canonical_payload_restored is not True:
+        issues.append("canonical-payload-not-restored")
+    return tuple(dict.fromkeys(issues))
+
+
 def responsive_semantic_maps(
     entries: list[dict[str, Any]] | tuple[dict[str, Any], ...],
 ) -> tuple[
@@ -2078,7 +2574,7 @@ _SETTINGS_CAPTURE_LABELS = frozenset({
 _REVIEWER_CAPTURE_LABELS = frozenset({
     "reviewer-find-common-reduced-motion",
     "reviewer-find-environment",
-    "reviewer-find-stacked-sync",
+    "reviewer-reward-dock-bundle",
 })
 
 # Renderer and evidence membership are projections of the SurfaceSpec rows.
@@ -2087,7 +2583,20 @@ _REVIEWER_CAPTURE_LABELS = frozenset({
 _REVIEWER_CAPTURE_LABELS = frozenset(
     surface.stable_id
     for surface in REGISTRY.active_surfaces
-    if surface.stable_id.startswith("reviewer-find-")
+    if str(surface.state_contract.get("kind", "")) in {
+        "reviewer",
+        "reviewer_hud",
+    }
+)
+_SESSION_SUMMARY_CAPTURE_LABELS = frozenset(
+    surface.stable_id
+    for surface in REGISTRY.active_surfaces
+    if surface.stable_id == "session-summary-after-review"
+)
+_SYNC_REWARD_SUMMARY_CAPTURE_LABELS = frozenset(
+    surface.stable_id
+    for surface in REGISTRY.active_surfaces
+    if surface.stable_id == "sync-rewards-summary"
 )
 _HOME_CAPTURE_LABELS = frozenset(
     surface.stable_id
@@ -2154,9 +2663,8 @@ CAPTURE_BUTTON_HEIGHTS: dict[str, int] = {
 }
 
 # Canonical v25 surfaces whose initial 100% viewport must fit without vertical
-# overflow. These are the release positions called out in the v2.1.0 visual
-# review; a later content expansion may change the product contract, but it
-# must also update this capture contract deliberately.
+# overflow. These compact release states deliberately keep every visible
+# setting or action inside the first fold.
 CANONICAL_NO_SCROLL_CAPTURE_LABELS = frozenset({
     "nursery-plants",
     "nursery-garden-spaces",
@@ -2275,7 +2783,12 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         "window_family": family,
     }
     if label in _HOME_CAPTURE_LABELS:
-        if label == "home-preview-error":
+        if label in {
+            "session-summary-after-review",
+            "sync-rewards-summary",
+        }:
+            surface = "deckBrowser"
+        elif label == "home-preview-error":
             surface = "overview"
         elif label.startswith("home-preview-"):
             surface = "deckBrowser"
@@ -2309,18 +2822,30 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         })
         return profile
     if label in _REVIEWER_CAPTURE_LABELS:
+        if label in {
+            "reviewer-hud-expanded",
+            "reviewer-reward-dock-bundle",
+        }:
+            profile.update({
+                "kind": "reviewer_hud",
+                "state": label,
+                "expanded": True,
+                "dock": "right",
+            })
+            if label == "reviewer-reward-dock-bundle":
+                profile["reward_event_count"] = 7
+            return profile
         profile.update({
             "kind": "reviewer",
             "state": label,
             "toast_tier": (
                 "Common" if label in {
                     "reviewer-find-common-reduced-motion",
-                    "reviewer-find-stacked-sync",
                 } else
                 "Rare" if label == "reviewer-find-environment" else
                 ""
             ),
-            "stacked_sync": label == "reviewer-find-stacked-sync",
+            "stacked_sync": False,
             "reduced_motion": label == "reviewer-find-common-reduced-motion",
         })
         return profile
@@ -2329,6 +2854,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         return profile
     if label in _PROGRESS_CAPTURE_LABELS:
         page = (
+            "today" if label == "progress-today-cards" else
             "growth" if label.startswith("growth-") else
             "streak" if label.startswith("streak-") else
             "currency" if label.startswith("coins-") else
@@ -2416,6 +2942,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         "purchase-confirmation-environment": "ready",
         "purchase-confirmation-fertilizer-application": "ready",
         "purchase-confirmation-fertilizer-extension": "ready",
+        "purchase-confirmation-fertilizer-queue": "ready",
         "purchase-confirmation-garden-bed": "ready",
         "purchase-confirmation-loading-disabled": "loading",
         "purchase-error-insufficient-coins": "insufficient_coins",
@@ -3875,6 +4402,31 @@ class _UiFaceCaptureRunner:
         else:
             fixture_state = "starter-complete-without-plant"
         self._active_home_fixture_state = fixture_state
+        environment_visibility = getattr(
+            garden_state,
+            "environment_visibility",
+            {},
+        )
+        garden_feature_visible = (
+            bool(environment_visibility.get(
+                "garden_feature",
+                environment_visibility.get("weather", True),
+            ))
+            if isinstance(environment_visibility, dict)
+            else True
+        )
+        expected_garden_feature_present = bool(
+            garden_feature_visible
+            and fixture_state not in {"preview-loading", "preview-error"}
+        )
+        expected_garden_feature_id = str(
+            getattr(
+                garden_state,
+                "selected_garden_feature",
+                "seedling_sign",
+            )
+            or "seedling_sign"
+        )
         script = r"""
             (() => {
               const roots = [...document.querySelectorAll('#ag-home-root')];
@@ -3924,9 +4476,74 @@ class _UiFaceCaptureRunner:
                 '[data-testid="home-progress-copy"], [data-testid="home-growth"]'
               );
               const growthText = growth ? growth.textContent || '' : '';
+              const growthTrack = root.querySelector(
+                '[data-testid="home-growth-progress"]'
+              );
+              const growthCopyRect = growth
+                ? growth.getBoundingClientRect() : null;
+              const growthTrackRect = growthTrack
+                ? growthTrack.getBoundingClientRect() : null;
+              const identity = root.querySelector('.ag-home__identity');
+              const identityRect = identity
+                ? identity.getBoundingClientRect() : null;
+              const growthTrackCopyClearance = (
+                growthTrackRect && growthCopyRect
+              ) ? Math.floor(growthTrackRect.top - growthCopyRect.bottom) : null;
+              const growthTrackBottomClearance = growthTrackRect
+                ? Math.floor(rect.bottom - growthTrackRect.bottom) : null;
+              const growthTrackContained = !growthTrackRect || (
+                growthTrackRect.left >= rect.left
+                && growthTrackRect.top >= rect.top
+                && growthTrackRect.right <= rect.right
+                && growthTrackRect.bottom <= rect.bottom
+              );
+              const growthTrackAlignedToIdentity = !growthTrackRect || !!(
+                identityRect
+                && Math.abs(growthTrackRect.left - identityRect.left) <= 1
+                && growthTrackRect.right <= identityRect.right + 1
+              );
+              const growthTrackGeometryPassed = !growthTrackRect || !!(
+                growthCopyRect
+                && growthTrackContained
+                && growthTrackAlignedToIdentity
+                && growthTrackCopyClearance >= 4
+                && growthTrackBottomClearance >= 5
+                && Math.round(growthTrackRect.height) === 4
+              );
               const activeSlot = Number(root.dataset.activeSlot || '-1');
               const sceneFrame = root.querySelector('.ag-home__scene-frame');
-              const weatherLayer = root.querySelector('[data-testid="home-weather-layer"]');
+              const gardenFeature = root.querySelector(
+                '[data-testid="home-garden-feature"]'
+              );
+              const gardenFeaturePad = root.querySelector(
+                '[data-testid="home-garden-feature-pad"]'
+              );
+              const gardenFeatureRect = gardenFeature
+                ? gardenFeature.getBoundingClientRect() : null;
+              const gardenFeaturePadRect = gardenFeaturePad
+                ? gardenFeaturePad.getBoundingClientRect() : null;
+              const sceneFrameRect = sceneFrame
+                ? sceneFrame.getBoundingClientRect() : null;
+              const gardenFeaturePointerTransparent = !!gardenFeature
+                && !!gardenFeaturePad
+                && window.getComputedStyle(gardenFeature).pointerEvents === 'none'
+                && window.getComputedStyle(gardenFeaturePad).pointerEvents === 'none';
+              const containedBySceneFrame = candidate => !!(
+                candidate && sceneFrameRect
+                && candidate.left >= sceneFrameRect.left - 1
+                && candidate.top >= sceneFrameRect.top - 1
+                && candidate.right <= sceneFrameRect.right + 1
+                && candidate.bottom <= sceneFrameRect.bottom + 1
+              );
+              const gardenFeatureClipped = !!gardenFeature
+                && !!gardenFeaturePad
+                && !!sceneFrame
+                && window.getComputedStyle(sceneFrame).overflow === 'hidden'
+                && containedBySceneFrame(gardenFeatureRect)
+                && containedBySceneFrame(gardenFeaturePadRect);
+              const literalSunPrimitive = root.querySelector(
+                '[data-kind="literal-sun"], [data-feature="literal-sun"]'
+              );
               const sunLayer = root.querySelector(
                 '[data-testid="home-sun-layer"], .ag-home__sun-layer, .ag-home__sun'
               );
@@ -3983,7 +4600,7 @@ class _UiFaceCaptureRunner:
               const supportText = (support ? support.textContent || '' : '').trim();
               const homeActionText = (homeAction ? homeAction.textContent || '' : '').trim();
               const homeActionGeometryPassed = !homeAction
-                || homeActionText !== 'Open garden'
+                || homeActionText !== 'Open Garden'
                 || (
                   Math.round(homeActionRect.width) >= 104
                   // The shared Home banner reserves a 128 px CTA column so
@@ -3998,12 +4615,12 @@ class _UiFaceCaptureRunner:
                   ? normalizedCopy.includes('loading garden')
                   : fixtureState === 'preview-error'
                     ? normalizedCopy.includes('garden preview unavailable')
-                      && homeActionText === 'Open garden'
+                      && homeActionText === 'Open Garden'
                     : fixtureState === 'starter-not-selected'
                       ? homeActionText.length > 0
                     : (/\b[\d,]+\s*\/\s*[\d,]+\s+Growth\b/i.test(growthText)
                         || growthText.includes('total Growth'))
-                        && homeActionText === 'Open garden'
+                        && homeActionText === 'Open Garden'
               );
               let fixtureMatches = false;
               if (fixtureState === 'starter-not-selected') {
@@ -4042,11 +4659,12 @@ class _UiFaceCaptureRunner:
                 ready: paintedState && imagesComplete && canonicalSettled
                   && fixtureMatches && bannedTerms.length === 0
                   && homeActionGeometryPassed && conciseInformationModelPassed
-                  && rootOverflowPassed,
+                  && growthTrackGeometryPassed && rootOverflowPassed,
                 reason: !paintedState ? 'unpainted-state'
                   : !imagesComplete ? 'images-pending'
                   : !canonicalSettled ? 'canonical-preview-unsettled'
                   : !fixtureMatches ? 'fixture-mismatch'
+                  : !growthTrackGeometryPassed ? 'growth-progress-clipped'
                   : !rootOverflowPassed ? 'root-horizontal-overflow'
                   : 'ready',
                 rootCount: roots.length,
@@ -4054,8 +4672,15 @@ class _UiFaceCaptureRunner:
                 state: root.dataset.state || '',
                 command,
                 activeSlot,
-                weatherLayerPresent: !!weatherLayer,
-                sunLayerPresent: !!sunLayer,
+                gardenFeaturePresent: !!gardenFeature,
+                gardenFeaturePadPresent: !!gardenFeaturePad,
+                gardenFeatureSelected: gardenFeature
+                  ? gardenFeature.dataset.gardenFeature || '' : '',
+                gardenFeaturePointerTransparent,
+                gardenFeatureClipped,
+                expectedGardenFeaturePresent: __EXPECTED_GARDEN_FEATURE_PRESENT__,
+                expectedGardenFeatureId: __EXPECTED_GARDEN_FEATURE_ID__,
+                sunLayerPresent: !!sunLayer || !!literalSunPrimitive,
                 sceneryLayerPresent: !!sceneryLayer,
                 sceneOpacity: sceneFrame
                   ? Number.parseFloat(window.getComputedStyle(sceneFrame).opacity || '1')
@@ -4090,6 +4715,25 @@ class _UiFaceCaptureRunner:
                 bannedTerms,
                 compactFieldsPresent,
                 growthText,
+                growthTrackPresent: !!growthTrack,
+                growthTrackBounds: growthTrackRect ? {
+                  left: Math.round(growthTrackRect.left - rect.left),
+                  top: Math.round(growthTrackRect.top - rect.top),
+                  right: Math.round(growthTrackRect.right - rect.left),
+                  bottom: Math.round(growthTrackRect.bottom - rect.top),
+                  height: Math.round(growthTrackRect.height),
+                } : null,
+                growthCopyBounds: growthCopyRect ? {
+                  left: Math.round(growthCopyRect.left - rect.left),
+                  top: Math.round(growthCopyRect.top - rect.top),
+                  right: Math.round(growthCopyRect.right - rect.left),
+                  bottom: Math.round(growthCopyRect.bottom - rect.top),
+                } : null,
+                growthTrackCopyClearance,
+                growthTrackBottomClearance,
+                growthTrackContained,
+                growthTrackAlignedToIdentity,
+                growthTrackGeometryPassed,
                 fixtureState,
                 expectedActiveSlot,
                 rootClientWidth,
@@ -4106,6 +4750,12 @@ class _UiFaceCaptureRunner:
         ).replace(
             "__EXPECTED_ACTIVE_SLOT__",
             str(expected_active_slot),
+        ).replace(
+            "__EXPECTED_GARDEN_FEATURE_PRESENT__",
+            "true" if expected_garden_feature_present else "false",
+        ).replace(
+            "__EXPECTED_GARDEN_FEATURE_ID__",
+            repr(expected_garden_feature_id),
         )
         if overview_root_script:
             script = f"{overview_root_script}\n{script}"
@@ -5275,6 +5925,7 @@ class _UiFaceCaptureRunner:
         expected_parent = getattr(reviewer, "web", None)
         parent = toast.parentWidget() if toast is not None else None
         evidence = self._widget_bounds_evidence(toast, parent)
+        capture_evidence = self._external_widget_bounds_evidence(toast, mw)
         bounds = list(evidence.get("bounds", ()) or ())
         viewport_size = list(evidence.get("container_size", ()) or ())
         width = bounds[2] if len(bounds) == 4 else 0
@@ -5342,6 +5993,34 @@ class _UiFaceCaptureRunner:
         parent_is_reviewer_webview = bool(
             expected_parent is not None and parent is expected_parent
         )
+        close_buttons = [
+            candidate
+            for candidate in toast.findChildren(QAbstractButton)
+            if "close" in str(candidate.accessibleName() or "").casefold()
+            and candidate.isVisibleTo(toast)
+        ] if toast is not None else []
+        close_evidence = (
+            self._widget_bounds_evidence(close_buttons[0], toast)
+            if len(close_buttons) == 1 else
+            {"bounds": [], "contained": False}
+        )
+        close_contract = (
+            self._close_pixmap_contract(
+                close_buttons[0].icon().pixmap(
+                    max(1, int(close_buttons[0].iconSize().width())),
+                    max(1, int(close_buttons[0].iconSize().height())),
+                )
+            )
+            if len(close_buttons) == 1 else
+            {"passed": False}
+        )
+        close_passed = bool(
+            len(close_buttons) == 1
+            and close_evidence.get("contained", False)
+            and int(close_buttons[0].width()) == 32
+            and int(close_buttons[0].height()) == 32
+            and close_contract.get("passed") is True
+        )
         reviewer_state_is_review = str(getattr(mw, "state", "") or "") == "review"
         cleanup_handler = getattr(
             getattr(self.app, "reviewer_hooks", None),
@@ -5358,6 +6037,7 @@ class _UiFaceCaptureRunner:
             and size_in_range
             and control_rects
             and minimum_clearance >= 16
+            and close_passed
         )
         return {
             "parent_is_reviewer_webview": parent_is_reviewer_webview,
@@ -5365,6 +6045,9 @@ class _UiFaceCaptureRunner:
             "reviewer_state_is_review": reviewer_state_is_review,
             "non_review_cleanup_registered": callable(cleanup_handler),
             "overlay_bounds": bounds,
+            "capture_bounds": list(
+                capture_evidence.get("bounds", ()) or ()
+            ),
             "viewport_size": viewport_size,
             "viewport_contained": bool(evidence.get("contained", False)),
             "width": width,
@@ -5374,6 +6057,12 @@ class _UiFaceCaptureRunner:
             "size_in_range": size_in_range,
             "control_rects": control_rects,
             "minimum_control_clearance": minimum_clearance,
+            "reserved_zone_passed": bool(
+                control_rects and minimum_clearance >= 16
+            ),
+            "close_bounds": list(close_evidence.get("bounds", ()) or ()),
+            "close_stroke_contract": close_contract,
+            "close_passed": close_passed,
             "passed": passed,
         }
 
@@ -5401,6 +6090,133 @@ class _UiFaceCaptureRunner:
             return False
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return False
+
+    @staticmethod
+    def _close_pixmap_contract(pixmap: Any) -> dict[str, Any]:
+        """Prove that a rendered close mark has two centered diagonals."""
+
+        result: dict[str, Any] = {
+            "visible_pixels": 0,
+            "quadrants": {"top_left": 0, "top_right": 0,
+                          "bottom_left": 0, "bottom_right": 0},
+            "both_diagonals": False,
+            "centered": False,
+            "passed": False,
+        }
+        try:
+            if pixmap is None or pixmap.isNull():
+                return result
+            image = pixmap.toImage()
+            width, height = int(image.width()), int(image.height())
+            if width < 8 or height < 8:
+                return result
+            coordinates: list[tuple[int, int]] = []
+            center_x = (width - 1) / 2.0
+            center_y = (height - 1) / 2.0
+            dead_x = max(0.5, width * 0.04)
+            dead_y = max(0.5, height * 0.04)
+            quadrants = result["quadrants"]
+            for y in range(height):
+                for x in range(width):
+                    if image.pixelColor(x, y).alpha() < 64:
+                        continue
+                    coordinates.append((x, y))
+                    if x < center_x - dead_x and y < center_y - dead_y:
+                        quadrants["top_left"] += 1
+                    elif x > center_x + dead_x and y < center_y - dead_y:
+                        quadrants["top_right"] += 1
+                    elif x < center_x - dead_x and y > center_y + dead_y:
+                        quadrants["bottom_left"] += 1
+                    elif x > center_x + dead_x and y > center_y + dead_y:
+                        quadrants["bottom_right"] += 1
+            result["visible_pixels"] = len(coordinates)
+            if not coordinates:
+                return result
+            minimum_x = min(x for x, _y in coordinates)
+            maximum_x = max(x for x, _y in coordinates)
+            minimum_y = min(y for _x, y in coordinates)
+            maximum_y = max(y for _x, y in coordinates)
+            rendered_center_x = (minimum_x + maximum_x) / 2.0
+            rendered_center_y = (minimum_y + maximum_y) / 2.0
+            tolerance = max(1.0, max(width, height) * 0.08)
+            centered = bool(
+                abs(rendered_center_x - center_x) <= tolerance
+                and abs(rendered_center_y - center_y) <= tolerance
+            )
+            both_diagonals = bool(
+                quadrants["top_left"] >= 2
+                and quadrants["bottom_right"] >= 2
+                and quadrants["top_right"] >= 2
+                and quadrants["bottom_left"] >= 2
+            )
+            span_passed = bool(
+                maximum_x - minimum_x >= width * 0.42
+                and maximum_y - minimum_y >= height * 0.42
+            )
+            result.update({
+                "bounds": [minimum_x, minimum_y,
+                           maximum_x - minimum_x + 1,
+                           maximum_y - minimum_y + 1],
+                "both_diagonals": both_diagonals,
+                "centered": centered,
+                "passed": bool(both_diagonals and centered and span_passed),
+            })
+            return result
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return result
+
+    @staticmethod
+    def _switch_thumb_contract(button: Any) -> dict[str, Any]:
+        """Verify the switch thumb is present at the state-defined end."""
+
+        result = {
+            "state": str(button.property("switchState") or ""),
+            "thumb_contrast": 0,
+            "passed": False,
+        }
+        try:
+            icon = button.icon()
+            icon_size = button.iconSize()
+            if icon is None or icon.isNull():
+                return result
+            pixmap = icon.pixmap(
+                max(1, int(icon_size.width())),
+                max(1, int(icon_size.height())),
+            )
+            if pixmap.isNull():
+                return result
+            image = pixmap.toImage()
+            width, height = int(image.width()), int(image.height())
+            state = result["state"]
+            expected_ratio = 27 / 38 if state == "on" else 11 / 38
+            opposite_ratio = 11 / 38 if state == "on" else 27 / 38
+            y = max(0, min(height - 1, round((height - 1) / 2)))
+            expected_x = max(
+                0,
+                min(width - 1, round((width - 1) * expected_ratio)),
+            )
+            opposite_x = max(
+                0,
+                min(width - 1, round((width - 1) * opposite_ratio)),
+            )
+            expected = image.pixelColor(expected_x, y)
+            opposite = image.pixelColor(opposite_x, y)
+            contrast = max(
+                abs(expected.red() - opposite.red()),
+                abs(expected.green() - opposite.green()),
+                abs(expected.blue() - opposite.blue()),
+            )
+            result["thumb_contrast"] = contrast
+            result["icon_size"] = [width, height]
+            result["passed"] = bool(
+                state in {"on", "off"}
+                and width >= 36
+                and height >= 20
+                and contrast >= 24
+            )
+            return result
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return result
 
     def _native_layout_telemetry_audit(
         self,
@@ -6017,11 +6833,14 @@ class _UiFaceCaptureRunner:
                 button.property("catalogCard")
                 or button.property("environmentTile")
             )
+            switch_control = bool(
+                str(button.property("gardenRole") or "") == "switch"
+            )
             icon_only = bool(
                 component == "icon-button"
                 or button.property("iconButton")
                 or (not text and not button.icon().isNull())
-            ) and not composite_button
+            ) and not composite_button and not switch_control
             visual_size = int(
                 button.property("visualControlSize")
                 or max(int(button.width()), int(button.height()))
@@ -6072,7 +6891,20 @@ class _UiFaceCaptureRunner:
             )
             actual_height = int(button.height())
             actual_width = int(button.width())
-            if popover_action:
+            switch_contract = (
+                self._switch_thumb_contract(button)
+                if switch_control else
+                {}
+            )
+            if switch_control:
+                size_passed = bool(
+                    actual_width >= 38
+                    and actual_height >= 22
+                    and int(button.iconSize().width()) == 38
+                    and int(button.iconSize().height()) == 22
+                    and switch_contract.get("passed") is True
+                )
+            elif popover_action:
                 # The compact selected-plant popover owns an explicit 36 px
                 # action grid independent of the shared button variant token.
                 size_passed = bool(actual_height == 36 and actual_width > 0)
@@ -6081,8 +6913,8 @@ class _UiFaceCaptureRunner:
                     visual_size == 32
                     and 32 <= actual_height <= 38
                     and actual_width == actual_height
-                    and 14 <= icon_size[0] <= 16
-                    and 14 <= icon_size[1] <= 16
+                    and 14 <= icon_size[0] <= 18
+                    and 14 <= icon_size[1] <= 18
                 )
             elif standard_button:
                 # Qt's styled frame can add up to three physical border pixels
@@ -6098,6 +6930,8 @@ class _UiFaceCaptureRunner:
                 "accessible_name": str(button.accessibleName() or ""),
                 "bounds": list(painted.get("bounds", ()) or ()),
                 "icon_only": icon_only,
+                "switch_control": switch_control,
+                "switch_contract": switch_contract,
                 "popover_action": popover_action,
                 "visual_size": visual_size,
                 "actual_height": actual_height,
@@ -6115,7 +6949,11 @@ class _UiFaceCaptureRunner:
             })
             if not size_passed:
                 issue_codes.append(
-                    "icon-control-size" if icon_only else "standard-button-height"
+                    "switch-visibility"
+                    if switch_control else
+                    "icon-control-size"
+                    if icon_only else
+                    "standard-button-height"
                 )
             if not text_fit_passed:
                 issue_codes.append("action-label-overflow")
@@ -6132,11 +6970,44 @@ class _UiFaceCaptureRunner:
             accessible_name = str(button.accessibleName() or "").casefold()
             if icon_only and "close" in accessible_name:
                 glyph_present = self._icon_has_visible_pixels(button)
-                close_passed = bool(size_passed and glyph_present)
+                rendered_contract = self._close_pixmap_contract(
+                    button.icon().pixmap(
+                        max(1, int(button.iconSize().width())),
+                        max(1, int(button.iconSize().height())),
+                    )
+                )
+                dpr_contracts: list[dict[str, Any]] = []
+                try:
+                    from ..ui.icons import garden_icon_pixmap
+
+                    for requested_dpr in (1.0, 2.0):
+                        contract = self._close_pixmap_contract(
+                            garden_icon_pixmap(
+                                "close",
+                                max(1, int(button.iconSize().width())),
+                                device_pixel_ratio=requested_dpr,
+                            )
+                        )
+                        contract["requested_dpr"] = requested_dpr
+                        dpr_contracts.append(contract)
+                except Exception:
+                    dpr_contracts = []
+                close_passed = bool(
+                    size_passed
+                    and glyph_present
+                    and rendered_contract.get("passed") is True
+                    and len(dpr_contracts) == 2
+                    and all(
+                        contract.get("passed") is True
+                        for contract in dpr_contracts
+                    )
+                )
                 close_icons.append({
                     "accessible_name": str(button.accessibleName() or ""),
                     "bounds": list(painted.get("bounds", ()) or ()),
                     "glyph_pixels_present": glyph_present,
+                    "rendered_stroke_contract": rendered_contract,
+                    "dpr_stroke_contracts": dpr_contracts,
                     "passed": close_passed,
                 })
                 if not close_passed:
@@ -6221,6 +7092,7 @@ class _UiFaceCaptureRunner:
             issue_codes.append("multiple-filled-primary-actions")
 
         horizontal_scrollbars: list[str] = []
+        horizontal_overflow_ranges: list[str] = []
         for scroll in root.findChildren(QAbstractScrollArea):
             try:
                 bar = scroll.horizontalScrollBar()
@@ -6229,15 +7101,174 @@ class _UiFaceCaptureRunner:
                     and scroll.isVisibleTo(root)
                     and bar is not None
                     and bar.maximum() > bar.minimum()
-                    and bar.isVisibleTo(root)
                 ):
-                    horizontal_scrollbars.append(
-                        str(scroll.accessibleName() or scroll.objectName() or type(scroll).__name__)
+                    name = str(
+                        scroll.accessibleName()
+                        or scroll.objectName()
+                        or type(scroll).__name__
                     )
+                    horizontal_overflow_ranges.append(name)
+                    if bar.isVisibleTo(root):
+                        horizontal_scrollbars.append(name)
             except (AttributeError, RuntimeError):
                 continue
+        if horizontal_overflow_ranges:
+            issue_codes.append("horizontal-container-overflow")
         if horizontal_scrollbars:
             issue_codes.append("visible-horizontal-scrollbar")
+
+        def overlapping_area(
+            first: list[int],
+            second: list[int],
+        ) -> int:
+            if len(first) != 4 or len(second) != 4:
+                return 0
+            left = max(first[0], second[0])
+            top = max(first[1], second[1])
+            right = min(first[0] + first[2], second[0] + second[2])
+            bottom = min(first[1] + first[3], second[1] + second[3])
+            return max(0, right - left) * max(0, bottom - top)
+
+        fixed_widgets: list[tuple[str, QWidget]] = []
+        for name, candidate in (
+            ("header", getattr(root, "header", None)),
+            ("tabs", getattr(root, "tabs_region", None)),
+            ("footer", getattr(root, "_pinned_footer", None)),
+        ):
+            if (
+                isinstance(candidate, QWidget)
+                and candidate.window() is root
+                and candidate.isVisibleTo(root)
+            ):
+                fixed_widgets.append((name, candidate))
+        for tabs_index, tabs in enumerate(root.findChildren(QTabWidget)):
+            try:
+                bar = tabs.tabBar()
+                if (
+                    bar.window() is root
+                    and bar.isVisibleTo(root)
+                    and int(bar.height()) > 0
+                ):
+                    fixed_widgets.append((f"tab-bar-{tabs_index}", bar))
+            except (AttributeError, RuntimeError):
+                continue
+        fixed_records = [
+            {
+                "name": name,
+                "bounds": list(
+                    self._widget_bounds_evidence(widget, root).get(
+                        "bounds", ()
+                    ) or ()
+                ),
+            }
+            for name, widget in fixed_widgets
+        ]
+        fixed_region_intersections: list[dict[str, Any]] = []
+        body_widget = getattr(root, "body_region", None)
+        body_bounds = list(
+            self._widget_bounds_evidence(body_widget, root).get("bounds", ())
+            or ()
+        ) if isinstance(body_widget, QWidget) else []
+        for record in fixed_records:
+            # A QTabWidget's tab bar is a child of the body-owned widget and
+            # therefore intentionally intersects the body's outer rectangle.
+            # It remains part of the scrollbar-intrusion audit below, but it
+            # is not a shell/body overlap defect.
+            if str(record["name"]).startswith("tab-bar-"):
+                continue
+            area = overlapping_area(body_bounds, list(record["bounds"]))
+            if area > 0:
+                fixed_region_intersections.append({
+                    "regions": ["body", str(record["name"])],
+                    "area": area,
+                })
+        if fixed_region_intersections:
+            issue_codes.append("fixed-region-intersection")
+
+        scrollbar_records: list[dict[str, Any]] = []
+        scrollbar_fixed_intersections: list[dict[str, Any]] = []
+        for scroll_index, scroll in enumerate(root.findChildren(QAbstractScrollArea)):
+            try:
+                bar = scroll.verticalScrollBar()
+                if (
+                    scroll.window() is not root
+                    or not scroll.isVisibleTo(root)
+                    or bar is None
+                    or not bar.isVisibleTo(root)
+                    or bar.maximum() <= bar.minimum()
+                ):
+                    continue
+                evidence = self._external_widget_bounds_evidence(bar, root)
+                bounds = list(evidence.get("bounds", ()) or ())
+                name = str(
+                    scroll.accessibleName()
+                    or scroll.objectName()
+                    or f"scroll-{scroll_index}"
+                )
+                scrollbar_records.append({"name": name, "bounds": bounds})
+                for fixed in fixed_records:
+                    area = overlapping_area(bounds, list(fixed["bounds"]))
+                    if area > 0:
+                        scrollbar_fixed_intersections.append({
+                            "scrollbar": name,
+                            "fixed_region": str(fixed["name"]),
+                            "area": area,
+                        })
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                continue
+        if scrollbar_fixed_intersections:
+            issue_codes.append("scrollbar-fixed-region-intersection")
+
+        overflow_menu_buttons: list[dict[str, Any]] = []
+        for button in visible_action_widgets:
+            accessible_name = str(button.accessibleName() or "")
+            if "more action" not in accessible_name.casefold():
+                continue
+            parent_card = button.parentWidget()
+            while parent_card is not None and parent_card is not root:
+                if isinstance(parent_card, QFrame) and any(
+                    bool(parent_card.property(marker))
+                    for marker in card_markers
+                ):
+                    break
+                parent_card = parent_card.parentWidget()
+            evidence = self._widget_bounds_evidence(
+                button,
+                parent_card if isinstance(parent_card, QWidget) else root,
+            )
+            record = {
+                "accessible_name": accessible_name,
+                "bounds": list(evidence.get("bounds", ()) or ()),
+                "contained": bool(evidence.get("contained", False)),
+            }
+            overflow_menu_buttons.append(record)
+            if not record["contained"]:
+                issue_codes.append("overflow-menu-button-clipped")
+
+        switch_records = [
+            {
+                "accessible_name": str(record.get("accessible_name", "")),
+                "bounds": list(record.get("bounds", ()) or ()),
+                "contract": dict(record.get("switch_contract", {}) or {}),
+                "visible": bool(record.get("contained", False)),
+                "passed": bool(
+                    record.get("contained", False)
+                    and record.get("size_passed", False)
+                ),
+            }
+            for record in controls
+            if bool(record.get("switch_control", False))
+        ]
+        home_card_switch_visible = any(
+            "anki home" in str(record["accessible_name"]).casefold()
+            and bool(record["passed"])
+            for record in switch_records
+        )
+        if (
+            label == "settings-display-advanced-open"
+            and not home_card_switch_visible
+        ):
+            issue_codes.append("settings-home-card-switch-hidden")
 
         direct_children: list[list[int]] = []
         for child in root.findChildren(QWidget):
@@ -6633,7 +7664,7 @@ class _UiFaceCaptureRunner:
                 detail_actions = [
                     candidate
                     for candidate in card.findChildren(QAbstractButton)
-                    if _displayed_button_text(candidate).strip() == "View stages ›"
+                    if _displayed_button_text(candidate).strip() == "View stages"
                     and candidate.isVisibleTo(card)
                 ]
                 badge_evidence = self._widget_bounds_evidence(
@@ -6765,12 +7796,12 @@ class _UiFaceCaptureRunner:
                 and target_text == "Applying to Rose Plant"
                 and title_text == "Basic Fertilizer"
                 and summary_text
-                == "+1 Growth per answer · 1 hour remaining"
+                == "+1 Growth per card · 1 hour remaining"
                 and balance_evidence.get("contained") is True
                 and balance_text == "Balance: 500"
                 and balance_icon_present
                 and extend_evidence.get("contained") is True
-                and extend_text == "Extend 1 hour · 25 coins"
+                and extend_text == "Extend 1h · 30 coins"
                 and isinstance(status, QWidget)
                 and isinstance(extend, QWidget)
                 and status.isAncestorOf(extend)
@@ -6848,6 +7879,31 @@ class _UiFaceCaptureRunner:
                 for item in clipping_records
             ),
             "visible_horizontal_scrollbars": horizontal_scrollbars,
+            "horizontal_overflow_ranges": horizontal_overflow_ranges,
+            "root_and_container_overflow_passed": bool(
+                not horizontal_overflow_ranges
+                and all(
+                    bool(item.get("contained", False))
+                    for item in clipping_records
+                )
+            ),
+            "fixed_regions": fixed_records,
+            "fixed_region_intersections": fixed_region_intersections,
+            "fixed_regions_passed": not fixed_region_intersections,
+            "scrollbar_records": scrollbar_records,
+            "scrollbar_fixed_region_intersections": scrollbar_fixed_intersections,
+            "reserved_scrollbar_area_passed": not scrollbar_fixed_intersections,
+            "overflow_menu_buttons": overflow_menu_buttons,
+            "overflow_menu_containment_passed": all(
+                bool(record.get("contained", False))
+                for record in overflow_menu_buttons
+            ),
+            "switches": switch_records,
+            "switch_visibility_passed": all(
+                bool(record.get("passed", False))
+                for record in switch_records
+            ),
+            "settings_home_card_switch_visible": home_card_switch_visible,
             "largest_unexplained_gap": largest_gap,
             "screen_contained": screen_contained,
             "popover": popover,
@@ -6898,8 +7954,15 @@ class _UiFaceCaptureRunner:
         scanned_rect = [0, 0, width, height]
         exemptions: list[dict[str, Any]] = []
         if label in _REVIEWER_CAPTURE_LABELS:
-            overlay = dict(annotation.get("reviewer_overlay_geometry", {}) or {})
-            bounds = list(overlay.get("overlay_bounds", ()) or ())
+            overlay = dict(
+                annotation.get("reviewer_overlay_geometry", {}) or {}
+            )
+            hud = dict(annotation.get("reviewer_hud_geometry", {}) or {})
+            bounds = list(
+                overlay.get("capture_bounds", ())
+                or hud.get("capture_bounds", ())
+                or ()
+            )
             logical_width = max(1, int(logical_client_size[0]))
             logical_height = max(1, int(logical_client_size[1]))
             if len(bounds) == 4 and all(type(value) is int for value in bounds):
@@ -7086,6 +8149,7438 @@ class _UiFaceCaptureRunner:
                 "required_keys": list(required_keys),
             })
         return warnings
+
+    def _reviewer_hud_geometry_audit(
+        self,
+        label: str,
+        hud: Any,
+    ) -> dict[str, Any]:
+        """Prove the expanded HUD is content-driven, readable, and bounded."""
+
+        reviewer = getattr(mw, "reviewer", None)
+        parent = getattr(reviewer, "web", None)
+        actual_parent = hud.parentWidget() if hud is not None else None
+        evidence = self._widget_bounds_evidence(hud, actual_parent)
+        capture_evidence = self._external_widget_bounds_evidence(hud, mw)
+        bounds = list(evidence.get("bounds", ()) or ())
+        viewport = list(evidence.get("container_size", ()) or ())
+        width = int(bounds[2]) if len(bounds) == 4 else 0
+        height = int(bounds[3]) if len(bounds) == 4 else 0
+        top = int(bounds[1]) if len(bounds) == 4 else -1
+        bottom_clearance = (
+            int(viewport[1]) - (int(bounds[1]) + height)
+            if len(bounds) == 4 and len(viewport) == 2 else
+            -1
+        )
+        scrolls = hud.findChildren(QScrollArea) if hud is not None else []
+        visible_labels = [
+            label_widget
+            for label_widget in (
+                hud.findChildren(QLabel) if hud is not None else []
+            )
+            if label_widget.isVisibleTo(hud)
+        ]
+        visible_copy = " ".join(
+            str(label_widget.text()) for label_widget in visible_labels
+        )
+        normalized_copy = visible_copy.casefold()
+        named_widgets = {
+            str(widget.objectName()): widget
+            for widget in (hud.findChildren(QWidget) if hud is not None else [])
+            if str(widget.objectName())
+        }
+        header = named_widgets.get("reviewerHudHeader")
+        title_group = named_widgets.get("reviewerHudTitleGroup")
+        header_actions = named_widgets.get("reviewerHudHeaderActions")
+        coin_cluster = named_widgets.get("reviewerHudCoinCluster")
+        scroll = named_widgets.get("reviewerHudBodyScroll")
+        if not isinstance(scroll, QScrollArea):
+            scroll = scrolls[0] if scrolls else None
+        horizontal_range = max(
+            (
+                int(candidate.horizontalScrollBar().maximum())
+                for candidate in scrolls
+            ),
+            default=-1,
+        )
+        vertical_range = (
+            int(scroll.verticalScrollBar().maximum())
+            if isinstance(scroll, QScrollArea) else -1
+        )
+        dock = named_widgets.get("reviewerHudRewardDock")
+        footer = named_widgets.get("reviewerHudSessionFooter")
+        plant_titles = [
+            label_widget
+            for label_widget in visible_labels
+            if bool(label_widget.property("hudPlantName"))
+        ]
+        require_long_title = label in {
+            "reviewer-hud-expanded",
+            "reviewer-reward-dock-bundle",
+        }
+        plant_title_copy = (
+            " ".join(str(plant_titles[0].text()).split()).casefold()
+            if len(plant_titles) == 1 else
+            ""
+        )
+        title_wrap_safe = bool(
+            len(plant_titles) == 1
+            and bool(plant_titles[0].wordWrap())
+            and not bool(plant_titles[0].property("textClamped"))
+            and bool(plant_title_copy)
+            and (
+                not require_long_title
+                or "juniper of the moonlit library garden" in plant_title_copy
+            )
+        )
+        banned_terms = tuple(
+            term
+            for term in (
+                "all decks",
+                "currently nurturing",
+                "garden finds ·",
+                "daily limit reached",
+                "next card",
+                "shared growth",
+                " shares ·",
+                "gentle rain",
+                "spring bloom",
+                "+5 more rewards",
+                "all clear",
+                "daily care",
+                "required cards",
+                "52 / 75",
+            )
+            if term in normalized_copy
+        )
+        content_height = int(
+            (hud.property("hudContentHeight") if hud is not None else 0) or 0
+        )
+        content_hugging = bool(
+            content_height > 0
+            and (
+                (vertical_range == 0 and abs(height - content_height) <= 24)
+                or (vertical_range > 0 and height < content_height)
+            )
+        )
+        sticky_header = bool(
+            header is not None
+            and header.isVisibleTo(hud)
+            and (scroll is None or not scroll.isAncestorOf(header))
+        )
+        session_footer_visible = bool(
+            footer is not None and footer.isVisibleTo(hud)
+        )
+        reward_dock_visible = bool(
+            dock is not None and dock.isVisibleTo(hud)
+        )
+        zero_reward_dock_hidden = bool(
+            not bool(hud.property("hudRewardVisible") if hud is not None else False)
+            and not session_footer_visible
+            and not reward_dock_visible
+        )
+        reward_dock_integrated = bool(
+            reward_dock_visible
+            and session_footer_visible
+            and bool(dock.property("hasReveal") if dock is not None else False)
+            and bool(dock.property("hasSession") if dock is not None else False)
+            and bool(
+                dock.property("integratedDividerVisible")
+                if dock is not None else False
+            )
+        )
+        dock_visibility_passed = bool(
+            reward_dock_integrated
+            if label == "reviewer-reward-dock-bundle"
+            else zero_reward_dock_hidden
+        )
+        plant_class_label = str(
+            getattr(getattr(hud, "_species", None), "text", lambda: "")()
+            if hud is not None else ""
+        ).strip()
+        bed = getattr(hud, "_bed", None)
+        bed_visible = bool(
+            bed is not None and bed.isVisibleTo(hud)
+        )
+        plant_card = getattr(hud, "_plant_card", None)
+        title_anchor_stable = bool(
+            hud is not None
+            and (
+                bool(hud.property("titleAnchorStable"))
+                or bool(
+                    plant_card is not None
+                    and plant_card.property("titleAnchorStable")
+                )
+            )
+        )
+        title_group_geometry = self._widget_bounds_evidence(title_group, header)
+        header_actions_geometry = self._widget_bounds_evidence(
+            header_actions,
+            header,
+        )
+        coin_cluster_geometry = self._widget_bounds_evidence(
+            coin_cluster,
+            header_actions,
+        )
+        title_group_bounds = list(
+            title_group_geometry.get("bounds", ()) or ()
+        )
+        header_actions_bounds = list(
+            header_actions_geometry.get("bounds", ()) or ()
+        )
+        header_stable_grouping = bool(
+            header is not None
+            and title_group is not None
+            and header_actions is not None
+            and coin_cluster is not None
+            and title_group.parentWidget() is header
+            and header_actions.parentWidget() is header
+            and coin_cluster.parentWidget() is header_actions
+            and title_group_geometry.get("contained", False)
+            and header_actions_geometry.get("contained", False)
+            and coin_cluster_geometry.get("contained", False)
+            and len(title_group_bounds) == 4
+            and len(header_actions_bounds) == 4
+            and int(title_group_bounds[0]) + int(title_group_bounds[2])
+            <= int(header_actions_bounds[0])
+            and int(header_actions.width())
+            == int(hud.property("hudHeaderBalanceReservedWidth") or 0)
+        )
+        width_in_range = 312 <= width <= 328
+        safe_area_passed = bool(
+            top >= 12
+            and bottom_clearance >= 112
+        )
+        window_mode = self._home_fullscreen_window_evidence()
+        return {
+            **evidence,
+            "capture_bounds": list(
+                capture_evidence.get("bounds", ()) or ()
+            ),
+            "width": width,
+            "height": height,
+            "width_in_range": width_in_range,
+            "content_height": content_height,
+            "content_hugging": content_hugging,
+            "bottom_clearance": bottom_clearance,
+            "safe_area_passed": safe_area_passed,
+            "parent_is_reviewer_webview": actual_parent is parent,
+            "mounted": bool(
+                hud is not None and bool(hud.property("hudMounted"))
+            ),
+            "expanded": bool(
+                hud is not None and not bool(hud.property("hudCollapsed"))
+            ),
+            "dock": str(hud.property("hudDock") if hud is not None else ""),
+            "focus_safe": bool(
+                hud is not None
+                and hud.focusPolicy() == Qt.FocusPolicy.NoFocus
+                and hud.testAttribute(
+                    Qt.WidgetAttribute.WA_ShowWithoutActivating
+                )
+            ),
+            "horizontal_scroll_maximum": horizontal_range,
+            "vertical_scroll_maximum": vertical_range,
+            "sticky_header": sticky_header,
+            "session_footer_visible": session_footer_visible,
+            "reward_dock_visible": reward_dock_visible,
+            "zero_reward_dock_hidden": zero_reward_dock_hidden,
+            "reward_dock_integrated": reward_dock_integrated,
+            "dock_visibility_passed": dock_visibility_passed,
+            "today_cards_visible": "today" in normalized_copy,
+            "plant_name_wrap_safe": title_wrap_safe,
+            "plant_class_label": plant_class_label,
+            "bed_visible": bed_visible,
+            "title_anchor_stable": title_anchor_stable,
+            "header_title_group_bounds": title_group_bounds,
+            "header_actions_group_bounds": header_actions_bounds,
+            "header_balance_group_bounds": list(
+                coin_cluster_geometry.get("bounds", ()) or ()
+            ),
+            "header_stable_grouping": header_stable_grouping,
+            "banned_terms": list(banned_terms),
+            "window_mode": window_mode,
+            "passed": bool(
+                hud is not None
+                and hud.isVisible()
+                and actual_parent is parent
+                and evidence.get("contained", False)
+                and bool(hud.property("hudMounted"))
+                and width_in_range
+                and content_hugging
+                and safe_area_passed
+                and not bool(hud.property("hudCollapsed"))
+                and str(hud.property("hudDock") or "") == "right"
+                and horizontal_range == 0
+                and sticky_header
+                and dock_visibility_passed
+                and "today" in normalized_copy
+                and title_wrap_safe
+                and bool(plant_class_label)
+                and not bed_visible
+                and title_anchor_stable
+                and header_stable_grouping
+                and not banned_terms
+                and window_mode.get("passed", False)
+            ),
+        }
+
+    def _reviewer_hud_viewport_audit(
+        self,
+        hud: Any,
+        spec: tuple[str, int, int, bool, bool, tuple[str, ...]],
+    ) -> dict[str, Any]:
+        """Audit one transient Reviewer size/collapse state fail-closed."""
+
+        from ..ui.reviewer_hud import (
+            HUD_COLLAPSED_HEIGHT,
+            HUD_COLLAPSED_WIDTH,
+            reviewer_hud_width,
+        )
+
+        (
+            name,
+            expected_host_width,
+            expected_host_height,
+            expected_collapsed,
+            require_vertical_scroll,
+            covered_requirements,
+        ) = spec
+        reviewer = getattr(mw, "reviewer", None)
+        parent = getattr(reviewer, "web", None)
+        actual_parent = hud.parentWidget() if hud is not None else None
+        bounds_evidence = self._widget_bounds_evidence(hud, actual_parent)
+        bounds = list(bounds_evidence.get("bounds", ()) or ())
+        viewport = list(bounds_evidence.get("container_size", ()) or ())
+        host_size = [int(mw.width()), int(mw.height())]
+        host_size_passed = bool(
+            abs(host_size[0] - int(expected_host_width)) <= 2
+            and abs(host_size[1] - int(expected_host_height)) <= 2
+        )
+        named_widgets = {
+            str(widget.objectName()): widget
+            for widget in (
+                [hud, *list(hud.findChildren(QWidget))]
+                if hud is not None else
+                []
+            )
+            if str(widget.objectName())
+        }
+        scroll = named_widgets.get("reviewerHudBodyScroll")
+        header = named_widgets.get("reviewerHudHeader")
+        dock = named_widgets.get("reviewerHudRewardDock")
+        collapsed_tab = named_widgets.get("reviewerHudCollapsedTab")
+        collapsed_ring = next((
+            widget
+            for widget in named_widgets.values()
+            if str(widget.property("semanticId") or "")
+            == "reviewer.hud.collapsed-tab"
+        ), collapsed_tab)
+        horizontal_range = (
+            int(scroll.horizontalScrollBar().maximum())
+            if isinstance(scroll, QScrollArea) else
+            -1
+        )
+        vertical_range = (
+            int(scroll.verticalScrollBar().maximum())
+            if isinstance(scroll, QScrollArea) else
+            -1
+        )
+        actual_collapsed = bool(
+            hud is not None and hud.property("hudCollapsed")
+        )
+        actual_width = int(bounds[2]) if len(bounds) == 4 else 0
+        actual_height = int(bounds[3]) if len(bounds) == 4 else 0
+        expected_width = (
+            HUD_COLLAPSED_WIDTH
+            if expected_collapsed else
+            reviewer_hud_width(int(viewport[0]) if len(viewport) == 2 else 0)
+        )
+        expected_height = HUD_COLLAPSED_HEIGHT if expected_collapsed else 0
+        top = int(bounds[1]) if len(bounds) == 4 else -1
+        bottom_clearance = (
+            int(viewport[1]) - (int(bounds[1]) + actual_height)
+            if len(bounds) == 4 and len(viewport) == 2 else
+            -1
+        )
+        dock_visible = bool(
+            dock is not None and dock.isVisibleTo(hud)
+        )
+        footer = named_widgets.get("reviewerHudSessionFooter")
+        footer_visible = bool(
+            footer is not None and footer.isVisibleTo(hud)
+        )
+        expanded_regions_sticky = bool(
+            header is not None
+            and header.isVisibleTo(hud)
+            and (
+                scroll is None
+                or (
+                    not scroll.isAncestorOf(header)
+                    and (
+                        not dock_visible
+                        or not scroll.isAncestorOf(dock)
+                    )
+                    and (
+                        not footer_visible
+                        or not scroll.isAncestorOf(footer)
+                    )
+                )
+            )
+        )
+        collapsed_tab_visible = bool(
+            collapsed_tab is not None and collapsed_tab.isVisibleTo(hud)
+        )
+        progress_ring = next((
+            widget
+            for widget in (hud.findChildren(QWidget) if hud is not None else [])
+            if str(widget.property("semanticId") or "")
+            == "reviewer.hud.collapsed-progress"
+        ), None)
+        # The production widget exposes its ring as a direct child without a
+        # separate object name.  Fall back to the mounted attribute while still
+        # recording the exact rendered widget bounds.
+        progress_ring = progress_ring or getattr(hud, "_collapsed_ring", None)
+        collapsed_art = getattr(hud, "_collapsed_art", None)
+        try:
+            collapsed_art_present = bool(
+                collapsed_art is not None
+                and collapsed_art.isVisibleTo(hud)
+                and collapsed_art.pixmap() is not None
+                and not collapsed_art.pixmap().isNull()
+            )
+        except (AttributeError, RuntimeError, TypeError):
+            collapsed_art_present = False
+        progress_ring_visible = bool(
+            progress_ring is not None and progress_ring.isVisibleTo(hud)
+        )
+        plant_art = getattr(hud, "_plant_art", None)
+        minimum_art_preserved = bool(
+            expected_collapsed
+            or (
+                plant_art is not None
+                and plant_art.isVisibleTo(hud)
+                and int(plant_art.height()) >= 82
+            )
+        )
+        size_passed = bool(
+            actual_width == expected_width
+            and (
+                actual_height == expected_height
+                if expected_collapsed else
+                actual_height > 0
+            )
+        )
+        scroll_passed = bool(
+            horizontal_range == 0
+            and (
+                vertical_range > 0
+                if require_vertical_scroll else
+                vertical_range >= 0
+            )
+        )
+        mode_passed = bool(
+            actual_collapsed == bool(expected_collapsed)
+            and (
+                collapsed_tab_visible
+                and progress_ring_visible
+                and collapsed_art_present
+                if expected_collapsed else
+                expanded_regions_sticky
+                and not collapsed_tab_visible
+            )
+        )
+        passed = bool(
+            hud is not None
+            and hud.isVisible()
+            and actual_parent is parent
+            and bounds_evidence.get("contained", False)
+            and host_size_passed
+            and size_passed
+            and top >= 12
+            and bottom_clearance >= 112
+            and scroll_passed
+            and mode_passed
+            and minimum_art_preserved
+        )
+        return {
+            "name": name,
+            "covered_requirements": list(covered_requirements),
+            "expected_host_size": [
+                int(expected_host_width),
+                int(expected_host_height),
+            ],
+            "host_size": host_size,
+            "host_size_passed": host_size_passed,
+            "collapsed": actual_collapsed,
+            "expected_collapsed": bool(expected_collapsed),
+            "require_vertical_scroll": bool(require_vertical_scroll),
+            "bounds": bounds,
+            "viewport_size": viewport,
+            "contained": bool(bounds_evidence.get("contained", False)),
+            "expected_width": expected_width,
+            "width": actual_width,
+            "height": actual_height,
+            "size_passed": size_passed,
+            "top": top,
+            "bottom_clearance": bottom_clearance,
+            "horizontal_scroll_maximum": horizontal_range,
+            "vertical_scroll_maximum": vertical_range,
+            "sticky_header_and_dock": expanded_regions_sticky,
+            "dock_visible": dock_visible,
+            "footer_visible": footer_visible,
+            "overlaps_bottom_controls": bottom_clearance < 112,
+            "minimum_art_preserved": minimum_art_preserved,
+            "collapsed_tab_visible": collapsed_tab_visible,
+            "collapsed_progress_ring_visible": progress_ring_visible,
+            "collapsed_plant_thumbnail_present": collapsed_art_present,
+            "passed": passed,
+        }
+
+    def _reviewer_reward_dock_geometry_audit(
+        self,
+        hud: Any,
+    ) -> dict[str, Any]:
+        """Prove one reward reveal and its session footer remain inside the HUD."""
+
+        named_widgets = {
+            str(widget.objectName()): widget
+            for widget in (hud.findChildren(QWidget) if hud is not None else [])
+            if str(widget.objectName())
+        }
+        dock = named_widgets.get("reviewerHudRewardDock")
+        surface = named_widgets.get("reviewerHudRewardDockSurface")
+        reveal = named_widgets.get("reviewerHudRewardReveal")
+        footer = named_widgets.get("reviewerHudSessionFooter")
+        divider = named_widgets.get("reviewerHudRewardDivider")
+        details_toggle = named_widgets.get("reviewerHudRewardDetailsToggle")
+        obsolete_bottom_details = named_widgets.get("reviewerHudRewardMore")
+        obsolete_disclosure = named_widgets.get("reviewerHudRewardDisclosure")
+        reward_scroll = named_widgets.get("reviewerHudRewardScroll")
+        scroll_viewport = (
+            reward_scroll.viewport() if reward_scroll is not None else None
+        )
+        dock_geometry = self._widget_bounds_evidence(dock, hud)
+        reveal_geometry = self._widget_bounds_evidence(reveal, dock)
+        footer_geometry = self._widget_bounds_evidence(footer, dock)
+        divider_geometry = self._widget_bounds_evidence(divider, dock)
+        details_geometry = self._widget_bounds_evidence(details_toggle, reveal)
+        details_dock_geometry = self._widget_bounds_evidence(details_toggle, dock)
+        details_viewport_geometry = self._widget_bounds_evidence(
+            details_toggle,
+            scroll_viewport,
+        )
+        reveal_bounds = list(reveal_geometry.get("bounds", ()) or ())
+        footer_bounds = list(footer_geometry.get("bounds", ()) or ())
+        reveal_height = int(reveal_bounds[3]) if len(reveal_bounds) == 4 else 0
+        footer_height = int(footer_bounds[3]) if len(footer_bounds) == 4 else 0
+        reward_bundle_id = str(
+            reveal.property("rewardBundleId") if reveal is not None else ""
+        )
+        hud_reward_visible = bool(
+            hud is not None and hud.property("hudRewardVisible")
+        )
+        plant_card = getattr(hud, "_plant_card", None)
+        full_bloom_settled = bool(
+            plant_card is not None
+            and plant_card.property("fullBloomSettled")
+            and not str(plant_card.property("celebration") or "")
+        )
+        hero_widgets = {
+            "art": getattr(hud, "_reward_art", None),
+            "eyebrow": getattr(hud, "_reward_eyebrow", None),
+            "title": getattr(hud, "_reward_title", None),
+            "subtitle": getattr(hud, "_reward_subtitle", None),
+            "growth": getattr(hud, "_reward_growth", None),
+            "coins": getattr(hud, "_reward_coins", None),
+            "inventory": getattr(hud, "_reward_inventory", None),
+        }
+        for index, widget in enumerate(
+            tuple(getattr(hud, "_reward_summary_chips", ()) or ())
+        ):
+            hero_widgets[f"summary-{index}"] = widget
+        hero_components: dict[str, list[int]] = {}
+        hero_components_contained = True
+        for name, widget in hero_widgets.items():
+            if widget is None or reveal is None or not widget.isVisibleTo(reveal):
+                continue
+            evidence = self._widget_bounds_evidence(widget, reveal)
+            component_bounds = list(evidence.get("bounds", ()) or ())
+            hero_components[name] = component_bounds
+            hero_components_contained = bool(
+                hero_components_contained and evidence.get("contained", False)
+            )
+
+        def bounds_overlap(first: list[int], second: list[int]) -> bool:
+            if len(first) != 4 or len(second) != 4:
+                return True
+            first_left, first_top, first_width, first_height = first
+            second_left, second_top, second_width, second_height = second
+            return bool(
+                min(first_left + first_width, second_left + second_width)
+                > max(first_left, second_left)
+                and min(first_top + first_height, second_top + second_height)
+                > max(first_top, second_top)
+            )
+
+        hero_overlap_pairs: list[list[str]] = []
+        component_names = list(hero_components)
+        for index, first_name in enumerate(component_names):
+            for second_name in component_names[index + 1:]:
+                if bounds_overlap(
+                    hero_components[first_name],
+                    hero_components[second_name],
+                ):
+                    hero_overlap_pairs.append([first_name, second_name])
+        hero_components_non_overlapping = not hero_overlap_pairs
+        title_bounds = hero_components.get("title", [])
+        detail_component_names = [
+            name
+            for name in hero_components
+            if name in {"subtitle", "growth", "coins", "inventory"}
+            or name.startswith("summary-")
+        ]
+        title_details_non_overlapping = bool(
+            title_bounds
+            and detail_component_names
+            and all(
+                not bounds_overlap(title_bounds, hero_components[name])
+                for name in detail_component_names
+            )
+        )
+        scrolls = hud.findChildren(QScrollArea) if hud is not None else []
+        horizontal_range = max(
+            (
+                int(scroll.horizontalScrollBar().maximum())
+                for scroll in scrolls
+            ),
+            default=-1,
+        )
+        close_buttons = [
+            button
+            for button in (
+                dock.findChildren(QAbstractButton) if dock is not None else []
+            )
+            if button.isVisibleTo(dock)
+            and (
+                "close" in str(button.accessibleName() or "").casefold()
+                or _displayed_button_text(button).strip().casefold() in {"x", "×"}
+            )
+        ]
+        contained_in_hud = bool(
+            hud is not None
+            and dock is not None
+            and hud.isAncestorOf(dock)
+            and dock_geometry.get("contained", False)
+            and reveal is not None
+            and dock.isAncestorOf(reveal)
+            and reveal_geometry.get("contained", False)
+            and footer is not None
+            and dock.isAncestorOf(footer)
+            and footer_geometry.get("contained", False)
+        )
+        single_outer_surface = bool(
+            dock is not None
+            and surface is not None
+            and reveal is not None
+            and footer is not None
+            and surface.parentWidget() is dock
+            and surface.isAncestorOf(reveal)
+            and surface.isAncestorOf(footer)
+            and divider is not None
+            and surface.isAncestorOf(divider)
+            and not bool(reveal.property("hudCard"))
+            and not bool(footer.property("hudCard"))
+        )
+        divider_visible = bool(
+            divider is not None
+            and divider.isVisibleTo(dock)
+            and bool(dock.property("integratedDividerVisible"))
+        )
+        divider_count = int(divider_visible)
+        divider_bounds = list(
+            divider_geometry.get("bounds", ()) or ()
+        )
+        details_bounds = list(details_geometry.get("bounds", ()) or ())
+        details_click_height = (
+            int(details_bounds[3]) if len(details_bounds) == 4 else 0
+        )
+        details_dock_bounds = list(
+            details_dock_geometry.get("bounds", ()) or ()
+        )
+        details_visible_in_scroll_viewport = bool(
+            details_toggle is not None
+            and scroll_viewport is not None
+            and details_toggle.isVisibleTo(scroll_viewport)
+            and details_viewport_geometry.get("contained", False)
+        )
+        details_footer_non_overlapping = bool(
+            len(details_dock_bounds) == 4
+            and len(footer_bounds) == 4
+            and not bounds_overlap(details_dock_bounds, footer_bounds)
+        )
+        details_divider_clearance = (
+            int(divider_bounds[1])
+            - (int(details_dock_bounds[1]) + int(details_dock_bounds[3]))
+            if len(divider_bounds) == 4 and len(details_dock_bounds) == 4
+            else -1
+        )
+        compact_vertical_scroll_maximum = (
+            int(reward_scroll.verticalScrollBar().maximum())
+            if reward_scroll is not None
+            else -1
+        )
+        details_heading_aligned = bool(
+            details_toggle is not None
+            and details_toggle.isVisibleTo(reveal)
+            and details_toggle.parentWidget() is getattr(hud, "_reward_heading", None)
+            and len(details_bounds) == 4
+            and len(reveal_bounds) == 4
+            and int(details_bounds[0]) >= int(reveal_bounds[2]) // 2
+            and (
+                int(reveal_bounds[2])
+                - (int(details_bounds[0]) + int(details_bounds[2]))
+            ) <= 16
+        )
+        in_normal_flow = bool(
+            dock is not None
+            and dock.parentWidget() is not getattr(getattr(mw, "reviewer", None), "web", None)
+            and reveal is not None
+            and footer is not None
+        )
+        hud_geometry = self._reviewer_hud_geometry_audit(
+            "reviewer-reward-dock-bundle",
+            hud,
+        )
+        overlaps_bottom_controls = not bool(
+            hud_geometry.get("safe_area_passed", False)
+        )
+        passed = bool(
+            dock is not None
+            and dock.isVisibleTo(hud)
+            and reveal is not None
+            and reveal.isVisibleTo(dock)
+            and footer is not None
+            and footer.isVisibleTo(dock)
+            and contained_in_hud
+            and in_normal_flow
+            and not overlaps_bottom_controls
+            and horizontal_range == 0
+            and 130 <= reveal_height <= 150
+            and 48 <= footer_height <= 58
+            and single_outer_surface
+            and divider_visible
+            and divider_count == 1
+            and hero_components_contained
+            and hero_components_non_overlapping
+            and title_details_non_overlapping
+            and details_heading_aligned
+            and details_click_height >= 28
+            and details_visible_in_scroll_viewport
+            and details_footer_non_overlapping
+            and details_divider_clearance >= 8
+            and obsolete_bottom_details is None
+            and obsolete_disclosure is None
+            and compact_vertical_scroll_maximum == 0
+            and hud_reward_visible
+            and full_bloom_settled
+            and bool(reward_bundle_id)
+            and not close_buttons
+        )
+        return {
+            "dock_visible": bool(
+                dock is not None and dock.isVisibleTo(hud)
+            ),
+            "dock_bounds": list(dock_geometry.get("bounds", ()) or ()),
+            "reveal_bounds": reveal_bounds,
+            "footer_bounds": footer_bounds,
+            "reveal_height": reveal_height,
+            "footer_height": footer_height,
+            "reward_bundle_id": reward_bundle_id,
+            "hud_reward_visible": hud_reward_visible,
+            "full_bloom_settled": full_bloom_settled,
+            "contained_in_hud": contained_in_hud,
+            "in_normal_flow": in_normal_flow,
+            "overlaps_bottom_controls": overlaps_bottom_controls,
+            "horizontal_scroll_maximum": horizontal_range,
+            "individual_close_button_count": len(close_buttons),
+            "single_outer_surface": single_outer_surface,
+            "divider_bounds": divider_bounds,
+            "divider_visible": divider_visible,
+            "divider_count": divider_count,
+            "details_bounds": details_bounds,
+            "details_dock_bounds": details_dock_bounds,
+            "details_viewport_bounds": list(
+                details_viewport_geometry.get("bounds", ()) or ()
+            ),
+            "details_click_height": details_click_height,
+            "details_heading_aligned": details_heading_aligned,
+            "details_visible_in_scroll_viewport": (
+                details_visible_in_scroll_viewport
+            ),
+            "details_footer_non_overlapping": details_footer_non_overlapping,
+            "details_divider_clearance": details_divider_clearance,
+            "obsolete_bottom_details_present": obsolete_bottom_details is not None,
+            "obsolete_milestone_disclosure_present": obsolete_disclosure is not None,
+            "compact_vertical_scroll_maximum": compact_vertical_scroll_maximum,
+            "hero_components": hero_components,
+            "hero_components_contained": hero_components_contained,
+            "hero_overlap_pairs": hero_overlap_pairs,
+            "hero_components_non_overlapping": hero_components_non_overlapping,
+            "title_details_non_overlapping": title_details_non_overlapping,
+            "hud_geometry": hud_geometry,
+            "passed": passed,
+        }
+
+    def _sync_reward_summary_geometry_audit(
+        self,
+        card: Any,
+    ) -> dict[str, Any]:
+        """Prove the centered, focus-safe, single-scroll sync receipt."""
+
+        parent = getattr(mw, "web", None)
+        actual_parent = card.parentWidget() if card is not None else None
+        evidence = self._widget_bounds_evidence(card, actual_parent)
+        bounds = list(evidence.get("bounds", ()) or ())
+        container_size = list(evidence.get("container_size", ()) or ())
+        widgets = (
+            [card, *list(card.findChildren(QWidget))]
+            if card is not None else
+            []
+        )
+
+        def property_widget(name: str) -> Any | None:
+            return next((
+                candidate for candidate in widgets
+                if candidate.property(name) is True
+            ), None)
+
+        def named_widget(object_name: str) -> Any | None:
+            return next((
+                candidate for candidate in widgets
+                if str(candidate.objectName() or "") == object_name
+            ), None)
+
+        labels = card.findChildren(QLabel) if card is not None else []
+        buttons = (
+            card.findChildren(QAbstractButton) if card is not None else []
+        )
+        copy = " ".join(
+            [
+                *(str(candidate.text()) for candidate in labels),
+                *(
+                    _displayed_button_text(candidate)
+                    for candidate in buttons
+                    if _displayed_button_text(candidate)
+                ),
+            ]
+        )
+        normalized_copy = " ".join(copy.split())
+        expected_copy = (
+            "SYNC REWARDS",
+            "Your garden caught up",
+            SYNC_REWARD_CAPTURE_SUBTITLE,
+            "42",
+            "Card answers",
+            "+520",
+            "Growth",
+            "+12",
+            "Garden Coins",
+            "GARDEN PROGRESS",
+            "Rose",
+            "+420 Growth",
+            "75% toward Flowering reached",
+            "+80 Shared Growth",
+            "+20 Stored Growth",
+            "Wisteria Reached Full Bloom",
+            "REWARDS FOUND",
+            "Firefly Lantern",
+            "Rewards already applied.",
+            "Close",
+            "Open Garden",
+        )
+        copy_passed = all(value in normalized_copy for value in expected_copy)
+
+        boost_art = [
+            candidate for candidate in labels
+            if candidate.property("syncBoostArtwork") is True
+        ]
+        boost_art_records = [{
+            "reference": str(
+                candidate.property("syncBoostArtworkReference") or ""
+            ),
+            "source": str(candidate.property("syncArtworkSource") or ""),
+            "fallback": candidate.property("syncArtworkFallback") is True,
+            "size": [int(candidate.width()), int(candidate.height())],
+            "pixmap_present": bool(
+                candidate.pixmap() is not None
+                and not candidate.pixmap().isNull()
+            ),
+        } for candidate in boost_art]
+        boost_art_passed = not boost_art_records
+
+        asset_thumbnails = [
+            candidate for candidate in labels
+            if candidate.property("gardenAssetThumbnail") is True
+        ]
+        asset_records = [{
+            "asset_id": str(candidate.property("gardenAssetId") or ""),
+            "asset_type": str(candidate.property("gardenAssetType") or ""),
+            "source": str(candidate.property("gardenAssetSource") or ""),
+            "fallback": candidate.property("gardenAssetFallback") is True,
+            "pixmap_present": bool(
+                candidate.pixmap() is not None
+                and not candidate.pixmap().isNull()
+            ),
+        } for candidate in asset_thumbnails]
+        required_asset_ids = {
+            "sync_review_cards",
+            "growth_resource",
+            "garden_coin",
+            "shared_growth",
+            "stored_growth",
+            "checkpoint_badge",
+            "rose",
+            "wisteria",
+            "firefly_lantern",
+        }
+        artwork_passed = bool(
+            required_asset_ids
+            <= {str(row["asset_id"]) for row in asset_records}
+            and all(bool(row["source"]) for row in asset_records)
+            and all(not bool(row["fallback"]) for row in asset_records)
+            and all(bool(row["pixmap_present"]) for row in asset_records)
+        )
+
+        header = property_widget("syncFixedHeader")
+        footer = property_widget("syncFixedFooter")
+        scrolls = card.findChildren(QScrollArea) if card is not None else []
+        scroll = scrolls[0] if len(scrolls) == 1 else None
+        body = named_widget("ankiGardenSyncRewardBody")
+        horizontal_range = (
+            int(scroll.horizontalScrollBar().maximum())
+            if scroll is not None else
+            -1
+        )
+        vertical_range = (
+            int(scroll.verticalScrollBar().maximum())
+            if scroll is not None else
+            -1
+        )
+        shell_passed = bool(
+            header is not None
+            and footer is not None
+            and scroll is not None
+            and body is not None
+            and header.parentWidget() is card
+            and scroll.parentWidget() is card
+            and footer.parentWidget() is card
+            and scroll.widget() is body
+            and scroll.property("syncBodyScrollOwner") is True
+            and horizontal_range == 0
+        )
+        rewards_section = property_widget("syncRewardsSection")
+        first_reward = next((
+            candidate
+            for candidate in (
+                rewards_section.findChildren(QFrame)
+                if rewards_section is not None else []
+            )
+            if candidate.property("syncRow") is True
+        ), None)
+        first_reward_evidence = self._widget_bounds_evidence(
+            first_reward,
+            scroll.viewport() if scroll is not None else None,
+        )
+        footer_evidence = self._widget_bounds_evidence(footer, card)
+        scroll_evidence = self._widget_bounds_evidence(scroll, card)
+        footer_bounds = list(footer_evidence.get("bounds", ()) or ())
+        scroll_bounds = list(scroll_evidence.get("bounds", ()) or ())
+        footer_non_overlapping = bool(
+            len(footer_bounds) == 4
+            and len(scroll_bounds) == 4
+            and int(scroll_bounds[1]) + int(scroll_bounds[3])
+            <= int(footer_bounds[1])
+        )
+        initial_reward_visible = bool(
+            first_reward_evidence.get("visible", False)
+            and first_reward_evidence.get("contained", False)
+            and vertical_range == 0
+        )
+
+        expected_bounds: list[int] = []
+        if len(container_size) == 2 and card is not None:
+            try:
+                from ..ui.sync_reward_summary import sync_reward_summary_geometry
+
+                natural_height_reader = getattr(card, "_natural_height", None)
+                natural_height = (
+                    int(natural_height_reader())
+                    if callable(natural_height_reader) else
+                    int(card.height())
+                )
+                expected_bounds = list(sync_reward_summary_geometry(
+                    int(container_size[0]),
+                    int(container_size[1]),
+                    natural_height,
+                ))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                expected_bounds = []
+        geometry_exact = bool(
+            len(bounds) == 4
+            and len(expected_bounds) == 4
+            and all(
+                abs(int(actual) - int(expected)) <= 1
+                for actual, expected in zip(bounds, expected_bounds)
+            )
+        )
+        centered = bool(
+            len(bounds) == 4
+            and len(container_size) == 2
+            and abs(
+                (int(bounds[0]) * 2 + int(bounds[2]))
+                - int(container_size[0])
+            ) <= 2
+        )
+        geometry_passed = bool(
+            evidence.get("visible", False)
+            and evidence.get("contained", False)
+            and geometry_exact
+            and centered
+            and int(bounds[1]) == 22
+            and 400 <= int(bounds[2]) <= 480
+            and int(bounds[3]) <= 640
+            and int(bounds[3])
+            <= max(1, int(container_size[1]) - 48)
+            and shell_passed
+        )
+
+        model = getattr(card, "model", None)
+        try:
+            plant_growth_units = sum(
+                max(0, int(row.growth_delta_units))
+                for row in model.grouped_plant_results
+            )
+            find_quantity = sum(
+                max(1, int(row.get("quantity", 1) or 1))
+                for row in model.finds
+            )
+            content_facts = {
+                "anki_days": tuple(model.anki_days),
+                "eligible_answer_count": int(model.eligible_answer_count),
+                "growth_total_units": int(model.growth_total_units),
+                "plant_growth_units": plant_growth_units,
+                "shared_growth_delta_units": int(
+                    model.shared_growth_delta_units
+                ),
+                "stored_growth_delta_units": int(
+                    model.stored_growth_delta_units
+                ),
+                "garden_coin_delta": int(model.garden_coin_delta),
+                "find_quantity": find_quantity,
+                "environment_count": len(model.environment_discoveries),
+                "progression_event_count": sum(
+                    len(row.checkpoints) + (1 if row.stage_event_id else 0)
+                    for row in model.grouped_plant_results
+                ),
+                "all_clear_coin_reward": int(model.all_clear_coin_reward),
+                "fertilizer_remaining_seconds": int(
+                    model.fertilizer_remaining_seconds
+                ),
+                "fertilizer_item_id": str(model.fertilizer_item_id),
+                "booster_cards_remaining": int(
+                    model.booster_cards_remaining
+                ),
+                "booster_item_id": str(model.booster_item_id),
+            }
+            content_passed = bool(
+                content_facts == SYNC_REWARD_CAPTURE_MODEL_FACTS
+                and model.subtitle == SYNC_REWARD_CAPTURE_SUBTITLE
+                and model.all_clear_earned is False
+                and model.fertilizer_state_changed is False
+                and model.booster_state_changed is False
+                and any(
+                    bool(row.full_bloom)
+                    for row in model.grouped_plant_results
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            content_facts = {}
+            content_passed = False
+
+        nonmodal_facts = {
+            "parent_is_main_webview": actual_parent is parent,
+            "host_enabled": bool(parent is not None and parent.isEnabled()),
+            "child_widget": bool(card is not None and not card.isWindow()),
+            "show_without_activating": bool(
+                card is not None
+                and card.testAttribute(
+                    Qt.WidgetAttribute.WA_ShowWithoutActivating
+                )
+            ),
+            "no_focus": bool(
+                card is not None
+                and card.focusPolicy() == Qt.FocusPolicy.NoFocus
+                and QApplication.focusWidget() is not card
+            ),
+            "active_modal_absent": QApplication.activeModalWidget() is None,
+        }
+        nonmodal_passed = all(nonmodal_facts.values())
+        passed = bool(
+            geometry_passed
+            and copy_passed
+            and content_passed
+            and boost_art_passed
+            and artwork_passed
+            and footer_non_overlapping
+            and initial_reward_visible
+            and nonmodal_passed
+        )
+        return {
+            **evidence,
+            "expected_bounds": expected_bounds,
+            "geometry_exact": geometry_exact,
+            "centered": centered,
+            "top_offset": int(bounds[1]) if len(bounds) == 4 else -1,
+            "single_scroll_owner": len(scrolls) == 1 and shell_passed,
+            "horizontal_scroll_maximum": horizontal_range,
+            "vertical_scroll_maximum": vertical_range,
+            "fixed_header_footer": bool(header is not None and footer is not None),
+            "footer_non_overlapping": footer_non_overlapping,
+            "first_reward": first_reward_evidence,
+            "initial_reward_visible": initial_reward_visible,
+            "copy": normalized_copy,
+            "expected_copy": list(expected_copy),
+            "copy_passed": copy_passed,
+            "boost_art": boost_art_records,
+            "boost_art_passed": boost_art_passed,
+            "asset_thumbnails": asset_records,
+            "artwork_passed": artwork_passed,
+            "content": content_facts,
+            "content_passed": content_passed,
+            "nonmodal": nonmodal_facts,
+            "nonmodal_passed": nonmodal_passed,
+            "passed": passed,
+        }
+
+    def _session_summary_geometry_audit(
+        self,
+        card: Any,
+        *,
+        expected_host_size: tuple[int, int] | None = None,
+        require_expanded: bool = False,
+        require_little_scroll: bool = False,
+        require_scroll: bool = False,
+        require_retina: bool = False,
+    ) -> dict[str, Any]:
+        """Prove the post-review summary's complete responsive contract."""
+
+        parent = getattr(mw, "web", None)
+        actual_parent = card.parentWidget() if card is not None else None
+        evidence = self._widget_bounds_evidence(card, actual_parent)
+        bounds = list(evidence.get("bounds", ()) or ())
+        container_size = list(evidence.get("container_size", ()) or ())
+        widgets = (
+            [card, *list(card.findChildren(QWidget))]
+            if card is not None else
+            []
+        )
+
+        def named_widget(object_name: str) -> Any | None:
+            return next((
+                candidate for candidate in widgets
+                if str(candidate.objectName() or "") == object_name
+            ), None)
+
+        def visible_labels(root: Any) -> list[Any]:
+            if root is None:
+                return []
+            return [
+                candidate for candidate in root.findChildren(QLabel)
+                if candidate.isVisibleTo(card)
+            ]
+
+        labels = [
+            candidate
+            for candidate in (
+                card.findChildren(QLabel) if card is not None else []
+            )
+            if candidate.isVisibleTo(card)
+        ]
+        all_buttons = [
+            candidate for candidate in (
+                card.findChildren(QAbstractButton) if card is not None else []
+            )
+            if candidate.isVisibleTo(card)
+        ]
+        copy = " ".join(
+            [
+                *(str(candidate.text()) for candidate in labels),
+                *(
+                    _displayed_button_text(candidate)
+                    for candidate in all_buttons
+                    if _displayed_button_text(candidate)
+                ),
+            ]
+        )
+        normalized = " ".join(copy.casefold().split())
+        buttons = sorted(
+            _displayed_button_text(candidate)
+            for candidate in all_buttons
+            if _displayed_button_text(candidate)
+        )
+        scrolls = card.findChildren(QScrollArea) if card is not None else []
+        scroll = scrolls[0] if len(scrolls) == 1 else None
+        scroll_bar = scroll.verticalScrollBar() if scroll is not None else None
+        horizontal_range = (
+            int(scroll.horizontalScrollBar().maximum())
+            if scroll is not None else -1
+        )
+        vertical_range = int(scroll_bar.maximum()) if scroll_bar is not None else -1
+
+        header = named_widget("ankiGardenSessionHeader")
+        body = named_widget("ankiGardenSessionBody")
+        footer = named_widget("ankiGardenSessionFooter")
+        today = named_widget("ankiGardenSessionToday")
+        progress = named_widget("ankiGardenSessionTodayProgress")
+        highlights = named_widget("ankiGardenSessionHighlights")
+        rewards = named_widget("ankiGardenSessionRewards")
+        breakdown_toggle = named_widget("ankiGardenSessionBreakdownToggle")
+        breakdown = named_widget("ankiGardenSessionBreakdown")
+        boosts = named_widget("ankiGardenSessionActiveBoosts")
+
+        expected_bounds: list[int] = []
+        if len(container_size) == 2 and card is not None:
+            try:
+                from ..ui.session_summary_card import session_summary_geometry
+
+                natural_height_reader = getattr(card, "_natural_height", None)
+                natural_height = (
+                    int(natural_height_reader())
+                    if callable(natural_height_reader) else
+                    int(card.height())
+                )
+                expected_bounds = list(session_summary_geometry(
+                    int(container_size[0]),
+                    int(container_size[1]),
+                    natural_height,
+                ))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                expected_bounds = []
+
+        right_margin = (
+            int(container_size[0]) - int(bounds[0]) - int(bounds[2])
+            if len(bounds) == 4 and len(container_size) == 2 else
+            -1
+        )
+        top_margin = int(bounds[1]) if len(bounds) == 4 else -1
+        bottom_margin = (
+            int(container_size[1]) - int(bounds[1]) - int(bounds[3])
+            if len(bounds) == 4 and len(container_size) == 2 else
+            -1
+        )
+        host_size = [int(mw.width()), int(mw.height())]
+        expected_host = list(expected_host_size or ())
+        viewport_size_passed = bool(
+            len(expected_host) != 2
+            or (
+                abs(host_size[0] - int(expected_host[0])) <= 2
+                and abs(host_size[1] - int(expected_host[1])) <= 2
+            )
+        )
+
+        shell_siblings = bool(
+            card is not None
+            and header is not None
+            and scroll is not None
+            and footer is not None
+            and header.parentWidget() is card
+            and scroll.parentWidget() is card
+            and footer.parentWidget() is card
+            and len({id(header), id(scroll), id(footer)}) == 3
+        )
+        viewport = scroll.viewport() if scroll is not None else None
+        viewport_bounds = self._widget_bounds_evidence(viewport, card)
+        footer_bounds = self._widget_bounds_evidence(footer, card)
+        viewport_rect = list(viewport_bounds.get("bounds", ()) or ())
+        footer_rect = list(footer_bounds.get("bounds", ()) or ())
+        footer_viewport_clear = bool(
+            len(viewport_rect) == 4
+            and len(footer_rect) == 4
+            and int(viewport_rect[1]) + int(viewport_rect[3])
+            <= int(footer_rect[1])
+        )
+
+        original_scroll_value = (
+            int(scroll_bar.value()) if scroll_bar is not None else 0
+        )
+        body_at_scroll_end: list[int] = []
+        boost_at_scroll_end: list[int] = []
+        last_body_reachable = False
+        final_boost_reachable = False
+        try:
+            if scroll_bar is not None:
+                scroll_bar.setValue(int(scroll_bar.maximum()))
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+            body_at_scroll_end = list(
+                self._widget_bounds_evidence(body, viewport).get("bounds", ())
+                or ()
+            )
+            if len(body_at_scroll_end) == 4 and viewport is not None:
+                last_body_reachable = bool(
+                    int(body_at_scroll_end[1]) + int(body_at_scroll_end[3])
+                    <= int(viewport.height()) + 1
+                )
+            boost_at_scroll_end = list(
+                self._widget_bounds_evidence(boosts, viewport).get("bounds", ())
+                or ()
+            )
+            if len(boost_at_scroll_end) == 4 and viewport is not None:
+                final_boost_reachable = bool(
+                    int(boost_at_scroll_end[1]) >= -1
+                    and int(boost_at_scroll_end[1])
+                    + int(boost_at_scroll_end[3])
+                    <= int(viewport.height()) + 1
+                )
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            pass
+        finally:
+            if scroll_bar is not None:
+                scroll_bar.setValue(original_scroll_value)
+
+        hero = named_widget("ankiGardenSessionHero")
+        hero_value = named_widget("ankiGardenSessionHeroValue")
+        hero_label = named_widget("ankiGardenSessionHeroLabel")
+        hero_gap = -1
+        hero_spacing_passed = False
+        try:
+            value_bottom = int(hero_value.mapTo(
+                hero,
+                hero_value.rect().bottomLeft(),
+            ).y())
+            label_top = int(hero_label.mapTo(
+                hero,
+                hero_label.rect().topLeft(),
+            ).y())
+            hero_gap = label_top - value_bottom - 1
+            hero_spacing_passed = bool(
+                hero_value.parentWidget() is hero
+                and hero_label.parentWidget() is hero
+                and 4 <= hero_gap <= 6
+            )
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            hero_gap = -1
+            hero_spacing_passed = False
+        ordered_regions = (
+            ("hero", hero),
+            ("today", today),
+            ("highlights", highlights),
+            ("rewards", rewards),
+            ("active_boosts", boosts),
+        )
+        region_positions: list[tuple[int, str]] = []
+        for semantic, widget in ordered_regions:
+            try:
+                if widget is not None and widget.isVisibleTo(card):
+                    origin = widget.mapTo(body, widget.rect().topLeft())
+                    region_positions.append((int(origin.y()), semantic))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                continue
+        information_order = [
+            semantic for _top, semantic in sorted(region_positions)
+        ]
+        region_bounds = {
+            semantic: list(
+                self._widget_bounds_evidence(widget, body).get("bounds", ()) or ()
+            )
+            for semantic, widget in ordered_regions
+            if widget is not None
+        }
+
+        progress_evidence: dict[str, Any] = {
+            "minimum": -1,
+            "maximum": -1,
+            "value": -1,
+            "fraction": -1.0,
+        }
+        if progress is not None:
+            try:
+                progress_evidence = {
+                    "minimum": int(progress.minimum()),
+                    "maximum": int(progress.maximum()),
+                    "value": int(progress.value()),
+                    "fraction": float(progress.property("progressFraction")),
+                }
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+
+        summary = None
+        start_snapshot = None
+        end_snapshot = None
+        try:
+            summary = card.payload.segments[0]
+            start_snapshot = summary.today_cards_start
+            end_snapshot = summary.today_cards_end
+        except (AttributeError, IndexError, TypeError):
+            pass
+        cards_total_source = {
+            "start_completed": getattr(start_snapshot, "cards_completed", None),
+            "start_remaining": getattr(start_snapshot, "cards_remaining", None),
+            "start_total": getattr(start_snapshot, "cards_total", None),
+            "end_completed": getattr(end_snapshot, "cards_completed", None),
+            "end_remaining": getattr(end_snapshot, "cards_remaining", None),
+            "end_total": getattr(end_snapshot, "cards_total", None),
+        }
+        authoritative_cards_total_passed = bool(
+            summary is not None
+            and cards_total_source == {
+                "start_completed": 0,
+                "start_remaining": 145,
+                "start_total": 145,
+                "end_completed": 126,
+                "end_remaining": 19,
+                "end_total": 145,
+            }
+            and getattr(start_snapshot, "cards_total", None) is not None
+            and getattr(end_snapshot, "cards_total", None) is not None
+        )
+        progress_passed = bool(
+            progress_evidence["minimum"] == 0
+            and progress_evidence["maximum"] == 145
+            and progress_evidence["value"] == 126
+            and math.isclose(
+                float(progress_evidence["fraction"]),
+                126 / 145,
+                rel_tol=0.0,
+                abs_tol=0.001,
+            )
+            and "19 remaining" in normalized
+            and "126 of 145 completed" in normalized
+        )
+
+        metric_values: dict[str, str] = {}
+        for candidate in widgets:
+            key = str(candidate.property("summaryMetricKey") or "").strip()
+            if not key or not candidate.isVisibleTo(card):
+                continue
+            metric_values[key] = " ".join(
+                str(item.text()) for item in visible_labels(candidate)
+            )
+        breakdown_values: dict[str, str] = {}
+        for candidate in widgets:
+            key = str(candidate.property("summaryBreakdownRowKey") or "").strip()
+            if not key or not candidate.isVisibleTo(card):
+                continue
+            breakdown_values[key] = " ".join(
+                str(item.text()) for item in visible_labels(candidate)
+            )
+        find_row_values = [
+            " ".join(str(item.text()) for item in visible_labels(candidate))
+            for candidate in widgets
+            if candidate.property("summaryFindRow") is True
+            and candidate.property("summaryFindRowCompact") is True
+            and candidate.isVisibleTo(card)
+        ]
+        accounting_passed = bool(
+            set(metric_values) == {
+                "growth_applied",
+                "garden_coins",
+                "standard_finds",
+            }
+            and "+2,080" in metric_values.get("growth_applied", "")
+            and "+67" in metric_values.get("garden_coins", "")
+            and "+3" in metric_values.get("standard_finds", "")
+            and "+50 coin bonus included" in normalized
+            and any(
+                "Small Growth Charge" in row and "×1" in row
+                for row in find_row_values
+            )
+            and any(
+                "Garden Pouch" in row and "×1" in row
+                for row in find_row_values
+            )
+            and any(
+                "Morning Dew" in row and "×1" in row
+                for row in find_row_values
+            )
+            and len(find_row_values) == 3
+            and "more standard finds" not in normalized
+        )
+
+        expanded_copy_requirements = (
+            "direct plant growth",
+            "+1,486",
+            "shared growth distributed",
+            "+594",
+            "total applied",
+            "+2,080",
+            "stored for later",
+            "+12.5",
+            "review rewards",
+            "+17",
+            "full bloom bonus",
+            "+50",
+            "finds",
+            "item rewards",
+            "small growth charge",
+        )
+        expanded_accounting_copy_passed = bool(
+            require_expanded
+            and all(term in normalized for term in expanded_copy_requirements)
+            and "+67" in breakdown_values.get("garden_coins_total", "")
+            and any(
+                "Small Growth Charge" in row and "×1" in row
+                for row in find_row_values
+            )
+            and any("Garden Pouch" in row and "×1" in row for row in find_row_values)
+            and any("Morning Dew" in row and "×1" in row for row in find_row_values)
+        )
+        growth_breakdown_expanded = bool(
+            breakdown is not None
+            and breakdown.isVisibleTo(card)
+            and bool(getattr(card, "_details_expanded", False))
+        )
+
+        footer_buttons = [
+            candidate for candidate in all_buttons
+            if footer is not None and footer.isAncestorOf(candidate)
+        ]
+        footer_button_texts = sorted(
+            _displayed_button_text(candidate) for candidate in footer_buttons
+            if _displayed_button_text(candidate)
+        )
+        primary_actions = sorted(
+            _displayed_button_text(candidate) for candidate in footer_buttons
+            if bool(candidate.property("summaryPrimary"))
+        )
+        secondary_actions = sorted(
+            _displayed_button_text(candidate) for candidate in footer_buttons
+            if bool(candidate.property("summarySecondary"))
+        )
+        footer_button_heights = {
+            _displayed_button_text(candidate): int(candidate.height())
+            for candidate in footer_buttons
+            if _displayed_button_text(candidate)
+        }
+        actions_passed = bool(
+            footer_button_texts == ["Continue Reviews", "Open Garden"]
+            and primary_actions == ["Continue Reviews"]
+            and secondary_actions == ["Open Garden"]
+            and all(
+                38 <= height <= 40
+                for height in footer_button_heights.values()
+            )
+            and "dismiss" not in normalized
+        )
+        open_garden_capitalization_passed = bool(
+            "Open Garden" in footer_button_texts
+            and "Open garden" not in buttons
+            and "open garden" in normalized
+        )
+
+        highlight_records: list[dict[str, Any]] = []
+        for candidate in widgets:
+            kind = str(candidate.property("summaryHighlightKind") or "").strip()
+            if not kind or not candidate.isVisibleTo(card):
+                continue
+            try:
+                top = int(candidate.mapTo(
+                    body,
+                    candidate.rect().topLeft(),
+                ).y())
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                top = -1
+            highlight_records.append({
+                "kind": kind,
+                "top": top,
+                "compact": candidate.property("summaryHighlightCompact") is True,
+                "static": candidate.property("summaryStatic") is True,
+                "focus_safe": candidate.focusPolicy() == Qt.FocusPolicy.NoFocus,
+                "noninteractive_cursor": candidate.cursor().shape()
+                != Qt.CursorShape.PointingHandCursor,
+            })
+        highlight_records.sort(key=lambda row: int(row["top"]))
+        featured_highlights = [
+            row for row in highlight_records if not bool(row["compact"])
+        ]
+        compact_highlights = [
+            row for row in highlight_records if bool(row["compact"])
+        ]
+        featured_kinds = [
+            str(row["kind"]) for row in featured_highlights
+        ]
+        highlights_passed = bool(
+            len(featured_highlights) == 2
+            and featured_kinds[0] == "full_bloom"
+            and featured_kinds[1] == "environment"
+            and all(bool(row["compact"]) for row in compact_highlights)
+            and all(bool(row["static"]) for row in highlight_records)
+            and "final growth stage reached" in normalized
+            and "garden item unlocked" in normalized
+            and "firefly lantern" in normalized
+            and "added to your garden collection" in normalized
+        )
+        static_surface_records: list[dict[str, Any]] = []
+        for candidate in widgets:
+            category = (
+                "highlight"
+                if candidate.property("summaryHighlight") is True
+                else "reward_metric"
+                if candidate.property("summaryMetric") is True
+                else "boost"
+                if candidate.property("summaryBoostRow") is True
+                else ""
+            )
+            if not category or not candidate.isVisibleTo(card):
+                continue
+            static_surface_records.append({
+                "category": category,
+                "declared_static": (
+                    candidate.property("summaryStatic") is True
+                    if category == "highlight"
+                    else True
+                ),
+                "not_button": not isinstance(candidate, QAbstractButton),
+                "focus_safe": candidate.focusPolicy() == Qt.FocusPolicy.NoFocus,
+                "noninteractive_cursor": candidate.cursor().shape()
+                != Qt.CursorShape.PointingHandCursor,
+            })
+        static_surface_categories = {
+            str(row["category"]) for row in static_surface_records
+        }
+        static_card_semantics_passed = bool(
+            static_surface_categories == {"highlight", "reward_metric", "boost"}
+            and all(bool(row["declared_static"]) for row in static_surface_records)
+            and all(bool(row["not_button"]) for row in static_surface_records)
+            and all(bool(row["focus_safe"]) for row in static_surface_records)
+            and all(
+                bool(row["noninteractive_cursor"])
+                for row in static_surface_records
+            )
+        )
+
+        boost_layout_records: list[dict[str, Any]] = []
+        for row in widgets:
+            if (
+                row.property("summaryBoostRow") is not True
+                or not row.isVisibleTo(card)
+            ):
+                continue
+            row_labels = [
+                candidate for candidate in row.findChildren(QLabel)
+                if candidate.isVisibleTo(card)
+            ]
+            art_label = next((
+                candidate for candidate in row_labels
+                if candidate.property("summaryBoostArt") is True
+            ), None)
+            name_label = next((
+                candidate for candidate in row_labels
+                if candidate.property("summaryBoostName") is True
+            ), None)
+            value_label = next((
+                candidate for candidate in row_labels
+                if candidate.property("summaryBoostValue") is True
+            ), None)
+            art_bounds = list(
+                self._widget_bounds_evidence(art_label, row).get("bounds", ())
+                or ()
+            )
+            name_bounds = list(
+                self._widget_bounds_evidence(name_label, row).get("bounds", ())
+                or ()
+            )
+            value_bounds = list(
+                self._widget_bounds_evidence(value_label, row).get("bounds", ())
+                or ()
+            )
+            ordered = bool(
+                len(art_bounds) == len(name_bounds) == len(value_bounds) == 4
+                and int(art_bounds[0]) + int(art_bounds[2])
+                <= int(name_bounds[0])
+                and int(name_bounds[0]) + int(name_bounds[2])
+                <= int(value_bounds[0])
+            )
+            contained = bool(
+                all(
+                    self._widget_bounds_evidence(candidate, row).get(
+                        "contained", False
+                    )
+                    for candidate in (art_label, name_label, value_label)
+                    if candidate is not None
+                )
+                and all(
+                    candidate is not None
+                    for candidate in (art_label, name_label, value_label)
+                )
+            )
+            boost_layout_records.append({
+                "kind": str(row.property("summaryBoostKind") or ""),
+                "art_bounds": art_bounds,
+                "name_bounds": name_bounds,
+                "value_bounds": value_bounds,
+                "ordered_without_overlap": ordered,
+                "contained": contained,
+                "name_word_wrap": bool(
+                    name_label is not None and name_label.wordWrap()
+                ),
+                "name_copy_preserved": bool(
+                    name_label is not None
+                    and str(name_label.text())
+                    == str(name_label.accessibleName())
+                    == str(name_label.toolTip())
+                ),
+            })
+        boost_layout_passed = bool(
+            len(boost_layout_records) == 2
+            and {
+                str(row["kind"]) for row in boost_layout_records
+            } == {"fertilizer", "booster"}
+            and all(
+                bool(row["ordered_without_overlap"])
+                and bool(row["contained"])
+                and bool(row["name_word_wrap"])
+                and bool(row["name_copy_preserved"])
+                for row in boost_layout_records
+            )
+        )
+
+        art_records: list[dict[str, Any]] = []
+        for candidate in widgets:
+            kind = str(candidate.property("summaryArtKind") or "").strip()
+            if not kind or not candidate.isVisibleTo(card):
+                continue
+            try:
+                pixmap = candidate.pixmap()
+                pixmap_present = bool(pixmap is not None and not pixmap.isNull())
+                pixmap_has_alpha = bool(
+                    pixmap_present and pixmap.hasAlphaChannel()
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pixmap_present = False
+                pixmap_has_alpha = False
+            try:
+                source_width = int(candidate.property("summaryArtSourceWidth"))
+                source_height = int(candidate.property("summaryArtSourceHeight"))
+                logical_width = int(candidate.property("summaryArtLogicalWidth"))
+                logical_height = int(candidate.property("summaryArtLogicalHeight"))
+            except (TypeError, ValueError):
+                source_width = source_height = logical_width = logical_height = 0
+            source = str(candidate.property("summaryArtSource") or "")
+            source_pixmap_has_alpha = False
+            source_has_transparent_corner = False
+            try:
+                source_pixmap = QPixmap(source)
+                source_image = source_pixmap.toImage()
+                source_pixmap_has_alpha = bool(
+                    not source_pixmap.isNull()
+                    and source_image.hasAlphaChannel()
+                )
+                if source_pixmap_has_alpha:
+                    maximum_x = max(0, int(source_image.width()) - 1)
+                    maximum_y = max(0, int(source_image.height()) - 1)
+                    source_has_transparent_corner = any(
+                        int(source_image.pixelColor(x, y).alpha()) < 255
+                        for x, y in (
+                            (0, 0),
+                            (maximum_x, 0),
+                            (0, maximum_y),
+                            (maximum_x, maximum_y),
+                        )
+                    )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                source_pixmap_has_alpha = False
+                source_has_transparent_corner = False
+            reference = str(
+                candidate.property("summaryRewardArtReference") or ""
+            )
+            fallback = candidate.property("summaryArtFallback") is True
+            garden_item_art = candidate.property("summaryGardenItemArt") is True
+            environment_art = candidate.property("summaryEnvironmentArt") is True
+            boost_art = candidate.property("summaryBoostArt") is True
+            inline_style = str(candidate.styleSheet() or "").casefold()
+            framed_thumbnail_style = bool(
+                environment_art
+                or "border" in inline_style
+                or "background" in inline_style
+            )
+            media_rail = candidate.parentWidget()
+            media_rail_width = (
+                int(media_rail.width())
+                if media_rail is not None
+                and media_rail.property("summaryMediaRail") is True
+                else -1
+            )
+            dimensions_passed = bool(
+                logical_width > 0
+                and logical_height > 0
+                and source_width >= logical_width * 2
+                and source_height >= logical_height * 2
+            )
+            if kind == "plant":
+                dimensions_passed = bool(
+                    dimensions_passed
+                    and logical_width == 60
+                    and logical_height == 60
+                    and "wisteria" in source.casefold()
+                )
+            elif kind == "environment":
+                dimensions_passed = bool(
+                    dimensions_passed
+                    and logical_width == 88
+                    and logical_height == 56
+                    and "firefly_lantern" in source.casefold()
+                )
+            elif kind == "garden_item":
+                dimensions_passed = bool(
+                    dimensions_passed
+                    and logical_width == 58
+                    and logical_height == 58
+                    and "firefly_lantern" in source.casefold()
+                )
+            elif kind == "find":
+                dimensions_passed = bool(
+                    dimensions_passed
+                    and logical_width == 26
+                    and logical_height == 26
+                )
+            elif kind == "active boost":
+                dimensions_passed = bool(
+                    dimensions_passed
+                    and logical_width == 26
+                    and logical_height == 26
+                )
+            art_records.append({
+                "kind": kind,
+                "source": source,
+                "reference": reference,
+                "fallback": fallback,
+                "source_size": [source_width, source_height],
+                "logical_size": [logical_width, logical_height],
+                "pixmap_present": pixmap_present,
+                "pixmap_has_alpha": pixmap_has_alpha,
+                "source_pixmap_has_alpha": source_pixmap_has_alpha,
+                "source_has_transparent_corner": source_has_transparent_corner,
+                "garden_item_art": garden_item_art,
+                "environment_art": environment_art,
+                "boost_art": boost_art,
+                "framed_thumbnail_style": framed_thumbnail_style,
+                "media_rail_width": media_rail_width,
+                "compact_find_art": bool(
+                    kind == "find"
+                    and candidate.parentWidget() is not None
+                    and candidate.parentWidget().property(
+                        "summaryFindRowCompact"
+                    ) is True
+                ),
+                "dimensions_passed": dimensions_passed,
+                "passed": bool(
+                    source
+                    and not fallback
+                    and pixmap_present
+                    and dimensions_passed
+                ),
+            })
+        art_kinds = {str(row["kind"]) for row in art_records}
+        required_art_records = [
+            row for row in art_records
+            if row["kind"] == "garden_item"
+            or row["kind"] == "active boost"
+            or (
+                row["kind"] == "find"
+                and bool(row["compact_find_art"])
+            )
+            or (
+                row["kind"] == "plant"
+                and int(row["logical_size"][0]) >= 56
+                and int(row["logical_size"][1]) >= 56
+            )
+        ]
+        art_passed = bool(
+            {"plant", "garden_item", "find", "active boost"} <= art_kinds
+            and {"plant", "garden_item", "find", "active boost"} == {
+                str(row["kind"]) for row in required_art_records
+            }
+            and all(bool(row["passed"]) for row in required_art_records)
+        )
+        boost_art_records = [
+            row for row in art_records
+            if row["kind"] == "active boost"
+        ]
+        boost_art_passed = bool(
+            len(boost_art_records) == 2
+            and {
+                str(row["reference"]) for row in boost_art_records
+            } == {"fertilizer_quality", "booster_potion"}
+            and all(bool(row["boost_art"]) for row in boost_art_records)
+            and all(bool(row["passed"]) for row in boost_art_records)
+        )
+
+        small_charge_find = None
+        firefly_discovery = None
+        firefly_highlight = None
+        if summary is not None:
+            small_charge_find = next((
+                item for item in tuple(summary.standard_finds)
+                if str(getattr(item, "find_id", "") or "")
+                == "find_small_charge"
+            ), None)
+            firefly_discovery = next((
+                item for item in tuple(summary.environment_discoveries)
+                if str(getattr(item, "environment_id", "") or "")
+                == "firefly_lantern"
+            ), None)
+            try:
+                from ..ui.session_summary import project_session_day
+
+                projection = project_session_day(summary)
+                firefly_highlight = next((
+                    item
+                    for item in (
+                        *tuple(projection.highlights.featured),
+                        *tuple(projection.highlights.overflow),
+                    )
+                    if str(getattr(item, "title", "") or "")
+                    == "Firefly Lantern"
+                ), None)
+            except (AttributeError, ImportError, RuntimeError, TypeError, ValueError):
+                firefly_highlight = None
+        garden_item_art = next((
+            row for row in art_records
+            if row["kind"] == "garden_item"
+            and "firefly_lantern" in str(row["source"]).casefold()
+        ), None)
+        garden_item_taxonomy_passed = bool(
+            firefly_discovery is not None
+            and str(firefly_discovery.environment_kind) == "garden_feature"
+            and str(firefly_discovery.unlock_category) == "garden_item"
+            and firefly_highlight is not None
+            and str(firefly_highlight.kind) == "environment"
+            and str(firefly_highlight.unlock_category) == "garden_item"
+            and str(firefly_highlight.eyebrow) == "GARDEN ITEM UNLOCKED"
+            and "garden item unlocked" in normalized
+            and "environment unlocked" not in normalized
+            and garden_item_art is not None
+            and list(garden_item_art["logical_size"]) == [58, 58]
+            and int(garden_item_art["source_size"][0]) >= 116
+            and int(garden_item_art["source_size"][1]) >= 116
+            and bool(garden_item_art["pixmap_present"])
+            and bool(garden_item_art["pixmap_has_alpha"])
+            and bool(garden_item_art["source_pixmap_has_alpha"])
+            and bool(garden_item_art["source_has_transparent_corner"])
+            and bool(garden_item_art["garden_item_art"])
+            and not bool(garden_item_art["environment_art"])
+            and not bool(garden_item_art["framed_thumbnail_style"])
+            and int(garden_item_art["media_rail_width"]) == 88
+            and not bool(garden_item_art["fallback"])
+        )
+        standard_find_identity_passed = bool(
+            small_charge_find is not None
+            and str(small_charge_find.find_name) == "Charged Seed"
+            and str(small_charge_find.reward_type) == "inventory_item"
+            and str(small_charge_find.reward_label) == "+1 Small Growth Charge"
+            and str(small_charge_find.item_id) == "growth_charge_small"
+            and str(small_charge_find.art_asset) == "ui_growth_charge_small"
+            and "small growth charge" in normalized
+            and "charged seed" not in normalized
+            and bool(getattr(summary, "find_items_reconciled", False))
+        )
+
+        empty_sections: list[str] = []
+        for name, section in (
+            ("today", today),
+            ("highlights", highlights),
+            ("rewards", rewards),
+            ("active_boosts", boosts),
+        ):
+            if section is not None and not visible_labels(section):
+                empty_sections.append(name)
+        zero_rows = list(dict.fromkeys(
+            re.findall(
+                r"(?<![\d,])\+0(?:\.0)?\b|\b0 (?:cards?|finds?|coins?|growth|min|minutes)\b",
+                normalized,
+            )
+        ))
+        zero_sections_passed = bool(not empty_sections and not zero_rows)
+
+        banned_terms = tuple(
+            term for term in (
+                "all clear",
+                "daily care",
+                "required cards",
+                " answers",
+                "find drought",
+                "52 / 75",
+                "no garden rewards",
+                "144 cards remaining",
+                "144 remaining",
+                "completed during this session",
+                "full bloom weather",
+                "session results",
+                "effects remaining",
+                "view growth and reward details",
+                "growth breakdown",
+                "→",
+            ) if term in normalized
+        )
+        cards_complete_copy = bool(re.search(r"\bcards complete\b", normalized))
+        required_copy = (
+            "session summary",
+            "126 cards completed this session",
+            "today’s cards",
+            "19 remaining",
+            "126 of 145 completed",
+            "session highlights",
+            "rewards earned",
+            "reward breakdown",
+            "active boosts",
+        )
+        missing_required_copy = tuple(
+            term for term in required_copy if term not in normalized
+        )
+        copy_passed = bool(
+            not missing_required_copy
+            and not banned_terms
+            and not cards_complete_copy
+        )
+        try:
+            device_pixel_ratio = float(card.devicePixelRatioF())
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            device_pixel_ratio = 0.0
+        try:
+            natural_height = int(card._natural_height())
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            natural_height = -1
+        try:
+            body_size_hint = int(body.sizeHint().height()) if body is not None else -1
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            body_size_hint = -1
+
+        audit = {
+            **evidence,
+            "expected_bounds": expected_bounds,
+            "host_size": host_size,
+            "expected_host_size": expected_host,
+            "viewport_size_passed": viewport_size_passed,
+            "parent_is_main_webview": actual_parent is parent,
+            "focus_safe": bool(
+                card is not None
+                and card.focusPolicy() == Qt.FocusPolicy.NoFocus
+                and card.testAttribute(
+                    Qt.WidgetAttribute.WA_ShowWithoutActivating
+                )
+            ),
+            "right_margin": right_margin,
+            "top_margin": top_margin,
+            "bottom_margin": bottom_margin,
+            "header_height": int(header.height()) if header is not None else -1,
+            "compact_density": (
+                card.property("summaryCompactDensity") is True
+                if card is not None else False
+            ),
+            "shell_siblings": shell_siblings,
+            "scroll_count": len(scrolls),
+            "horizontal_scroll_maximum": horizontal_range,
+            "vertical_scroll_maximum": vertical_range,
+            "natural_height": natural_height,
+            "body_size_hint": body_size_hint,
+            "viewport_bounds": viewport_rect,
+            "footer_bounds": footer_rect,
+            "footer_viewport_clear": footer_viewport_clear,
+            "body_bounds_at_scroll_end": body_at_scroll_end,
+            "last_body_reachable": last_body_reachable,
+            "final_boost_bounds_at_scroll_end": boost_at_scroll_end,
+            "final_boost_reachable": final_boost_reachable,
+            "information_order": information_order,
+            "region_bounds": region_bounds,
+            "hero_value_label_gap": hero_gap,
+            "hero_spacing_passed": hero_spacing_passed,
+            "body_width": int(body.width()) if body is not None else -1,
+            "viewport_width": int(viewport.width()) if viewport is not None else -1,
+            "progress": progress_evidence,
+            "progress_passed": progress_passed,
+            "cards_total_source": cards_total_source,
+            "authoritative_cards_total_passed": (
+                authoritative_cards_total_passed
+            ),
+            "metric_values": metric_values,
+            "breakdown_values": breakdown_values,
+            "find_row_values": find_row_values,
+            "accounting_passed": accounting_passed,
+            "growth_breakdown_expanded": growth_breakdown_expanded,
+            "expanded_accounting_copy_passed": expanded_accounting_copy_passed,
+            "buttons": buttons,
+            "footer_buttons": footer_button_texts,
+            "primary_actions": primary_actions,
+            "secondary_actions": secondary_actions,
+            "footer_button_heights": footer_button_heights,
+            "actions_passed": actions_passed,
+            "open_garden_capitalization_passed": (
+                open_garden_capitalization_passed
+            ),
+            "highlights": highlight_records,
+            "highlights_passed": highlights_passed,
+            "static_surfaces": static_surface_records,
+            "static_card_semantics_passed": static_card_semantics_passed,
+            "boost_layout": boost_layout_records,
+            "boost_layout_passed": boost_layout_passed,
+            "art": art_records,
+            "art_passed": art_passed,
+            "boost_art_passed": boost_art_passed,
+            "garden_item_taxonomy_passed": garden_item_taxonomy_passed,
+            "standard_find_identity_passed": standard_find_identity_passed,
+            "empty_sections": empty_sections,
+            "zero_rows": zero_rows,
+            "zero_sections_passed": zero_sections_passed,
+            "copy": copy,
+            "missing_required_copy": list(missing_required_copy),
+            "banned_terms": list(banned_terms),
+            "cards_complete_copy": cards_complete_copy,
+            "copy_passed": copy_passed,
+            "device_pixel_ratio": device_pixel_ratio,
+        }
+        issue_codes = session_summary_capture_issue_codes(
+            audit,
+            require_expanded=require_expanded,
+            require_little_scroll=require_little_scroll,
+            require_scroll=require_scroll,
+            require_retina=require_retina,
+        )
+        audit["issues"] = list(issue_codes)
+        audit["passed"] = not issue_codes
+        return audit
+
+    def _exercise_reviewer_hud_acceptance_matrix(
+        self,
+        label: str,
+        handler: Any,
+        on_ready: Callable[
+            [dict[str, Any], dict[str, Any], dict[str, Any]],
+            None,
+        ],
+        on_error: Callable[[], None],
+    ) -> None:
+        """Exercise the required Reviewer window/content states transiently."""
+
+        from ..ui.reviewer_hud import ReviewerHudProjection
+        from ..ui.reviewer_hud_widget import _pixmap_visible_geometry
+
+        canonical = getattr(handler, "_reviewer_hud_projection", None)
+        if not isinstance(canonical, ReviewerHudProjection):
+            self._failures.append({
+                "label": label,
+                "reason": "Reviewer HUD canonical projection was unavailable",
+            })
+            on_error()
+            self._next_after(120)
+            return
+
+        viewport_records: dict[str, Any] = {}
+        content_records: dict[str, Any] = {}
+        resilience_records: dict[str, Any] = {}
+        finished = False
+
+        def fail(reason: str, observation: Any = None) -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            viewport_records["passed"] = False
+            content_records["passed"] = False
+            resilience_records["passed"] = False
+            if observation is not None:
+                content_records["failure_observation"] = observation
+            self._capture_annotations.setdefault(label, {}).update({
+                "reviewer_hud_viewport_matrix": viewport_records,
+                "reviewer_hud_content_matrix": content_records,
+                "reviewer_hud_resilience_matrix": resilience_records,
+            })
+            self._failures.append({"label": label, "reason": reason})
+            try:
+                mw.showMaximized()
+            except Exception:
+                pass
+            on_error()
+            self._next_after(120)
+
+        def wait_until(
+            predicate: Callable[[], bool],
+            callback: Callable[[], None],
+            *,
+            reason: str,
+            tries: int = 60,
+        ) -> None:
+            if finished:
+                return
+            try:
+                ready = bool(predicate())
+            except Exception:
+                ready = False
+            if ready:
+                QTimer.singleShot(90, callback)
+                return
+            if tries <= 0:
+                fail(reason)
+                return
+            QTimer.singleShot(
+                90,
+                lambda: wait_until(
+                    predicate,
+                    callback,
+                    reason=reason,
+                    tries=tries - 1,
+                ),
+            )
+
+        def set_window_size(width: int, height: int) -> None:
+            mw.showNormal()
+            screen = mw.screen() or QGuiApplication.primaryScreen()
+            if screen is None:
+                mw.resize(int(width), int(height))
+                return
+            available = screen.availableGeometry()
+            mw.setGeometry(
+                int(available.x()),
+                int(available.y()),
+                int(width),
+                int(height),
+            )
+
+        def current_hud() -> Any:
+            return getattr(handler, "_reviewer_hud", None)
+
+        def host_settled(width: int, height: int, collapsed: bool) -> bool:
+            if (
+                abs(int(mw.width()) - int(width)) > 3
+                or abs(int(mw.height()) - int(height)) > 3
+            ):
+                return False
+            handler._ensure_reviewer_hud(
+                force_collapsed=collapsed,
+                force_dock="right",
+            )
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            hud = current_hud()
+            if hud is None or not hud.isVisible():
+                return False
+            return bool(hud.property("hudCollapsed")) is bool(collapsed)
+
+        def audit_viewport(
+            spec: tuple[str, int, int, bool, bool, tuple[str, ...]],
+        ) -> None:
+            name = spec[0]
+            hud = current_hud()
+            record = self._reviewer_hud_viewport_audit(hud, spec)
+            viewport_records[name] = record
+            if not record["passed"]:
+                fail(f"Reviewer HUD failed transient viewport state {name}", record)
+
+        def visible_copy(hud: Any) -> str:
+            return " ".join(
+                str(candidate.text())
+                for candidate in hud.findChildren(QLabel)
+                if candidate.isVisibleTo(hud)
+            )
+
+        def apply_projection(
+            name: str,
+            projection: ReviewerHudProjection,
+            observe: Callable[[Any, str], dict[str, Any]],
+            *,
+            animate: bool = False,
+        ) -> None:
+            hud = current_hud()
+            if hud is None or not hud.isVisible():
+                fail(
+                    f"Reviewer HUD disappeared before transient content state {name}",
+                    {"hud_present": hud is not None},
+                )
+                return
+            hud.update_projection(projection, animate=animate)
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            copy = visible_copy(hud)
+            scrolls = hud.findChildren(QScrollArea)
+            effect_labels = [
+                {
+                    "text": str(label.text()),
+                    "full_text": str(getattr(label, "_full_text", "") or ""),
+                    "text_elided": bool(label.property("textElided")),
+                    "width": int(label.width()),
+                    "chip_width": int(hud._effect_chips[index].width()),
+                }
+                for index, label in enumerate(
+                    tuple(getattr(hud, "_effect_labels", ()) or ())
+                )
+                if index < len(tuple(getattr(hud, "_effect_chips", ()) or ()))
+            ]
+            record = {
+                "visible_copy": copy,
+                "effect_labels": effect_labels,
+                "horizontal_scroll_maximum": max(
+                    (
+                        int(scroll.horizontalScrollBar().maximum())
+                        for scroll in scrolls
+                    ),
+                    default=-1,
+                ),
+            }
+            try:
+                observation = observe(hud, copy)
+            except Exception as exc:
+                observation = {
+                    "passed": False,
+                    "observation_error": type(exc).__name__,
+                }
+            if isinstance(observation, dict):
+                record.update(observation)
+            record["passed"] = bool(
+                record["horizontal_scroll_maximum"] == 0
+                and record.get("passed", False)
+            )
+            content_records[name] = record
+            if not record["passed"]:
+                fail(
+                    f"Reviewer HUD failed transient content state {name}: "
+                    f"effects={effect_labels!r}",
+                    record,
+                )
+
+        def exercise_content() -> None:
+            if finished:
+                return
+            from ..reward_presentation import (
+                RewardBundleProjection,
+                RewardHero,
+                RewardItemProjection,
+            )
+
+            hud = current_hud()
+            nurture = canonical.nurture
+            today = canonical.today
+
+            def process_events() -> None:
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+
+            def manual_record(name: str, record: dict[str, Any]) -> bool:
+                content_records[name] = record
+                if not bool(record.get("passed", False)):
+                    fail(
+                        f"Reviewer HUD failed transient content state {name}",
+                        record,
+                    )
+                    return False
+                return True
+
+            def session_record() -> dict[str, Any]:
+                metric_widgets = (
+                    ("growth", getattr(hud, "_session_growth", None)),
+                    ("coins", getattr(hud, "_session_coins", None)),
+                    ("finds", getattr(hud, "_session_finds", None)),
+                )
+                visible_metrics = [
+                    (key, str(widget.text()))
+                    for key, widget in metric_widgets
+                    if widget is not None and widget.isVisibleTo(hud)
+                ]
+                divider = getattr(hud, "_reward_divider", None)
+                dock = getattr(hud, "_reward_dock", None)
+                footer = getattr(hud, "_session_footer", None)
+                return {
+                    "metric_keys": [key for key, _copy in visible_metrics],
+                    "metric_copy": [copy for _key, copy in visible_metrics],
+                    "dock_visible": bool(
+                        dock is not None and dock.isVisibleTo(hud)
+                    ),
+                    "session_footer_visible": bool(
+                        footer is not None and footer.isVisibleTo(hud)
+                    ),
+                    "divider_visible": bool(
+                        divider is not None and divider.isVisibleTo(hud)
+                    ),
+                }
+
+            def update_session(values: dict[str, int]) -> dict[str, Any]:
+                updater = getattr(hud, "update_session", None)
+                if callable(updater):
+                    updater(values)
+                # These matrix rows describe the settled content state.  The
+                # routine-answer and daily-completion probes below exercise
+                # the animation timeline independently, so do not sample the
+                # first frame of the footer count-up here.
+                animation = getattr(hud, "_session_count_animation", None)
+                if animation is not None:
+                    try:
+                        animation.setCurrentTime(int(animation.duration()))
+                    except Exception:
+                        pass
+                hud.reposition()
+                process_events()
+                return session_record()
+
+            eighteen_left = replace(
+                today,
+                status="in_progress",
+                heading="Today’s cards",
+                primary="176 / 194",
+                secondary=("18 cards left",),
+                progress_value=176,
+                progress_maximum=194,
+                remaining_count=18,
+            )
+            canonical_display = replace(canonical, today=eighteen_left, coins=248)
+            apply_projection(
+                "18-cards-left",
+                canonical_display,
+                lambda candidate, _copy: {
+                    "remaining_count": 18,
+                    "copy": str(candidate._today_detail.text()),
+                    "passed": bool(
+                        candidate._today_card.property("completionStatus")
+                        == "in_progress"
+                        and str(candidate._today_detail.text()) == "18 cards left"
+                    ),
+                },
+            )
+            if finished:
+                return
+
+            one_left = replace(
+                today,
+                status="in_progress",
+                heading="Today’s cards",
+                primary="175 / 176",
+                secondary=("1 card left",),
+                progress_value=175,
+                progress_maximum=176,
+                remaining_count=1,
+            )
+            apply_projection(
+                "1-card-left",
+                replace(canonical, today=one_left, coins=248),
+                lambda candidate, _copy: (
+                    lambda progress, logical_width, estimated_unfilled: {
+                        "remaining_count": 1,
+                        "copy": str(candidate._today_detail.text()),
+                        "near_complete_card": bool(
+                            candidate._today_card.property("nearComplete")
+                        ),
+                        "near_complete_detail": bool(
+                            candidate._today_detail.property("nearComplete")
+                        ),
+                        "displayed_progress_percent": float(
+                            progress.property("displayedProgressPercent")
+                            or (progress.value() / 10.0)
+                        ),
+                        "progress_value": int(progress.value()),
+                        "progress_maximum": int(progress.maximum()),
+                        "minimum_unfilled_logical_pixels": int(
+                            progress.property("minimumUnfilledLogicalPixels")
+                            or 0
+                        ),
+                        "estimated_unfilled_logical_pixels": (
+                            estimated_unfilled
+                        ),
+                        "progress_logical_width": logical_width,
+                        "visible_end_gap": bool(
+                            progress.value() < progress.maximum()
+                            and estimated_unfilled >= 4
+                        ),
+                        "passed": bool(
+                            str(candidate._today_detail.text()) == "1 card left"
+                            and bool(
+                                candidate._today_card.property("nearComplete")
+                            )
+                            and bool(
+                                candidate._today_detail.property("nearComplete")
+                            )
+                            and float(
+                                progress.property("displayedProgressPercent")
+                                or (progress.value() / 10.0)
+                            ) == 98.5
+                            and progress.value() == 985
+                            and progress.maximum() == 1_000
+                            and int(
+                                progress.property(
+                                    "minimumUnfilledLogicalPixels"
+                                ) or 0
+                            ) == 4
+                            and estimated_unfilled >= 4
+                        ),
+                    }
+                )(
+                    candidate._today_progress,
+                    max(0, int(candidate._today_progress.contentsRect().width())),
+                    int(round(
+                        max(
+                            0,
+                            int(candidate._today_progress.contentsRect().width()),
+                        )
+                        * (
+                            candidate._today_progress.maximum()
+                            - candidate._today_progress.value()
+                        )
+                        / max(1, candidate._today_progress.maximum())
+                    )),
+                ),
+            )
+            if finished:
+                return
+
+            zero_session = update_session({
+                "footer_growth_units": 0,
+                "garden_coins_earned": 0,
+                "footer_find_count": 0,
+            })
+            if not manual_record(
+                "no-session-rewards",
+                {
+                    **zero_session,
+                    "passed": bool(
+                        not zero_session["dock_visible"]
+                        and not zero_session["session_footer_visible"]
+                    ),
+                },
+            ):
+                return
+
+            growth_only = update_session({
+                "footer_growth_units": 1_800,
+                "garden_coins_earned": 0,
+                "footer_find_count": 0,
+            })
+            if not manual_record(
+                "growth-only",
+                {
+                    **growth_only,
+                    "passed": bool(
+                        growth_only["metric_keys"] == ["growth"]
+                        and growth_only["metric_copy"] == ["+18 growth"]
+                        and not growth_only["divider_visible"]
+                    ),
+                },
+            ):
+                return
+
+            growth_coins = update_session({
+                "footer_growth_units": 1_800,
+                "garden_coins_earned": 2,
+                "footer_find_count": 0,
+            })
+            if not manual_record(
+                "growth-and-coins",
+                {
+                    **growth_coins,
+                    "zero_categories_omitted": (
+                        growth_coins["metric_keys"] == ["growth", "coins"]
+                    ),
+                    "passed": bool(
+                        growth_coins["metric_keys"] == ["growth", "coins"]
+                        and growth_coins["metric_copy"]
+                        == ["+18 growth", "+2 coins"]
+                    ),
+                },
+            ):
+                return
+            update_session({
+                "footer_growth_units": 0,
+                "garden_coins_earned": 0,
+                "footer_find_count": 0,
+            })
+
+            def effect_observation(
+                candidate: Any,
+                expected: tuple[str, ...],
+                expected_art_refs: tuple[str, ...] = (),
+            ) -> dict[str, Any]:
+                visible_chips = [
+                    widget
+                    for widget in candidate._effect_chips
+                    if widget.isVisibleTo(candidate)
+                ]
+                visible_count = len(visible_chips)
+                overflow = candidate._effects_overflow
+                overflow_visible = overflow.isVisibleTo(candidate)
+                overflow_bounds = self._widget_bounds_evidence(
+                    overflow,
+                    candidate._effects,
+                )
+                bounds = list(overflow_bounds.get("bounds", ()) or ())
+                chip_geometry = [
+                    self._widget_bounds_evidence(chip, candidate._effects)
+                    for chip in visible_chips
+                ]
+                label_geometry = [
+                    self._widget_bounds_evidence(
+                        candidate._effect_labels[index],
+                        candidate._effect_chips[index],
+                    )
+                    for index, chip in enumerate(candidate._effect_chips)
+                    if chip in visible_chips
+                ]
+
+                def overlaps(first: list[int], second: list[int]) -> bool:
+                    if len(first) != 4 or len(second) != 4:
+                        return True
+                    return bool(
+                        min(first[0] + first[2], second[0] + second[2])
+                        > max(first[0], second[0])
+                        and min(first[1] + first[3], second[1] + second[3])
+                        > max(first[1], second[1])
+                    )
+
+                chip_bounds = [
+                    list(row.get("bounds", ()) or ())
+                    for row in chip_geometry
+                ]
+                overlap_pairs = [
+                    [first_index, second_index]
+                    for first_index, first in enumerate(chip_bounds)
+                    for second_index, second in enumerate(
+                        chip_bounds[first_index + 1:],
+                        start=first_index + 1,
+                    )
+                    if overlaps(first, second)
+                ]
+                visible_labels = [
+                    candidate._effect_labels[index]
+                    for index, chip in enumerate(candidate._effect_chips)
+                    if chip in visible_chips
+                ]
+                visible_icons = [
+                    candidate._effect_icons[index]
+                    for index, chip in enumerate(candidate._effect_chips)
+                    if chip in visible_chips
+                ]
+                effect_art_refs = tuple(
+                    str(icon.property("hudEffectArtworkRef") or "")
+                    for icon in visible_icons
+                )
+                effect_item_art = tuple(
+                    bool(icon.property("hudEffectUsesItemArt"))
+                    for icon in visible_icons
+                )
+                effect_art_passed = bool(
+                    effect_art_refs == expected_art_refs[:2]
+                    and all(
+                        effect_item_art[index]
+                        for index, reference in enumerate(effect_art_refs)
+                        if reference
+                    )
+                )
+                labels_unclipped = bool(
+                    len(visible_labels) == min(2, len(expected))
+                    and all(
+                        not bool(label.property("textElided"))
+                        and str(label.text())
+                        == str(getattr(label, "_full_text", "") or "")
+                        == expected[index]
+                        for index, label in enumerate(visible_labels)
+                    )
+                )
+                chips_contained = bool(
+                    len(chip_geometry) == min(2, len(expected))
+                    and all(row.get("contained", False) for row in chip_geometry)
+                )
+                labels_contained = bool(
+                    len(label_geometry) == min(2, len(expected))
+                    and all(row.get("contained", False) for row in label_geometry)
+                )
+                overflow_right_aligned = bool(
+                    not overflow_visible
+                    or (
+                        len(bounds) == 4
+                        and int(bounds[0]) + int(bounds[2])
+                        >= int(candidate._effects.width()) - 12
+                    )
+                )
+                return {
+                    "visible_effect_count": visible_count,
+                    "overflow_visible": overflow_visible,
+                    "overflow_text": str(overflow.text()),
+                    "overflow_right_aligned": overflow_right_aligned,
+                    "effect_chip_bounds": chip_bounds,
+                    "effect_label_bounds": [
+                        list(row.get("bounds", ()) or ())
+                        for row in label_geometry
+                    ],
+                    "effect_chips_contained": chips_contained,
+                    "effect_labels_contained": labels_contained,
+                    "effect_labels_unclipped": labels_unclipped,
+                    "effect_chip_overlap_pairs": overlap_pairs,
+                    "effect_art_refs": list(effect_art_refs),
+                    "effect_item_art": list(effect_item_art),
+                    "effect_art_passed": effect_art_passed,
+                    "single_column": bool(
+                        candidate._effects.property("singleColumn")
+                    ),
+                    "overflow_contained": bool(
+                        not overflow_visible
+                        or overflow_bounds.get("contained", False)
+                    ),
+                    "passed": bool(
+                        visible_count == min(2, len(expected))
+                        and chips_contained
+                        and labels_contained
+                        and labels_unclipped
+                        and effect_art_passed
+                        and not overlap_pairs
+                        and overflow_visible is (len(expected) > 2)
+                        and (
+                            not overflow_visible
+                            or (
+                                str(overflow.text()) == "1 more effect ›"
+                                and overflow_right_aligned
+                                and overflow_bounds.get("contained", False)
+                            )
+                        )
+                    ),
+                }
+
+            zero_effects: tuple[str, ...] = ()
+            zero_effect_art: tuple[str, ...] = ()
+            apply_projection(
+                "zero-effects",
+                replace(
+                    canonical,
+                    nurture=replace(
+                        nurture,
+                        effect_chips=zero_effects,
+                        effect_art_refs=zero_effect_art,
+                    ),
+                ),
+                lambda candidate, _copy: effect_observation(
+                    candidate,
+                    zero_effects,
+                    zero_effect_art,
+                ),
+            )
+            if finished:
+                return
+            one_effect = ("Fertilizer · 1h",)
+            one_effect_art = ("fertilizer_quality",)
+            apply_projection(
+                "one-effect",
+                replace(
+                    canonical,
+                    nurture=replace(
+                        nurture,
+                        effect_chips=one_effect,
+                        effect_art_refs=one_effect_art,
+                    ),
+                ),
+                lambda candidate, _copy: effect_observation(
+                    candidate,
+                    one_effect,
+                    one_effect_art,
+                ),
+            )
+            if finished:
+                return
+            two_effects = ("Fertilizer · 1h", "Booster · 38 cards")
+            two_effect_art = ("fertilizer_quality", "booster_potion")
+            apply_projection(
+                "two-effects",
+                replace(canonical, nurture=replace(
+                    nurture,
+                    effect_chips=two_effects,
+                    effect_art_refs=two_effect_art,
+                )),
+                lambda candidate, _copy: effect_observation(
+                    candidate,
+                    two_effects,
+                    two_effect_art,
+                ),
+            )
+            if finished:
+                return
+            three_effects = (*two_effects, "Temporary growth · +2")
+            three_effect_art = (*two_effect_art, "")
+            apply_projection(
+                "three-plus-effects",
+                replace(canonical, nurture=replace(
+                    nurture,
+                    effect_chips=three_effects,
+                    effect_art_refs=three_effect_art,
+                )),
+                lambda candidate, _copy: effect_observation(
+                    candidate,
+                    three_effects,
+                    three_effect_art,
+                ),
+            )
+            if finished:
+                return
+
+            long_effects = (
+                "Fertilizer · 12h 48m remaining",
+                "Booster · 1,240 cards remaining",
+            )
+            long_effect_art = ("fertilizer_quality", "booster_potion")
+
+            def observe_long_effects(
+                candidate: Any,
+                _copy: str,
+            ) -> dict[str, Any]:
+                record = effect_observation(
+                    candidate,
+                    long_effects,
+                    long_effect_art,
+                )
+                bounds = list(record.get("effect_chip_bounds", ()) or ())
+                vertically_stacked = bool(
+                    len(bounds) == 2
+                    and len(bounds[0]) == 4
+                    and len(bounds[1]) == 4
+                    and int(bounds[1][1])
+                    >= int(bounds[0][1]) + int(bounds[0][3])
+                )
+                record["vertically_stacked"] = vertically_stacked
+                record["passed"] = bool(
+                    record.get("passed", False)
+                    and record.get("single_column") is True
+                    and vertically_stacked
+                    and record.get("effect_labels_unclipped") is True
+                )
+                return record
+
+            apply_projection(
+                "long-effects-one-column",
+                replace(canonical, nurture=replace(
+                    nurture,
+                    effect_chips=long_effects,
+                    effect_art_refs=long_effect_art,
+                )),
+                observe_long_effects,
+            )
+            if finished:
+                return
+
+            def checkpoint_state_map(candidate: Any) -> dict[str, str]:
+                candidate_track = candidate._checkpoint_track
+                checkpoints = tuple(
+                    int(value)
+                    for value in (
+                        candidate_track.property("checkpointPercents")
+                        or getattr(candidate_track, "_checkpoints", ())
+                        or (25, 50, 75, 100)
+                    )
+                )
+                states = tuple(
+                    value
+                    for value in str(
+                        candidate_track.property("checkpointMarkerStates") or ""
+                    ).split(",")
+                    if value
+                )
+                return {
+                    str(checkpoint): state
+                    for checkpoint, state in zip(checkpoints, states)
+                }
+
+            def observe_progress(
+                candidate: Any,
+                _copy: str,
+                *,
+                expected_percent: int,
+                expected_markers: dict[str, str],
+            ) -> dict[str, Any]:
+                candidate_track = candidate._checkpoint_track
+                markers = checkpoint_state_map(candidate)
+                return {
+                    "stage_percent_copy": str(candidate._percent.text()),
+                    "track_progress_percent": int(
+                        candidate_track.property("progressPercent") or 0
+                    ),
+                    "painted_progress_percent": round(
+                        float(candidate_track._progress)
+                    ),
+                    "marker_states": markers,
+                    "current_position_handle": bool(
+                        candidate_track.property("currentPositionHandleVisible")
+                    ),
+                    "marker_shape": str(
+                        candidate_track.property("markerShape") or ""
+                    ),
+                    "passed": bool(
+                        str(candidate._percent.text())
+                        == f"{expected_percent}%"
+                        and int(
+                            candidate_track.property("progressPercent") or 0
+                        ) == expected_percent
+                        and round(float(candidate_track._progress))
+                        == expected_percent
+                        and markers == expected_markers
+                        and not bool(
+                            candidate_track.property(
+                                "currentPositionHandleVisible"
+                            )
+                        )
+                        and str(candidate_track.property("markerShape") or "")
+                        == "diamond-tick"
+                    ),
+                }
+
+            progress_10 = replace(
+                nurture,
+                progress_percent=10,
+                next_checkpoint_percent=25,
+                next_checkpoint_reward_coins=2,
+            )
+            progress_38 = replace(
+                nurture,
+                progress_percent=38,
+                next_checkpoint_percent=50,
+                next_checkpoint_reward_coins=2,
+            )
+            apply_projection(
+                "progress-10-percent",
+                replace(canonical, nurture=progress_10),
+                lambda candidate, copy: observe_progress(
+                    candidate,
+                    copy,
+                    expected_percent=10,
+                    expected_markers={
+                        "25": "next",
+                        "50": "future",
+                        "75": "future",
+                        "100": "future",
+                    },
+                ),
+            )
+            if finished:
+                return
+            apply_projection(
+                "progress-38-percent",
+                replace(canonical, nurture=progress_38),
+                lambda candidate, copy: observe_progress(
+                    candidate,
+                    copy,
+                    expected_percent=38,
+                    expected_markers={
+                        "25": "completed",
+                        "50": "next",
+                        "75": "future",
+                        "100": "future",
+                    },
+                ),
+            )
+            if finished:
+                return
+            before_checkpoint = replace(
+                nurture,
+                progress_percent=24,
+                next_checkpoint_percent=25,
+                next_checkpoint_reward_coins=2,
+            )
+            apply_projection(
+                "before-checkpoint",
+                replace(canonical, nurture=before_checkpoint),
+                lambda candidate, copy: observe_progress(
+                    candidate,
+                    copy,
+                    expected_percent=24,
+                    expected_markers={
+                        "25": "next",
+                        "50": "future",
+                        "75": "future",
+                        "100": "future",
+                    },
+                ),
+            )
+            if finished:
+                return
+            exact_checkpoint = replace(
+                nurture,
+                progress_percent=25,
+                next_checkpoint_percent=50,
+                next_checkpoint_reward_coins=2,
+            )
+            apply_projection(
+                "exact-checkpoint",
+                replace(canonical, nurture=exact_checkpoint),
+                lambda candidate, copy: observe_progress(
+                    candidate,
+                    copy,
+                    expected_percent=25,
+                    expected_markers={
+                        "25": "completed",
+                        "50": "next",
+                        "75": "future",
+                        "100": "future",
+                    },
+                ),
+            )
+            if finished:
+                return
+
+            checkpoint_track = hud._checkpoint_track
+            marker_semantics = {
+                "semantic_id": str(
+                    checkpoint_track.property("semanticId") or ""
+                ),
+                "checkpoint_percents": list(
+                    checkpoint_track.property("checkpointPercents")
+                    or getattr(checkpoint_track, "_checkpoints", ())
+                    or ()
+                ),
+                "marker_states": checkpoint_state_map(hud),
+                "transparent_for_mouse": bool(
+                    checkpoint_track.testAttribute(
+                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
+                    )
+                ),
+                "focus_safe": bool(
+                    checkpoint_track.focusPolicy() == Qt.FocusPolicy.NoFocus
+                ),
+                "is_abstract_slider": bool(
+                    checkpoint_track.inherits("QAbstractSlider")
+                ),
+                "current_position_handle": bool(
+                    checkpoint_track.property("currentPositionHandleVisible")
+                ),
+                "marker_shape": str(
+                    checkpoint_track.property("markerShape") or ""
+                ),
+                "future_marker_diameter": 4.5,
+                "final_endpoint_inset": 2.5,
+                "final_endpoint_inside_track": bool(
+                    int(checkpoint_track.contentsRect().width()) > 5
+                ),
+                "checkpoint_reward_context": str(
+                    hud._checkpoint_reward_context.text()
+                ),
+            }
+            marker_semantics["passed"] = bool(
+                marker_semantics["semantic_id"]
+                == "reviewer.hud.checkpoint-track"
+                and marker_semantics["checkpoint_percents"]
+                == [25, 50, 75, 100]
+                and marker_semantics["marker_states"]
+                == {
+                    "25": "completed",
+                    "50": "next",
+                    "75": "future",
+                    "100": "future",
+                }
+                and marker_semantics["transparent_for_mouse"]
+                and marker_semantics["focus_safe"]
+                and not marker_semantics["is_abstract_slider"]
+                and not marker_semantics["current_position_handle"]
+                and marker_semantics["marker_shape"] == "diamond-tick"
+                and marker_semantics["future_marker_diameter"] == 4.5
+                and marker_semantics["final_endpoint_inset"] == 2.5
+                and marker_semantics["final_endpoint_inside_track"]
+                and marker_semantics["checkpoint_reward_context"]
+                == "Checkpoint reward"
+            )
+            if not manual_record(
+                "checkpoint-marker-semantics",
+                marker_semantics,
+            ):
+                return
+
+            art_snapshots: dict[str, Any] = {}
+
+            def resolved_stage_projection(
+                stage_key: str,
+                stage_label: str,
+                percent: int,
+            ) -> Any:
+                art_path = nurture.art_path
+                art_placement = nurture.art_placement
+                active_plant = self.app.engine.active_plant()
+                species = str(
+                    getattr(active_plant, "species", "") or "bonsai"
+                )
+                try:
+                    resolved = self.app.engine.resolve_plant_asset(
+                        species,
+                        stage_key,
+                    )
+                    if resolved is not None:
+                        art_path = str(getattr(resolved, "path", "") or "")
+                        art_placement = getattr(
+                            resolved,
+                            "placement",
+                            art_placement,
+                        )
+                except Exception:
+                    pass
+                return replace(
+                    nurture,
+                    stage_key=stage_key,
+                    stage_label=stage_label,
+                    progress_percent=percent,
+                    next_checkpoint_percent=50,
+                    art_path=art_path,
+                    art_placement=art_placement,
+                )
+
+            def observe_stage_art(
+                candidate: Any,
+                _copy: str,
+                *,
+                state_name: str,
+                stage_key: str,
+                stage_label: str,
+            ) -> dict[str, Any]:
+                pixmap = candidate._plant_art.pixmap()
+                try:
+                    pixmap_present = bool(
+                        pixmap is not None and not pixmap.isNull()
+                    )
+                    cache_key = int(pixmap.cacheKey()) if pixmap_present else 0
+                except (AttributeError, RuntimeError, TypeError, ValueError):
+                    pixmap_present = False
+                    cache_key = 0
+                art_key = tuple(getattr(candidate, "_art_key", ()) or ())
+                record = {
+                    "stage_key": str(art_key[2]) if len(art_key) >= 3 else "",
+                    "stage_copy": " ".join(str(candidate._stage.text()).split()),
+                    "art_path": str(art_key[0]) if art_key else "",
+                    "pixmap_present": pixmap_present,
+                    "pixmap_cache_key": cache_key,
+                    "ground_shadow_stage": str(
+                        candidate._art_region.property("groundShadowStage") or ""
+                    ),
+                    "art_region_height": int(candidate._art_region.height()),
+                    "plant_art_height": int(candidate._plant_art.height()),
+                    "visible_plant_width": round(
+                        float(_pixmap_visible_geometry(pixmap)[0]),
+                        2,
+                    ) if pixmap_present else 0.0,
+                    "ground_shadow_width": float(
+                        candidate._art_region.property("groundShadowWidth")
+                        or 0.0
+                    ),
+                }
+                art_snapshots[state_name] = dict(record)
+                other_name = (
+                    "early-stage-art"
+                    if state_name == "mature-stage-art"
+                    else "mature-stage-art"
+                )
+                other = art_snapshots.get(other_name)
+                distinct_from_other = bool(
+                    other is None
+                    or (
+                        record["art_path"] != other.get("art_path")
+                        and record["pixmap_cache_key"]
+                        != other.get("pixmap_cache_key")
+                    )
+                )
+                record["distinct_from_other_stage"] = distinct_from_other
+                record["passed"] = bool(
+                    record["stage_key"] == stage_key
+                    and record["stage_copy"] == stage_label
+                    and bool(record["art_path"])
+                    and record["pixmap_present"]
+                    and record["ground_shadow_stage"] == stage_key
+                    and record["art_region_height"] >= 146
+                    and record["plant_art_height"] >= 82
+                    and (
+                        state_name != "early-stage-art"
+                        or (
+                            45.0 <= record["visible_plant_width"] <= 60.0
+                            and 85.0 <= record["ground_shadow_width"] <= 105.0
+                        )
+                    )
+                    and distinct_from_other
+                )
+                return record
+
+            apply_projection(
+                "early-stage-art",
+                replace(
+                    canonical,
+                    nurture=resolved_stage_projection(
+                        "sprout",
+                        "Sprout · Stage 1 of 5",
+                        10,
+                    ),
+                ),
+                lambda candidate, copy: observe_stage_art(
+                    candidate,
+                    copy,
+                    state_name="early-stage-art",
+                    stage_key="sprout",
+                    stage_label="Sprout · Stage 1 of 5",
+                ),
+            )
+            if finished:
+                return
+            apply_projection(
+                "mature-stage-art",
+                replace(
+                    canonical,
+                    nurture=resolved_stage_projection(
+                        "mature",
+                        "Mature · Stage 3 of 5",
+                        38,
+                    ),
+                ),
+                lambda candidate, copy: observe_stage_art(
+                    candidate,
+                    copy,
+                    state_name="mature-stage-art",
+                    stage_key="mature",
+                    stage_label="Mature · Stage 3 of 5",
+                ),
+            )
+            if finished:
+                return
+            early_art = content_records.get("early-stage-art", {})
+            mature_art = content_records.get("mature-stage-art", {})
+            stages_distinct = bool(
+                early_art.get("art_path") != mature_art.get("art_path")
+                and early_art.get("pixmap_cache_key")
+                != mature_art.get("pixmap_cache_key")
+            )
+            early_art["distinct_from_other_stage"] = stages_distinct
+            mature_art["distinct_from_other_stage"] = stages_distinct
+            early_art["passed"] = bool(
+                early_art.get("passed", False) and stages_distinct
+            )
+            mature_art["passed"] = bool(
+                mature_art.get("passed", False) and stages_distinct
+            )
+            if not early_art["passed"] or not mature_art["passed"]:
+                fail(
+                    "Reviewer HUD early and mature art states were not distinct",
+                    {
+                        "early": early_art,
+                        "mature": mature_art,
+                    },
+                )
+                return
+
+            for name, card_count, expected_copy in (
+                ("estimate-1-card", 1, "~1 card"),
+                ("estimate-14-cards", 14, "~14 cards"),
+                ("estimate-1240-cards", 1_240, "~1,240 cards"),
+            ):
+                estimate_projection = replace(
+                    nurture,
+                    checkpoint_line="250 growth to next checkpoint",
+                    estimate_line=expected_copy,
+                    estimated_cards_to_checkpoint=card_count,
+                )
+
+                def observe_estimate(
+                    candidate: Any,
+                    _copy: str,
+                    *,
+                    expected_count: int = card_count,
+                    rendered: str = expected_copy,
+                ) -> dict[str, Any]:
+                    estimate = candidate._checkpoint_estimate
+                    bounds = self._widget_bounds_evidence(
+                        estimate,
+                        candidate._checkpoint_distance_row,
+                    )
+                    projected = getattr(
+                        getattr(candidate, "_projection", None),
+                        "nurture",
+                        None,
+                    )
+                    rendered_text = str(estimate.text())
+                    return {
+                        "estimated_cards": int(
+                            getattr(
+                                projected,
+                                "estimated_cards_to_checkpoint",
+                                0,
+                            )
+                            or 0
+                        ),
+                        "rendered_text": rendered_text,
+                        "contained": bool(bounds.get("contained", False)),
+                        "text_fits": bool(
+                            estimate.fontMetrics().horizontalAdvance(
+                                rendered_text
+                            ) <= int(estimate.width())
+                        ),
+                        "uses_cards_copy": "answer" not in rendered_text.casefold(),
+                        "passed": bool(
+                            int(
+                                getattr(
+                                    projected,
+                                    "estimated_cards_to_checkpoint",
+                                    0,
+                                )
+                                or 0
+                            ) == expected_count
+                            and rendered_text == rendered
+                            and bounds.get("contained", False)
+                            and estimate.fontMetrics().horizontalAdvance(
+                                rendered_text
+                            ) <= int(estimate.width())
+                            and "answer" not in rendered_text.casefold()
+                        ),
+                    }
+
+                apply_projection(
+                    name,
+                    replace(canonical, nurture=estimate_projection),
+                    observe_estimate,
+                )
+                if finished:
+                    return
+
+            def plant_identity(candidate: Any) -> str:
+                class_label = str(candidate._species.text()).strip()
+                return class_label
+
+            def plant_layout(candidate: Any) -> dict[str, Any]:
+                card = candidate._plant_card
+                widgets = {
+                    "title": candidate._plant_name,
+                    "art": candidate._art_region,
+                    "progress": candidate._checkpoint_track,
+                }
+                geometry = {
+                    name: self._widget_bounds_evidence(widget, card)
+                    for name, widget in widgets.items()
+                }
+                bounds = {
+                    name: list(row.get("bounds", ()) or ())
+                    for name, row in geometry.items()
+                }
+                ordered = bool(
+                    all(len(row) == 4 for row in bounds.values())
+                    and bounds["title"][1] + bounds["title"][3]
+                    <= bounds["art"][1]
+                    and bounds["art"][1] + bounds["art"][3]
+                    <= bounds["progress"][1]
+                )
+                return {
+                    "title_bounds": bounds["title"],
+                    "art_bounds": bounds["art"],
+                    "progress_bounds": bounds["progress"],
+                    "components_contained": all(
+                        row.get("contained", False) for row in geometry.values()
+                    ),
+                    "components_ordered": ordered,
+                    "declared_title_anchor_stable": bool(
+                        card.property("titleAnchorStable")
+                    ),
+                }
+
+            short_plant_layout: dict[str, Any] = {}
+
+            def observe_short_plant(candidate: Any, _copy: str) -> dict[str, Any]:
+                short_plant_layout.clear()
+                short_plant_layout.update(plant_layout(candidate))
+                measured = bool(
+                    short_plant_layout["components_contained"]
+                    and short_plant_layout["components_ordered"]
+                )
+                return {
+                    "title": " ".join(str(candidate._plant_name.text()).split()),
+                    "class_label": plant_identity(candidate),
+                    **short_plant_layout,
+                    "title_anchor_stable": measured,
+                    "passed": bool(
+                        " ".join(str(candidate._plant_name.text()).split()) == "Rose"
+                        and plant_identity(candidate) == "Bonsai"
+                        and measured
+                    ),
+                }
+
+            def observe_two_line_plant(
+                candidate: Any,
+                _copy: str,
+            ) -> dict[str, Any]:
+                current = plant_layout(candidate)
+                art_anchor_stable = bool(
+                    current["art_bounds"] == short_plant_layout.get("art_bounds")
+                )
+                progress_anchor_stable = bool(
+                    current["progress_bounds"]
+                    == short_plant_layout.get("progress_bounds")
+                )
+                title_anchor_stable = bool(
+                    current["title_bounds"]
+                    == short_plant_layout.get("title_bounds")
+                )
+                measured = bool(
+                    current["components_contained"]
+                    and current["components_ordered"]
+                    and art_anchor_stable
+                    and progress_anchor_stable
+                    and title_anchor_stable
+                )
+                return {
+                    "title_line_count": len(
+                        str(candidate._plant_name.text()).splitlines()
+                    ),
+                    "title_clamped": bool(
+                        candidate._plant_name.property("textClamped")
+                    ),
+                    "class_label": plant_identity(candidate),
+                    **current,
+                    "short_title_bounds": list(
+                        short_plant_layout.get("title_bounds", ()) or ()
+                    ),
+                    "short_art_bounds": list(
+                        short_plant_layout.get("art_bounds", ()) or ()
+                    ),
+                    "short_progress_bounds": list(
+                        short_plant_layout.get("progress_bounds", ()) or ()
+                    ),
+                    "title_position_stable": title_anchor_stable,
+                    "art_position_stable": art_anchor_stable,
+                    "progress_position_stable": progress_anchor_stable,
+                    "title_anchor_stable": measured,
+                    "passed": bool(
+                        len(str(candidate._plant_name.text()).splitlines()) == 2
+                        and not bool(
+                            candidate._plant_name.property("textClamped")
+                        )
+                        and plant_identity(candidate) == "Bonsai"
+                        and measured
+                    ),
+                }
+
+            apply_projection(
+                "short-plant-name",
+                replace(canonical, nurture=replace(nurture, plant_name="Rose")),
+                observe_short_plant,
+            )
+            if finished:
+                return
+            apply_projection(
+                "two-line-plant-name",
+                canonical,
+                observe_two_line_plant,
+            )
+            if finished:
+                return
+
+            header_title = next((
+                candidate
+                for candidate in hud.findChildren(QLabel)
+                if bool(candidate.property("hudHeaderTitle"))
+            ), None)
+
+            def header_anchor_snapshot(candidate: Any) -> tuple[tuple[int, ...], ...]:
+                return tuple(
+                    tuple(
+                        self._widget_bounds_evidence(widget, candidate._header).get(
+                            "bounds",
+                            (),
+                        )
+                        or ()
+                    )
+                    for widget in (
+                        getattr(candidate, "_title_group", None),
+                        getattr(candidate, "_header_actions", None),
+                        candidate._collapse_button,
+                    )
+                )
+
+            balance_anchor: tuple[tuple[int, ...], ...] | None = None
+            for name, value, expected_copy in (
+                ("coin-balance-248", 248, "248"),
+                ("coin-balance-9999", 9_999, "9,999"),
+                ("coin-balance-10013", 10_013, "10,013"),
+                ("coin-balance-999999", 999_999, "999,999"),
+                ("coin-balance-1000000", 1_000_000, "1,000,000"),
+            ):
+                def observe_balance(
+                    candidate: Any,
+                    _copy: str,
+                    *,
+                    expected: int = value,
+                    rendered: str = expected_copy,
+                ) -> dict[str, Any]:
+                    nonlocal balance_anchor
+                    anchors = header_anchor_snapshot(candidate)
+                    if balance_anchor is None:
+                        balance_anchor = anchors
+                    stable = bool(
+                        anchors == balance_anchor
+                        and all(len(bounds) == 4 for bounds in anchors)
+                    )
+                    exact_property = str(
+                        candidate._coin_balance.property("exactCoinBalance")
+                        or ""
+                    )
+                    exact_value = int(exact_property.replace(",", "") or -1)
+                    rendered_text = str(candidate._coin_balance.text())
+                    compacted = bool(
+                        candidate._coin_balance.property("compactCoinBalance")
+                    )
+                    actions = getattr(candidate, "_header_actions", None)
+                    cluster = getattr(candidate, "_coin_cluster", None)
+                    cluster_geometry = self._widget_bounds_evidence(
+                        cluster,
+                        actions,
+                    )
+                    return {
+                        "exact_value": exact_value,
+                        "rendered_text": rendered_text,
+                        "compacted": compacted,
+                        "header_anchors": [list(bounds) for bounds in anchors],
+                        "header_anchors_stable": stable,
+                        "header_group_object_names": [
+                            str(
+                                getattr(candidate, "_title_group", None).objectName()
+                            )
+                            if getattr(candidate, "_title_group", None) is not None
+                            else "",
+                            str(actions.objectName()) if actions is not None else "",
+                        ],
+                        "header_reserved_width": int(
+                            candidate.property("hudHeaderBalanceReservedWidth")
+                            or 0
+                        ),
+                        "balance_cluster_contained": bool(
+                            cluster_geometry.get("contained", False)
+                        ),
+                        "passed": bool(
+                            exact_value == expected
+                            and rendered_text == rendered
+                            and not compacted
+                            and stable
+                            and actions is not None
+                            and int(actions.width())
+                            == int(
+                                candidate.property(
+                                    "hudHeaderBalanceReservedWidth"
+                                ) or 0
+                            )
+                            and cluster_geometry.get("contained", False)
+                        ),
+                    }
+
+                apply_projection(
+                    name,
+                    replace(canonical, coins=value),
+                    observe_balance,
+                )
+                if finished:
+                    return
+
+            large_balance_samples = [
+                {
+                    key: value
+                    for key, value in dict(content_records[name]).items()
+                    if key in {
+                        "exact_value",
+                        "rendered_text",
+                        "compacted",
+                        "header_anchors_stable",
+                        "passed",
+                    }
+                }
+                for name in (
+                    "coin-balance-999999",
+                    "coin-balance-1000000",
+                )
+            ]
+            content_records["coin-balance-10013"].update({
+                "large_balance_samples": large_balance_samples,
+                "passed": bool(
+                    content_records["coin-balance-10013"].get("passed", False)
+                    and all(
+                        sample["passed"] for sample in large_balance_samples
+                    )
+                ),
+            })
+            if not content_records["coin-balance-10013"]["passed"]:
+                fail(
+                    "Reviewer HUD balance region shifted for a large exact value",
+                    content_records["coin-balance-10013"],
+                )
+                return
+
+            header_grouping = {
+                "balance_states": [
+                    "coin-balance-248",
+                    "coin-balance-9999",
+                    "coin-balance-10013",
+                    "coin-balance-999999",
+                    "coin-balance-1000000",
+                ],
+                "object_names": [
+                    str(getattr(hud, "_title_group", None).objectName())
+                    if getattr(hud, "_title_group", None) is not None
+                    else "",
+                    str(getattr(hud, "_header_actions", None).objectName())
+                    if getattr(hud, "_header_actions", None) is not None
+                    else "",
+                ],
+                "reserved_width": int(
+                    hud.property("hudHeaderBalanceReservedWidth") or 0
+                ),
+                "anchor_snapshots": [
+                    list(content_records[name]["header_anchors"])
+                    for name in (
+                        "coin-balance-248",
+                        "coin-balance-9999",
+                        "coin-balance-10013",
+                        "coin-balance-999999",
+                        "coin-balance-1000000",
+                    )
+                ],
+            }
+            header_grouping["passed"] = bool(
+                header_grouping["object_names"]
+                == ["reviewerHudTitleGroup", "reviewerHudHeaderActions"]
+                and header_grouping["reserved_width"] > 0
+                and all(
+                    content_records[name].get("header_anchors_stable", False)
+                    and content_records[name].get(
+                        "balance_cluster_contained",
+                        False,
+                    )
+                    for name in header_grouping["balance_states"]
+                )
+                and len({
+                    tuple(tuple(bounds) for bounds in snapshot)
+                    for snapshot in header_grouping["anchor_snapshots"]
+                }) == 1
+            )
+            if not manual_record("header-stable-grouping", header_grouping):
+                return
+
+            track = hud._checkpoint_track
+
+            def marker_states() -> dict[str, str]:
+                checkpoints = tuple(
+                    int(value)
+                    for value in (
+                        track.property("checkpointPercents")
+                        or getattr(track, "_checkpoints", ())
+                        or (25, 50, 75, 100)
+                    )
+                )
+                values = tuple(
+                    value
+                    for value in str(
+                        track.property("checkpointMarkerStates") or ""
+                    ).split(",")
+                    if value
+                )
+                return dict(zip(
+                    (str(checkpoint) for checkpoint in checkpoints),
+                    values,
+                ))
+
+            def exact_coin_balance() -> int:
+                exact = str(hud._coin_balance.property("exactCoinBalance") or "")
+                try:
+                    return int(exact.replace(",", ""))
+                except ValueError:
+                    return -1
+
+            pre_checkpoint = replace(
+                canonical,
+                today=one_left,
+                coins=248,
+                nurture=replace(
+                    nurture,
+                    progress_percent=24,
+                    next_checkpoint_percent=25,
+                    next_checkpoint_reward_coins=2,
+                ),
+            )
+            post_checkpoint = replace(
+                pre_checkpoint,
+                coins=250,
+                nurture=replace(
+                    pre_checkpoint.nurture,
+                    progress_percent=38,
+                    next_checkpoint_percent=50,
+                    next_checkpoint_reward_coins=2,
+                ),
+            )
+            checkpoint_bundle = RewardBundleProjection(
+                "capture:reviewer-hud:checkpoint",
+                "2026-08-28T16:10:00+00:00",
+                (RewardItemProjection(
+                    event_id="capture:reviewer-hud:checkpoint:25",
+                    kind=RewardHero.CHECKPOINT,
+                    title="Checkpoint reached",
+                    category_label="Checkpoint",
+                    garden_coins=2,
+                    detail="25% checkpoint",
+                    plant_id=str(nurture.plant_id or "capture-plant"),
+                    plant_name=str(nurture.plant_name or "Capture plant"),
+                    checkpoint_percent=25,
+                ),),
+            )
+            checkpoint_sequence: list[str] = []
+            checkpoint_snapshots: dict[str, Any] = {}
+            hud.clear_reward()
+            hud._reward_queue.clear()
+            update_session({
+                "footer_growth_units": 0,
+                "garden_coins_earned": 0,
+                "footer_find_count": 0,
+            })
+            hud.update_projection(pre_checkpoint, animate=False)
+            process_events()
+            hud.update_projection(post_checkpoint, animate=True)
+
+            def marker_reached_probe() -> None:
+                checkpoint_sequence.append("marker-reached")
+                checkpoint_snapshots["marker"] = {
+                    "progress_percent": round(float(track._progress)),
+                    "reward_visible": bool(hud.property("hudRewardVisible")),
+                    "header_balance": exact_coin_balance(),
+                }
+                checkpoint_snapshots["deferred"] = {
+                    "coin_update": bool(
+                        hud.property("hudCheckpointCoinUpdateDeferred")
+                    ),
+                    "session_update": bool(
+                        hud.property("hudCheckpointSessionUpdateDeferred")
+                    ),
+                    "header_balance": exact_coin_balance(),
+                    "session_growth_units": int(
+                        hud._session_footer.property("sessionGrowthUnits") or 0
+                    ),
+                }
+
+            track.when_checkpoint_reached(marker_reached_probe)
+            checkpoint_presented = bool(hud.present_committed_result(
+                checkpoint_bundle,
+                applied_growth_units=1_800,
+                reveal=True,
+            ))
+            hud.update_session({
+                "footer_growth_units": 1_800,
+                "garden_coins_earned": 2,
+                "footer_find_count": 0,
+            })
+
+            def reward_revealed_probe() -> None:
+                checkpoint_sequence.append("reward-revealed")
+                checkpoint_snapshots["reveal"] = {
+                    "progress_percent": round(float(track._progress)),
+                    "reward_visible": bool(hud.property("hudRewardVisible")),
+                    "eyebrow": str(hud._reward_eyebrow.text()),
+                    "hero_title": " ".join(
+                        str(hud._reward_title.text()).split()
+                    ),
+                    "coin_copy": str(hud._reward_coins.text()),
+                    "header_balance": exact_coin_balance(),
+                }
+
+                coin_animation = getattr(hud, "_coin_animation", None)
+                if coin_animation is not None:
+                    coin_animation.finished.connect(
+                        lambda: checkpoint_sequence.append(
+                            "header-increment-settled"
+                        )
+                    )
+
+                def bind_excess_animation() -> None:
+                    progress_animation = getattr(track, "_animation", None)
+                    if progress_animation is not None:
+                        progress_animation.finished.connect(
+                            lambda: checkpoint_sequence.append(
+                                "excess-fill-complete"
+                            )
+                        )
+
+                QTimer.singleShot(0, bind_excess_animation)
+
+            track.when_checkpoint_reached(reward_revealed_probe)
+            process_events()
+
+            def after_checkpoint() -> None:
+                if finished:
+                    return
+                process_events()
+                deferred = dict(checkpoint_snapshots.get("deferred", {}) or {})
+                marker = dict(checkpoint_snapshots.get("marker", {}) or {})
+                reveal = dict(checkpoint_snapshots.get("reveal", {}) or {})
+                expected_sequence = [
+                    "marker-reached",
+                    "reward-revealed",
+                    "excess-fill-complete",
+                    "header-increment-settled",
+                ]
+                post_commit = {
+                    "presented": checkpoint_presented,
+                    "deferred_before_marker": deferred,
+                    "marker_snapshot": marker,
+                    "reveal_snapshot": reveal,
+                    "sequence": list(checkpoint_sequence),
+                    "expected_sequence": expected_sequence,
+                    "eyebrow": str(hud._reward_eyebrow.text()),
+                    "hero_title": " ".join(
+                        str(hud._reward_title.text()).split()
+                    ),
+                    "coin_copy": str(hud._reward_coins.text()),
+                    "final_progress_percent": round(float(track._progress)),
+                    "final_header_balance": exact_coin_balance(),
+                    "final_session_metric_copy": session_record()["metric_copy"],
+                }
+                post_commit["marker_before_reveal"] = bool(
+                    marker.get("progress_percent") == 25
+                    and marker.get("reward_visible") is False
+                    and reveal.get("progress_percent") == 25
+                    and reveal.get("reward_visible") is True
+                )
+                post_commit["reward_before_excess_fill"] = bool(
+                    post_commit["marker_before_reveal"]
+                    and post_commit["final_progress_percent"] == 38
+                )
+                post_commit["header_increment_deferred"] = bool(
+                    deferred.get("coin_update") is True
+                    and deferred.get("header_balance") == 248
+                    and marker.get("header_balance") == 248
+                    and reveal.get("header_balance") == 248
+                    and post_commit["final_header_balance"] == 250
+                )
+                post_commit["passed"] = bool(
+                    post_commit["presented"]
+                    and deferred.get("session_update") is True
+                    and deferred.get("session_growth_units") == 0
+                    and post_commit["marker_before_reveal"]
+                    and post_commit["reward_before_excess_fill"]
+                    and post_commit["header_increment_deferred"]
+                    and post_commit["sequence"] == expected_sequence
+                    and post_commit["eyebrow"] == "CHECKPOINT REACHED"
+                    and post_commit["hero_title"] == "25% checkpoint"
+                    and post_commit["coin_copy"] == "+2 coins"
+                    and post_commit["final_session_metric_copy"]
+                    == ["+18 growth", "+2 coins"]
+                )
+                record = {
+                    "crossed_checkpoints": list(
+                        track.property("crossedCheckpoints") or ()
+                    ),
+                    "marker_states": marker_states(),
+                    "current_position_handle": bool(
+                        track.property("currentPositionHandleVisible")
+                    ),
+                    "excess_progress_preserved": round(float(track._progress)) == 38,
+                    "post_commit_sequence": post_commit,
+                }
+                record["passed"] = bool(
+                    not track.checkpoint_crossing_active
+                    and record["crossed_checkpoints"] == [25]
+                    and record["marker_states"] == {
+                        "25": "completed",
+                        "50": "next",
+                        "75": "future",
+                        "100": "future",
+                    }
+                    and not record["current_position_handle"]
+                    and record["excess_progress_preserved"]
+                    and post_commit["passed"]
+                )
+                if not manual_record("checkpoint-crossing", record):
+                    return
+
+                # Recreate the canonical 1280x600 Reviewer viewport (509px
+                # webview) with the just-earned major reveal and the existing
+                # session footer. The flexible center must scroll while the
+                # header and integrated dock remain fully contained.
+                hud.reposition(1280, 509)
+                process_events()
+                dock_bounds = self._widget_bounds_evidence(
+                    hud._reward_dock,
+                    hud,
+                )
+                reveal_bounds = self._widget_bounds_evidence(
+                    hud._reward_reveal,
+                    hud._reward_dock,
+                )
+                footer_bounds = self._widget_bounds_evidence(
+                    hud._session_footer,
+                    hud._reward_dock,
+                )
+                divider_bounds = self._widget_bounds_evidence(
+                    hud._reward_divider,
+                    hud._reward_dock,
+                )
+                reveal_viewport_bounds = self._widget_bounds_evidence(
+                    hud._reward_reveal,
+                    hud._reward_scroll.viewport(),
+                )
+                reveal_rect = list(reveal_bounds.get("bounds", ()) or ())
+                divider_rect = list(divider_bounds.get("bounds", ()) or ())
+                footer_rect = list(footer_bounds.get("bounds", ()) or ())
+                reward_footer_non_overlapping = bool(
+                    len(reveal_rect) == 4
+                    and len(footer_rect) == 4
+                    and int(reveal_rect[1]) + int(reveal_rect[3])
+                    <= int(footer_rect[1])
+                )
+                divider_between_reward_and_footer = bool(
+                    len(reveal_rect) == 4
+                    and len(divider_rect) == 4
+                    and len(footer_rect) == 4
+                    and int(reveal_rect[1]) + int(reveal_rect[3])
+                    <= int(divider_rect[1])
+                    and int(divider_rect[1]) + int(divider_rect[3])
+                    <= int(footer_rect[1])
+                )
+                body_vertical = int(
+                    hud._body_scroll.verticalScrollBar().maximum()
+                )
+                short_row = dict(
+                    viewport_records.get("1280x600-short-expanded", {}) or {}
+                )
+                short_record = {
+                    "horizontal_scroll_maximum": max(
+                        int(hud._body_scroll.horizontalScrollBar().maximum()),
+                        int(hud._reward_scroll.horizontalScrollBar().maximum()),
+                    ),
+                    "vertical_scroll_maximum": body_vertical,
+                    "overlaps_bottom_controls": bool(
+                        int(hud.y()) + int(hud.height()) > 509 - 112
+                    ),
+                    "minimum_art_preserved": bool(
+                        int(hud._plant_art.height()) >= 82
+                    ),
+                    "major_reward_visible": bool(
+                        hud._reward_reveal.isVisibleTo(hud)
+                        and hud.property("hudRewardVisible")
+                    ),
+                    "session_footer_visible": bool(
+                        hud._session_footer.isVisibleTo(hud)
+                    ),
+                    "integrated_divider_visible": bool(
+                        hud._reward_divider.isVisibleTo(hud)
+                        and hud._reward_dock.property("integratedDividerVisible")
+                    ),
+                    "reward_dock_contained": bool(
+                        dock_bounds.get("contained", False)
+                    ),
+                    "reward_reveal_contained": bool(
+                        reveal_bounds.get("contained", False)
+                    ),
+                    "reward_reveal_viewport_contained": bool(
+                        hud._reward_reveal.isVisibleTo(
+                            hud._reward_scroll.viewport()
+                        )
+                        and reveal_viewport_bounds.get("contained", False)
+                    ),
+                    "session_footer_contained": bool(
+                        footer_bounds.get("contained", False)
+                    ),
+                    "reward_reveal_bounds": reveal_rect,
+                    "divider_bounds": divider_rect,
+                    "session_footer_bounds": footer_rect,
+                    "reward_footer_non_overlapping": (
+                        reward_footer_non_overlapping
+                    ),
+                    "divider_between_reward_and_footer": (
+                        divider_between_reward_and_footer
+                    ),
+                    "sticky_header_and_dock": bool(
+                        not hud._body_scroll.isAncestorOf(hud._header)
+                        and not hud._body_scroll.isAncestorOf(hud._reward_dock)
+                    ),
+                    "session_metric_copy": session_record()["metric_copy"],
+                    "baseline_short_viewport_passed": bool(
+                        short_row.get("passed", False)
+                    ),
+                }
+                short_record["passed"] = bool(
+                    short_record["baseline_short_viewport_passed"]
+                    and short_record["horizontal_scroll_maximum"] == 0
+                    and short_record["vertical_scroll_maximum"] > 0
+                    and not short_record["overlaps_bottom_controls"]
+                    and short_record["minimum_art_preserved"]
+                    and short_record["major_reward_visible"]
+                    and short_record["session_footer_visible"]
+                    and short_record["integrated_divider_visible"]
+                    and short_record["reward_dock_contained"]
+                    and short_record["reward_reveal_contained"]
+                    and short_record["reward_reveal_viewport_contained"]
+                    and short_record["session_footer_contained"]
+                    and short_record["reward_footer_non_overlapping"]
+                    and short_record["divider_between_reward_and_footer"]
+                    and short_record["sticky_header_and_dock"]
+                    and short_record["session_metric_copy"]
+                    == ["+18 growth", "+2 coins"]
+                )
+                hud.reposition()
+                process_events()
+                if not manual_record("short-height", short_record):
+                    return
+
+                track.set_progress(10, animate=False)
+                track.set_checkpoint(25, 2)
+                track.animate_checkpoint_sequence(
+                    reached_checkpoints=(25, 50),
+                    reached_reward_coins=2,
+                    final_percent=55,
+                    next_checkpoint=75,
+                    next_reward_coins=2,
+                )
+                process_events()
+
+                def after_multiple_checkpoints() -> None:
+                    if finished:
+                        return
+                    multiple = {
+                        "crossed_checkpoints": list(
+                            track.property("crossedCheckpoints") or ()
+                        ),
+                        "chronological": bool(
+                            track.property("checkpointSequenceChronological")
+                        ),
+                        "final_progress_percent": round(float(track._progress)),
+                        "next_checkpoint_percent": int(track._next_checkpoint),
+                    }
+                    multiple["passed"] = bool(
+                        not track.checkpoint_crossing_active
+                        and multiple["crossed_checkpoints"] == [25, 50]
+                        and multiple["chronological"]
+                        and multiple["final_progress_percent"] == 55
+                        and multiple["next_checkpoint_percent"] == 75
+                    )
+                    if not manual_record(
+                        "multiple-checkpoints-one-answer",
+                        multiple,
+                    ):
+                        return
+
+                    hud.celebrate_milestone("stage-change")
+                    process_events()
+                    stage_record = {
+                        "stage_changed": True,
+                        "celebration": str(
+                            hud._plant_card.property("celebration") or ""
+                        ),
+                    }
+                    stage_record["passed"] = bool(
+                        stage_record["celebration"] == "stage-change"
+                    )
+                    if not manual_record("stage-change", stage_record):
+                        return
+                    hud._clear_celebration()
+                    run_routine_sequence()
+
+                QTimer.singleShot(1_850, after_multiple_checkpoints)
+
+            def run_routine_sequence() -> None:
+                if finished:
+                    return
+                hud.clear_reward()
+                hud._reward_queue.clear()
+                update_session({
+                    "footer_growth_units": 0,
+                    "garden_coins_earned": 0,
+                    "footer_find_count": 0,
+                })
+                routine_pre = replace(
+                    canonical,
+                    today=one_left,
+                    coins=250,
+                    nurture=replace(
+                        nurture,
+                        progress_percent=10,
+                        next_checkpoint_percent=25,
+                        next_checkpoint_reward_coins=2,
+                    ),
+                )
+                routine_post = replace(
+                    routine_pre,
+                    nurture=replace(
+                        routine_pre.nurture,
+                        progress_percent=18,
+                    ),
+                )
+                routine_bundle = RewardBundleProjection(
+                    "capture:reviewer-hud:routine",
+                    "2026-08-28T16:11:00+00:00",
+                    (RewardItemProjection(
+                        event_id="capture:reviewer-hud:routine:growth",
+                        kind=RewardHero.ROUTINE_GROWTH,
+                        title="Growth applied",
+                        category_label="Growth",
+                        growth_units=1_800,
+                    ),),
+                )
+                hud.update_projection(routine_pre, animate=False)
+                process_events()
+                progress_before = round(float(track._progress))
+                session_before = int(
+                    hud._session_footer.property("sessionGrowthUnits") or 0
+                )
+                hud.update_projection(routine_post, animate=True)
+                routine_presented = bool(hud.present_committed_result(
+                    routine_bundle,
+                    applied_growth_units=1_800,
+                    reveal=False,
+                ))
+                hud.update_session({
+                    "footer_growth_units": 1_800,
+                    "garden_coins_earned": 0,
+                    "footer_find_count": 0,
+                })
+                deferred = bool(hud.property("hudRoutineSessionUpdateDeferred"))
+
+                def routine_applied_probe() -> None:
+                    if finished:
+                        return
+                    applied = {
+                        "label": str(hud._next_answer_label.text()),
+                        "value": str(hud._next_answer_value.text()),
+                        "result_state": str(
+                            hud._next_answer.property("resultState") or ""
+                        ),
+                        "progress_percent": round(float(track._progress)),
+                        "art_pulse": bool(hud._art_region.property("artPulse")),
+                        "session_growth_units": int(
+                            hud._session_footer.property("sessionGrowthUnits") or 0
+                        ),
+                    }
+
+                    def routine_progress_settled() -> None:
+                        if finished:
+                            return
+                        settled = {
+                            "progress_percent": round(float(track._progress)),
+                            "routine_feedback_active": bool(
+                                hud.property("hudRoutineProjectionFeedbackActive")
+                            ),
+                            "session_growth_units": int(
+                                hud._session_footer.property("sessionGrowthUnits") or 0
+                            ),
+                            "session_metric_copy": session_record()["metric_copy"],
+                            "released_after_progress": bool(
+                                hud.property("hudRoutineSessionReleasedAfterProgress")
+                            ),
+                        }
+
+                        def routine_projection_restored() -> None:
+                            if finished:
+                                return
+                            restored = {
+                                "label": str(hud._next_answer_label.text()),
+                                "value": str(hud._next_answer_value.text()),
+                                "result_state": str(
+                                    hud._next_answer.property("resultState") or ""
+                                ),
+                                "art_pulse": bool(
+                                    hud._art_region.property("artPulse")
+                                ),
+                                "reward_visible": bool(
+                                    hud.property("hudRewardVisible")
+                                ),
+                            }
+                            routine = {
+                                "presented": routine_presented,
+                                "progress_before": progress_before,
+                                "session_before": session_before,
+                                "session_update_deferred": deferred,
+                                "applied": applied,
+                                "settled": settled,
+                                "restored": restored,
+                            }
+                            routine["passed"] = bool(
+                                routine["presented"]
+                                and routine["progress_before"] == 10
+                                and routine["session_before"] == 0
+                                and routine["session_update_deferred"]
+                                and applied == {
+                                    "label": "Growth applied",
+                                    "value": "+18 growth",
+                                    "result_state": "applied",
+                                    "progress_percent": 10,
+                                    "art_pulse": True,
+                                    "session_growth_units": 0,
+                                }
+                                and settled["progress_percent"] == 18
+                                and not settled["routine_feedback_active"]
+                                and settled["session_growth_units"] == 1_800
+                                and settled["session_metric_copy"] == ["+18 growth"]
+                                and settled["released_after_progress"]
+                                and restored["label"] == "Next answer"
+                                and restored["value"]
+                                == str(routine_post.nurture.next_answer_value)
+                                and restored["result_state"] == "projection"
+                                and not restored["art_pulse"]
+                                and not restored["reward_visible"]
+                            )
+                            growth_row = content_records.get("growth-only", {})
+                            growth_row["routine_committed_answer_sequence"] = routine
+                            growth_row["passed"] = bool(
+                                growth_row.get("passed", False)
+                                and routine["passed"]
+                            )
+                            if not growth_row["passed"]:
+                                fail(
+                                    "Reviewer HUD routine committed-answer sequence failed",
+                                    growth_row,
+                                )
+                                return
+                            run_daily_completion_transition()
+
+                        QTimer.singleShot(30, routine_projection_restored)
+
+                    # The progress fill releases the footer snapshot at 640ms;
+                    # its visible count-up then needs the full 600ms highlight
+                    # duration before the exact +18 growth copy is asserted.
+                    QTimer.singleShot(1_100, routine_progress_settled)
+
+                QTimer.singleShot(180, routine_applied_probe)
+
+            def run_daily_completion_transition() -> None:
+                if finished:
+                    return
+                complete_today = replace(
+                    one_left,
+                    status="complete",
+                    heading="All cards complete",
+                    primary="+10 coins",
+                    secondary=("176 reviewed today",),
+                    progress_value=176,
+                    progress_maximum=176,
+                    remaining_count=0,
+                    completion_reward_coins=10,
+                )
+                daily_pre = replace(canonical, today=one_left, coins=250)
+                daily_post = replace(
+                    canonical,
+                    today=complete_today,
+                    coins=260,
+                )
+                hud.update_projection(daily_pre, animate=False)
+                update_session({
+                    "footer_growth_units": 1_800,
+                    "garden_coins_earned": 0,
+                    "footer_find_count": 0,
+                })
+                process_events()
+                before = {
+                    "displayed_progress_percent": float(
+                        hud._today_progress.property("displayedProgressPercent")
+                        or (hud._today_progress.value() / 10.0)
+                    ),
+                    "heading": str(hud._today_heading.text()),
+                    "header_balance": exact_coin_balance(),
+                    "session_coins": int(
+                        hud._session_footer.property("sessionCoins") or 0
+                    ),
+                }
+                hud.update_projection(daily_post, animate=True)
+                hud.update_session({
+                    "footer_growth_units": 1_800,
+                    "garden_coins_earned": 10,
+                    "footer_find_count": 0,
+                })
+                process_events()
+                initial: dict[str, Any] = {}
+
+                def daily_completion_started() -> None:
+                    if finished:
+                        return
+                    process_events()
+                    initial.update({
+                        "transition_active": bool(
+                            hud.property("hudTodayCompletionFeedbackActive")
+                        ),
+                        "completion_settling": bool(
+                            hud._today_card.property("completionSettling")
+                        ),
+                        "displayed_progress_percent": float(
+                            hud._today_progress.property(
+                                "displayedProgressPercent"
+                            )
+                            or (hud._today_progress.value() / 10.0)
+                        ),
+                        "heading": str(hud._today_heading.text()),
+                        "coin_update_deferred": bool(
+                            hud.property("hudResultCoinUpdateDeferred")
+                        ),
+                        "session_update_deferred": bool(
+                            hud.property("hudResultSessionUpdateDeferred")
+                        ),
+                        "header_balance": exact_coin_balance(),
+                        "session_coins": int(
+                            hud._session_footer.property("sessionCoins") or 0
+                        ),
+                    })
+
+                # The projection intentionally waits 220 ms before beginning
+                # the completion fill.  Observe the transition after that
+                # handoff, while the old 98.5% copy and deferred totals remain.
+                QTimer.singleShot(260, daily_completion_started)
+
+                def daily_completion_settled() -> None:
+                    if finished:
+                        return
+                    process_events()
+                    final = {
+                        "transition_active": bool(
+                            hud.property("hudTodayCompletionFeedbackActive")
+                        ),
+                        "completion_status": str(
+                            hud._today_card.property("completionStatus") or ""
+                        ),
+                        "heading": str(hud._today_heading.text()),
+                        "reward_copy": str(hud._today_value.text()),
+                        "displayed_progress_percent": float(
+                            hud._today_progress.property(
+                                "displayedProgressPercent"
+                            ) or 100
+                        ),
+                        "header_balance": exact_coin_balance(),
+                        "session_coins": int(
+                            hud._session_footer.property("sessionCoins") or 0
+                        ),
+                        "session_metric_copy": session_record()["metric_copy"],
+                    }
+                    transition = {
+                        "before": before,
+                        "initial": initial,
+                        "final": final,
+                    }
+                    transition["passed"] = bool(
+                        before == {
+                            "displayed_progress_percent": 98.5,
+                            "heading": "Today’s cards",
+                            "header_balance": 250,
+                            "session_coins": 0,
+                        }
+                        and initial["transition_active"]
+                        and initial["completion_settling"]
+                        # Once the final segment animation has started, the
+                        # sampled fill may already be a fraction past 98.5%.
+                        # It must still be visibly incomplete until the
+                        # completion copy and deferred totals are released.
+                        and 98.5
+                        <= initial["displayed_progress_percent"]
+                        < 100
+                        and initial["heading"] == "Today’s cards"
+                        and initial["coin_update_deferred"]
+                        and initial["session_update_deferred"]
+                        and initial["header_balance"] == 250
+                        and initial["session_coins"] == 0
+                        and not final["transition_active"]
+                        and final["completion_status"] == "complete"
+                        and final["heading"] == "All cards complete"
+                        and final["reward_copy"] == "+10 coins"
+                        and final["displayed_progress_percent"] == 100
+                        and final["header_balance"] == 260
+                        and final["session_coins"] == 10
+                        and final["session_metric_copy"]
+                        == ["+18 growth", "+10 coins"]
+                    )
+                    one_left_row = content_records.get("1-card-left", {})
+                    one_left_row["daily_completion_transition"] = transition
+                    one_left_row["passed"] = bool(
+                        one_left_row.get("passed", False)
+                        and transition["passed"]
+                    )
+                    if not one_left_row["passed"]:
+                        fail(
+                            "Reviewer HUD daily-completion transition failed",
+                            one_left_row,
+                        )
+                        return
+                    finish_content_matrix()
+
+                # The completion copy releases its deferred Coin/session
+                # updates after the 220 ms projection delay, 420 ms fill, and
+                # midpoint of the 150 ms crossfade.  Allow the following
+                # 600 ms session count-up to finish before asserting the
+                # atomic settled result.
+                QTimer.singleShot(1_450, daily_completion_settled)
+
+            def finish_content_matrix() -> None:
+                if finished:
+                    return
+                no_target = replace(
+                    nurture,
+                    has_target=False,
+                    plant_id="",
+                    plant_name="",
+                    species_name="",
+                    bed_label="",
+                    stage_label="",
+                    progress_percent=0,
+                    checkpoint_line="",
+                    next_stage_line="",
+                    estimate_line="",
+                    next_card_line="",
+                    effect_chips=(),
+                    empty_heading="No plant selected",
+                    empty_message="Growth earned during review will be stored.",
+                    stored_growth_line=(
+                        "12.5 growth stored until a plant is selected"
+                    ),
+                    next_checkpoint_percent=0,
+                    next_checkpoint_reward_coins=0,
+                    checkpoint_growth_remaining=0,
+                    estimated_cards_to_checkpoint=0,
+                    next_answer_growth_units=0,
+                    art_path="",
+                    fully_grown=False,
+                )
+                no_target_projection = replace(canonical, nurture=no_target)
+                apply_projection(
+                    "no-active-plant",
+                    no_target_projection,
+                    lambda _candidate, copy: {
+                        "passed": "no plant selected" in copy.casefold(),
+                    },
+                )
+                resilience_records["no-active-plant"] = content_records.pop(
+                    "no-active-plant"
+                )
+                if finished:
+                    return
+                apply_projection(
+                    "stored-growth",
+                    no_target_projection,
+                    lambda _candidate, copy: {
+                        "passed": bool(
+                            "12.5 growth stored" in copy.casefold()
+                            and "choose a plant" in copy.casefold()
+                        ),
+                    },
+                )
+                resilience_records["stored-growth"] = content_records.pop(
+                    "stored-growth"
+                )
+                if finished:
+                    return
+                resilience_records["passed"] = bool(
+                    set(resilience_records) - {"passed"}
+                    == {"no-active-plant", "stored-growth"}
+                    and all(
+                        bool(record.get("passed", False))
+                        for name, record in resilience_records.items()
+                        if name != "passed" and isinstance(record, dict)
+                    )
+                )
+
+                hud.update_projection(canonical_display, animate=False)
+                update_session({
+                    "footer_growth_units": 0,
+                    "garden_coins_earned": 0,
+                    "footer_find_count": 0,
+                })
+                content_records["passed"] = bool(
+                    set(REVIEWER_HUD_BASELINE_CONTENT_STATES)
+                    == {name for name in content_records if name != "passed"}
+                    and all(
+                        bool(record.get("passed", False))
+                        for name, record in content_records.items()
+                        if name != "passed" and isinstance(record, dict)
+                    )
+                )
+                if not content_records["passed"]:
+                    fail("Reviewer HUD release content matrix was incomplete")
+                    return
+                viewport_records["covered_requirements"] = sorted({
+                    requirement
+                    for record in viewport_records.values()
+                    if isinstance(record, dict)
+                    for requirement in record.get("covered_requirements", ())
+                })
+                viewport_records["passed"] = bool(
+                    set(viewport_records["covered_requirements"])
+                    == set(REVIEWER_HUD_REQUIRED_WINDOW_STATES)
+                    and all(
+                        bool(record.get("passed", False))
+                        for name, record in viewport_records.items()
+                        if name not in {"covered_requirements", "passed"}
+                        and isinstance(record, dict)
+                    )
+                )
+                if not viewport_records["passed"]:
+                    fail(
+                        "Reviewer HUD viewport matrix did not cover every requirement"
+                    )
+                    return
+                on_ready(
+                    viewport_records,
+                    content_records,
+                    resilience_records,
+                )
+
+            # One marker takes 300 ms to fill and 300 ms to pulse.  Deferred
+            # session totals then run their 600 ms count-up after the marker
+            # releases, so sample the fully settled checkpoint composition
+            # after that complete sequence (with a small native-event margin).
+            QTimer.singleShot(1_350, after_checkpoint)
+
+        def restore_canonical_then_content() -> None:
+            mw.showMaximized()
+            handler._ensure_reviewer_hud(
+                force_collapsed=False,
+                force_dock="right",
+            )
+
+            def maximized_ready() -> bool:
+                handler._ensure_reviewer_hud(
+                    force_collapsed=False,
+                    force_dock="right",
+                )
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+                hud = current_hud()
+                if hud is None or not hud.isVisible():
+                    return False
+                return bool(
+                    not bool(hud.property("hudCollapsed"))
+                    and self._home_fullscreen_window_evidence().get("passed", False)
+                )
+
+            wait_until(
+                maximized_ready,
+                exercise_content,
+                reason="Reviewer HUD canonical maximized state did not restore",
+            )
+
+        def run_viewport(index: int) -> None:
+            if finished:
+                return
+            if index >= len(REVIEWER_HUD_VIEWPORT_SPECS):
+                restore_canonical_then_content()
+                return
+            spec = REVIEWER_HUD_VIEWPORT_SPECS[index]
+            name, width, height, collapsed, _require_scroll, _covered = spec
+            set_window_size(width, height)
+            handler._ensure_reviewer_hud(
+                force_collapsed=collapsed,
+                force_dock="right",
+            )
+            wait_until(
+                lambda: host_settled(width, height, collapsed),
+                lambda: (audit_viewport(spec), run_viewport(index + 1))
+                if not finished else None,
+                reason=f"Reviewer HUD window did not settle at {name}",
+            )
+
+        run_viewport(0)
+
+    def _exercise_reviewer_reward_interaction_matrix(
+        self,
+        label: str,
+        handler: Any,
+        bundle: Any,
+        live_session: Any,
+    ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+        """Exercise overflow, history, sync, rapid answers, and remount safety."""
+
+        from ..reward_presentation import (
+            RewardBundleProjection,
+            RewardHero,
+            RewardItemProjection,
+            project_reward_session_history,
+        )
+
+        interactions: dict[str, Any] = {}
+        content: dict[str, Any] = {}
+        hud = getattr(handler, "_reviewer_hud", None)
+        if hud is None:
+            return None, {"passed": False}, {"passed": False}
+        app = QApplication.instance()
+
+        def settle_session_footer() -> None:
+            update_session = getattr(hud, "update_session", None)
+            if callable(update_session):
+                update_session(live_session)
+            # The mounted HUD deliberately holds session totals until routine
+            # progress feedback has completed. Capture the settled state
+            # rather than auditing the intentional 640 ms transient.
+            if bool(getattr(hud, "_routine_projection_feedback_active", False)):
+                finish_feedback = getattr(
+                    hud,
+                    "_finish_routine_projection_feedback",
+                    None,
+                )
+                if callable(finish_feedback):
+                    finish_feedback(int(getattr(hud, "_revision", 0) or 0))
+            checkpoint_track = getattr(hud, "_checkpoint_track", None)
+            if bool(getattr(checkpoint_track, "checkpoint_crossing_active", False)):
+                checkpoint_track._checkpoint_crossing_active = False
+                emit_checkpoint = getattr(
+                    checkpoint_track,
+                    "_emit_checkpoint_reached",
+                    None,
+                )
+                if callable(emit_checkpoint):
+                    emit_checkpoint()
+            if bool(getattr(hud, "_today_completion_feedback_active", False)):
+                hud._today_completion_feedback_active = False
+                hud.setProperty("hudTodayCompletionFeedbackActive", False)
+            hud._routine_projection_feedback_active = False
+            hud.setProperty("hudRoutineProjectionFeedbackActive", False)
+            flush_feedback = getattr(
+                hud,
+                "_flush_deferred_checkpoint_feedback",
+                None,
+            )
+            if callable(flush_feedback):
+                flush_feedback()
+            # Mirror production ordering: the committed bundle enters the HUD
+            # before the canonical accumulator snapshot advances.
+            update_totals = getattr(hud, "update_session_totals", None)
+            if callable(update_totals):
+                applying_feedback = bool(getattr(
+                    hud,
+                    "_applying_deferred_checkpoint_feedback",
+                    False,
+                ))
+                hud._applying_deferred_checkpoint_feedback = True
+                try:
+                    update_totals(live_session)
+                finally:
+                    hud._applying_deferred_checkpoint_feedback = applying_feedback
+            if app is not None:
+                app.processEvents()
+
+        hud.set_collapsed(True)
+        presented = bool(hud.present_reward(bundle))
+        if app is not None:
+            app.processEvents()
+        collapsed = {
+            "presented": presented,
+            "collapsed": bool(hud.property("hudCollapsed")),
+            "unseen_major": int(hud.property("hudUnseenMajorRewards") or 0),
+            "queued": len(hud._reward_queue),
+            "visible_reveal": bool(hud.property("hudRewardVisible")),
+        }
+        collapsed["passed"] = bool(
+            collapsed["presented"]
+            and collapsed["collapsed"]
+            and collapsed["unseen_major"] == 1
+            and collapsed["queued"] == 1
+            and not collapsed["visible_reveal"]
+        )
+        interactions["collapsed-unseen-reward"] = collapsed
+
+        hud._expand_from_tab()
+        if app is not None:
+            app.processEvents()
+        settle_session_footer()
+        compact_geometry = self._reviewer_reward_dock_geometry_audit(hud)
+        compact_projection = bundle.compact
+        summary_labels = [
+            str(chip.text())
+            for chip in tuple(getattr(hud, "_reward_summary_chips", ()) or ())
+            if chip.isVisibleTo(hud)
+        ]
+        summary_rows: list[dict[str, Any]] = []
+        summary_cells = tuple(
+            getattr(hud, "_reward_summary_cells", ()) or ()
+        )
+        summary_icons = tuple(
+            getattr(hud, "_reward_summary_icons", ()) or ()
+        )
+        summary_chips = tuple(
+            getattr(hud, "_reward_summary_chips", ()) or ()
+        )
+        for index, chip in enumerate(summary_chips):
+            if not chip.isVisibleTo(hud):
+                continue
+            cell = summary_cells[index] if index < len(summary_cells) else None
+            icon = summary_icons[index] if index < len(summary_icons) else None
+            reward_type = str(
+                cell.property("rewardType") if cell is not None else ""
+            )
+            try:
+                icon_pixmap = icon.pixmap() if icon is not None else None
+                icon_present = bool(
+                    icon_pixmap is not None and not icon_pixmap.isNull()
+                )
+            except (AttributeError, RuntimeError, TypeError):
+                icon_present = False
+            uses_item_art = bool(
+                icon is not None
+                and icon.property("hudRewardSummaryUsesItemArt")
+            )
+            summary_rows.append({
+                "label": str(chip.accessibleName() or chip.text()),
+                "reward_type": reward_type,
+                "artwork_ref": str(
+                    icon.property("hudRewardSummaryArtworkRef")
+                    if icon is not None else ""
+                ),
+                "uses_item_art": uses_item_art,
+                "icon_present": icon_present,
+                "icon_kind": str(
+                    icon.property("hudRewardSummaryIconKind")
+                    if icon is not None else ""
+                ),
+            })
+        details_toggle = getattr(hud, "_reward_details_toggle", None)
+        detail_event_ids = tuple(
+            str(event_id)
+            for event_id in tuple(
+                hud._reward_reveal.property("rewardDetailEventIds") or ()
+            )
+            if str(event_id)
+        )
+        bundle_event_ids = tuple(item.event_id for item in bundle.all_items)
+        compact = {
+            "bundle_id": str(hud._reward_reveal.property("rewardBundleId") or ""),
+            "details_expanded": bool(
+                hud._reward_reveal.property("rewardDetailsExpanded")
+            ),
+            "hero_title": " ".join(str(hud._reward_title.text()).split()),
+            "eyebrow": str(hud._reward_eyebrow.text()),
+            "hero_subtitle": " ".join(
+                str(hud._reward_subtitle.text()).split()
+            ),
+            "active_plant_identity_suppressed": bool(
+                hud._reward_reveal.property("activePlantIdentitySuppressed")
+            ),
+            "hero_title_clamped": bool(
+                hud._reward_title.property("textClamped")
+            ),
+            "visible_summary_count": len(summary_labels),
+            "visible_summary_labels": summary_labels,
+            "visible_summary_rows": summary_rows,
+            "details_action_copy": str(
+                details_toggle.text() if details_toggle is not None else ""
+            ),
+            "details_click_height": int(
+                compact_geometry.get("details_click_height", 0) or 0
+            ),
+            "details_heading_aligned": bool(
+                compact_geometry.get("details_heading_aligned", False)
+            ),
+            "details_visible_in_scroll_viewport": bool(
+                compact_geometry.get(
+                    "details_visible_in_scroll_viewport",
+                    False,
+                )
+            ),
+            "details_footer_non_overlapping": bool(
+                compact_geometry.get("details_footer_non_overlapping", False)
+            ),
+            "details_divider_clearance": int(
+                compact_geometry.get("details_divider_clearance", -1)
+            ),
+            "compact_vertical_scroll_maximum": int(
+                compact_geometry.get("compact_vertical_scroll_maximum", -1)
+            ),
+            "reveal_height": int(
+                compact_geometry.get("reveal_height", 0) or 0
+            ),
+            "title_details_non_overlapping": bool(
+                compact_geometry.get("title_details_non_overlapping", False)
+            ),
+            "detail_event_ids": list(detail_event_ids),
+            "bundle_event_ids": list(bundle_event_ids),
+            "detail_event_ids_reconciled": detail_event_ids
+            == bundle_event_ids,
+            "obsolete_bottom_details_present": bool(
+                compact_geometry.get("obsolete_bottom_details_present", True)
+            ),
+            "obsolete_milestone_disclosure_present": bool(
+                compact_geometry.get(
+                    "obsolete_milestone_disclosure_present",
+                    True,
+                )
+            ),
+            "milestone_medallion": bool(
+                hud._reward_art.property("milestoneMedallion")
+            ),
+            "medallion_pixmap_present": bool(
+                hud._reward_art.pixmap() is not None
+                and not hud._reward_art.pixmap().isNull()
+            ),
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+        }
+        compact["passed"] = bool(
+            compact["bundle_id"] == bundle.bundle_id
+            and not compact["details_expanded"]
+            and compact["eyebrow"] == compact_projection.eyebrow
+            and compact["hero_title"] == compact_projection.hero_title
+            and compact["active_plant_identity_suppressed"]
+            and compact["hero_subtitle"] == ""
+            and not compact["hero_title_clamped"]
+            and compact["visible_summary_count"] == 2
+            and compact["visible_summary_labels"]
+            == ["1 Garden Find", "2 new discoveries"]
+            and compact["visible_summary_rows"]
+            == [
+                {
+                    "label": "1 Garden Find",
+                    "reward_type": "garden_find",
+                    "artwork_ref": compact["visible_summary_rows"][0]["artwork_ref"],
+                    "uses_item_art": True,
+                    "icon_present": True,
+                    "icon_kind": "item-art",
+                },
+                {
+                    "label": "2 new discoveries",
+                    "reward_type": "environment_discovery",
+                    "artwork_ref": compact["visible_summary_rows"][1]["artwork_ref"],
+                    "uses_item_art": False,
+                    "icon_present": True,
+                    "icon_kind": "environment-discovery",
+                },
+            ]
+            and bool(compact["visible_summary_rows"][0]["artwork_ref"])
+            and compact["details_action_copy"] == "Details ›"
+            and compact["details_click_height"] >= 28
+            and compact["details_heading_aligned"]
+            and compact["details_visible_in_scroll_viewport"]
+            and compact["details_footer_non_overlapping"]
+            and compact["details_divider_clearance"] >= 8
+            and compact["compact_vertical_scroll_maximum"] == 0
+            and 130 <= compact["reveal_height"] <= 150
+            and compact["title_details_non_overlapping"]
+            and compact["detail_event_ids_reconciled"]
+            and not compact["obsolete_bottom_details_present"]
+            and not compact["obsolete_milestone_disclosure_present"]
+            and compact["milestone_medallion"]
+            and compact["medallion_pixmap_present"]
+            and compact["reveal_state"] == "celebrating"
+        )
+        content["full-bloom-several-secondary"] = compact
+        content["discovery-new-wording"] = {
+            "visible_summary_labels": list(summary_labels),
+            "discovery_summary": next(
+                (
+                    label
+                    for label in summary_labels
+                    if "discover" in label.casefold()
+                ),
+                "",
+            ),
+            "passed": bool(
+                summary_labels == ["1 Garden Find", "2 new discoveries"]
+                and summary_rows[0]["icon_kind"] == "item-art"
+                and summary_rows[1]["icon_kind"]
+                == "environment-discovery"
+            ),
+        }
+        content["reward-details-action-copy"] = {
+            "collapsed_action_copy": compact["details_action_copy"],
+            "minimum_click_height": compact["details_click_height"],
+            "event_ids_reconciled": compact[
+                "detail_event_ids_reconciled"
+            ],
+            "heading_row_action": compact["details_heading_aligned"],
+            "obsolete_bottom_action_absent": not compact[
+                "obsolete_bottom_details_present"
+            ],
+            "milestone_chevron_absent": not compact[
+                "obsolete_milestone_disclosure_present"
+            ],
+            "passed": bool(
+                compact["details_action_copy"] == "Details ›"
+                and compact["details_click_height"] >= 28
+                and compact["detail_event_ids_reconciled"]
+                and compact["eyebrow"] == "MILESTONE REACHED"
+                and compact["details_heading_aligned"]
+                and not compact["obsolete_bottom_details_present"]
+                and not compact["obsolete_milestone_disclosure_present"]
+            ),
+        }
+
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+        expected_detail_rows = tuple(bundle.detail_rows)
+        rendered_detail_rows = [
+            row
+            for row in tuple(getattr(hud, "_reward_detail_rows", ()) or ())
+            if row.isVisibleTo(hud._reward_reveal)
+        ]
+        rendered_detail_widgets: list[dict[str, Any]] = []
+        category_widgets = tuple(
+            getattr(hud, "_reward_detail_categories", ()) or ()
+        )
+        name_widgets = tuple(
+            getattr(hud, "_reward_detail_names", ()) or ()
+        )
+        value_widgets = tuple(
+            getattr(hud, "_reward_detail_values", ()) or ()
+        )
+        for index, row in enumerate(rendered_detail_rows):
+            category_widget = (
+                category_widgets[index] if index < len(category_widgets) else None
+            )
+            name_widget = name_widgets[index] if index < len(name_widgets) else None
+            value_widget = (
+                value_widgets[index] if index < len(value_widgets) else None
+            )
+            rendered_detail_widgets.append({
+                "category": str(
+                    category_widget.accessibleName()
+                    if category_widget is not None else ""
+                ).strip(),
+                "category_visible_text": str(
+                    category_widget.text() if category_widget is not None else ""
+                ).strip(),
+                "name": str(
+                    name_widget.accessibleName()
+                    if name_widget is not None else ""
+                ).strip(),
+                "name_visible_text": str(
+                    name_widget.text() if name_widget is not None else ""
+                ).strip(),
+                "value": str(
+                    value_widget.text() if value_widget is not None else ""
+                ).strip(),
+                "event_ids": [
+                    str(event_id)
+                    for event_id in tuple(row.property("rewardEventIds") or ())
+                    if str(event_id)
+                ],
+            })
+        expected_detail_widgets = [
+            {
+                "category": str(detail.category_label),
+                "name": str(detail.name),
+                "value": str(detail.value),
+                "event_ids": [str(event_id) for event_id in detail.event_ids],
+            }
+            for detail in expected_detail_rows
+        ]
+        visible_detail_rows_match = bool(
+            len(rendered_detail_widgets) == len(expected_detail_widgets)
+            and all(
+                rendered["category"] == expected["category"]
+                and bool(rendered["category_visible_text"])
+                and rendered["name"] == expected["name"]
+                and bool(rendered["name_visible_text"])
+                and rendered["value"] == expected["value"]
+                and rendered["event_ids"] == expected["event_ids"]
+                for rendered, expected in zip(
+                    rendered_detail_widgets,
+                    expected_detail_widgets,
+                )
+            )
+        )
+        rendered_detail_event_ids = tuple(dict.fromkeys(
+            str(event_id)
+            for row in rendered_detail_rows
+            for event_id in tuple(row.property("rewardEventIds") or ())
+            if str(event_id)
+        ))
+        expanded = {
+            "details_expanded": bool(
+                hud._reward_reveal.property("rewardDetailsExpanded")
+            ),
+            "all_secondary_items_present": visible_detail_rows_match,
+            "visible_detail_rows": rendered_detail_widgets,
+            "expected_detail_rows": expected_detail_widgets,
+            "visible_detail_rows_match": visible_detail_rows_match,
+            "details_action_copy": str(
+                hud._reward_details_toggle.text()
+            ),
+            "maximum_height": int(hud._reward_reveal.maximumHeight()),
+            "surface_contained": bool(
+                self._widget_bounds_evidence(
+                    hud._reward_surface,
+                    hud._reward_dock,
+                ).get("contained", False)
+            ),
+            "scroll_contained": bool(
+                self._widget_bounds_evidence(
+                    hud._reward_scroll,
+                    hud._reward_surface,
+                ).get("contained", False)
+            ),
+            "surface_bounds": list(
+                self._widget_bounds_evidence(
+                    hud._reward_surface,
+                    hud._reward_dock,
+                ).get("bounds", ()) or ()
+            ),
+            "scroll_bounds": list(
+                self._widget_bounds_evidence(
+                    hud._reward_scroll,
+                    hud._reward_surface,
+                ).get("bounds", ()) or ()
+            ),
+            "reveal_owned_by_scroll": bool(
+                hud._reward_scroll_contents.isAncestorOf(hud._reward_reveal)
+            ),
+            "vertical_scroll_maximum": int(
+                hud._reward_scroll.verticalScrollBar().maximum()
+            ),
+            "detail_row_count": len(rendered_detail_rows),
+            "detail_event_ids": list(rendered_detail_event_ids),
+            "bundle_event_ids": list(bundle_event_ids),
+            "detail_event_ids_reconciled": (
+                rendered_detail_event_ids == bundle_event_ids
+            ),
+            "detail_panel_visible": bool(
+                getattr(hud, "_reward_detail_panel", None) is not None
+                and hud._reward_detail_panel.isVisibleTo(hud._reward_reveal)
+            ),
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+        }
+        expanded["passed"] = bool(
+            expanded["details_expanded"]
+            and expanded["all_secondary_items_present"]
+            and expanded["details_action_copy"] == "Hide details"
+            # Expanded details are owned by the bounded reward scroll.  The
+            # reveal itself must remain free to report its natural height so
+            # every engine-confirmed row is reachable instead of clipped.
+            and expanded["maximum_height"] >= 240
+            and expanded["surface_contained"]
+            and expanded["scroll_contained"]
+            and expanded["reveal_owned_by_scroll"]
+            and expanded["vertical_scroll_maximum"] > 0
+            and expanded["detail_row_count"] == len(bundle.all_items)
+            and expanded["visible_detail_rows_match"]
+            and expanded["detail_event_ids_reconciled"]
+            and expanded["detail_panel_visible"]
+            and expanded["reveal_state"] == "details_open"
+        )
+        interactions["overflow-expanded"] = expanded
+        content["full-bloom-details"] = dict(expanded)
+
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+
+        celebration_record = {
+            "celebration": str(
+                hud._plant_card.property("celebration") or ""
+            ),
+            "settled": bool(hud._plant_card.property("fullBloomSettled")),
+            "temporary_gold_visible": bool(
+                hud._art_region.property("fullBloomLightRays")
+            ),
+            "motion_animation_active": bool(
+                getattr(hud, "_plant_motion_animation", None) is not None
+            ),
+            "art_scale": float(
+                hud._art_region.property("artScale") or 1.0
+            ),
+            "particles_active": bool(
+                hud._art_region.property("fullBloomParticlesActive")
+            ),
+            "select_another_visible": bool(
+                hud._select_plant.isVisibleTo(hud)
+            ),
+            "settled_copy": str(hud._plant_message.text()),
+        }
+        celebration_record["passed"] = bool(
+            celebration_record["celebration"] == "full-bloom"
+            and not celebration_record["settled"]
+            and celebration_record["temporary_gold_visible"]
+            and (
+                celebration_record["motion_animation_active"]
+                or celebration_record["art_scale"] > 1.0
+                or celebration_record["particles_active"]
+            )
+            and not celebration_record["select_another_visible"]
+            and celebration_record["settled_copy"]
+            == "Future growth will be shared or stored."
+        )
+        content["full-bloom-celebration"] = celebration_record
+        celebration_started = bool(celebration_record["passed"])
+        hud._clear_celebration()
+        if app is not None:
+            app.processEvents()
+        hud._mark_reward_hold_elapsed()
+        if app is not None:
+            app.processEvents()
+        settled_lifecycle = {
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+            "minimum_hold_elapsed": bool(
+                hud.property("hudRewardMinimumHoldElapsed")
+            ),
+            "reward_visible": bool(hud.property("hudRewardVisible")),
+        }
+        settled_lifecycle["passed"] = bool(
+            settled_lifecycle["reveal_state"] == "settled"
+            and settled_lifecycle["minimum_hold_elapsed"]
+            and settled_lifecycle["reward_visible"]
+        )
+
+        # A visible, settled major reward must survive layout work, a details
+        # round-trip, and a projection-only next-card refresh without being
+        # enqueued, re-added to history, or celebrated again.
+        lifecycle_before = {
+            "history_count": len(hud.reward_history),
+            "queue_count": len(hud._reward_queue),
+            "bundle_id": str(
+                hud._reward_reveal.property("rewardBundleId") or ""
+            ),
+            "reveal_visible": bool(hud.property("hudRewardVisible")),
+            "seen": tuple(sorted(hud._seen_bundle_ids)),
+        }
+        hud.reposition()
+        if app is not None:
+            app.processEvents()
+        resize_reposition_preserved = bool(
+            len(hud.reward_history) == lifecycle_before["history_count"]
+            and len(hud._reward_queue) == lifecycle_before["queue_count"]
+            and str(hud._reward_reveal.property("rewardBundleId") or "")
+            == lifecycle_before["bundle_id"]
+            and bool(hud.property("hudRewardVisible"))
+            == lifecycle_before["reveal_visible"]
+        )
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+        details_opened = bool(
+            hud._reward_reveal.property("rewardDetailsExpanded")
+        )
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+        details_round_trip_preserved = bool(
+            details_opened
+            and not hud._reward_reveal.property("rewardDetailsExpanded")
+            and str(hud._reward_reveal.property("rewardBundleId") or "")
+            == lifecycle_before["bundle_id"]
+            and len(hud.reward_history) == lifecycle_before["history_count"]
+            and len(hud._reward_queue) == lifecycle_before["queue_count"]
+        )
+        lifecycle_duplicate_accepted = bool(hud.present_reward(bundle))
+        active_projection = getattr(handler, "_reviewer_hud_projection", None)
+        projection_update_exercised = active_projection is not None
+        if active_projection is not None:
+            hud.update_projection(
+                replace(active_projection, coins=int(active_projection.coins)),
+                animate=False,
+            )
+        if app is not None:
+            app.processEvents()
+        lifecycle_after = {
+            "history_count": len(hud.reward_history),
+            "queue_count": len(hud._reward_queue),
+            "bundle_id": str(
+                hud._reward_reveal.property("rewardBundleId") or ""
+            ),
+            "reveal_visible": bool(hud.property("hudRewardVisible")),
+            "seen": tuple(sorted(hud._seen_bundle_ids)),
+        }
+        lifecycle_no_replay = {
+            "resize_reposition_preserved": resize_reposition_preserved,
+            "details_round_trip_preserved": details_round_trip_preserved,
+            "duplicate_projection_accepted": lifecycle_duplicate_accepted,
+            "projection_update_exercised": projection_update_exercised,
+            "next_card_projection_preserved": bool(
+                projection_update_exercised
+                and lifecycle_after == lifecycle_before
+            ),
+        }
+        lifecycle_no_replay["passed"] = all(
+            bool(value) for value in lifecycle_no_replay.values()
+        )
+
+        # Opening details explicitly pauses the archive that a distinct next
+        # commit would otherwise trigger. Closing details after that commit
+        # archives the reveal exactly once into the integrated history.
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+        details_pause_before = {
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+            "details_expanded": bool(
+                hud._reward_reveal.property("rewardDetailsExpanded")
+            ),
+            "history_count": len(hud.reward_history),
+        }
+        routine_item = RewardItemProjection(
+            event_id="capture-routine-growth-next-commit",
+            kind=RewardHero.ROUTINE_GROWTH,
+            title="Growth applied",
+            category_label="Routine Growth",
+            occurred_at="2026-08-29T12:05:00+00:00",
+            growth_units=600,
+            sequence=99,
+            is_routine=True,
+        )
+        routine_bundle = RewardBundleProjection(
+            bundle_id="capture-routine-growth-next-commit",
+            occurred_at="2026-08-29T12:05:00+00:00",
+            all_items=(routine_item,),
+        )
+        routine_accepted = bool(hud.present_committed_result(
+            routine_bundle,
+            applied_growth_units=600,
+            reveal=False,
+        ))
+        if app is not None:
+            app.processEvents()
+        details_pause_after_commit = {
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+            "details_expanded": bool(
+                hud._reward_reveal.property("rewardDetailsExpanded")
+            ),
+            "next_commit_seen": bool(
+                hud.property("hudRewardNextCommitSeen")
+            ),
+            "reward_visible": bool(hud.property("hudRewardVisible")),
+            "active_bundle_id": str(
+                hud._reward_reveal.property("rewardBundleId") or ""
+            ),
+            "history_count": len(hud.reward_history),
+        }
+        details_pause = {
+            "routine_commit_accepted": routine_accepted,
+            "state_before_commit": details_pause_before["reveal_state"],
+            "state_after_commit": details_pause_after_commit["reveal_state"],
+            "details_remained_open": bool(
+                details_pause_before["details_expanded"]
+                and details_pause_after_commit["details_expanded"]
+            ),
+            "next_commit_seen": details_pause_after_commit[
+                "next_commit_seen"
+            ],
+            "reward_remained_visible": details_pause_after_commit[
+                "reward_visible"
+            ],
+            "active_bundle_preserved": (
+                details_pause_after_commit["active_bundle_id"]
+                == bundle.bundle_id
+            ),
+            "history_advanced_once": (
+                details_pause_after_commit["history_count"]
+                == details_pause_before["history_count"] + 1
+            ),
+        }
+        details_pause["passed"] = bool(
+            details_pause["routine_commit_accepted"]
+            and details_pause["state_before_commit"] == "details_open"
+            and details_pause["state_after_commit"] == "details_open"
+            and details_pause["details_remained_open"]
+            and details_pause["next_commit_seen"]
+            and details_pause["reward_remained_visible"]
+            and details_pause["active_bundle_preserved"]
+            and details_pause["history_advanced_once"]
+        )
+        interactions["details-pause-archive"] = details_pause
+
+        hud._open_current_reward()
+        if app is not None:
+            app.processEvents()
+        archived_lifecycle = {
+            "reveal_state": str(
+                hud._reward_reveal.property("rewardRevealState") or ""
+            ),
+            "details_expanded": bool(
+                hud._reward_reveal.property("rewardDetailsExpanded")
+            ),
+            "reward_visible": bool(hud.property("hudRewardVisible")),
+            "active_reward_cleared": hud._current_reward is None,
+            "history_count": len(hud.reward_history),
+        }
+        archived_lifecycle["passed"] = bool(
+            archived_lifecycle["reveal_state"] == "archived"
+            and not archived_lifecycle["details_expanded"]
+            and not archived_lifecycle["reward_visible"]
+            and archived_lifecycle["active_reward_cleared"]
+            and archived_lifecycle["history_count"]
+            == details_pause_after_commit["history_count"]
+        )
+        interactions["archive-after-next-commit"] = archived_lifecycle
+
+        lifecycle_states = {
+            "celebrating": compact["reveal_state"],
+            "details_open": expanded["reveal_state"],
+            "settled": settled_lifecycle["reveal_state"],
+            "archived": archived_lifecycle["reveal_state"],
+            "details_paused_archive": details_pause["passed"],
+        }
+        lifecycle_states["passed"] = bool(
+            lifecycle_states == {
+                "celebrating": "celebrating",
+                "details_open": "details_open",
+                "settled": "settled",
+                "archived": "archived",
+                "details_paused_archive": True,
+            }
+        )
+        content["reward-reveal-lifecycle"] = lifecycle_states
+
+        projected_history = project_reward_session_history(hud.reward_history)
+        history_lines = [hud._history_line(row) for row in projected_history]
+        routine_history_rows = [
+            row
+            for row in projected_history
+            if str(row.category_label) == "Routine Growth"
+        ]
+        meaningful_names = [
+            str(row.name)
+            for row in projected_history
+            if str(row.category_label) != "Routine Growth"
+        ]
+        routine_event_ids = (
+            list(routine_history_rows[0].event_ids)
+            if len(routine_history_rows) == 1 else []
+        )
+        routine_line = (
+            hud._history_line(routine_history_rows[0])
+            if len(routine_history_rows) == 1 else ""
+        )
+        history_page_size = len(tuple(getattr(hud, "_history_labels", ()) or ()))
+        history_page_count = max(
+            1,
+            (len(projected_history) + max(1, history_page_size) - 1)
+            // max(1, history_page_size),
+        )
+        original_history_page = int(getattr(hud, "_reward_history_page", 0))
+        hud._reward_history_page = history_page_count - 1
+        hud._sync_history_rows()
+        if app is not None:
+            app.processEvents()
+        visible_history_text = [
+            str(label.text()).strip()
+            for label in tuple(getattr(hud, "_history_labels", ()) or ())
+            if str(label.text()).strip()
+        ]
+        routine_non_clickable = any(
+            bundle_candidate is None
+            and index < len(tuple(getattr(hud, "_history_labels", ()) or ()))
+            and str(
+                getattr(hud._history_labels[index], "_full_text", "") or ""
+            ).strip() == routine_line
+            for index, bundle_candidate in enumerate(
+                tuple(getattr(hud, "_visible_history_bundles", ()) or ())
+            )
+        )
+        hud._reward_history_page = original_history_page
+        hud._sync_history_rows()
+        if app is not None:
+            app.processEvents()
+        content["session-history-named-growth"] = {
+            "projected_categories": [
+                str(row.category_label) for row in projected_history
+            ],
+            "projected_names": [str(row.name) for row in projected_history],
+            "rendered_lines": history_lines,
+            "meaningful_names": meaningful_names,
+            "routine_row_count": len(routine_history_rows),
+            "routine_name": (
+                str(routine_history_rows[0].name)
+                if len(routine_history_rows) == 1 else ""
+            ),
+            "routine_value": (
+                str(routine_history_rows[0].value)
+                if len(routine_history_rows) == 1 else ""
+            ),
+            "routine_event_ids": routine_event_ids,
+            "routine_line": routine_line,
+            "visible_routine_page_lines": visible_history_text,
+            "routine_non_clickable": routine_non_clickable,
+        }
+        content["session-history-named-growth"]["passed"] = bool(
+            "Full Bloom achieved" in meaningful_names
+            and "Morning Dew" in meaningful_names
+            and "Firefly Lantern" in meaningful_names
+            and "Verdant Twilight" in meaningful_names
+            and len(routine_history_rows) == 1
+            and content["session-history-named-growth"]["routine_name"]
+            == "Growth applied"
+            and content["session-history-named-growth"]["routine_value"]
+            == "+6 Growth"
+            and routine_event_ids
+            == ["capture-routine-growth-next-commit"]
+            and routine_line == "Growth applied · +6 Growth"
+            and content["session-history-named-growth"][
+                "routine_non_clickable"
+            ]
+        )
+
+        # Restore the live milestone as a settled reveal for the canonical
+        # Full Bloom screenshot and geometry probes. This is presentation-only
+        # and does not mutate exact-once history or seen identities.
+        hud._show_reward(
+            bundle,
+            presentation="restored",
+            minimum_hold_elapsed=True,
+            reveal_state="settled",
+        )
+        hud._apply_full_bloom_override(bundle, settled=True)
+        if app is not None:
+            app.processEvents()
+        full_bloom = {
+            "eyebrow": str(hud._reward_eyebrow.text()),
+            "hero_title": " ".join(str(hud._reward_title.text()).split()),
+            "hero_subtitle": " ".join(str(hud._reward_subtitle.text()).split()),
+            "active_plant_identity_suppressed": bool(
+                hud._reward_reveal.property("activePlantIdentitySuppressed")
+            ),
+            "class_label": str(hud._species.text()).strip(),
+            "bed_visible": bool(
+                getattr(hud, "_bed", None) is not None
+                and hud._bed.isVisibleTo(hud)
+            ),
+            "settled": bool(hud._plant_card.property("fullBloomSettled")),
+            "temporary_gold_cleared": bool(
+                not str(hud._plant_card.property("celebration") or "")
+                and not bool(hud._art_region.property("fullBloomLightRays"))
+            ),
+            "celebration_started": celebration_started,
+            "artwork_ref": str(getattr(bundle.hero, "artwork_ref", "") or ""),
+            "track_hidden": not hud._checkpoint_track.isVisibleTo(hud),
+            "next_answer_hidden": not hud._next_answer.isVisibleTo(hud),
+            "art_height": int(hud._plant_art.height()),
+            "light_rays": bool(hud._art_region.property("fullBloomLightRays")),
+            "settled_copy": str(hud._plant_message.text()),
+            "select_another_visible": bool(
+                hud._select_plant.isVisibleTo(hud)
+            ),
+            "select_another_copy": str(hud._select_plant.text()),
+            "art_scale": float(
+                hud._art_region.property("artScale") or 1.0
+            ),
+            "particles_active": bool(
+                hud._art_region.property("fullBloomParticlesActive")
+            ),
+            "detached_toast_count": len([
+                candidate
+                for candidate in tuple(getattr(handler, "_reward_toasts", ()) or ())
+                if candidate is not None and candidate.isVisible()
+            ]),
+        }
+        full_bloom["passed"] = bool(
+            full_bloom["eyebrow"] == "MILESTONE REACHED"
+            and full_bloom["hero_title"] == "Full Bloom achieved"
+            and full_bloom["hero_subtitle"] == ""
+            and full_bloom["active_plant_identity_suppressed"]
+            and full_bloom["class_label"] == "Bonsai"
+            and not full_bloom["bed_visible"]
+            and full_bloom["settled"]
+            and full_bloom["temporary_gold_cleared"]
+            and full_bloom["celebration_started"]
+            and bool(full_bloom["artwork_ref"])
+            and full_bloom["track_hidden"]
+            and full_bloom["next_answer_hidden"]
+            and full_bloom["art_height"] >= 132
+            and not full_bloom["light_rays"]
+            and full_bloom["settled_copy"]
+            == "Future growth will be shared or stored."
+            and full_bloom["select_another_visible"]
+            and full_bloom["select_another_copy"] == "Choose next plant ›"
+            and full_bloom["art_scale"] == 1.0
+            and not full_bloom["particles_active"]
+            and full_bloom["detached_toast_count"] == 0
+        )
+        content["full-bloom"] = full_bloom
+        content["full-bloom-settled"] = {
+            "settled": full_bloom["settled"],
+            "temporary_gold_cleared": full_bloom[
+                "temporary_gold_cleared"
+            ],
+            "settled_copy": full_bloom["settled_copy"],
+            "select_another_visible": full_bloom[
+                "select_another_visible"
+            ],
+            "select_another_copy": full_bloom["select_another_copy"],
+            "art_scale": full_bloom["art_scale"],
+            "particles_active": full_bloom["particles_active"],
+            "passed": bool(
+                full_bloom["settled"]
+                and full_bloom["temporary_gold_cleared"]
+                and full_bloom["settled_copy"]
+                == "Future growth will be shared or stored."
+                and full_bloom["select_another_visible"]
+                and full_bloom["select_another_copy"]
+                == "Choose next plant ›"
+                and full_bloom["art_scale"] == 1.0
+                and not full_bloom["particles_active"]
+            ),
+        }
+        settled_geometry = self._reviewer_hud_geometry_audit(
+            "reviewer-reward-dock-bundle",
+            hud,
+        )
+        settled_vertical_scroll = max(
+            (
+                int(scroll.verticalScrollBar().maximum())
+                for scroll in hud.findChildren(QScrollArea)
+            ),
+            default=-1,
+        )
+        content["settled-height-or-safe-scroll"] = {
+            "settled_height": int(hud.height()),
+            "height_at_most_660": int(hud.height()) <= 660,
+            "vertical_scroll_maximum": settled_vertical_scroll,
+            "safe_scroll": bool(
+                settled_vertical_scroll > 0
+                and settled_geometry.get("safe_area_passed", False)
+            ),
+            "safe_area_passed": bool(
+                settled_geometry.get("safe_area_passed", False)
+            ),
+            "horizontal_scroll_maximum": int(
+                settled_geometry.get("horizontal_scroll_maximum", -1)
+            ),
+            "passed": bool(
+                settled_geometry.get("safe_area_passed", False)
+                and int(
+                    settled_geometry.get("horizontal_scroll_maximum", -1)
+                ) == 0
+                and (
+                    int(hud.height()) <= 660
+                    or settled_vertical_scroll > 0
+                )
+            ),
+        }
+
+        original_size = (int(mw.width()), int(mw.height()))
+        original_maximized = bool(mw.isMaximized())
+        mw.showNormal()
+        mw.resize(1_280, 600)
+        hud.reposition()
+        if app is not None:
+            app.processEvents()
+        short_hud_geometry = self._reviewer_hud_geometry_audit(
+            "reviewer-reward-dock-bundle",
+            hud,
+        )
+        short_dock_geometry = self._reviewer_reward_dock_geometry_audit(hud)
+        body_scroll = getattr(hud, "_body_scroll", None)
+        body_vertical_scroll = int(
+            body_scroll.verticalScrollBar().maximum()
+            if isinstance(body_scroll, QScrollArea) else -1
+        )
+        reveal_bounds = list(
+            short_dock_geometry.get("reveal_bounds", ()) or ()
+        )
+        footer_bounds = list(
+            short_dock_geometry.get("footer_bounds", ()) or ()
+        )
+        reward_footer_non_overlapping = bool(
+            len(reveal_bounds) == 4
+            and len(footer_bounds) == 4
+            and int(reveal_bounds[1]) + int(reveal_bounds[3])
+            <= int(footer_bounds[1])
+        )
+        dock = getattr(hud, "_reward_dock", None)
+        footer = getattr(hud, "_session_footer", None)
+        header = getattr(hud, "_header", None)
+        header_bounds = list(
+            self._widget_bounds_evidence(header, hud).get("bounds", ()) or ()
+        )
+        body_bounds = list(
+            self._widget_bounds_evidence(body_scroll, hud).get("bounds", ()) or ()
+        )
+        footer_hud_bounds = list(
+            self._widget_bounds_evidence(footer, hud).get("bounds", ()) or ()
+        )
+        fixed_header_visible = bool(
+            header is not None and header.isVisibleTo(hud)
+        )
+        fixed_header_outside_middle = bool(
+            isinstance(body_scroll, QScrollArea)
+            and header is not None
+            and not body_scroll.isAncestorOf(header)
+        )
+        fixed_footer_outside_middle = bool(
+            isinstance(body_scroll, QScrollArea)
+            and footer is not None
+            and not body_scroll.isAncestorOf(footer)
+        )
+        fixed_regions_non_overlapping = bool(
+            len(header_bounds) == 4
+            and len(body_bounds) == 4
+            and len(footer_hud_bounds) == 4
+            and int(header_bounds[1]) + int(header_bounds[3])
+            <= int(body_bounds[1])
+            and int(body_bounds[1]) + int(body_bounds[3])
+            <= int(footer_hud_bounds[1])
+        )
+        sticky_reward_and_footer = bool(
+            isinstance(body_scroll, QScrollArea)
+            and dock is not None
+            and footer is not None
+            and not body_scroll.isAncestorOf(dock)
+            and not body_scroll.isAncestorOf(footer)
+        )
+        short_height_record = {
+            "requested_host_size": [1_280, 600],
+            "host_size": [int(mw.width()), int(mw.height())],
+            "host_shortened": bool(
+                int(mw.height()) <= 602
+                and int(mw.height()) < original_size[1]
+            ),
+            "hud_height": int(hud.height()),
+            "hud_safe_area_passed": bool(
+                short_hud_geometry.get("safe_area_passed", False)
+            ),
+            "horizontal_scroll_maximum": int(
+                short_hud_geometry.get("horizontal_scroll_maximum", -1)
+            ),
+            "middle_vertical_scroll_maximum": body_vertical_scroll,
+            "middle_content_fits": body_vertical_scroll == 0,
+            "middle_scroll_owns_overflow": body_vertical_scroll > 0,
+            "major_reward_visible": bool(
+                hud.property("hudRewardVisible")
+                and getattr(hud, "_reward_reveal", None) is not None
+                and hud._reward_reveal.isVisibleTo(hud)
+            ),
+            "session_footer_visible": bool(
+                footer is not None and footer.isVisibleTo(hud)
+            ),
+            "fixed_header_visible": fixed_header_visible,
+            "fixed_header_outside_middle_scroll": fixed_header_outside_middle,
+            "fixed_session_footer_outside_middle_scroll": (
+                fixed_footer_outside_middle
+            ),
+            "fixed_regions_non_overlapping": fixed_regions_non_overlapping,
+            "sticky_reward_and_footer": sticky_reward_and_footer,
+            "reward_footer_non_overlapping": reward_footer_non_overlapping,
+            "reveal_height": int(
+                short_dock_geometry.get("reveal_height", 0) or 0
+            ),
+        }
+        short_height_record["passed"] = bool(
+            short_height_record["hud_safe_area_passed"]
+            and short_height_record["host_shortened"]
+            and short_height_record["horizontal_scroll_maximum"] == 0
+            and (
+                short_height_record["middle_content_fits"]
+                or short_height_record["middle_scroll_owns_overflow"]
+            )
+            and short_height_record["major_reward_visible"]
+            and short_height_record["session_footer_visible"]
+            and short_height_record["fixed_header_visible"]
+            and short_height_record["fixed_header_outside_middle_scroll"]
+            and short_height_record[
+                "fixed_session_footer_outside_middle_scroll"
+            ]
+            and short_height_record["fixed_regions_non_overlapping"]
+            and short_height_record["sticky_reward_and_footer"]
+            and short_height_record["reward_footer_non_overlapping"]
+            and 130 <= short_height_record["reveal_height"] <= 150
+        )
+        content["full-bloom-short-height"] = short_height_record
+        if original_maximized:
+            mw.showMaximized()
+        else:
+            mw.resize(*original_size)
+        hud.reposition()
+        if app is not None:
+            app.processEvents()
+        short_height_record["canonical_viewport_restored"] = bool(
+            (
+                mw.isMaximized()
+                if original_maximized else
+                abs(int(mw.width()) - original_size[0]) <= 2
+                and abs(int(mw.height()) - original_size[1]) <= 2
+            )
+            and str(hud._reward_reveal.property("rewardBundleId") or "")
+            == bundle.bundle_id
+            and bool(hud.property("hudRewardVisible"))
+        )
+        short_height_record["passed"] = bool(
+            short_height_record["passed"]
+            and short_height_record["canonical_viewport_restored"]
+        )
+        content["one-garden-find"] = {
+            "find_count": sum(
+                item.kind is RewardHero.GARDEN_FIND for item in bundle.all_items
+            ),
+            "footer_copy": str(hud._session_finds.text()),
+            "passed": bool(
+                sum(
+                    item.kind is RewardHero.GARDEN_FIND
+                    for item in bundle.all_items
+                ) == 1
+                and str(hud._session_finds.text()) == "1 find"
+            ),
+        }
+        history_bundle_ids = tuple(
+            str(getattr(item, "bundle_id", "") or "")
+            for item in tuple(hud.reward_history)
+        )
+        content["session-footer-reconciliation"] = {
+            "bundle_id": bundle.bundle_id,
+            "history_bundle_ids": list(history_bundle_ids),
+            "footer_growth_units": int(
+                hud._session_footer.property("sessionGrowthUnits") or 0
+            ),
+            "footer_coins": int(
+                hud._session_footer.property("sessionCoins") or 0
+            ),
+            "footer_finds": int(
+                hud._session_footer.property("sessionFinds") or 0
+            ),
+            "live_growth_units": int(live_session.footer_growth_units),
+            "live_coins": int(live_session.garden_coins_earned),
+            "live_finds": int(live_session.footer_find_count),
+            "footer_copy": [
+                str(hud._session_growth.text()),
+                str(hud._session_coins.text()),
+                str(hud._session_finds.text()),
+            ],
+            "passed": bool(
+                bundle.bundle_id in history_bundle_ids
+                and int(
+                    hud._session_footer.property("sessionGrowthUnits") or 0
+                ) == int(live_session.footer_growth_units) == 4_000
+                and int(
+                    hud._session_footer.property("sessionCoins") or 0
+                ) == int(live_session.garden_coins_earned) == 14
+                and int(
+                    hud._session_footer.property("sessionFinds") or 0
+                ) == int(live_session.footer_find_count) == 1
+                and [
+                    str(hud._session_growth.text()),
+                    str(hud._session_coins.text()),
+                    str(hud._session_finds.text()),
+                ] == ["+40 growth", "+14 coins", "1 find"]
+            ),
+        }
+
+        canonical_projection = getattr(handler, "_reviewer_hud_projection", None)
+        complete_projection = replace(
+            canonical_projection,
+            today=replace(
+                canonical_projection.today,
+                status="complete",
+                heading="All cards complete",
+                primary="+10 coins",
+                secondary=("176 reviewed today",),
+                progress_value=176,
+                progress_maximum=176,
+                remaining_count=0,
+                completion_reward_coins=10,
+            ),
+        )
+        hud.update_projection(complete_projection, animate=False)
+        if app is not None:
+            app.processEvents()
+        content["all-cards-complete"] = {
+            "completion_status": str(hud._today_card.property("completionStatus") or ""),
+            "heading": str(hud._today_heading.text()),
+            "displayed_progress_percent": int(
+                hud._today_progress.property("displayedProgressPercent") or 100
+            ),
+            "reward_copy": str(hud._today_value.text()),
+            "passed": bool(
+                hud._today_card.property("completionStatus") == "complete"
+                and str(hud._today_heading.text()) == "All cards complete"
+                and str(hud._today_value.text()) == "+10 coins"
+            ),
+        }
+        hud.update_projection(canonical_projection, animate=False)
+
+        hud.clear_reward()
+        hud._reward_queue.clear()
+        rapid_bundles: list[Any] = []
+        for index, item in enumerate(bundle.all_items[:3], start=1):
+            rapid = RewardBundleProjection(
+                f"{bundle.bundle_id}:rapid:{index}",
+                bundle.occurred_at,
+                (replace(item, event_id=f"{item.event_id}:rapid:{index}"),),
+            )
+            rapid_bundles.append(rapid)
+            hud.present_reward(rapid)
+        if app is not None:
+            app.processEvents()
+        rapid = {
+            "unique_bundle_ids": len({item.bundle_id for item in rapid_bundles}),
+            "one_visible_reveal": int(bool(hud.property("hudRewardVisible"))),
+            "queued_major": len(hud._reward_queue),
+            "seen": sum(
+                item.bundle_id in hud._seen_bundle_ids for item in rapid_bundles
+            ),
+            "detached_toast_count": len([
+                candidate
+                for candidate in tuple(getattr(handler, "_reward_toasts", ()) or ())
+                if candidate is not None and candidate.isVisible()
+            ]),
+        }
+        rapid["passed"] = bool(
+            rapid["unique_bundle_ids"] == 3
+            and rapid["one_visible_reveal"] == 1
+            and rapid["queued_major"] == 2
+            and rapid["seen"] == 3
+            and rapid["detached_toast_count"] == 0
+        )
+        interactions["rapid-successive-rewards"] = rapid
+
+        before_sync = {
+            "hud_identity": id(hud),
+            "seen": tuple(sorted(hud._seen_bundle_ids)),
+            "history": tuple(item.bundle_id for item in hud.reward_history),
+        }
+        self.app._refresh_dashboard_after_maintenance(0, 0)
+        if app is not None:
+            app.processEvents()
+        synced_hud = getattr(handler, "_reviewer_hud", None)
+        sync_record = {
+            "simulation": "sync-finish refresh without network",
+            "same_mounted_hud": synced_hud is hud,
+            "seen_preserved": tuple(sorted(synced_hud._seen_bundle_ids))
+            == before_sync["seen"],
+            "history_preserved": tuple(
+                item.bundle_id for item in synced_hud.reward_history
+            ) == before_sync["history"],
+        }
+        sync_record["passed"] = all(
+            bool(sync_record[key])
+            for key in ("same_mounted_hud", "seen_preserved", "history_preserved")
+        )
+        interactions["collection-sync-hud-open"] = sync_record
+
+        handler._hide_reviewer_hud()
+        handler._ensure_reviewer_hud(force_collapsed=False, force_dock="right")
+        if app is not None:
+            app.processEvents()
+        remounted = getattr(handler, "_reviewer_hud", None)
+        history_before_duplicate = len(remounted.reward_history)
+        queue_before_duplicate = len(remounted._reward_queue)
+        reveal_before_duplicate = bool(
+            remounted.property("hudRewardVisible")
+        )
+        current_before_duplicate = str(
+            remounted._reward_reveal.property("rewardBundleId") or ""
+        )
+        duplicate_accepted = bool(remounted.present_reward(bundle))
+        reload_record = {
+            "new_widget": remounted is not hud,
+            "seen_preserved": tuple(sorted(remounted._seen_bundle_ids))
+            == before_sync["seen"],
+            "history_preserved": tuple(
+                item.bundle_id for item in remounted.reward_history
+            ) == before_sync["history"],
+            "duplicate_accepted": duplicate_accepted,
+            "duplicate_not_replayed": len(remounted.reward_history)
+            == history_before_duplicate,
+        }
+        reload_record["passed"] = all(bool(value) for value in reload_record.values())
+        interactions["reviewer-reload-after-reward"] = reload_record
+        interactions["history-remount-idempotence"] = reload_record
+        no_replay = {
+            "duplicate_call_idempotently_accepted": duplicate_accepted,
+            "history_count_before": history_before_duplicate,
+            "history_count_after": len(remounted.reward_history),
+            "queue_count_before": queue_before_duplicate,
+            "queue_count_after": len(remounted._reward_queue),
+            "reveal_visible_before": reveal_before_duplicate,
+            "reveal_visible_after": bool(
+                remounted.property("hudRewardVisible")
+            ),
+            "rendered_bundle_before": current_before_duplicate,
+            "rendered_bundle_after": str(
+                remounted._reward_reveal.property("rewardBundleId") or ""
+            ),
+            "seen_id_preserved": bundle.bundle_id in remounted._seen_bundle_ids,
+            "sync_state_preserved": bool(sync_record.get("passed", False)),
+            **lifecycle_no_replay,
+        }
+        no_replay["passed"] = bool(
+            no_replay["duplicate_call_idempotently_accepted"]
+            and no_replay["history_count_after"]
+            == no_replay["history_count_before"]
+            and no_replay["queue_count_after"]
+            == no_replay["queue_count_before"]
+            and no_replay["reveal_visible_after"]
+            == no_replay["reveal_visible_before"]
+            and no_replay["rendered_bundle_after"]
+            == no_replay["rendered_bundle_before"]
+            and no_replay["seen_id_preserved"]
+            and no_replay["sync_state_preserved"]
+            and no_replay["resize_reposition_preserved"]
+            and no_replay["details_round_trip_preserved"]
+            and no_replay["duplicate_projection_accepted"]
+            and no_replay["projection_update_exercised"]
+            and no_replay["next_card_projection_preserved"]
+        )
+        interactions["no-replay"] = no_replay
+
+        remounted.clear_reward()
+        remounted._reward_queue.clear()
+        remounted._checkpoint_pending_bundles.clear()
+        remounted._show_reward(bundle, expanded=False)
+        remounted.update_session(live_session)
+        if app is not None:
+            app.processEvents()
+        remounted._toggle_reward_history()
+        if app is not None:
+            app.processEvents()
+        history_record = {
+            "history_visible": remounted._reward_history_panel.isVisibleTo(remounted),
+            "history_count": int(remounted.property("hudRewardHistoryCount") or 0),
+        }
+        remounted._reopen_history_reward(0)
+        if app is not None:
+            app.processEvents()
+        history_record.update({
+            "reopened_bundle_id": str(
+                remounted._reward_reveal.property("rewardBundleId") or ""
+            ),
+            "reopened_expanded": bool(
+                remounted._reward_reveal.property("rewardDetailsExpanded")
+            ),
+        })
+        history_record["passed"] = bool(
+            history_record["history_visible"]
+            and history_record["history_count"] >= 1
+            and history_record["reopened_bundle_id"]
+            and history_record["reopened_expanded"]
+        )
+        interactions["history-reopen"] = history_record
+        remounted._show_reward(bundle, expanded=False)
+        if app is not None:
+            app.processEvents()
+
+        content["passed"] = bool(
+            set(REVIEWER_REWARD_CONTENT_STATES)
+            == {name for name in content if name != "passed"}
+            and all(
+                bool(record.get("passed", False))
+                for name, record in content.items()
+                if name != "passed" and isinstance(record, dict)
+            )
+        )
+        interactions["passed"] = bool(
+            content["passed"]
+            and all(
+                bool(record.get("passed", False))
+                for name, record in interactions.items()
+                if name != "passed" and isinstance(record, dict)
+            )
+        )
+        return remounted, interactions, content
+
+    @staticmethod
+    def _set_session_summary_capture_payload(card: Any, payload: Any) -> None:
+        """Remount one synthetic payload inside the existing native card."""
+
+        card._payload = payload
+        card._page_index = 0
+        reset = getattr(card, "_reset_page_expansions", None)
+        if callable(reset):
+            reset()
+        card._rebuild_page()
+        card.reposition()
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
+    def _session_summary_content_state_audit(
+        self,
+        card: Any,
+        state_name: str,
+    ) -> dict[str, Any]:
+        """Audit one transient Session Summary payload from native widgets."""
+
+        parent = getattr(mw, "web", None)
+        bounds = self._widget_bounds_evidence(card, parent)
+        widgets = (
+            [card, *list(card.findChildren(QWidget))]
+            if card is not None else
+            []
+        )
+
+        def visible(candidate: Any) -> bool:
+            try:
+                return bool(candidate is not None and candidate.isVisibleTo(card))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return False
+
+        def named(object_name: str) -> Any | None:
+            return next((
+                candidate for candidate in widgets
+                if str(candidate.objectName() or "") == object_name
+            ), None)
+
+        labels = [
+            candidate for candidate in widgets
+            if isinstance(candidate, QLabel) and visible(candidate)
+        ]
+        buttons = [
+            candidate for candidate in widgets
+            if isinstance(candidate, QAbstractButton) and visible(candidate)
+        ]
+        copy = " ".join((
+            *(str(candidate.text()) for candidate in labels),
+            *(
+                _displayed_button_text(candidate)
+                for candidate in buttons
+                if _displayed_button_text(candidate)
+            ),
+        ))
+        normalized = " ".join(copy.casefold().split())
+        button_copy = tuple(sorted(
+            _displayed_button_text(candidate)
+            for candidate in buttons
+            if _displayed_button_text(candidate)
+        ))
+        scrolls = [
+            candidate for candidate in widgets
+            if isinstance(candidate, QScrollArea)
+        ]
+        horizontal_scroll_maximum = (
+            int(scrolls[0].horizontalScrollBar().maximum())
+            if len(scrolls) == 1 else
+            -1
+        )
+        progress = named("ankiGardenSessionTodayProgress")
+        progress_record = {
+            "minimum": -1,
+            "maximum": -1,
+            "value": -1,
+            "fraction": -1.0,
+        }
+        if progress is not None:
+            try:
+                progress_record = {
+                    "minimum": int(progress.minimum()),
+                    "maximum": int(progress.maximum()),
+                    "value": int(progress.value()),
+                    "fraction": float(progress.property("progressFraction")),
+                }
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+
+        metric_values: dict[str, str] = {}
+        for candidate in widgets:
+            key = str(candidate.property("summaryMetricKey") or "").strip()
+            if not key or not visible(candidate):
+                continue
+            metric_values[key] = " ".join(
+                str(item.text())
+                for item in candidate.findChildren(QLabel)
+                if visible(item)
+            )
+
+        hero = named("ankiGardenSessionHero")
+        hero_value = named("ankiGardenSessionHeroValue")
+        hero_label = named("ankiGardenSessionHeroLabel")
+        hero_gap = -1
+        try:
+            value_bottom = int(hero_value.mapTo(
+                hero,
+                hero_value.rect().bottomLeft(),
+            ).y())
+            label_top = int(hero_label.mapTo(
+                hero,
+                hero_label.rect().topLeft(),
+            ).y())
+            hero_gap = label_top - value_bottom - 1
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            hero_gap = -1
+
+        section_visibility = {
+            "highlights": visible(named("ankiGardenSessionHighlights")),
+            "rewards": visible(named("ankiGardenSessionRewardsSection")),
+            "active_boosts": visible(named("ankiGardenSessionActiveBoosts")),
+        }
+        zero_rows = tuple(dict.fromkeys(re.findall(
+            r"(?<![\d,])\+0(?:\.0)?\b|\b0 (?:cards?|finds?|coins?|growth|min|minutes)\b",
+            normalized,
+        )))
+
+        expected_long_names = (
+            "Moonlit Wisteria Beside the Old Observatory",
+            "Firefly Lantern Promenade Under a Midsummer Sky",
+            "Small Growth Charges from the Moonlit Conservatory",
+        )
+        long_name_records: list[dict[str, Any]] = []
+        for text in expected_long_names:
+            label = next((
+                candidate for candidate in labels
+                if str(candidate.text()) == text
+            ), None)
+            long_name_records.append({
+                "text": text,
+                "present": label is not None,
+                "word_wrap": bool(label.wordWrap()) if label is not None else False,
+                "tooltip_preserves_copy": bool(
+                    label is not None and str(label.toolTip()) == text
+                ),
+                "accessible_name_preserves_copy": bool(
+                    label is not None and str(label.accessibleName()) == text
+                ),
+            })
+
+        find_rows = [
+            candidate for candidate in widgets
+            if candidate.property("summaryFindRow") is True
+            and visible(candidate)
+        ]
+        find_row_records: list[dict[str, Any]] = []
+        for row in find_rows:
+            name_label = next((
+                candidate for candidate in row.findChildren(QLabel)
+                if candidate.property("summaryFindName") is True
+                and visible(candidate)
+            ), None)
+            quantity_label = next((
+                candidate for candidate in row.findChildren(QLabel)
+                if candidate.property("summaryFindQuantity") is True
+                and visible(candidate)
+            ), None)
+            find_row_records.append({
+                "identity": str(row.property("summaryFindId") or ""),
+                "name": str(name_label.text()) if name_label is not None else "",
+                "quantity": (
+                    str(quantity_label.text()) if quantity_label is not None else ""
+                ),
+                "copy": " ".join(
+                    str(candidate.text())
+                    for candidate in row.findChildren(QLabel)
+                    if visible(candidate)
+                ),
+            })
+        more_finds = named("ankiGardenSessionMoreFinds")
+        more_finds_copy = (
+            str(more_finds.text()) if more_finds is not None and visible(more_finds)
+            else ""
+        )
+        boost_rows = [
+            candidate for candidate in widgets
+            if candidate.property("summaryBoostRow") is True
+            and visible(candidate)
+        ]
+        boost_kinds = tuple(
+            str(candidate.property("summaryBoostKind") or "")
+            for candidate in boost_rows
+        )
+        breakdown = named("ankiGardenSessionBreakdown")
+        breakdown_visible = visible(breakdown)
+        summary_theme = dict(getattr(card, "_summary_theme", {}) or {})
+        try:
+            from ..ui.session_summary_card import session_summary_palette
+
+            dark_theme = session_summary_palette(0)
+            light_theme = session_summary_palette(255)
+        except Exception:
+            dark_theme = {}
+            light_theme = {}
+        style_sheet = str(card.styleSheet() or "")
+        appearance_tokens_applied = bool(
+            summary_theme
+            and all(
+                str(summary_theme.get(key, "")) in style_sheet
+                for key in (
+                    "elevated_surface",
+                    "raised_surface",
+                    "text_primary",
+                    "metric_label",
+                    "growth_accent",
+                    "coin_accent",
+                    "find_accent",
+                    "milestone_accent",
+                    "action_accent",
+                )
+            )
+        )
+        long_find_name = next((
+            candidate for candidate in labels
+            if candidate.property("summaryFindName") is True
+            and str(candidate.text())
+            == "Small Growth Charges from the Moonlit Conservatory"
+        ), None)
+        long_find_quantity = next((
+            candidate for candidate in labels
+            if candidate.property("summaryFindQuantity") is True
+            and str(candidate.text()) == "×123,456"
+        ), None)
+        collision_free = False
+        if long_find_name is not None and long_find_quantity is not None:
+            try:
+                name_right = long_find_name.mapTo(
+                    card,
+                    long_find_name.rect().topRight(),
+                ).x()
+                quantity_left = long_find_quantity.mapTo(
+                    card,
+                    long_find_quantity.rect().topLeft(),
+                ).x()
+                collision_free = name_right < quantity_left
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                collision_free = False
+
+        highlights: list[dict[str, Any]] = []
+        for candidate in widgets:
+            kind = str(candidate.property("summaryHighlightKind") or "").strip()
+            if not kind or not visible(candidate):
+                continue
+            highlights.append({
+                "kind": kind,
+                "compact": candidate.property("summaryHighlightCompact") is True,
+                "static": candidate.property("summaryStatic") is True,
+                "focus_safe": candidate.focusPolicy() == Qt.FocusPolicy.NoFocus,
+                "noninteractive_cursor": candidate.cursor().shape()
+                != Qt.CursorShape.PointingHandCursor,
+            })
+        static_surfaces: list[dict[str, Any]] = []
+        for candidate in widgets:
+            category = (
+                "highlight"
+                if candidate.property("summaryHighlight") is True
+                else "reward_metric"
+                if candidate.property("summaryMetric") is True
+                else "boost"
+                if candidate.property("summaryBoostRow") is True
+                else ""
+            )
+            if not category or not visible(candidate):
+                continue
+            static_surfaces.append({
+                "category": category,
+                "declared_static": (
+                    candidate.property("summaryStatic") is True
+                    if category == "highlight"
+                    else True
+                ),
+                "not_button": not isinstance(candidate, QAbstractButton),
+                "focus_safe": candidate.focusPolicy() == Qt.FocusPolicy.NoFocus,
+                "noninteractive_cursor": candidate.cursor().shape()
+                != Qt.CursorShape.PointingHandCursor,
+            })
+        summary = None
+        try:
+            summary = card.payload.segments[0]
+        except (AttributeError, IndexError, TypeError):
+            pass
+        source_highlight_count = 0
+        source_find_count = 0
+        total_find_quantity = 0
+        find_items_reconciled = False
+        reconciled_find_groups: tuple[Any, ...] = ()
+        explicit_cards_total = False
+        if summary is not None:
+            start_total = getattr(summary.today_cards_start, "cards_total", None)
+            end_total = getattr(summary.today_cards_end, "cards_total", None)
+            start_completed = int(summary.today_cards_start.cards_completed)
+            start_remaining = getattr(
+                summary.today_cards_start,
+                "cards_remaining",
+                None,
+            )
+            end_completed = int(summary.today_cards_end.cards_completed)
+            end_remaining = getattr(
+                summary.today_cards_end,
+                "cards_remaining",
+                None,
+            )
+            explicit_cards_total = bool(
+                start_total is not None
+                and end_total is not None
+                and start_remaining is not None
+                and end_remaining is not None
+                and int(start_completed) + int(start_remaining)
+                == int(start_total)
+                and int(end_completed) + int(end_remaining) == int(end_total)
+            )
+            source_highlight_count = sum((
+                sum(
+                    1 for item in tuple(summary.milestones)
+                    if (
+                        str(getattr(item, "milestone_type", ""))
+                        in {"full_bloom", "stage_change"}
+                        or (
+                            str(getattr(item, "milestone_type", ""))
+                            == "checkpoint"
+                            and int(getattr(item, "checkpoint_percent", 0) or 0)
+                            >= 75
+                        )
+                    )
+                ),
+                len(tuple(summary.environment_discoveries)),
+                sum(
+                    1 for item in tuple(summary.standard_finds)
+                    if bool(getattr(item, "notable", False))
+                ),
+            ))
+            source_find_count = len(tuple(summary.standard_finds))
+            total_find_quantity = int(summary.total_finds)
+            find_items_reconciled = bool(summary.find_items_reconciled)
+            reconciled_find_groups = tuple(summary.find_items)
+
+        art_records: list[dict[str, Any]] = []
+        for candidate in widgets:
+            kind = str(candidate.property("summaryArtKind") or "").strip()
+            if not kind or not visible(candidate):
+                continue
+            try:
+                pixmap = candidate.pixmap()
+                pixmap_present = bool(pixmap is not None and not pixmap.isNull())
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pixmap_present = False
+            try:
+                source_width = int(candidate.property("summaryArtSourceWidth"))
+                source_height = int(candidate.property("summaryArtSourceHeight"))
+                logical_width = int(candidate.property("summaryArtLogicalWidth"))
+                logical_height = int(candidate.property("summaryArtLogicalHeight"))
+            except (TypeError, ValueError):
+                source_width = source_height = logical_width = logical_height = 0
+            art_records.append({
+                "kind": kind,
+                "source": str(candidate.property("summaryArtSource") or ""),
+                "reference": str(
+                    candidate.property("summaryRewardArtReference") or ""
+                ),
+                "fallback": candidate.property("summaryArtFallback") is True,
+                "pixmap_present": pixmap_present,
+                "source_size": [source_width, source_height],
+                "logical_size": [logical_width, logical_height],
+                "accessible_name": str(candidate.accessibleName() or ""),
+                "accessible_description": str(
+                    candidate.accessibleDescription() or ""
+                ),
+            })
+        fallback_records = [
+            row for row in art_records if bool(row["fallback"])
+        ]
+        retina_find_art_present = any(
+            row["kind"] == "find"
+            and "growth_charge_small" in str(row["source"]).casefold()
+            and not bool(row["fallback"])
+            and bool(row["pixmap_present"])
+            and int(row["logical_size"][0]) == 26
+            and int(row["logical_size"][1]) == 26
+            and int(row["source_size"][0]) >= 52
+            and int(row["source_size"][1]) >= 52
+            for row in art_records
+        )
+
+        evidence: dict[str, Any] = {
+            **bounds,
+            "state": str(state_name),
+            "single_scroll_owner": len(scrolls) == 1,
+            "horizontal_scroll_maximum": horizontal_scroll_maximum,
+            "no_horizontal_overflow": horizontal_scroll_maximum == 0,
+            "explicit_cards_total": explicit_cards_total,
+            "copy": copy,
+            "buttons": list(button_copy),
+            "progress": progress_record,
+            "metric_values": metric_values,
+            "section_visibility": section_visibility,
+            "zero_rows": list(zero_rows),
+            "long_names": long_name_records,
+            "find_rows": find_row_records,
+            "more_finds_copy": more_finds_copy,
+            "boost_row_count": len(boost_rows),
+            "boost_kinds": list(boost_kinds),
+            "breakdown_visible": breakdown_visible,
+            "hero_value_label_gap": hero_gap,
+            "summary_theme": summary_theme,
+            "dark_theme": dark_theme,
+            "light_theme": light_theme,
+            "appearance_tokens_applied": appearance_tokens_applied,
+            "highlights": highlights,
+            "static_surfaces": static_surfaces,
+            "source_highlight_count": source_highlight_count,
+            "source_find_count": source_find_count,
+            "total_find_quantity": total_find_quantity,
+            "find_items_reconciled": find_items_reconciled,
+            "reconciled_find_group_count": len(reconciled_find_groups),
+            "reconciled_find_quantities": [
+                int(getattr(item, "quantity", 0) or 0)
+                for item in reconciled_find_groups
+            ],
+            "art": art_records,
+        }
+        if state_name == "complete":
+            evidence.update({
+                "complete_copy": bool(
+                    "all of today’s cards complete" in normalized
+                    and "144 cards completed this session" in normalized
+                    and "144 of 144 completed" in normalized
+                ),
+                "complete_progress": bool(
+                    progress_record["minimum"] == 0
+                    and progress_record["maximum"] == 144
+                    and progress_record["value"] == 144
+                    and math.isclose(
+                        float(progress_record["fraction"]),
+                        1.0,
+                        rel_tol=0.0,
+                        abs_tol=0.001,
+                    )
+                ),
+                "complete_actions": bool(
+                    "Open Garden" in button_copy
+                    and "Continue Reviews" not in button_copy
+                ),
+            })
+        elif state_name == "sparse-zero-sections":
+            evidence.update({
+                "zero_sections_omitted": not any(section_visibility.values()),
+                "zero_rows_omitted": bool(
+                    not zero_rows
+                    and "rewards earned" not in normalized
+                    and "session highlights" not in normalized
+                    and "active boosts" not in normalized
+                ),
+            })
+        elif state_name == "long-names-six-digit-totals":
+            evidence.update({
+                "long_names_preserved": bool(
+                    long_name_records
+                    and all(
+                        row["present"]
+                        and row["word_wrap"]
+                        and row["tooltip_preserves_copy"]
+                        and row["accessible_name_preserves_copy"]
+                        for row in long_name_records
+                    )
+                ),
+                "six_digit_totals_present": all(
+                    value in normalized for value in (
+                        "123,456 cards completed this session",
+                        "111,111 remaining",
+                        "123,456 of 234,567 completed",
+                        "+987,654",
+                        "+123,456",
+                        "×123,456",
+                    )
+                ),
+                "long_find_item_preserved": bool(
+                    len(find_rows) == 1
+                    and long_find_name is not None
+                    and long_find_name.wordWrap()
+                    and str(long_find_name.toolTip())
+                    == "Small Growth Charges from the Moonlit Conservatory"
+                    and str(long_find_name.accessibleName())
+                    == "Small Growth Charges from the Moonlit Conservatory"
+                    and long_find_quantity is not None
+                    and collision_free
+                ),
+                "retina_find_art_present": retina_find_art_present,
+            })
+        elif state_name == "highlight-overflow-max-two":
+            featured_highlights = [
+                row for row in highlights if not bool(row["compact"])
+            ]
+            compact_highlights = [
+                row for row in highlights if bool(row["compact"])
+            ]
+            rendered_kinds = tuple(
+                str(row["kind"]) for row in featured_highlights
+            )
+            evidence["featured_highlight_count"] = len(featured_highlights)
+            evidence["compact_highlight_count"] = len(compact_highlights)
+            evidence.update({
+                "highlight_source_overflow": source_highlight_count > 2,
+                "highlight_max_two": bool(
+                    len(featured_highlights) == 2
+                    and all(bool(row["static"]) for row in highlights)
+                ),
+                "highlight_overflow_preserved": bool(
+                    len(highlights) == source_highlight_count
+                    and len(compact_highlights)
+                    == max(0, source_highlight_count - 2)
+                ),
+                "highlight_priority_preserved": bool(
+                    rendered_kinds == ("full_bloom", "environment")
+                ),
+            })
+        elif state_name == "missing-art-branded-fallback":
+            evidence.update({
+                "missing_art_detected": bool(
+                    fallback_records
+                    and all(not str(row["source"]) for row in fallback_records)
+                ),
+                "branded_fallback_present": bool(
+                    fallback_records
+                    and all(
+                        row["pixmap_present"]
+                        and row["accessible_name"]
+                        and "semantic fallback is shown"
+                        in str(row["accessible_description"]).casefold()
+                        for row in fallback_records
+                    )
+                ),
+            })
+        elif state_name == "finds-three-identical":
+            evidence.update({
+                "finds_reconciled": find_items_reconciled,
+                "single_find_group": len(reconciled_find_groups) == 1,
+                "identical_find_quantity_aggregated": bool(
+                    len(find_row_records) == 1
+                    and find_row_records[0]["quantity"] == "×3"
+                    and not more_finds_copy
+                    and [
+                        int(getattr(item, "quantity", 0) or 0)
+                        for item in reconciled_find_groups
+                    ] == [3]
+                ),
+                "granted_item_copy_present": bool(
+                    find_row_records
+                    and find_row_records[0]["name"] == "Small Growth Charge"
+                    and "Charged Seed" not in copy
+                ),
+            })
+        elif state_name == "finds-three-distinct":
+            evidence.update({
+                "finds_reconciled": find_items_reconciled,
+                "three_find_groups": bool(
+                    len(reconciled_find_groups) == 3
+                    and sum(
+                        int(getattr(item, "quantity", 0) or 0)
+                        for item in reconciled_find_groups
+                    ) == 3
+                ),
+                "distinct_find_groups_visible": bool(
+                    len(find_row_records) == 3
+                    and {
+                        row["name"] for row in find_row_records
+                    } == {
+                        "Small Growth Charge",
+                        "Garden Pouch",
+                        "Morning Dew",
+                    }
+                    and all(
+                        row["quantity"] == "×1"
+                        for row in find_row_records
+                    )
+                    and not more_finds_copy
+                ),
+                "distinct_find_art_provenance": bool(
+                    {
+                        str(row["reference"]): row
+                        for row in art_records
+                        if row["kind"] == "find"
+                    }.keys()
+                    >= {
+                        "ui_growth_charge_small",
+                        "garden_pouch",
+                        "morning_dew",
+                    }
+                    and all(
+                        not bool(row["fallback"])
+                        and bool(row["pixmap_present"])
+                        and int(row["logical_size"][0]) == 26
+                        and int(row["logical_size"][1]) == 26
+                        and int(row["source_size"][0]) >= 52
+                        and int(row["source_size"][1]) >= 52
+                        for row in art_records
+                        if row["kind"] == "find"
+                        and str(row["reference"])
+                        in {
+                            "ui_growth_charge_small",
+                            "garden_pouch",
+                            "morning_dew",
+                        }
+                    )
+                ),
+                "granted_item_copy_present": bool(
+                    find_row_records
+                    and find_row_records[0]["name"] == "Small Growth Charge"
+                    and "Charged Seed" not in copy
+                ),
+            })
+        elif state_name == "finds-unreconciled-omitted":
+            evidence.update({
+                "finds_unreconciled": find_items_reconciled is False,
+                "partial_find_list_omitted": bool(
+                    not find_row_records and not more_finds_copy
+                ),
+                "find_total_preserved": bool(
+                    total_find_quantity == 3
+                    and "+3" in metric_values.get("standard_finds", "")
+                ),
+            })
+        elif state_name == "no-finds":
+            evidence.update({
+                "find_metric_omitted": "standard_finds" not in metric_values,
+                "find_rows_omitted": bool(
+                    not find_row_records
+                    and not more_finds_copy
+                    and total_find_quantity == 0
+                ),
+            })
+        elif state_name == "no-boosts":
+            evidence.update({
+                "boost_section_omitted": section_visibility["active_boosts"] is False,
+                "boost_rows_omitted": not boost_rows,
+            })
+        elif state_name == "one-boost":
+            evidence.update({
+                "one_boost_row": len(boost_rows) == 1,
+                "single_boost_group": bool(
+                    section_visibility["active_boosts"]
+                    and visible(named("ankiGardenSessionBoostCard"))
+                    and boost_kinds == ("fertilizer",)
+                ),
+            })
+        elif state_name == "expanded-reward-details":
+            expanded_terms = (
+                "direct plant growth",
+                "+1,486",
+                "shared growth distributed",
+                "+594",
+                "total applied",
+                "+2,080",
+                "stored for later",
+                "+12.5",
+                "review rewards",
+                "+17",
+                "full bloom bonus",
+                "+50",
+                "total earned",
+                "+67",
+            )
+            evidence.update({
+                "reward_details_expanded": bool(
+                    breakdown_visible
+                    and getattr(card, "_details_expanded", False)
+                ),
+                "expanded_accounting_complete": all(
+                    term in normalized for term in expanded_terms
+                ),
+                "all_find_groups_reachable": bool(
+                    len(reconciled_find_groups) == 3
+                    and {
+                        str(getattr(item, "find_id", "") or "")
+                        for item in reconciled_find_groups
+                    } <= {
+                        str(row["identity"])
+                        for row in find_row_records
+                    }
+                    and {
+                        "Small Growth Charge",
+                        "Garden Pouch",
+                        "Morning Dew",
+                    } <= {
+                        str(row["name"])
+                        for row in find_row_records
+                    }
+                    and all(
+                        str(row["quantity"]) == "×1"
+                        for row in find_row_records
+                    )
+                ),
+            })
+        elif state_name == "dark-appearance":
+            evidence.update({
+                "dark_palette_applied": bool(
+                    summary_theme and summary_theme == dark_theme
+                ),
+                "appearance_tokens_applied": appearance_tokens_applied,
+            })
+        elif state_name == "light-appearance":
+            evidence.update({
+                "light_palette_applied": bool(
+                    summary_theme and summary_theme == light_theme
+                ),
+                "appearance_tokens_applied": appearance_tokens_applied,
+            })
+        elif state_name == "hero-spacing":
+            evidence.update({
+                "hero_spacing_compact": 4 <= hero_gap <= 6,
+                "hero_copy_grouped": bool(
+                    hero is not None
+                    and hero_value is not None
+                    and hero_label is not None
+                    and hero_value.parentWidget() is hero
+                    and hero_label.parentWidget() is hero
+                ),
+            })
+        elif state_name == "static-card-semantics":
+            static_by_category = {
+                category: [
+                    row for row in static_surfaces
+                    if str(row["category"]) == category
+                ]
+                for category in ("highlight", "reward_metric", "boost")
+            }
+            evidence.update({
+                "highlight_cards_static": bool(
+                    static_by_category["highlight"]
+                    and all(
+                        row["declared_static"] and row["not_button"]
+                        for row in static_by_category["highlight"]
+                    )
+                ),
+                "reward_metrics_static": bool(
+                    static_by_category["reward_metric"]
+                    and all(
+                        row["declared_static"] and row["not_button"]
+                        for row in static_by_category["reward_metric"]
+                    )
+                ),
+                "boost_rows_static": bool(
+                    static_by_category["boost"]
+                    and all(
+                        row["declared_static"] and row["not_button"]
+                        for row in static_by_category["boost"]
+                    )
+                ),
+                "static_cards_focus_safe": bool(
+                    static_surfaces
+                    and all(row["focus_safe"] for row in static_surfaces)
+                ),
+                "static_cards_noninteractive_cursor": bool(
+                    static_surfaces
+                    and all(
+                        row["noninteractive_cursor"]
+                        for row in static_surfaces
+                    )
+                ),
+            })
+
+        issues = session_summary_content_state_issue_codes(state_name, evidence)
+        evidence["issues"] = list(issues)
+        evidence["passed"] = not issues
+        return evidence
+
+    def _exercise_session_summary_viewports(
+        self,
+        label: str,
+        card: Any,
+        on_ready: Callable[[dict[str, Any], dict[str, Any]], None],
+        on_error: Callable[[], None],
+    ) -> None:
+        """Exercise responsive states without creating additional surfaces."""
+
+        records: dict[str, Any] = {}
+        finished = False
+        canonical_payload = getattr(card, "payload", None)
+        canonical_theme = dict(getattr(card, "_summary_theme", {}) or {})
+
+        def set_capture_theme(theme: dict[str, str]) -> None:
+            card._summary_theme = dict(theme)
+            card._apply_style()
+            card._rebuild_page()
+            card.reposition()
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+
+        def fail(reason: str, observation: Any = None) -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            try:
+                if (
+                    canonical_payload is not None
+                    and getattr(card, "payload", None) is not canonical_payload
+                ):
+                    self._set_session_summary_capture_payload(
+                        card,
+                        canonical_payload,
+                    )
+                if canonical_theme:
+                    set_capture_theme(canonical_theme)
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                pass
+            records["passed"] = False
+            if observation is not None:
+                records["failure_observation"] = observation
+            self._capture_annotations.setdefault(label, {})[
+                "session_summary_viewport_matrix"
+            ] = records
+            self._failures.append({
+                "label": label,
+                "reason": reason,
+            })
+            try:
+                mw.showMaximized()
+            except Exception:
+                pass
+
+            def finish_failure() -> None:
+                on_error()
+                self._next_after(120)
+
+            QTimer.singleShot(260, finish_failure)
+
+        def wait_until(
+            predicate: Callable[[], bool],
+            callback: Callable[[], None],
+            *,
+            reason: str,
+            tries: int = 60,
+        ) -> None:
+            if finished:
+                return
+            ready = False
+            try:
+                ready = bool(predicate())
+            except Exception:
+                ready = False
+            if ready:
+                QTimer.singleShot(100, callback)
+                return
+            if tries <= 0:
+                fail(reason)
+                return
+            QTimer.singleShot(
+                100,
+                lambda: wait_until(
+                    predicate,
+                    callback,
+                    reason=reason,
+                    tries=tries - 1,
+                ),
+            )
+
+        def find_named(object_name: str) -> Any | None:
+            if card is None:
+                return None
+            return next((
+                candidate
+                for candidate in (card, *tuple(card.findChildren(QWidget)))
+                if str(candidate.objectName() or "") == object_name
+            ), None)
+
+        def set_window_size(width: int, height: int) -> None:
+            mw.showNormal()
+            screen = mw.screen() or QGuiApplication.primaryScreen()
+            if screen is None:
+                mw.resize(int(width), int(height))
+                return
+            available = screen.availableGeometry()
+            x = int(available.x())
+            y = int(available.y())
+            mw.setGeometry(x, y, int(width), int(height))
+
+        def host_size_matches(width: int, height: int) -> bool:
+            try:
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+                parent = card.parentWidget()
+                if (
+                    abs(int(mw.width()) - int(width)) > 2
+                    or abs(int(mw.height()) - int(height)) > 2
+                    or parent is None
+                    or abs(int(parent.width()) - int(width)) > 2
+                    or not card.isVisible()
+                ):
+                    return False
+                expected = tuple(card.reposition())
+                if app is not None:
+                    app.processEvents()
+                # A WebEngine resize may settle one event behind the top-level
+                # window. Re-anchor after that event and prove the live widget
+                # geometry, rather than accepting the previous viewport's x.
+                expected = tuple(card.reposition())
+                actual = (
+                    int(card.x()),
+                    int(card.y()),
+                    int(card.width()),
+                    int(card.height()),
+                )
+                return actual == expected
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return False
+
+        def collapse_breakdown(callback: Callable[[], None]) -> None:
+            if not bool(getattr(card, "_details_expanded", False)):
+                callback()
+                return
+            toggle = find_named("ankiGardenSessionBreakdownToggle")
+            if toggle is None:
+                fail("Session Summary breakdown toggle disappeared while restoring")
+                return
+            toggle.click()
+            wait_until(
+                lambda: not bool(getattr(card, "_details_expanded", False)),
+                callback,
+                reason="Session Summary breakdown did not collapse before capture",
+            )
+
+        def capture_collapsed(
+            spec: tuple[str, int, int, bool, bool, bool],
+            callback: Callable[[], None],
+        ) -> None:
+            name, width, height, no_scroll, require_scroll, retina = spec
+            audit = self._session_summary_geometry_audit(
+                card,
+                expected_host_size=(width, height),
+                require_little_scroll=no_scroll,
+                require_scroll=require_scroll,
+                require_retina=retina,
+            )
+            records[name] = {"collapsed": audit}
+            if not bool(audit.get("passed", False)):
+                copy_context = ""
+                if "copy-passed" in tuple(audit.get("issues", ()) or ()):
+                    copy_context = (
+                        "; missing-copy="
+                        + repr(tuple(audit.get("missing_required_copy", ()) or ()))
+                        + "; banned-copy="
+                        + repr(tuple(audit.get("banned_terms", ()) or ()))
+                        + "; cards-complete-copy="
+                        + repr(bool(audit.get("cards_complete_copy", False)))
+                    )
+                if "art-passed" in tuple(audit.get("issues", ()) or ()):
+                    copy_context += "; art=" + repr(tuple(audit.get("art", ()) or ()))
+                fail(
+                    (
+                        f"Session Summary failed the {name} collapsed audit: "
+                        + ", ".join(str(issue) for issue in audit.get("issues", ()))
+                        + copy_context
+                        + "; bounds="
+                        + repr(tuple(audit.get("bounds", ()) or ()))
+                        + "; container="
+                        + repr(tuple(audit.get("container_size", ()) or ()))
+                        + "; expected="
+                        + repr(tuple(audit.get("expected_bounds", ()) or ()))
+                        + "; progress="
+                        + repr(dict(audit.get("progress", {}) or {}))
+                        + "; vertical-scroll-maximum="
+                        + repr(int(audit.get("vertical_scroll_maximum", -1)))
+                        + "; natural-height="
+                        + repr(int(audit.get("natural_height", -1)))
+                        + "; body-size-hint="
+                        + repr(int(audit.get("body_size_hint", -1)))
+                        + "; region-bounds="
+                        + repr(dict(audit.get("region_bounds", {}) or {}))
+                        + "; widths="
+                        + repr((
+                            int(audit.get("body_width", -1)),
+                            int(audit.get("viewport_width", -1)),
+                        ))
+                    ),
+                    audit,
+                )
+                return
+            callback()
+
+        def capture_expanded_1280(callback: Callable[[], None]) -> None:
+            toggle = find_named("ankiGardenSessionBreakdownToggle")
+            if toggle is None:
+                fail("Session Summary Growth breakdown toggle was unavailable")
+                return
+            toggle.click()
+
+            def expanded_ready() -> bool:
+                return bool(
+                    getattr(card, "_details_expanded", False)
+                    and find_named("ankiGardenSessionBreakdown") is not None
+                )
+
+            def audit_expanded() -> None:
+                audit = self._session_summary_geometry_audit(
+                    card,
+                    expected_host_size=(1280, 720),
+                    require_expanded=True,
+                )
+                records.setdefault("1280x720", {})["expanded"] = audit
+                if not bool(audit.get("passed", False)):
+                    fail(
+                        (
+                            "Session Summary failed the 1280x720 expanded audit: "
+                            + ", ".join(
+                                str(issue) for issue in audit.get("issues", ())
+                            )
+                        ),
+                        audit,
+                    )
+                    return
+                collapse_breakdown(callback)
+
+            wait_until(
+                expanded_ready,
+                audit_expanded,
+                reason="Session Summary Growth breakdown did not expand",
+            )
+
+        def content_payloads() -> tuple[tuple[str, Any], ...]:
+            if canonical_payload is None:
+                return ()
+            base = canonical_payload.segments[0]
+
+            complete_start = replace(
+                base.today_cards_start,
+                status="in_progress",
+                cards_remaining=144,
+                cards_completed=0,
+                cards_total=144,
+                currently_due_cards=144,
+                can_continue_reviews=False,
+                continuation_target=None,
+            )
+            complete_end = replace(
+                base.today_cards_end,
+                status="complete",
+                cards_remaining=0,
+                cards_completed=144,
+                cards_total=144,
+                currently_due_cards=0,
+                can_continue_reviews=False,
+                continuation_target=None,
+            )
+            complete_segment = replace(
+                base,
+                cards_completed=144,
+                today_cards_start=complete_start,
+                today_cards_end=complete_end,
+            )
+
+            empty_effects = replace(
+                base.effects_at_end,
+                fertilizers=(),
+                boosters=(),
+            )
+            sparse_segment = replace(
+                base,
+                plant_growth_total_units=0,
+                plant_growth_by_plant=(),
+                shared_growth_total_units=0,
+                shared_growth_by_plant=(),
+                stored_growth=replace(
+                    base.stored_growth,
+                    delta_units=0,
+                    added_units=0,
+                    used_units=0,
+                ),
+                garden_coins_earned=0,
+                coin_sources=(),
+                standard_finds=(),
+                total_finds=0,
+                milestones=(),
+                environment_discoveries=(),
+                reward_receipts=(),
+                effects_at_start=empty_effects,
+                effects_at_end=empty_effects,
+                effects_remaining=(),
+                direct_growth_total_units=0,
+                growth_applied_total_units=0,
+            )
+
+            long_plant_name = (
+                "Moonlit Wisteria Beside the Old Observatory"
+            )
+            long_environment_name = (
+                "Firefly Lantern Promenade Under a Midsummer Sky"
+            )
+            long_find_name = (
+                "Small Growth Charges from the Moonlit Conservatory"
+            )
+            long_start = replace(
+                base.today_cards_start,
+                cards_remaining=234_567,
+                cards_completed=0,
+                cards_total=234_567,
+                currently_due_cards=234_567,
+                can_continue_reviews=False,
+                continuation_target=None,
+            )
+            long_end = replace(
+                base.today_cards_end,
+                status="in_progress",
+                cards_remaining=111_111,
+                cards_completed=123_456,
+                cards_total=234_567,
+                currently_due_cards=111_111,
+                can_continue_reviews=True,
+            )
+            long_segment = replace(
+                base,
+                cards_completed=123_456,
+                today_cards_start=long_start,
+                today_cards_end=long_end,
+                plant_growth_total_units=98_765_400,
+                plant_growth_by_plant=(replace(
+                    base.plant_growth_by_plant[0],
+                    plant_name=long_plant_name,
+                    growth_units=98_765_400,
+                ),),
+                shared_growth_total_units=0,
+                shared_growth_by_plant=(),
+                garden_coins_earned=123_456,
+                coin_sources=(
+                    replace(base.coin_sources[0], amount=123_406),
+                    base.coin_sources[1],
+                ),
+                standard_finds=(replace(
+                    base.standard_finds[0],
+                    find_name=long_find_name,
+                    reward_amount=123_456,
+                    reward_label=(
+                        "+123,456 Small Growth Charges from the "
+                        "Moonlit Conservatory"
+                    ),
+                    quantity=123_456,
+                ),),
+                total_finds=123_456,
+                milestones=(replace(
+                    base.milestones[0],
+                    plant_name=long_plant_name,
+                ),),
+                environment_discoveries=(replace(
+                    base.environment_discoveries[0],
+                    environment_name=long_environment_name,
+                ),),
+                direct_growth_total_units=98_765_400,
+                growth_applied_total_units=98_765_400,
+            )
+
+            full_bloom = base.milestones[0]
+            stage_change = replace(
+                full_bloom,
+                event_id="capture-overflow-stage",
+                plant_id="capture-overflow-stage-plant",
+                plant_name="Blue Hydrangea",
+                milestone_type="stage_change",
+                occurred_at="2026-08-28T09:39:00+00:00",
+                checkpoint_percent=0,
+                previous_stage="seed",
+                new_stage="sprout",
+                stage_path=("seed", "sprout"),
+                coin_reward=0,
+                coin_award_event_ids=(),
+                coin_included_in_total=False,
+                reward=None,
+            )
+            checkpoint = replace(
+                full_bloom,
+                event_id="capture-overflow-checkpoint",
+                plant_id="capture-overflow-checkpoint-plant",
+                plant_name="Quiet Bonsai",
+                milestone_type="checkpoint",
+                occurred_at="2026-08-28T09:40:00+00:00",
+                checkpoint_percent=75,
+                previous_stage="",
+                new_stage="",
+                stage_path=(),
+                coin_reward=0,
+                coin_award_event_ids=(),
+                coin_included_in_total=False,
+                reward=None,
+            )
+            second_environment = replace(
+                base.environment_discoveries[0],
+                event_id="capture-overflow-environment",
+                environment_name="Starlight Arbor",
+                occurred_at="2026-08-28T09:41:00+00:00",
+            )
+            overflow_segment = replace(
+                base,
+                milestones=(full_bloom, stage_change, checkpoint),
+                environment_discoveries=(
+                    base.environment_discoveries[0],
+                    second_environment,
+                ),
+            )
+
+            missing_environment = replace(
+                base.environment_discoveries[0],
+                event_id="capture-missing-art-environment",
+                environment_id="capture_missing_art_environment",
+                environment_name="Moonlit Garden Fallback",
+                environment_kind="scenery",
+                art_asset="/capture/missing/session-summary-environment.webp",
+                unlock_category="environment",
+            )
+            missing_art_segment = replace(
+                sparse_segment,
+                environment_discoveries=(missing_environment,),
+            )
+
+            first_find = base.standard_finds[0]
+            identical_find_segment = replace(
+                base,
+                standard_finds=tuple(
+                    replace(
+                        first_find,
+                        event_id=f"capture-identical-find-{index}",
+                        occurred_at=f"2026-08-28T09:{40 + index:02d}:00+00:00",
+                        quantity=1,
+                    )
+                    for index in range(3)
+                ),
+                total_finds=3,
+            )
+            distinct_find_segment = replace(
+                base,
+                standard_finds=tuple(base.standard_finds),
+                total_finds=3,
+            )
+            unreconciled_find_segment = replace(
+                base,
+                standard_finds=(first_find,),
+                total_finds=3,
+            )
+            no_find_segment = replace(
+                base,
+                standard_finds=(),
+                total_finds=0,
+            )
+            no_boost_segment = replace(
+                base,
+                effects_at_start=empty_effects,
+                effects_at_end=empty_effects,
+                effects_remaining=(),
+            )
+            one_boost_end = replace(
+                base.effects_at_end,
+                boosters=(),
+            )
+            one_boost_segment = replace(
+                base,
+                effects_at_end=one_boost_end,
+                effects_remaining=tuple(
+                    effect for effect in base.effects_remaining
+                    if str(getattr(effect, "kind", "") or "") == "fertilizer"
+                ),
+            )
+
+            def payload(segment: Any, cards_completed: int) -> Any:
+                return replace(
+                    canonical_payload,
+                    segments=(segment,),
+                    cards_completed=cards_completed,
+                    terminal_today_cards=segment.today_cards_end,
+                    terminal_effects=segment.effects_at_end,
+                )
+
+            return (
+                ("complete", payload(complete_segment, 144)),
+                (
+                    "sparse-zero-sections",
+                    payload(sparse_segment, base.cards_completed),
+                ),
+                (
+                    "long-names-six-digit-totals",
+                    payload(long_segment, 123_456),
+                ),
+                (
+                    "highlight-overflow-max-two",
+                    payload(overflow_segment, base.cards_completed),
+                ),
+                (
+                    "missing-art-branded-fallback",
+                    payload(missing_art_segment, base.cards_completed),
+                ),
+                (
+                    "finds-three-identical",
+                    payload(identical_find_segment, base.cards_completed),
+                ),
+                (
+                    "finds-three-distinct",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+                (
+                    "finds-unreconciled-omitted",
+                    payload(unreconciled_find_segment, base.cards_completed),
+                ),
+                (
+                    "no-finds",
+                    payload(no_find_segment, base.cards_completed),
+                ),
+                (
+                    "no-boosts",
+                    payload(no_boost_segment, base.cards_completed),
+                ),
+                (
+                    "one-boost",
+                    payload(one_boost_segment, base.cards_completed),
+                ),
+                (
+                    "expanded-reward-details",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+                (
+                    "dark-appearance",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+                (
+                    "light-appearance",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+                (
+                    "hero-spacing",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+                (
+                    "static-card-semantics",
+                    payload(distinct_find_segment, base.cards_completed),
+                ),
+            )
+
+        def exercise_content_states() -> None:
+            matrix_payloads = content_payloads()
+            if tuple(name for name, _payload in matrix_payloads) != (
+                SESSION_SUMMARY_REQUIRED_CONTENT_STATES
+            ):
+                fail("Session Summary content-state payload matrix was incomplete")
+                return
+            content_records: dict[str, Any] = {}
+
+            def restore_canonical() -> None:
+                self._set_session_summary_capture_payload(
+                    card,
+                    canonical_payload,
+                )
+                if canonical_theme:
+                    set_capture_theme(canonical_theme)
+
+                def audit_restore() -> None:
+                    canonical_audit = self._session_summary_geometry_audit(
+                        card,
+                        expected_host_size=(1710, 1041),
+                        require_little_scroll=True,
+                        require_retina=True,
+                    )
+                    restored = bool(
+                        getattr(card, "payload", None) is canonical_payload
+                        and canonical_audit.get("passed", False)
+                    )
+                    matrix_issues = session_summary_content_matrix_issue_codes(
+                        content_records,
+                        canonical_payload_restored=restored,
+                    )
+                    content_matrix = {
+                        "states": content_records,
+                        "canonical_payload_restored": restored,
+                        "canonical_restore_audit": canonical_audit,
+                        "issues": list(matrix_issues),
+                        "passed": not matrix_issues,
+                    }
+                    records["content_states"] = content_matrix
+                    if matrix_issues:
+                        fail(
+                            "Session Summary content-state matrix failed: "
+                            + ", ".join(matrix_issues),
+                            content_matrix,
+                        )
+                        return
+                    nonlocal finished
+                    finished = True
+                    records["passed"] = True
+                    on_ready(records, canonical_audit)
+
+                QTimer.singleShot(180, audit_restore)
+
+            def run_content_state(index: int) -> None:
+                if finished:
+                    return
+                if index >= len(matrix_payloads):
+                    restore_canonical()
+                    return
+                name, state_payload = matrix_payloads[index]
+                try:
+                    self._set_session_summary_capture_payload(card, state_payload)
+                    from ..ui.session_summary_card import session_summary_palette
+
+                    target_theme = (
+                        session_summary_palette(0)
+                        if name == "dark-appearance"
+                        else session_summary_palette(255)
+                        if name == "light-appearance"
+                        else canonical_theme
+                    )
+                    if target_theme:
+                        set_capture_theme(target_theme)
+                    if name == "expanded-reward-details":
+                        toggle = find_named("ankiGardenSessionBreakdownToggle")
+                        if toggle is None:
+                            raise RuntimeError(
+                                "Reward details toggle was not available"
+                            )
+                        toggle.click()
+                        app = QApplication.instance()
+                        if app is not None:
+                            app.processEvents()
+                except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                    fail(
+                        f"Session Summary could not render content state {name}: {exc}"
+                    )
+                    return
+
+                def audit_state() -> None:
+                    audit = self._session_summary_content_state_audit(card, name)
+                    content_records[name] = audit
+                    if not bool(audit.get("passed", False)):
+                        fail(
+                            f"Session Summary failed content state {name}: "
+                            + ", ".join(
+                                str(issue) for issue in audit.get("issues", ())
+                            ),
+                            audit,
+                        )
+                        return
+                    run_content_state(index + 1)
+
+                QTimer.singleShot(180, audit_state)
+
+            run_content_state(0)
+
+        def run_spec(index: int) -> None:
+            nonlocal finished
+            if finished:
+                return
+            if index >= len(SESSION_SUMMARY_VIEWPORT_SPECS):
+                collapsed_body_widths = {
+                    name: int(
+                        dict(records.get(name, {}) or {})
+                        .get("collapsed", {})
+                        .get("body_width", -1)
+                    )
+                    for name, *_rest in SESSION_SUMMARY_VIEWPORT_SPECS
+                }
+                stable_body_width = bool(
+                    collapsed_body_widths
+                    and set(collapsed_body_widths.values()) == {408}
+                )
+                records["stable_scrollbar_gutter"] = {
+                    "body_widths": collapsed_body_widths,
+                    "expected_width": 408,
+                    "passed": stable_body_width,
+                }
+                if not stable_body_width:
+                    fail(
+                        "Session Summary body width changed with scrollbar state: "
+                        + repr(collapsed_body_widths)
+                    )
+                    return
+                exercise_content_states()
+                return
+
+            spec = SESSION_SUMMARY_VIEWPORT_SPECS[index]
+            name, width, height, _no_scroll, _require_scroll, retina = spec
+
+            def sized() -> None:
+                def after_collapsed() -> None:
+                    if name == "1280x720":
+                        capture_expanded_1280(lambda: run_spec(index + 1))
+                    else:
+                        run_spec(index + 1)
+
+                capture_collapsed(spec, after_collapsed)
+
+            if retina:
+                mw.showMaximized()
+                wait_until(
+                    lambda: bool(
+                        host_size_matches(width, height)
+                        and self._home_fullscreen_window_evidence().get(
+                            "passed",
+                            False,
+                        )
+                    ),
+                    sized,
+                    reason=(
+                        "Session Summary canonical Retina window did not restore "
+                        f"to {width}x{height} before capture"
+                    ),
+                )
+                return
+
+            set_window_size(width, height)
+            wait_until(
+                lambda: host_size_matches(width, height),
+                sized,
+                reason=f"Session Summary window did not settle at {name}",
+            )
+
+        collapse_breakdown(lambda: run_spec(0))
 
     def _capture_home_pixmap(
         self,
@@ -7531,15 +16026,30 @@ class _UiFaceCaptureRunner:
         *,
         expected_width: int,
         expected_height: int,
+        require_garden_identity: bool = True,
     ) -> None:
-        """Reject blank, wrong-window, and non-Garden Home captures."""
+        """Reject blank, wrong-window, and invalid Home composites.
+
+        Most Home captures prove the persistent Garden shell palette. A
+        floating sync receipt instead proves its exact native overlay and the
+        underlying painted Anki Home independently, because the receipt's
+        product-approved sage accent intentionally differs from Home's mint.
+        """
 
         metrics = self._home_pixmap_metrics(
             pixmap,
             expected_width=expected_width,
             expected_height=expected_height,
         )
-        passed = bool(metrics["passed"])
+        passed = bool(
+            metrics["passed"]
+            if require_garden_identity else
+            metrics["generic_content_passed"]
+        )
+        metrics["identity_requirement"] = (
+            "garden-shell" if require_garden_identity else "painted-home"
+        )
+        metrics["passed"] = passed
         annotation = self._capture_annotations.setdefault(label, {})
         annotation["home_pixmap"] = metrics
         annotation["passed"] = bool(annotation.get("passed", True)) and passed
@@ -7547,7 +16057,7 @@ class _UiFaceCaptureRunner:
             self._failures.append({
                 "label": label,
                 "reason": (
-                    "Anki Home capture did not contain the branded Garden "
+                    "Anki Home capture did not contain the required painted "
                     "surface at the expected window geometry "
                     f"(brand ratio {metrics['brand_sample_ratio']:.4f}; "
                     f"dark shell ratio {metrics['dark_shell_sample_ratio']:.4f}; "
@@ -7876,7 +16386,7 @@ class _UiFaceCaptureRunner:
                 "fully-grown-plant-without-fertilize",
                 "move-occupied-empty-destinations",
                 "fertilizer-expiring-under-minute",
-                "fertilizer-replacement-confirmation",
+                "purchase-confirmation-fertilizer-queue",
                 "progress-collection",
                 "collection-no-filter-matches",
                 "achievement-completed",
@@ -7984,7 +16494,171 @@ class _UiFaceCaptureRunner:
                 ],
             )
 
-        if kind == "reviewer":
+        if kind == "reviewer_hud":
+            handler = getattr(self.app, "reviewer_hooks", None)
+            hud = getattr(handler, "_reviewer_hud", None)
+            reviewer = getattr(mw, "reviewer", None)
+            dashboard = getattr(self.app, "dashboard", None)
+            require(
+                "reviewer_surface",
+                bool(
+                    str(getattr(mw, "state", "")) == "review"
+                    and reviewer is not None
+                    and getattr(reviewer, "card", None) is not None
+                    and (dashboard is None or not dashboard.isVisible())
+                ),
+                {
+                    "state": str(getattr(mw, "state", "")),
+                    "card_present": bool(
+                        reviewer is not None
+                        and getattr(reviewer, "card", None) is not None
+                    ),
+                    "dashboard_hidden": bool(
+                        dashboard is None or not dashboard.isVisible()
+                    ),
+                },
+            )
+            hud_geometry = dict(
+                annotation.get("reviewer_hud_geometry", {}) or {}
+            )
+            require(
+                "reviewer_hud_visible",
+                bool(hud is not None and hud.isVisible()),
+                bool(hud is not None and hud.isVisible()),
+            )
+            require(
+                "reviewer_hud_geometry",
+                bool(hud_geometry.get("passed", False)),
+                hud_geometry,
+            )
+            content_matrix = dict(
+                annotation.get("reviewer_hud_content_matrix", {}) or {}
+            )
+            expected_content_states = (
+                REVIEWER_REWARD_CONTENT_STATES
+                if label == "reviewer-reward-dock-bundle"
+                else REVIEWER_HUD_BASELINE_CONTENT_STATES
+            )
+            require(
+                "reviewer_hud_content_matrix",
+                bool(
+                    content_matrix.get("passed", False)
+                    and set(expected_content_states)
+                    == {
+                        name
+                        for name, record in content_matrix.items()
+                        if name != "passed" and isinstance(record, dict)
+                    }
+                    and all(
+                        bool(record.get("passed", False))
+                        for name, record in content_matrix.items()
+                        if name != "passed" and isinstance(record, dict)
+                    )
+                ),
+                content_matrix,
+            )
+            if label == "reviewer-hud-expanded":
+                viewport_matrix = dict(
+                    annotation.get("reviewer_hud_viewport_matrix", {}) or {}
+                )
+                require(
+                    "reviewer_hud_viewport_matrix",
+                    bool(
+                        viewport_matrix.get("passed", False)
+                        and set(
+                            viewport_matrix.get("covered_requirements", ()) or ()
+                        ) == set(REVIEWER_HUD_REQUIRED_WINDOW_STATES)
+                    ),
+                    viewport_matrix,
+                )
+                resilience_matrix = dict(
+                    annotation.get("reviewer_hud_resilience_matrix", {}) or {}
+                )
+                require(
+                    "reviewer_hud_resilience_matrix",
+                    bool(
+                        resilience_matrix.get("passed", False)
+                        and {
+                            name
+                            for name, record in resilience_matrix.items()
+                            if name != "passed" and isinstance(record, dict)
+                        } == {"no-active-plant", "stored-growth"}
+                    ),
+                    resilience_matrix,
+                )
+            reviewer_dom_identity = dict(
+                annotation.get("reviewer_dom_identity", {}) or {}
+            )
+            require(
+                "reviewer_dom_identity",
+                bool(
+                    reviewer_dom_identity.get("ready", False)
+                    and reviewer_dom_identity.get("qaPresent", False)
+                    and reviewer_dom_identity.get("qaVisible", False)
+                    and reviewer_dom_identity.get(
+                        "canonicalQuestionPresent",
+                        False,
+                    )
+                ),
+                reviewer_dom_identity,
+            )
+            require(
+                "reviewer_window_screen_filling",
+                bool(annotation.get("reviewer_window_screen_filling", False)),
+                dict(annotation.get("reviewer_window_mode", {}) or {}),
+            )
+            if label == "reviewer-reward-dock-bundle":
+                dock_geometry = dict(
+                    annotation.get("reviewer_reward_dock_geometry", {}) or {}
+                )
+                bundle = dict(
+                    annotation.get("reviewer_reward_bundle", {}) or {}
+                )
+                footer = dict(
+                    annotation.get("reviewer_session_footer", {}) or {}
+                )
+                require(
+                    "reviewer_reward_dock_visible",
+                    bool(dock_geometry.get("dock_visible", False)),
+                    bool(dock_geometry.get("dock_visible", False)),
+                )
+                require(
+                    "reviewer_reward_dock_geometry",
+                    bool(dock_geometry.get("passed", False)),
+                    dock_geometry,
+                )
+                require(
+                    "reviewer_reward_bundle",
+                    bool(bundle.get("passed", False)),
+                    bundle,
+                )
+                require(
+                    "reviewer_session_footer",
+                    bool(footer.get("passed", False)),
+                    footer,
+                )
+                interaction_matrix = dict(
+                    annotation.get("reviewer_reward_interaction_matrix", {}) or {}
+                )
+                require(
+                    "reviewer_reward_interaction_matrix",
+                    bool(interaction_matrix.get("passed", False)),
+                    interaction_matrix,
+                )
+                require(
+                    "canonical_reviewer_reward_projection",
+                    bool(annotation.get("canonical_projection_passed", False)),
+                    {
+                        "title": annotation.get("canonical_feedback_title", ""),
+                        "message": annotation.get("canonical_feedback_message", ""),
+                        "find_ids": annotation.get("canonical_find_ids", []),
+                        "passed": annotation.get(
+                            "canonical_projection_passed",
+                            False,
+                        ),
+                    },
+                )
+        elif kind == "reviewer":
             handler = getattr(self.app, "reviewer_hooks", None)
             toast = getattr(handler, "_reward_toast", None)
             reviewer = getattr(mw, "reviewer", None)
@@ -8149,47 +16823,22 @@ class _UiFaceCaptureRunner:
                 ),
                 reviewer_dom_identity,
             )
-            if state_name == "reviewer-find-stacked-sync":
-                reviewer_stack = dict(
-                    annotation.get("reviewer_stack", {}) or {}
-                )
-                expected_visible_toasts = int(
-                    annotation.get("expected_visible_toasts", 0) or 0
-                )
-                stack_event_count = int(
-                    annotation.get("stack_event_count", 0) or 0
-                )
-                require(
-                    "stacked_sync_summary",
-                    bool(
-                        annotation.get("canonical_projection_passed", False)
-                        and annotation.get("stacked_find_count", 0) > 1
-                        and annotation.get("sync_correlation")
-                        and reviewer_stack.get("passed", False)
-                        and int(
-                            reviewer_stack.get("requested_event_count", 0) or 0
-                        )
-                        == stack_event_count
-                        and int(
-                            reviewer_stack.get("visible_toast_count", 0) or 0
-                        )
-                        == expected_visible_toasts
-                        and int(
-                            reviewer_stack.get("summary_toast_count", 0) or 0
-                        )
-                        == 1
-                        and str(reviewer_stack.get("summary_copy", ""))
-                        == str(annotation.get("expected_overflow_copy", ""))
-                    ),
-                    {
-                        "stacked_find_count": annotation.get("stacked_find_count"),
-                        "stack_event_count": stack_event_count,
-                        "expected_visible_toasts": expected_visible_toasts,
-                        "reviewer_stack": reviewer_stack,
-                        "toast_event_count": toast_event_count,
-                        "toast_find_count": toast_find_count,
-                    },
-                )
+            hud_geometry = dict(
+                annotation.get("reviewer_hud_geometry", {}) or {}
+            )
+            require(
+                "reviewer_hud_visible",
+                bool(
+                    annotation.get("reviewer_hud_visible", False)
+                    and hud_geometry.get("passed", False)
+                ),
+                hud_geometry,
+            )
+            require(
+                "reviewer_window_screen_filling",
+                bool(annotation.get("reviewer_window_screen_filling", False)),
+                dict(annotation.get("reviewer_window_mode", {}) or {}),
+            )
             if state_name == "reviewer-find-common-reduced-motion":
                 require(
                     "reviewer_reduced_motion",
@@ -8215,15 +16864,53 @@ class _UiFaceCaptureRunner:
                 str(dom.get("capture_label", "")),
             )
             require("dom_fixture_ready", bool(dom.get("ready", False)), dom)
+            expected_garden_feature_present = bool(
+                dom.get("expectedGardenFeaturePresent", False)
+            )
+            garden_feature_present = bool(
+                dom.get("gardenFeaturePresent", False)
+            )
+            garden_feature_contract_passed = bool(
+                garden_feature_present == expected_garden_feature_present
+                and bool(dom.get("gardenFeaturePadPresent", False))
+                == expected_garden_feature_present
+                and not bool(dom.get("sunLayerPresent", False))
+                and (
+                    not expected_garden_feature_present
+                    or (
+                        str(dom.get("gardenFeatureSelected", ""))
+                        == str(dom.get("expectedGardenFeatureId", ""))
+                        and bool(dom.get(
+                            "gardenFeaturePointerTransparent",
+                            False,
+                        ))
+                        and bool(dom.get("gardenFeatureClipped", False))
+                    )
+                )
+            )
             require(
-                "home_weather_and_sun_absent",
-                not bool(dom.get("weatherLayerPresent", False))
-                and not bool(dom.get("sunLayerPresent", False)),
+                "home_garden_feature_visibility_contract",
+                garden_feature_contract_passed,
                 {
-                    "weather_layer_present": bool(
-                        dom.get("weatherLayerPresent", False)
+                    "expected_garden_feature_present": (
+                        expected_garden_feature_present
                     ),
+                    "garden_feature_present": garden_feature_present,
+                    "garden_feature_pad_present": bool(
+                        dom.get("gardenFeaturePadPresent", False)
+                    ),
+                    "garden_feature_selected": str(
+                        dom.get("gardenFeatureSelected", "")
+                    ),
+                    "expected_garden_feature_id": str(
+                        dom.get("expectedGardenFeatureId", "")
+                    ),
+                    "pointer_transparent": bool(
+                        dom.get("gardenFeaturePointerTransparent", False)
+                    ),
+                    "clipped": bool(dom.get("gardenFeatureClipped", False)),
                     "sun_layer_present": bool(dom.get("sunLayerPresent", False)),
+                    "passed": garden_feature_contract_passed,
                 },
             )
             banned_terms = [
@@ -8255,6 +16942,23 @@ class _UiFaceCaptureRunner:
                         )
                     ),
                 },
+            )
+            growth_track_geometry = {
+                "applicable": bool(dom.get("growthTrackPresent", False)),
+                "track_bounds": dom.get("growthTrackBounds"),
+                "copy_bounds": dom.get("growthCopyBounds"),
+                "copy_clearance": dom.get("growthTrackCopyClearance"),
+                "bottom_clearance": dom.get("growthTrackBottomClearance"),
+                "contained": bool(dom.get("growthTrackContained", False)),
+                "aligned_to_identity": bool(
+                    dom.get("growthTrackAlignedToIdentity", False)
+                ),
+                "passed": bool(dom.get("growthTrackGeometryPassed", False)),
+            }
+            require(
+                "home_progress_geometry",
+                bool(growth_track_geometry["passed"]),
+                growth_track_geometry,
             )
             require(
                 "home_preview_information_model",
@@ -8302,6 +17006,190 @@ class _UiFaceCaptureRunner:
                     "dom_active_slot",
                     int(dom.get("activeSlot", -1)) == expected_slot,
                     int(dom.get("activeSlot", -1)),
+                )
+            if state_name == "session-summary-after-review":
+                summary_geometry = dict(
+                    annotation.get("session_summary_geometry", {}) or {}
+                )
+                summary_copy = str(
+                    annotation.get("session_summary_copy", "") or ""
+                )
+                summary_viewport_matrix = dict(
+                    annotation.get("session_summary_viewport_matrix", {}) or {}
+                )
+                summary_content_matrix = dict(
+                    annotation.get("session_summary_content_matrix", {}) or {}
+                )
+                home_counts = dict(
+                    annotation.get("home_study_line", {}) or {}
+                )
+                window_mode = dict(
+                    annotation.get("home_fullscreen_window", {}) or {}
+                )
+                normalized_summary_copy = summary_copy.casefold()
+                summary_copy_passed = bool(
+                    "session summary" in normalized_summary_copy
+                    and "126 cards completed this session"
+                    in normalized_summary_copy
+                    and "today’s cards" in normalized_summary_copy
+                    and "19 remaining" in normalized_summary_copy
+                    and "126 of 145 completed" in normalized_summary_copy
+                    and "session highlights" in normalized_summary_copy
+                    and "rewards earned" in normalized_summary_copy
+                    and "reward breakdown" in normalized_summary_copy
+                    and "active boosts" in normalized_summary_copy
+                    and "dismiss" not in normalized_summary_copy
+                    and "144 cards remaining" not in normalized_summary_copy
+                    and "144 remaining" not in normalized_summary_copy
+                    and "→" not in normalized_summary_copy
+                    and "all clear" not in normalized_summary_copy
+                    and "daily care" not in normalized_summary_copy
+                    and "required cards" not in normalized_summary_copy
+                    and " answers" not in normalized_summary_copy
+                )
+                require(
+                    "session_summary_visible",
+                    bool(annotation.get("session_summary_visible", False)),
+                    bool(annotation.get("session_summary_visible", False)),
+                )
+                require(
+                    "session_summary_geometry",
+                    bool(
+                        summary_geometry.get("passed", False)
+                        and summary_viewport_matrix.get("passed", False)
+                    ),
+                    {
+                        **summary_geometry,
+                        "responsive_viewport_matrix": summary_viewport_matrix,
+                    },
+                )
+                require(
+                    "session_summary_copy",
+                    summary_copy_passed,
+                    {
+                        "copy": summary_copy,
+                        "passed": summary_copy_passed,
+                    },
+                )
+                require(
+                    "session_summary_viewport_matrix",
+                    bool(summary_viewport_matrix.get("passed", False)),
+                    summary_viewport_matrix,
+                )
+                require(
+                    "session_summary_content_matrix",
+                    bool(
+                        summary_content_matrix.get("passed", False)
+                        and summary_content_matrix.get(
+                            "canonical_payload_restored",
+                            False,
+                        )
+                        and set(
+                            dict(summary_content_matrix.get("states", {}) or {})
+                        ) == set(SESSION_SUMMARY_REQUIRED_CONTENT_STATES)
+                        and all(
+                            bool(record.get("passed", False))
+                            for record in dict(
+                                summary_content_matrix.get("states", {}) or {}
+                            ).values()
+                            if isinstance(record, dict)
+                        )
+                    ),
+                    summary_content_matrix,
+                )
+                require(
+                    "session_summary_home_counts",
+                    bool(
+                        home_counts.get("passed", False)
+                        and home_counts.get("deckCountsMatched") is True
+                        and home_counts.get("newAfter") == "1"
+                        and home_counts.get("learnAfter") == "0"
+                        and home_counts.get("dueAfter") == "18"
+                        and home_counts.get("remainingAfter") == 19
+                    ),
+                    home_counts,
+                )
+                require(
+                    "session_summary_window_screen_filling",
+                    bool(window_mode.get("passed", False)),
+                    window_mode,
+                )
+            elif state_name == "sync-rewards-summary":
+                summary_geometry = dict(
+                    annotation.get("sync_reward_summary_geometry", {}) or {}
+                )
+                summary_copy = dict(
+                    annotation.get("sync_reward_summary_copy", {}) or {}
+                )
+                summary_content = dict(
+                    annotation.get("sync_reward_summary_content", {}) or {}
+                )
+                summary_nonmodal = dict(
+                    annotation.get("sync_reward_summary_nonmodal", {}) or {}
+                )
+                window_mode = dict(
+                    annotation.get("home_fullscreen_window", {}) or {}
+                )
+                require(
+                    "sync_reward_summary_visible",
+                    bool(annotation.get("sync_reward_summary_visible", False)),
+                    bool(annotation.get("sync_reward_summary_visible", False)),
+                )
+                require(
+                    "sync_reward_summary_geometry",
+                    bool(
+                        summary_geometry.get("passed", False)
+                        and summary_geometry.get("centered", False)
+                        and summary_geometry.get("single_scroll_owner", False)
+                        and summary_geometry.get("fixed_header_footer", False)
+                        and int(
+                            summary_geometry.get(
+                                "horizontal_scroll_maximum",
+                                -1,
+                            )
+                        ) == 0
+                    ),
+                    summary_geometry,
+                )
+                require(
+                    "sync_reward_summary_copy",
+                    bool(
+                        summary_copy.get("passed", False)
+                        and summary_copy.get("subtitle")
+                        == SYNC_REWARD_CAPTURE_SUBTITLE
+                    ),
+                    summary_copy,
+                )
+                require(
+                    "sync_reward_summary_content",
+                    bool(
+                        summary_content.get("passed", False)
+                        and dict(summary_content.get("facts", {}) or {})
+                        == SYNC_REWARD_CAPTURE_MODEL_FACTS
+                    ),
+                    summary_content,
+                )
+                require(
+                    "sync_reward_summary_nonmodal",
+                    bool(
+                        summary_nonmodal.get("passed", False)
+                        and summary_nonmodal.get(
+                            "parent_is_main_webview",
+                            False,
+                        )
+                        and summary_nonmodal.get("child_widget", False)
+                        and summary_nonmodal.get(
+                            "show_without_activating",
+                            False,
+                        )
+                        and summary_nonmodal.get("no_focus", False)
+                    ),
+                    summary_nonmodal,
+                )
+                require(
+                    "sync_reward_summary_window_screen_filling",
+                    bool(window_mode.get("passed", False)),
+                    window_mode,
                 )
         elif kind == "dashboard":
             scene = getattr(widget, "scene", None)
@@ -8583,7 +17471,75 @@ class _UiFaceCaptureRunner:
                 if candidate.isVisible()
                 and str(candidate.property("achievementId") or "")
             }
-            if state_name == "growth-zero":
+            if state_name == "progress-today-cards":
+                status_widget = visible_semantic_widgets.get(
+                    "progress.today-cards-status"
+                )
+                count_widget = visible_semantic_widgets.get(
+                    "progress.today-card-counts"
+                )
+                visible_copy = " ".join(visible_label_texts)
+                normalized_copy = visible_copy.casefold()
+                banned_terms = tuple(
+                    term
+                    for term in (
+                        "all clear",
+                        "daily care",
+                        "required cards",
+                        " answers",
+                        "drought",
+                        "52 / 75",
+                    )
+                    if term in normalized_copy
+                )
+                completion = getattr(garden_state, "daily_completion", None)
+                today_cards_evidence = {
+                    "status": str(
+                        status_widget.property("todayCardsStatus")
+                        if status_widget is not None else ""
+                    ),
+                    "claim_state": str(
+                        status_widget.property("completionRewardState")
+                        if status_widget is not None else ""
+                    ),
+                    "starting_cards": int(
+                        getattr(completion, "starting_required_cards", 0) or 0
+                    ),
+                    "remaining_cards": sum(
+                        max(0, int(getattr(completion, field, 0) or 0))
+                        for field in (
+                            "remaining_required_reviews",
+                            "remaining_learning_steps",
+                            "future_learning_steps_before_cutoff",
+                        )
+                    ),
+                    "cards_completed": int(
+                        getattr(completion, "cards_completed_today", 0) or 0
+                    ),
+                    "status_widget_visible": status_widget is not None,
+                    "count_widget_visible": count_widget is not None,
+                    "visible_copy": visible_copy,
+                    "banned_terms": list(banned_terms),
+                }
+                today_cards_evidence["passed"] = bool(
+                    status_widget is not None
+                    and count_widget is not None
+                    and today_cards_evidence["status"] == "in_progress"
+                    and today_cards_evidence["claim_state"] == "pending"
+                    and today_cards_evidence["starting_cards"] == 194
+                    and today_cards_evidence["remaining_cards"] == 18
+                    and today_cards_evidence["cards_completed"] == 176
+                    and "18 cards remaining" in normalized_copy
+                    and "176 cards complete" in normalized_copy
+                    and "garden finds · 2 of 3 today" in normalized_copy
+                    and not banned_terms
+                )
+                require(
+                    "today_cards_progress_surface",
+                    bool(today_cards_evidence["passed"]),
+                    today_cards_evidence,
+                )
+            elif state_name == "growth-zero":
                 require(
                     "zero_growth",
                     active_plant is not None
@@ -8798,16 +17754,20 @@ class _UiFaceCaptureRunner:
                 collected_count = sum(
                     1 for view in collection_views if bool(view.owned)
                 )
+                expected_collected_count = 30
+                expected_collectible_count = 39
                 count_widget = visible_semantic_widgets.get(
                     "progress.collection-count"
                 )
                 require(
                     "representative_collection_summary",
-                    len(collection_views) == 38
-                    and collected_count == 31
+                    len(collection_views) == expected_collectible_count
+                    and collected_count == expected_collected_count
                     and count_widget is not None
-                    and int(count_widget.property("collectedCount") or -1) == 31
-                    and int(count_widget.property("collectibleCount") or -1) == 38,
+                    and int(count_widget.property("collectedCount") or -1)
+                    == expected_collected_count
+                    and int(count_widget.property("collectibleCount") or -1)
+                    == expected_collectible_count,
                     {
                         "collected": collected_count,
                         "total": len(collection_views),
@@ -9334,10 +18294,12 @@ class _UiFaceCaptureRunner:
                 )
             elif state_name == "nursery-weather-scenery":
                 require(
-                    "distinct_weather_preview_art",
+                    "distinct_garden_feature_preview_art",
                     bool(annotation.get("passed", False))
-                    and bool(annotation.get("clear_skies_preview_present", False))
-                    and bool(annotation.get("soft_breeze_preview_present", False))
+                    and bool(
+                        annotation.get("garden_feature_previews_present", False)
+                    )
+                    and len(tuple(annotation.get("preview_names", ()) or ())) == 2
                     and not bool(annotation.get("missing_art_previews", ()))
                     and bool(annotation.get("preview_signatures_distinct", False)),
                     annotation,
@@ -9577,35 +18539,6 @@ class _UiFaceCaptureRunner:
                     "rare_unlock_metadata_geometry",
                     bool(rare_geometry.get("passed", False)),
                     rare_geometry,
-                )
-            elif state_name == "fertilizer-replacement-confirmation":
-                warning_copy = str(widget.discard_warning.text()).strip()
-                require(
-                    "fertilizer_replacement",
-                    str(widget.property("semanticId") or "")
-                    == "purchase.fertilizer-replacement"
-                    and bool(getattr(widget.quote, "replacement_required", False))
-                    and not widget.comparison_host.isVisible()
-                    and widget.discard_warning_host.isVisible()
-                    and str(widget.quote.current_item_name) in warning_copy
-                    and str(widget.quote.item_name) in warning_copy
-                    and "will be discarded" in warning_copy
-                    and str(
-                        widget.purchase_action.property("semanticId") or ""
-                    ) == "purchase.primary-action"
-                    and widget.purchase_action.isVisible()
-                    and widget.purchase_action.isEnabled()
-                    and widget.cancel_action.isVisible()
-                    and widget.cancel_action.isEnabled(),
-                    {
-                        "title": title,
-                        "replacement_required": bool(
-                            getattr(widget.quote, "replacement_required", False)
-                        ),
-                        "comparison_visible": widget.comparison_host.isVisible(),
-                        "warning_visible": widget.discard_warning_host.isVisible(),
-                        "warning_copy": warning_copy,
-                    },
                 )
             elif state_name in _GROWTH_CHARGE_CAPTURE_LABELS:
                 expected_status = str(
@@ -9890,6 +18823,21 @@ class _UiFaceCaptureRunner:
                         "annotation": annotation,
                     },
                 )
+                if state_name == "purchase-confirmation-fertilizer-queue":
+                    queue_confirmation = dict(
+                        annotation.get("fertilizer_queue_confirmation", {}) or {}
+                    )
+                    require(
+                        "fertilizer_queue_confirmation",
+                        bool(queue_confirmation.get("passed", False))
+                        and str(widget.property("purchaseKind") or "")
+                        == "fertilizer"
+                        and str(widget.quote.disposition.value) == "queued"
+                        and not bool(widget.quote.replacement_required)
+                        and widget.discard_warning_host.isHidden()
+                        and widget.comparison_host.isHidden(),
+                        queue_confirmation,
+                    )
                 if state_name in {
                     "purchase-error-stale-price",
                     "purchase-error-stale-balance",
@@ -10348,23 +19296,82 @@ class _UiFaceCaptureRunner:
             foreground_confirmed = False
             if widget is mw:
                 reward_toast = None
+                reviewer_toasts: tuple[Any, ...] = ()
+                reviewer_hud = None
+                session_summary = None
+                sync_reward_summary = None
                 if label in _REVIEWER_CAPTURE_LABELS:
                     reviewer_handler = getattr(self.app, "reviewer_hooks", None)
                     reward_toast = getattr(reviewer_handler, "_reward_toast", None)
+                    reviewer_hud = getattr(reviewer_handler, "_reviewer_hud", None)
+                    visible_toasts = tuple(
+                        candidate
+                        for candidate in tuple(
+                            getattr(reviewer_handler, "_reward_toasts", ()) or ()
+                        )
+                        if candidate is not None and candidate.isVisible()
+                    )
+                    reviewer_toasts = tuple(dict.fromkeys((
+                        *visible_toasts,
+                        *(
+                            (reward_toast,)
+                            if reward_toast is not None else
+                            ()
+                        ),
+                    )))
+                    required_overlays = tuple(
+                        overlay
+                        for overlay in (reviewer_hud, *reviewer_toasts)
+                        if overlay is not None
+                    )
+                    pixmap, capture_method, foreground_confirmed = (
+                        self._capture_home_pixmap(
+                            widget,
+                            surface_id=label,
+                            require_garden_identity=False,
+                            required_overlays=required_overlays,
+                            primary_web=getattr(
+                                getattr(mw, "reviewer", None),
+                                "web",
+                                None,
+                            ),
+                        )
+                    )
+                elif label in _SESSION_SUMMARY_CAPTURE_LABELS:
+                    reviewer_handler = getattr(self.app, "reviewer_hooks", None)
+                    session_summary = getattr(
+                        reviewer_handler,
+                        "_session_summary_card",
+                        None,
+                    )
+                    pixmap, capture_method, foreground_confirmed = (
+                        self._capture_home_pixmap(
+                            widget,
+                            surface_id=label,
+                            required_overlays=(
+                                (session_summary,)
+                                if session_summary is not None else
+                                ()
+                            ),
+                        )
+                    )
+                elif label in _SYNC_REWARD_SUMMARY_CAPTURE_LABELS:
+                    sync_reward_summary = next((
+                        candidate
+                        for candidate in widget.findChildren(QWidget)
+                        if str(candidate.objectName() or "")
+                        == "ankiGardenSyncRewardSummary"
+                        and candidate.isVisibleTo(widget)
+                    ), None)
                     pixmap, capture_method, foreground_confirmed = (
                         self._capture_home_pixmap(
                             widget,
                             surface_id=label,
                             require_garden_identity=False,
                             required_overlays=(
-                                (reward_toast,)
-                                if reward_toast is not None else
+                                (sync_reward_summary,)
+                                if sync_reward_summary is not None else
                                 ()
-                            ),
-                            primary_web=getattr(
-                                getattr(mw, "reviewer", None),
-                                "web",
-                                None,
                             ),
                         )
                     )
@@ -10401,13 +19408,34 @@ class _UiFaceCaptureRunner:
                 }
                 annotation["required_overlay_pixels_present"] = bool(
                     (
-                        label not in _REVIEWER_CAPTURE_LABELS
-                        or reward_toast is not None
+                        (
+                            label not in _REVIEWER_CAPTURE_LABELS
+                            or (
+                                reviewer_hud is not None
+                                and (
+                                    label == "reviewer-hud-expanded"
+                                    or label == "reviewer-reward-dock-bundle"
+                                    or reward_toast is not None
+                                )
+                            )
+                        )
+                        and (
+                            label not in _SESSION_SUMMARY_CAPTURE_LABELS
+                            or session_summary is not None
+                        )
+                        and (
+                            label not in _SYNC_REWARD_SUMMARY_CAPTURE_LABELS
+                            or sync_reward_summary is not None
+                        )
                     )
                     and getattr(
                         self,
                         "_last_required_overlay_pixels_present",
-                        label not in _REVIEWER_CAPTURE_LABELS,
+                        label not in (
+                            _REVIEWER_CAPTURE_LABELS
+                            | _SESSION_SUMMARY_CAPTURE_LABELS
+                            | _SYNC_REWARD_SUMMARY_CAPTURE_LABELS
+                        ),
                     )
                 )
                 annotation["home_fixture_state"] = self._active_home_fixture_state
@@ -10420,14 +19448,18 @@ class _UiFaceCaptureRunner:
                     "app-owned-qt-surface"
                 )
                 if (
-                    label in _REVIEWER_CAPTURE_LABELS
+                    label in (
+                        _REVIEWER_CAPTURE_LABELS
+                        | _SESSION_SUMMARY_CAPTURE_LABELS
+                        | _SYNC_REWARD_SUMMARY_CAPTURE_LABELS
+                    )
                     and not annotation["required_overlay_pixels_present"]
                 ):
                     annotation["passed"] = False
                     self._failures.append({
                         "label": label,
                         "reason": (
-                            "Reviewer reward toast was not present in the captured pixels"
+                            "Required Garden overlay was not present in the captured pixels"
                         ),
                     })
             else:
@@ -10514,6 +19546,9 @@ class _UiFaceCaptureRunner:
                     pixmap,
                     expected_width=int(widget.width()),
                     expected_height=int(widget.height()),
+                    require_garden_identity=(
+                        label not in _SYNC_REWARD_SUMMARY_CAPTURE_LABELS
+                    ),
                 )
             temporary_path = path.with_name(f".{path.name}.tmp")
             if pixmap.save(str(temporary_path), "png"):
@@ -10568,7 +19603,11 @@ class _UiFaceCaptureRunner:
                         or process_identity.get("verified", False)
                     ),
                     "required_overlay_pixels": bool(
-                        label not in _REVIEWER_CAPTURE_LABELS
+                        label not in (
+                            _REVIEWER_CAPTURE_LABELS
+                            | _SESSION_SUMMARY_CAPTURE_LABELS
+                            | _SYNC_REWARD_SUMMARY_CAPTURE_LABELS
+                        )
                         or annotation.get(
                             "required_overlay_pixels_present",
                             False,
@@ -11700,7 +20739,11 @@ class _UiFaceCaptureRunner:
         except RuntimeError:
             return ("deleted",)
 
-    def _home_surface_stability_signature(self, widget: Any) -> tuple[Any, ...]:
+    def _home_surface_stability_signature(
+        self,
+        label: str,
+        widget: Any,
+    ) -> tuple[Any, ...]:
         """Require a real painted Garden frame before Home can stabilize."""
 
         if widget is None:
@@ -11747,7 +20790,17 @@ class _UiFaceCaptureRunner:
                         expected_width=int(web.width()),
                         expected_height=int(web.height()),
                     )
-                    home_semantic_paint_ready = bool(metrics["passed"])
+                    # The Sync Rewards card deliberately overlays Anki Home
+                    # with a sage surface instead of the Garden shell's mint
+                    # identity. Its exact overlay pixels are audited during
+                    # acquisition, so stability only needs a nonblank painted
+                    # Home composite here. Ordinary Home surfaces retain the
+                    # stricter Garden-shell identity requirement.
+                    home_semantic_paint_ready = bool(
+                        metrics["generic_content_passed"]
+                        if label == "sync-rewards-summary"
+                        else metrics["passed"]
+                    )
             return (
                 "home-semantic-paint",
                 home_semantic_paint_ready,
@@ -11841,7 +20894,7 @@ class _UiFaceCaptureRunner:
             app = QApplication.instance()
             if app is not None:
                 app.processEvents()
-            signature = self._home_surface_stability_signature(widget)
+            signature = self._home_surface_stability_signature(label, widget)
             home_semantic_ready = bool(
                 not signature
                 or signature[0] != "home-semantic-paint"
@@ -11958,6 +21011,7 @@ class _UiFaceCaptureRunner:
         close_ms: int | None = None,
         close_callback: Callable[[], None] | None = None,
         cleanup_predicate: Callable[[], bool] | None = None,
+        cleanup_timeout_ms: int = 1500,
         next_ms: int = 900,
     ) -> None:
         del capture_delay_ms, close_ms, next_ms
@@ -12049,7 +21103,8 @@ class _UiFaceCaptureRunner:
                     cleanup_settled = True
                 except Exception:
                     cleanup_settled = False
-                if cleanup_settled or elapsed_ms >= 1500.0:
+                timeout_ms = max(1500, int(cleanup_timeout_ms))
+                if cleanup_settled or elapsed_ms >= float(timeout_ms):
                     phase_timings.setdefault(
                         scheduled_label,
                         {},
@@ -12061,7 +21116,10 @@ class _UiFaceCaptureRunner:
                     if not cleanup_settled:
                         self._failures.append({
                             "label": scheduled_label,
-                            "reason": "Capture cleanup did not settle within 1500 ms",
+                            "reason": (
+                                "Capture cleanup did not settle within "
+                                f"{timeout_ms} ms"
+                            ),
                         })
                     for record in reversed(getattr(self, "_capture_records", [])):
                         if record.get("label") == scheduled_label:
@@ -13266,12 +22324,13 @@ class _UiFaceCaptureRunner:
                     )
                     dashboard.scene.update()
 
-                # QWidget.repaint() is synchronous: the evidence below comes
-                # from the same paint path that supplies the captured pixels,
-                # rather than merely inferring locked state from slot counts.
+                # The pixel-bearing grab below invokes the same paint path as
+                # the final capture, rather than inferring locked state from
+                # slot counts. Some platforms coalesce direct repaint requests
+                # until a visible window is grabbed.
                 dashboard.scene.repaint()
                 QApplication.processEvents()
-                dashboard.scene.repaint()
+                paint_probe = dashboard.scene.grab()
                 locked_visuals = dict(
                     getattr(
                         dashboard.scene,
@@ -13291,6 +22350,7 @@ class _UiFaceCaptureRunner:
                 locked_visuals_passed = bool(
                     sorted(int(slot) for slot in locked_visuals)
                     == expected_locked
+                    and not paint_probe.isNull()
                     and destinations == [0, 1]
                     and all(
                         record.get("relative_visual_strength") == 0.58
@@ -13310,6 +22370,10 @@ class _UiFaceCaptureRunner:
                     "locked_bed_slots": expected_locked,
                     "locked_bed_visuals": locked_records,
                     "locked_bed_visuals_passed": locked_visuals_passed,
+                    "paint_probe_size": [
+                        int(paint_probe.width()),
+                        int(paint_probe.height()),
+                    ],
                     "passed": bool(
                         fixture.onboarding.step == OnboardingStep.PLACEMENT
                         and not fixture.plants
@@ -14083,6 +23147,15 @@ class _UiFaceCaptureRunner:
                         if application is not None:
                             application.processEvents()
                             application.processEvents()
+                        # Selecting a plant can collapse the onboarding row and
+                        # give the scene more height. Re-resolve after that Qt
+                        # layout turn, then audit the same fresh bed geometry
+                        # the popover solver consumed.
+                        dashboard._position_scene_overlays()
+                        dashboard._position_plant_card()
+                        if application is not None:
+                            application.processEvents()
+                            application.processEvents()
 
                         placement = scene.card_popover_placement()
                         card_rect = card.geometry()
@@ -14092,10 +23165,12 @@ class _UiFaceCaptureRunner:
                             float(card_rect.width()),
                             float(card_rect.height()),
                         )
+                        current_bed = scene.geometry_layout().bed(bed.bed_id)
+                        audited_bed = current_bed if current_bed is not None else bed
                         selected_parts = (
-                            bed.selection_region,
-                            bed.visible_region,
-                            bed.planter_bounds,
+                            audited_bed.selection_region,
+                            audited_bed.visible_region,
+                            audited_bed.planter_bounds,
                         )
                         selected_box = Rect(
                             min(part.x for part in selected_parts),
@@ -14874,7 +23949,7 @@ class _UiFaceCaptureRunner:
         state = self.app.storage.state
         stats = state.daily_stats
         day_value = str(stats.day)
-        completed_at = f"{day_value}T12:00:00+00:00"
+        completion_schedule = achievement_completion_schedule(completed_ids)
         state.streak_days = max(0, int(streak_days))
         state.last_active_day = day_value if state.streak_days else ""
         state.lifetime_eligible_answers = max(0, int(lifetime_answers))
@@ -14900,6 +23975,8 @@ class _UiFaceCaptureRunner:
                     f"unknown canonical capture achievement: {achievement_id}"
                 )
             achievement = state.achievements[achievement_id]
+            completion_day = completion_schedule[achievement_id].isoformat()
+            completed_at = f"{completion_day}T12:00:00+00:00"
             achievement.unlocked = True
             achievement.progress = 1.0
             achievement.unlocked_at = completed_at
@@ -15628,6 +24705,9 @@ class _UiFaceCaptureRunner:
         scheduled_days = dict(
             annotation.get("scheduled_completion_days", {}) or {}
         )
+        scheduled_categories = dict(
+            annotation.get("scheduled_completion_categories", {}) or {}
+        )
         visible_completed = [
             record for record in cards if record["state"] == "completed"
         ]
@@ -15639,6 +24719,13 @@ class _UiFaceCaptureRunner:
             record["completion_date_text"]
             for record in visible_completed
         ]
+        visible_categories = [
+            str(scheduled_categories.get(record["achievement_id"], ""))
+            for record in visible_completed
+        ]
+        category_days: dict[str, list[str]] = {}
+        for category, day_value in zip(visible_categories, visible_days):
+            category_days.setdefault(category, []).append(day_value)
         card_geometry_passed = bool(
             cards
             and all(
@@ -15650,7 +24737,11 @@ class _UiFaceCaptureRunner:
         dates_passed = bool(
             len(visible_completed) >= 4
             and all(visible_days)
-            and visible_days == sorted(visible_days)
+            and all(visible_categories)
+            and all(
+                days == sorted(days)
+                for days in category_days.values()
+            )
             and len(set(visible_days)) == len(visible_days)
             and all(completion_date_texts)
             and len(set(completion_date_texts))
@@ -15663,6 +24754,7 @@ class _UiFaceCaptureRunner:
         annotation.update({
             "visible_achievement_cards": cards,
             "visible_completion_days": visible_days,
+            "visible_completion_categories": visible_categories,
             "visible_completion_date_texts": completion_date_texts,
             "achievement_card_geometry_passed": card_geometry_passed,
             "rendered_chronological_dates_passed": dates_passed,
@@ -16452,6 +25544,87 @@ class _UiFaceCaptureRunner:
             on_error=cleanup,
         )
 
+    def _capture_progress_today_cards(self) -> None:
+        """Capture the canonical collection-wide Today’s Cards page."""
+
+        label = "progress-today-cards"
+
+        def ready() -> None:
+            snapshot = self._capture_fixture_state_snapshot(label)
+            state = self.app.storage.state
+            day_value = str(state.daily_stats.day)
+            completion = state.daily_completion
+            completion.scheduler_day = day_value
+            completion.status = "in_progress"
+            completion.starting_required_cards = 194
+            completion.starting_required_cards_completed = 176
+            completion.remaining_required_reviews = 16
+            completion.remaining_learning_steps = 0
+            completion.future_learning_steps_before_cutoff = 2
+            completion.next_learning_due_at_ms = (
+                int(self.app.storage.current_time_ms()) + 360_000
+            )
+            completion.cutoff_at_ms = int(
+                self.app.storage.current_day_end_ms()
+            )
+            completion.cards_completed_today = 176
+            completion.reward_claimed = False
+            state.daily_stats.reviewed = 176
+            state.garden_find_daily_counts = {day_value: 2}
+            state.garden_find_drought_count = 52
+            state.selected_weather = "gentle_rain"
+            state.selected_background = "spring"
+            schedule = state.daily_loadout
+            schedule.scheduler_day = day_value
+            schedule.locked_at_ms = max(
+                1,
+                int(self.app.storage.current_time_ms()),
+            )
+            schedule.weather_id = "gentle_rain"
+            schedule.scenery_id = "spring"
+            schedule.queued_weather_id = "snow_flurry"
+            schedule.queued_scenery_id = "full_moon"
+
+            engine_dict = getattr(self.app.engine, "__dict__", {})
+            had_override = "today_cards_status" in engine_dict
+            previous_override = engine_dict.get("today_cards_status")
+            had_find_override = "_garden_find_counts" in engine_dict
+            previous_find_override = engine_dict.get("_garden_find_counts")
+            self.app.engine.today_cards_status = lambda: completion
+            # The persisted reward ledger is authoritative when present, so
+            # mutating only GardenState does not affect this read projection.
+            # Keep the fixture local and restore the normal resolver after the
+            # capture instead of inserting synthetic reward history.
+            self.app.engine._garden_find_counts = lambda _day: (2, {})
+            restored = False
+
+            def restore_once() -> None:
+                nonlocal restored
+                if restored:
+                    return
+                restored = True
+                if had_override:
+                    self.app.engine.today_cards_status = previous_override
+                else:
+                    self.app.engine.__dict__.pop("today_cards_status", None)
+                if had_find_override:
+                    self.app.engine._garden_find_counts = previous_find_override
+                else:
+                    self.app.engine.__dict__.pop("_garden_find_counts", None)
+                self._restore_capture_fixture_state(snapshot)
+
+            self._refresh_capture_dashboard()
+            self._capture_metric(
+                "today",
+                label,
+                restore_callback=restore_once,
+            )
+
+        self._with_dashboard(
+            ready,
+            failure_label=label,
+        )
+
     def _capture_progress_achievements(self) -> None:
         if not self._ensure_development_stress_state():
             self._next_after(200)
@@ -16483,17 +25656,14 @@ class _UiFaceCaptureRunner:
             str(view.achievement_id)
             for view in unlocked_views
         ]
+        completion_categories = {
+            str(view.achievement_id): str(view.category)
+            for view in unlocked_views
+        }
+        completion_schedule = achievement_completion_schedule(unlocked_ids)
         scheduled_days: dict[str, str] = {}
-        base_day = date(2026, 8, 8)
-        for offset, achievement_id in enumerate(unlocked_ids):
-            day_offset = (
-                (0, 4, 8, 18)[offset]
-                if offset < 4 else
-                18 + (offset - 3) * 4
-            )
-            day_value = (
-                base_day + timedelta(days=day_offset)
-            ).isoformat()
+        for achievement_id in unlocked_ids:
+            day_value = completion_schedule[achievement_id].isoformat()
             completed_at = f"{day_value}T09:00:00+00:00"
             achievement = state.achievements[achievement_id]
             achievement.unlocked_at = completed_at
@@ -16519,12 +25689,19 @@ class _UiFaceCaptureRunner:
             ),
             "completion_date_count": len(scheduled_days),
             "scheduled_completion_days": scheduled_days,
+            "scheduled_completion_categories": completion_categories,
             "passed": bool(
                 len(scheduled_days) >= 4
-                and list(scheduled_days.values())
-                == sorted(scheduled_days.values())
                 and len(set(scheduled_days.values()))
                 == len(scheduled_days)
+                and validate_achievement_completion_schedule(
+                    {
+                        achievement_id: date.fromisoformat(day_value)
+                        for achievement_id, day_value in scheduled_days.items()
+                    }
+                )
+                and max(completion_schedule.values(), default=CAPTURE_DATE)
+                <= CAPTURE_DATE
             ),
         }
         self._refresh_capture_dashboard()
@@ -16537,20 +25714,21 @@ class _UiFaceCaptureRunner:
     def _capture_progress_collection(self) -> None:
         # The compact release sequence still uses the same information-rich
         # canonical state as the former exhaustive Collection surface. This
-        # yields the truthful 31-of-38 summary while avoiding duplicate state
+        # yields the truthful 30-of-39 summary while avoiding duplicate state
         # permutations in the contact sheets.
         if not self._ensure_development_stress_state():
             self._next_after(200)
             return
-        from ..environment import SCENERY_CATALOG, WEATHER_CATALOG
+        from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
 
         # The broad development state owns the complete environment catalog.
         # This one representative Collection face deliberately leaves the six
-        # drop-only rewards undiscovered, producing the canonical truthful
-        # 31-of-38 summary. Restore the broad state immediately afterward so
+        # drop-only rewards and three Fertilizer tiers undiscovered, producing
+        # the canonical truthful 30-of-39 summary. Restore the broad state
+        # immediately afterward so
         # later Nursery and transaction fixtures retain their own contract.
         state = self.app.storage.state
-        original_weather = list(state.inventory.get("weather", ()) or ())
+        original_features = list(state.inventory.get("garden_features", ()) or ())
         original_scenery = list(state.inventory.get("scenery", ()) or ())
         restored = False
 
@@ -16559,14 +25737,14 @@ class _UiFaceCaptureRunner:
             if restored:
                 return
             restored = True
-            state.inventory["weather"] = original_weather
+            state.inventory["garden_features"] = original_features
             state.inventory["scenery"] = original_scenery
             self._refresh_capture_dashboard()
 
-        state.inventory["weather"] = [
-            item_id for item_id in original_weather
-            if item_id in WEATHER_CATALOG
-            and not bool(WEATHER_CATALOG[item_id].drop_only)
+        state.inventory["garden_features"] = [
+            item_id for item_id in original_features
+            if item_id in GARDEN_FEATURE_CATALOG
+            and not bool(GARDEN_FEATURE_CATALOG[item_id].drop_only)
         ]
         state.inventory["scenery"] = [
             item_id for item_id in original_scenery
@@ -16784,19 +25962,24 @@ class _UiFaceCaptureRunner:
                     item for item in state.unlocked_species if item != item_id
                 ]
             elif variant == "environment":
-                kind = PurchaseKind.WEATHER
-                item_id = "breeze"
-                state.inventory["weather"] = [
-                    value for value in state.inventory.get("weather", [])
+                kind = PurchaseKind.GARDEN_FEATURE
+                item_id = "wind_chime"
+                state.inventory["garden_features"] = [
+                    value for value in state.inventory.get("garden_features", [])
                     if value != item_id
                 ]
-                if state.selected_weather == item_id:
-                    state.selected_weather = "sunny"
-            elif variant in {"fertilizer-application", "fertilizer-extension", "invalid-target"}:
+                if state.selected_garden_feature == item_id:
+                    state.selected_garden_feature = "seedling_sign"
+            elif variant in {
+                "fertilizer-application",
+                "fertilizer-extension",
+                "fertilizer-queue",
+                "invalid-target",
+            }:
                 kind = PurchaseKind.FERTILIZER
-                item_id = "basic"
+                item_id = "premium" if variant == "fertilizer-queue" else "basic"
                 target_id = plant.plant_id
-                if variant == "fertilizer-extension":
+                if variant in {"fertilizer-extension", "fertilizer-queue"}:
                     now = engine._now_seconds()
                     plant.fertilizer = Fertilizer("basic", 1, now + 2_700, now)
                 elif variant == "invalid-target":
@@ -16810,8 +25993,8 @@ class _UiFaceCaptureRunner:
             elif variant == "unavailable":
                 item_id = "missing-growth-charge"
             elif variant == "already-owned":
-                kind = PurchaseKind.WEATHER
-                item_id = "sunny"
+                kind = PurchaseKind.GARDEN_FEATURE
+                item_id = "seedling_sign"
 
             quote = engine.quote_purchase(
                 kind,
@@ -16892,6 +26075,7 @@ class _UiFaceCaptureRunner:
             expected_disposition = {
                 "fertilizer-application": "applied",
                 "fertilizer-extension": "extended",
+                "fertilizer-queue": "queued",
             }.get(variant, "")
             actual_disposition = quote.disposition.value
             stale_variant = variant in {"stale-price", "stale-balance"}
@@ -17004,6 +26188,39 @@ class _UiFaceCaptureRunner:
                     and bool(dialog.item_name.isVisible())
                 )
             )
+            fertilizer_queue_confirmation = {
+                "applicable": variant == "fertilizer-queue",
+                "title": str(dialog.windowTitle()),
+                "primary_action": primary_action,
+                "outcome": str(dialog.outcome_label.text()).strip(),
+                "disposition": actual_disposition,
+                "replacement_required": bool(quote.replacement_required),
+                "current_item_name": str(quote.current_item_name),
+                "current_seconds_remaining": int(quote.current_seconds_remaining),
+                "duration_seconds": int(quote.duration_seconds),
+                "resulting_seconds_remaining": int(
+                    quote.resulting_seconds_remaining
+                ),
+                "comparison_hidden": dialog.comparison_host.isHidden(),
+                "discard_warning_hidden": dialog.discard_warning_host.isHidden(),
+                "passed": bool(
+                    variant == "fertilizer-queue"
+                    and actual_disposition == "queued"
+                    and not quote.replacement_required
+                    and str(quote.current_item_name) == "Basic Fertilizer"
+                    and int(quote.current_seconds_remaining) > 0
+                    and int(quote.duration_seconds) == 14_400
+                    and int(quote.resulting_seconds_remaining)
+                    == int(quote.current_seconds_remaining)
+                    + int(quote.duration_seconds)
+                    and str(dialog.windowTitle()) == "Queue Magical Fertilizer?"
+                    and primary_action == "Buy and queue · 300 coins"
+                    and str(dialog.outcome_label.text()).strip()
+                    == "Queued for 4 hours after Basic Fertilizer."
+                    and dialog.comparison_host.isHidden()
+                    and dialog.discard_warning_host.isHidden()
+                ),
+            }
             self._capture_annotations[label] = {
                 "purchase_kind": kind.value,
                 "item_id": item_id,
@@ -17043,6 +26260,9 @@ class _UiFaceCaptureRunner:
                 "proposal_update_text": proposal_update_text,
                 "ready_balance_update": ready_balance_update,
                 "stale_price_item_identity": stale_price_item_identity,
+                "fertilizer_queue_confirmation": (
+                    fertilizer_queue_confirmation
+                ),
                 "passed": bool(
                     actual_status == expected_status
                     and (
@@ -17068,6 +26288,10 @@ class _UiFaceCaptureRunner:
                     and refreshed_request_matches_live_terms
                     and ready_balance_update
                     and stale_price_item_identity
+                    and (
+                        variant != "fertilizer-queue"
+                        or fertilizer_queue_confirmation["passed"]
+                    )
                 ),
             }
             if not self._capture_annotations[label]["passed"]:
@@ -17130,6 +26354,12 @@ class _UiFaceCaptureRunner:
         self._capture_purchase_dialog_fixture(
             "purchase-confirmation-fertilizer-extension",
             "fertilizer-extension",
+        )
+
+    def _capture_purchase_confirmation_fertilizer_queue(self) -> None:
+        self._capture_purchase_dialog_fixture(
+            "purchase-confirmation-fertilizer-queue",
+            "fertilizer-queue",
         )
 
     def _capture_purchase_confirmation_bed(self) -> None:
@@ -17437,7 +26667,7 @@ class _UiFaceCaptureRunner:
             dialog.compact_summary_card.isVisible()
             and compact_result
         )
-        result_matches_quote = bool(
+        preview_matches_quote = bool(
             quote is not None
             and compact_result_visible
             and bool(dialog.compact_summary_card.property("previewReady"))
@@ -17449,6 +26679,23 @@ class _UiFaceCaptureRunner:
             == max(0, int(quote.inventory_before))
             and int(dialog.compact_summary_card.property("inventoryAfter") or -1)
             == max(0, int(quote.inventory_after))
+        )
+        result_matches_quote = bool(
+            preview_matches_quote
+            or (
+                variant == "success"
+                and quote is not None
+                and outcome is not None
+                and bool(getattr(outcome, "success", False))
+                and int(getattr(outcome, "previous_growth", -1))
+                == max(0, int(quote.current_growth))
+                and int(getattr(outcome, "resulting_growth", -1))
+                == max(0, int(quote.projected_growth))
+                and int(getattr(outcome, "growth_granted", -1))
+                == max(0, int(quote.granted_growth))
+                and int(getattr(outcome, "inventory_remaining", -1))
+                == max(0, int(quote.inventory_after))
+            )
         )
         plant_details_visible = bool(
             dialog.hero.isVisible()
@@ -17577,7 +26824,7 @@ class _UiFaceCaptureRunner:
                 receipt_visible,
                 bool(outcome is not None and outcome.success),
                 tuple(getattr(outcome, "completed_stages", ())) == ("sprout",),
-                reward_total == 5,
+                reward_total == 2,
                 str(dialog.receipt.property("semanticId") or "")
                 == "growth-charge.receipt",
                 str(dialog.receipt.property("receiptPreviousStage") or "")
@@ -17661,7 +26908,7 @@ class _UiFaceCaptureRunner:
                 and rendered_values["inventory_label"]
                 == "Charges remaining"
                 and rendered_values["inventory_value"] == "2 → 1"
-                and rendered_values["stage_badge"] == "Sprout"
+                and rendered_values["stage_badge"] == "Result: Sprout"
                 and rendered_values["stage_badge_accessible"]
                 == "New stage: Sprout"
                 and rendered_values["stage_progress"]
@@ -17722,12 +26969,12 @@ class _UiFaceCaptureRunner:
                 )
                 and rendered_values["stage_reward_heading"] == "Stage reward"
                 and rendered_values["reward_texts"]
-                == ["Stage reward", "+5 Garden Coins"]
+                == ["Stage reward", "+2 Garden Coins"]
                 and rendered_values["primary_action"] == "View plant"
                 and rendered_values["secondary_action"] == "Close"
                 and rendered_values["resulting_growth"] == 550
                 and rendered_values["inventory_remaining"] == 1
-                and rendered_values["stage_reward_total"] == 5
+                and rendered_values["stage_reward_total"] == 2
             )
         conditions.append(bool(rendered_values["passed"]))
         active_scrolls = tuple(dialog.active_vertical_scroll_regions())
@@ -18020,7 +27267,7 @@ class _UiFaceCaptureRunner:
                 self._next_after(200)
                 return
             snapshot, _plant = prepared
-            from ..environment import SCENERY_CATALOG, WEATHER_CATALOG
+            from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
 
             dashboard = self.app.dashboard
             state = self.app.storage.state
@@ -18048,22 +27295,22 @@ class _UiFaceCaptureRunner:
                 dashboard._refresh_collection_list()
 
             cleanup_holder["callback"] = restore
-            # Keep the release collection projection at its canonical 31/38:
+            # Keep the release collection projection at its canonical 30/37:
             # all built-in/purchasable environments are owned, while the six
             # Garden Find environments remain mysteries.
-            state.inventory["weather"] = [
-                item_id for item_id, item in WEATHER_CATALOG.items()
+            state.inventory["garden_features"] = [
+                item_id for item_id, item in GARDEN_FEATURE_CATALOG.items()
                 if str(item.acquisition) != "drop"
             ]
             state.inventory["scenery"] = [
                 item_id for item_id, item in SCENERY_CATALOG.items()
                 if str(item.acquisition) != "drop"
             ]
-            state.selected_weather = "breeze"
+            state.selected_garden_feature = "wind_chime"
             state.selected_background = "spring"
             dashboard._collection_filter = "all"
-            dashboard._collection_category = "weather"
-            dashboard._collection_query = WEATHER_CATALOG["breeze"].name
+            dashboard._collection_category = "garden_features"
+            dashboard._collection_query = GARDEN_FEATURE_CATALOG["wind_chime"].name
             dashboard._collection_sort = "catalog"
             dashboard._refresh_collection_list()
             dialog = dashboard.progress_dialog
@@ -18125,12 +27372,13 @@ class _UiFaceCaptureRunner:
                 environment_title = next((
                     item for item in visible_label_widgets
                     if bool(item.property("rowTitle"))
-                    and str(item.text()).strip() == WEATHER_CATALOG["breeze"].name
+                    and str(item.text()).strip()
+                    == GARDEN_FEATURE_CATALOG["wind_chime"].name
                 ), None)
                 environment_status = next((
                     item for item in visible_label_widgets
                     if bool(item.property("catalogStatus"))
-                    and "Weather" in str(item.text())
+                    and "Garden Decoration" in str(item.text())
                 ), None)
                 environment_effect = next((
                     item for item in visible_label_widgets
@@ -18288,11 +27536,11 @@ class _UiFaceCaptureRunner:
                         mechanics_details is not None
                         and mechanics_details.isVisible()
                         and "Available every day" in mechanics_text
-                        and "Only one weather can be equipped" in mechanics_text
+                        and "Only one garden decoration can be equipped" in mechanics_text
                     ),
                     "selected_environment_visible": (
                         evidence_text("item_title", environment_title)
-                        == WEATHER_CATALOG["breeze"].name
+                        == GARDEN_FEATURE_CATALOG["wind_chime"].name
                     ),
                     "complete_effects_visible": (
                         "Growth" in evidence_text(
@@ -18300,12 +27548,12 @@ class _UiFaceCaptureRunner:
                             environment_effect,
                         )
                         and "Available every day" in mechanics_text
-                        and "Only one weather can be equipped" in mechanics_text
+                        and "Only one garden decoration can be equipped" in mechanics_text
                     ),
                     "loadout_summary_visible": (
                         evidence_text("summary_title", summary_title)
                         == "Garden appearance"
-                        and WEATHER_CATALOG["breeze"].name
+                        and GARDEN_FEATURE_CATALOG["wind_chime"].name
                         in evidence_text("summary_selection", summary_selection)
                     ),
                     "equipment_state_visible": bool(
@@ -18345,14 +27593,15 @@ class _UiFaceCaptureRunner:
                     "canonical_collection_summary": bool(
                         filter_controls is not None
                         and str(filter_controls.count.text()).strip()
-                        == "31 of 38 collected"
+                        == "30 of 37 collected"
                     ),
                     "route_button_bounds": [edit_evidence],
                     "filter_toolbar_visible": toolbar_visual["passed"],
                     "scroll_at_top": bool(scrollbar.value() == 0),
                     "direct_mutation_controls": any(
                         button.isCheckable()
-                        and str(button.text()) in {"Show Weather", "Show Scenery"}
+                        and str(button.text())
+                        in {"Show equipped Garden Decoration", "Show Scenery"}
                         for button in button_widgets
                     ),
                     "environment_mechanics_visual": (
@@ -18360,7 +27609,7 @@ class _UiFaceCaptureRunner:
                     ),
                 }
                 annotation["passed"] = bool(
-                    annotation["collection_category"] == "weather"
+                    annotation["collection_category"] == "garden_features"
                     and annotation["mechanics_expanded"]
                     and annotation["mechanics_always_visible"]
                     and annotation["selected_environment_visible"]
@@ -18430,12 +27679,12 @@ class _UiFaceCaptureRunner:
                             item for item in current_labels
                             if bool(item.property("rowTitle"))
                             and str(item.text()).strip()
-                            == WEATHER_CATALOG["breeze"].name
+                            == GARDEN_FEATURE_CATALOG["wind_chime"].name
                         ), None),
                         "item_status": next((
                             item for item in current_labels
                             if bool(item.property("catalogStatus"))
-                            and "Weather" in str(item.text())
+                            and "Garden Decoration" in str(item.text())
                         ), None),
                         "effect": next((
                             item for item in current_labels
@@ -18488,12 +27737,14 @@ class _UiFaceCaptureRunner:
                 return
             snapshot, _plant = prepared
             state = self.app.storage.state
-            if "breeze" not in state.inventory.setdefault("weather", []):
-                state.inventory["weather"].append("breeze")
-            state.selected_weather = "sunny"
+            if "wind_chime" not in state.inventory.setdefault(
+                "garden_features", []
+            ):
+                state.inventory["garden_features"].append("wind_chime")
+            state.selected_garden_feature = "seedling_sign"
             dialog = dashboard.collectible_detail_dialog
             dialog.prepare_to_show()
-            dialog._select_option("weather", "breeze")
+            dialog._select_option("garden_feature", "wind_chime")
             before = deepcopy(self.app.engine.state.loadout.to_dict())
             original_save = self.app.storage.save
 
@@ -18516,7 +27767,7 @@ class _UiFaceCaptureRunner:
                 dialog.preview_feedback.isVisible()
                 and dialog.preview_panel.isAncestorOf(dialog.preview_feedback)
                 and not dialog.preview_scene.isAncestorOf(dialog.preview_feedback)
-                and "Could not save changes" in error_copy
+                and "Could not apply changes" in error_copy
                 and "unchanged" in error_copy
             )
             actions = {
@@ -19206,8 +28457,8 @@ class _UiFaceCaptureRunner:
         def ready() -> None:
             dialog.option_tabs.setCurrentWidget(dialog.effects_page)
             persisted_draft = tuple(dialog._persisted_draft)
-            persisted_weather_visible = bool(persisted_draft[3])
-            persisted_scenery_visible = bool(persisted_draft[4])
+            persisted_weather_visible = bool(persisted_draft[2])
+            persisted_scenery_visible = bool(persisted_draft[3])
             expected_weather_visible = bool(enabled)
             expected_scenery_visible = bool(enabled)
             committed_before = {
@@ -19454,7 +28705,7 @@ class _UiFaceCaptureRunner:
         label: str,
         dashboard: Any,
     ) -> Callable[[], None]:
-        """Expose one useful partial-catalog state without weakening 31/38.
+        """Expose one useful partial-catalog state without weakening 30/37.
 
         The representative Collection capture owns the canonical broad state.
         Nursery needs a different single painting: one owned plant, affordable
@@ -19483,12 +28734,11 @@ class _UiFaceCaptureRunner:
 
             inventory = dict(getattr(state, "inventory", {}) or {})
             for category, selected in (
-                ("weather", str(getattr(state.loadout, "weather_id", "") or "")),
-                ("scenery", str(getattr(state.loadout, "scenery_id", "") or "")),
                 (
-                    "decorations",
-                    str(getattr(state.loadout, "decoration_id", "") or ""),
+                    "garden_features",
+                    str(getattr(state.loadout, "garden_feature_id", "") or ""),
                 ),
+                ("scenery", str(getattr(state.loadout, "scenery_id", "") or "")),
             ):
                 inventory[category] = [selected] if selected else []
             state.inventory = inventory
@@ -19816,7 +29066,6 @@ class _UiFaceCaptureRunner:
 
     def _capture_nursery_weather_scenery(self) -> None:
         label = "nursery-weather-scenery"
-        preview_names = ("Clear Skies preview", "Soft Breeze preview")
 
         def pixmap_signature(pixmap: Any) -> list[int]:
             image = pixmap.toImage()
@@ -19890,25 +29139,37 @@ class _UiFaceCaptureRunner:
                     for record in first_row_geometry
                 )
             )
-            previews: dict[str, list[tuple[int, QLabel, list[int]]]] = {
-                name: [] for name in preview_names
-            }
+            preview_names: list[str] = []
+            previews: dict[str, list[tuple[int, QLabel, list[int]]]] = {}
             missing_art_previews: list[str] = []
-            for preview in dialog.findChildren(QLabel):
-                name = str(preview.accessibleName())
-                if name not in previews or not preview.isVisible():
+            for card in first_product_row[:2]:
+                artwork = next(
+                    (
+                        candidate
+                        for candidate in card.findChildren(QLabel)
+                        if bool(candidate.property("nurseryArtwork"))
+                        and candidate.isVisibleTo(dialog)
+                    ),
+                    None,
+                )
+                if artwork is None:
                     continue
-                pixmap = preview.pixmap()
+                name = str(artwork.accessibleName() or "").strip()
+                if not name:
+                    continue
+                preview_names.append(name)
+                previews.setdefault(name, [])
+                pixmap = artwork.pixmap()
                 if (
                     pixmap is None
                     or pixmap.isNull()
-                    or str(preview.property("gardenRole") or "") == "missing-art"
+                    or str(artwork.property("gardenRole") or "") == "missing-art"
                 ):
                     missing_art_previews.append(name)
                     continue
                 previews[name].append((
                     int(pixmap.width()) * int(pixmap.height()),
-                    preview,
+                    artwork,
                     pixmap_signature(pixmap),
                 ))
 
@@ -19925,23 +29186,34 @@ class _UiFaceCaptureRunner:
                     int(pixmap.height()),
                 ]
 
-            clear_signature = selected_signatures.get(preview_names[0])
-            breeze_signature = selected_signatures.get(preview_names[1])
+            first_signature = (
+                selected_signatures.get(preview_names[0])
+                if len(preview_names) >= 1 else None
+            )
+            second_signature = (
+                selected_signatures.get(preview_names[1])
+                if len(preview_names) >= 2 else None
+            )
             distinct = bool(
-                clear_signature
-                and breeze_signature
-                and clear_signature != breeze_signature
+                first_signature
+                and second_signature
+                and first_signature != second_signature
             )
             passed = bool(
-                clear_signature
-                and breeze_signature
+                len(preview_names) == 2
+                and first_signature
+                and second_signature
                 and not missing_art_previews
                 and distinct
                 and first_product_row_contained
             )
             self._capture_annotations[label] = {
-                "clear_skies_preview_present": bool(clear_signature),
-                "soft_breeze_preview_present": bool(breeze_signature),
+                "preview_names": preview_names,
+                "garden_feature_previews_present": bool(
+                    len(preview_names) == 2
+                    and first_signature
+                    and second_signature
+                ),
                 "missing_art_previews": missing_art_previews,
                 "preview_match_counts": {
                     name: len(matches) for name, matches in previews.items()
@@ -19956,8 +29228,8 @@ class _UiFaceCaptureRunner:
                 self._failures.append({
                     "label": label,
                     "reason": (
-                        "Clear Skies and Soft Breeze did not expose distinct "
-                        "packaged preview artwork"
+                        "The first Garden Decoration product row did not expose "
+                        "two distinct packaged previews in one complete row"
                     ),
                 })
 
@@ -20051,28 +29323,17 @@ class _UiFaceCaptureRunner:
                 )
                 app.processEvents()
             scroll = settings_dialog.behavior_scroll
-            # The canonical Display layout is content-fit. Pin the emergency
-            # outer owner to its neutral top position and reject any residual
-            # range instead of scrolling the expanded accordion into view.
+            # The shared rows are compact enough to keep the expanded canonical
+            # state content-fit. Pin the sole emergency scroll owner to the top
+            # and reject any setting that would begin behind the fixed tabs.
             if scroll.verticalScrollBar().value() != 0:
                 scroll.verticalScrollBar().setValue(0)
             viewport = scroll.viewport()
             behavior = settings_dialog.behavior
-            preview_panel = behavior.preview_panel
-            preview_widget = (
-                behavior.home_preview
-                if behavior.home_preview.isVisibleTo(settings_dialog) else
-                behavior.preview_unavailable
-                if behavior.preview_unavailable.isVisibleTo(settings_dialog) else
-                None
-            )
-            preview_bounds = self._widget_bounds_evidence(
-                preview_panel,
+            settings_preview_removed = not hasattr(behavior, "preview_panel")
+            appearance_bounds = self._widget_bounds_evidence(
+                behavior.theme_card,
                 viewport,
-            )
-            preview_content_bounds = self._widget_bounds_evidence(
-                preview_widget,
-                preview_panel,
             )
             advanced_header_bounds = self._widget_bounds_evidence(
                 settings_dialog.advanced_header,
@@ -20082,24 +29343,36 @@ class _UiFaceCaptureRunner:
                 behavior.advanced_panel,
                 viewport,
             )
-            behavior_origin = behavior.mapTo(
+            home_setting_bounds = self._widget_bounds_evidence(
+                behavior.home_preview_row,
+                viewport,
+            )
+            home_switch_bounds = self._widget_bounds_evidence(
+                behavior.show_home_widget,
+                viewport,
+            )
+            appearance_origin = behavior.theme_card.mapTo(
                 settings_dialog.behavior_page,
-                behavior.rect().topLeft(),
+                behavior.theme_card.rect().topLeft(),
             )
             advanced_origin = settings_dialog.advanced_header.mapTo(
                 settings_dialog.behavior_page,
                 settings_dialog.advanced_header.rect().topLeft(),
             )
-            preview_to_advanced_gap = max(
+            appearance_to_advanced_gap = max(
                 0,
                 int(advanced_origin.y())
-                - (int(behavior_origin.y()) + int(behavior.height())),
+                - (
+                    int(appearance_origin.y())
+                    + int(behavior.theme_card.height())
+                ),
             )
             outer_vertical_range = max(
                 0,
                 int(scroll.verticalScrollBar().maximum())
                 - int(scroll.verticalScrollBar().minimum()),
             )
+            outer_vertical_value = int(scroll.verticalScrollBar().value())
             outer_horizontal_range = max(
                 0,
                 int(scroll.horizontalScrollBar().maximum())
@@ -20111,39 +29384,32 @@ class _UiFaceCaptureRunner:
                 int(inner_scroll.verticalScrollBar().maximum())
                 - int(inner_scroll.verticalScrollBar().minimum()),
             )
-            preview_unavailable = preview_widget is behavior.preview_unavailable
-            placeholder_copy = (
-                str(behavior.preview_unavailable.text()).strip()
-                if preview_unavailable else ""
-            )
             geometry = {
                 "outer_scroll_name": str(scroll.accessibleName()),
                 "outer_vertical_range": outer_vertical_range,
+                "outer_vertical_value": outer_vertical_value,
                 "outer_horizontal_range": outer_horizontal_range,
                 "inner_vertical_range": inner_vertical_range,
-                "preview_panel_height": int(preview_panel.height()),
-                "preview_bounds": preview_bounds,
-                "preview_content_bounds": preview_content_bounds,
-                "preview_content_kind": (
-                    "placeholder" if preview_unavailable else "garden"
-                    if preview_widget is not None else "missing"
-                ),
-                "placeholder_copy": placeholder_copy,
+                "settings_preview_removed": settings_preview_removed,
+                "appearance_bounds": appearance_bounds,
                 "current_scenery": str(behavior.theme_title.text()).strip(),
-                "preview_to_advanced_gap": preview_to_advanced_gap,
+                "appearance_to_advanced_gap": appearance_to_advanced_gap,
                 "advanced_header_bounds": advanced_header_bounds,
                 "advanced_panel_bounds": advanced_panel_bounds,
+                "home_setting_bounds": home_setting_bounds,
+                "home_switch_bounds": home_switch_bounds,
             }
             geometry_signature = (
                 outer_vertical_range,
+                outer_vertical_value,
                 outer_horizontal_range,
                 inner_vertical_range,
-                int(preview_panel.height()),
-                preview_to_advanced_gap,
-                bool(preview_bounds.get("visible", False)),
-                bool(preview_content_bounds.get("contained", False)),
+                settings_preview_removed,
+                appearance_to_advanced_gap,
+                bool(appearance_bounds.get("contained", False)),
                 bool(advanced_header_bounds.get("visible", False)),
                 bool(advanced_panel_bounds.get("contained", False)),
+                bool(home_switch_bounds.get("contained", False)),
             )
             if geometry_signature != getattr(
                 self,
@@ -20160,23 +29426,22 @@ class _UiFaceCaptureRunner:
             geometry["passed"] = bool(
                 str(scroll.accessibleName()) == "Display settings"
                 and outer_vertical_range <= 1
+                and outer_vertical_value == 0
                 and outer_horizontal_range <= 1
                 and inner_vertical_range <= 1
-                and 96 <= int(preview_panel.height()) <= 108
-                and preview_bounds.get("visible", False)
-                and preview_bounds.get("contained", False)
-                and preview_content_bounds.get("visible", False)
-                and preview_content_bounds.get("contained", False)
-                and (
-                    not preview_unavailable
-                    or placeholder_copy.startswith("Preview unavailable")
-                )
+                and settings_preview_removed
+                and appearance_bounds.get("visible", False)
+                and appearance_bounds.get("contained", False)
                 and bool(str(behavior.theme_title.text()).strip())
-                and 8 <= preview_to_advanced_gap <= 12
+                and 8 <= appearance_to_advanced_gap <= 12
                 and advanced_header_bounds.get("visible", False)
                 and advanced_header_bounds.get("contained", False)
                 and advanced_panel_bounds.get("visible", False)
                 and advanced_panel_bounds.get("contained", False)
+                and home_setting_bounds.get("visible", False)
+                and home_setting_bounds.get("contained", False)
+                and home_switch_bounds.get("visible", False)
+                and home_switch_bounds.get("contained", False)
             )
             self._capture_annotations["settings-display-advanced-open"] = {
                 "display_geometry": geometry,
@@ -20258,7 +29523,7 @@ class _UiFaceCaptureRunner:
         for category, key in (
             ("plant", "capture_missing_plant"),
             ("scenery", "capture_missing_scenery"),
-            ("weather", "capture_missing_weather"),
+            ("garden_feature", "capture_missing_garden_feature"),
         ):
             _record_missing_artwork(
                 category=category,
@@ -20782,117 +30047,6 @@ class _UiFaceCaptureRunner:
                     dialog_ready,
                     failure_label=label,
                     failure_reason="Expiring Fertilizer dialog did not become ready",
-                    on_error=cleanup,
-                ),
-            )
-            dashboard._open_fertilizer_menu(plant_id)
-
-        self._with_dashboard(
-            ready,
-            failure_label=label,
-            on_error=registered_cleanup,
-        )
-
-    def _visible_fertilizer_replacement_dialog(self) -> QWidget | None:
-        from ..ui.dashboard import FertilizerReplacementDialog
-
-        app = QApplication.instance()
-        if app is None:
-            return None
-        return next(
-            (
-                widget for widget in app.allWidgets()
-                if isinstance(widget, FertilizerReplacementDialog)
-                and widget.isVisible()
-            ),
-            None,
-        )
-
-    def _capture_fertilizer_replacement_confirmation(self) -> None:
-        label = "fertilizer-replacement-confirmation"
-        cleanup_holder: dict[str, Callable[[], None]] = {
-            "callback": lambda: None,
-        }
-
-        def registered_cleanup() -> None:
-            cleanup_holder["callback"]()
-
-        def ready() -> None:
-            if not self._ensure_development_stress_state():
-                self._next_after(200)
-                return
-            snapshot = self._capture_fixture_state_snapshot(label)
-
-            def cleanup() -> None:
-                self._restore_capture_fixture_state(snapshot)
-
-            cleanup_holder["callback"] = cleanup
-            plant_id = self._prepare_expiring_fertilizer(label)
-            dashboard = self.app.dashboard
-            if not plant_id:
-                cleanup()
-                self._next_after(200)
-                return
-
-            def fertilizer_ready() -> None:
-                dialog = getattr(dashboard, "fertilizer_dialog", None)
-                replace = next(
-                    (
-                        button for button in dialog.findChildren(QAbstractButton)
-                        if str(
-                            button.property("fertilizerActionDisposition") or ""
-                        ) == "replace"
-                        and button.isEnabled()
-                    ),
-                    None,
-                )
-                if replace is None:
-                    self._failures.append({
-                        "label": label,
-                        "reason": "No enabled replacement action was available",
-                    })
-                    self._close_widget(dialog)
-                    cleanup()
-                    self._next_after(200)
-                    return
-
-                def confirmation_ready() -> None:
-                    replacement_dialog = self._visible_fertilizer_replacement_dialog()
-
-                    def close_confirmation() -> None:
-                        self._close_widget(replacement_dialog)
-                        self._close_widget(dialog)
-                        cleanup()
-
-                    self._capture_and_advance(
-                        label,
-                        replacement_dialog,
-                        capture_delay_ms=320,
-                        close_callback=close_confirmation,
-                        close_ms=700,
-                        next_ms=1100,
-                    )
-
-                self._wait_for(
-                    lambda: self._visible_fertilizer_replacement_dialog() is not None,
-                    confirmation_ready,
-                    tries=80,
-                    failure_label=label,
-                    failure_reason="Replacement confirmation did not become visible",
-                    on_error=cleanup,
-                )
-                QTimer.singleShot(80, replace.click)
-
-            QTimer.singleShot(
-                0,
-                lambda: self._wait_for(
-                    lambda: bool(
-                        getattr(dashboard, "fertilizer_dialog", None)
-                        and dashboard.fertilizer_dialog.isVisible()
-                    ),
-                    fertilizer_ready,
-                    failure_label=label,
-                    failure_reason="Fertilizer dialog did not become ready",
                     on_error=cleanup,
                 ),
             )
@@ -21814,7 +30968,7 @@ class _UiFaceCaptureRunner:
             raise
 
     def _capture_nursery_purchase_success(self) -> None:
-        from ..environment import SCENERY_CATALOG, WEATHER_CATALOG
+        from ..environment import GARDEN_FEATURE_CATALOG, SCENERY_CATALOG
         from ..purchases import PurchaseKind, PurchaseRequest, purchase_presentation
 
         label = "nursery-purchase-success"
@@ -21831,10 +30985,16 @@ class _UiFaceCaptureRunner:
         state.currency_transactions.clear()
         state.completed_purchase_requests.clear()
         item = next(
-            entry for entry in [*WEATHER_CATALOG.values(), *SCENERY_CATALOG.values()]
+            entry
+            for entry in [
+                *GARDEN_FEATURE_CATALOG.values(),
+                *SCENERY_CATALOG.values(),
+            ]
             if entry.acquisition == "purchase"
         )
-        inventory_key = "weather" if item.kind == "weather" else "scenery"
+        inventory_key = (
+            "garden_features" if item.kind == "garden_feature" else "scenery"
+        )
         state.inventory[inventory_key] = [
             key for key in state.inventory.get(inventory_key, [])
             if key != item.item_id
@@ -21842,8 +31002,8 @@ class _UiFaceCaptureRunner:
         if item.kind == "scenery":
             if state.selected_background == item.item_id:
                 state.selected_background = "default"
-        elif state.selected_weather == item.item_id:
-            state.selected_weather = "sunny"
+        elif state.selected_garden_feature == item.item_id:
+            state.selected_garden_feature = "seedling_sign"
 
         def ready(dialog: Any) -> None:
             purchase_kind = PurchaseKind(item.kind)
@@ -21927,9 +31087,9 @@ class _UiFaceCaptureRunner:
 
     def _capture_missing_artwork_fallback(self) -> None:
         from ..environment import (
+            GARDEN_FEATURE_CATALOG,
             GROWTH_CHARGES,
             SCENERY_CATALOG,
-            WEATHER_CATALOG,
         )
         from ..purchases import PurchaseKind
         from ..ui.dashboard import (
@@ -21939,7 +31099,7 @@ class _UiFaceCaptureRunner:
         )
 
         label = "missing-artwork-graphical-fallback"
-        weather_item = WEATHER_CATALOG.get("sunny")
+        weather_item = GARDEN_FEATURE_CATALOG.get("seedling_sign")
         scenery_item = SCENERY_CATALOG.get("spring")
         growth_charge = GROWTH_CHARGES.get("growth_charge_small")
         if weather_item is None or scenery_item is None or growth_charge is None:
@@ -21953,7 +31113,7 @@ class _UiFaceCaptureRunner:
         def ready(dialog: Any) -> None:
             engine = self.app.engine
             resolver_names = (
-                "resolve_weather_preview_asset",
+                "resolve_garden_feature_preview_asset",
                 "resolve_scenery_preview_asset",
                 "resolve_plant_asset",
                 "resolve_plant_image",
@@ -21982,7 +31142,7 @@ class _UiFaceCaptureRunner:
                 "plant": "/capture-missing/plant-bonsai-seed.webp",
                 "fertilizer": "/capture-missing/fertilizer-basic.webp",
                 "growth-charge": "/capture-missing/growth-charge-small.webp",
-                "weather": "/capture-missing/weather-breeze.svg",
+                "weather": "/capture-missing/garden-decoration-wind-chime.webp",
                 "scenery": "/capture-missing/scenery-spring.webp",
             }
 
@@ -22000,7 +31160,7 @@ class _UiFaceCaptureRunner:
                 ]
                 setattr(
                     engine,
-                    "resolve_weather_preview_asset",
+                    "resolve_garden_feature_preview_asset",
                     lambda _item_id: MissingCaptureAsset(missing_paths["weather"]),
                 )
 
@@ -22044,7 +31204,7 @@ class _UiFaceCaptureRunner:
                     ),
                     "fertilizer": _item_preview_label(
                         engine,
-                        "fertilizer_basic",
+                        "rich_compost",
                         "Rich Compost preview",
                         size=76,
                         placeholder_kind=PurchaseKind.FERTILIZER,
@@ -22075,14 +31235,14 @@ class _UiFaceCaptureRunner:
                     "scenery": 114 / 62,
                 }
                 original_weather_resolver = original_resolvers[
-                    "resolve_weather_preview_asset"
+                    "resolve_garden_feature_preview_asset"
                 ]
                 original_scenery_resolver = original_resolvers[
                     "resolve_scenery_preview_asset"
                 ]
                 setattr(
                     engine,
-                    "resolve_weather_preview_asset",
+                    "resolve_garden_feature_preview_asset",
                     lambda item_id: (
                         MissingCaptureAsset(missing_paths["weather"])
                         if str(item_id) == weather_item.item_id
@@ -22122,7 +31282,7 @@ class _UiFaceCaptureRunner:
                     ),
                     (
                         "fertilizer",
-                        "fertilizer_basic",
+                        "rich_compost",
                         missing_paths["fertilizer"],
                     ),
                     (
@@ -22131,7 +31291,7 @@ class _UiFaceCaptureRunner:
                         missing_paths["growth-charge"],
                     ),
                     (
-                        "weather",
+                        "garden_feature",
                         weather_item.item_id,
                         missing_paths["weather"],
                     ),
@@ -22548,6 +31708,18 @@ class _UiFaceCaptureRunner:
 
             day_value = "2026-08-21"
             state.daily_stats.day = day_value
+            state.daily_stats.reviewed = 176
+            completion = state.daily_completion
+            completion.scheduler_day = day_value
+            completion.status = "complete"
+            completion.starting_required_cards = 176
+            completion.starting_required_cards_completed = 176
+            completion.remaining_required_reviews = 0
+            completion.remaining_learning_steps = 0
+            completion.future_learning_steps_before_cutoff = 0
+            completion.next_learning_due_at_ms = 0
+            completion.cards_completed_today = 176
+            completion.reward_claimed = True
             state.recent_reward_receipts = []
             state.garden_find_outcomes = {}
             state.garden_find_daily_counts = {day_value: len(find_reward_ids)}
@@ -22733,7 +31905,11 @@ class _UiFaceCaptureRunner:
                     amount=1,
                     item_id=item.item_id,
                     display_name=item.display_name,
-                    description="Added to Weather and Scenery",
+                    description=(
+                        "Added to Garden Decorations"
+                        if item.environment_kind == "garden_feature"
+                        else "Added to Scenery"
+                    ),
                     tier=item.tier,
                     artwork_ref=item.item_id,
                     localization_key=f"garden_find.environment.{item.item_id}",
@@ -22755,10 +31931,12 @@ class _UiFaceCaptureRunner:
                 state.recent_reward_receipts.append(receipt)
                 if receipt.event_key not in state.applied_reward_event_keys:
                     state.applied_reward_event_keys.append(receipt.event_key)
-                owned_items = state.inventory.setdefault(
-                    item.environment_kind,
-                    [],
+                ownership_category = (
+                    "garden_features"
+                    if item.environment_kind == "garden_feature"
+                    else "scenery"
                 )
+                owned_items = state.inventory.setdefault(ownership_category, [])
                 if item.item_id not in owned_items:
                     owned_items.append(item.item_id)
                 state.processed_answer_keys.append(answer_key)
@@ -22831,13 +32009,7 @@ class _UiFaceCaptureRunner:
                 )
             if expected_growth:
                 expected_parts.append(f"+{expected_growth:,} Growth")
-            if (
-                len(presentations) == 1
-                and presentations[0].pool_id == ENVIRONMENT_POOL_ID
-                and expected_environments
-            ):
-                expected_message = "Added to Weather and Scenery"
-            elif expected_parts:
+            if expected_parts:
                 expected_message = " · ".join(expected_parts)
             elif len(presentations) == 1:
                 expected_message = str(presentations[0].description)
@@ -22935,7 +32107,7 @@ class _UiFaceCaptureRunner:
                     )
                 annotation["stack_event_count"] = len(stack_events)
                 annotation["expected_visible_toasts"] = 2
-                annotation["expected_overflow_copy"] = "+5 more rewards ›"
+                annotation["expected_overflow_copy"] = "+5 more rewards"
                 annotation["grouped_find_reward_copy"] = grouped_copy
                 annotation["expected_newest_title"] = str(
                     stack_events[-1].title if stack_events else ""
@@ -22948,6 +32120,41 @@ class _UiFaceCaptureRunner:
         except Exception:
             self._restore_reward_capture_fixture(snapshot)
             raise
+
+    def _maximize_reviewer_capture_window(self) -> None:
+        """Maximize Reviewer evidence and remember the disposable window state."""
+
+        if getattr(self, "_reviewer_capture_window_state", None) is not None:
+            return
+        normal_geometry = mw.normalGeometry()
+        self._reviewer_capture_window_state = {
+            "fullscreen": bool(mw.isFullScreen()),
+            "maximized": bool(mw.isMaximized()),
+            "normal_bounds": (
+                int(normal_geometry.x()),
+                int(normal_geometry.y()),
+                int(normal_geometry.width()),
+                int(normal_geometry.height()),
+            ),
+        }
+        self._move_to_capture_display(mw)
+        mw.showMaximized()
+
+    def _restore_reviewer_capture_window(self) -> None:
+        state = getattr(self, "_reviewer_capture_window_state", None)
+        self._reviewer_capture_window_state = None
+        if not isinstance(state, dict):
+            return
+        if bool(state.get("fullscreen", False)):
+            mw.showFullScreen()
+            return
+        if bool(state.get("maximized", False)):
+            mw.showMaximized()
+            return
+        mw.showNormal()
+        bounds = tuple(state.get("normal_bounds", ()) or ())
+        if len(bounds) == 4 and int(bounds[2]) > 0 and int(bounds[3]) > 0:
+            mw.setGeometry(*(int(value) for value in bounds))
 
     def _with_capture_reviewer(
         self,
@@ -22963,9 +32170,6 @@ class _UiFaceCaptureRunner:
         # hidden Dashboard state part of Reviewer readiness.
         self._close_top_level_dialogs()
         self._close_dashboard()
-        app = QApplication.instance()
-        if app is not None:
-            app.processEvents()
 
         def failure_cleanup() -> None:
             if on_error is not None:
@@ -22979,19 +32183,25 @@ class _UiFaceCaptureRunner:
             })
             self._next_after(180)
             return
+        logger.info(
+            "Anki Garden capture Reviewer entry: label=%s stage=card-prepared",
+            label,
+        )
+        self._maximize_reviewer_capture_window()
+        logger.info(
+            "Anki Garden capture Reviewer entry: label=%s stage=maximized",
+            label,
+        )
         self._reviewer_repaint_after_home_attempts = 0
-        try:
-            mw.moveToState("review")
-        except Exception as exc:
-            failure_cleanup()
-            self._failures.append({
-                "label": label,
-                "reason": f"Reviewer state could not open: {type(exc).__name__}",
-            })
-            self._next_after(180)
-            return
-        self._wait_for(
-            lambda: bool(
+
+        def reviewer_window_ready() -> bool:
+            window_evidence = self._home_fullscreen_window_evidence()
+            annotation = self._capture_annotations.setdefault(label, {})
+            annotation["reviewer_window_mode"] = window_evidence
+            annotation["reviewer_window_screen_filling"] = bool(
+                window_evidence.get("passed", False)
+            )
+            return bool(
                 str(getattr(mw, "state", "")) == "review"
                 and getattr(getattr(mw, "reviewer", None), "web", None)
                 is not None
@@ -23001,20 +32211,116 @@ class _UiFaceCaptureRunner:
                     getattr(self.app, "dashboard", None) is None
                     or not self.app.dashboard.isVisible()
                 )
-            ),
-            lambda: self._wait_for_reviewer_surface(
+                and window_evidence.get("passed", False)
+            )
+
+        def reviewer_dom_ready() -> None:
+            handler = getattr(self.app, "reviewer_hooks", None)
+            ensure_hud = getattr(handler, "_ensure_reviewer_hud", None)
+            if callable(ensure_hud):
+                ensure_hud(force_collapsed=False, force_dock="right")
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            self._wait_for_reviewer_surface(
                 label,
                 ready,
                 on_error=failure_cleanup,
+            )
+
+        def enter_reviewer() -> None:
+            logger.info(
+                "Anki Garden capture Reviewer entry: label=%s stage=transitioning",
+                label,
+            )
+            try:
+                mw.moveToState("review")
+            except Exception as exc:
+                failure_cleanup()
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Reviewer state could not open: "
+                        f"{type(exc).__name__}"
+                    ),
+                })
+                self._next_after(180)
+                return
+            logger.info(
+                "Anki Garden capture Reviewer entry: label=%s stage=transitioned",
+                label,
+            )
+            self._wait_for(
+                reviewer_window_ready,
+                reviewer_dom_ready,
+                tries=100,
+                failure_label=label,
+                failure_reason=(
+                    "The real Anki Reviewer did not reach "
+                    "screen-filling maximized geometry"
+                ),
+                on_error=failure_cleanup,
+            )
+
+        settle_samples = {"count": 0}
+
+        def reviewer_entry_settled() -> bool:
+            app = QApplication.instance()
+            visible_garden_shell = False
+            if app is not None:
+                try:
+                    from ..ui.dashboard import DialogShell
+
+                    visible_garden_shell = any(
+                        widget is not mw
+                        and isinstance(widget, DialogShell)
+                        and widget.isVisible()
+                        for widget in app.allWidgets()
+                    )
+                except (AttributeError, RuntimeError, TypeError):
+                    visible_garden_shell = True
+            dashboard = getattr(self.app, "dashboard", None)
+            try:
+                dashboard_hidden = bool(
+                    dashboard is None or not dashboard.isVisible()
+                )
+            except RuntimeError:
+                dashboard_hidden = True
+            home_web = getattr(mw, "web", None)
+            try:
+                settled = bool(
+                    str(getattr(mw, "state", "")) == "deckBrowser"
+                    and home_web is not None
+                    and home_web.isVisible()
+                    and dashboard_hidden
+                    and not visible_garden_shell
+                )
+            except RuntimeError:
+                settled = False
+            settle_samples["count"] = (
+                settle_samples["count"] + 1 if settled else 0
+            )
+            return settle_samples["count"] >= 2
+
+        # WebEngine and deferred native-widget deletion can outlive the first
+        # hidden-state event. Enter Reviewer only after two stable Home
+        # samples on later event turns; synchronous transitions here have
+        # intermittently terminated the disposable macOS process.
+        QTimer.singleShot(
+            280,
+            lambda: self._wait_for(
+                reviewer_entry_settled,
+                enter_reviewer,
+                tries=40,
+                failure_label=label,
+                failure_reason=(
+                    "The deck browser did not settle before Reviewer entry"
+                ),
+                on_error=failure_cleanup,
             ),
-            tries=100,
-            failure_label=label,
-            failure_reason="The real Anki Reviewer did not become ready",
-            on_error=failure_cleanup,
         )
 
-    @staticmethod
-    def _leave_capture_reviewer() -> None:
+    def _leave_capture_reviewer(self) -> None:
         """Return the shared main WebEngine to a stable non-Reviewer page."""
 
         try:
@@ -23024,6 +32330,8 @@ class _UiFaceCaptureRunner:
             logger.exception(
                 "Anki Garden capture: Reviewer cleanup transition failed"
             )
+        finally:
+            self._restore_reviewer_capture_window()
 
     def _capture_reviewer_find_feedback(
         self,
@@ -23070,6 +32378,12 @@ class _UiFaceCaptureRunner:
                 registered_cleanup()
                 self._next_after(180)
                 return
+            ensure_hud = getattr(handler, "_ensure_reviewer_hud", None)
+            if callable(ensure_hud):
+                ensure_hud(force_collapsed=False, force_dock="right")
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
             cleaned_up = False
             config_value: Callable[..., Any] | None = None
             config_update: Callable[..., Any] | None = None
@@ -23206,6 +32520,24 @@ class _UiFaceCaptureRunner:
                 and newest_visible_title == newest_expected_title
                 and newest_visible_message == newest_expected_message
             )
+            ordered_overlay_bounds = sorted(
+                (
+                    list(row.get("overlay_bounds", ()) or ())
+                    for row in overlay_geometries
+                    if len(list(row.get("overlay_bounds", ()) or ())) == 4
+                ),
+                key=lambda bounds: (bounds[1], bounds[0]),
+            )
+            stack_gaps = [
+                following[1] - (current[1] + current[3])
+                for current, following in zip(
+                    ordered_overlay_bounds,
+                    ordered_overlay_bounds[1:],
+                )
+            ]
+            stack_non_overlapping = bool(
+                all(gap >= 8 for gap in stack_gaps)
+            )
             stacked_requested = len(event_sequence) > 1
             stack_evidence = {
                 "requested_event_count": len(event_sequence),
@@ -23218,6 +32550,13 @@ class _UiFaceCaptureRunner:
                 "newest_visible_title": newest_visible_title,
                 "newest_visible_message": newest_visible_message,
                 "newest_event_visible": newest_event_visible,
+                "overlay_bounds": ordered_overlay_bounds,
+                "stack_gaps": stack_gaps,
+                "stack_non_overlapping": stack_non_overlapping,
+                "reviewer_reserved_zones_passed": all(
+                    row.get("reserved_zone_passed", False)
+                    for row in overlay_geometries
+                ),
                 "passed": bool(
                     not stacked_requested
                     or (
@@ -23225,8 +32564,9 @@ class _UiFaceCaptureRunner:
                         and len(visible_toasts) == 2
                         and len(summary_toasts) == 1
                         and len(regular_toasts) == 1
-                        and summary_copy == "+5 more rewards ›"
+                        and summary_copy == "+5 more rewards"
                         and newest_event_visible
+                        and stack_non_overlapping
                         and all(
                             row.get("passed", False)
                             for row in overlay_geometries
@@ -23237,6 +32577,12 @@ class _UiFaceCaptureRunner:
             reviewer_dom_identity = dict(
                 getattr(self, "_active_reviewer_dom_audit", {}) or {}
             )
+            hud = getattr(handler, "_reviewer_hud", None)
+            reviewer_hud_geometry = self._reviewer_hud_geometry_audit(
+                label,
+                hud,
+            )
+            reviewer_window_mode = self._home_fullscreen_window_evidence()
             passed = bool(
                 rendered
                 and toast is not None
@@ -23250,6 +32596,8 @@ class _UiFaceCaptureRunner:
                     False,
                 )
                 and reviewer_dom_identity.get("ready", False)
+                and reviewer_hud_geometry.get("passed", False)
+                and reviewer_window_mode.get("passed", False)
             )
             self._capture_annotations[label] = {
                 **fixture_annotation,
@@ -23266,6 +32614,14 @@ class _UiFaceCaptureRunner:
                 "toast_visible": bool(toast is not None and toast.isVisible()),
                 "reviewer_overlay_geometry": overlay_geometry,
                 "reviewer_overlay_geometries": overlay_geometries,
+                "reviewer_hud_geometry": reviewer_hud_geometry,
+                "reviewer_hud_visible": bool(
+                    hud is not None and hud.isVisible()
+                ),
+                "reviewer_window_mode": reviewer_window_mode,
+                "reviewer_window_screen_filling": bool(
+                    reviewer_window_mode.get("passed", False)
+                ),
                 "reviewer_stack": stack_evidence,
                 "passed": passed,
             }
@@ -23294,6 +32650,7 @@ class _UiFaceCaptureRunner:
                         and time.perf_counter() - reviewer_cleanup["left_at"]
                         >= 1.2
                     ),
+                    cleanup_timeout_ms=2600,
                     close_ms=760,
                     next_ms=1120,
                 )
@@ -23306,6 +32663,1214 @@ class _UiFaceCaptureRunner:
             ready,
             on_error=registered_cleanup,
         )
+
+    def _capture_reviewer_hud_expanded(self) -> None:
+        """Capture one clean, maximized Reviewer with the expanded HUD."""
+
+        from ..models.state import CardEffectBatch, Fertilizer
+
+        label = "reviewer-hud-expanded"
+        snapshot, plant_id = self._prepare_growth_capture_fixture(populated=True)
+        state = self.app.storage.state
+        plant = next(
+            candidate for candidate in state.plants
+            if str(getattr(candidate, "plant_id", "")) == plant_id
+        )
+        plant.name = "Juniper of the Moonlit Library Garden"
+        plant.name_customized = True
+        current_seconds = max(
+            0.0,
+            float(self.app.storage.current_time_ms()) / 1_000,
+        )
+        plant.fertilizer = Fertilizer(
+            "quality",
+            2,
+            current_seconds + 84 * 60,
+            current_seconds,
+        )
+        plant.booster_card_batches = [CardEffectBatch(
+            "booster_potion",
+            500,
+            100,
+            38,
+            source_event_key="capture-hud-booster",
+        )]
+        state.stored_growth_units = 1_250
+        day_value = str(state.daily_stats.day)
+        completion = state.daily_completion
+        completion.scheduler_day = day_value
+        completion.status = "in_progress"
+        completion.starting_required_cards = 194
+        completion.starting_required_cards_completed = 176
+        completion.remaining_required_reviews = 18
+        completion.remaining_learning_steps = 0
+        completion.future_learning_steps_before_cutoff = 0
+        completion.next_learning_due_at_ms = 0
+        completion.cards_completed_today = 176
+        completion.reward_claimed = False
+        state.daily_stats.reviewed = 176
+        state.garden_find_daily_counts = {day_value: 2}
+        state.garden_find_drought_count = 52
+        state.currency_balance = 248
+        state.streak_days = 14
+        state.selected_weather = "gentle_rain"
+        state.selected_background = "spring"
+        schedule = state.daily_loadout
+        schedule.scheduler_day = day_value
+        schedule.locked_at_ms = max(1, int(self.app.storage.current_time_ms()))
+        schedule.weather_id = "gentle_rain"
+        schedule.scenery_id = "spring"
+        schedule.queued_weather_id = ""
+        schedule.queued_scenery_id = ""
+
+        restored = False
+        reviewer_left_at = 0.0
+
+        def cleanup() -> None:
+            nonlocal restored, reviewer_left_at
+            if restored:
+                return
+            restored = True
+            handler = getattr(self.app, "reviewer_hooks", None)
+            state_cleanup = getattr(handler, "on_state_change", None)
+            if callable(state_cleanup):
+                state_cleanup("capture-cleanup")
+            self._leave_capture_reviewer()
+            reviewer_left_at = time.perf_counter()
+            self._restore_growth_capture_fixture(snapshot)
+
+        def ready() -> None:
+            handler = getattr(self.app, "reviewer_hooks", None)
+            ensure_hud = getattr(handler, "_ensure_reviewer_hud", None)
+            if not callable(ensure_hud):
+                self._failures.append({
+                    "label": label,
+                    "reason": "Reviewer HUD handler was unavailable",
+                })
+                cleanup()
+                self._next_after(180)
+                return
+            ensure_hud(force_collapsed=False, force_dock="right")
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+
+            def matrix_ready(
+                viewport_matrix: dict[str, Any],
+                content_matrix: dict[str, Any],
+                resilience_matrix: dict[str, Any],
+            ) -> None:
+                def hud_ready() -> bool:
+                    hud = getattr(handler, "_reviewer_hud", None)
+                    audit = self._reviewer_hud_geometry_audit(label, hud)
+                    self._capture_annotations[label] = {
+                        "reviewer_hud_visible": bool(
+                            hud is not None and hud.isVisible()
+                        ),
+                        "reviewer_hud_geometry": audit,
+                        "reviewer_hud_viewport_matrix": viewport_matrix,
+                        "reviewer_hud_content_matrix": content_matrix,
+                        "reviewer_hud_resilience_matrix": resilience_matrix,
+                        "reviewer_dom_identity": dict(
+                            getattr(self, "_active_reviewer_dom_audit", {}) or {}
+                        ),
+                        "reviewer_window_mode": dict(
+                            audit.get("window_mode", {}) or {}
+                        ),
+                        "reviewer_window_screen_filling": bool(
+                            dict(audit.get("window_mode", {}) or {}).get(
+                                "passed",
+                                False,
+                            )
+                        ),
+                        "passed": bool(
+                            audit.get("passed", False)
+                            and viewport_matrix.get("passed", False)
+                            and content_matrix.get("passed", False)
+                            and resilience_matrix.get("passed", False)
+                        ),
+                    }
+                    return bool(self._capture_annotations[label]["passed"])
+
+                def capture_ready() -> None:
+                    self._capture_and_advance(
+                        label,
+                        mw,
+                        capture_delay_ms=520,
+                        close_callback=cleanup,
+                        cleanup_predicate=lambda: bool(
+                            restored
+                            and str(getattr(mw, "state", "")) == "deckBrowser"
+                            and reviewer_left_at > 0.0
+                            and time.perf_counter() - reviewer_left_at >= 1.2
+                        ),
+                        cleanup_timeout_ms=2600,
+                        close_ms=760,
+                        next_ms=1120,
+                    )
+
+                self._wait_for(
+                    hud_ready,
+                    capture_ready,
+                    tries=100,
+                    failure_label=label,
+                    failure_reason=(
+                        "Expanded Reviewer HUD did not reach bounded geometry"
+                    ),
+                    on_error=cleanup,
+                )
+
+            self._exercise_reviewer_hud_acceptance_matrix(
+                label,
+                handler,
+                matrix_ready,
+                cleanup,
+            )
+
+        self._with_capture_reviewer(label, ready, on_error=cleanup)
+
+    def _capture_session_summary_after_review(self) -> None:
+        """Capture the canonical post-review summary over a maximized Home."""
+
+        from ..models.state import RewardReceipt
+        from ..ui.session_summary import (
+            BoosterSnapshot,
+            CoinAward,
+            EffectRow,
+            EffectsSnapshot,
+            EnvironmentDiscovery,
+            FertilizerSnapshot,
+            PlantGrowthTotal,
+            PlantMilestone,
+            ReviewContinuationTarget,
+            SessionDaySummary,
+            SessionSummaryPayload,
+            StandardFind,
+            StoredGrowthTotal,
+            TodayCardsSnapshot,
+        )
+
+        label = "session-summary-after-review"
+        self._close_top_level_dialogs()
+        self._close_dashboard()
+        handler = getattr(self.app, "reviewer_hooks", None)
+        if handler is None:
+            self._failures.append({
+                "label": label,
+                "reason": "Session Summary handler was unavailable",
+            })
+            self._next_after(180)
+            return
+
+        plant = self.app.engine.active_plant()
+        plant_id = str(getattr(plant, "plant_id", "") or "capture-summary-plant")
+        plant_name = str(getattr(plant, "name", "") or "Juniper")
+        species_name = str(getattr(plant, "species", "") or "Bonsai").replace(
+            "_",
+            " ",
+        ).title()
+        art_asset = ""
+        full_bloom_art_asset = ""
+        if plant is not None:
+            try:
+                asset = self.app.engine.resolve_plant_asset(
+                    str(getattr(plant, "species", "") or ""),
+                    str(getattr(plant, "growth_stage", "seed") or "seed"),
+                )
+                art_asset = str(getattr(asset, "path", "") or "")
+            except Exception:
+                art_asset = ""
+        try:
+            full_bloom_asset = self.app.engine.resolve_plant_asset(
+                "wisteria",
+                "rare",
+            )
+            full_bloom_art_asset = str(
+                getattr(full_bloom_asset, "path", "") or ""
+            )
+        except Exception:
+            full_bloom_art_asset = art_asset
+
+        capture_cards_completed = 126
+        capture_home_new_cards = 1
+        capture_home_learn_cards = 0
+        capture_home_due_cards = 18
+        capture_cards_remaining = (
+            capture_home_new_cards
+            + capture_home_learn_cards
+            + capture_home_due_cards
+        )
+        capture_today_cards_total = (
+            capture_cards_completed + capture_cards_remaining
+        )
+        now_seconds = max(0, int(time.time()))
+        start_effects = EffectsSnapshot(
+            fertilizers=(FertilizerSnapshot(
+                "capture-fertilizer",
+                "Quality Fertilizer",
+                3_600,
+                plant_id,
+                plant_name,
+                expires_at_epoch_seconds=now_seconds + 3_600,
+            ),),
+            boosters=(BoosterSnapshot(
+                "capture-booster",
+                64,
+                "Booster Potion",
+                plant_id,
+                plant_name,
+            ),),
+        )
+        end_effects = EffectsSnapshot(
+            fertilizers=(FertilizerSnapshot(
+                "capture-fertilizer",
+                "Quality Fertilizer",
+                1_920,
+                plant_id,
+                plant_name,
+                expires_at_epoch_seconds=now_seconds + 1_920,
+            ),),
+            boosters=(BoosterSnapshot(
+                "capture-booster",
+                38,
+                "Booster Potion",
+                plant_id,
+                plant_name,
+            ),),
+        )
+        segment = SessionDaySummary(
+            anki_day_id="2026-08-28",
+            started_at="2026-08-28T09:00:00+00:00",
+            ended_at="2026-08-28T09:42:00+00:00",
+            cards_completed=capture_cards_completed,
+            today_cards_start=TodayCardsSnapshot(
+                "in_progress",
+                cards_remaining=capture_today_cards_total,
+                cards_completed=0,
+                cards_total=capture_today_cards_total,
+                currently_due_cards=capture_today_cards_total,
+                kind="reviewable",
+                scope="all_decks",
+                scope_label="All decks",
+                contributing_deck_count=1,
+            ),
+            today_cards_end=TodayCardsSnapshot(
+                "in_progress",
+                cards_remaining=capture_cards_remaining,
+                cards_completed=capture_cards_completed,
+                cards_total=capture_today_cards_total,
+                currently_due_cards=capture_cards_remaining,
+                kind="reviewable",
+                scope="all_decks",
+                scope_label="All decks",
+                contributing_deck_count=1,
+                can_continue_reviews=True,
+                continuation_target=ReviewContinuationTarget(
+                    "deck",
+                    1,
+                    "Default",
+                ),
+            ),
+            plant_growth_total_units=148_600,
+            plant_growth_by_plant=(PlantGrowthTotal(
+                plant_id,
+                plant_name,
+                species_name,
+                art_asset,
+                148_600,
+            ),),
+            shared_growth_total_units=59_400,
+            shared_growth_by_plant=(
+                PlantGrowthTotal(
+                    "capture-full-bloom-wisteria",
+                    "Wisteria",
+                    "Wisteria",
+                    full_bloom_art_asset,
+                    19_800,
+                ),
+                PlantGrowthTotal(
+                    "capture-shared-sage",
+                    "Sage",
+                    "Sunflower",
+                    art_asset,
+                    19_800,
+                ),
+                PlantGrowthTotal(
+                    "capture-shared-moss",
+                    "Moss",
+                    "Succulent",
+                    art_asset,
+                    19_800,
+                ),
+            ),
+            stored_growth=StoredGrowthTotal(1_250, 1_250, 0),
+            garden_coins_earned=67,
+            coin_sources=(
+                CoinAward(
+                    "capture-coins-reviews",
+                    "review",
+                    "Review rewards",
+                    17,
+                    event_key="capture-coins-reviews",
+                    transaction_id="capture-summary-review-transaction",
+                    source_id="capture-summary-reviews",
+                    correlation_id="capture-summary-review-rewards",
+                    included_in_total=True,
+                ),
+                CoinAward(
+                    "capture-coins-full-bloom",
+                    "full_bloom_bonus",
+                    "Full Bloom bonus",
+                    50,
+                    event_key="capture-coins-full-bloom",
+                    transaction_id="capture-summary-milestone-transaction",
+                    source_id="capture-full-bloom-wisteria",
+                    correlation_id="capture-full-bloom",
+                    included_in_total=True,
+                ),
+            ),
+            standard_finds=(
+                StandardFind(
+                    "capture-find-small-charge",
+                    "find_small_charge",
+                    "Charged Seed",
+                    "Uncommon",
+                    "inventory_item",
+                    "+1 Small Growth Charge",
+                    1,
+                    "ui_growth_charge_small",
+                    item_id="growth_charge_small",
+                    quantity=1,
+                ),
+                StandardFind(
+                    "capture-find-garden-pouch",
+                    "find_coin_pouch",
+                    "Garden Pouch",
+                    "Common",
+                    "coins",
+                    "+4 Garden Coins",
+                    4,
+                    "garden_pouch",
+                    quantity=1,
+                ),
+                StandardFind(
+                    "capture-find-morning-dew",
+                    "find_morning_dew",
+                    "Morning Dew",
+                    "Common",
+                    "growth",
+                    "+40 Growth",
+                    40,
+                    "morning_dew",
+                    quantity=1,
+                ),
+            ),
+            total_finds=3,
+            milestones=(PlantMilestone(
+                "capture-full-bloom",
+                "capture-full-bloom-wisteria",
+                "Wisteria",
+                "full_bloom",
+                "2026-08-28T09:38:00+00:00",
+                full_bloom_art_asset,
+                previous_stage="flowering",
+                new_stage="rare",
+                stage_path=("flowering", "rare"),
+                coin_reward=50,
+                coin_award_event_ids=("capture-coins-full-bloom",),
+                coin_included_in_total=True,
+            ),),
+            environment_discoveries=(EnvironmentDiscovery(
+                "capture-environment",
+                "firefly_lantern",
+                "Firefly Lantern",
+                "garden_feature",
+                "Rare",
+                "firefly_lantern",
+                "A warm lantern glow with drifting fireflies",
+                "2026-08-28T09:40:00+00:00",
+                unlock_category="garden_item",
+            ),),
+            reward_receipts=(
+                RewardReceipt(
+                    event_key="capture-coins-reviews",
+                    reward_type="coins",
+                    source="review",
+                    source_id="capture-summary-reviews",
+                    scheduler_day="2026-08-28",
+                    correlation_id="capture-summary-review-rewards",
+                    occurred_at="2026-08-28T09:37:00+00:00",
+                    amount=17,
+                    title="Review rewards",
+                    description="Included in total Garden Coins",
+                ),
+                RewardReceipt(
+                    event_key="capture-coins-full-bloom",
+                    reward_type="coins",
+                    source="full_bloom_bonus",
+                    source_id="capture-full-bloom-wisteria",
+                    scheduler_day="2026-08-28",
+                    correlation_id="capture-full-bloom",
+                    occurred_at="2026-08-28T09:38:00+00:00",
+                    amount=50,
+                    plant_id="capture-full-bloom-wisteria",
+                    title="Full Bloom bonus",
+                    description="Included in total Garden Coins",
+                ),
+                RewardReceipt(
+                    event_key="capture-full-bloom-item",
+                    reward_type="inventory_item",
+                    source="full_bloom",
+                    source_id="capture-full-bloom-wisteria",
+                    scheduler_day="2026-08-28",
+                    correlation_id="capture-full-bloom",
+                    occurred_at="2026-08-28T09:38:00+00:00",
+                    amount=1,
+                    item_id="growth_charge_small",
+                    plant_id="capture-full-bloom-wisteria",
+                    title="Small Growth Charge",
+                    description="Added to inventory",
+                ),
+            ),
+            effects_at_start=start_effects,
+            effects_at_end=end_effects,
+            effects_remaining=(
+                EffectRow(
+                    "fertilizer",
+                    "capture-fertilizer",
+                    "Quality Fertilizer",
+                    "32 min left",
+                    plant_id=plant_id,
+                    remaining_seconds=1_920,
+                    expires_at_epoch_seconds=now_seconds + 1_920,
+                ),
+                EffectRow(
+                    "booster",
+                    "capture-booster",
+                    "Booster Potion",
+                    "38 cards left",
+                    plant_id=plant_id,
+                    remaining_cards=38,
+                ),
+            ),
+        )
+        payload = SessionSummaryPayload(
+            "capture-local-session",
+            segment.started_at,
+            segment.ended_at,
+            (segment,),
+            capture_cards_completed,
+        )
+        cleaned_up = False
+        cleanup_started_at = 0.0
+        summary_card: Any | None = None
+        restore_expectation: dict[str, Any] = {}
+
+        def cleanup() -> None:
+            nonlocal cleaned_up, cleanup_started_at, restore_expectation
+            if cleaned_up:
+                return
+            cleaned_up = True
+            restore_expectation = dict(
+                getattr(self, "_reviewer_capture_window_state", {}) or {}
+            )
+            hide = getattr(handler, "_hide_session_summary", None)
+            if callable(hide):
+                hide(clear_pending=True)
+            self._restore_reviewer_capture_window()
+            cleanup_started_at = time.perf_counter()
+
+        def cleanup_settled() -> bool:
+            if (
+                not cleaned_up
+                or cleanup_started_at <= 0.0
+                or time.perf_counter() - cleanup_started_at < 0.2
+                or not self._capture_widget_disposed(summary_card)
+                or getattr(self, "_reviewer_capture_window_state", None)
+                is not None
+            ):
+                return False
+            try:
+                expected_fullscreen = bool(
+                    restore_expectation.get("fullscreen", False)
+                )
+                expected_maximized = bool(
+                    restore_expectation.get("maximized", False)
+                )
+                if bool(mw.isFullScreen()) != expected_fullscreen:
+                    return False
+                if bool(mw.isMaximized()) != expected_maximized:
+                    return False
+                if expected_fullscreen or expected_maximized:
+                    return True
+                expected_bounds = tuple(
+                    restore_expectation.get("normal_bounds", ()) or ()
+                )
+                if len(expected_bounds) != 4:
+                    return True
+                current = mw.normalGeometry()
+                current_bounds = (
+                    int(current.x()),
+                    int(current.y()),
+                    int(current.width()),
+                    int(current.height()),
+                )
+                return all(
+                    abs(int(actual) - int(expected)) <= 8
+                    for actual, expected in zip(
+                        current_bounds,
+                        expected_bounds,
+                    )
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return False
+
+        def render_summary() -> None:
+            # The Session Summary payload is intentionally synthetic. Align
+            # Anki's visible deck-browser study line and New/Learn/Due counts with that
+            # fixture so the release screenshot cannot claim 126 completed
+            # cards alongside zero studied or zero reviewable cards. This only
+            # edits the disposable capture DOM;
+            # production Session Summary data still comes exclusively from
+            # committed local review transactions.
+            study_line_audit: dict[str, Any] = {"passed": False}
+
+            def present_summary() -> None:
+                handler._pending_session_summary = payload
+                handler._present_pending_session_summary()
+
+                def shell_ready() -> bool:
+                    nonlocal summary_card
+                    card = getattr(handler, "_session_summary_card", None)
+                    if card is not None:
+                        summary_card = card
+                    if card is None or not card.isVisible():
+                        return False
+                    names = {
+                        str(candidate.objectName() or "")
+                        for candidate in (
+                            card,
+                            *tuple(card.findChildren(QWidget)),
+                        )
+                    }
+                    required_names_present = {
+                        "ankiGardenSessionHeader",
+                        "ankiGardenSessionScroll",
+                        "ankiGardenSessionBody",
+                        "ankiGardenSessionFooter",
+                        "ankiGardenSessionTodayProgress",
+                        "ankiGardenSessionBreakdownToggle",
+                    } <= names
+                    progress = next((
+                        candidate
+                        for candidate in card.findChildren(QWidget)
+                        if str(candidate.objectName() or "")
+                        == "ankiGardenSessionTodayProgress"
+                    ), None)
+                    try:
+                        progress_finished = bool(
+                            progress is not None
+                            and int(progress.value()) == capture_cards_completed
+                            and int(progress.maximum()) == capture_today_cards_total
+                        )
+                    except (AttributeError, RuntimeError, TypeError, ValueError):
+                        progress_finished = False
+                    animations_finished = True
+                    for animation in tuple(
+                        getattr(card, "_animations", ()) or ()
+                    ):
+                        try:
+                            state = animation.state()
+                            animations_finished = bool(
+                                animations_finished
+                                and int(getattr(state, "value", state)) == 0
+                            )
+                        except (AttributeError, RuntimeError, TypeError, ValueError):
+                            animations_finished = False
+                    return bool(
+                        required_names_present
+                        and progress_finished
+                        and animations_finished
+                    )
+
+                def matrix_ready(
+                    matrix: dict[str, Any],
+                    audit: dict[str, Any],
+                ) -> None:
+                    window_mode = self._home_fullscreen_window_evidence()
+                    content_matrix = dict(
+                        matrix.get("content_states", {}) or {}
+                    )
+                    self._capture_annotations[label] = {
+                        "session_summary_visible": bool(
+                            summary_card is not None
+                            and summary_card.isVisible()
+                        ),
+                        "session_summary_geometry": audit,
+                        "session_summary_copy": str(audit.get("copy", "")),
+                        "session_summary_viewport_matrix": matrix,
+                        "session_summary_content_matrix": content_matrix,
+                        "home_study_line": dict(study_line_audit),
+                        "home_fullscreen_window": window_mode,
+                        "passed": bool(
+                            study_line_audit.get("passed", False)
+                            and audit.get("passed", False)
+                            and matrix.get("passed", False)
+                            and content_matrix.get("passed", False)
+                            and window_mode.get("passed", False)
+                        ),
+                    }
+                    self._capture_and_advance(
+                        label,
+                        mw,
+                        capture_delay_ms=520,
+                        close_callback=cleanup,
+                        cleanup_predicate=cleanup_settled,
+                        close_ms=760,
+                        next_ms=1040,
+                    )
+
+                def begin_matrix() -> None:
+                    if summary_card is None:
+                        cleanup()
+                        self._failures.append({
+                            "label": label,
+                            "reason": "Session Summary card disappeared before responsive audit",
+                        })
+                        self._next_after(120)
+                        return
+                    self._exercise_session_summary_viewports(
+                        label,
+                        summary_card,
+                        matrix_ready,
+                        cleanup,
+                    )
+
+                self._wait_for(
+                    shell_ready,
+                    begin_matrix,
+                    tries=100,
+                    failure_label=label,
+                    failure_reason="Session Summary shell did not expose its capture semantics",
+                    on_error=cleanup,
+                )
+
+            web = getattr(mw, "web", None)
+            page_getter = getattr(web, "page", None)
+            page = page_getter() if callable(page_getter) else None
+            run_javascript = getattr(page, "runJavaScript", None)
+            evaluate = getattr(web, "evalWithCallback", None)
+            script = r"""
+                (() => {
+                  const replacement =
+                    'Studied 126 cards in 42 minutes today (20s/card)';
+                  const pattern = /Studied\s+\d+\s+cards?\s+in[\s\S]*?today/i;
+                  const normalizedText = (element) => String(
+                    element.textContent || '',
+                  ).replace(/[\u2066-\u2069]/g, '').trim();
+                  const elements = Array.from(
+                    document.body ? document.body.querySelectorAll('*') : [],
+                  ).filter((element) => pattern.test(normalizedText(element)));
+                  elements.sort((left, right) => {
+                    const childDifference =
+                      left.children.length - right.children.length;
+                    if (childDifference) return childDifference;
+                    return String(left.textContent || '').length
+                      - String(right.textContent || '').length;
+                  });
+                  const target = elements[0] || null;
+                  if (!target) {
+                    return {
+                      matched: false,
+                      bodyText: String(
+                        document.body ? document.body.innerText : '',
+                      ).slice(0, 2000),
+                    };
+                  }
+                  const before = String(target.textContent || '').trim();
+                  target.textContent = replacement;
+                  const headers = Array.from(
+                    document.querySelectorAll('table th'),
+                  ).map((cell) => normalizedText(cell).toLowerCase());
+                  const newIndex = headers.findIndex((value) => value === 'new');
+                  const learnIndex = headers.findIndex((value) => value === 'learn');
+                  const dueIndex = headers.findIndex((value) => value === 'due');
+                  const deckRows = Array.from(document.querySelectorAll('table tr'));
+                  const deckRow = deckRows.find((row) => {
+                    const cells = Array.from(row.querySelectorAll('td'));
+                    return cells.length > 0 && /^(default|anki garden capture)$/i.test(
+                      normalizedText(cells[0]),
+                    );
+                  }) || null;
+                  const deckCells = deckRow
+                    ? Array.from(deckRow.querySelectorAll('td'))
+                    : [];
+                  const countCell = (index, selector) => (
+                    index >= 0 && index < deckCells.length
+                      ? deckCells[index]
+                      : deckRow
+                        ? deckRow.querySelector(selector)
+                        : null
+                  );
+                  const newCell = countCell(newIndex, '.new');
+                  const learnCell = countCell(learnIndex, '.learn');
+                  const dueCell = countCell(dueIndex, '.due');
+                  const newBefore = newCell
+                    ? normalizedText(newCell)
+                    : '';
+                  const learnBefore = learnCell
+                    ? normalizedText(learnCell)
+                    : '';
+                  const dueBefore = dueCell
+                    ? normalizedText(dueCell)
+                    : '';
+                  if (newCell) newCell.textContent = '1';
+                  if (learnCell) learnCell.textContent = '0';
+                  if (dueCell) dueCell.textContent = '18';
+                  const newAfter = newCell ? normalizedText(newCell) : '';
+                  const learnAfter = learnCell ? normalizedText(learnCell) : '';
+                  const dueAfter = dueCell ? normalizedText(dueCell) : '';
+                  return {
+                    matched: true,
+                    before,
+                    after: String(target.textContent || '').trim(),
+                    deckCountsMatched: Boolean(newCell && learnCell && dueCell),
+                    newBefore,
+                    learnBefore,
+                    dueBefore,
+                    newAfter,
+                    learnAfter,
+                    dueAfter,
+                    remainingAfter: [newAfter, learnAfter, dueAfter]
+                      .map((value) => Number.parseInt(value, 10) || 0)
+                      .reduce((total, value) => total + value, 0),
+                  };
+                })();
+            """
+
+            def align_study_line(tries: int = 30) -> None:
+                if not callable(run_javascript) and not callable(evaluate):
+                    self._failures.append({
+                        "label": label,
+                        "reason": "Session Summary Home copy could not be aligned without WebEngine",
+                    })
+                    cleanup()
+                    self._next_after(120)
+                    return
+
+                settled = False
+
+                def resolved(result: object) -> None:
+                    nonlocal settled, study_line_audit
+                    if settled:
+                        return
+                    settled = True
+                    observed = dict(result) if isinstance(result, dict) else {}
+                    study_line_audit = {
+                        **observed,
+                        "passed": bool(
+                            observed.get("matched") is True
+                            and observed.get("after")
+                            == "Studied 126 cards in 42 minutes today (20s/card)"
+                            and observed.get("deckCountsMatched") is True
+                            and observed.get("newAfter") == "1"
+                            and observed.get("learnAfter") == "0"
+                            and observed.get("dueAfter") == "18"
+                            and observed.get("remainingAfter")
+                            == capture_cards_remaining
+                        ),
+                    }
+                    if study_line_audit["passed"]:
+                        present_summary()
+                        return
+                    if tries > 0:
+                        QTimer.singleShot(120, lambda: align_study_line(tries - 1))
+                        return
+                    self._failures.append({
+                        "label": label,
+                        "reason": (
+                            "Session Summary Home study line was unavailable: "
+                            f"{study_line_audit!r}"
+                        ),
+                    })
+                    cleanup()
+                    self._next_after(120)
+
+                try:
+                    if callable(run_javascript):
+                        try:
+                            run_javascript(script, 0, resolved)
+                        except TypeError:
+                            run_javascript(script, resolved)
+                    else:
+                        evaluate(script, resolved)
+                except Exception:
+                    resolved({})
+
+            align_study_line()
+
+        def home_ready() -> None:
+            self._maximize_reviewer_capture_window()
+
+            def maximized() -> bool:
+                return bool(self._home_fullscreen_window_evidence().get(
+                    "passed",
+                    False,
+                ))
+
+            self._wait_for(
+                maximized,
+                render_summary,
+                tries=120,
+                failure_label=label,
+                failure_reason="Session Summary Home did not reach maximized geometry",
+                on_error=cleanup,
+            )
+
+        self._switch_surface("overview")
+
+        def enter_deck_browser() -> None:
+            self._switch_surface("deckBrowser")
+            self._wait_for_home_surface(
+                "deckBrowser",
+                label,
+                home_ready,
+            )
+
+        QTimer.singleShot(500, enter_deck_browser)
+
+    def _capture_sync_rewards_summary(self) -> None:
+        """Capture one rich, committed post-sync receipt over stable Home."""
+
+        from ..models.sync_reward import (
+            SyncPlantCheckpoint,
+            SyncPlantResult,
+            SyncRewardSummary,
+        )
+        from ..ui.sync_reward_summary import SyncRewardSummaryCard
+
+        label = "sync-rewards-summary"
+        self._close_top_level_dialogs()
+        self._close_dashboard()
+
+        plant_id = "capture-sync-rose"
+        plant_name = "Rose"
+        species = "rose"
+
+        def resolved_path(resolver_name: str, *args: str) -> str:
+            resolver = getattr(self.app.engine, resolver_name, None)
+            if not callable(resolver):
+                return ""
+            try:
+                return str(getattr(resolver(*args), "path", "") or "")
+            except Exception:
+                return ""
+
+        plant_art = resolved_path(
+            "resolve_plant_asset",
+            species,
+            "flowering",
+        )
+        wisteria_art = resolved_path(
+            "resolve_plant_asset",
+            "wisteria",
+            "rare",
+        )
+        environment_art = resolved_path(
+            "resolve_garden_feature_preview_asset",
+            "firefly_lantern",
+        )
+        summary = SyncRewardSummary(
+            batch_id="capture-sync-rewards-batch",
+            anki_days=tuple(SYNC_REWARD_CAPTURE_MODEL_FACTS["anki_days"]),
+            eligible_answer_count=int(
+                SYNC_REWARD_CAPTURE_MODEL_FACTS["eligible_answer_count"]
+            ),
+            growth_total_units=int(
+                SYNC_REWARD_CAPTURE_MODEL_FACTS["growth_total_units"]
+            ),
+            plant_results=(
+                SyncPlantResult(
+                    plant_id=plant_id,
+                    display_name=plant_name,
+                    species=species,
+                    artwork_asset=plant_art,
+                    growth_delta_units=int(
+                        SYNC_REWARD_CAPTURE_MODEL_FACTS["plant_growth_units"]
+                    ),
+                    stage_before="mature",
+                    stage_after="flowering",
+                    stage_progress_before=44,
+                    stage_progress_after=68,
+                    next_stage="rare",
+                    active=True,
+                    checkpoints=(SyncPlantCheckpoint(
+                        event_id="capture-sync-checkpoint",
+                        percent=75,
+                        stage_name="Flowering",
+                        display_text="75% toward Flowering reached",
+                    ),),
+                ),
+                SyncPlantResult(
+                    plant_id="capture-sync-wisteria",
+                    display_name="Wisteria",
+                    species="wisteria",
+                    artwork_asset=wisteria_art,
+                    stage_before="flowering",
+                    stage_after="rare",
+                    stage_progress_before=92,
+                    stage_progress_after=100,
+                    fully_grown=True,
+                    stage_event_id="capture-sync-full-bloom",
+                    stage_event_text="Wisteria reached Full Bloom",
+                    full_bloom=True,
+                ),
+            ),
+            plant_growth=({
+                "plant_id": plant_id,
+                "plant_name": plant_name,
+                "plant_image": plant_art,
+                "growth_delta_units": int(
+                    SYNC_REWARD_CAPTURE_MODEL_FACTS["plant_growth_units"]
+                ),
+                "stage_before": "mature",
+                "stage_after": "flowering",
+                "stage_progress_before": 44,
+                "stage_progress_after": 68,
+                "next_stage": "rare",
+                "fully_grown": False,
+                "active": True,
+            },),
+            shared_growth_delta_units=int(
+                SYNC_REWARD_CAPTURE_MODEL_FACTS[
+                    "shared_growth_delta_units"
+                ]
+            ),
+            stored_growth_delta_units=int(
+                SYNC_REWARD_CAPTURE_MODEL_FACTS[
+                    "stored_growth_delta_units"
+                ]
+            ),
+            garden_coin_delta=int(
+                SYNC_REWARD_CAPTURE_MODEL_FACTS["garden_coin_delta"]
+            ),
+            finds=(),
+            environment_discoveries=({
+                "environment_id": "firefly_lantern",
+                "display_name": "Firefly Lantern",
+                "rarity": "Rare",
+                "preview_asset": environment_art,
+                "environment_kind": "garden_feature",
+            },),
+            progression_events=(
+                {
+                    "event_id": "capture-sync-full-bloom",
+                    "plant_id": "capture-sync-wisteria",
+                    "event_type": "full_bloom",
+                    "stage_name": "Full Bloom",
+                    "display_text": "Wisteria reached Full Bloom",
+                },
+                {
+                    "event_id": "capture-sync-checkpoint",
+                    "plant_id": plant_id,
+                    "event_type": "checkpoint",
+                    "checkpoint_name": "75% toward Flowering",
+                    "stage_name": "Flowering",
+                    "display_text": "75% toward Flowering reached",
+                },
+            ),
+            all_clear_earned=False,
+            source_batch_ids=("capture-sync-rewards-batch",),
+        )
+
+        summary_card: Any | None = None
+        focus_before: Any | None = None
+        cleaned_up = False
+        cleanup_started_at = 0.0
+        restore_expectation: dict[str, Any] = {}
+
+        def cleanup() -> None:
+            nonlocal cleaned_up, cleanup_started_at, restore_expectation
+            if cleaned_up:
+                return
+            cleaned_up = True
+            restore_expectation = dict(
+                getattr(self, "_reviewer_capture_window_state", {}) or {}
+            )
+            if summary_card is not None:
+                try:
+                    summary_card.close()
+                    summary_card.deleteLater()
+                except RuntimeError:
+                    pass
+            self._restore_reviewer_capture_window()
+            cleanup_started_at = time.perf_counter()
+
+        def cleanup_settled() -> bool:
+            if (
+                not cleaned_up
+                or cleanup_started_at <= 0.0
+                or time.perf_counter() - cleanup_started_at < 0.2
+                or not self._capture_widget_disposed(summary_card)
+                or getattr(self, "_reviewer_capture_window_state", None)
+                is not None
+            ):
+                return False
+            try:
+                expected_fullscreen = bool(
+                    restore_expectation.get("fullscreen", False)
+                )
+                expected_maximized = bool(
+                    restore_expectation.get("maximized", False)
+                )
+                if bool(mw.isFullScreen()) != expected_fullscreen:
+                    return False
+                if bool(mw.isMaximized()) != expected_maximized:
+                    return False
+                if expected_fullscreen or expected_maximized:
+                    return True
+                expected_bounds = tuple(
+                    restore_expectation.get("normal_bounds", ()) or ()
+                )
+                if len(expected_bounds) != 4:
+                    return True
+                current = mw.normalGeometry()
+                current_bounds = (
+                    int(current.x()),
+                    int(current.y()),
+                    int(current.width()),
+                    int(current.height()),
+                )
+                return all(
+                    abs(int(actual) - int(expected)) <= 8
+                    for actual, expected in zip(
+                        current_bounds,
+                        expected_bounds,
+                    )
+                )
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return False
+
+        def render_summary() -> None:
+            nonlocal summary_card, focus_before
+            parent = getattr(mw, "web", None)
+            if parent is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Sync rewards summary had no main WebView parent",
+                })
+                cleanup()
+                self._next_after(120)
+                return
+            focus_before = QApplication.focusWidget()
+            try:
+                summary_card = SyncRewardSummaryCard(
+                    parent,
+                    summary,
+                    engine=self.app.engine,
+                    animations_enabled=False,
+                )
+                summary_card.show()
+                summary_card.raise_()
+                app = QApplication.instance()
+                if app is not None:
+                    app.processEvents()
+            except Exception:
+                cleanup()
+                raise
+
+            def card_ready() -> bool:
+                audit = self._sync_reward_summary_geometry_audit(
+                    summary_card
+                )
+                current_focus = QApplication.focusWidget()
+                nonmodal = dict(audit.get("nonmodal", {}) or {})
+                nonmodal["focus_preserved"] = current_focus is focus_before
+                nonmodal_passed = bool(
+                    audit.get("nonmodal_passed", False)
+                    and nonmodal["focus_preserved"]
+                )
+                window_mode = self._home_fullscreen_window_evidence()
+                passed = bool(
+                    audit.get("passed", False)
+                    and nonmodal_passed
+                    and window_mode.get("passed", False)
+                )
+                self._capture_annotations[label] = {
+                    "sync_reward_summary_visible": bool(
+                        summary_card is not None
+                        and summary_card.isVisible()
+                    ),
+                    "sync_reward_summary_geometry": audit,
+                    "sync_reward_summary_copy": {
+                        "text": str(audit.get("copy", "")),
+                        "subtitle": summary.subtitle,
+                        "passed": bool(audit.get("copy_passed", False)),
+                    },
+                    "sync_reward_summary_content": {
+                        "facts": dict(audit.get("content", {}) or {}),
+                        "passed": bool(audit.get("content_passed", False)),
+                    },
+                    "sync_reward_summary_nonmodal": {
+                        **nonmodal,
+                        "passed": nonmodal_passed,
+                    },
+                    "home_fullscreen_window": window_mode,
+                    "passed": passed,
+                }
+                return passed
+
+            def capture_ready() -> None:
+                self._capture_and_advance(
+                    label,
+                    mw,
+                    capture_delay_ms=420,
+                    close_callback=cleanup,
+                    cleanup_predicate=cleanup_settled,
+                    close_ms=680,
+                    next_ms=960,
+                )
+
+            self._wait_for(
+                card_ready,
+                capture_ready,
+                tries=100,
+                failure_label=label,
+                failure_reason=(
+                    "Sync rewards summary did not reach centered nonmodal geometry"
+                ),
+                on_error=cleanup,
+            )
+
+        def home_ready() -> None:
+            self._maximize_reviewer_capture_window()
+            self._wait_for(
+                lambda: bool(
+                    self._home_fullscreen_window_evidence().get(
+                        "passed",
+                        False,
+                    )
+                ),
+                render_summary,
+                tries=120,
+                failure_label=label,
+                failure_reason=(
+                    "Sync rewards summary Home did not reach maximized geometry"
+                ),
+                on_error=cleanup,
+            )
+
+        self._switch_surface("overview")
+
+        def enter_deck_browser() -> None:
+            self._switch_surface("deckBrowser")
+            self._wait_for_home_surface(
+                "deckBrowser",
+                label,
+                home_ready,
+            )
+
+        QTimer.singleShot(500, enter_deck_browser)
 
     def _capture_reviewer_find_common(self) -> None:
         self._capture_reviewer_find_feedback(
@@ -23326,23 +33891,535 @@ class _UiFaceCaptureRunner:
             ),
         )
 
-    def _capture_reviewer_find_stacked_sync(self) -> None:
-        self._capture_reviewer_find_feedback(
-            "reviewer-find-stacked-sync",
-            lambda: self._prepare_canonical_reviewer_feedback_fixture(
-                find_reward_ids=(
-                    "find_morning_dew",
-                    "find_coin_pouch",
-                    "find_sun_patch",
-                    "find_coin_cache",
-                    "find_growth_burst",
-                    "find_small_charge",
-                ),
-                include_daily_activity=True,
-                achievement_ids=("retention_100",),
-                stack_individual=True,
-            ),
+    def _capture_reviewer_reward_dock_bundle(self) -> None:
+        """Capture one committed seven-result bundle inside the mounted HUD."""
+
+        from ..models.state import RewardReceipt
+        from ..reward_presentation import project_committed_reward_bundle
+        from ..ui.session_summary import (
+            CoinAward,
+            CommittedSessionEvent,
+            EnvironmentDiscovery,
+            PlantGrowthDelta,
+            PlantMilestone,
+            SessionEndSnapshot,
+            SessionStartSnapshot,
+            SessionSummaryAccumulator,
+            StandardFind,
+            TodayCardsSnapshot,
         )
+
+        label = "reviewer-reward-dock-bundle"
+        snapshot, plant_id = self._prepare_growth_capture_fixture(populated=True)
+        state = self.app.storage.state
+        plant = next(
+            candidate for candidate in state.plants
+            if str(getattr(candidate, "plant_id", "")) == plant_id
+        )
+        plant.name = "Juniper of the Moonlit Library Garden"
+        plant.name_customized = True
+        try:
+            full_bloom_art_asset = str(
+                getattr(
+                    self.app.engine.resolve_plant_asset(
+                        str(getattr(plant, "species", "") or "bonsai"),
+                        "rare",
+                    ),
+                    "path",
+                    "",
+                )
+                or ""
+            )
+        except Exception:
+            full_bloom_art_asset = ""
+        day_value = "2026-08-28"
+        occurred_at = f"{day_value}T16:30:00+00:00"
+        bundle_id = "capture:reviewer-reward-bundle:answer-1"
+        coin_event_id = f"{bundle_id}:full-bloom-coins"
+        full_bloom_event_id = f"{bundle_id}:full-bloom"
+        coin_award = CoinAward(
+            coin_event_id,
+            "full_bloom",
+            "Full Bloom",
+            14,
+            correlation_id=bundle_id,
+        )
+        committed = CommittedSessionEvent(
+            event_id=bundle_id,
+            anki_day_id=day_value,
+            occurred_at=occurred_at,
+            plant_growth=(PlantGrowthDelta(
+                plant_id,
+                plant.name,
+                4_000,
+                str(getattr(plant, "species", "") or "Bonsai").title(),
+            ),),
+            coin_awards=(coin_award,),
+            standard_finds=(StandardFind(
+                f"{bundle_id}:find",
+                "find_morning_dew",
+                "Morning Dew",
+                "Common",
+                "growth",
+                "+40 growth",
+                40,
+                "morning_dew",
+                occurred_at,
+            ),),
+            total_finds=1,
+            milestones=(
+                PlantMilestone(
+                    full_bloom_event_id,
+                    plant_id,
+                    plant.name,
+                    "full_bloom",
+                    occurred_at,
+                    plant_class="Bonsai",
+                    previous_stage="flowering",
+                    new_stage="rare",
+                    coin_reward=14,
+                    coin_award_event_ids=(coin_event_id,),
+                    coin_included_in_total=True,
+                    plant_art_asset=full_bloom_art_asset,
+                ),
+                PlantMilestone(
+                    f"{bundle_id}:stage",
+                    plant_id,
+                    plant.name,
+                    "stage_change",
+                    occurred_at,
+                    plant_class="Bonsai",
+                    previous_stage="young",
+                    new_stage="mature",
+                ),
+                PlantMilestone(
+                    f"{bundle_id}:checkpoint",
+                    plant_id,
+                    plant.name,
+                    "checkpoint",
+                    occurred_at,
+                    plant_class="Bonsai",
+                    checkpoint_percent=75,
+                    new_stage="mature",
+                ),
+            ),
+            environment_discoveries=(
+                EnvironmentDiscovery(
+                    f"{bundle_id}:environment:firefly-lantern",
+                    "firefly_lantern",
+                    "Firefly Lantern",
+                    "garden_feature",
+                    "Rare",
+                    "firefly_lantern",
+                    "Added to Garden Decorations",
+                    occurred_at,
+                ),
+                EnvironmentDiscovery(
+                    f"{bundle_id}:environment:twilight",
+                    "verdant_twilight",
+                    "Verdant Twilight",
+                    "scenery",
+                    "Rare",
+                    "verdant_twilight",
+                    "Added to Scenery",
+                    occurred_at,
+                ),
+            ),
+            reward_receipts=(RewardReceipt(
+                event_key=f"{bundle_id}:booster",
+                reward_type="inventory_item",
+                source="achievement",
+                source_id="reviews_1000_total",
+                scheduler_day=day_value,
+                correlation_id=bundle_id,
+                occurred_at=occurred_at,
+                amount=10,
+                item_id="booster_potion",
+                title="Booster extended",
+                description="+10 cards",
+            ),),
+        )
+        bundle = project_committed_reward_bundle(committed)
+        compact = bundle.compact if bundle is not None else None
+        accumulator = SessionSummaryAccumulator(
+            session_id="capture:reviewer-reward-session",
+            started_at=f"{day_value}T16:00:00+00:00",
+            anki_day_id=day_value,
+            start_snapshot=SessionStartSnapshot(TodayCardsSnapshot(
+                "in_progress",
+                cards_remaining=1,
+                cards_completed=175,
+            )),
+        )
+        accepted = accumulator.accept_committed(committed)
+        live_session = accumulator.live_snapshot(
+            ended_at=occurred_at,
+            end_snapshot=SessionEndSnapshot(TodayCardsSnapshot(
+                "complete",
+                cards_completed=176,
+                reward_coins=10,
+            )),
+        )
+        canonical_projection_passed = bool(
+            accepted
+            and bundle is not None
+            and bundle.bundle_id == bundle_id
+            and len(bundle.all_items) == 7
+            and compact is not None
+            and compact.eyebrow == "MILESTONE REACHED"
+            and compact.hero_title == "Full Bloom achieved"
+            and compact.hero_subtitle == plant.name
+            and [summary.label for summary in compact.visible_summaries]
+            == ["1 Garden Find", "2 new discoveries"]
+            and len(compact.visible_summaries) == 2
+            and compact.visible_summaries[0].reward_type == "garden_find"
+            and bool(compact.visible_summaries[0].artwork_ref)
+            and compact.visible_summaries[1].reward_type
+            == "environment_discovery"
+            and len(compact.visible_summaries[1].artwork_refs) == 2
+            and live_session.footer_growth_units == 4_000
+            and live_session.garden_coins_earned == 14
+            and live_session.footer_find_count == 1
+        )
+
+        restored = False
+        reviewer_left_at = 0.0
+
+        def cleanup() -> None:
+            nonlocal restored, reviewer_left_at
+            if restored:
+                return
+            restored = True
+            handler = getattr(self.app, "reviewer_hooks", None)
+            state_cleanup = getattr(handler, "on_state_change", None)
+            if callable(state_cleanup):
+                state_cleanup("capture-cleanup")
+            self._leave_capture_reviewer()
+            reviewer_left_at = time.perf_counter()
+            self._restore_growth_capture_fixture(snapshot)
+
+        def ready() -> None:
+            handler = getattr(self.app, "reviewer_hooks", None)
+            ensure_hud = getattr(handler, "_ensure_reviewer_hud", None)
+            if not callable(ensure_hud) or bundle is None:
+                self._failures.append({
+                    "label": label,
+                    "reason": "Reviewer HUD or canonical reward bundle was unavailable",
+                })
+                cleanup()
+                self._next_after(180)
+                return
+            ensure_hud(force_collapsed=False, force_dock="right")
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            hud = getattr(handler, "_reviewer_hud", None)
+            update_session = getattr(hud, "update_session", None)
+            present_reward = getattr(hud, "present_reward", None)
+            if not callable(update_session) or not callable(present_reward):
+                self._failures.append({
+                    "label": label,
+                    "reason": "Mounted Reviewer HUD did not expose reward-dock updates",
+                })
+                cleanup()
+                self._next_after(180)
+                return
+            (
+                hud,
+                interaction_matrix,
+                content_matrix,
+            ) = self._exercise_reviewer_reward_interaction_matrix(
+                label,
+                handler,
+                bundle,
+                live_session,
+            )
+            reward_presented = bool(
+                interaction_matrix.get("collapsed-unseen-reward", {}).get(
+                    "presented",
+                    False,
+                )
+            )
+            if not bool(
+                interaction_matrix.get("passed", False)
+                and content_matrix.get("passed", False)
+            ):
+                failed_interactions = sorted(
+                    name
+                    for name, record in interaction_matrix.items()
+                    if name != "passed"
+                    and isinstance(record, dict)
+                    and not bool(record.get("passed", False))
+                )
+                failed_content = sorted(
+                    name
+                    for name, record in content_matrix.items()
+                    if name != "passed"
+                    and isinstance(record, dict)
+                    and not bool(record.get("passed", False))
+                )
+                self._failures.append({
+                    "label": label,
+                    "reason": (
+                        "Reviewer reward interaction matrix did not pass: "
+                        f"interaction={failed_interactions!r}; "
+                        f"content={failed_content!r}; "
+                        "interaction_details="
+                        f"{ {name: interaction_matrix.get(name) for name in failed_interactions}!r}; "
+                        "content_details="
+                        f"{ {name: content_matrix.get(name) for name in failed_content}!r}"
+                    ),
+                })
+                cleanup()
+                self._next_after(180)
+                return
+            capture_projection = getattr(
+                handler,
+                "_reviewer_hud_projection",
+                None,
+            )
+            if capture_projection is not None:
+                capture_today = replace(
+                    capture_projection.today,
+                    status="in_progress",
+                    heading="Today’s cards",
+                    primary="175 / 176",
+                    secondary=("1 card left",),
+                    progress_value=175,
+                    progress_maximum=176,
+                    remaining_count=1,
+                )
+                hud.update_projection(
+                    replace(capture_projection, today=capture_today),
+                    animate=False,
+                )
+                hud._show_reward(
+                    bundle,
+                    expanded=False,
+                    presentation="restored",
+                    minimum_hold_elapsed=True,
+                    reveal_state="settled",
+                )
+                hud._clear_celebration()
+                # Invalidate the fixture's already-scheduled celebration
+                # callback so the calm Full Bloom state remains settled until
+                # acquisition completes.
+                hud._celebration_revision += 1
+                hud.update_session(live_session)
+                # The capture must hold the canonical reveal long enough to
+                # audit and acquire it. Normal reviewer use still compacts on
+                # the product timer; this fixture-only pin avoids racing that
+                # timer after the interaction/remount matrix completes.
+                reward_timer = getattr(hud, "_reward_timer", None)
+                if reward_timer is not None:
+                    reward_timer.stop()
+                hud._reward_history_panel.hide()
+                hud._session_footer.setProperty("historyExpanded", False)
+                hud.reposition()
+            if app is not None:
+                app.processEvents()
+
+            def dock_ready() -> bool:
+                current_hud = getattr(handler, "_reviewer_hud", None)
+                hud_geometry = self._reviewer_hud_geometry_audit(
+                    label,
+                    current_hud,
+                )
+                dock_geometry = self._reviewer_reward_dock_geometry_audit(
+                    current_hud,
+                )
+                detached_toasts = [
+                    candidate
+                    for candidate in tuple(
+                        getattr(handler, "_reward_toasts", ()) or ()
+                    )
+                    if candidate is not None and candidate.isVisible()
+                ]
+                visible_summary_event_ids = [
+                    list(summary.event_ids)
+                    for summary in compact.visible_summaries
+                ]
+                bundle_evidence = {
+                    "bundle_id": bundle.bundle_id,
+                    "event_count": len(bundle.all_items),
+                    "active_reveal_count": int(
+                        bool(
+                            dock_geometry.get("dock_visible", False)
+                            and dock_geometry.get("hud_reward_visible", False)
+                        )
+                    ),
+                    "hero_count": 1,
+                    "hero_event_id": bundle.hero.event_id,
+                    "eyebrow": compact.eyebrow,
+                    "hero_title": compact.hero_title,
+                    "projected_hero_subtitle": compact.hero_subtitle,
+                    "hero_subtitle": " ".join(
+                        str(current_hud._reward_subtitle.text()).split()
+                    ),
+                    "active_plant_identity_suppressed": bool(
+                        current_hud._reward_reveal.property(
+                            "activePlantIdentitySuppressed"
+                        )
+                    ),
+                    "secondary_summary_count": len(compact.visible_summaries),
+                    "visible_summary_labels": [
+                        summary.label for summary in compact.visible_summaries
+                    ],
+                    "visible_summary_event_ids": visible_summary_event_ids,
+                    "visible_summary_reward_types": [
+                        summary.reward_type
+                        for summary in compact.visible_summaries
+                    ],
+                    "visible_summary_artwork_refs": [
+                        summary.artwork_ref
+                        for summary in compact.visible_summaries
+                    ],
+                    "details_action_copy": str(
+                        current_hud._reward_details_toggle.text()
+                    ),
+                    "details_action_heading_row": bool(
+                        current_hud._reward_details_toggle.parentWidget()
+                        is current_hud._reward_heading
+                    ),
+                    "obsolete_bottom_details_absent": (
+                        current_hud.findChild(QWidget, "reviewerHudRewardMore")
+                        is None
+                    ),
+                    "milestone_chevron_absent": (
+                        current_hud.findChild(
+                            QWidget,
+                            "reviewerHudRewardDisclosure",
+                        ) is None
+                    ),
+                    "individual_close_button_count": int(
+                        dock_geometry.get("individual_close_button_count", 0) or 0
+                    ),
+                    "detached_toast_count": len(detached_toasts),
+                    "session_footer_visible": bool(
+                        dock_geometry.get("footer_height", 0)
+                    ),
+                    "integrated_divider_visible": bool(
+                        dock_geometry.get("divider_visible", False)
+                    ),
+                    "same_commit_bundle": bundle.bundle_id == committed.event_id,
+                    "presented_once": reward_presented,
+                    "rendered_bundle_id": str(
+                        dock_geometry.get("reward_bundle_id", "") or ""
+                    ),
+                    "stable_event_ids": bool(
+                        len({item.event_id for item in bundle.all_items})
+                        == len(bundle.all_items)
+                    ),
+                }
+                bundle_evidence["passed"] = bool(
+                    canonical_projection_passed
+                    and bundle_evidence["event_count"] == 7
+                    and bundle_evidence["active_reveal_count"] == 1
+                    and bundle_evidence["hero_count"] == 1
+                    and bundle_evidence["eyebrow"] == "MILESTONE REACHED"
+                    and bundle_evidence["hero_title"] == "Full Bloom achieved"
+                    and bundle_evidence["projected_hero_subtitle"] == plant.name
+                    and bundle_evidence["hero_subtitle"] == ""
+                    and bundle_evidence[
+                        "active_plant_identity_suppressed"
+                    ]
+                    and bundle_evidence["secondary_summary_count"] == 2
+                    and bundle_evidence["visible_summary_labels"]
+                    == ["1 Garden Find", "2 new discoveries"]
+                    and bundle_evidence["visible_summary_reward_types"]
+                    == ["garden_find", "environment_discovery"]
+                    and all(bundle_evidence["visible_summary_artwork_refs"])
+                    and bundle_evidence["details_action_copy"] == "Details ›"
+                    and bundle_evidence["details_action_heading_row"]
+                    and bundle_evidence["obsolete_bottom_details_absent"]
+                    and bundle_evidence["milestone_chevron_absent"]
+                    and bundle_evidence["individual_close_button_count"] == 0
+                    and bundle_evidence["detached_toast_count"] == 0
+                    and bundle_evidence["session_footer_visible"]
+                    and bundle_evidence["integrated_divider_visible"]
+                    and bundle_evidence["same_commit_bundle"]
+                    and bundle_evidence["presented_once"]
+                    and bundle_evidence["rendered_bundle_id"] == bundle.bundle_id
+                    and bundle_evidence["stable_event_ids"]
+                )
+                footer_evidence = {
+                    "growth_units": live_session.footer_growth_units,
+                    "garden_coins": live_session.garden_coins_earned,
+                    "find_count": live_session.footer_find_count,
+                    "same_accumulator": True,
+                    "visible": bundle_evidence["session_footer_visible"],
+                    "passed": bool(
+                        bundle_evidence["session_footer_visible"]
+                        and live_session.footer_growth_units == 4_000
+                        and live_session.garden_coins_earned == 14
+                        and live_session.footer_find_count == 1
+                    ),
+                }
+                reviewer_window_mode = self._home_fullscreen_window_evidence()
+                self._capture_annotations[label] = {
+                    "canonical_find_ids": [
+                        find.find_id for find in committed.standard_finds
+                    ],
+                    "canonical_feedback_title": compact.hero_title,
+                    "canonical_feedback_message": compact.hero_subtitle,
+                    "canonical_projection_passed": canonical_projection_passed,
+                    "reviewer_dom_identity": dict(
+                        getattr(self, "_active_reviewer_dom_audit", {}) or {}
+                    ),
+                    "reviewer_hud_visible": bool(
+                        current_hud is not None and current_hud.isVisible()
+                    ),
+                    "reviewer_hud_geometry": hud_geometry,
+                    "reviewer_reward_dock_geometry": dock_geometry,
+                    "reviewer_reward_bundle": bundle_evidence,
+                    "reviewer_session_footer": footer_evidence,
+                    "reviewer_reward_interaction_matrix": interaction_matrix,
+                    "reviewer_hud_content_matrix": content_matrix,
+                    "reviewer_window_mode": reviewer_window_mode,
+                    "reviewer_window_screen_filling": bool(
+                        reviewer_window_mode.get("passed", False)
+                    ),
+                    "passed": bool(
+                        hud_geometry.get("passed", False)
+                        and dock_geometry.get("passed", False)
+                        and bundle_evidence["passed"]
+                        and footer_evidence["passed"]
+                        and interaction_matrix.get("passed", False)
+                        and content_matrix.get("passed", False)
+                        and reviewer_window_mode.get("passed", False)
+                    ),
+                }
+                return bool(self._capture_annotations[label]["passed"])
+
+            def capture_ready() -> None:
+                self._capture_and_advance(
+                    label,
+                    mw,
+                    capture_delay_ms=520,
+                    close_callback=cleanup,
+                    cleanup_predicate=lambda: bool(
+                        restored
+                        and str(getattr(mw, "state", "")) == "deckBrowser"
+                        and reviewer_left_at > 0.0
+                        and time.perf_counter() - reviewer_left_at >= 1.2
+                    ),
+                    cleanup_timeout_ms=2600,
+                    close_ms=760,
+                    next_ms=1120,
+                )
+
+            self._wait_for(
+                dock_ready,
+                capture_ready,
+                tries=100,
+                failure_label=label,
+                failure_reason=(
+                    "Integrated Reviewer reward bundle did not reach bounded geometry"
+                ),
+                on_error=cleanup,
+            )
+
+        self._with_capture_reviewer(label, ready, on_error=cleanup)
 
     def _capture_settings_validation_error(self) -> None:
         self._capture_custom_settings(

@@ -12,6 +12,7 @@ from typing import Any
 
 GROWTH_STAGES = ["seed", "sprout", "young", "mature", "flowering", "rare"]
 GROWTH_THRESHOLDS = [0, 500, 2_500, 8_000, 20_000, 50_000]
+GROWTH_UNITS_PER_POINT = 100
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,47 @@ class GrowthAllocation:
     credited_growth: int
     residual_before_fifths: int = 0
     residual_after_fifths: int = 0
+    requested_units: int = 0
+    applied_units: int = 0
+    redirected: bool = False
+
+    @property
+    def applied_growth(self) -> float:
+        units = int(self.applied_units)
+        if units <= 0:
+            return float(max(0, int(self.credited_growth)))
+        return units / GROWTH_UNITS_PER_POINT
+
+
+@dataclass(frozen=True)
+class GrowthGrantResult:
+    """One conserved Growth transaction routed across plants and storage."""
+
+    requested_units: int
+    applied_units: int
+    stored_units: int
+    allocations: tuple[GrowthAllocation, ...] = ()
+    original_target_id: str = ""
+    active_target_id: str = ""
+    auto_selected_target_id: str = ""
+
+    @property
+    def conserved(self) -> bool:
+        return max(0, int(self.requested_units)) == (
+            max(0, int(self.applied_units)) + max(0, int(self.stored_units))
+        )
+
+    @property
+    def requested_growth(self) -> float:
+        return max(0, int(self.requested_units)) / GROWTH_UNITS_PER_POINT
+
+    @property
+    def applied_growth(self) -> float:
+        return max(0, int(self.applied_units)) / GROWTH_UNITS_PER_POINT
+
+    @property
+    def stored_growth(self) -> float:
+        return max(0, int(self.stored_units)) / GROWTH_UNITS_PER_POINT
 
 
 @dataclass(frozen=True)

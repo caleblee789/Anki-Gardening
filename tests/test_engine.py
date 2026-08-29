@@ -22,6 +22,7 @@ from ankigarden.growth import (
 )
 from ankigarden.models.state import (
     ActivePlantPeriod,
+    CardEffectBatch,
     CURRENT_CATALOG_SPECIES_ORDER,
     DailyStats,
     Booster,
@@ -32,10 +33,10 @@ from ankigarden.models.state import (
     GROWTH_THRESHOLDS,
     HISTORICAL_PLANT_SPECIES_ORDER,
     CURRENT_CATALOG_SPECIES_ORDER,
-    MAX_FERTILIZER_HISTORY,
     PLANT_SPECIES,
     PLANT_SPECIES_ORDER,
     Plant,
+    STATE_VERSION,
 )
 from ankigarden.storage import (
     DueObligationStatus,
@@ -329,6 +330,152 @@ def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
     assert storage.state.to_dict() == after_first
 
 
+def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_future():
+    engine, storage = make_engine()
+    past_day = "2026-08-07"
+    current_day = storage.day
+    future_day = "2026-08-09"
+    storage.state.reward_state_initialized = True
+    storage.state.reward_activation_ms = 100
+    storage.state.progression_activation_ms = 100
+    storage.state.garden_find_activation_ms = 10_000
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(past_day, "p1", 100),
+        ActivePlantPeriod(current_day, "p1", 100),
+    ]
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    storage.state.daily_loadout.scheduler_day = current_day
+    storage.state.daily_loadout.locked_at_ms = 150
+    storage.state.daily_loadout.garden_feature_id = "seedling_sign"
+    storage.state.daily_loadout.garden_bonus_anki_day_id = current_day
+    storage.state.daily_loadout.garden_bonus_locked_at_ms = 150
+    storage.state.daily_loadout.scenery_id = "default"
+    current_loadout_before = dict(vars(storage.state.daily_loadout))
+
+    def history_entry(
+        revlog_id: int,
+        *,
+        card_id: int,
+        answer_ms: int,
+        scheduler_day: str,
+        ordinal: int,
+    ) -> HistoricalReviewEntry:
+        return HistoricalReviewEntry(
+            revlog_id=revlog_id,
+            card_id=card_id,
+            ease=3,
+            interval=1,
+            last_interval=0,
+            factor=2_500,
+            response_time_ms=500,
+            review_type=1,
+            answer_ms=answer_ms,
+            scheduler_day=scheduler_day,
+            card_day_ordinal=ordinal,
+            answer_identity=(
+                f"v1|{scheduler_day}|{card_id}|{ordinal}"
+            ),
+        )
+
+    past = history_entry(
+        400,
+        card_id=42,
+        answer_ms=1_000,
+        scheduler_day=past_day,
+        ordinal=1,
+    )
+    current = history_entry(
+        500,
+        card_id=43,
+        answer_ms=2_000,
+        scheduler_day=current_day,
+        ordinal=1,
+    )
+    future = history_entry(
+        600,
+        card_id=44,
+        answer_ms=3_000,
+        scheduler_day=future_day,
+        ordinal=1,
+    )
+    rows = [past, current, future]
+    storage.load_eligible_review_history = lambda: HistoricalReviewSnapshot(
+        entries=tuple(rows),
+        high_water_revlog_id=max(row.revlog_id for row in rows),
+        fingerprint=f"full-history-{len(rows)}",
+    )
+
+    def answer_key(entry: HistoricalReviewEntry) -> str:
+        return consumption_id(stable_answer_event_identity(
+            entry.revlog_id,
+            card_id=entry.card_id,
+            answered_at_ms=entry.answer_ms,
+            lineage_id=entry.stable_answer_key,
+        ))
+
+    first_results = []
+    reconciled, _message = engine.reconcile_reward_history(
+        result_collector=first_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert reconciled
+    assert [result.scheduler_day for result in first_results] == [
+        past_day,
+        current_day,
+    ]
+    assert all(result.award.total_growth_units > 0 for result in first_results)
+    assert not first_results[0].daily_completion_rewarded
+    assert first_results[1].daily_completion_rewarded
+    assert storage.state.daily_completion.scheduler_day == current_day
+    assert storage.state.daily_completion.reward_claimed
+    assert dict(vars(storage.state.daily_loadout)) == current_loadout_before
+    assert answer_key(past) in storage.state.processed_answer_keys
+    assert answer_key(current) in storage.state.processed_answer_keys
+    assert answer_key(future) not in storage.state.processed_answer_keys
+    assert storage.state.achievement_history_high_water_revlog_id == 500
+    assert 600 not in storage.state.processed_revlog_ids
+
+    # A later sync can insert a distinct answer for the same card with a lower
+    # revlog ID. It is still new by stable answer identity and is credited once.
+    late_lower_id = history_entry(
+        100,
+        card_id=past.card_id,
+        answer_ms=1_500,
+        scheduler_day=past_day,
+        ordinal=2,
+    )
+    rows.insert(1, late_lower_id)
+    late_results = []
+    repeated, _message = engine.reconcile_reward_history(
+        result_collector=late_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert repeated
+    assert len(late_results) == 1
+    assert late_results[0].scheduler_day == past_day
+    assert late_results[0].award.total_growth_units > 0
+    assert not late_results[0].daily_completion_rewarded
+    assert answer_key(late_lower_id) in storage.state.processed_answer_keys
+    assert answer_key(past) != answer_key(late_lower_id)
+    assert answer_key(future) not in storage.state.processed_answer_keys
+    after_late_arrival = storage.state.to_dict()
+
+    duplicate_results = []
+    final, _message = engine.reconcile_reward_history(
+        result_collector=duplicate_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert final
+    assert duplicate_results == []
+    assert storage.state.to_dict() == after_late_arrival
+
+
 def test_first_post_activation_answer_can_start_the_current_weekly_cycle():
     engine, storage = make_engine()
     storage.state.reward_state_initialized = True
@@ -365,14 +512,14 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
     report = json.loads(engine.export_progress_summary())
 
-    assert report["schema_version"] == 21
-    assert report["growth_reconciliation"]["study_source_total"] == 11
-    assert report["growth_reconciliation"]["study_growth_generated"] == 11
-    assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 11}
+    assert report["schema_version"] == STATE_VERSION == 25
+    assert report["growth_reconciliation"]["study_source_total"] == 10
+    assert report["growth_reconciliation"]["study_growth_generated"] == 10
+    assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 10}
     assert report["growth_reconciliation"]["passive_exact_fifths_by_plant"] == {
-        "p2": 11,
+        "p2": 10,
     }
-    assert report["plants"][1]["passive_growth_remainder_fifths"] == 1
+    assert report["plants"][1]["passive_growth_remainder_fifths"] == 0
     assert report["growth_charge_replay_ledger"]["healthy"] is True
     assert storage.state.to_dict() == before
 
@@ -532,8 +679,8 @@ def test_streak_growth_bonus_is_fractional_and_never_reduces_base():
 
     assert first.bonus_percent == second.bonus_percent == 5
     assert first.base_growth == second.base_growth == 10
-    assert first.streak_bonus_growth == 0
-    assert second.streak_bonus_growth == 1
+    assert first.streak_growth_units == second.streak_growth_units == 50
+    assert first.total_growth_units == second.total_growth_units == 1_050
     assert storage.state.plants[0].growth_points == 21
 
 
@@ -553,12 +700,12 @@ def test_growth_routes_full_to_active_and_passive_to_other_planted_plants():
 
 def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
     modifier_bits = ("streak", "fertilizer", "booster", "weather", "scenery")
-    expected_values = {
-        "streak": 1,
-        "fertilizer": 2,
-        "booster": 5,
-        "weather": 1,
-        "scenery": 1,
+    expected_units = {
+        "streak": 50,
+        "fertilizer": 200,
+        "booster": 500,
+        "weather": 100,
+        "scenery": 100,
     }
     for mask in range(1 << len(modifier_bits)):
         enabled = {
@@ -580,38 +727,37 @@ def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
         if "booster" in enabled:
             nurtured.booster = Booster(5, event_seconds + 60, event_seconds - 60)
         storage.state.selected_weather = "breeze" if "weather" in enabled else "sunny"
+        storage.state.wind_chime_progress = 9 if "weather" in enabled else 0
         storage.state.selected_background = "spring" if "scenery" in enabled else "default"
 
         award = answer(engine, storage)
-        final_growth = 10 + sum(expected_values[name] for name in enabled)
-        passive_whole, passive_remainder = divmod(final_growth, 5)
+        final_units = 1_000 + sum(expected_units[name] for name in enabled)
+        shared_units = final_units // 5
 
-        assert award.total_growth == final_growth
-        assert award.total_garden_growth == final_growth + passive_whole * 2
-        assert nurtured.growth_points == final_growth
-        assert passive_one.growth_points == passive_two.growth_points == passive_whole
-        assert passive_one.passive_growth_remainder_fifths == passive_remainder
-        assert passive_two.passive_growth_remainder_fifths == passive_remainder
+        assert award.total_growth_units == final_units
+        assert award.applied_growth_units == final_units + shared_units * 2
+        assert nurtured.growth_units == final_units
+        assert passive_one.growth_units == passive_two.growth_units == shared_units
         assert [allocation.role for allocation in award.allocations] == [
             "nurtured", "passive", "passive",
         ]
-        assert [allocation.exact_fifths for allocation in award.allocations] == [
-            final_growth * 5, final_growth, final_growth,
+        assert [allocation.requested_units for allocation in award.allocations] == [
+            final_units, shared_units, shared_units,
         ]
         stats = storage.state.daily_stats
-        assert stats.study_growth_generated == final_growth
-        assert stats.plant_nurtured_growth == {"p1": final_growth}
-        assert stats.plant_passive_growth_fifths == {
-            "p2": final_growth,
-            "p3": final_growth,
+        assert stats.answer_growth_units == final_units
+        assert stats.plant_applied_growth_units == {
+            "p1": final_units,
+            "p2": shared_units,
+            "p3": shared_units,
         }
-        assert stats.plant_passive_growth_credited == {
-            "p2": passive_whole,
-            "p3": passive_whole,
+        assert stats.plant_shared_growth_units == {
+            "p2": shared_units,
+            "p3": shared_units,
         }
 
 
-def test_passive_fifths_survive_batch_restart_switch_and_duplicate_replay():
+def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay():
     engine, storage = make_engine()
     storage.state.daily_stats.reviewed = 1
     storage.state.selected_weather = "breeze"
@@ -619,9 +765,9 @@ def test_passive_fifths_survive_batch_restart_switch_and_duplicate_replay():
     first_id = storage.now_ms + 1_000
 
     first = answer(engine, storage, revlog_id=first_id)
-    assert first.total_growth == 11
+    assert first.total_growth == 10
     assert storage.state.plants[1].growth_points == 2
-    assert storage.state.plants[1].passive_growth_remainder_fifths == 1
+    assert storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage = FakeStorage()
     restarted_storage.now_ms = storage.now_ms
@@ -636,54 +782,103 @@ def test_passive_fifths_survive_batch_restart_switch_and_duplicate_replay():
         ],
         latest_revlog_id=third_id,
     )
-    assert gained == 22
+    assert gained == 20
     assert restarted_storage.state.plants[1].growth_points == 6
-    assert restarted_storage.state.plants[1].passive_growth_remainder_fifths == 3
+    assert restarted_storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage.now_ms = third_id + 1_000
     assert restarted.set_active_plant("p2")[0]
     switched_id = restarted_storage.now_ms + 1_000
     answer(restarted, restarted_storage, revlog_id=switched_id)
     p1, p2 = restarted_storage.state.plants
-    assert p1.passive_growth_remainder_fifths == 1
-    assert p2.passive_growth_remainder_fifths == 3
+    assert p1.growth_remainder_units == 0
+    assert p2.growth_remainder_units == 0
     snapshot = restarted_storage.state.to_dict()
     duplicate = answer(restarted, restarted_storage, revlog_id=switched_id)
     assert duplicate.total_growth == 0
     assert restarted_storage.state.to_dict() == snapshot
 
 
-def test_passive_eligibility_and_independent_rare_caps_are_exact():
+def test_multiple_full_bloom_shares_are_divided_across_every_unfinished_plant():
+    engine, storage = make_engine()
+    active, unfinished_one = storage.state.plants
+    unfinished_two = Plant("p3", "lavender", "Violet", 2)
+    full_one = Plant(
+        "p4", "sunflower", "Sol", 3,
+        growth_points=GROWTH_THRESHOLDS[-1],
+    )
+    full_two = Plant(
+        "p5", "rose", "Briar", 4,
+        growth_points=GROWTH_THRESHOLDS[-1],
+    )
+    storage.state.plants.extend((unfinished_two, full_one, full_two))
+
+    award = answer(engine, storage)
+
+    # Four other planted beds create four 20% shares (800 units total).
+    # The two Full Bloom shares (400 units) divide across all three plants
+    # still growing; the one-unit remainder follows bed order.
+    assert award.total_growth_units == 1_000
+    assert award.shared_growth_units == 800
+    assert active.growth_units == 1_134
+    assert unfinished_one.growth_units == 333
+    assert unfinished_two.growth_units == 333
+    assert full_one.growth_units == full_two.growth_units == 5_000_000
+
+
+def test_full_bloom_shares_return_to_active_when_it_is_the_only_unfinished_plant():
+    engine, storage = make_engine()
+    active, full_one = storage.state.plants
+    full_one.growth_points = GROWTH_THRESHOLDS[-1]
+    full_two = Plant(
+        "p3", "lavender", "Violet", 2,
+        growth_points=GROWTH_THRESHOLDS[-1],
+    )
+    storage.state.plants.append(full_two)
+
+    award = answer(engine, storage)
+
+    assert award.total_growth_units == 1_000
+    assert award.shared_growth_units == 400
+    assert active.growth_units == 1_400
+    assert full_one.growth_units == full_two.growth_units == 5_000_000
+
+
+def test_shared_growth_excludes_ineligible_plants_and_redirects_overflow_exactly():
     engine, storage = make_engine()
     nurtured, passive = storage.state.plants
     passive.growth_points = GROWTH_THRESHOLDS[-1] - 1
-    passive.passive_growth_remainder_fifths = 4
     unplanted = Plant("collection", "sunflower", "Sol", None)
     finished = Plant(
         "finished", "lavender", "Violet", 2,
         growth_points=GROWTH_THRESHOLDS[-1],
-        passive_growth_remainder_fifths=3,
     )
     storage.state.plants.extend((unplanted, finished))
     storage.state.daily_stats.reviewed = 1
     storage.state.selected_weather = "breeze"
+    storage.state.wind_chime_progress = 9
 
     award = answer(engine, storage)
 
     assert award.total_growth == 11
     assert passive.growth_points == GROWTH_THRESHOLDS[-1]
-    assert passive.passive_growth_remainder_fifths == 0
+    assert passive.growth_remainder_units == 0
     assert unplanted.growth_points == 0
     assert finished.growth_points == GROWTH_THRESHOLDS[-1]
-    assert finished.passive_growth_remainder_fifths == 3
     assert {allocation.plant_id for allocation in award.allocations} == {"p1", "p2"}
+    # The Full Bloom bed contributes a second 20% share. Its share is split
+    # across both growing plants, then the passive plant's over-cap Growth is
+    # redirected without losing any value.
+    assert nurtured.growth_units == 1_440
+    assert award.shared_growth_units == 440
+    assert award.redirected_growth_units == 230
 
     capped_engine, capped_storage = make_engine()
     capped_storage.state.plants[0].growth_points = GROWTH_THRESHOLDS[-1] - 5
     capped = answer(capped_engine, capped_storage)
-    assert capped.total_growth == 5
-    assert capped_storage.state.plants[1].growth_points == 1
-    assert capped_storage.state.plants[1].passive_growth_remainder_fifths == 0
+    assert capped.total_growth_units == 1_000
+    assert capped_storage.state.plants[1].growth_points == 7
+    assert capped_storage.state.plants[1].growth_remainder_units == 0
 
 
 def test_simultaneous_nurtured_and_passive_stage_rewards_are_once_per_plant():
@@ -840,6 +1035,29 @@ def test_growth_charge_quote_exposes_authoritative_target_state() -> None:
     assert unavailable.target_state is GrowthChargeTargetState.UNAVAILABLE
 
 
+def test_growth_charge_routes_its_full_value_before_consuming_the_item():
+    engine, storage = make_engine()
+    target, continuation = storage.state.plants
+    target.growth_points = 49_997
+    storage.state.consumables["growth_charge_standard"] = 1
+
+    quote = engine.quote_growth_charge("growth_charge_standard", target.plant_id)
+    outcome = engine.confirm_growth_charge(GrowthChargeRequest.from_quote(quote))
+
+    assert quote.requested_growth == quote.granted_growth == 500
+    assert outcome.success and outcome.growth_granted == 500
+    assert target.fully_grown
+    assert continuation.growth_points == 497
+    assert storage.state.stored_growth_units == 0
+    assert storage.state.active_plant_id == continuation.plant_id
+    assert storage.state.daily_stats.plant_charge_growth == {
+        target.plant_id: 3,
+        continuation.plant_id: 497,
+    }
+    assert storage.state.consumables["growth_charge_standard"] == 0
+    assert storage.state.consumables["growth_charge_small"] == 1
+
+
 def test_same_day_events_route_by_active_period_timestamp():
     engine, storage = make_engine()
     switch_at = storage.now_ms + 5_000
@@ -866,7 +1084,7 @@ def test_stage_thresholds_and_stage_local_progress_are_exact():
     assert plant.growth_stage == "mature"
 
 
-def test_growth_milestones_stage_reward_and_transition_are_durable():
+def test_stage_completion_uses_the_final_checkpoint_split_and_is_durable():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
     plant.growth_points = 490
@@ -876,11 +1094,14 @@ def test_growth_milestones_stage_reward_and_transition_are_durable():
     assert plant.growth_stage == "sprout"
     assert engine.peek_stage_transitions()[0].new_stage == "sprout"
     assert engine.peek_stage_transitions()[0].source == "nurtured"
-    assert storage.state.currency_balance == 7
-    assert any(tx.reason == "Moss reached Sprout" for tx in storage.state.currency_transactions)
+    assert storage.state.currency_balance == 4
+    assert any(
+        tx.event_key == "stage:p1:sprout" and tx.delta == 2
+        for tx in storage.state.currency_transactions
+    )
     assert any(memory.memory_id == "stage:sprout" for memory in plant.memories)
     assert any(
-        event.message == "Moss reached Sprout and earned 5 Garden Coins."
+        event.message == "Moss reached Sprout. +2 Garden Coins"
         for event in engine.peek_feedback()
     )
 
@@ -914,22 +1135,137 @@ def test_twenty_five_fifty_and_seventy_five_percent_feedback_uses_stage_interval
     assert any("75%" in event.message for event in engine.peek_feedback())
 
 
-def test_rare_stage_caps_growth_pauses_and_does_not_overflow():
+@pytest.mark.parametrize(
+    ("before", "event_key", "reward"),
+    [
+        (124, "stage_checkpoint:p1:sprout:25", 1),
+        (249, "stage_checkpoint:p1:sprout:50", 1),
+        (374, "stage_checkpoint:p1:sprout:75", 1),
+        (499, "stage:p1:sprout", 2),
+    ],
+)
+def test_seed_stage_coin_pool_is_split_across_checkpoints_and_completion(
+    before,
+    event_key,
+    reward,
+):
+    engine, storage = make_engine()
+    storage.state.plants[0].growth_points = before
+
+    answer(engine, storage)
+
+    transaction = next(
+        item for item in storage.state.currency_transactions
+        if item.event_key == event_key
+    )
+    assert transaction.delta == reward
+
+
+def test_one_large_charge_grants_every_crossed_checkpoint_once_in_order():
+    engine, storage = make_engine()
+    storage.state.consumables["growth_charge_grand"] = 1
+
+    assert engine.use_growth_charge("growth_charge_grand")[0]
+
+    milestone_keys = [
+        item.event_key for item in storage.state.currency_transactions
+        if item.event_key.startswith("stage")
+    ]
+    assert milestone_keys == [
+        "stage_checkpoint:p1:sprout:25",
+        "stage_checkpoint:p1:sprout:50",
+        "stage_checkpoint:p1:sprout:75",
+        "stage:p1:sprout",
+        "stage_checkpoint:p1:young:25",
+        "stage_checkpoint:p1:young:50",
+        "stage_checkpoint:p1:young:75",
+    ]
+    assert sum(
+        item.delta for item in storage.state.currency_transactions
+        if item.event_key in milestone_keys
+    ) == 11
+
+
+def test_full_bloom_grants_the_completion_package_once():
     engine, storage = make_engine()
     plant = storage.state.plants[0]
-    plant.growth_points = 49_995
+    plant.growth_points = 49_990
+    event_id = storage.now_ms + 1_000
+
+    answer(engine, storage, revlog_id=event_id)
+    inventory_after = storage.state.consumables["growth_charge_small"]
+    duplicate = answer(engine, storage, revlog_id=event_id)
+
+    assert plant.fully_grown
+    assert plant.completed_on == storage.day
+    assert plant.completed_at_ms == event_id
+    assert plant.completion_cards >= 1
+    assert plant.completion_active_days >= 1
+    assert plant.full_bloom_reward_claimed
+    assert inventory_after == 1
+    assert storage.state.consumables["growth_charge_small"] == inventory_after
+    assert duplicate.total_growth_units == 0
+    assert "full_bloom:p1" in storage.state.applied_reward_event_keys
+    full_bloom_coin_awards = [
+        transaction
+        for transaction in storage.state.currency_transactions
+        if transaction.event_key == "stage:p1:rare"
+    ]
+    assert len(full_bloom_coin_awards) == 1
+    assert full_bloom_coin_awards[0].source == "full_bloom_bonus"
+    assert full_bloom_coin_awards[0].source_id == plant.plant_id
+    assert full_bloom_coin_awards[0].included_in_total is True
+
+
+def test_exact_fractional_growth_is_conserved_when_every_plant_fills():
+    engine, storage = make_engine()
+    active, shared = storage.state.plants
+    active.growth_points = 49_995
+    shared.growth_points = 49_998
+    storage.state.daily_stats.reviewed = 1
+    storage.state.streak_days = 7
+    storage.state.last_active_day = storage.day
 
     award = answer(engine, storage)
-    paused = answer(engine, storage)
 
-    assert plant.growth_points == 50_000
-    assert award.total_growth == 5
-    assert storage.state.active_plant_id is None
-    assert paused.total_growth == 0
-    assert paused.paused_reason == "Choose an unfinished plant to nurture to resume Growth."
+    assert award.total_growth_units == 1_050
+    assert award.applied_growth_units == 700
+    assert award.shared_growth_units == 0
+    assert award.stored_growth_units == 560
+    assert storage.state.stored_growth_units == 560
+    assert active.fully_grown and shared.fully_grown
+    assert award.applied_growth_units + award.stored_growth_units == (
+        award.total_growth_units + award.total_growth_units // 5
+    )
 
 
-def test_rare_restart_and_geometry_migration_preserve_the_intentional_growth_pause(
+def test_full_bloom_conserves_growth_and_auto_continues_to_the_next_plant():
+    engine, storage = make_engine()
+    completed, next_plant = storage.state.plants
+    completed.growth_points = 49_995
+
+    award = answer(engine, storage)
+    first_event_ms = storage.now_ms
+    continued = answer(engine, storage)
+
+    assert completed.growth_points == 50_000
+    assert award.total_growth_units == 1_000
+    assert award.applied_growth_units == 1_200
+    assert award.redirected_growth_units == 500
+    assert award.shared_growth_units == 200
+    assert award.stored_growth_units == 0
+    # Once the first plant reaches Full Bloom, its 20% share continues and is
+    # redistributed to the only plant still growing on the second card.
+    assert next_plant.growth_points == 19
+    assert storage.state.active_plant_id == next_plant.plant_id
+    assert storage.state.active_plant_periods[-1] == ActivePlantPeriod(
+        storage.day, next_plant.plant_id, first_event_ms
+    )
+    assert continued.plant_id == next_plant.plant_id
+    assert continued.total_growth_units == 1_000
+
+
+def test_no_target_stores_growth_across_restart_until_a_plant_is_selected(
     tmp_path,
 ):
     storage = FakeStorage()
@@ -956,9 +1292,17 @@ def test_rare_restart_and_geometry_migration_preserve_the_intentional_growth_pau
     assert [(period.plant_id, period.started_at_ms) for period in storage.state.active_plant_periods] == [
         (None, paused_at_ms)
     ]
-    assert award.total_growth == 0
+    assert award.total_growth_units == 1_000
+    assert award.applied_growth_units == 0
+    assert award.stored_growth_units == 1_000
     assert unfinished.growth_points == before
-    assert award.paused_reason == "Choose an unfinished plant to nurture to resume Growth."
+    assert storage.state.stored_growth_units == 1_000
+    assert award.paused_reason == "Growth is being stored. Choose a plant when you’re ready."
+
+    assert engine.plant_from_collection(unfinished.plant_id, 0)[0]
+    assert engine.set_active_plant(unfinished.plant_id)[0]
+    assert unfinished.growth_points == before + 10
+    assert storage.state.stored_growth_units == 0
 
 
 def test_dangling_non_null_saved_active_reference_repairs_deterministically_with_period(
@@ -1018,63 +1362,354 @@ def test_saved_non_null_unusable_active_target_repairs_to_a_routable_plant(
     assert storage.state.active_plant_periods[-1].started_at_ms == storage.now_ms
 
 
-def test_all_due_requires_an_answer_live_zero_obligations_and_is_once_per_day():
+def test_todays_cards_completion_is_verified_live_and_claimed_once():
     engine, storage = make_engine()
-    assert engine.evaluate_all_due(DueObligationStatus()) == (
-        False,
-        "Answer a card first.",
-    )
-    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    assert not engine.evaluate_today_cards(DueObligationStatus())[0]
+    assert engine.observe_due_start(DueObligationStatus(review_count=2))
+    assert storage.state.daily_completion.status == "in_progress"
+    assert storage.state.daily_completion.starting_required_cards == 2
     answer(engine, storage)
-    assert not engine.evaluate_all_due(DueObligationStatus(review_count=1))[0]
+    assert not engine.evaluate_today_cards(
+        DueObligationStatus(review_count=1),
+        record_completed_delta=True,
+    )[0]
 
-    ok, message = engine.evaluate_all_due(DueObligationStatus())
-    assert ok and message == "You finished all due cards and earned 15 Garden Coins."
+    answer(engine, storage)
+    ok, message = engine.evaluate_today_cards(
+        DueObligationStatus(),
+        record_completed_delta=True,
+    )
+    assert ok
+    assert "today’s cards" in message.lower()
+    assert "all clear" not in message.lower()
+    assert "required card" not in message.lower()
     assert storage.state.daily_stats.completed_due_cards
+    assert storage.state.daily_completion.status == "complete"
+    assert storage.state.daily_completion.reward_claimed
     balance = storage.state.currency_balance
-    assert not engine.evaluate_all_due(DueObligationStatus(review_count=9, learning_count=4))[0]
+    assert not engine.evaluate_all_due(
+        DueObligationStatus(review_count=9, learning_count=4)
+    )[0]
     assert storage.state.daily_stats.completed_due_cards
+    assert storage.state.daily_completion.reward_claimed
+    assert storage.state.daily_completion.status == "in_progress"
+    assert storage.state.daily_completion.remaining_required_reviews == 9
+    assert storage.state.daily_completion.remaining_learning_steps == 4
     assert storage.state.currency_balance == balance
 
 
-def test_all_due_check_persists_scheduler_rollover_even_when_not_earned():
+def test_no_due_baseline_remains_not_eligible_on_later_live_refresh():
+    engine, storage = make_engine()
+
+    assert not engine.observe_due_start(DueObligationStatus())
+    completion = engine.today_cards_status(DueObligationStatus())
+
+    assert storage.state.daily_stats.due_started_with_cards is False
+    assert completion.status == "not_eligible"
+    assert completion.reward_claimed is False
+
+
+def test_today_cards_projection_keeps_answer_activity_out_of_obligation_progress():
+    engine, storage = make_engine()
+    storage.reviews_today = lambda: 176
+    status = DueObligationStatus(new_count=1, review_count=18)
+
+    assert engine.observe_due_start(status)
+    completion = engine.today_cards_status(status)
+
+    # Revlog activity remains available for other surfaces, but it is not the
+    # Today’s Cards completion numerator or denominator.
+    assert completion.cards_completed_today == 176
+    assert completion.starting_required_cards_completed == 0
+    assert completion.starting_required_cards == 19
+    assert completion.remaining_new_cards == 1
+    assert completion.remaining_required_reviews == 18
+
+
+def test_today_cards_obligation_stays_open_through_new_and_relearning_steps():
+    engine, storage = make_engine()
+    initial = DueObligationStatus(new_count=1, review_count=18)
+    storage.reviews_today = lambda: 0
+    assert engine.observe_due_start(initial)
+
+    # Answering the New card can move it into Learn without completing the
+    # scheduler obligation. Repeated answers remain raw activity only.
+    storage.reviews_today = lambda: 1
+    learning = engine.today_cards_status(DueObligationStatus(
+        review_count=18,
+        learning_count=1,
+        future_learning_count=1,
+    ))
+    assert learning.starting_required_cards == 19
+    assert learning.starting_required_cards_completed == 0
+    assert learning.cards_completed_today == 1
+
+    storage.reviews_today = lambda: 2
+    repeated = engine.today_cards_status(DueObligationStatus(
+        review_count=18,
+        learning_count=1,
+        future_learning_count=1,
+    ))
+    assert repeated.starting_required_cards == 19
+    assert repeated.starting_required_cards_completed == 0
+    assert repeated.cards_completed_today == 2
+
+    # A read-only queue shrink may be bury/suspend or a limit change. It
+    # rebases the denominator instead of claiming completed work.
+    reconciled = engine.today_cards_status(DueObligationStatus(review_count=18))
+    assert reconciled.starting_required_cards == 18
+    assert reconciled.starting_required_cards_completed == 0
+    assert reconciled.cards_completed_today == 2
+
+
+def test_committed_today_cards_delta_advances_obligation_completion():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(
+        DueObligationStatus(new_count=1, review_count=18)
+    )
+    storage.reviews_today = lambda: 1
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(review_count=18),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.starting_required_cards == 19
+    assert completion.starting_required_cards_completed == 1
+    assert completion.cards_completed_today == 1
+
+
+def test_committed_answer_caps_completion_when_siblings_are_auto_buried():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=5))
+    storage.reviews_today = lambda: 1
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(review_count=2),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.starting_required_cards_completed == 1
+    assert completion.remaining_required_reviews == 2
+    assert completion.unresolved_obligation_disappearances == 2
+    assert completion.status == "unavailable"
+    # One committed answer completed one obligation; the two unavailable
+    # siblings rebase out of the denominator instead of inflating progress.
+    assert completion.starting_required_cards == 3
+
+
+def test_committed_answer_cannot_complete_when_a_sibling_is_auto_buried():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=2))
+    answer(engine, storage)
+    balance = storage.state.currency_balance
+
+    ok, message = engine.evaluate_today_cards(
+        DueObligationStatus(
+            committed_card_ids=(101,),
+            card_transitions=((101, "completed"),),
+            buried_sibling_card_ids=(202,),
+        ),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    assert "unavailable" in message.lower()
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.unavailable_reason == "auto_buried_sibling_obligation"
+    assert completion.starting_required_cards_completed == 1
+    assert completion.starting_required_cards == 1
+    assert completion.unresolved_obligation_disappearances == 1
+    assert completion.starting_required_cards == (
+        completion.starting_required_cards_completed
+        + completion.remaining_new_cards
+        + completion.remaining_required_reviews
+        + completion.remaining_learning_steps
+        + completion.future_learning_steps_before_cutoff
+    )
+    assert completion.reward_claimed is False
+    assert storage.state.daily_stats.completed_due_cards is False
+    assert storage.state.currency_balance == balance
+
+    # A later read-only empty snapshot cannot turn the ambiguous transition
+    # into a completed day.
+    refreshed = engine.today_cards_status(DueObligationStatus())
+    assert refreshed.status == "unavailable"
+    assert refreshed.unresolved_obligation_disappearances == 1
+
+
+def test_terminal_completion_fails_closed_when_committed_identity_is_unavailable():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(committed_card_ids=(101,)),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.starting_required_cards_completed == 0
+    assert completion.unresolved_obligation_disappearances == 1
+    assert completion.reward_claimed is False
+
+
+def test_read_only_empty_queue_cannot_award_today_cards_completion():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+    balance = storage.state.currency_balance
+
+    ok, message = engine.evaluate_today_cards(DueObligationStatus())
+
+    assert not ok
+    assert "unavailable" in message.lower()
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.starting_required_cards == 0
+    assert completion.starting_required_cards_completed == 0
+    assert completion.reward_claimed is False
+    assert storage.state.daily_stats.completed_due_cards is False
+    assert storage.state.currency_balance == balance
+
+
+def test_committed_answer_result_groups_final_due_rewards_under_answer_identity():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    revlog_id = storage.now_ms + 1_000
+    result = engine.commit_reviewer_answer(
+        {
+            "queue": 2,
+            "ease": 3,
+            "revlog_id": revlog_id,
+            "answered_at_ms": revlog_id,
+            "scheduler_day": storage.day,
+            "origin": "local",
+        },
+        latest_revlog_id=revlog_id,
+        due_status=DueObligationStatus(),
+    )
+
+    assert result is not None
+    assert result.event_id == result.correlation_id
+    assert result.event_id.startswith("answer:")
+    assert result.origin == "local"
+    assert result.daily_completion_rewarded
+    assert result.plants_before != result.plants_after
+    assert result.stored_growth_delta_units == 0
+    assert result.reward_receipts
+    assert {
+        receipt.correlation_id for receipt in result.reward_receipts
+    } == {result.correlation_id}
+    assert any(
+        transaction.source == "all_due"
+        for transaction in result.currency_transactions
+    )
+
+
+def test_committed_answer_result_propagates_answer_correlation_to_checkpoint():
+    engine, storage = make_engine()
+    plant = engine.active_plant()
+    assert plant is not None
+    first_stage_end = GROWTH_THRESHOLDS[1]
+    plant.growth_points = math.ceil(first_stage_end * 0.25) - 5
+    revlog_id = storage.now_ms + 1_000
+
+    result = engine.commit_reviewer_answer(
+        {
+            "queue": 2,
+            "ease": 3,
+            "revlog_id": revlog_id,
+            "answered_at_ms": revlog_id,
+            "scheduler_day": storage.day,
+        },
+        latest_revlog_id=revlog_id,
+        due_status=DueObligationStatus(review_count=1),
+    )
+
+    assert result is not None
+    checkpoint_transactions = tuple(
+        transaction
+        for transaction in result.currency_transactions
+        if transaction.event_key.startswith("stage_checkpoint:")
+    )
+    assert checkpoint_transactions
+    assert {
+        transaction.correlation_id for transaction in checkpoint_transactions
+    } == {result.correlation_id}
+    assert {
+        receipt.correlation_id
+        for receipt in result.reward_receipts
+        if receipt.event_key.startswith("stage_checkpoint:")
+    } == {result.correlation_id}
+    assert {
+        event.correlation_id
+        for event in engine.peek_feedback()
+        if event.event_id.startswith("stage_checkpoint:")
+    } == {result.correlation_id}
+
+
+def test_todays_cards_check_persists_scheduler_rollover_even_when_not_earned():
     engine, storage = make_engine()
     storage.state.daily_stats.reviewed = 1
     storage.day = "2026-08-09"
     storage.now_ms += 86_400_000
     saves_before = storage.save_count
 
-    ok, message = engine.evaluate_all_due(DueObligationStatus(review_count=2))
+    ok, _message = engine.evaluate_today_cards(DueObligationStatus(review_count=2))
 
-    assert not ok and message == "Answer a card first."
+    assert not ok
     assert storage.state.daily_stats.day == "2026-08-09"
-    assert storage.save_count == saves_before + 1
+    assert storage.state.daily_completion.scheduler_day == "2026-08-09"
+    assert storage.save_count > saves_before
 
 
-def test_progress_estimates_recalculate_from_the_effective_growth_rate(monkeypatch):
+def test_progress_estimates_recalculate_from_the_effective_growth_rate():
     engine, storage = make_engine()
+    engine._now_seconds = lambda: storage.now_ms / 1_000
     plant = storage.state.plants[0]
     plant.growth_points = 500
     assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 10)
-    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
-    plant.fertilizer = Fertilizer("quality", 2, 2_000.0, 500.0)
+    now = storage.now_ms / 1_000
+    plant.fertilizer = Fertilizer("quality", 2, now + 2 * 60 * 60, now)
     assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 12)
+
+
+def test_sync_reward_baseline_identifies_active_boost_items():
+    engine, storage = make_engine()
+    engine._now_seconds = lambda: storage.now_ms / 1_000
+    now = storage.now_ms / 1_000
+    plant = storage.state.plants[0]
+    plant.fertilizer = Fertilizer("quality", 2, now + 1_080, now)
+    plant.booster_card_batches = [
+        CardEffectBatch("booster_potion", 500, 100, 12)
+    ]
+
+    baseline = engine.sync_reward_baseline()
+
+    assert baseline["fertilizer_item_id"] == "fertilizer_quality"
+    assert baseline["fertilizer_remaining_seconds"] == 1_080
+    assert baseline["booster_item_id"] == "booster_potion"
+    assert baseline["booster_cards_remaining"] == 12
 
 
 def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
     engine, storage = make_engine()
+    engine._now_seconds = lambda: storage.now_ms / 1_000
     plant = storage.state.plants[0]
     storage.state.daily_stats.reviewed = 1
     storage.state.streak_days = 7
     storage.state.selected_weather = "breeze"
     storage.state.selected_background = "spring"
-    plant.bonus_remainder = 50
-    plant.fertilizer = Fertilizer(
-        "quality",
-        2,
-        storage.now_ms / 1_000 + 3_600,
-        storage.now_ms / 1_000 - 60,
-    )
+    now = storage.now_ms / 1_000
+    plant.fertilizer = Fertilizer("quality", 2, now + 2 * 60 * 60, now)
     before_state = storage.state.to_dict()
     before_saves = storage.save_count
     next_event_seconds = (storage.now_ms + 1_000) / 1_000
@@ -1087,264 +1722,185 @@ def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
     assert awarded == projected
 
 
-def test_fertilizer_is_currency_purchased_time_based_and_plant_specific(monkeypatch):
+def test_fertilizer_dose_is_timed_and_projection_does_not_change_its_window():
     engine, storage = make_engine()
-    answer(engine, storage)
-    storage.state.currency_balance = 200
-    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
+    engine._now_seconds = lambda: storage.now_ms / 1_000
+    storage.state.consumables["fertilizer_quality"] = 1
+    activated_at = storage.now_ms / 1_000
 
-    ok, message = engine.purchase_fertilizer("p1", "quality")
-    assert ok
-    assert message == "Quality Fertilizer applied."
-    plant = storage.state.plants[0]
-    assert plant.fertilizer.tier == "quality"
-    assert plant.fertilizer.started_at == 1_000
-    assert plant.fertilizer.expires_at == 1_000 + 7_200
-    assert storage.state.currency_balance == 135
-    assert engine.fertilizer_growth(plant, now=999.999) == 0
-    assert engine.fertilizer_growth(plant, now=1_000) == 2
-    assert engine.fertilizer_growth(plant, now=1_001) == 2
-    assert engine.fertilizer_growth(storage.state.plants[1], now=1_001) == 0
-    assert engine.fertilizer_growth(plant, now=9_000) == 0
-    assert any(
-        event.message
-        == "Quality Fertilizer applied."
-        for event in engine.peek_feedback()
-    )
-
-
-def test_same_fertilizer_extends_and_different_tier_requires_confirmation(monkeypatch):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    now = [1_000.0]
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-    first_start = storage.state.plants[0].fertilizer.started_at
-    first_expiration = storage.state.plants[0].fertilizer.expires_at
-    now[0] = 1_100.0
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-    assert storage.state.plants[0].fertilizer.started_at == first_start
-    assert storage.state.plants[0].fertilizer.expires_at == first_expiration + 3_600
-    assert not engine.purchase_fertilizer("p1", "premium")[0]
-    assert storage.state.plants[0].fertilizer_history == []
-    now[0] = 1_200.0
-    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
-    assert storage.state.plants[0].fertilizer.started_at == 1_200
-    assert storage.state.plants[0].fertilizer_history == [
-        Fertilizer("basic", 1, 1_200.0, 1_000.0)
-    ]
-
-
-def test_replaced_fertilizer_keeps_the_prior_tier_for_late_synced_answers(monkeypatch):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    now = [1_000.0]
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-    now[0] = 1_200.0
-    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
-
-    plant = storage.state.plants[0]
-    assert plant.fertilizer_history == [Fertilizer("basic", 1, 1_200.0, 1_000.0)]
-    assert engine.fertilizer_growth(plant, now=999.999) == 0
-    assert engine.fertilizer_growth(plant, now=1_100.0) == 1
-    assert engine.fertilizer_growth(plant, now=1_200.0) == 3
-    assert engine.fertilizer_growth(plant, now=15_600.0) == 0
-
-    gained = engine.apply_same_day_reviews(
-        [
-            {"queue": 2, "ease": 3, "revlog_id": 999_000, "answered_at_ms": 999_000},
-            {"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000},
-            {"queue": 2, "ease": 3, "revlog_id": 1_200_000, "answered_at_ms": 1_200_000},
-            {"queue": 2, "ease": 3, "revlog_id": 15_600_000, "answered_at_ms": 15_600_000},
-        ],
-        latest_revlog_id=15_600_000,
-    )
-
-    assert gained == 44
-    assert storage.state.daily_stats.base_growth == 40
-    assert storage.state.daily_stats.fertilizer_growth == 4
-
-
-def test_expired_fertilizer_is_retained_when_the_tier_is_purchased_again(monkeypatch):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    now = [1_000.0]
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-    now[0] = 5_000.0
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-
-    plant = storage.state.plants[0]
-    assert plant.fertilizer_history == [Fertilizer("basic", 1, 4_600.0, 1_000.0)]
-    assert plant.fertilizer == Fertilizer("basic", 1, 8_600.0, 5_000.0)
-    assert engine.fertilizer_growth(plant, now=4_500.0) == 1
-    assert engine.fertilizer_growth(plant, now=4_700.0) == 0
-    assert engine.fertilizer_growth(plant, now=5_000.0) == 1
-    assert engine.fertilizer_growth(plant, now=8_600.0) == 0
-
-    gained = engine.apply_same_day_reviews(
-        [
-            {"queue": 2, "ease": 3, "revlog_id": 4_500_000, "answered_at_ms": 4_500_000},
-            {"queue": 2, "ease": 3, "revlog_id": 4_700_000, "answered_at_ms": 4_700_000},
-            {"queue": 2, "ease": 3, "revlog_id": 5_000_000, "answered_at_ms": 5_000_000},
-            {"queue": 2, "ease": 3, "revlog_id": 8_600_000, "answered_at_ms": 8_600_000},
-        ],
-        latest_revlog_id=8_600_000,
-    )
-
-    assert gained == 42
-    assert storage.state.daily_stats.fertilizer_growth == 2
-
-
-def test_fertilizer_history_survives_restart_and_routes_late_answer_once(monkeypatch):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    now = [1_000.0]
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
-    assert engine.purchase_fertilizer("p1", "basic")[0]
-    now[0] = 1_200.0
-    assert engine.purchase_fertilizer("p1", "premium", replace_active=True)[0]
-
-    storage.state = GardenState.from_dict(storage.state.to_dict())
-    restarted = GardenGameEngine(FakeConfig(), storage)
-    restarted.assets.release_ready_plant_species = lambda **_kwargs: tuple(restarted.SPECIES_PRICES)
-    plant = storage.state.plants[0]
-
-    assert plant.fertilizer_history == [Fertilizer("basic", 1, 1_200.0, 1_000.0)]
-    first = restarted.apply_same_day_reviews(
-        [{"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000}],
-        latest_revlog_id=1_100_000,
-    )
-    second = restarted.apply_same_day_reviews(
-        [{"queue": 2, "ease": 3, "revlog_id": 1_100_000, "answered_at_ms": 1_100_000}],
-        latest_revlog_id=1_100_000,
-    )
-
-    assert first == 11
-    assert second == 0
-    assert storage.state.daily_stats.fertilizer_growth == 1
-
-
-def test_fertilizer_history_remains_durable_past_previous_cap(monkeypatch):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    plant = storage.state.plants[0]
-    plant.fertilizer_history = [
-        Fertilizer("basic", 1, float(index * 2 + 2), float(index * 2 + 1))
-        for index in range(MAX_FERTILIZER_HISTORY)
-    ]
-    plant.fertilizer = Fertilizer("quality", 2, 1_000.0, 500.0)
-    monkeypatch.setattr(engine, "_now_seconds", lambda: 2_000.0)
-    ok, message = engine.purchase_fertilizer("p1", "basic")
-
-    assert ok, message
-    assert len(plant.fertilizer_history) == MAX_FERTILIZER_HISTORY + 1
-    assert plant.fertilizer == Fertilizer("basic", 1, 5_600.0, 2_000.0)
-    assert storage.state.currency_balance == 475
-
-
-def test_scheduler_day_rollover_preserves_delayed_ingestion_effect_intervals():
-    engine, storage = make_engine()
-    plant = storage.state.plants[0]
-    plant.fertilizer_history = [
-        Fertilizer("basic", 1, 90.0, 10.0),
-        Fertilizer("quality", 2, 110.0, 80.0),
-    ]
-    plant.fertilizer = Fertilizer("premium", 3, 95.0, 92.0)
-    plant.booster = Booster(5, 98.0, 94.0)
-    storage.state.daily_stats.day = "2026-08-08"
-    storage.day = "2026-08-09"
-    storage.day_start_ms = 100_000
-
-    engine.rollover_if_needed()
-
-    assert plant.fertilizer_history == [
-        Fertilizer("basic", 1, 90.0, 10.0),
-        Fertilizer("quality", 2, 110.0, 80.0),
-        Fertilizer("premium", 3, 95.0, 92.0),
-    ]
-    assert plant.fertilizer is None
-    assert plant.booster is None
-    assert plant.booster_history == [Booster(5, 98.0, 94.0)]
-    assert engine.fertilizer_growth(plant, now=93.0) == 3
-    assert engine.booster_growth(plant, now=95.0) == 5
-
-
-@pytest.mark.parametrize(
-    ("tier", "growth_per_answer", "duration", "price"),
-    [("basic", 1, 3_600, 25), ("quality", 2, 7_200, 65), ("premium", 3, 14_400, 150)],
-)
-def test_fertilizer_tiers_and_expiry_boundary_are_exact(monkeypatch, tier, growth_per_answer, duration, price):
-    engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
-
-    ok, _message = engine.purchase_fertilizer("p1", tier)
+    ok, message = engine.use_fertilizer_item("p1", tier="quality")
     plant = storage.state.plants[0]
 
     assert ok
-    assert plant.fertilizer.growth_per_answer == growth_per_answer
-    assert plant.fertilizer.started_at == 1_000
-    assert plant.fertilizer.expires_at == 1_000 + duration
-    assert storage.state.currency_balance == 500 - price
-    assert engine.fertilizer_growth(plant, now=plant.fertilizer.expires_at - 0.001) == growth_per_answer
-    assert engine.fertilizer_growth(plant, now=plant.fertilizer.expires_at) == 0
+    assert "card" in message.lower()
+    assert "2 hours" in message.lower()
+    current, queued = engine.fertilizer_schedule(plant, now=activated_at)
+    assert current == Fertilizer(
+        "quality",
+        2,
+        activated_at + 2 * 60 * 60,
+        activated_at,
+    )
+    assert queued == ()
+    before = storage.state.to_dict()
+    projected = engine.project_review_growth(plant)
+    assert projected.fertilizer_growth_units == 200
+    assert storage.state.to_dict() == before
+
+    award = answer(engine, storage)
+
+    assert award.fertilizer_growth_units == 200
+    assert plant.fertilizer == current
+    assert storage.state.plants[1].fertilizer is None
+
+    after_expiry = engine.project_review_growth(
+        plant,
+        now=activated_at + 2 * 60 * 60,
+    )
+    assert after_expiry.fertilizer_growth_units == 0
 
 
-def test_booster_potion_stacks_with_base_growth_and_expires_at_exact_boundary(monkeypatch):
+def test_same_fertilizer_extends_while_a_different_tier_queues_without_loss():
     engine, storage = make_engine()
-    now = storage.now_ms / 1000.0
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now)
+    engine._now_seconds = lambda: storage.now_ms / 1_000
+    storage.state.consumables.update({
+        "fertilizer_basic": 2,
+        "fertilizer_quality": 1,
+    })
+
+    assert engine.use_fertilizer_item("p1", tier="basic")[0]
+    assert engine.use_fertilizer_item("p1", tier="basic")[0]
+    ok, message = engine.use_fertilizer_item("p1", tier="quality")
+    plant = storage.state.plants[0]
+
+    assert ok
+    assert "replace" not in message.lower()
+    assert "discard" not in message.lower()
+    assert "queued" in message.lower()
+    now = storage.now_ms / 1_000
+    current, queued = engine.fertilizer_schedule(plant, now=now)
+    assert current is not None and current.tier == "basic"
+    periods = engine._fertilizer_periods(plant)
+    assert [(period.tier, period.expires_at - period.started_at) for period in periods] == [
+        ("basic", 60 * 60),
+        ("basic", 60 * 60),
+        ("quality", 2 * 60 * 60),
+    ]
+    assert [period.tier for period in queued] == ["basic", "quality"]
+    assert periods[0].expires_at == periods[1].started_at
+    assert periods[1].expires_at == periods[2].started_at
+
+
+def test_fertilizer_queue_changes_tier_only_when_the_previous_time_expires():
+    engine, storage = make_engine()
+    plant = storage.state.plants[0]
+    now = storage.now_ms / 1_000
+    plant.fertilizer = Fertilizer("basic", 1, now + 1.5, now)
+    plant.fertilizer_history = [
+        Fertilizer("quality", 2, now + 2 * 60 * 60 + 1.5, now + 1.5)
+    ]
+
+    final_basic = answer(engine, storage)
+    first_quality = answer(engine, storage)
+
+    assert final_basic.fertilizer_growth_units == 100
+    assert first_quality.fertilizer_growth_units == 200
+    current, queued = engine.fertilizer_schedule(
+        plant,
+        now=storage.now_ms / 1_000,
+    )
+    assert current is not None and current.tier == "quality"
+    assert queued == ()
+
+
+def test_booster_count_pauses_without_a_target_and_resumes_when_growth_applies():
+    engine, storage = make_engine()
+    storage.state.consumables["booster_potion"] = 1
+    assert engine.use_booster_potion()[0]
+    plant = storage.state.plants[0]
+    assert plant.booster_card_batches[0].remaining_cards == 100
+
+    assert engine.set_active_plant(None)[0]
+    stored_award = answer(engine, storage)
+    assert stored_award.booster_growth_units == 0
+    assert plant.booster_card_batches[0].remaining_cards == 100
+    assert storage.state.stored_growth_units == 1_000
+
+    assert engine.set_active_plant("p1")[0]
+    resumed = answer(engine, storage)
+    assert resumed.booster_growth_units == 500
+    assert plant.booster_card_batches[0].remaining_cards == 99
+
+
+def test_booster_uses_the_locked_loadout_to_set_its_exact_card_count():
+    engine, storage = make_engine()
+    storage.state.inventory["weather"].append("snow_flurry")
+    storage.state.inventory["scenery"].append("full_moon")
+    storage.state.selected_weather = "snow_flurry"
+    storage.state.selected_background = "full_moon"
     storage.state.consumables["booster_potion"] = 1
 
     ok, message = engine.use_booster_potion()
-    plant = storage.state.plants[0]
+    batch = storage.state.plants[0].booster_card_batches[0]
 
     assert ok
-    assert "+5 Growth" in message
-    assert storage.state.consumables["booster_potion"] == 0
-    assert plant.booster is not None
-    assert plant.booster.started_at == now
-    assert plant.booster.expires_at == now + 7_200
-
-    active_award = engine.register_review({
-        "queue": 2,
-        "ease": 3,
-        "revlog_id": int((now + 1) * 1000),
-        "answered_at_ms": int((now + 1) * 1000),
-    })
-    expired_award = engine.register_review({
-        "queue": 2,
-        "ease": 3,
-        "revlog_id": int((now + 7_200) * 1000),
-        "answered_at_ms": int((now + 7_200) * 1000),
-    })
-
-    assert active_award.base_growth == 10
-    assert active_award.booster_growth == 5
-    assert active_award.total_growth == 15
-    assert expired_award.booster_growth == 0
-    assert expired_award.total_growth == 10
-    assert storage.state.daily_stats.booster_growth == 5
+    assert "card" in message.lower()
+    assert "hour" not in message.lower()
+    assert batch.total_cards == batch.remaining_cards == 150
+    assert engine.locked_environment_id("garden_feature") == "herbalist_hourglass"
+    assert engine.locked_environment_id("scenery") == "full_moon"
 
 
-def test_using_another_booster_extends_the_same_activation_window(monkeypatch):
+def test_full_bloom_transfers_remaining_timed_fertilizer_and_card_booster():
     engine, storage = make_engine()
-    now = [1_000.0]
-    monkeypatch.setattr(engine, "_now_seconds", lambda: now[0])
-    storage.state.consumables["booster_potion"] = 2
+    completed, continuation = storage.state.plants
+    completed.growth_points = 49_990
+    started_at = storage.now_ms / 1_000
+    completed.fertilizer = Fertilizer(
+        "basic",
+        1,
+        started_at + 20 * 60,
+        started_at,
+    )
+    completed.booster_card_batches = [CardEffectBatch(
+        "booster_potion", 500, 30, 30, source_event_key="booster-transfer"
+    )]
 
-    assert engine.use_booster_potion()[0]
+    award = answer(engine, storage)
+
+    assert award.fertilizer_growth_units == 100
+    assert award.booster_growth_units == 500
+    assert completed.booster_card_batches == []
+    assert storage.state.active_plant_id == continuation.plant_id
+    event_time = storage.now_ms / 1_000
+    completed_current, completed_queue = engine.fertilizer_schedule(
+        completed,
+        now=event_time,
+    )
+    continuation_current, continuation_queue = engine.fertilizer_schedule(
+        continuation,
+        now=event_time,
+    )
+    assert completed_current is None and completed_queue == ()
+    assert continuation_current is not None
+    assert continuation_current.tier == "basic"
+    assert continuation_current.started_at == event_time
+    assert continuation_current.expires_at == started_at + 20 * 60
+    assert continuation_queue == ()
+    assert continuation.booster_card_batches[0].remaining_cards == 29
+
+
+def test_effect_dose_cap_keeps_unaccepted_items_in_inventory():
+    engine, storage = make_engine()
+    engine._now_seconds = lambda: storage.now_ms / 1_000
+    storage.state.consumables["fertilizer_basic"] = 6
+
+    results = [engine.use_fertilizer_item("p1", tier="basic") for _ in range(6)]
+
+    assert [ok for ok, _message in results] == [True, True, True, True, True, False]
     plant = storage.state.plants[0]
-    original_start = plant.booster.started_at
-    original_expiry = plant.booster.expires_at
-    now[0] = 1_100.0
-    assert engine.use_booster_potion()[0]
-
-    assert plant.booster.started_at == original_start
-    assert plant.booster.expires_at == original_expiry + 7_200
-    assert storage.state.consumables["booster_potion"] == 0
+    assert len(engine._fertilizer_periods(plant)) == 5
+    assert storage.state.consumables["fertilizer_basic"] == 1
 
 
 def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
@@ -1357,7 +1913,7 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
         "growth",
         40,
         1_000,
-        "Common",
+        "Uncommon",
         eligibility_rule="unfinished_nurtured_plant",
     ),))
     storage.state.garden_find_drought_count = 74
@@ -1385,6 +1941,35 @@ def test_guaranteed_garden_find_growth_is_direct_and_duplicate_safe():
     assert feedback.amount == 0
 
 
+def test_guaranteed_growth_find_keeps_v2_weights_and_stores_without_a_target():
+    engine, storage = make_engine()
+    engine.initialize_reward_state()
+    engine.garden_find_registry = PreparedRewardRegistry((GardenFindReward(
+        "find_stored_growth",
+        "Stored Growth",
+        "+40 Growth",
+        "growth",
+        40,
+        1_000,
+        "Uncommon",
+        eligibility_rule="unfinished_nurtured_plant",
+    ),))
+    storage.state.garden_find_drought_count = 74
+    assert engine.set_active_plant(None)[0]
+
+    award = answer(engine, storage)
+
+    assert award.garden_find_ids == ("find_stored_growth",)
+    assert storage.state.stored_growth_units == 5_000
+    assert storage.state.daily_stats.instant_growth_units == 4_000
+    standard = next(
+        outcome for outcome in storage.state.garden_find_outcomes.values()
+        if outcome.pool_id == "standard"
+    )
+    assert standard.pool_version == "standard-v2"
+    assert standard.status == "hit"
+
+
 def test_garden_finds_wait_for_their_own_activation_boundary():
     engine, storage = make_engine()
     engine.initialize_reward_state()
@@ -1404,24 +1989,80 @@ def test_garden_finds_wait_for_their_own_activation_boundary():
     )
 
 
-def test_synced_answers_only_receive_fertilizer_during_the_activation_interval(monkeypatch):
+def test_engine_persists_and_resets_only_the_winning_environment_pity_tier():
     engine, storage = make_engine()
-    storage.state.currency_balance = 500
-    monkeypatch.setattr(engine, "_now_seconds", lambda: 1_000.0)
-    assert engine.purchase_fertilizer("p1", "quality")[0]
+    engine.initialize_reward_state()
+    storage.state.inventory["weather"].append("rainbow_sunshower")
+    storage.state.inventory["scenery"].extend([
+        "halloween", "full_moon", "eclipse",
+    ])
+    storage.state.environment_pity_misses = {
+        "rare": 4_999,
+        "very_rare": 123,
+        "ultra": 456,
+    }
+
+    award = answer(engine, storage)
+
+    discovered = set(award.garden_find_ids) & {"fireflies", "rainbow_horizon"}
+    assert len(discovered) == 1
+    assert storage.state.environment_pity_misses == {
+        "rare": 0,
+        "very_rare": 123,
+        "ultra": 456,
+    }
+    environment = next(
+        outcome for outcome in storage.state.garden_find_outcomes.values()
+        if outcome.pool_id == "environment"
+    )
+    assert environment.pool_version == "environment-v2"
+    assert environment.status == "hit"
+    assert environment.tier == "rare_environment"
+
+
+def test_synced_answers_only_receive_timed_fertilizer_at_or_after_activation(monkeypatch):
+    engine, storage = make_engine()
+    activation_ms = storage.now_ms
+    monkeypatch.setattr(engine, "_now_seconds", lambda: activation_ms / 1_000)
+    storage.state.consumables["fertilizer_quality"] = 1
+    assert engine.use_fertilizer_item("p1", tier="quality")[0]
 
     gained = engine.apply_same_day_reviews(
         [
-            {"queue": 2, "ease": 3, "revlog_id": 999_000, "answered_at_ms": 999_000},
-            {"queue": 2, "ease": 3, "revlog_id": 1_000_000, "answered_at_ms": 1_000_000},
-            {"queue": 2, "ease": 3, "revlog_id": 8_200_000, "answered_at_ms": 8_200_000},
+            {
+                "queue": 2,
+                "ease": 3,
+                "revlog_id": activation_ms - 1_000,
+                "answered_at_ms": activation_ms - 1_000,
+            },
+            {
+                "queue": 2,
+                "ease": 3,
+                "revlog_id": activation_ms,
+                "answered_at_ms": activation_ms,
+            },
+            {
+                "queue": 2,
+                "ease": 3,
+                "revlog_id": activation_ms + 1_000,
+                "answered_at_ms": activation_ms + 1_000,
+            },
         ],
-        latest_revlog_id=8_200_000,
+        latest_revlog_id=activation_ms + 1_000,
     )
 
-    assert gained == 32
+    assert gained == 34
     assert storage.state.daily_stats.base_growth == 30
-    assert storage.state.daily_stats.fertilizer_growth == 2
+    assert storage.state.daily_stats.fertilizer_growth == 4
+    current, queued = engine.fertilizer_schedule(
+        storage.state.plants[0],
+        now=(activation_ms + 1_000) / 1_000,
+    )
+    assert current is not None
+    assert current.tier == "quality"
+    assert current.started_at == activation_ms / 1_000
+    assert current.expires_at == activation_ms / 1_000 + 2 * 60 * 60
+    assert queued == ()
 
 
 def test_out_of_order_same_day_revlog_id_uses_ledger_not_scalar_cursor():
@@ -1911,9 +2552,24 @@ def test_background_time_band_uses_local_clock_boundaries(hour, expected):
     assert GardenGameEngine.local_time_band(moment) == expected
 
 
-@pytest.mark.parametrize("tier", ["basic", "quality", "premium"])
-def test_daily_currency_cannot_keep_fertilizer_active_constantly(tier):
+@pytest.mark.parametrize(
+    ("tier", "growth_per_card", "hours", "price"),
+    [
+        ("basic", 1, 1, 30),
+        ("quality", 2, 2, 100),
+        ("premium", 3, 4, 300),
+    ],
+)
+def test_timed_fertilizer_balance_and_daily_currency_limit(
+    tier,
+    growth_per_card,
+    hours,
+    price,
+):
     spec = GardenGameEngine.FERTILIZERS[tier]
+    assert spec.growth_per_answer == growth_per_card
+    assert spec.duration_seconds == hours * 60 * 60
+    assert spec.price == price
     sustainable_hours_per_day = (15 / spec.price) * (spec.duration_seconds / 3600)
     assert sustainable_hours_per_day < 1
 

@@ -110,9 +110,16 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
     )
     environment_presentation = lookup(environment_hit)
     assert environment_presentation is not None
-    assert environment_presentation.description == (
-        "Added to Weather and Scenery"
+    assert environment_presentation.description == "Added to Garden Decorations"
+
+    scenery_hit = GardenFindOutcome(
+        "answer:6b", "2026-08-20", "hit", "environment", "environment-v1",
+        "2026-08-20T12:02:30+00:00", reward_id="rainbow_horizon",
+        reward_type="environment_item", amount=1, item_id="rainbow_horizon",
     )
+    scenery_presentation = lookup(scenery_hit)
+    assert scenery_presentation is not None
+    assert scenery_presentation.description == "Added to Scenery"
 
     persisted_growth = GardenFindOutcome(
         "answer:7", "2026-08-20", "hit", "standard", "standard-v1",
@@ -120,9 +127,9 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
         reward_type="growth", amount=40, display_name="Morning Dew",
         description="+40 Growth",
     )
-    assert lookup(persisted_growth).description == (
-        "+40 Growth"
-    )
+    persisted_growth_presentation = lookup(persisted_growth)
+    assert persisted_growth_presentation.description == "+40 Growth"
+    assert persisted_growth_presentation.artwork_ref == "morning_dew"
     registry_growth = GardenFindOutcome(
         "answer:8", "2026-08-20", "hit", "standard", "standard-v1",
         "2026-08-20T12:04:00+00:00", reward_id="find_sun_patch",
@@ -180,17 +187,9 @@ def test_achievement_presentations_join_definition_identity_to_persisted_progres
         "1 Garden Coin and 2 Small Growth Charges and 1 Standard Growth Charge"
     )
 
-    state.daily_stats.reviewed = 29
-    state.daily_stats.correct = 26
-    state.daily_stats.wrong = 3
-    clear_recall = next(
-        item for item in achievement_presentations(state)
-        if item.achievement_id == "retention_90"
-    )
-    assert clear_recall.category == "recall"
-    assert clear_recall.condition_lines == (
-        "29 card answers, 89.7% accuracy",
-    )
+    assert "retention_90" not in {
+        item.achievement_id for item in achievement_presentations(state)
+    }
     absent_but_derivable = next(
         item for item in achievement_presentations(state)
         if item.achievement_id == "streak_30"
@@ -230,7 +229,11 @@ def test_recurring_reward_presentations_read_exact_engine_rules_and_committed_st
     }
 
     assert rules["daily_activity"].reward_summary == "+2 Garden Coins"
+    assert rules["daily_activity"].title == "First card today"
+    assert rules["daily_activity"].trigger == "Complete your first card today."
     assert rules["daily_activity"].status == "Earned today"
+    assert rules["all_due"].title == "Today’s Cards"
+    assert rules["all_due"].trigger == "Complete today’s cards."
     assert rules["all_due"].reward_summary == (
         "+12 Garden Coins and +5 Growth"
     )

@@ -67,14 +67,13 @@ class _Recorder:
         return SimpleNamespace(height=lambda: 520)
 
 
-def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
+def test_settings_layout_keeps_the_preview_free_vertical_organization() -> None:
     apply_layout = _compiled_layout_method()
     widget = _Recorder()
     widget._compact_layout = None
     widget.controls = _Recorder()
     widget.controls_scroll = _Recorder()
     widget.root_layout = _Recorder()
-    widget.preview_panel = _Recorder()
     widget.theme_card = _Recorder()
 
     apply_layout(widget, "wide")
@@ -98,7 +97,7 @@ def test_settings_layout_keeps_the_approved_vertical_organization() -> None:
     assert ("setSizePolicy", ("expanding", "preferred")) in (
         widget.controls_scroll.calls
     )
-    assert ("updateGeometry", ()) in widget.preview_panel.calls
+    assert "self.preview_panel" not in STUDIO_PATH.read_text("utf-8")
     assert ("updateGeometry", ()) in widget.calls
 
 
@@ -110,4 +109,4 @@ def test_settings_dialog_clamps_the_studio_to_visible_content() -> None:
     assert "def _sync_behavior_content_height(self)" in dashboard
     assert "if widget is None or widget.isHidden():" in dashboard
     assert "self.behavior.setMaximumHeight(target_height)" in dashboard
-    assert "self.behavior.show_home_widget.toggled.connect(" in dashboard
+    assert "self.behavior.show_home_widget.toggled.connect(" not in dashboard

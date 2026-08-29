@@ -4,11 +4,16 @@ from dataclasses import replace
 
 import ankigarden.garden_finds as garden_finds
 from ankigarden.garden_finds import (
+    ENVIRONMENT_POOL_VERSION,
+    ENVIRONMENT_TIER_RULES,
     FALLBACK_REWARD_ID,
     KNOWN_INVENTORY_ITEM_IDS,
+    LEGACY_ENVIRONMENT_POOL_VERSION,
+    LEGACY_STANDARD_POOL_VERSION,
     SPECIAL_ENVIRONMENT_POOL,
     STANDARD_DAILY_CAP,
     STANDARD_FIND_REGISTRY,
+    STANDARD_POOL_VERSION,
     consumption_id,
     deterministic_token,
     eligible_standard_rewards,
@@ -17,12 +22,18 @@ from ankigarden.garden_finds import (
     resolve_standard_find,
     simulate_standard_find_economy,
     stable_answer_event_identity,
+    standard_find_artwork_ref,
+    standard_find_status,
     standard_chance_for_answer,
     ultra_denominator,
 )
 
 
-def test_v1_registry_and_drought_schedule_match_the_approved_contract():
+def test_v2_registry_and_drought_schedule_match_the_approved_contract():
+    assert LEGACY_STANDARD_POOL_VERSION == "standard-v1"
+    assert STANDARD_POOL_VERSION == "standard-v2"
+    assert LEGACY_ENVIRONMENT_POOL_VERSION == "environment-v1"
+    assert ENVIRONMENT_POOL_VERSION == "environment-v2"
     assert [
         (
             reward.reward_id,
@@ -80,6 +91,14 @@ def test_v1_registry_and_drought_schedule_match_the_approved_contract():
         ),
         ("find_coin_treasury", "Garden Treasury", "coins", 40, None, "Exceptional", 4),
     ]
+    artwork_by_reward = {
+        reward.reward_id: reward.artwork_ref
+        for reward in STANDARD_FIND_REGISTRY
+    }
+    assert artwork_by_reward["find_coin_pouch"] == "garden_pouch"
+    assert artwork_by_reward["find_morning_dew"] == "morning_dew"
+    assert standard_find_artwork_ref("find_morning_dew", "growth") == "morning_dew"
+    assert standard_find_artwork_ref("unknown", "fallback") == "fallback"
     assert sum(reward.weight_tenths for reward in STANDARD_FIND_REGISTRY) == 1_000
     assert {
         tier: sum(
@@ -146,6 +165,17 @@ def test_standard_roll_is_deterministic_namespaced_and_pauses_at_daily_cap():
     assert not capped.attempted and capped.capped and not capped.hit
     assert capped.next_drought_misses == 37
 
+    status = standard_find_status(finds_today=2, drought_misses=74)
+    assert status.finds_today == 2
+    assert status.daily_cap == 3
+    assert status.next_card_guaranteed
+    assert not status.daily_limit_reached
+    assert not hasattr(status, "drought_misses")
+
+    capped_status = standard_find_status(finds_today=3, drought_misses=74)
+    assert capped_status.daily_limit_reached and capped_status.rolls_paused
+    assert not capped_status.next_card_guaranteed
+
 
 def test_registry_validation_disables_bad_entries_and_restores_a_safe_fallback():
     fallback, pouch = STANDARD_FIND_REGISTRY[:2]
@@ -194,9 +224,23 @@ def test_registry_validation_disables_bad_entries_and_restores_a_safe_fallback()
     }
     assert eligible_ids == {FALLBACK_REWARD_ID}
 
-    # Conditional Growth and inventory entries are excluded before normalized
-    # selection; a successful find still resolves to a valid Coin reward.
-    coin_only = resolve_standard_find(
+    # A missing nurture target never removes Growth outcomes or changes their
+    # normalized weights. The engine stores an awarded Growth Find if needed.
+    with_target = eligible_standard_rewards(
+        prepare_reward_registry(),
+        growth_available=True,
+    )
+    without_target = eligible_standard_rewards(
+        prepare_reward_registry(),
+        growth_available=False,
+    )
+    assert without_target == with_target
+    assert {reward.reward_kind for reward in without_target} == {
+        "coins", "growth", "inventory_item"
+    }
+
+    # The 75th eligible card is guaranteed and cannot resolve to Common.
+    guaranteed = resolve_standard_find(
         secret="profile-secret",
         answer_identity=stable_answer_event_identity(404),
         drought_misses=74,
@@ -204,8 +248,17 @@ def test_registry_validation_disables_bad_entries_and_restores_a_safe_fallback()
         growth_available=False,
         available_inventory_item_ids=(),
     )
-    assert coin_only.reward is not None
-    assert coin_only.reward.reward_kind == "coins"
+    assert guaranteed.reward is not None
+    assert guaranteed.reward.tier in {"Uncommon", "Rare", "Exceptional"}
+    guaranteed_with_target = resolve_standard_find(
+        secret="profile-secret",
+        answer_identity=stable_answer_event_identity(404),
+        drought_misses=74,
+        finds_today=0,
+        growth_available=True,
+        available_inventory_item_ids=(),
+    )
+    assert guaranteed_with_target == guaranteed
     assert fallback.enabled and fallback.eligibility_rule == "always"
 
 
@@ -217,11 +270,20 @@ def test_special_environment_pool_prioritizes_rarest_unowned_hit(monkeypatch):
         secret="profile-secret",
         answer_identity=identity,
         owned_environment_ids=(),
-        ultra_pity_misses=75_000,
+        tier_pity_misses={
+            "rare_environment": 7,
+            "very_rare_environment": 11,
+            "ultra_environment": 13,
+        },
     )
     assert ultra.hit and ultra.tier == "ultra_environment"
     assert ultra.item in SPECIAL_ENVIRONMENT_POOL
     assert ultra.next_ultra_pity_misses == 0
+    assert ultra.next_tier_pity_misses == {
+        "rare_environment": 8,
+        "very_rare_environment": 12,
+        "ultra_environment": 0,
+    }
     assert len([ultra.item]) == 1
 
     owned_ultra = {
@@ -232,47 +294,116 @@ def test_special_environment_pool_prioritizes_rarest_unowned_hit(monkeypatch):
         secret="profile-secret",
         answer_identity=identity,
         owned_environment_ids=owned_ultra,
-        ultra_pity_misses=12,
+        tier_pity_misses={
+            "rare_environment": 7,
+            "very_rare_environment": 11,
+            "ultra_environment": 13,
+        },
     )
     assert very_rare.hit and very_rare.tier == "very_rare_environment"
-    assert very_rare.next_ultra_pity_misses == 13
+    assert very_rare.next_tier_pity_misses == {
+        "rare_environment": 8,
+        "very_rare_environment": 0,
+        "ultra_environment": 13,
+    }
 
     all_owned = {item.ownership_key for item in SPECIAL_ENVIRONMENT_POOL}
     none = resolve_environment_find(
         secret="profile-secret",
         answer_identity=identity,
         owned_environment_ids=all_owned,
-        ultra_pity_misses=99,
+        tier_pity_misses={
+            "rare_environment": 7,
+            "very_rare_environment": 11,
+            "ultra_environment": 13,
+        },
     )
     assert not none.hit and none.item is None
-    assert none.next_ultra_pity_misses == 100
+    assert none.next_tier_pity_misses == {
+        "rare_environment": 7,
+        "very_rare_environment": 11,
+        "ultra_environment": 13,
+    }
 
 
-def test_special_environment_denominators_and_pool_are_exact_and_independent():
+def test_special_environment_denominators_hard_pity_and_pool_are_exact_and_independent(monkeypatch):
     assert [(item.item_id, item.environment_kind, item.tier) for item in SPECIAL_ENVIRONMENT_POOL] == [
-        ("fireflies", "weather", "rare_environment"),
+        ("firefly_lantern", "garden_feature", "rare_environment"),
         ("rainbow_horizon", "scenery", "rare_environment"),
-        ("rainbow_sunshower", "weather", "very_rare_environment"),
+        ("prism_trellis", "garden_feature", "very_rare_environment"),
         ("halloween", "scenery", "very_rare_environment"),
         ("full_moon", "scenery", "ultra_environment"),
         ("eclipse", "scenery", "ultra_environment"),
     ]
-    assert [
-        (misses, ultra_denominator(misses))
-        for misses in (0, 74_999, 75_000, 84_999, 85_000, 94_999, 95_000, 104_999, 105_000, 114_999, 115_000)
-    ] == [
-        (0, 100_000),
-        (74_999, 100_000),
-        (75_000, 90_000),
-        (84_999, 90_000),
-        (85_000, 80_000),
-        (94_999, 80_000),
-        (95_000, 70_000),
-        (104_999, 70_000),
-        (105_000, 60_000),
-        (114_999, 60_000),
-        (115_000, 50_000),
-    ]
+    assert {
+        tier: (rule.base_denominator, rule.hard_pity_answers)
+        for tier, rule in ENVIRONMENT_TIER_RULES.items()
+    } == {
+        "rare_environment": (2_500, 5_000),
+        "very_rare_environment": (10_000, 20_000),
+        "ultra_environment": (25_000, 50_000),
+    }
+    assert ultra_denominator(0) == ultra_denominator(1_000_000) == 25_000
+
+    monkeypatch.setattr(garden_finds, "_draw_below", lambda *args, **kwargs: False)
+    pity = resolve_environment_find(
+        secret="profile-secret",
+        answer_identity=stable_answer_event_identity(605),
+        owned_environment_ids=(),
+        tier_pity_misses={
+            "rare_environment": 4_999,
+            "very_rare_environment": 2,
+            "ultra_environment": 3,
+        },
+    )
+    assert pity.hit and pity.tier == "rare_environment"
+    assert pity.forced_by_pity
+    assert pity.next_tier_pity_misses["rare_environment"] == 0
+
+    for index, tier in enumerate((
+        "rare_environment",
+        "very_rare_environment",
+        "ultra_environment",
+    ), start=1):
+        owned_other_tiers = {
+            item.item_id
+            for item in SPECIAL_ENVIRONMENT_POOL
+            if item.tier != tier
+        }
+        counters = {
+            candidate_tier: 0
+            for candidate_tier in ENVIRONMENT_TIER_RULES
+        }
+        counters[tier] = ENVIRONMENT_TIER_RULES[tier].hard_pity_answers - 1
+        tier_pity = resolve_environment_find(
+            secret="profile-secret",
+            answer_identity=stable_answer_event_identity(700 + index),
+            owned_environment_ids=owned_other_tiers,
+            tier_pity_misses=counters,
+        )
+        assert tier_pity.hit and tier_pity.tier == tier
+        assert tier_pity.forced_by_pity
+        assert tier_pity.next_tier_pity_misses[tier] == 0
+
+    simultaneous_counters = {
+        tier: rule.hard_pity_answers - 1
+        for tier, rule in ENVIRONMENT_TIER_RULES.items()
+    }
+    simultaneous = resolve_environment_find(
+        secret="profile-secret",
+        answer_identity=stable_answer_event_identity(799),
+        owned_environment_ids=(),
+        tier_pity_misses=simultaneous_counters,
+    )
+    assert simultaneous.hit and simultaneous.forced_by_pity
+    assert {item.tier for item in simultaneous.items} == set(
+        ENVIRONMENT_TIER_RULES
+    )
+    assert len(simultaneous.items) == len(ENVIRONMENT_TIER_RULES)
+    assert all(
+        simultaneous.next_tier_pity_misses[tier] == 0
+        for tier in ENVIRONMENT_TIER_RULES
+    )
 
     # Standard cap state is intentionally absent from the special-pool API, and
     # both pools share the version-independent consumption key while drawing
@@ -288,11 +419,11 @@ def test_special_environment_denominators_and_pool_are_exact_and_independent():
         secret="profile-secret",
         answer_identity=identity,
         owned_environment_ids=(),
-        ultra_pity_misses=8,
+        tier_pity_misses={"ultra_environment": 8},
     )
     assert standard.consumption_id == special.consumption_id
     assert standard.capped
-    assert special.next_ultra_pity_misses in (0, 9)
+    assert special.next_ultra_pity_misses == 9
 
 
 def test_100k_simulation_stays_within_find_and_economy_budgets():
@@ -304,9 +435,9 @@ def test_100k_simulation_stays_within_find_and_economy_budgets():
     assert 45 <= result.average_answers_per_find <= 55
     assert result.max_drought_misses <= 74
     assert result.max_daily_finds <= STANDARD_DAILY_CAP
-    assert result.coins_per_100_answers <= 5
+    assert result.coins_per_100_answers <= 6
     assert result.direct_growth_percent_of_base <= 6
-    assert 700 <= 100_000 / result.inventory_counts["growth_charge_small"] <= 900
+    assert 500 <= 100_000 / result.inventory_counts["growth_charge_small"] <= 650
     assert (
         result.inventory_counts["fertilizer_basic"]
         + result.inventory_counts["booster_potion"]

@@ -27,7 +27,11 @@ _FERTILIZER_EFFECT_TEXT = (
 )
 
 GROWTH_EXPLANATION = (
-    "Card answers add Growth to your nurtured plant. Bonuses can add more."
+    "Each card adds Growth to your nurtured plant. Bonuses can add more."
+)
+
+HONEST_RATING_EXPLANATION = (
+    "Again, Hard, Good, and Easy give the same Growth. Rate cards honestly."
 )
 
 ACTIVE_PLANT_EXPLANATION = (
@@ -40,7 +44,7 @@ ANKI_STREAK_EXPLANATION = (
 )
 
 ALL_DUE_EXPLANATION = (
-    "Finish today’s due cards."
+    "Complete today’s cards."
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
@@ -49,9 +53,9 @@ GARDEN_CURRENCY_EXPLANATION = (
 )
 
 FERTILIZER_EXPLANATION = (
-    "Fertilizer adds Growth to each card answer for a limited time."
+    "Fertilizer adds Growth per card for a limited time."
 )
 
 PROGRESSION_SUMMARY = (
-    "Card answers add Growth. Cards, streaks, achievements, and Garden Finds can also earn rewards."
+    "Each card adds Growth. Cards, streaks, achievements, and Garden Finds can also earn rewards."
 )

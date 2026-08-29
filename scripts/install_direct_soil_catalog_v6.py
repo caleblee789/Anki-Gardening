@@ -37,6 +37,30 @@ STAGE_FAMILY = {
     "rare": "expanded",
 }
 
+# Reviewed high-density source replacements keep their canonical runtime
+# species/stage identity while retaining explicit source provenance.
+SOURCE_FILE_OVERRIDES = {
+    ("wisteria", "seed"): "wisteria_seed_retina_chroma.png",
+}
+SOURCE_DESCRIPTION_OVERRIDES = {
+    (
+        "wisteria",
+        "seed",
+    ): "ImageGen high-DPI identity-preserving edit of the Verdant Twilight V6 Wisteria seed",
+}
+
+
+def _runtime_file(species: str, stage: str) -> Path:
+    return RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.webp"
+
+
+def _source_file(species: str, stage: str) -> Path:
+    filename = SOURCE_FILE_OVERRIDES.get(
+        (species, stage),
+        f"{species}_{stage}_chroma.png",
+    )
+    return SOURCE_ROOT / species / filename
+
 # The source canvases stay the same size so visual progression must be declared
 # explicitly. The product of these two values is the visible-canopy target used
 # by plant_layout; every stage is materially larger than the stage before it.
@@ -296,7 +320,7 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
     }[stage]
     base_height = 0.022
     base = [round(0.5 - base_width / 2, 6), round(bottom - base_height, 6), base_width, base_height]
-    source = SOURCE_ROOT / species / f"{species}_{stage}_chroma.png"
+    source = _source_file(species, stage)
     if not source.is_file():
         raise FileNotFoundError(f"missing canonical V6 source master: {source}")
     source_master_file = source.relative_to(ROOT).as_posix()
@@ -322,7 +346,10 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
         "release_preferred": True,
         "quality_tier": "ultra",
         "quality_score": 0.995,
-        "source": "ImageGen line authored against the Verdant Twilight V6 background",
+        "source": SOURCE_DESCRIPTION_OVERRIDES.get(
+            (species, stage),
+            "ImageGen line authored against the Verdant Twilight V6 background",
+        ),
         "attribution": "Original AI-assisted artwork generated for Anki Garden",
         "source_master_file": source_master_file,
         "source_master_sha256": _sha256(source),
@@ -331,6 +358,12 @@ def _metadata(species: str, stage: str, path: Path) -> dict[str, Any]:
             "baseline_y": bottom,
             "scale": 1.0,
             "display_scale": 1.0,
+            "visual_center": [
+                round(art[0] + art[2] / 2, 6),
+                round(art[1] + art[3] / 2, 6),
+            ],
+            "shadow_offset": [0.0, 0.0],
+            "minimum_bed_clearance": 0.04,
             "visible_bounds": visible,
             "ground_anchor": [0.5, round(bottom, 6)],
             "ground_anchor_x": 0.5,
@@ -369,7 +402,7 @@ def main() -> None:
     replacement_keys: set[tuple[str, str]] = set()
     for species in SPECIES:
         for stage in STAGES:
-            path = RUNTIME_ROOT / species / stage / f"{species}_{stage}_twilight_v6.webp"
+            path = _runtime_file(species, stage)
             if not path.is_file():
                 continue
             replacements.append(_metadata(species, stage, path))

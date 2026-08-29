@@ -1,8 +1,10 @@
 # Anki Garden 2.1.0 UI evidence
 
-Status: automated v25 capture validation is complete; visual and native release
-acceptance remain pending. Both retained reports have `quality_status` set to
-`review-required` and `release_ready` set to `false`.
+Status: the current full v25 capture is complete and its five contact sheets
+have been inspected for obvious clipping, overlap, and acquisition errors. The
+generated report intentionally remains `review-required` with
+`release_ready: false`; human, native, and platform release acceptance remain
+separate gates.
 
 ## Current acceptance contract
 
@@ -10,8 +12,8 @@ Capture contract v25 compiles the Qt-free surface registry into two profiles:
 
 | Profile | Surfaces | Sheets | Evidence tier |
 |---|---:|---:|---|
-| `representative` | 15 | 2 | Preflight |
-| `full` | 30 | 5 | Final-release automation |
+| `representative` | 18 | 2 | Preflight |
+| `full` | 34 | 5 | Final-release automation |
 
 The counts are generated observations rather than fixed acceptance constants.
 Retired or behavioral-only IDs remain reserved, including the retired starter
@@ -21,82 +23,100 @@ contact sheets are presentation aids.
 
 Detailed semantic, copy, text-fit, layout, scroll, and duplicate-view findings
 remain visible review advisories. They are not silently normalized, and a valid
-automated manifest is not human visual approval.
+automated manifest or agent visual pass is not human release approval.
 
-## Retained representative evidence
+## Current full evidence
 
-- Run: `build/ui-face-captures/representative/capture-sequence-20260828-080319`
-- Manifest: `assembled/manifest.json`
+- Final run:
+  `build/ui-face-captures/full/capture-sequence-20260829-172210`
+- Manifest: `assembled/manifest.json` in that run
 - Contact sheets:
-  `build/ui-face-captures/representative/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260828-080319`
+  `build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260829-172210`
+- Contact-sheet index: `contact-sheet-set.json` in that directory
 - Evidence archive:
-  `build/ui-face-captures/representative/anki-garden-ui-faces-20260828-080319.zip`
-- Result: 15/15 surfaces, two sheets, 2 captured faces, 13 reused faces, no
-  recapture requirement, valid surface/contact-sheet validation, and clean
-  process shutdown.
-- Review telemetry: three text-layout warning records and 13 audit advisories.
+  `build/ui-face-captures/full/anki-garden-ui-faces-20260829-172210.zip`
+- Result: 34/34 surfaces and five sheets passed independent surface and
+  contact-sheet validation with no recapture requests or text-layout warnings.
+  Sixteen full-only surfaces were acquired in the final run; 18 surfaces were
+  reused from the fresh representative preflight through compatible immutable
+  per-surface lineage. Clean process shutdown passed.
+- Review telemetry: one non-blocking advisory records that macOS refused to
+  move the pointer to a neutral screen corner before the first Deck Browser
+  capture. The app-owned Qt/WebView acquisition does not include the OS cursor;
+  the saved surface passed semantic, geometry, stability, and visual review.
+- Visual disposition: all five sheets were inspected. No obvious clipping,
+  overlap, wrong-window acquisition, or contact-sheet framing defect was found.
+  The Collection fixture reports the current 30-of-39 catalog, and the Sync
+  Rewards surface proves two stable frames.
 
-## Retained full evidence
+The full report's automated release gate passed. Its overall release state
+remains nonready because manual native and platform acceptance have not been
+signed off.
 
-- Run: `build/ui-face-captures/full/capture-sequence-20260828-080449`
-- Manifest: `assembled/manifest.json`
-- Contact sheets:
-  `build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260828-080449`
-- Evidence archive:
-  `build/ui-face-captures/full/anki-garden-ui-faces-20260828-080449.zip`
-- Result: 30/30 surfaces, five sheets, 2 captured faces, 28 reused faces, no
-  recapture requirement, valid surface/contact-sheet validation, and clean
-  process shutdown.
-- Review telemetry: five text-layout warning records and 22 audit advisories.
+## Representative evidence boundary
 
-The full report's automated release gate passed. Its overall release state is
-still nonready because the retained advisories and manual acceptance boundaries
-have not been signed off.
+The current representative preflight is
+`build/ui-face-captures/representative/capture-sequence-20260829-171759`.
+It freshly captured 18/18 surfaces across two valid contact sheets with no
+issues, advisories, text-layout warnings, or recapture requests and with clean
+process shutdown. Its Collection postcondition and Sync Rewards stability proof
+both passed. It is preflight evidence only and does not set the automated
+full-release gate.
 
 ## Package binding
 
-Both retained profiles used the same capture derivative:
+The current evidence binds these exact artifacts:
 
-- capture package SHA-256:
-  `03a86d9f8a30088c25b2d7ce8291884989a9e7135c05f64a5080ac1b7dc354d1`
+- capture-contract digest:
+  `74b9028d3b8bb696fa8f4a8af541211c28731693e4b4fc0fc8b7f6d16b79e882`
+- full capture package SHA-256:
+  `204ece1a4cea9cd998090f7d3a3f514fb25091bf59ccd0f0165abc56b43c139b`
 - production package SHA-256:
-  `f8f962a8731ac79b9627a5260cd04588de4574b10eca98b8e7d172854d1bb86c`
+  `1fbbaf58ce9cfcb1b9f6d3c8782f93fa4f699e40d5910798fd8bdee73c98b198`
 - full evidence archive SHA-256:
-  `d92c6ce6a986e360a746f79d863b74b030e21d63fe6a9b96ab70d198c391d1c6`
+  `e85d051f7633e165e5738953b70d136f2285577468cdc7a0dd2f6457f0d5eb01`
+- representative capture package SHA-256:
+  `cfeabae1cb4a96e46f5d6108269dfd1806cbfbc7265c4bcddbf58806aeb18241`
 - representative evidence archive SHA-256:
-  `4e346fd966b9c40b366d87be78fe8e48c3af555ebf9d42ae8c320bb90c5d0417`
+  `a3df084c29eb0ec414cbe2f4035d599d71752af007c780d0daf5d1d7be998d6f`
+- shared production/capture payload SHA-256 (297 entries):
+  `1ba86dfd02413ee1b2eec6d0b39096f9f99bb79c3a9ffb460e936383c37e7b9c`
 
 The production archive is `dist/anki_garden.ankiaddon`. Capture derivatives
 cannot overwrite it and remain excluded from the distributable.
 
 ## Current source validation
 
-The post-cleanup source and documentation were validated on 2026-08-28:
+The final source, documentation, and production package were validated on
+2026-08-29:
 
-- fast lane: 1,039 passed, 795 deselected;
-- release-evidence lane: 782 passed, 13 skipped, 1,039 deselected;
-- explicit union: 1,821 passed, 13 skipped;
-- artwork audit: 9 backgrounds, 1 decoration, 60 plant images, 9 UI images,
-  and 7 Weather images;
-- Python compilation, manifest parsing, capture-contract doctor, representative
-  and full plan generation, both retained-manifest validators, ZIP integrity,
-  README relative-link targets, and `git diff --check`: passed; and
-- deterministic production build: 277 files, 81,958,606 bytes, with 277/277
-  source payloads byte-identical to the archive.
+- fast lane: 1,364 passed, 21 skipped, and 813 deselected;
+- release-evidence lane: 800 passed, 13 skipped, and 1,385 deselected;
+- explicit union: 2,164 passed and 34 skipped;
+- focused package, asset-selection, and Retina checks: 26 passed and 13
+  deselected;
+- artwork audit: 9 backgrounds, 8 Garden Decoration assets, 60 plant images,
+  and 19 UI images;
+- Python compilation, capture-contract doctor, manifest/contact-sheet
+  validation, ZIP integrity, source/archive parity, Markdown link checks, and
+  `git diff --check`: passed; and
+- deterministic production build: 298 files and 85,678,959 bytes, with SHA-256
+  `1fbbaf58ce9cfcb1b9f6d3c8782f93fa4f699e40d5910798fd8bdee73c98b198`
+  before and after rebuild.
 
 ## Local evidence retention
 
-The 2026-08-28 release cleanup retained the newest complete run, matching
-evidence archive, and matching contact-sheet set for each profile. Superseded
-legacy, partial, diagnostic, and complete capture output was removed at the
-user's request. Source artwork, runtime user data, the virtual environment, and
-the production archive were not part of that deletion.
+Only the newest full five-page contact-sheet directory is retained locally.
+Superseded full and all representative contact-sheet directories were removed
+after the current full set passed independent validation and visual inspection.
+Raw capture runs, manifests, reports, lineage, evidence archives, the production
+archive, source artwork, and mutable runtime user data were preserved.
 
 ## Remaining acceptance
 
 The following gates remain open until separately run and recorded:
 
-- human review and disposition of every retained visual advisory;
+- human release approval of the current five-sheet full set;
 - full-screen macOS interaction through the Garden and each nested dialog,
   including confirmation that no action switches Spaces or creates a stray
   top-level window;

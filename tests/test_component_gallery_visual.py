@@ -10,6 +10,125 @@ from PIL import Image, ImageDraw
 pytestmark = pytest.mark.release_evidence
 
 
+REQUIRED_DISPLAY_STATE_MATRIX: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("buttons", ("normal", "hover", "pressed", "disabled", "loading")),
+    ("tabs", ("active", "inactive")),
+    ("switches", ("off", "on")),
+    ("plants", ("normal", "hover", "selected", "nurtured")),
+    (
+        "beds",
+        ("current", "available", "hovered", "occupied", "locked"),
+    ),
+    (
+        "nursery",
+        ("owned", "active", "purchasable", "insufficient", "equipped"),
+    ),
+    ("progress", ("zero", "partial", "complete")),
+    ("balances", ("zero", "positive", "four-digit", "five-digit")),
+    ("inventory", ("zero", "one", "two", "double-digit")),
+    ("transactions", ("positive", "negative")),
+    ("achievements", ("in-progress", "completed", "locked")),
+    ("diagnostics", ("success", "warning", "failure", "checking")),
+    ("reviewer-rewards", ("one", "two", "collapsed")),
+    ("growth-charge", ("no-transition", "stage-transition")),
+    ("dialog-lists", ("one-row", "scrolling")),
+)
+
+
+@pytest.mark.parametrize(
+    ("component", "expected_states"),
+    REQUIRED_DISPLAY_STATE_MATRIX,
+)
+def test_release_display_state_matrix_is_complete(
+    component: str,
+    expected_states: tuple[str, ...],
+) -> None:
+    assert component.strip()
+    assert len(expected_states) >= 2
+    assert len(set(expected_states)) == len(expected_states)
+
+
+def test_off_contract_release_state_matrix_gallery_is_deterministic(
+    tmp_path: Path,
+) -> None:
+    """Render every required release state without expanding capture v25."""
+
+    from ankigarden.ui.theme import GARDEN_THEME
+
+    canvas = Image.new("RGB", (1200, 1048), GARDEN_THEME["garden_background"])
+    draw = ImageDraw.Draw(canvas)
+    semantic_colors = {
+        "positive": GARDEN_THEME["action_accent"],
+        "warning": GARDEN_THEME["warning"],
+        "danger": GARDEN_THEME["danger"],
+        "muted": GARDEN_THEME["disabled_surface"],
+        "neutral": GARDEN_THEME["raised_surface"],
+    }
+
+    state_boxes: list[tuple[str, str, tuple[int, int, int, int]]] = []
+    for index, (component, states) in enumerate(REQUIRED_DISPLAY_STATE_MATRIX):
+        column = index % 2
+        row = index // 2
+        left = 24 + column * 588
+        top = 24 + row * 126
+        right = left + 564
+        bottom = top + 108
+        draw.rounded_rectangle(
+            (left, top, right, bottom),
+            12,
+            fill=GARDEN_THEME["dialog_surface"],
+            outline=GARDEN_THEME["subtle_border"],
+        )
+        draw.text(
+            (left + 12, top + 10),
+            component.replace("-", " ").title(),
+            fill=GARDEN_THEME["text_primary"],
+        )
+        gap = 6
+        available = right - left - 24 - gap * (len(states) - 1)
+        state_width = max(44, available // len(states))
+        for state_index, state in enumerate(states):
+            state_left = left + 12 + state_index * (state_width + gap)
+            box = (state_left, top + 48, state_left + state_width, top + 88)
+            normalized = state.casefold()
+            tone = (
+                "danger"
+                if normalized in {"failure", "insufficient", "negative"}
+                else "warning"
+                if normalized in {"warning", "checking"}
+                else "muted"
+                if normalized in {"disabled", "locked", "inactive", "off"}
+                else "positive"
+                if normalized in {
+                    "active", "on", "selected", "nurtured", "current",
+                    "hovered", "owned", "equipped", "complete", "completed",
+                    "positive", "stage-transition",
+                }
+                else "neutral"
+            )
+            draw.rounded_rectangle(box, 7, fill=semantic_colors[tone])
+            draw.text(
+                (box[0] + 6, box[1] + 13),
+                state.replace("-", " "),
+                fill=(
+                    GARDEN_THEME["action_text"]
+                    if tone == "positive"
+                    else GARDEN_THEME["text_primary"]
+                ),
+            )
+            state_boxes.append((component, state, box))
+
+    output = tmp_path / "release-display-state-matrix-100.png"
+    canvas.save(output)
+
+    assert canvas.size == (1200, 1048)
+    assert output.stat().st_size > 10_000
+    assert len(state_boxes) == sum(
+        len(states) for _component, states in REQUIRED_DISPLAY_STATE_MATRIX
+    )
+    assert all(right > left and bottom > top for _group, _state, (left, top, right, bottom) in state_boxes)
+
+
 def _rendered_colors(image: object, *, stride: int = 3) -> set[str]:
     colors: set[str] = set()
     width = int(image.width())
@@ -232,8 +351,28 @@ def test_live_qt_component_gallery_renders_release_geometry_and_pixels_when_avai
         variant=BUTTON_VARIANT_DESTRUCTIVE,
         size=ButtonSize.SECONDARY,
     )
+    disabled = GardenButton(
+        "Disabled",
+        variant=BUTTON_VARIANT_SECONDARY,
+        size=ButtonSize.SECONDARY,
+    )
+    disabled.setEnabled(False)
+    loading = GardenButton(
+        "Purchase",
+        variant=BUTTON_VARIANT_PRIMARY,
+        size=ButtonSize.PRIMARY,
+    )
+    loading.set_loading(True, "Loading…")
     icon = GardenIconButton("settings", "Settings")
-    for button in (compact, standard, primary, destructive, icon):
+    for button in (
+        compact,
+        standard,
+        primary,
+        destructive,
+        disabled,
+        loading,
+        icon,
+    ):
         buttons.addWidget(button)
     buttons.addStretch(1)
     root.addLayout(buttons)
@@ -288,9 +427,12 @@ def test_live_qt_component_gallery_renders_release_geometry_and_pixels_when_avai
     root.addLayout(content)
 
     controls = QHBoxLayout()
-    toggle = ToggleSwitch("Weather effects")
-    toggle.setChecked(True)
-    controls.addWidget(toggle)
+    toggle_off = ToggleSwitch("Garden Decoration hidden")
+    toggle_off.setChecked(False)
+    controls.addWidget(toggle_off)
+    toggle_on = ToggleSwitch("Garden Decoration shown")
+    toggle_on.setChecked(True)
+    controls.addWidget(toggle_on)
     toast = ToastRegion()
     toast.setSizePolicy(
         QSizePolicy.Policy.Expanding,
@@ -316,7 +458,13 @@ def test_live_qt_component_gallery_renders_release_geometry_and_pixels_when_avai
     assert standard.height() == 36
     assert primary.height() == 40
     assert destructive.height() == 36
+    assert disabled.isEnabled() is False
+    assert bool(loading.property("busy")) is True
+    assert loading.text() == "Loading…"
+    assert loading.isEnabled() is False
     assert (icon.width(), icon.height()) == (32, 32)
+    assert toggle_off.property("switchState") == "off"
+    assert toggle_on.property("switchState") == "on"
     assert tabs.tabBar().height() == 42
     assert progress.bar.height() == 8
     assert 48 <= toast.height() <= 84

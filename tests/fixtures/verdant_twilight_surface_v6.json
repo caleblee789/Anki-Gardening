@@ -45,8 +45,6 @@
     "supported_times": [
       "twilight"
     ],
-    "weather": "any",
-    "weather_mode": "separate_overlay",
     "coordinate_contract": "aspect_locked_normalized_v3",
     "spatial_blueprint": "verdant_twilight_v6_six_soil_beds",
     "surface_geometry_reused_for_future_variants": false
@@ -58,8 +56,7 @@
       "ground",
       "architecture",
       "cottage_light",
-      "nursery_light",
-      "weather"
+      "nursery_light"
     ],
     "invariant_geometry": [
       "planting_surfaces",
@@ -69,8 +66,7 @@
       "sky",
       "foliage",
       "ground",
-      "architecture",
-      "weather"
+      "architecture"
     ],
     "plant_contact_shadows_baked": false
   },
@@ -238,8 +234,7 @@
         "ground": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_ground.png",
         "architecture": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_architecture.png",
         "cottage_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_cottage_light.png",
-        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_nursery_light.png",
-        "weather": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_weather.png"
+        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_4x3_nursery_light.png"
       },
       "width": 1280,
       "height": 960,
@@ -740,8 +735,7 @@
         "ground": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_ground.png",
         "architecture": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_architecture.png",
         "cottage_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_cottage_light.png",
-        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_nursery_light.png",
-        "weather": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_weather.png"
+        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_16x9_nursery_light.png"
       },
       "width": 1672,
       "height": 941,
@@ -1242,8 +1236,7 @@
         "ground": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_ground.png",
         "architecture": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_architecture.png",
         "cottage_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_cottage_light.png",
-        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_nursery_light.png",
-        "weather": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_weather.png"
+        "nursery_light": "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master/masks/layers/verdant_twilight_home_nursery_light.png"
       },
       "width": 1942,
       "height": 809,

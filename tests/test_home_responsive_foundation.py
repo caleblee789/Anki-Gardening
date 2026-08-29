@@ -72,6 +72,9 @@ def test_home_banner_preserves_cta_before_hiding_optional_metadata() -> None:
         in HOME_WIDGET_STYLE
     )
     assert "min-width:112px !important" in HOME_WIDGET_STYLE
+    assert "bottom:7px" in HOME_WIDGET_STYLE
+    assert "width:260px" in HOME_WIDGET_STYLE
+    assert "right:140px; bottom:7px; width:auto" in HOME_WIDGET_STYLE
     assert (
         ".ag-home__support,.ag-home__progress-copy,.ag-home__growth-track { display:none; }"
         in HOME_WIDGET_STYLE
@@ -117,7 +120,9 @@ def test_addon_motion_preferences_are_preserved_across_request_states(
 
 
 def test_os_and_addon_reduced_motion_form_one_effective_css_policy() -> None:
-    assert "ag-home__weather-layer" not in HOME_WIDGET_STYLE
+    assert ".ag-home__garden-feature" in HOME_WIDGET_STYLE
+    assert ".ag-home__feature-pad" in HOME_WIDGET_STYLE
+    assert "pointer-events:none" in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"] { transition:none; }' in HOME_WIDGET_STYLE
     assert '#ag-home-root[data-motion="reduced"]:hover { transform:none; }' in HOME_WIDGET_STYLE
     assert (

@@ -57,10 +57,10 @@ def _switch_icon(checked: bool, enabled: bool) -> QIcon:
     radius = TOGGLE_VISUAL_HEIGHT / 2 - 0.5
     painter.drawRoundedRect(bounds, radius, radius)
 
-    thumb_radius = 8.0
+    thumb_radius = 9.0
     thumb_x = (
-        TOGGLE_VISUAL_WIDTH - 10.0
-        if checked else 10.0
+        TOGGLE_VISUAL_WIDTH - 11.0
+        if checked else 11.0
     )
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(
@@ -83,6 +83,17 @@ class GardenToggleSwitch(QCheckBox):
         super().__init__(label, parent)
         self.setProperty("toggleSwitch", True)
         self.setProperty("gardenRole", "switch")
+        # Retain QCheckBox semantics, but own exactly one 38 x 22 visual. The
+        # native indicator plus an icon produced a duplicate, clipped thumb on
+        # Retina displays even when QSS attempted to collapse the indicator.
+        self.setFixedSize(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT)
+        self.setStyleSheet(
+            "QCheckBox {"
+            f"min-width:{TOGGLE_VISUAL_WIDTH}px;max-width:{TOGGLE_VISUAL_WIDTH}px;"
+            f"min-height:{TOGGLE_VISUAL_HEIGHT}px;max-height:{TOGGLE_VISUAL_HEIGHT}px;"
+            "padding:0;border:0;background:transparent;"
+            "} QCheckBox::indicator {width:0;height:0;border:0;}"
+        )
         self.setIconSize(QSize(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT))
         if label:
             self.setAccessibleName(label)
@@ -100,6 +111,7 @@ class GardenToggleSwitch(QCheckBox):
         if style is not None:
             style.unpolish(self)
             style.polish(self)
+        self.setFixedSize(TOGGLE_VISUAL_WIDTH, TOGGLE_VISUAL_HEIGHT)
 
     def setChecked(self, checked: bool) -> None:
         """Refresh the icon even when callers temporarily block signals."""
@@ -111,6 +123,48 @@ class GardenToggleSwitch(QCheckBox):
         super().changeEvent(event)
         if event.type() == QEvent.Type.EnabledChange:
             self._sync_state(self.isChecked())
+
+    def paintEvent(self, event: Any) -> None:
+        del event
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setOpacity(1.0 if self.isEnabled() else 0.48)
+            checked = bool(self.isChecked())
+            bounds = QRectF(
+                0.5,
+                0.5,
+                float(TOGGLE_VISUAL_WIDTH - 1),
+                float(TOGGLE_VISUAL_HEIGHT - 1),
+            )
+            border_color = (
+                GARDEN_THEME["growth_accent"]
+                if checked else GARDEN_THEME["strong_border"]
+            )
+            if self.hasFocus() and bool(self.property("keyboardFocusVisible")):
+                border_color = GARDEN_THEME["focus_ring"]
+            painter.setPen(QPen(QColor(border_color), 1.0))
+            painter.setBrush(QColor(
+                GARDEN_THEME["action_accent"]
+                if checked else GARDEN_THEME["disabled_surface"]
+            ))
+            radius = TOGGLE_VISUAL_HEIGHT / 2 - 0.5
+            painter.drawRoundedRect(bounds, radius, radius)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(
+                GARDEN_THEME["action_text"]
+                if checked else GARDEN_THEME["text_primary"]
+            ))
+            painter.drawEllipse(
+                QPointF(
+                    TOGGLE_VISUAL_WIDTH - 11.0 if checked else 11.0,
+                    TOGGLE_VISUAL_HEIGHT / 2,
+                ),
+                9.0,
+                9.0,
+            )
+        finally:
+            painter.end()
 
 
 GardenSwitch = GardenToggleSwitch

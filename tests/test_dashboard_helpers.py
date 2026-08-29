@@ -120,6 +120,102 @@ def test_nursery_bed_actions_include_the_exact_price() -> None:
         assert 'f"Unlock for {_compact_catalog_cost(price)}"' in method_source
 
 
+def test_recent_find_rows_render_canonical_artwork_refs() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    helper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_garden_find_preview_label"
+    )
+    helper_source = ast.get_source_segment(source, helper) or ""
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "GardenDetailsDialog"
+    )
+    method = next(
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_add_recent_garden_finds"
+    )
+    method_source = ast.get_source_segment(source, method) or ""
+
+    assert 'getattr(finding, "artwork_ref", "")' in helper_source
+    assert '"ui_growth_charge_small": "growth_charge_small"' in helper_source
+    assert 'artwork_ref not in {' in helper_source
+    assert '_item_preview_label(' in helper_source
+    assert 'if pool_id == "environment" and artwork_ref:' in helper_source
+    assert '"resolve_garden_feature_preview_asset"' in helper_source
+    assert 'label.setProperty("gardenFindArtworkRef", artwork_ref)' in helper_source
+    assert "_garden_find_preview_label(self.engine, finding)" in method_source
+    assert 'grid.addWidget(find_cell, row, 1)' in method_source
+
+
+def test_collection_growth_items_render_their_canonical_artwork() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    owner = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GardenDashboard"
+    )
+    method = next(
+        node
+        for node in owner.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_collectible_registry_card"
+    )
+    method_source = ast.get_source_segment(source, method) or ""
+
+    assert 'if definition.category == "growth_items":' in method_source
+    assert 'if str(definition.source_id) == "fertilizer_basic"' in method_source
+    assert 'else str(definition.source_id or "")' in method_source
+    assert "icon = _item_preview_label(" in method_source
+    assert 'icon.setProperty("collectibleItemArtwork", True)' in method_source
+    assert 'icon.setProperty("collectibleItemArtworkRef", artwork_ref)' in method_source
+    assert '"growth_items": "growth"' not in method_source
+
+
+def test_named_fertilizer_receipts_reuse_the_item_artwork() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    nursery = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
+    )
+    receipt = next(
+        node
+        for node in nursery.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_show_purchase_receipt"
+    )
+    receipt_source = ast.get_source_segment(source, receipt) or ""
+    dashboard = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "GardenDashboard"
+    )
+    stored_use = next(
+        node
+        for node in dashboard.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_use_owned_fertilizer_from_dialog"
+    )
+    stored_source = ast.get_source_segment(source, stored_use) or ""
+
+    assert 'str(outcome.category).casefold() == "fertilizer"' in receipt_source
+    assert 'artwork_ref = f"fertilizer_{tier}"' in receipt_source
+    assert "purchased_artwork = preview.pixmap()" in receipt_source
+    assert "artwork=purchased_artwork" in receipt_source
+    assert 'f"fertilizer_{normalized_tier}"' in stored_source
+    assert "artwork=artwork" in stored_source
+
+
 def test_rare_stage_visibility_uses_species_specific_progress() -> None:
     rare_stage_unlocked = _compiled_function(
         "_rare_stage_unlocked",
@@ -160,9 +256,9 @@ def test_count_helpers_pluralize_and_clamp_learner_facing_values() -> None:
     assert plant_count(-1) == "0 plants"
     assert plant_count(1) == "1 plant"
     assert plant_count(1_000) == "1,000 plants"
-    assert card_answer_count(0) == "0 card answers"
-    assert card_answer_count(1) == "1 card answer"
-    assert card_answer_count(2) == "2 card answers"
+    assert card_answer_count(0) == "0 cards"
+    assert card_answer_count(1) == "1 card"
+    assert card_answer_count(2) == "2 cards"
     assert minute_count(0) == "0 minutes"
     assert minute_count(1) == "1 minute"
     assert minute_count(2) == "2 minutes"
@@ -224,7 +320,7 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per answer",
+        "+1 Growth per card",
         "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0

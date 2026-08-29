@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+import logging
 from math import isfinite
 from typing import Any
 
 from ..display_telemetry import DISPLAY_TELEMETRY
+from ..environment import DEFAULT_SCENERY_ID
 from ..models.state import STREAK_BONUS_TIERS
 from .copy import (
     CHOOSE_STARTER_ACTION,
@@ -52,6 +54,7 @@ class HomeWidgetData:
     background_url: str = ""
     garden_overlay_url: str = ""
     weather_url: str = ""
+    garden_feature_pad_url: str = ""
     nurtured_marker_url: str = ""
     nurtured_marker_spout_right_url: str = ""
     total_reviews: int = 0
@@ -83,6 +86,12 @@ class HomeWidgetData:
     charge_growth_today: int = 0
     direct_reward_growth_today: int = 0
     growth_accounting_stale: bool = False
+    weather_visible: bool = True
+    visible_scenery: str = DEFAULT_SCENERY_ID
+
+
+logger = logging.getLogger(__name__)
+_HOME_WEATHER_FAILURES_LOGGED: set[str] = set()
 
 
 @dataclass(frozen=True)
@@ -213,6 +222,7 @@ HOME_NARROW_CONTAINER_MAX_WIDTH = 340
 HOME_LAYOUT_STANDARD = "standard"
 HOME_LAYOUT_COMPACT = "compact"
 HOME_LAYOUT_NARROW = "narrow"
+HOME_WEATHER_CANONICAL_AREA = 960.0 * 400.0
 
 
 def home_container_layout(width: int | float) -> str:
@@ -298,6 +308,12 @@ HOME_WIDGET_STYLE = """
 .ag-home__art { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
 .ag-home__scenery-layer { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; }
 .ag-home__scenery-layer { z-index:2; }
+.ag-home__scene-frame { container-type:size; }
+.ag-home__feature-pad,.ag-home__garden-feature { position:absolute; pointer-events:none; object-fit:contain; z-index:3; }
+.ag-home__feature-pad { left:calc(21.5cqw - 14cqh); top:calc(84.2cqh - 3.5cqh); width:28cqh; height:7cqh; }
+.ag-home__garden-feature { left:calc(21.5cqw - 12.5cqh); top:calc(83cqh - 22cqh); width:25cqh; height:25cqh; }
+.ag-home__scene-frame[data-feature-scene='light'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.8cqh rgba(35,48,35,.28)); }
+.ag-home__scene-frame[data-feature-scene='dark'] .ag-home__garden-feature { filter:drop-shadow(0 0.7cqh 0.9cqh rgba(5,10,10,.48)); }
 .ag-home__plant { position:absolute; object-fit:contain; animation:none !important; transition:none !important; filter:contrast(var(--ag-contrast,1)) saturate(var(--ag-saturation,1)) brightness(var(--ag-brightness,1)); }
 .ag-home__planter { position:absolute; object-fit:contain; pointer-events:none; }
 .ag-home__planter-fallback { position:absolute; display:none; pointer-events:none; }
@@ -489,7 +505,7 @@ HOME_WIDGET_STYLE = """
   z-index:100;
   inset:0;
   min-height:0;
-  padding:12px 16px;
+  padding:9px 16px;
   display:flex;
   flex-direction:column;
   justify-content:flex-start;
@@ -506,17 +522,17 @@ HOME_WIDGET_STYLE = """
 .ag-home__artwork-zone { min-width:0; grid-column:2; pointer-events:none; }
 .ag-home__identity-row > .ag-home__open,
 .ag-home__identity-row > button { grid-column:3; }
-.ag-home__eyebrow { margin-bottom:2px; color:#E7B94A; font-size:11px; font-weight:650; letter-spacing:.08em; }
-.ag-home__focus-name { font-size:20px; line-height:1.2; font-weight:650; }
+.ag-home__eyebrow { margin-bottom:2px; color:#E7B94A; font-size:11px; font-weight:650; letter-spacing:.08em; line-height:13px; }
+.ag-home__focus-name { font-size:20px; line-height:22px; font-weight:650; }
 .ag-home__support {
   display:block;
   max-width:260px;
-  margin-top:1px;
+  margin-top:0;
   overflow:hidden;
   color:#B7C4BD;
   font-size:13px;
   font-weight:400;
-  line-height:18px;
+  line-height:16px;
   font-variant-numeric:tabular-nums;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -524,11 +540,11 @@ HOME_WIDGET_STYLE = """
 .ag-home__progress-copy {
   display:block;
   max-width:260px;
-  margin-top:1px;
+  margin-top:0;
   overflow:hidden;
   color:#95A89F;
   font-size:12px;
-  line-height:16px;
+  line-height:14px;
   font-variant-numeric:tabular-nums;
   text-overflow:ellipsis;
   white-space:nowrap;
@@ -536,14 +552,14 @@ HOME_WIDGET_STYLE = """
 .ag-home__growth-track {
   position:absolute;
   left:16px;
-  right:144px;
-  bottom:9px;
-  width:auto;
-  height:6px;
+  right:auto;
+  bottom:7px;
+  width:260px;
+  height:4px;
   margin:0;
   overflow:hidden;
-  border-radius:4px;
-  background:rgba(199,210,201,.34);
+  border-radius:999px;
+  background:rgba(99,217,159,.26);
 }
 .ag-home__growth-track > span {
   display:block;
@@ -607,7 +623,7 @@ HOME_WIDGET_STYLE = """
 @container (max-width: 400px) {
   #ag-home-root { height:100px; }
   .ag-home__state { min-height:100px; }
-  .ag-home__details { padding:12px 14px; }
+  .ag-home__details { padding:9px 14px; }
   .ag-home__identity-row {
     grid-template-columns:minmax(0,1fr) 112px;
     gap:10px;
@@ -621,7 +637,7 @@ HOME_WIDGET_STYLE = """
     justify-self:end;
   }
   .ag-home__support { max-width:100%; }
-  .ag-home__growth-track { left:14px; right:140px; bottom:9px; }
+  .ag-home__growth-track { left:14px; right:140px; bottom:7px; width:auto; }
 }
 @container (max-width:340px) {
   .ag-home__details { padding:12px; }
@@ -675,6 +691,39 @@ for _home_literal, _home_token in (
 def _plant_fallback(_stage: Any) -> str:
     """Return a quiet code-native silhouette; system emoji are never substituted."""
     return '<span class="ag-home__fallback-silhouette" aria-hidden="true"></span>'
+
+
+def _log_home_weather_failure_once(key: str, message: str, *, exc_info: bool = False) -> None:
+    if key in _HOME_WEATHER_FAILURES_LOGGED:
+        return
+    _HOME_WEATHER_FAILURES_LOGGED.add(key)
+    logger.warning(message, exc_info=exc_info)
+
+
+def _home_weather_markup(
+    snapshot: HomeWidgetSnapshot,
+    data: HomeWidgetData,
+    *,
+    phase: str,
+    source_width: int,
+    source_height: int,
+) -> str:
+    """Render the one static Home Garden Decoration at the shared anchor."""
+
+    if (
+        not data.weather_visible
+        or phase in {"loading", "error", "disabled"}
+        or not data.weather_url
+        or not data.garden_feature_pad_url
+    ):
+        return ""
+    return (
+        f'<img class="ag-home__feature-pad" data-testid="home-garden-feature-pad" '
+        f'src="{escape(data.garden_feature_pad_url, quote=True)}" alt="" aria-hidden="true">'
+        f'<img class="ag-home__garden-feature" data-testid="home-garden-feature" '
+        f'data-garden-feature="{escape(data.weather, quote=True)}" '
+        f'src="{escape(data.weather_url, quote=True)}" alt="" aria-hidden="true">'
+    )
 
 
 def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
@@ -761,7 +810,10 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             "</div>"
         )
     if not data.weather:
-        DISPLAY_TELEMETRY.track_fallback(route="home_widget", field="weather")
+        DISPLAY_TELEMETRY.track_fallback(
+            route="home_widget",
+            field="garden_feature",
+        )
 
     source_preview = data.preview_snapshot
     if source_preview is None:
@@ -781,6 +833,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             planted_starter_name=data.planted_starter_name,
             planted_starter_stage=data.planted_starter_stage,
             selected_weather=data.weather,
+            selected_scenery=data.visible_scenery,
             scene_items=data.scene_items,
             unlocked_slots=data.unlocked_slots,
         )
@@ -863,10 +916,18 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     background_style += '"'
     scenery_identity = (
         ' data-testid="home-scenery-layer"'
-        f' data-scenery="{escape(preview.selected_scenery, quote=True)}"'
+        f' data-scenery="{escape(data.visible_scenery, quote=True)}"'
         if background_url else
         ""
     )
+    feature_scene_class = (
+        "light"
+        if str(data.visible_scenery) in {
+            "spring", "summer", "autumn", "snowy", "rainbow_horizon"
+        }
+        else "dark"
+    )
+    scenery_identity += f' data-feature-scene="{feature_scene_class}"'
     layouts = compact_plant_layout(
         1000,
         420,
@@ -1088,8 +1149,13 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         if data.garden_overlay_url else
         ""
     )
-    # Weather remains persisted and available to the full Garden and Settings.
-    # Anki Home intentionally paints no weather or sun layer.
+    weather_layer = _home_weather_markup(
+        snapshot,
+        data,
+        phase=phase,
+        source_width=source_width,
+        source_height=source_height,
+    )
     starter_selected = bool(data.starter_selected)
     garden_name_value = str(preview.garden_name or FALLBACK_GARDEN_NAME)
     garden_name = escape(garden_name_value)
@@ -1210,6 +1276,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
     <div class=\"ag-home__scene\" data-testid=\"home-scene\" aria-hidden=\"true\">
       <div class=\"ag-home__scene-frame\"{scenery_identity} data-preview-crop=\"{crop_x:.3f},{crop_y:.3f},{crop_width:.3f},{crop_height:.3f}\"{background_style}>
         {scenery_layer}
+        {weather_layer}
         <div class=\"ag-home__art\" data-testid=\"home-plants\">{layered_art}</div>
       </div>
     </div>
@@ -1239,6 +1306,7 @@ def build_home_widget_success_data(
     background_url: str = "",
     garden_overlay_url: str = "",
     weather_url: str = "",
+    garden_feature_pad_url: str = "",
     nurtured_marker_url: str = "",
     nurtured_marker_spout_right_url: str = "",
     status_notice: str = "",
@@ -1266,6 +1334,24 @@ def build_home_widget_success_data(
         starter_complete and active_plant is None and planted_starter is not None
     )
     active_growth = growth_display(getattr(active_plant, "growth_points", 0))
+    environment_visibility = getattr(state, "environment_visibility", {})
+    weather_visible = (
+        bool(environment_visibility.get(
+            "garden_feature", environment_visibility.get("weather", True)
+        ))
+        if isinstance(environment_visibility, dict)
+        else True
+    )
+    scenery_visible = (
+        bool(environment_visibility.get("scenery", True))
+        if isinstance(environment_visibility, dict)
+        else True
+    )
+    selected_scenery = str(
+        getattr(state, "selected_background", DEFAULT_SCENERY_ID)
+        or DEFAULT_SCENERY_ID
+    )
+    visible_scenery = selected_scenery if scenery_visible else DEFAULT_SCENERY_ID
     if getattr(state, "selected_weather", None) in (None, ""):
         DISPLAY_TELEMETRY.record_missing_or_invalid_field(
             route="home_widget",
@@ -1295,8 +1381,15 @@ def build_home_widget_success_data(
             str(getattr(planted_starter, "growth_stage", "") or "")
             if starter_waiting_for_nurture else ""
         ),
-        selected_weather=str(getattr(state, "selected_weather", "sunny") or "sunny"),
-        selected_scenery=str(getattr(state, "selected_background", "verdant_twilight") or "verdant_twilight"),
+        selected_weather=str(
+            getattr(
+                state,
+                "displayed_garden_feature",
+                getattr(state, "selected_garden_feature", "seedling_sign"),
+            )
+            or "seedling_sign"
+        ),
+        selected_scenery=visible_scenery,
         scene_items=scene_items,
         unlocked_slots=max(0, min(6, int(getattr(state, "unlocked_slots", 0) or 0))),
     )
@@ -1313,13 +1406,23 @@ def build_home_widget_success_data(
         next_streak_day=_next_streak_day(int(state.streak_days)),
         next_streak_bonus_percent=_next_streak_bonus(int(state.streak_days)),
         garden_currency=max(0, int(getattr(state, "currency_balance", 0))),
-        weather=str(state.selected_weather or "N/A"),
+        weather=str(
+            getattr(
+                state,
+                "displayed_garden_feature",
+                getattr(state, "selected_garden_feature", state.selected_weather),
+            )
+            or "N/A"
+        ),
+        weather_visible=weather_visible,
+        visible_scenery=visible_scenery,
         scene_items=tuple(scene_items),
         background_placement=background_placement,
         stage_transition_message=stage_transition_message,
         background_url=background_url,
         garden_overlay_url=garden_overlay_url,
         weather_url=weather_url,
+        garden_feature_pad_url=garden_feature_pad_url,
         nurtured_marker_url=nurtured_marker_url,
         nurtured_marker_spout_right_url=nurtured_marker_spout_right_url,
         total_reviews=max(0, int(getattr(state, "total_reviews", 0) or 0)),

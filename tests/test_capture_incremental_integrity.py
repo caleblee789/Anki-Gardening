@@ -465,3 +465,34 @@ def test_duplicate_recovery_sidecars_fail_closed(tmp_path: Path) -> None:
 
     with pytest.raises(CaptureEvidenceError, match="Duplicate recovered capture label"):
         recover_progress_manifest(capture_dir)
+
+
+def test_recovery_merges_exact_later_cleanup_from_partial_manifest(
+    tmp_path: Path,
+) -> None:
+    capture_dir = tmp_path / "capture"
+    progress = capture_dir / "progress"
+    progress.mkdir(parents=True)
+    (capture_dir / f"{LABEL}.png").write_bytes(PNG_BYTES)
+    partial_record = _record()
+    partial_record["cleanup_ms"] = 0.0
+    partial_payload = _payload(
+        captures=[partial_record],
+        scope_complete=False,
+    )
+    _write_json(capture_dir / "manifest.partial.json", partial_payload)
+    _write_json(progress / "surface.json", {"record": _record()})
+
+    recovery_output = tmp_path / "derived-recovery"
+    recovered_path = recover_progress_manifest(
+        capture_dir,
+        output_dir=recovery_output,
+    )
+
+    recovered = json.loads(recovered_path.read_text(encoding="utf-8"))
+    assert recovered_path.parent == recovery_output
+    assert recovered["captures"][0]["cleanup_ms"] == 0.0
+    assert recovered["captures"][0]["path"] == f"{LABEL}.png"
+    assert (recovery_output / f"{LABEL}.png").read_bytes() == PNG_BYTES
+    assert recovered["recovery"]["merged_partial_cleanup_faces"] == [LABEL]
+    assert recovered["recovery"]["relocated_png_faces"] == [LABEL]

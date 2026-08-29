@@ -1,5 +1,5 @@
 {
-  "contract_digest": "22590e9c5615d9f719d567a4629ae5e481a6ac40358d6ec4e24b28536287bffa",
+  "contract_digest": "74b9028d3b8bb696fa8f4a8af541211c28731693e4b4fc0fc8b7f6d16b79e882",
   "contract_version": 25,
   "profiles": {
     "full": {
@@ -21,7 +21,7 @@
             "selected-plant-nurtured",
             "move-mode",
             "fertilizer-active",
-            "fertilizer-replacement-confirmation",
+            "purchase-confirmation-fertilizer-queue",
             "plant-story"
           ],
           "name": "Garden"
@@ -34,6 +34,7 @@
         },
         {
           "labels": [
+            "progress-today-cards",
             "growth-nonzero",
             "streak-active",
             "coins-activity",
@@ -57,7 +58,10 @@
           "labels": [
             "settings-display-advanced-open",
             "diagnostics-warning",
-            "reviewer-find-stacked-sync",
+            "reviewer-hud-expanded",
+            "session-summary-after-review",
+            "sync-rewards-summary",
+            "reviewer-reward-dock-bundle",
             "purchase-confirmation-growth-charge",
             "purchase-success-inventory-collection",
             "growth-charge-use-ready",
@@ -66,8 +70,8 @@
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 30,
-      "topology_digest": "5f06e0db76ec8242443218b26839dc47016ab5b275979ce17bfa1cc533993ff1"
+      "surface_count": 34,
+      "topology_digest": "135ac3adb0d8f58a711e2ba247b70299ab2a2777787562220a9b591c9ddcfc7d"
     },
     "representative": {
       "contact_sheet_page_count": 2,
@@ -111,15 +115,18 @@
         {
           "labels": [
             "settings-display-advanced-open",
-            "reviewer-find-stacked-sync",
+            "reviewer-hud-expanded",
+            "session-summary-after-review",
+            "sync-rewards-summary",
+            "reviewer-reward-dock-bundle",
             "purchase-confirmation-growth-charge",
             "growth-charge-use-ready"
           ],
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 15,
-      "topology_digest": "80d9a726b666e64acd1c85bda364ae72102bc37feb93127f887ffc661a232975"
+      "surface_count": 18,
+      "topology_digest": "ad65aa1d28bbcee260f4fd78d253511029c386106b0459b7eeaeee90fe0f0623"
     }
   },
   "retired_ids": [
@@ -156,6 +163,7 @@
     "popover-plot-6",
     "move-occupied-empty-destinations",
     "fertilizer-expiring-under-minute",
+    "fertilizer-replacement-confirmation",
     "watering-can-garden-plot-1",
     "watering-can-garden-plot-2",
     "watering-can-garden-plot-3",
@@ -186,6 +194,7 @@
     "production-build-controls-absent",
     "reviewer-find-common-reduced-motion",
     "reviewer-find-environment",
+    "reviewer-find-stacked-sync",
     "reduced-motion-enabled",
     "keyboard-focus-state",
     "starter-completion",
@@ -222,7 +231,7 @@
   ],
   "scenario_schema_version": 2,
   "schema_version": 1,
-  "surface_count": 30,
+  "surface_count": 34,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -236,7 +245,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "41d7f831006a925935ffc8053e7bfb658c13cb1ee9e80309b19a1cbab50bf98a",
+      "dependency_digest": "baaf74337214aea3d7bcfcb828c7b47e8dc9225f2dd007abd4e7ff2bf1bc26c6",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -297,8 +306,9 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
+          "home_progress_geometry",
           "home_preview_information_model"
         ]
       }
@@ -315,7 +325,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "d3dd09c814a1cd393ac21208def0060dcfabcfe1702521e11b2493b345595ce4",
+      "dependency_digest": "bc73796c9af1f18bdfb12500d2dc253d56eab6029e384d81d752a073d49b9683",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -368,7 +378,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -671,7 +681,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "821bdd539d1c62f49309c66a9529a94b9860ea24696a7232348fc02e914d9c00",
+      "dependency_digest": "e5ca999cbfae964e4a642642d3bbe7f75a8d43ee6355ccc925de3673faae3869",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -724,7 +734,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -742,7 +752,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "c7e2714569ed46bf6f6d2dce630017fc92c60a1e6b83c7ac2063408bdef9e70a",
+      "dependency_digest": "dba1ef17541a02df235840f37eb07dd162d598d4d6fcfa2e50d0ec028ea00227",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -795,7 +805,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -1299,7 +1309,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3c86bd3b9f291ac8a9850910a73cc3d5a154f8643b731a4466980f85bd942153",
+      "dependency_digest": "0f5ea27001c72a9bfb18f095df82c4df07faebdeb1073986717c4e623caed10f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1356,7 +1366,9 @@
           "state_profile_declared",
           "window_family",
           "garden_scene_present",
-          "move_mode_active"
+          "move_mode_active",
+          "move_bonsai_title",
+          "move_swap_copy"
         ]
       }
     },
@@ -1450,7 +1462,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0d5fd88f294a939ab0adb68413846d6235c6d722ce928e7373b45e54c0ffcb41",
+      "dependency_digest": "02b7b34b4afc552473b283adff635a85962d8cbc0517448ec2ff6aa1a77ece0a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1520,8 +1532,9 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
+          "home_progress_geometry",
           "home_preview_information_model"
         ]
       }
@@ -1538,7 +1551,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "a284383a670ae01cd0db2e022aea9902973437f522735969e7cd67c3b040221f",
+      "dependency_digest": "f1ff8c3cc1c59c8313b20d814a18cc9fcf7ec14da754c6cb03dfb40688721645",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1593,7 +1606,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -1704,9 +1717,9 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 12,
+          "order": 13,
           "profile": "full",
-          "within_group_order": 0
+          "within_group_order": 1
         }
       ],
       "prerequisites": [
@@ -1741,6 +1754,79 @@
           "window_family",
           "progress_page",
           "nonzero_growth"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "nurtured-active",
+      "checkpoint_cohort": "nurtured",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "30fa4016f89bc84424c97a6fe5810773bc7d23601ee3c323a54e4f8ff53411d2",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels"
+      ],
+      "executor": "_capture_progress_today_cards",
+      "id": "progress-today-cards",
+      "internal_setups": [
+        "nurtured-active"
+      ],
+      "owned_dependency_groups": [
+        "progress",
+        "progress-today"
+      ],
+      "owned_module_dependencies": [],
+      "placements": [
+        {
+          "group": "Garden Progress",
+          "group_order": 3,
+          "order": 12,
+          "profile": "full",
+          "within_group_order": 0
+        }
+      ],
+      "prerequisites": [
+        "selected-plant-nurtured"
+      ],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "GardenProgressDialog",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "progress-today-cards",
+          "progress_page": "today",
+          "state_profile_declared": "progress-today-cards",
+          "window_family": "GardenProgressDialog"
+        },
+        "fact_constraints": {},
+        "kind": "progress",
+        "profile": {
+          "kind": "progress",
+          "page": "today",
+          "profile_id": "progress-today-cards",
+          "state": "progress-today-cards",
+          "window_family": "GardenProgressDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "progress_page",
+          "today_cards_progress_surface"
         ]
       }
     },
@@ -1824,7 +1910,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0082c6f0b098fbf5b2743be87839f89bec4386fdf23d48b1be64573608cacbd2",
+      "dependency_digest": "0fe2703d86d97158be95027d9a286bd0dd24ae25768c89504aca1c89150c60e0",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1842,15 +1928,16 @@
       ],
       "owned_module_dependencies": [
         "reward_presentation.py",
+        "ui/session_summary.py",
         "garden_finds.py"
       ],
       "placements": [
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 13,
+          "order": 14,
           "profile": "full",
-          "within_group_order": 1
+          "within_group_order": 2
         }
       ],
       "prerequisites": [
@@ -1970,7 +2057,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "03b34d9baacb3250023788cc7c9b164c013de1c79cf91e15eb340d309e795177",
+      "dependency_digest": "bbc9e854e343ba0c872677c78fddcf5d42c8c2f1e77124430193caee4f957c1f",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -1988,15 +2075,16 @@
       ],
       "owned_module_dependencies": [
         "reward_presentation.py",
+        "ui/session_summary.py",
         "garden_finds.py"
       ],
       "placements": [
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 14,
+          "order": 15,
           "profile": "full",
-          "within_group_order": 2
+          "within_group_order": 3
         }
       ],
       "prerequisites": [
@@ -2116,7 +2204,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "39336da5d67b289a2b8edadbf5f64568a73d368faba184976c9b1293e947ce26",
+      "dependency_digest": "7987378d08a61018694405eb633d208de1cac19925458372d9f4154e3901d0b7",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2135,15 +2223,16 @@
       ],
       "owned_module_dependencies": [
         "reward_presentation.py",
+        "ui/session_summary.py",
         "garden_finds.py"
       ],
       "placements": [
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 15,
+          "order": 16,
           "profile": "full",
-          "within_group_order": 3
+          "within_group_order": 4
         }
       ],
       "prerequisites": [
@@ -2221,9 +2310,9 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 16,
+          "order": 17,
           "profile": "full",
-          "within_group_order": 4
+          "within_group_order": 5
         }
       ],
       "prerequisites": [],
@@ -2297,9 +2386,9 @@
         {
           "group": "Garden Progress",
           "group_order": 3,
-          "order": 17,
+          "order": 18,
           "profile": "full",
-          "within_group_order": 5
+          "within_group_order": 6
         }
       ],
       "prerequisites": [],
@@ -2376,7 +2465,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 18,
+          "order": 19,
           "profile": "full",
           "within_group_order": 0
         }
@@ -2574,7 +2663,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 19,
+          "order": 20,
           "profile": "full",
           "within_group_order": 1
         }
@@ -2655,7 +2744,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 20,
+          "order": 21,
           "profile": "full",
           "within_group_order": 2
         }
@@ -2730,7 +2819,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 21,
+          "order": 22,
           "profile": "full",
           "within_group_order": 3
         }
@@ -2782,7 +2871,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "45103fa6ca3643af8252d372cc12a4856c34f95b45e210f94f37b074cf66ae84",
+      "dependency_digest": "0be7be04fa62021df9eea8c3174107a6fa5daf2d8ccf10839cc3cd0f807293ed",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2804,7 +2893,7 @@
         {
           "group": "Collection and Nursery",
           "group_order": 4,
-          "order": 22,
+          "order": 23,
           "profile": "full",
           "within_group_order": 4
         }
@@ -2841,7 +2930,7 @@
           "window_family",
           "nursery_tab",
           "starter_mode",
-          "distinct_weather_preview_art"
+          "distinct_garden_feature_preview_art"
         ]
       }
     },
@@ -2857,7 +2946,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "8b2f5aca7abd0d4864d46d1822e615e5ba8fa628631c727d3f8fc191ea7c3a7a",
+      "dependency_digest": "bae865755321ba38e65e307b3dac7628a73e9293a6e20f83dfba27557a3163e2",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2874,9 +2963,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -2926,7 +3013,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "30717046d79cb86447ad833ccf7d70f284135079bb8218b9be7c6a800b8d8ba3",
+      "dependency_digest": "ba1f040c0fa08bd822374d73fadfa8ad375eebbe30b35c15487b89c6a4f98fd2",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -2944,9 +3031,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -2995,7 +3080,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "feefebc4a8c43e2b83900a01129ee11e47bc68cfe9027f7d9f9799b9e181fe48",
+      "dependency_digest": "86dc5e061d66667ad8dcce5ab0fcdf6fbb4d9454c78e6d1f946dec0b555e9795",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -3013,9 +3098,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [
         {
@@ -3028,7 +3111,7 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 23,
+          "order": 24,
           "profile": "full",
           "within_group_order": 0
         }
@@ -3166,7 +3249,7 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 24,
+          "order": 25,
           "profile": "full",
           "within_group_order": 1
         }
@@ -4217,7 +4300,7 @@
     },
     {
       "acquisition_policy": "qt-widget-grab",
-      "active": true,
+      "active": false,
       "allow_foreground_fallback": false,
       "arguments": [],
       "checkpoint": "development-stress",
@@ -4245,15 +4328,7 @@
         "purchase-fertilizer"
       ],
       "owned_module_dependencies": [],
-      "placements": [
-        {
-          "group": "Garden",
-          "group_order": 1,
-          "order": 9,
-          "profile": "full",
-          "within_group_order": 5
-        }
-      ],
+      "placements": [],
       "prerequisites": [],
       "readiness": [
         "semantic-state",
@@ -4261,7 +4336,7 @@
         "visible-nonzero-geometry"
       ],
       "renderer_family": "FertilizerReplacementDialog",
-      "retired_reason": "",
+      "retired_reason": "Timed Fertilizer tiers queue without discarding paid time; the replacement confirmation is no longer reachable.",
       "state_contract": {
         "expected_fact_values": {
           "ordered_fixture_label": "fertilizer-replacement-confirmation",
@@ -4285,6 +4360,82 @@
           "canonical_development_generated_names",
           "dialog_title",
           "fertilizer_replacement"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-widget-grab",
+      "active": true,
+      "allow_foreground_fallback": false,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "development-stress",
+      "cleanup": [
+        "close-dialog",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "301b98897281d93632ff6a015531f469b6f066d288314122fa697d30dc4f2204",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "scroll:PurchaseConfirmationDialog"
+      ],
+      "executor": "_capture_purchase_confirmation_fertilizer_queue",
+      "id": "purchase-confirmation-fertilizer-queue",
+      "internal_setups": [
+        "development-stress",
+        "transaction-snapshot"
+      ],
+      "owned_dependency_groups": [
+        "fertilizer",
+        "purchase-fertilizer"
+      ],
+      "owned_module_dependencies": [],
+      "placements": [
+        {
+          "group": "Garden",
+          "group_order": 1,
+          "order": 9,
+          "profile": "full",
+          "within_group_order": 5
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "visible-nonzero-geometry"
+      ],
+      "renderer_family": "PurchaseConfirmationDialog",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "purchase-confirmation-fertilizer-queue",
+          "state_profile_declared": "purchase-confirmation-fertilizer-queue",
+          "window_family": "PurchaseConfirmationDialog"
+        },
+        "fact_constraints": {},
+        "kind": "dialog",
+        "profile": {
+          "kind": "dialog",
+          "profile_id": "purchase-confirmation-fertilizer-queue",
+          "purchase_status": "ready",
+          "state": "purchase-confirmation-fertilizer-queue",
+          "window_family": "PurchaseConfirmationDialog"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "canonical_development_species_order",
+          "canonical_development_plant_ids",
+          "canonical_development_generated_names",
+          "dialog_title",
+          "purchase_confirmation_state",
+          "fertilizer_queue_confirmation"
         ]
       }
     },
@@ -4735,7 +4886,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "4eff8f711a2f9db00e737fef87731a29e6dfab596fc4a129f842449f1b366c11",
+      "dependency_digest": "0092d792a80dd0cf5690461b4b619c06a4af57032dc1339a02ab2a83090ac499",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4798,7 +4949,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -4821,7 +4972,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "7a6768860aaf3404a16e7bf468e9d1d2af4fd0a62e99de32faf433f07d127261",
+      "dependency_digest": "610fb347a49624e1f929b84dc0f1bb247bc25be94e73b978c28c2c1e906cb232",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4884,7 +5035,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -4907,7 +5058,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "50eae0cac6f9ddde393000215d264917fc64b304623fda9687d11fa115917bdf",
+      "dependency_digest": "91bfd4cb3692a04132fb0a02f7819cf66df45d55cf148a93ad22f01e629908b3",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -4970,7 +5121,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -4993,7 +5144,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cef2b148551ce88c815e65b40630964663d46dafb69871e30992cc3fd6a0c216",
+      "dependency_digest": "d52216aed219b0f4592dc25cd98c9f29f07c3bf6f3da2124d6648d3b6fbe6be8",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5056,7 +5207,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -5079,7 +5230,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "f5cd120bdf1c2638795873488ddd11e9cf57a5c6ec47057c2253cd91149cb7b0",
+      "dependency_digest": "7576ff2e4018d9fce2bcc2bc2cdd1352986a85c0b869898522b155edb861ba4e",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5142,7 +5293,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -5165,7 +5316,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "0dc38c963ec67829262b1988b2a4b6ca56a9f6945e292971a41bfa158122d462",
+      "dependency_digest": "b39aa6de98fee691f0e926d10a731f70fd107b4afce252b61f29669654c8e03b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -5228,7 +5379,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "active_plant_slot",
@@ -6086,7 +6237,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "e536f127c4db07db8f028e524a572dc10a126f656f017c4fb7c3735ac9392459",
+      "dependency_digest": "eb855908c9606538e0f35e37f2efe77d5d3bb16bd28b64a85f718dd4c198d28a",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6103,9 +6254,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -6158,7 +6307,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "7eebb00ede833add6a218b09af6fb6b32474887b922a02c556f89d6521533b92",
+      "dependency_digest": "4eb209090be433c5e951feeb15375fe132c185408ff4573d4b23f72999c01132",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6175,9 +6324,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -6367,7 +6514,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "cb480b792b09cfec8a0e710b4eff34b5e40ccc5a8a483f8d44c400280a02d92e",
+      "dependency_digest": "07b45909e0b6194f0b3540f8bd079754d780e646ab852f266379b74098b10f84",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6386,6 +6533,7 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
         "reward_presentation.py",
         "garden_finds.py"
       ],
@@ -6446,7 +6594,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "81c67caa4caf5dcbd12fe6e08009c432dd40dbe3b8eb879fc3437f4a62fef6fa",
+      "dependency_digest": "b5664d4ef3bc0787a074d27979de915c72f1efd7c910976754c9725bfecae3e5",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6465,6 +6613,7 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
         "reward_presentation.py",
         "garden_finds.py"
       ],
@@ -6523,7 +6672,308 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "1fcd83a9c2b824f112faae0367f1f721a34a064f591bd5b2cfaec040f2234b27",
+      "dependency_digest": "0c4861014f7a7d019f7cdb8e8f2b4b8e21c67e3a937a7a76530189540a264771",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "webview-painted",
+        "process-window-identity",
+        "overlay-pixels"
+      ],
+      "executor": "_capture_reviewer_hud_expanded",
+      "id": "reviewer-hud-expanded",
+      "internal_setups": [
+        "development-stress",
+        "reviewer-ready"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
+        "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
+        "reward_presentation.py",
+        "garden_finds.py"
+      ],
+      "placements": [
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 12,
+          "profile": "representative",
+          "within_group_order": 1
+        },
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 26,
+          "profile": "full",
+          "within_group_order": 2
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "webview-painted"
+      ],
+      "renderer_family": "AnkiQt",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "reviewer-hud-expanded",
+          "state_profile_declared": "reviewer-hud-expanded",
+          "window_family": "AnkiQt"
+        },
+        "fact_constraints": {},
+        "kind": "reviewer_hud",
+        "profile": {
+          "dock": "right",
+          "expanded": true,
+          "kind": "reviewer_hud",
+          "profile_id": "reviewer-hud-expanded",
+          "state": "reviewer-hud-expanded",
+          "window_family": "AnkiQt"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "reviewer_surface",
+          "reviewer_hud_visible",
+          "reviewer_hud_geometry",
+          "reviewer_hud_viewport_matrix",
+          "reviewer_hud_content_matrix",
+          "reviewer_hud_resilience_matrix",
+          "reviewer_dom_identity",
+          "reviewer_window_screen_filling"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-shell-webview-verified",
+      "active": true,
+      "allow_foreground_fallback": true,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "reviewer-transaction",
+      "cleanup": [
+        "close-overlays",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "ece79fc938d574ad368eb48540aa7f9b67f6bc91cf18d5e6e303fe043f8e7621",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "webview-painted",
+        "process-window-identity",
+        "overlay-pixels"
+      ],
+      "executor": "_capture_session_summary_after_review",
+      "id": "session-summary-after-review",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
+        "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
+        "reward_presentation.py",
+        "garden_finds.py"
+      ],
+      "placements": [
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 13,
+          "profile": "representative",
+          "within_group_order": 2
+        },
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 27,
+          "profile": "full",
+          "within_group_order": 3
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "webview-painted"
+      ],
+      "renderer_family": "AnkiQt",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "anki_surface": "deckBrowser",
+          "dom_capture_label": "session-summary-after-review",
+          "ordered_fixture_label": "session-summary-after-review",
+          "source_fixture_state": "nurtured-active",
+          "state_profile_declared": "session-summary-after-review",
+          "window_family": "AnkiQt"
+        },
+        "fact_constraints": {},
+        "kind": "home",
+        "profile": {
+          "fixture_state": "nurtured-active",
+          "kind": "home",
+          "profile_id": "session-summary-after-review",
+          "surface": "deckBrowser",
+          "window_family": "AnkiQt"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "anki_surface",
+          "source_fixture_state",
+          "dom_capture_label",
+          "dom_fixture_ready",
+          "home_garden_feature_visibility_contract",
+          "compact_home_copy",
+          "home_progress_geometry",
+          "home_preview_information_model",
+          "session_summary_visible",
+          "session_summary_geometry",
+          "session_summary_copy",
+          "session_summary_viewport_matrix",
+          "session_summary_content_matrix",
+          "session_summary_home_counts",
+          "session_summary_window_screen_filling"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-shell-webview-verified",
+      "active": true,
+      "allow_foreground_fallback": true,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "reviewer-transaction",
+      "cleanup": [
+        "close-overlays",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "cfadf6f3646816b98f86b314e827b79af716134407eeaac813aea1a84451d38d",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "webview-painted",
+        "process-window-identity",
+        "overlay-pixels"
+      ],
+      "executor": "_capture_sync_rewards_summary",
+      "id": "sync-rewards-summary",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "models/sync_reward.py",
+        "asset_manager.py",
+        "reward_presentation.py",
+        "garden_finds.py",
+        "ui/environment_art.py",
+        "ui/garden_asset_thumbnail.py",
+        "ui/plant_art.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
+        "ui/sync_reward_summary.py"
+      ],
+      "placements": [
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 14,
+          "profile": "representative",
+          "within_group_order": 3
+        },
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 28,
+          "profile": "full",
+          "within_group_order": 4
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "webview-painted"
+      ],
+      "renderer_family": "AnkiQt",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "anki_surface": "deckBrowser",
+          "dom_capture_label": "sync-rewards-summary",
+          "ordered_fixture_label": "sync-rewards-summary",
+          "source_fixture_state": "nurtured-active",
+          "state_profile_declared": "sync-rewards-summary",
+          "window_family": "AnkiQt"
+        },
+        "fact_constraints": {},
+        "kind": "home",
+        "profile": {
+          "fixture_state": "nurtured-active",
+          "kind": "home",
+          "profile_id": "sync-rewards-summary",
+          "surface": "deckBrowser",
+          "window_family": "AnkiQt"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "anki_surface",
+          "source_fixture_state",
+          "dom_capture_label",
+          "dom_fixture_ready",
+          "home_garden_feature_visibility_contract",
+          "compact_home_copy",
+          "home_progress_geometry",
+          "home_preview_information_model",
+          "sync_reward_summary_visible",
+          "sync_reward_summary_geometry",
+          "sync_reward_summary_copy",
+          "sync_reward_summary_content",
+          "sync_reward_summary_nonmodal",
+          "sync_reward_summary_window_screen_filling"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-shell-webview-verified",
+      "active": false,
+      "allow_foreground_fallback": true,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "reviewer-transaction",
+      "cleanup": [
+        "close-overlays",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "341f0ea450499fe8e90070682d3654ddef65a585e4d8235e28d834dd544edd3b",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6542,25 +6992,13 @@
       "owned_dependency_groups": [],
       "owned_module_dependencies": [
         "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
         "reward_presentation.py",
         "garden_finds.py"
       ],
-      "placements": [
-        {
-          "group": "Settings, rewards, and transactions",
-          "group_order": 5,
-          "order": 12,
-          "profile": "representative",
-          "within_group_order": 1
-        },
-        {
-          "group": "Settings, rewards, and transactions",
-          "group_order": 5,
-          "order": 25,
-          "profile": "full",
-          "within_group_order": 2
-        }
-      ],
+      "placements": [],
       "prerequisites": [],
       "readiness": [
         "semantic-state",
@@ -6568,7 +7006,7 @@
         "webview-painted"
       ],
       "renderer_family": "AnkiQt",
-      "retired_reason": "",
+      "retired_reason": "Superseded by the integrated, single-card reward dock; independent Reviewer toast stacks are no longer a product surface.",
       "state_contract": {
         "expected_fact_values": {
           "ordered_fixture_label": "reviewer-find-stacked-sync",
@@ -6598,8 +7036,110 @@
           "reward_toast_tier",
           "reward_toast_focus_safe",
           "reviewer_overlay_geometry",
+          "reviewer_hud_visible",
           "reviewer_dom_identity",
+          "reviewer_window_screen_filling",
           "stacked_sync_summary"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-shell-webview-verified",
+      "active": true,
+      "allow_foreground_fallback": true,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "reviewer-transaction",
+      "cleanup": [
+        "close-overlays",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "92f42f666f1ae17ff71cfa87e65649b70fa9cc611d50b51eaaf4084585903f30",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "webview-painted",
+        "process-window-identity",
+        "overlay-pixels"
+      ],
+      "executor": "_capture_reviewer_reward_dock_bundle",
+      "id": "reviewer-reward-dock-bundle",
+      "internal_setups": [
+        "development-stress",
+        "reviewer-ready"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "hooks/reviewer.py",
+        "ui/reviewer_hud.py",
+        "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
+        "reward_presentation.py",
+        "garden_finds.py"
+      ],
+      "placements": [
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 15,
+          "profile": "representative",
+          "within_group_order": 4
+        },
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 29,
+          "profile": "full",
+          "within_group_order": 5
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "webview-painted"
+      ],
+      "renderer_family": "AnkiQt",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "ordered_fixture_label": "reviewer-reward-dock-bundle",
+          "state_profile_declared": "reviewer-reward-dock-bundle",
+          "window_family": "AnkiQt"
+        },
+        "fact_constraints": {},
+        "kind": "reviewer_hud",
+        "profile": {
+          "dock": "right",
+          "expanded": true,
+          "kind": "reviewer_hud",
+          "profile_id": "reviewer-reward-dock-bundle",
+          "reward_event_count": 7,
+          "state": "reviewer-reward-dock-bundle",
+          "window_family": "AnkiQt"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "reviewer_surface",
+          "reviewer_hud_visible",
+          "reviewer_hud_geometry",
+          "reviewer_reward_dock_visible",
+          "reviewer_reward_dock_geometry",
+          "reviewer_reward_bundle",
+          "reviewer_session_footer",
+          "reviewer_reward_interaction_matrix",
+          "reviewer_hud_content_matrix",
+          "canonical_reviewer_reward_projection",
+          "reviewer_dom_identity",
+          "reviewer_window_screen_filling"
         ]
       }
     },
@@ -6615,7 +7155,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "61d30b6d20af72ac1effe3ac5058aaac9c449846d481499514943c3120788b3b",
+      "dependency_digest": "305539436e3e8c9e322d0777241292bd5c9a7df4cad45650e78866cbb4398f42",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6633,9 +7173,7 @@
         "settings"
       ],
       "owned_module_dependencies": [
-        "ui/garden_studio.py",
-        "ui/scene.py",
-        "ui/landmarks.py"
+        "ui/garden_studio.py"
       ],
       "placements": [],
       "prerequisites": [
@@ -6911,7 +7449,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6e122eb20d51d0e983a83c6abdb3293ecd7c11a3a31f16217b5858e53c28d083",
+      "dependency_digest": "ce786e74683ea10124c3dc757879939d29b6720190535c3ab9df035b390cb3e9",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6967,7 +7505,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -6989,7 +7527,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "de0a3c61b2d5ff2631982b3b87b7d580ee1f58600bea693f6e565962dcb2f7ee",
+      "dependency_digest": "8cbecdc44ddc90dadc89c925d84b983b30457cbf3626293cd4431400cfeb6546",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7045,7 +7583,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model"
         ]
@@ -7067,7 +7605,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "80e10f366c72ec13d18516c05f3437788dee21d08f5576d93be1bd12e22b2535",
+      "dependency_digest": "aab892d4c13e5684ea7bc2f8340f3f59c718a40610da603a468ef1dffddcaa09",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -7123,7 +7661,7 @@
           "source_fixture_state",
           "dom_capture_label",
           "dom_fixture_ready",
-          "home_weather_and_sun_absent",
+          "home_garden_feature_visibility_contract",
           "compact_home_copy",
           "home_preview_information_model",
           "stale_preview_action_clearance"
@@ -7420,16 +7958,16 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 13,
+          "order": 16,
           "profile": "representative",
-          "within_group_order": 2
+          "within_group_order": 5
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 26,
+          "order": 30,
           "profile": "full",
-          "within_group_order": 3
+          "within_group_order": 6
         }
       ],
       "prerequisites": [],
@@ -8262,9 +8800,9 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 27,
+          "order": 31,
           "profile": "full",
-          "within_group_order": 4
+          "within_group_order": 7
         }
       ],
       "prerequisites": [],
@@ -8747,16 +9285,16 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 14,
+          "order": 17,
           "profile": "representative",
-          "within_group_order": 3
+          "within_group_order": 6
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 28,
+          "order": 32,
           "profile": "full",
-          "within_group_order": 5
+          "within_group_order": 8
         }
       ],
       "prerequisites": [],
@@ -9148,9 +9686,9 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 29,
+          "order": 33,
           "profile": "full",
-          "within_group_order": 6
+          "within_group_order": 9
         }
       ],
       "prerequisites": [],

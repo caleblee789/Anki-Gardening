@@ -4,10 +4,13 @@ import ast
 import json
 import re
 import textwrap
+import os
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, OnboardingStep, Plant, PlantMemory
@@ -22,6 +25,7 @@ from ankigarden.ui.plant_display import (
     move_badge_label,
     move_target_state,
     plant_layout,
+    repair_unique_slot_items,
     story_is_just_beginning,
 )
 
@@ -30,6 +34,88 @@ ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_PATH = ROOT / "ankigarden/ui/dashboard.py"
 SCENE_PATH = ROOT / "ankigarden/ui/scene.py"
 STUDIO_PATH = ROOT / "ankigarden/ui/garden_studio.py"
+
+
+@pytest.mark.parametrize(
+    ("hovered", "selected", "nurtured"),
+    (
+        ("plant-b", "", "plant-a"),
+        ("plant-b", "plant-a", "plant-b"),
+        ("", "plant-b", "plant-a"),
+    ),
+)
+def test_scene_emphasis_tracks_hover_selection_and_nurture_independently(
+    hovered: str,
+    selected: str,
+    nurtured: str,
+) -> None:
+    emphasis_state = _compiled_method(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "emphasis_state",
+    )
+    interaction = PlantInteractionState()
+    assert interaction.begin_placement(
+        "plant-a",
+        0,
+        [0, 1, 2, 3],
+        keyboard=True,
+    )
+    interaction.hovered_id = hovered or None
+    interaction.pinned_id = selected or None
+    scene = SimpleNamespace(
+        scene={
+            "plants": [
+                {"plant_id": "plant-a", "is_active": nurtured == "plant-a"},
+                {"plant_id": "plant-b", "is_active": nurtured == "plant-b"},
+            ]
+        },
+        _interaction=interaction,
+        _destination_slots=lambda: [1, 2, 3],
+        _hovered_move_slot=2,
+    )
+
+    state = emphasis_state(scene)
+
+    assert state == {
+        "hovered_plant_id": hovered,
+        "selected_plant_id": selected,
+        "nurtured_plant_id": nurtured,
+        "current_bed_id": 0,
+        "available_destination_ids": (1, 2, 3),
+        "hovered_destination_id": 2,
+    }
+
+
+def test_scene_sanitization_keeps_exactly_one_nurtured_plant() -> None:
+    sanitize = _compiled_method(
+        SCENE_PATH,
+        "GardenSceneWidget",
+        "_sanitize_scene_payload",
+        {
+            "repair_unique_slot_items": repair_unique_slot_items,
+            "CAPTURE_HARNESS_ENABLED": False,
+            "os": os,
+        },
+    )
+    scene = SimpleNamespace(
+        _coerce_float=lambda value, default: float(value if value is not None else default),
+        _clamp=lambda value, low, high: max(low, min(high, value)),
+    )
+    payload = {
+        "plants": [
+            {"plant_id": "plant-a", "slot_index": 0, "is_active": True},
+            {"plant_id": "plant-b", "slot_index": 1, "is_active": True},
+        ]
+    }
+
+    repaired = sanitize(scene, payload)
+
+    assert [
+        plant["plant_id"]
+        for plant in repaired["plants"]
+        if plant["is_active"]
+    ] == ["plant-a"]
 
 
 def _method_source(path: Path, class_name: str, method_name: str) -> str:
@@ -695,7 +781,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 
     payload = snapshot(dashboard)
 
-    assert payload["weather"] == "gentle_rain"
+    assert payload["garden_feature"] == "gentle_rain"
     assert payload["unlocked_slots"] == 5
     assert payload["growth"] == 0.37
     assert payload["streak_days"] == 14
@@ -736,7 +822,7 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
     resolved = GardenGameEngine.resolve_preview_assets(
         engine,
         "verdant_twilight",
-        payload["weather"],
+        payload["garden_feature"],
         "seed",
         "ultra",
         payload["plants"],
@@ -751,10 +837,10 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         "key": "nurtured-marker-spout-right"
     }
     assert ("backgrounds", "bg_default_any", "balanced") in assets.calls
-    assert ("weather", "weather_gentle_rain", "balanced") in assets.calls
+    assert ("garden_features", "garden_feature_watering_station", "balanced") in assets.calls
 
 
-def test_settings_preview_suppresses_lock_badges_without_changing_scene_default() -> None:
+def test_settings_appearance_does_not_build_a_scene_preview() -> None:
     sanitize = _compiled_method(
         SCENE_PATH,
         "GardenSceneWidget",
@@ -775,12 +861,13 @@ def test_settings_preview_suppresses_lock_badges_without_changing_scene_default(
         scene,
         {"show_locked_bed_badges": False},
     )["show_locked_bed_badges"] is False
-    preview_source = _method_source(
+    appearance_source = _method_source(
         STUDIO_PATH,
         "GardenStudioWidget",
-        "_apply_preview",
+        "_refresh_appearance_card",
     )
-    assert '"show_locked_bed_badges": False' in preview_source
+    assert "set_scene" not in appearance_source
+    assert "garden_preview_from_values" not in appearance_source
 
 
 
@@ -1210,9 +1297,9 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     set_information(
         row,
         "Growth earned",
-        "How today’s card answers became Growth.",
+        "How today’s cards became Growth.",
         "30 Growth earned",
-        explanation="Each counted card answer gives the nurtured plant base Growth.",
+        explanation="Each counted card gives the nurtured plant base Growth.",
     )
 
     assert row.progress.visible is False
@@ -1222,8 +1309,8 @@ def test_today_growth_row_is_neutral_information_not_a_completion_requirement() 
     assert "recorded" in row.accessible_name.lower()
     row_tooltip = next(text for widget, text in tooltips if widget is row)
     assert "requirement" not in row_tooltip.lower()
-    assert "Each counted card answer" in row_tooltip
-    assert "Each counted card answer" in row.accessible_description
+    assert "Each counted card" in row_tooltip
+    assert "Each counted card" in row.accessible_description
 
 
 def test_move_failure_uses_one_scene_owned_teardown_and_focusable_feedback() -> None:
@@ -1360,6 +1447,9 @@ def test_selected_card_docks_only_when_practical_card_cannot_fit() -> None:
         def setMinimumHeight(self, height: int) -> None:
             self.minimum_height = height
 
+        def minimumHeight(self) -> int:
+            return self.minimum_height
+
         def setMaximumHeight(self, height: int) -> None:
             self.maximum_height = height
 
@@ -1474,10 +1564,10 @@ def test_selected_card_docks_only_when_practical_card_cannot_fit() -> None:
     assert dashboard.plant_card.geometry == (12, 190, 304, 240)
     assert geometry_calls == [(
         304,
-        240,
+        300,
         {
             "minimum_width": 288,
-            "minimum_height": 240,
+            "minimum_height": 300,
             "extra_obstacles": (),
         },
     )]

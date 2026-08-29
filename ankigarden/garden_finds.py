@@ -24,10 +24,13 @@ EnvironmentTier = Literal[
 ]
 
 STANDARD_POOL_ID = "standard"
-STANDARD_POOL_VERSION = "standard-v1"
+LEGACY_STANDARD_POOL_VERSION = "standard-v1"
+STANDARD_POOL_VERSION = "standard-v2"
 ENVIRONMENT_POOL_ID = "environment"
-ENVIRONMENT_POOL_VERSION = "environment-v1"
+LEGACY_ENVIRONMENT_POOL_VERSION = "environment-v1"
+ENVIRONMENT_POOL_VERSION = "environment-v2"
 STANDARD_DAILY_CAP = 3
+STANDARD_GUARANTEE_ANSWER = 75
 FALLBACK_REWARD_ID = "find_coin_sprout"
 
 # These identifiers route to existing inventory handlers.  Garden Finds never
@@ -47,10 +50,13 @@ KNOWN_ELIGIBILITY_RULES = frozenset({
 })
 KNOWN_ARTWORK_REFS = frozenset({
     "garden_coin",
+    "garden_pouch",
     "growth",
+    "morning_dew",
     "ui_growth_charge_small",
     "ui_growth_charge_standard",
     "ui_fertilizer_basic",
+    "ui_rich_compost",
     "ui_booster_potion",
 })
 
@@ -127,7 +133,7 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
         4,
         170,
         "Common",
-        artwork_ref="garden_coin",
+        artwork_ref="garden_pouch",
         localization_key="garden_find.coin_pouch",
     ),
     GardenFindReward(
@@ -139,7 +145,7 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
         200,
         "Common",
         eligibility_rule="unfinished_nurtured_plant",
-        artwork_ref="growth",
+        artwork_ref="morning_dew",
         localization_key="garden_find.morning_dew",
     ),
     GardenFindReward(
@@ -204,14 +210,14 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
     GardenFindReward(
         "find_fertilizer",
         "Rich Compost",
-        "+1 Basic Fertilizer",
+        "+1 Rich Compost",
         "inventory_item",
         1,
         15,
         "Rare",
         inventory_item_id="fertilizer_basic",
         eligibility_rule="inventory_available",
-        artwork_ref="ui_fertilizer_basic",
+        artwork_ref="ui_rich_compost",
         localization_key="garden_find.fertilizer",
     ),
     GardenFindReward(
@@ -254,6 +260,16 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
 )
 
 
+def standard_find_artwork_ref(reward_id: str, fallback: str = "") -> str:
+    """Return current presentation art without rewriting earned reward facts."""
+
+    normalized = str(reward_id or "")
+    for reward in STANDARD_FIND_REGISTRY:
+        if reward.reward_id == normalized and reward.enabled:
+            return str(reward.artwork_ref or fallback)
+    return str(fallback or "")
+
+
 @dataclass(frozen=True)
 class RegistryIssue:
     code: str
@@ -285,10 +301,27 @@ class StandardFindDecision:
 
 
 @dataclass(frozen=True)
+class StandardFindStatus:
+    """Small semantic projection safe for player-facing surfaces.
+
+    The internal drought length deliberately is not exposed.  Surfaces can say
+    how many Finds were received today, whether rolling is paused, and whether
+    the next eligible card is guaranteed without asking players to interpret a
+    probability counter.
+    """
+
+    finds_today: int
+    daily_cap: int
+    daily_limit_reached: bool
+    rolls_paused: bool
+    next_card_guaranteed: bool
+
+
+@dataclass(frozen=True)
 class EnvironmentFindItem:
     item_id: str
     display_name: str
-    environment_kind: Literal["weather", "scenery"]
+    environment_kind: Literal["garden_feature", "scenery"]
     tier: EnvironmentTier
 
     @property
@@ -298,15 +331,15 @@ class EnvironmentFindItem:
 
 SPECIAL_ENVIRONMENT_POOL: tuple[EnvironmentFindItem, ...] = (
     EnvironmentFindItem(
-        "fireflies", "Firefly Evening", "weather", "rare_environment"
+        "firefly_lantern", "Firefly Lantern", "garden_feature", "rare_environment"
     ),
     EnvironmentFindItem(
         "rainbow_horizon", "Rainbow Horizon", "scenery", "rare_environment"
     ),
     EnvironmentFindItem(
-        "rainbow_sunshower",
-        "Rainbow Sunshower",
-        "weather",
+        "prism_trellis",
+        "Prism Trellis",
+        "garden_feature",
         "very_rare_environment",
     ),
     EnvironmentFindItem(
@@ -320,10 +353,22 @@ SPECIAL_ENVIRONMENT_POOL: tuple[EnvironmentFindItem, ...] = (
     ),
 )
 
+@dataclass(frozen=True)
+class EnvironmentTierRule:
+    base_denominator: int
+    hard_pity_answers: int
+
+
+ENVIRONMENT_TIER_RULES: Mapping[EnvironmentTier, EnvironmentTierRule] = {
+    "rare_environment": EnvironmentTierRule(2_500, 5_000),
+    "very_rare_environment": EnvironmentTierRule(10_000, 20_000),
+    "ultra_environment": EnvironmentTierRule(25_000, 50_000),
+}
 ENVIRONMENT_TIER_DENOMINATORS: Mapping[EnvironmentTier, int] = {
-    "rare_environment": 5_000,
-    "very_rare_environment": 20_000,
-    "ultra_environment": 100_000,
+    tier: rule.base_denominator for tier, rule in ENVIRONMENT_TIER_RULES.items()
+}
+ENVIRONMENT_TIER_HARD_PITY: Mapping[EnvironmentTier, int] = {
+    tier: rule.hard_pity_answers for tier, rule in ENVIRONMENT_TIER_RULES.items()
 }
 _ENVIRONMENT_TIER_PRIORITY: tuple[EnvironmentTier, ...] = (
     "ultra_environment",
@@ -338,9 +383,23 @@ class EnvironmentFindDecision:
     hit: bool
     item: Optional[EnvironmentFindItem]
     tier: Optional[EnvironmentTier]
-    ultra_denominator: int
-    next_ultra_pity_misses: int
+    tier_denominators: Mapping[EnvironmentTier, int]
+    next_tier_pity_misses: Mapping[EnvironmentTier, int]
     checked_tiers: tuple[EnvironmentTier, ...]
+    forced_by_pity: bool = False
+    items: tuple[EnvironmentFindItem, ...] = ()
+
+    @property
+    def ultra_denominator(self) -> int:
+        """Compatibility view for pre-v2 callers during state migration."""
+
+        return self.tier_denominators["ultra_environment"]
+
+    @property
+    def next_ultra_pity_misses(self) -> int:
+        """Compatibility view for the former single Ultra counter."""
+
+        return self.next_tier_pity_misses.get("ultra_environment", 0)
 
 
 @dataclass(frozen=True)
@@ -427,18 +486,32 @@ def standard_chance_for_answer(answer_number: int) -> ChanceBand:
 
 
 def ultra_denominator(ultra_pity_misses: int) -> int:
-    misses = max(0, int(ultra_pity_misses))
-    if misses < 75_000:
-        return 100_000
-    if misses < 85_000:
-        return 90_000
-    if misses < 95_000:
-        return 80_000
-    if misses < 105_000:
-        return 70_000
-    if misses < 115_000:
-        return 60_000
-    return 50_000
+    """Return the v2 Ultra base denominator for compatibility callers."""
+
+    _ = max(0, int(ultra_pity_misses))
+    return ENVIRONMENT_TIER_RULES["ultra_environment"].base_denominator
+
+
+def standard_find_status(
+    *,
+    finds_today: int,
+    drought_misses: int,
+) -> StandardFindStatus:
+    """Project internal Find state without exposing the drought counter."""
+
+    daily_count = min(STANDARD_DAILY_CAP, max(0, int(finds_today)))
+    capped = daily_count >= STANDARD_DAILY_CAP
+    guaranteed = (
+        not capped
+        and max(0, int(drought_misses)) + 1 >= STANDARD_GUARANTEE_ANSWER
+    )
+    return StandardFindStatus(
+        finds_today=daily_count,
+        daily_cap=STANDARD_DAILY_CAP,
+        daily_limit_reached=capped,
+        rolls_paused=capped,
+        next_card_guaranteed=guaranteed,
+    )
 
 
 def prepare_reward_registry(
@@ -569,6 +642,9 @@ def eligible_standard_rewards(
     scheduler_day: Optional[str] = None,
     addon_version: Optional[str] = None,
 ) -> tuple[GardenFindReward, ...]:
+    # A missing plant no longer changes Find odds. Growth rewards are routed to
+    # Stored Growth by the engine when no nurture target exists.
+    _ = growth_available
     available_items = (
         KNOWN_INVENTORY_ITEM_IDS
         if available_inventory_item_ids is None
@@ -600,8 +676,6 @@ def eligible_standard_rewards(
                 version_allowed = False
             if not version_allowed:
                 continue
-        if reward.eligibility_rule == "unfinished_nurtured_plant" and not growth_available:
-            continue
         if (
             reward.eligibility_rule == "inventory_available"
             and reward.inventory_item_id not in available_items
@@ -663,7 +737,7 @@ def resolve_standard_find(
     hit = _draw_below(
         secret,
         identity,
-        "garden-find:standard:chance:v1",
+        "garden-find:standard:chance:v2",
         band.numerator,
         band.denominator,
         context=context,
@@ -679,11 +753,20 @@ def resolve_standard_find(
             scheduler_day=scheduler_day,
             addon_version=addon_version,
         )
+        if answer_number >= STANDARD_GUARANTEE_ANSWER:
+            eligible = _guaranteed_standard_rewards(
+                eligible,
+                available_inventory_item_ids=available_inventory_item_ids,
+                disabled_reward_ids=disabled_reward_ids,
+                reward_daily_counts=reward_daily_counts,
+                scheduler_day=scheduler_day,
+                addon_version=addon_version,
+            )
         reward = _weighted_reward(
             secret,
             identity,
             eligible,
-            namespace="garden-find:standard:selection:v1",
+            namespace="garden-find:standard:selection:v2",
             context=context,
         )
     return StandardFindDecision(
@@ -706,20 +789,35 @@ def resolve_environment_find(
     secret: str | bytes,
     answer_identity: str,
     owned_environment_ids: Collection[str],
-    ultra_pity_misses: int,
+    tier_pity_misses: Optional[Mapping[EnvironmentTier, int]] = None,
+    ultra_pity_misses: Optional[int] = None,
     pool: Sequence[EnvironmentFindItem] = SPECIAL_ENVIRONMENT_POOL,
 ) -> EnvironmentFindDecision:
     """Resolve the independent unowned-only environment pool.
 
-    Tiers are tested rarest first so simultaneous deterministic hits still grant
-    at most one item.  The caller may grant this alongside a standard find.
+    Every unfinished tier rolls and advances independently. Natural-hit ties
+    resolve rarest first and grant one item. If several tiers reach hard pity
+    together, every forced discovery is granted so each published threshold
+    remains a true upper bound. A tier with no unowned items stops rolling and
+    its counter remains unchanged.
+
+    ``ultra_pity_misses`` is accepted only as a schema-v1 migration bridge. New
+    callers should supply all counters through ``tier_pity_misses``.
     """
 
     identity = _normalized_identity(answer_identity)
     owned = {str(item_id) for item_id in owned_environment_ids}
-    misses = max(0, int(ultra_pity_misses))
-    current_ultra_denominator = ultra_denominator(misses)
+    supplied_misses = tier_pity_misses or {}
+    misses: dict[EnvironmentTier, int] = {
+        tier: max(0, int(supplied_misses.get(tier, 0)))
+        for tier in ENVIRONMENT_TIER_RULES
+    }
+    if tier_pity_misses is None and ultra_pity_misses is not None:
+        misses["ultra_environment"] = max(0, int(ultra_pity_misses))
     checked: list[EnvironmentTier] = []
+    unowned_by_tier: dict[EnvironmentTier, tuple[EnvironmentFindItem, ...]] = {}
+    hit_by_tier: dict[EnvironmentTier, bool] = {}
+    pity_by_tier: dict[EnvironmentTier, bool] = {}
 
     for tier in _ENVIRONMENT_TIER_PRIORITY:
         unowned = tuple(
@@ -732,36 +830,75 @@ def resolve_environment_find(
         if not unowned:
             continue
         checked.append(tier)
-        denominator = (
-            current_ultra_denominator
-            if tier == "ultra_environment"
-            else ENVIRONMENT_TIER_DENOMINATORS[tier]
+        unowned_by_tier[tier] = unowned
+        rule = ENVIRONMENT_TIER_RULES[tier]
+        answer_number = misses[tier] + 1
+        pity_hit = answer_number >= rule.hard_pity_answers
+        context = (
+            f"{ENVIRONMENT_POOL_VERSION}|tier:{tier}|"
+            f"denominator:{rule.base_denominator}|answer:{answer_number}"
         )
-        context = f"{ENVIRONMENT_POOL_VERSION}|tier:{tier}|denominator:{denominator}"
-        if not _draw_below(
-            secret,
-            identity,
-            f"garden-find:environment:{tier}:chance:v1",
-            1,
-            denominator,
-            context=context,
-        ):
-            continue
-        item_index = _hmac_uint(
-            secret,
-            identity,
-            f"garden-find:environment:{tier}:selection:v1",
-            context=context,
-        ) % len(unowned)
-        item = unowned[item_index]
+        natural_hit = (
+            False
+            if pity_hit
+            else _draw_below(
+                secret,
+                identity,
+                f"garden-find:environment:{tier}:chance:v2",
+                1,
+                rule.base_denominator,
+                context=context,
+            )
+        )
+        hit_by_tier[tier] = pity_hit or natural_hit
+        pity_by_tier[tier] = pity_hit
+
+    # A natural hit may grant at most one discovery. If two or more tiers reach
+    # hard pity on the same card, grant each forced discovery together. This is
+    # deliberately rare, but it keeps every advertised pity threshold a true
+    # upper bound instead of allowing a higher tier to starve a lower one.
+    forced_tiers = tuple(
+        tier for tier in _ENVIRONMENT_TIER_PRIORITY
+        if pity_by_tier.get(tier, False)
+    )
+    winning_tiers = forced_tiers or tuple(
+        tier
+        for tier in _ENVIRONMENT_TIER_PRIORITY
+        if hit_by_tier.get(tier, False)
+    )[:1]
+    winning_tier = winning_tiers[0] if winning_tiers else None
+    next_misses: dict[EnvironmentTier, int] = dict(misses)
+    for tier in checked:
+        next_misses[tier] = 0 if tier in winning_tiers else misses[tier] + 1
+
+    if winning_tier is not None:
+        selected_items: list[EnvironmentFindItem] = []
+        for selected_tier in winning_tiers:
+            unowned = unowned_by_tier[selected_tier]
+            rule = ENVIRONMENT_TIER_RULES[selected_tier]
+            answer_number = misses[selected_tier] + 1
+            context = (
+                f"{ENVIRONMENT_POOL_VERSION}|tier:{selected_tier}|"
+                f"denominator:{rule.base_denominator}|answer:{answer_number}"
+            )
+            item_index = _hmac_uint(
+                secret,
+                identity,
+                f"garden-find:environment:{selected_tier}:selection:v2",
+                context=context,
+            ) % len(unowned)
+            selected_items.append(unowned[item_index])
+        item = selected_items[0]
         return EnvironmentFindDecision(
             consumption_id(identity),
             hit=True,
             item=item,
-            tier=tier,
-            ultra_denominator=current_ultra_denominator,
-            next_ultra_pity_misses=(0 if tier == "ultra_environment" else misses + 1),
+            tier=winning_tier,
+            tier_denominators=dict(ENVIRONMENT_TIER_DENOMINATORS),
+            next_tier_pity_misses=next_misses,
             checked_tiers=tuple(checked),
+            forced_by_pity=bool(forced_tiers),
+            items=tuple(selected_items),
         )
 
     return EnvironmentFindDecision(
@@ -769,8 +906,8 @@ def resolve_environment_find(
         hit=False,
         item=None,
         tier=None,
-        ultra_denominator=current_ultra_denominator,
-        next_ultra_pity_misses=misses + 1,
+        tier_denominators=dict(ENVIRONMENT_TIER_DENOMINATORS),
+        next_tier_pity_misses=next_misses,
         checked_tiers=tuple(checked),
     )
 
@@ -849,6 +986,60 @@ def simulate_standard_find_economy(
         reward_counts=dict(sorted(reward_counts.items())),
         inventory_counts=dict(sorted(inventory_counts.items())),
     )
+
+
+_FIND_TIER_RANK: Mapping[FindTier, int] = {
+    "Common": 0,
+    "Uncommon": 1,
+    "Rare": 2,
+    "Exceptional": 3,
+}
+
+
+def _guaranteed_standard_rewards(
+    eligible: Sequence[GardenFindReward],
+    *,
+    available_inventory_item_ids: Optional[Collection[str]],
+    disabled_reward_ids: Collection[str],
+    reward_daily_counts: Optional[Mapping[str, int]],
+    scheduler_day: Optional[str],
+    addon_version: Optional[str],
+) -> tuple[GardenFindReward, ...]:
+    """Return an at-least-Uncommon pool for the hard guarantee.
+
+    A malformed custom registry must not silently downgrade the guarantee. In
+    that recovery case the canonical Hidden Coin Cache is always safe and needs
+    neither a nurture target nor inventory capacity.
+    """
+
+    minimum_rank = _FIND_TIER_RANK["Uncommon"]
+    filtered = tuple(
+        reward for reward in eligible
+        if _FIND_TIER_RANK[reward.tier] >= minimum_rank
+    )
+    if filtered:
+        return filtered
+
+    canonical = eligible_standard_rewards(
+        prepare_reward_registry(),
+        growth_available=True,
+        available_inventory_item_ids=available_inventory_item_ids,
+        disabled_reward_ids=disabled_reward_ids,
+        reward_daily_counts=reward_daily_counts,
+        scheduler_day=scheduler_day,
+        addon_version=addon_version,
+    )
+    canonical_filtered = tuple(
+        reward for reward in canonical
+        if _FIND_TIER_RANK[reward.tier] >= minimum_rank
+    )
+    if canonical_filtered:
+        return canonical_filtered
+    return (next(
+        reward
+        for reward in STANDARD_FIND_REGISTRY
+        if reward.reward_id == "find_coin_cache"
+    ),)
 
 
 def _reward_validation_issue(

@@ -16,9 +16,16 @@ class PurchaseKind(str, Enum):
     SPECIES = "species"
     GROWTH_CHARGE = "growth_charge"
     FERTILIZER = "fertilizer"
-    WEATHER = "weather"
+    GARDEN_FEATURE = "garden_feature"
     SCENERY = "scenery"
     BED = "bed"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "PurchaseKind | None":
+        # Supported migration window for persisted schema-22 purchase records.
+        if str(value) == "weather":
+            return cls.GARDEN_FEATURE
+        return None
 
 
 class PurchaseStatus(str, Enum):
@@ -41,6 +48,7 @@ class PurchaseDisposition(str, Enum):
     INVENTORY = "inventory"
     APPLIED = "applied"
     EXTENDED = "extended"
+    QUEUED = "queued"
     REPLACED = "replaced"
     UNLOCKED = "unlocked"
     OWNED_NOT_EQUIPPED = "owned_not_equipped"
@@ -51,6 +59,7 @@ class PurchaseAction(str, Enum):
 
     PURCHASE = "purchase"
     PURCHASE_APPLY = "purchase_apply"
+    PURCHASE_QUEUE = "purchase_queue"
     EXTEND = "extend"
     PURCHASE_REPLACE = "purchase_replace"
     UNLOCK = "unlock"
@@ -148,6 +157,10 @@ class PurchaseQuote:
     inventory_before: int = 0
     inventory_after: int = 0
     current_equipped_name: str = ""
+    current_cards_remaining: int = 0
+    card_count: int = 0
+    resulting_cards_remaining: int = 0
+    queued_doses: int = 0
 
     @property
     def ready(self) -> bool:
@@ -234,15 +247,21 @@ def _coin_amount(value: int, *, formal: bool = False) -> str:
 def _compact_effect(value: str) -> str:
     effect = _without_period(value)
     replacements = (
-        (" per eligible Anki card answer", " per answer"),
-        (" per Anki card answer", " per answer"),
-        (" per card answer", " per answer"),
-        (" per card", " per answer"),
+        (" per eligible Anki card answer", " per card"),
+        (" per Anki card answer", " per card"),
+        (" per card answer", " per card"),
+        (" per answer", " per card"),
         (" when used", ""),
     )
     for old, new in replacements:
         effect = effect.replace(old, new)
     return effect
+
+
+def _effect_duration(value: str) -> str:
+    """Return a duration that reads naturally after adds or queued."""
+
+    return _without_period(value).removeprefix("Lasts ")
 
 
 def _bed_unlock_counts(quote: PurchaseQuote) -> tuple[int, int]:
@@ -270,6 +289,7 @@ def _priced_action(
     short = {
         PurchaseAction.PURCHASE: "Buy",
         PurchaseAction.PURCHASE_APPLY: "Buy and apply",
+        PurchaseAction.PURCHASE_QUEUE: "Buy and queue",
         PurchaseAction.EXTEND: "Extend",
         PurchaseAction.PURCHASE_REPLACE: "Buy and replace",
         PurchaseAction.UNLOCK: "Unlock",
@@ -277,6 +297,7 @@ def _priced_action(
     processing = {
         PurchaseAction.PURCHASE: "Buying…",
         PurchaseAction.PURCHASE_APPLY: "Applying…",
+        PurchaseAction.PURCHASE_QUEUE: "Queueing…",
         PurchaseAction.EXTEND: "Extending…",
         PurchaseAction.PURCHASE_REPLACE: "Applying…",
         PurchaseAction.UNLOCK: "Unlocking…",
@@ -284,6 +305,7 @@ def _priced_action(
     visible = {
         PurchaseAction.PURCHASE: f"Buy for {visible_price}",
         PurchaseAction.PURCHASE_APPLY: f"Buy and apply · {visible_price}",
+        PurchaseAction.PURCHASE_QUEUE: f"Buy and queue · {visible_price}",
         PurchaseAction.EXTEND: f"Extend · {visible_price}",
         PurchaseAction.PURCHASE_REPLACE: f"Replace for {visible_price}",
         PurchaseAction.UNLOCK: f"Unlock for {visible_price}",
@@ -394,25 +416,20 @@ def purchase_presentation(
             activity_label = f"Purchased {item_name} for inventory"
             success_message = f"{item_name} added to inventory."
             next_actions = ("Keep browsing",)
-        elif quote.replacement_required:
-            action = PurchaseAction.PURCHASE_REPLACE
-            current_name = str(quote.current_item_name or "Fertilizer")
-            title = f"Replace {current_name}?"
-            lost_time = _sentence_duration(
-                quote.current_seconds_remaining,
-                quote.current_duration,
-            )
+        elif quote.disposition is PurchaseDisposition.QUEUED:
+            action = PurchaseAction.PURCHASE_QUEUE
+            title = f"Queue {item_name}?"
             outcome = (
-                f"{item_name} will start immediately.\n"
-                f"{current_name} has {lost_time} remaining."
+                f"Queued for {_effect_duration(quote.descriptor.duration)} after "
+                f"{quote.current_item_name or 'the active Fertilizer'}."
             )
-            activity_label = f"Replaced Fertilizer with {item_name} on {fertilizer_target}"
-            success_message = f"{item_name} applied."
+            activity_label = f"Queued {item_name} on {fertilizer_target}"
+            success_message = f"{item_name} queued."
         elif quote.disposition is PurchaseDisposition.EXTENDED:
             action = PurchaseAction.EXTEND
             title = f"Extend {item_name}?"
             outcome = (
-                f"Adds {_without_period(quote.descriptor.duration)} to "
+                f"Adds {_effect_duration(quote.descriptor.duration)} to "
                 f"{fertilizer_target}."
             )
             activity_label = f"Extended {item_name} on {fertilizer_target}"
@@ -421,16 +438,16 @@ def purchase_presentation(
             action = PurchaseAction.PURCHASE_APPLY
             title = f"Buy and apply {item_name}?"
             outcome = (
-                f"{fertilizer_target} · {_compact_effect(quote.descriptor.buff)} "
-                f"for {_without_period(quote.descriptor.duration)}"
+                f"{fertilizer_target} · {_compact_effect(quote.descriptor.buff)} · "
+                f"{_without_period(quote.descriptor.duration)}"
             )
             activity_label = f"Applied {item_name} to {fertilizer_target}"
             success_message = f"{item_name} applied."
         if quote.disposition is not PurchaseDisposition.INVENTORY:
             next_actions = ("View plant", "Keep browsing")
-    elif quote.kind in {PurchaseKind.WEATHER, PurchaseKind.SCENERY}:
+    elif quote.kind in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
-        outcome = "Adds it to Weather and Scenery."
+        outcome = "Adds it to Garden Decorations and Scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
         next_actions = ("View collection", "Keep browsing")
@@ -438,7 +455,10 @@ def purchase_presentation(
         action = PurchaseAction.UNLOCK
         bed_name = item_name.replace("Garden bed", "Bed").replace("Garden Bed", "Bed")
         title = f"Unlock {bed_name}?"
-        outcome = "Adds one permanent garden bed."
+        outcome = (
+            "Adds one permanent garden bed. Each planted plant adds a 20% "
+            "Shared Growth share. A Full Bloom plant still adds its share."
+        )
         preview_style = PurchasePreviewStyle.GARDEN_BED
         activity_label = f"Unlocked {item_name}"
         success_message = f"{bed_name} unlocked."
@@ -453,19 +473,11 @@ def purchase_presentation(
     show_preview = True
     show_cost = True
     balance_after: int | None = quote.balance_after
-    secondary_label = "Keep current" if quote.replacement_required else "Cancel"
+    secondary_label = "Cancel"
     primary_route = ""
     terminal = False
     retry = False
     show_category = False
-
-    if quote.replacement_required:
-        secondary_label = "Keep current"
-        primary_label = f"Replace for {_coin_amount(quote.total_price)}"
-        primary_accessible = (
-            f"Replace {quote.current_item_name or 'current fertilizer'} with "
-            f"{item_name} for {_coin_amount(quote.total_price, formal=True)}"
-        )
 
     if effective_status is PurchaseStatus.PERSISTENCE_FAILURE:
         display_title = "Purchase failed"

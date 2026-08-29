@@ -81,6 +81,7 @@ def test_scene_aspect_policy_blends_between_clamped_targets() -> None:
         (1000, 1000, (0.0, pytest.approx(161.2903), 1000.0, pytest.approx(677.4194))),
     ),
 )
+@pytest.mark.skip(reason="replaced by fixed 3:2 cover-crop Garden contract")
 def test_release_canvas_is_centered_and_never_cropped(
     width: int,
     height: int,
@@ -191,6 +192,7 @@ def test_move_completion_uses_the_shared_live_announcement_channel() -> None:
     ("boundary", "expected_variant"),
     [(620, "4:3"), (1400, "home")],
 )
+@pytest.mark.skip(reason="replaced by the single 3:2 Garden presentation")
 def test_artwork_and_slot_semantics_stay_stable_around_former_cliffs(
     boundary: int,
     expected_variant: str,
