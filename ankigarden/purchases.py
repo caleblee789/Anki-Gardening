@@ -447,7 +447,7 @@ def purchase_presentation(
             next_actions = ("View plant", "Keep browsing")
     elif quote.kind in {PurchaseKind.GARDEN_FEATURE, PurchaseKind.SCENERY}:
         title = f"Buy {item_name}?"
-        outcome = "Adds it to Garden Features and Scenery."
+        outcome = "Adds it to Garden Decorations and Scenery."
         preview_style = PurchasePreviewStyle.LANDSCAPE
         success_message = f"{item_name} added to your collection."
         next_actions = ("View collection", "Keep browsing")

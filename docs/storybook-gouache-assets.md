@@ -29,7 +29,7 @@ manifest rows use `placement_ref` to inherit the canonical V6 contract and
 substitute responsive background/occlusion files. An artwork-specific
 `landmark_overrides` entry may refine only a visual contour and its forgiving
 hit bounds when a scenery repaint shifts the visible building edge; planting
-surfaces and saved geometry remain canonical. Garden Features are independent
+surfaces and saved geometry remain canonical. Garden Decorations are independent
 static transparent props for Home and native 3:2-on-4:3. They do not modify a
 background raster or require a scene overlay.
 
@@ -68,10 +68,9 @@ removed or damaged; if its old bitmap is unavailable, the renderer keeps its
 name and stage and uses the code-native plant fallback.
 
 The shipped asset tree is deliberately small: current V6 backgrounds, reskins,
-plant sprites, item art, and eight Garden Feature assets live under
-`assets/v6_storybook_gouache/`; the reusable decoration lantern lives under
-`assets/support/`. Garden Feature cards and scenes reuse the same standardized
-static assets. Retired overlays, development candidates, previous scene
+plant sprites, item art, and eight Garden Decoration assets live under
+`assets/v6_storybook_gouache/`. Garden Decoration cards and scenes reuse the
+same standardized static assets. Retired overlays, development candidates, previous scene
 generations, migration catalogs, and placeholder bitmaps do not belong in the
 add-on archive.
 

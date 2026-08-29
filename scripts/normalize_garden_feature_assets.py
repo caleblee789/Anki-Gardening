@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalize generated Garden Feature art into the one runtime contract."""
+"""Normalize generated Garden Decoration art into the one runtime contract."""
 
 from __future__ import annotations
 

@@ -254,7 +254,11 @@ def test_reviewer_malformed_exemption_collection_fails_closed(
 
 @pytest.mark.parametrize(
     "label",
-    ("starter-deck-browser-home", "session-summary-after-review"),
+    (
+        "starter-deck-browser-home",
+        "session-summary-after-review",
+        "sync-rewards-summary",
+    ),
 )
 @pytest.mark.parametrize(("effective_cream", "passes"), ((64, True), (65, False)))
 def test_home_host_exemption_preserves_exact_64_pixel_threshold(

@@ -10,16 +10,21 @@ from ankigarden.ui.icons import GARDEN_ICON_PATHS
 from ankigarden.ui.session_summary_card import (
     SESSION_SUMMARY_DEFAULT_WIDTH,
     SESSION_SUMMARY_EDGE_MARGIN,
+    SESSION_SUMMARY_COMPACT_HOST_HEIGHT,
     SESSION_SUMMARY_FOOTER_HEIGHT,
     SESSION_SUMMARY_FRAME_BORDER_WIDTH,
     SESSION_SUMMARY_HEADER_HEIGHT,
     SESSION_SUMMARY_MAX_HEIGHT,
     SESSION_SUMMARY_MAX_WIDTH,
+    SESSION_SUMMARY_MIN_VERTICAL_MARGIN,
+    SESSION_SUMMARY_PREFERRED_TOP_MARGIN,
     SessionSummaryCard,
     session_effect_remaining_text,
+    session_find_summary_plan,
     session_inventory_reward_lines,
     session_summary_geometry,
     session_summary_palette,
+    session_summary_uses_compact_density,
 )
 from ankigarden.ui.theme import GARDEN_THEME
 
@@ -36,8 +41,11 @@ def test_session_summary_geometry_uses_416_preferred_width_and_32px_narrow_allow
     assert SESSION_SUMMARY_DEFAULT_WIDTH == 416
     assert SESSION_SUMMARY_MAX_WIDTH == 416
     assert SESSION_SUMMARY_EDGE_MARGIN == 20
+    assert SESSION_SUMMARY_PREFERRED_TOP_MARGIN == 48
+    assert SESSION_SUMMARY_MIN_VERTICAL_MARGIN == 16
     assert SESSION_SUMMARY_MAX_HEIGHT is None
     assert session_summary_geometry(1_200, 900, 900) == (764, 16, 416, 868)
+    assert session_summary_geometry(1_200, 954, 865) == (764, 48, 416, 865)
     assert SESSION_SUMMARY_HEADER_HEIGHT == 52
     assert SESSION_SUMMARY_FOOTER_HEIGHT == 60
     assert SESSION_SUMMARY_FRAME_BORDER_WIDTH == 1
@@ -45,8 +53,17 @@ def test_session_summary_geometry_uses_416_preferred_width_and_32px_narrow_allow
 
 def test_session_summary_geometry_contracts_inside_small_viewports():
     assert session_summary_geometry(340, 300, 500) == (12, 16, 308, 268)
-    assert session_summary_geometry(900, 800, 212) == (464, 16, 416, 212)
+    assert session_summary_geometry(900, 800, 212) == (464, 48, 416, 212)
     assert session_summary_geometry(28, 30, 500) == (7, 16, 1, 1)
+
+
+def test_session_summary_compact_density_covers_measured_macos_host_heights():
+    assert SESSION_SUMMARY_COMPACT_HOST_HEIGHT == 903
+    assert session_summary_uses_compact_density(633) is True
+    assert session_summary_uses_compact_density(813) is True
+    assert session_summary_uses_compact_density(873) is True
+    assert session_summary_uses_compact_density(903) is False
+    assert session_summary_uses_compact_density(954) is False
 
 
 def test_session_summary_palette_has_semantic_reward_tokens_and_light_adaptation():
@@ -75,7 +92,10 @@ def test_session_summary_typography_keeps_the_approved_title_and_hero_scale():
     assert "summaryTitle='true'] {font-size:18px" in source
     assert "summaryHero='true'] {font-size:40px" in source
     assert "summaryHeroLabel='true']" in source
-    assert "font-size:14px;font-weight:500" in source
+    assert "font-size:14px;font-weight:520" in source
+    assert "hero_layout.setSpacing(5)" in source
+    assert "font-size:20px;font-weight:700" in source
+    assert "summaryLongMetric='true'] {font-size:17px;}" in source
     assert "QPushButton:pressed, QToolButton:pressed" in source
     assert "QPushButton[summaryPrimary='true']:pressed" in source
     assert "QPushButton[summarySecondary='true']:pressed" in source
@@ -140,7 +160,7 @@ def test_today_progress_is_native_semantic_and_animation_ready():
     assert 'setProperty("progressFraction"' in method
     assert "completed this session" in source
     assert 'QPropertyAnimation(progress, b"value"' in source
-    assert "setDuration(350)" in source
+    assert "setDuration(320)" in source
     assert "setStartValue(progress_start)" in source
     assert 'getattr(today, "start_progress_value"' in method
     assert 'end.status not in {"not_eligible", "unavailable"}' in method
@@ -157,7 +177,7 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert 'setProperty("summaryTwoLineName", True)' in source
     assert "elidedText" not in source
     assert "Final growth stage reached" in source
-    assert "Now available in the Garden" in source
+    assert "unlock_category_copy" in source
     assert "Completed during this session" not in source
     highlights = _method_source("_add_highlights", "_add_highlight_card")
     assert "candidates[:2]" in highlights
@@ -169,6 +189,12 @@ def test_highlight_cards_are_static_prioritized_and_two_line_safe():
     assert "setCursor" not in compact
     assert 'setFixedWidth(88)' in method
     assert "chip_layout.addStretch" not in method
+    assert "compact_reward_chip" in method
+    assert "len(reward_text) <= 24" in method
+    assert method.index("eyebrow_row.addWidget") < method.index("copy.addWidget(title)")
+    assert method.index("copy.addWidget(title)") < method.index(
+        "copy.addWidget(reward_chip(), 0, Qt.AlignmentFlag.AlignLeft)"
+    )
 
 
 def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
@@ -194,15 +220,76 @@ def test_grouped_rewards_details_and_active_boosts_have_stable_semantics():
     assert "Direct plant growth" in source
     assert "Shared Growth distributed" in source
     assert "Total applied" in source
-    assert "Reward details" in source
+    assert "Reward breakdown" in source
     assert "Additional to the session subtotal; included in " in source
     assert "Total earned." in source
     assert 'self._section_heading("Progress details")' in source
-    assert "Rewards earned" in source
+    assert "Rewards Earned" in source
+    assert '"Growth applied"' in source
+    assert '"Standard Finds"' in source
+    assert "logical_size=14" in _method_source(
+        "_add_reward_strip", "_add_find_summary"
+    )
+    assert 'toggle.setFixedHeight(40)' in source
     assert 'setProperty("summaryBoostKind", kind)' in source
     assert 'setProperty("summaryMetricDivider", True)' in source
     assert 'setProperty("summaryBoostRow", True)' in source
+    boost_rows = _method_source("_add_active_boosts", "_refresh_active_effects")
+    assert "row_widget.setMinimumHeight(36)" in boost_rows
+    assert "row_widget.setFixedHeight(36)" not in boost_rows
+    assert 'semantic_kind="active boost"' in boost_rows
+    assert 'fallback_icon=kind if kind in {"fertilizer", "booster"} else "find"' in boost_rows
+    assert 'setProperty("summaryBoostArt", True)' in boost_rows
+    assert 'setProperty("summaryBoostArtReference", art_reference)' in boost_rows
+    effect_art = _method_source("_effect_art_reference", "_effect_value")
+    assert 'return "booster_potion"' in effect_art
+    assert 'return f"fertilizer_{tier}"' in effect_art
+    assert 'tier in {"basic", "quality", "premium"}' in effect_art
+    reward_art = _method_source("_reward_art_label", "_rebuild_footer")
+    assert 'fallback_icon: str = "find"' in reward_art
+    assert "fallback_icon=fallback_icon" in reward_art
+    assert "self._effect_timer.setInterval(30_000)" in source
+    assert "row_widget.setVisible(visible)" in source
     assert "×{max(1, int(quantity)):,}" in source
+
+
+def test_active_boost_art_maps_every_fertilizer_tier_and_booster() -> None:
+    renderer = SimpleNamespace(
+        _effect_kind=lambda effect: str(effect.kind),
+    )
+
+    assert SessionSummaryCard._effect_art_reference(
+        renderer,
+        SimpleNamespace(
+            kind="fertilizer",
+            effect_id="fertilizer:plant-a:basic:1:2",
+            label="Basic Fertilizer",
+        ),
+    ) == "fertilizer_basic"
+    assert SessionSummaryCard._effect_art_reference(
+        renderer,
+        SimpleNamespace(
+            kind="fertilizer",
+            effect_id="fertilizer:plant-a:quality:1:2",
+            label="Quality Fertilizer",
+        ),
+    ) == "fertilizer_quality"
+    assert SessionSummaryCard._effect_art_reference(
+        renderer,
+        SimpleNamespace(
+            kind="fertilizer",
+            effect_id="fertilizer:plant-a:premium:1:2",
+            label="Magical Fertilizer",
+        ),
+    ) == "fertilizer_premium"
+    assert SessionSummaryCard._effect_art_reference(
+        renderer,
+        SimpleNamespace(
+            kind="booster",
+            effect_id="booster:plant-a",
+            label="Booster Potion",
+        ),
+    ) == "booster_potion"
 
 
 def test_minor_checkpoints_remain_available_in_reward_details():
@@ -243,6 +330,32 @@ def test_find_rows_use_explicit_reconciled_quantities_only():
     assert SessionSummaryCard._find_items(summary) == ()
 
 
+def test_find_summary_keeps_three_aggregated_groups_visible_and_accounts_for_more():
+    items = (
+        ("charge", "Small Growth Charge", "charge.webp", 2),
+        ("cache", "Garden Coin Cache", "cache.webp", 1),
+        ("stored", "Stored Growth Charge", "stored.webp", 1),
+        ("booster", "Booster Potion", "booster.webp", 3),
+    )
+
+    visible, hidden_quantity = session_find_summary_plan(items[:3])
+    assert visible == items[:3]
+    assert hidden_quantity == 0
+
+    visible, hidden_quantity = session_find_summary_plan(items)
+    assert visible == items[:3]
+    assert hidden_quantity == 3
+
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    method = _method_source("_add_find_summary", "_find_row_widget")
+    assert "QHBoxLayout" not in method
+    assert "for index, item in enumerate(visible)" in method
+    assert 'more.clicked.connect(self._expand_find_breakdown)' in method
+    row = _method_source("_find_row_widget", "_add_find_row")
+    assert "row_widget.setFixedHeight(36)" in row
+    assert "self._reward_art_label(art, 26)" in row
+
+
 def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     for property_name in (
@@ -259,8 +372,10 @@ def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
     assert "normalized_plant_pixmap" in source
     assert "environment_preview_pixmap" in source
     assert "from .dashboard import" not in source
-    assert '64 if kind == "full_bloom"' in source
-    assert "self._environment_art_label(source, 88, 56)" in source
+    assert '60 if kind == "full_bloom"' in source
+    assert "58 if garden_item else 88" in source
+    assert 'kind="garden_item" if is_feature else "environment"' in source
+    assert 'setProperty("summaryGardenItemArt", is_feature)' in source
     assert "collection" not in _method_source(
         "_environment_art_label", "_reward_art_label"
     )
@@ -269,7 +384,7 @@ def test_semantic_art_records_real_provenance_and_uses_shared_compositors():
     assert '"growth": "growth"' in reward_art
     assert '"ui_growth_charge_small": "growth_charge_small"' in reward_art
     assert 'getattr(self._engine, "resolve_item_asset", None)' in reward_art
-    assert "self._reward_art_label(art, 28)" in source
+    assert "self._reward_art_label(art, 26)" in source
 
 
 def test_canonical_garden_feature_art_uses_the_dedicated_asset_catalog():
@@ -404,13 +519,17 @@ def test_motion_is_one_shot_and_honors_the_resolved_reduced_motion_policy():
     assert "if not self._animations_enabled" in method
     assert "QGraphicsOpacityEffect" in method
     assert 'QPropertyAnimation(self, b"pos"' in method
-    assert "QPoint(8, 0)" in method
+    assert "QPoint(6, 0)" in method
     assert "setDuration(200)" in method
     highlight_motion = _method_source("_start_highlight_animation", "close")
     assert "QPoint(0, 4)" in highlight_motion
-    assert "index * 50" in highlight_motion
+    assert "summaryRevealAfterHighlights" in SOURCE_PATH.read_text(encoding="utf-8")
+    assert "index * 60" in highlight_motion
     assert "420" in highlight_motion
     assert "else 200" in highlight_motion
+    assert "QVariantAnimation" in highlight_motion
+    assert "setStartValue(0.96)" in highlight_motion
+    assert 'b"blurRadius"' in highlight_motion
 
 
 def test_effect_remaining_copy_is_live_concise_and_pluralized():

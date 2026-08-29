@@ -110,7 +110,7 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
     )
     environment_presentation = lookup(environment_hit)
     assert environment_presentation is not None
-    assert environment_presentation.description == "Added to Garden Features"
+    assert environment_presentation.description == "Added to Garden Decorations"
 
     scenery_hit = GardenFindOutcome(
         "answer:6b", "2026-08-20", "hit", "environment", "environment-v1",
@@ -127,9 +127,9 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
         reward_type="growth", amount=40, display_name="Morning Dew",
         description="+40 Growth",
     )
-    assert lookup(persisted_growth).description == (
-        "+40 Growth"
-    )
+    persisted_growth_presentation = lookup(persisted_growth)
+    assert persisted_growth_presentation.description == "+40 Growth"
+    assert persisted_growth_presentation.artwork_ref == "morning_dew"
     registry_growth = GardenFindOutcome(
         "answer:8", "2026-08-20", "hit", "standard", "standard-v1",
         "2026-08-20T12:04:00+00:00", reward_id="find_sun_patch",

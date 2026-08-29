@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from ankigarden.ui.sync_reward_summary import sync_reward_summary_geometry
 from scripts.validate_ui_capture import (
     growth_charge_rendered_value_issue_codes,
     reviewer_hud_acceptance_matrix_issue_codes,
@@ -10,6 +11,20 @@ from scripts.validate_ui_capture import (
     visible_action_geometry_issue_codes,
     web_root_overflow_issue_codes,
 )
+
+
+def test_sync_reward_capture_geometry_is_centered_and_viewport_bounded() -> None:
+    canonical = sync_reward_summary_geometry(1280, 720, 900)
+
+    assert canonical == (412, 22, 456, 640)
+    assert canonical[0] * 2 + canonical[2] == 1280
+    assert canonical[1] == 22
+
+    compact = sync_reward_summary_geometry(430, 300, 900)
+    assert compact == (24, 22, 382, 252)
+    assert compact[0] * 2 + compact[2] == 430
+    assert compact[0] >= 0
+    assert compact[1] + compact[3] <= 300
 
 
 def test_web_root_overflow_requires_exact_document_measurement() -> None:
@@ -229,10 +244,14 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "hero_count": 1,
         "eyebrow": "MILESTONE REACHED",
         "hero_title": "Full Bloom achieved",
-        "hero_subtitle": "Juniper of the Moonlit Library Garden",
+        "projected_hero_subtitle": "Juniper of the Moonlit Library Garden",
+        "hero_subtitle": "",
+        "active_plant_identity_suppressed": True,
         "secondary_summary_count": 2,
-        "hidden_reward_count": 2,
-        "more_label": "2 more rewards ›",
+        "details_action_copy": "Details ›",
+        "details_action_heading_row": True,
+        "obsolete_bottom_details_absent": True,
+        "milestone_chevron_absent": True,
         "individual_close_button_count": 0,
         "detached_toast_count": 0,
         "session_footer_visible": True,
@@ -243,7 +262,15 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "bundle_id": "answer:committed:1",
         "rendered_bundle_id": "answer:committed:1",
         "hero_event_id": "reward:full-bloom",
-        "visible_summary_labels": ["+40 growth", "2 discoveries"],
+        "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
+        "visible_summary_reward_types": [
+            "garden_find",
+            "environment_discovery",
+        ],
+        "visible_summary_artwork_refs": [
+            "morning_dew",
+            "firefly_lantern",
+        ],
         "visible_summary_event_ids": [
             ["reward:find"],
             ["reward:environment-a", "reward:environment-b"],
@@ -268,11 +295,13 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         "hero_components_contained": True,
         "hero_components_non_overlapping": True,
         "title_details_non_overlapping": True,
-        "more_right_aligned": True,
-        "more_click_height": 32,
-        "more_visible_in_scroll_viewport": True,
-        "more_footer_non_overlapping": True,
-        "more_divider_clearance": 10,
+        "details_heading_aligned": True,
+        "details_click_height": 28,
+        "details_visible_in_scroll_viewport": True,
+        "details_footer_non_overlapping": True,
+        "details_divider_clearance": 10,
+        "obsolete_bottom_details_present": False,
+        "obsolete_milestone_disclosure_present": False,
         "compact_vertical_scroll_maximum": 0,
     }
     assert reviewer_reward_dock_issue_codes(bundle, geometry) == ()
@@ -281,12 +310,12 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
         **bundle,
         "event_count": 4,
         "active_reveal_count": 3,
-        "more_label": "+2 more rewards",
+        "details_action_copy": "View reward details ›",
     }
     issues = reviewer_reward_dock_issue_codes(stacked_contract, geometry)
     assert "reviewer-reward-bundle-mismatch:event_count" in issues
     assert "reviewer-reward-bundle-mismatch:active_reveal_count" in issues
-    assert "reviewer-reward-bundle-mismatch:more_label" in issues
+    assert "reviewer-reward-bundle-mismatch:details_action_copy" in issues
 
     detached = {
         **geometry,
@@ -310,10 +339,12 @@ def test_reviewer_reward_dock_proves_one_seven_result_bundle_in_normal_flow() ->
     for regression in (
         {"full_bloom_settled": False},
         {"title_details_non_overlapping": False},
-        {"more_click_height": 31},
-        {"more_visible_in_scroll_viewport": False},
-        {"more_footer_non_overlapping": False},
-        {"more_divider_clearance": 7},
+        {"details_click_height": 27},
+        {"details_visible_in_scroll_viewport": False},
+        {"details_footer_non_overlapping": False},
+        {"details_divider_clearance": 7},
+        {"obsolete_bottom_details_present": True},
+        {"obsolete_milestone_disclosure_present": True},
         {"compact_vertical_scroll_maximum": 1},
     ):
         assert (
@@ -334,11 +365,18 @@ def _reviewer_baseline_content() -> dict[str, object]:
         "1-card-left": {
             "remaining_count": 1,
             "copy": "1 card left",
-            "displayed_progress_percent": 99,
+            "near_complete_card": True,
+            "near_complete_detail": True,
+            "displayed_progress_percent": 98.5,
+            "progress_value": 985,
+            "progress_maximum": 1_000,
+            "minimum_unfilled_logical_pixels": 4,
+            "estimated_unfilled_logical_pixels": 4,
+            "progress_logical_width": 280,
             "visible_end_gap": True,
             "daily_completion_transition": {
                 "before": {
-                    "displayed_progress_percent": 99,
+                    "displayed_progress_percent": 98.5,
                     "heading": "Today’s cards",
                     "header_balance": 250,
                     "session_coins": 0,
@@ -346,7 +384,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                 "initial": {
                     "transition_active": True,
                     "completion_settling": True,
-                    "displayed_progress_percent": 99,
+                    "displayed_progress_percent": 98.5,
                     "heading": "Today’s cards",
                     "coin_update_deferred": True,
                     "session_update_deferred": True,
@@ -417,6 +455,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "effect_chips_contained": True,
             "effect_labels_contained": True,
             "effect_labels_unclipped": True,
+            "effect_art_passed": True,
             "effect_chip_overlap_pairs": [],
             "overflow_contained": True,
         },
@@ -430,6 +469,21 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "effect_chips_contained": True,
             "effect_labels_contained": True,
             "effect_labels_unclipped": True,
+            "effect_art_passed": True,
+            "effect_chip_overlap_pairs": [],
+            "overflow_contained": True,
+        },
+        "long-effects-one-column": {
+            "visible_effect_count": 2,
+            "overflow_visible": False,
+            "single_column": True,
+            "vertically_stacked": True,
+            "effect_chip_bounds": [[0, 0, 266, 28], [0, 28, 266, 28]],
+            "effect_label_bounds": [[20, 0, 236, 28], [20, 0, 236, 28]],
+            "effect_chips_contained": True,
+            "effect_labels_contained": True,
+            "effect_labels_unclipped": True,
+            "effect_art_passed": True,
             "effect_chip_overlap_pairs": [],
             "overflow_contained": True,
         },
@@ -489,7 +543,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "progress_percent": 25,
                     "reward_visible": True,
                     "eyebrow": "CHECKPOINT REACHED",
-                    "hero_title": "Checkpoint reached",
+                    "hero_title": "25% checkpoint",
                     "coin_copy": "+2 coins",
                     "header_balance": 248,
                 },
@@ -506,7 +560,7 @@ def _reviewer_baseline_content() -> dict[str, object]:
                     "header-increment-settled",
                 ],
                 "eyebrow": "CHECKPOINT REACHED",
-                "hero_title": "Checkpoint reached",
+                "hero_title": "25% checkpoint",
                 "coin_copy": "+2 coins",
                 "final_progress_percent": 38,
                 "final_header_balance": 250,
@@ -583,6 +637,398 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "baseline_short_viewport_passed": True,
         },
     }
+    header_anchors = [
+        [12, 0, 104, 44],
+        [142, 0, 170, 44],
+        [274, 6, 32, 32],
+    ]
+    for state in (
+        "coin-balance-248",
+        "coin-balance-9999",
+        "coin-balance-10013",
+    ):
+        row = rows[state]
+        assert isinstance(row, dict)
+        row.update({
+            "header_anchors": header_anchors,
+            "header_group_object_names": [
+                "reviewerHudTitleGroup",
+                "reviewerHudHeaderActions",
+            ],
+            "header_reserved_width": 170,
+            "balance_cluster_contained": True,
+        })
+    progress_markers = {
+        "25": "completed",
+        "50": "next",
+        "75": "future",
+        "100": "future",
+    }
+    rows.update({
+        "progress-10-percent": {
+            "stage_percent_copy": "10%",
+            "track_progress_percent": 10,
+            "painted_progress_percent": 10,
+            "marker_states": {
+                "25": "next",
+                "50": "future",
+                "75": "future",
+                "100": "future",
+            },
+            "current_position_handle": False,
+        },
+        "progress-38-percent": {
+            "stage_percent_copy": "38%",
+            "track_progress_percent": 38,
+            "painted_progress_percent": 38,
+            "marker_states": progress_markers,
+            "current_position_handle": False,
+        },
+        "before-checkpoint": {
+            "stage_percent_copy": "24%",
+            "track_progress_percent": 24,
+            "painted_progress_percent": 24,
+            "marker_states": {
+                "25": "next",
+                "50": "future",
+                "75": "future",
+                "100": "future",
+            },
+            "current_position_handle": False,
+        },
+        "exact-checkpoint": {
+            "stage_percent_copy": "25%",
+            "track_progress_percent": 25,
+            "painted_progress_percent": 25,
+            "marker_states": progress_markers,
+            "current_position_handle": False,
+        },
+        "checkpoint-marker-semantics": {
+            "semantic_id": "reviewer.hud.checkpoint-track",
+            "checkpoint_percents": [25, 50, 75, 100],
+            "marker_states": progress_markers,
+            "transparent_for_mouse": True,
+            "focus_safe": True,
+            "is_abstract_slider": False,
+            "current_position_handle": False,
+            "marker_shape": "diamond-tick",
+            "future_marker_diameter": 4.5,
+            "final_endpoint_inset": 2.5,
+            "final_endpoint_inside_track": True,
+            "checkpoint_reward_context": "Checkpoint reward",
+        },
+        "early-stage-art": {
+            "stage_key": "sprout",
+            "stage_copy": "Sprout · Stage 1 of 5",
+            "art_path": "/capture/bonsai_sprout.webp",
+            "pixmap_present": True,
+            "pixmap_cache_key": 101,
+            "ground_shadow_stage": "sprout",
+            "art_region_height": 146,
+            "plant_art_height": 136,
+            "visible_plant_width": 48.0,
+            "ground_shadow_width": 92.0,
+            "distinct_from_other_stage": True,
+        },
+        "mature-stage-art": {
+            "stage_key": "mature",
+            "stage_copy": "Mature · Stage 3 of 5",
+            "art_path": "/capture/bonsai_mature.webp",
+            "pixmap_present": True,
+            "pixmap_cache_key": 202,
+            "ground_shadow_stage": "mature",
+            "art_region_height": 146,
+            "plant_art_height": 136,
+            "distinct_from_other_stage": True,
+        },
+        "zero-effects": {
+            "visible_effect_count": 0,
+            "overflow_visible": False,
+            "effect_chip_bounds": [],
+            "effect_label_bounds": [],
+            "effect_chips_contained": True,
+            "effect_labels_contained": True,
+            "effect_labels_unclipped": True,
+            "effect_art_passed": True,
+            "effect_chip_overlap_pairs": [],
+            "overflow_contained": True,
+        },
+        "one-effect": {
+            "visible_effect_count": 1,
+            "overflow_visible": False,
+            "effect_chip_bounds": [[0, 0, 266, 28]],
+            "effect_label_bounds": [[20, 0, 236, 28]],
+            "effect_chips_contained": True,
+            "effect_labels_contained": True,
+            "effect_labels_unclipped": True,
+            "effect_art_passed": True,
+            "effect_chip_overlap_pairs": [],
+            "overflow_contained": True,
+        },
+        "estimate-1-card": {
+            "estimated_cards": 1,
+            "rendered_text": "~1 card",
+            "contained": True,
+            "text_fits": True,
+            "uses_cards_copy": True,
+        },
+        "estimate-14-cards": {
+            "estimated_cards": 14,
+            "rendered_text": "~14 cards",
+            "contained": True,
+            "text_fits": True,
+            "uses_cards_copy": True,
+        },
+        "estimate-1240-cards": {
+            "estimated_cards": 1_240,
+            "rendered_text": "~1,240 cards",
+            "contained": True,
+            "text_fits": True,
+            "uses_cards_copy": True,
+        },
+        "coin-balance-999999": {
+            "exact_value": 999_999,
+            "rendered_text": "999,999",
+            "compacted": False,
+            "header_anchors": header_anchors,
+            "header_anchors_stable": True,
+            "header_group_object_names": [
+                "reviewerHudTitleGroup",
+                "reviewerHudHeaderActions",
+            ],
+            "header_reserved_width": 170,
+            "balance_cluster_contained": True,
+        },
+        "coin-balance-1000000": {
+            "exact_value": 1_000_000,
+            "rendered_text": "1,000,000",
+            "compacted": False,
+            "header_anchors": header_anchors,
+            "header_anchors_stable": True,
+            "header_group_object_names": [
+                "reviewerHudTitleGroup",
+                "reviewerHudHeaderActions",
+            ],
+            "header_reserved_width": 170,
+            "balance_cluster_contained": True,
+        },
+        "header-stable-grouping": {
+            "balance_states": [
+                "coin-balance-248",
+                "coin-balance-9999",
+                "coin-balance-10013",
+                "coin-balance-999999",
+                "coin-balance-1000000",
+            ],
+            "object_names": [
+                "reviewerHudTitleGroup",
+                "reviewerHudHeaderActions",
+            ],
+            "reserved_width": 170,
+            "anchor_snapshots": [header_anchors] * 5,
+        },
+    })
+    for row in rows.values():
+        assert isinstance(row, dict)
+        if "marker_states" in row:
+            row.setdefault("marker_shape", "diamond-tick")
+        row["passed"] = True
+    rows["passed"] = True
+    return rows
+
+
+def _reviewer_reward_content() -> dict[str, object]:
+    settled_copy = "Future growth will be shared or stored."
+    expected_detail_rows = [
+        {
+            "category": category,
+            "name": name,
+            "value": value,
+            "event_ids": [event_id],
+        }
+        for category, name, value, event_id in (
+            ("Milestone", "Full Bloom achieved", "+14 coins", "event:1"),
+            ("Growth applied", "Plant Growth", "+40 growth", "event:2"),
+            ("Garden Coins", "Garden Coins", "+14 coins", "event:3"),
+            ("Discovery", "Firefly Evening", "New", "event:4"),
+            ("Discovery", "Morning Dew", "New", "event:5"),
+            ("Garden Find", "Moonlit Seed", "Common", "event:6"),
+            ("Additional effect", "Fertilizer", "1h 24m", "event:7"),
+        )
+    ]
+    visible_detail_rows = [
+        {
+            **row,
+            "category_visible_text": row["category"],
+            "name_visible_text": row["name"],
+        }
+        for row in expected_detail_rows
+    ]
+    rows: dict[str, object] = {
+        "all-cards-complete": {
+            "completion_status": "complete",
+            "heading": "All cards complete",
+            "displayed_progress_percent": 100,
+            "reward_copy": "+10 coins",
+        },
+        "one-garden-find": {"find_count": 1, "footer_copy": "1 find"},
+        "discovery-new-wording": {
+            "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
+            "discovery_summary": "2 new discoveries",
+        },
+        "full-bloom": {
+            "eyebrow": "MILESTONE REACHED",
+            "hero_title": "Full Bloom achieved",
+            "hero_subtitle": "",
+            "active_plant_identity_suppressed": True,
+            "class_label": "Bonsai",
+            "bed_visible": False,
+            "settled": True,
+            "temporary_gold_cleared": True,
+            "settled_copy": settled_copy,
+            "select_another_visible": True,
+            "select_another_copy": "Choose next plant ›",
+            "art_scale": 1.0,
+            "particles_active": False,
+        },
+        "full-bloom-celebration": {
+            "celebration": "full-bloom",
+            "settled": False,
+            "temporary_gold_visible": True,
+            "motion_animation_active": True,
+            "art_scale": 1.04,
+            "particles_active": True,
+            "select_another_visible": False,
+        },
+        "full-bloom-settled": {
+            "settled": True,
+            "temporary_gold_cleared": True,
+            "settled_copy": settled_copy,
+            "select_another_visible": True,
+            "select_another_copy": "Choose next plant ›",
+            "art_scale": 1.0,
+            "particles_active": False,
+        },
+        "full-bloom-details": {
+            "details_expanded": True,
+            "all_secondary_items_present": True,
+            "details_action_copy": "Hide details",
+            "maximum_height": 16_777_215,
+            "detail_row_count": 7,
+            "visible_detail_rows": visible_detail_rows,
+            "expected_detail_rows": expected_detail_rows,
+            "visible_detail_rows_match": True,
+            "detail_event_ids_reconciled": True,
+            "detail_panel_visible": True,
+            "reveal_state": "details_open",
+            "vertical_scroll_maximum": 96,
+        },
+        "full-bloom-several-secondary": {
+            "hero_subtitle": "",
+            "active_plant_identity_suppressed": True,
+            "visible_summary_count": 2,
+            "visible_summary_labels": ["1 Garden Find", "2 new discoveries"],
+            "visible_summary_rows": [
+                {
+                    "label": "1 Garden Find",
+                    "reward_type": "garden_find",
+                    "artwork_ref": "morning_dew",
+                    "uses_item_art": True,
+                    "icon_present": True,
+                    "icon_kind": "item-art",
+                },
+                {
+                    "label": "2 new discoveries",
+                    "reward_type": "environment_discovery",
+                    "artwork_ref": "firefly_lantern",
+                    "uses_item_art": False,
+                    "icon_present": True,
+                    "icon_kind": "environment-discovery",
+                },
+            ],
+            "details_action_copy": "Details ›",
+            "details_click_height": 28,
+            "details_heading_aligned": True,
+            "reveal_height": 140,
+            "title_details_non_overlapping": True,
+            "detail_event_ids_reconciled": True,
+            "obsolete_bottom_details_present": False,
+            "obsolete_milestone_disclosure_present": False,
+            "milestone_medallion": True,
+            "medallion_pixmap_present": True,
+            "reveal_state": "celebrating",
+        },
+        "reward-details-action-copy": {
+            "collapsed_action_copy": "Details ›",
+            "minimum_click_height": 28,
+            "event_ids_reconciled": True,
+            "heading_row_action": True,
+            "obsolete_bottom_action_absent": True,
+            "milestone_chevron_absent": True,
+        },
+        "settled-height-or-safe-scroll": {
+            "safe_area_passed": True,
+            "horizontal_scroll_maximum": 0,
+            "height_at_most_660": True,
+            "safe_scroll": False,
+        },
+        "full-bloom-short-height": {
+            "requested_host_size": [1_280, 600],
+            "host_size": [1_280, 600],
+            "host_shortened": True,
+            "hud_height": 476,
+            "hud_safe_area_passed": True,
+            "horizontal_scroll_maximum": 0,
+            "middle_vertical_scroll_maximum": 44,
+            "middle_content_fits": False,
+            "middle_scroll_owns_overflow": True,
+            "major_reward_visible": True,
+            "session_footer_visible": True,
+            "fixed_header_visible": True,
+            "fixed_header_outside_middle_scroll": True,
+            "fixed_session_footer_outside_middle_scroll": True,
+            "fixed_regions_non_overlapping": True,
+            "sticky_reward_and_footer": True,
+            "reward_footer_non_overlapping": True,
+            "reveal_height": 145,
+            "canonical_viewport_restored": True,
+        },
+        "session-footer-reconciliation": {
+            "bundle_id": "answer:committed:1",
+            "history_bundle_ids": ["answer:committed:1"],
+            "footer_growth_units": 4_000,
+            "live_growth_units": 4_000,
+            "footer_coins": 14,
+            "live_coins": 14,
+            "footer_finds": 1,
+            "live_finds": 1,
+            "footer_copy": ["+40 growth", "+14 coins", "1 find"],
+        },
+        "reward-reveal-lifecycle": {
+            "celebrating": "celebrating",
+            "details_open": "details_open",
+            "settled": "settled",
+            "archived": "archived",
+            "details_paused_archive": True,
+        },
+        "session-history-named-growth": {
+            "meaningful_names": [
+                "Full Bloom achieved",
+                "Mature reached",
+                "75% checkpoint",
+                "Morning Dew",
+                "Firefly Lantern",
+                "Verdant Twilight",
+                "Booster extended",
+            ],
+            "routine_row_count": 1,
+            "routine_name": "Growth applied",
+            "routine_value": "+6 Growth",
+            "routine_event_ids": ["capture-routine-growth-next-commit"],
+            "routine_line": "Growth applied · +6 Growth",
+            "routine_non_clickable": True,
+        },
+    }
     for row in rows.values():
         assert isinstance(row, dict)
         row["passed"] = True
@@ -590,13 +1036,223 @@ def _reviewer_baseline_content() -> dict[str, object]:
     return rows
 
 
+def _reviewer_reward_interactions() -> dict[str, object]:
+    rows: dict[str, object] = {
+        name: {"passed": True}
+        for name in (
+            "collapsed-unseen-reward",
+            "overflow-expanded",
+            "rapid-successive-rewards",
+            "collection-sync-hud-open",
+            "reviewer-reload-after-reward",
+            "history-remount-idempotence",
+            "history-reopen",
+        )
+    }
+    rows["details-pause-archive"] = {
+        "routine_commit_accepted": True,
+        "state_before_commit": "details_open",
+        "state_after_commit": "details_open",
+        "details_remained_open": True,
+        "next_commit_seen": True,
+        "reward_remained_visible": True,
+        "active_bundle_preserved": True,
+        "history_advanced_once": True,
+        "passed": True,
+    }
+    rows["archive-after-next-commit"] = {
+        "reveal_state": "archived",
+        "details_expanded": False,
+        "reward_visible": False,
+        "active_reward_cleared": True,
+        "history_count": 2,
+        "passed": True,
+    }
+    rows["no-replay"] = {
+        "duplicate_call_idempotently_accepted": True,
+        "history_count_before": 3,
+        "history_count_after": 3,
+        "queue_count_before": 0,
+        "queue_count_after": 0,
+        "reveal_visible_before": True,
+        "reveal_visible_after": True,
+        "rendered_bundle_before": "answer:committed:1",
+        "rendered_bundle_after": "answer:committed:1",
+        "seen_id_preserved": True,
+        "sync_state_preserved": True,
+        "resize_reposition_preserved": True,
+        "details_round_trip_preserved": True,
+        "duplicate_projection_accepted": True,
+        "projection_update_exercised": True,
+        "next_card_projection_preserved": True,
+        "passed": True,
+    }
+    rows["passed"] = True
+    return rows
+
+
+def test_reviewer_reward_matrix_rejects_copy_disclosure_and_replay_regressions() -> None:
+    content = _reviewer_reward_content()
+    interactions = _reviewer_reward_interactions()
+    assert reviewer_hud_acceptance_matrix_issue_codes(
+        "reviewer-reward-dock-bundle",
+        None,
+        content,
+        interactions=interactions,
+    ) == ()
+
+    old_discovery_copy = deepcopy(content)
+    old_discovery_copy["discovery-new-wording"]["discovery_summary"] = (
+        "2 discoveries"
+    )
+    assert (
+        "reviewer-hud-content-semantic-mismatch:discovery-new-wording"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            old_discovery_copy,
+            interactions=interactions,
+        )
+    )
+
+    missing_detail_identity = deepcopy(content)
+    missing_detail_identity["full-bloom-details"][
+        "detail_event_ids_reconciled"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-details"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            missing_detail_identity,
+            interactions=interactions,
+        )
+    )
+
+    hidden_detail_copy_only = deepcopy(content)
+    hidden_detail_copy_only["full-bloom-details"]["visible_detail_rows"][0][
+        "category_visible_text"
+    ] = ""
+    hidden_detail_copy_only["full-bloom-details"][
+        "visible_detail_rows_match"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-details"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            hidden_detail_copy_only,
+            interactions=interactions,
+        )
+    )
+
+    repeated_active_identity = deepcopy(content)
+    repeated_active_identity["full-bloom"]["hero_subtitle"] = (
+        "Juniper of the Moonlit Library Garden"
+    )
+    repeated_active_identity["full-bloom"][
+        "active_plant_identity_suppressed"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            repeated_active_identity,
+            interactions=interactions,
+        )
+    )
+
+    undersized_compact_reveal = deepcopy(content)
+    undersized_compact_reveal["full-bloom-several-secondary"][
+        "reveal_height"
+    ] = 129
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-several-secondary"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            undersized_compact_reveal,
+            interactions=interactions,
+        )
+    )
+
+    undersized_disclosure = deepcopy(content)
+    undersized_disclosure["full-bloom-several-secondary"][
+        "details_click_height"
+    ] = 27
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-several-secondary"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            undersized_disclosure,
+            interactions=interactions,
+        )
+    )
+
+    unsafe_short_full_bloom = deepcopy(content)
+    unsafe_short_full_bloom["full-bloom-short-height"][
+        "session_footer_visible"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-short-height"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            unsafe_short_full_bloom,
+            interactions=interactions,
+        )
+    )
+
+    stale_settled_copy = deepcopy(content)
+    stale_settled_copy["full-bloom-settled"]["settled_copy"] = (
+        "Future growth will be shared or stored until you select another plant."
+    )
+    assert (
+        "reviewer-hud-content-semantic-mismatch:full-bloom-settled"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            stale_settled_copy,
+            interactions=interactions,
+        )
+    )
+
+    replayed = deepcopy(interactions)
+    replayed["no-replay"]["history_count_after"] = 4
+    assert (
+        "reviewer-reward-interaction-semantic-mismatch:no-replay"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            content,
+            interactions=replayed,
+        )
+    )
+
+    resized_replay = deepcopy(interactions)
+    resized_replay["no-replay"]["resize_reposition_preserved"] = False
+    assert (
+        "reviewer-reward-interaction-semantic-mismatch:no-replay"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-reward-dock-bundle",
+            None,
+            content,
+            interactions=resized_replay,
+        )
+    )
+
+
 def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() -> None:
     viewport = {
+        "1710x1041-expanded": {"passed": True},
         "1600x1000-expanded": {"passed": True},
         "1280x800-expanded": {"passed": True},
         "1280x600-short-expanded": {"passed": True},
         "1280x800-collapsed": {"passed": True},
         "covered_requirements": [
+            "1710x1041",
             "1600x1000",
             "1280x800",
             "short-height",
@@ -632,6 +1288,103 @@ def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() 
         )
     )
 
+    inaccurate_one_left = deepcopy(content)
+    inaccurate_one_left["1-card-left"]["progress_value"] = 990
+    assert (
+        "reviewer-hud-content-semantic-mismatch:1-card-left"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            inaccurate_one_left,
+            resilience=resilience,
+        )
+    )
+
+    too_small_one_left_gap = deepcopy(content)
+    too_small_one_left_gap["1-card-left"][
+        "minimum_unfilled_logical_pixels"
+    ] = 3
+    too_small_one_left_gap["1-card-left"][
+        "estimated_unfilled_logical_pixels"
+    ] = 3
+    assert (
+        "reviewer-hud-content-semantic-mismatch:1-card-left"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            too_small_one_left_gap,
+            resilience=resilience,
+        )
+    )
+
+    missing_near_complete_emphasis = deepcopy(content)
+    missing_near_complete_emphasis["1-card-left"][
+        "near_complete_detail"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:1-card-left"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            missing_near_complete_emphasis,
+            resilience=resilience,
+        )
+    )
+
+    slider_like_markers = deepcopy(content)
+    slider_like_markers["checkpoint-marker-semantics"]["marker_shape"] = (
+        "hollow-circle"
+    )
+    assert (
+        "reviewer-hud-content-semantic-mismatch:checkpoint-marker-semantics"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            slider_like_markers,
+            resilience=resilience,
+        )
+    )
+
+    oversized_future_dots = deepcopy(content)
+    oversized_future_dots["checkpoint-marker-semantics"][
+        "future_marker_diameter"
+    ] = 5.0
+    assert (
+        "reviewer-hud-content-semantic-mismatch:checkpoint-marker-semantics"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            oversized_future_dots,
+            resilience=resilience,
+        )
+    )
+
+    undersized_sprout = deepcopy(content)
+    undersized_sprout["early-stage-art"]["visible_plant_width"] = 44.0
+    assert (
+        "reviewer-hud-content-semantic-mismatch:early-stage-art"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            undersized_sprout,
+            resilience=resilience,
+        )
+    )
+
+    long_effects_not_stacked = deepcopy(content)
+    long_effects_not_stacked["long-effects-one-column"][
+        "single_column"
+    ] = False
+    assert (
+        "reviewer-hud-content-semantic-mismatch:long-effects-one-column"
+        in reviewer_hud_acceptance_matrix_issue_codes(
+            "reviewer-hud-expanded",
+            viewport,
+            long_effects_not_stacked,
+            resilience=resilience,
+        )
+    )
+
     left_overflow = deepcopy(content)
     left_overflow["three-plus-effects"]["overflow_right_aligned"] = False
     assert (
@@ -647,11 +1400,13 @@ def test_reviewer_hud_release_matrix_rejects_end_gap_and_overflow_regressions() 
 
 def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression() -> None:
     viewport = {
+        "1710x1041-expanded": {"passed": True},
         "1600x1000-expanded": {"passed": True},
         "1280x800-expanded": {"passed": True},
         "1280x600-short-expanded": {"passed": True},
         "1280x800-collapsed": {"passed": True},
         "covered_requirements": [
+            "1710x1041",
             "1600x1000",
             "1280x800",
             "short-height",

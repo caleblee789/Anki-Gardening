@@ -46,7 +46,10 @@ def test_coin_sources_purchase_policy_and_completion_share_are_reconciled(balanc
         assert 0 < profile.completion_reward_share_percent < 60
         assert profile.purchase_completion_day["all species"] is not None
         assert profile.purchase_completion_day["all beds"] is not None
-        assert profile.purchase_completion_day["purchasable Weather"] is not None
+        assert (
+            profile.purchase_completion_day["purchasable Garden Decorations"]
+            is not None
+        )
 
     for profile in balance_report.profiles:
         if profile.cards_per_day >= 100:

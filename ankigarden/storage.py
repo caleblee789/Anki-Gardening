@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Iterable, Mapping
 
 from .environment import (
     DEFAULT_GARDEN_FEATURE_ID,
@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 PREVIOUS_STATE_VERSION = 10
 MODERN_PREVIOUS_STATE_VERSIONS = frozenset({
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
 })
 LEGACY_GROWTH_THRESHOLDS = [0, 80, 220, 480, 900, 1_400]
 MAX_HISTORICAL_REVLOG_ENTRIES = 1_000_000
@@ -514,7 +514,6 @@ def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
     visibility = payload.get("environment_visibility")
     if not isinstance(visibility, dict):
         visibility = {"weather": True, "scenery": True}
-    decoration = equipped.get("decoration")
     payload["loadout"] = {
         "weather_id": payload.get(
             "selected_weather", equipped.get("weather", DEFAULT_WEATHER_ID)
@@ -522,7 +521,6 @@ def _migrate_loadout_payload(payload: dict[str, Any]) -> None:
         "scenery_id": payload.get(
             "selected_background", equipped.get("background", DEFAULT_SCENERY_ID)
         ),
-        "decoration_id": None if decoration in (None, "", "none") else decoration,
         "visibility": {
             "weather": bool(visibility.get("weather", True)),
             "scenery": bool(visibility.get("scenery", True)),
@@ -966,8 +964,10 @@ def _migrate_schema22_progression_payload(
     if not daily_completion.get("scheduler_day"):
         daily_completion["scheduler_day"] = scheduler_day
     daily_completion.setdefault("status", "complete" if completed else "unavailable")
+    daily_completion.setdefault("obligation_projection_initialized", False)
     daily_completion.setdefault("starting_required_cards", 0)
     daily_completion.setdefault("starting_required_cards_completed", 0)
+    daily_completion.setdefault("remaining_new_cards", 0)
     daily_completion.setdefault("remaining_required_reviews", 0)
     daily_completion.setdefault("remaining_learning_steps", 0)
     daily_completion.setdefault("future_learning_steps_before_cutoff", 0)
@@ -976,6 +976,7 @@ def _migrate_schema22_progression_payload(
     daily_completion.setdefault(
         "cards_completed_today", _legacy_nonnegative_int(stats.get("reviewed"))
     )
+    daily_completion.setdefault("unresolved_obligation_disappearances", 0)
     daily_completion.setdefault("reward_claimed", completed)
     daily_completion.setdefault(
         "unavailable_reason", "" if completed else "legacy_projection_unavailable"
@@ -1016,7 +1017,7 @@ def _migrate_schema22_progression_payload(
 
 
 def _migrate_schema23_garden_features_payload(payload: dict[str, Any]) -> None:
-    """Replace persisted Weather ownership with canonical Garden Features.
+    """Replace persisted Weather ownership with canonical Garden Decorations.
 
     The transform is deliberately idempotent. It maps only known legacy item
     identities and canonical fields, so unrelated extension-owned state is
@@ -1124,6 +1125,42 @@ def _migrate_schema23_garden_features_payload(payload: dict[str, Any]) -> None:
             canonical_garden_feature_id(key): value
             for key, value in claims.items()
         }
+    _migrate_schema25_decoration_bonus_payload(payload)
+
+
+def _migrate_schema25_decoration_bonus_payload(payload: dict[str, Any]) -> None:
+    """Split the prior combined decoration choice without losing its value."""
+
+    payload["version"] = STATE_VERSION
+    loadout = payload.get("loadout")
+    if not isinstance(loadout, dict):
+        loadout = {}
+        payload["loadout"] = loadout
+    prior = canonical_garden_feature_id(
+        loadout.pop("garden_feature_id", loadout.pop("weather_id", ""))
+    ) or DEFAULT_GARDEN_FEATURE_ID
+    loadout.setdefault("displayed_garden_feature_id", prior)
+    loadout.setdefault("active_bonus_garden_feature_id", prior)
+    visibility = loadout.get("visibility")
+    if not isinstance(visibility, dict):
+        visibility = {}
+    visibility.setdefault("garden_feature", True)
+    visibility.setdefault("scenery", True)
+    loadout["visibility"] = visibility
+    payload.setdefault("wind_chime_progress", 0)
+    payload.setdefault("watering_station_progress", 0)
+    payload.setdefault("firefly_lantern_progress", 0)
+    payload.setdefault("prism_pending_growth_units", 0)
+    payload.setdefault("prism_released_anki_day_id", "")
+    schedule = payload.get("daily_loadout")
+    if not isinstance(schedule, dict):
+        schedule = {}
+        payload["daily_loadout"] = schedule
+    # Existing scenery remains locked, but the revised mechanical bonus starts
+    # only with the first eligible post-update answer.
+    schedule["garden_bonus_anki_day_id"] = ""
+    schedule["garden_bonus_locked_at_ms"] = 0
+    schedule["garden_feature_id"] = ""
 
 
 def migrate_previous_state(raw: Any) -> GardenState:
@@ -1170,7 +1207,7 @@ def migrate_previous_state(raw: Any) -> GardenState:
         })
     current_inventory = {
         key: value for key, value in legacy_inventory.items()
-        if key in {"pots", "backgrounds", "decorations", "weather"}
+        if key in {"pots", "backgrounds", "weather"}
     }
     payload = {
         "version": STATE_VERSION,
@@ -1242,7 +1279,7 @@ def migrate_modern_state(
     migrated_at: float | None = None,
     onboarding_version: Any = 0,
 ) -> GardenState:
-    """Add current preservation boundaries to a schema 11-21 state.
+    """Add current preservation boundaries to a previous modern state.
 
     Those schemas already use the current progression model, so their payload
     can be validated by the current contract after changing only the schema
@@ -1252,11 +1289,20 @@ def migrate_modern_state(
         not isinstance(raw, dict)
         or raw.get("version") not in MODERN_PREVIOUS_STATE_VERSIONS
     ):
-        raise ValueError("only schema 11 through 21 can use the modern migration")
+        raise ValueError("only previous modern schemas can use the modern migration")
     payload = deepcopy(raw)
     source_version = int(payload.get("version", 0) or 0)
+    if source_version == 24:
+        _migrate_schema25_decoration_bonus_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
+    if source_version == 23:
+        _migrate_schema25_decoration_bonus_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
+        return _materialize_unlocked_species(GardenState.from_dict(payload))
     if source_version == 22:
         _migrate_schema23_garden_features_payload(payload)
+        payload.setdefault("pending_sync_reward_summary", None)
         return _materialize_unlocked_species(GardenState.from_dict(payload))
     if source_version == 21:
         _migrate_schema22_progression_payload(payload, migrated_at=migrated_at)
@@ -1370,10 +1416,40 @@ class DueObligationStatus:
     future_learning_count: int = 0
     next_learning_due_at_ms: int = 0
     cutoff_at_ms: int = 0
+    new_count: int = 0
+    committed_card_ids: tuple[int, ...] = ()
+    card_transitions: tuple[tuple[int, str], ...] = ()
+    buried_sibling_card_ids: tuple[int, ...] = ()
+
+    @property
+    def committed_card_classification_complete(self) -> bool:
+        """Whether every requested card has one usable post-answer state."""
+
+        requested = {
+            max(0, int(card_id)) for card_id in self.committed_card_ids
+            if max(0, int(card_id)) > 0
+        }
+        if not requested:
+            return False
+        transitions = {
+            max(0, int(card_id)): str(state)
+            for card_id, state in self.card_transitions
+            if max(0, int(card_id)) > 0
+        }
+        return requested == set(transitions) and all(
+            transitions[card_id] in {
+                "completed", "remaining", "buried", "suspended"
+            }
+            for card_id in requested
+        )
 
     @property
     def remaining(self) -> int:
-        return max(0, int(self.review_count)) + max(0, int(self.learning_count))
+        return (
+            max(0, int(self.new_count))
+            + max(0, int(self.learning_count))
+            + max(0, int(self.review_count))
+        )
 
     @property
     def complete(self) -> bool:
@@ -1381,9 +1457,14 @@ class DueObligationStatus:
 
     @property
     def currently_due(self) -> int:
-        return max(0, int(self.review_count)) + max(
-            0,
-            int(self.learning_count) - max(0, int(self.future_learning_count)),
+        return (
+            max(0, int(self.new_count))
+            + max(0, int(self.review_count))
+            + max(
+                0,
+                int(self.learning_count)
+                - max(0, int(self.future_learning_count)),
+            )
         )
 
 
@@ -2923,27 +3004,142 @@ class GardenStorage:
         except Exception:
             return 0
 
-    def due_obligations(self) -> DueObligationStatus:
-        """Return the live collection-wide all-due obligation set.
+    @staticmethod
+    def _post_answer_card_state(
+        *,
+        queue: int,
+        due: int,
+        scheduler_day_index: int,
+        cutoff_seconds: int,
+    ) -> str:
+        """Classify one committed card against the unified Today scope.
 
-        Unseen new cards are excluded. Review counts come from Anki's deck tree,
-        which applies active deck limits and includes filtered decks. Learning and
-        relearning cards remain obligations through the scheduler-day cutoff even
-        when an intraday step is not available at this exact second. Negative queue
-        values (suspended/buried) are deliberately excluded.
+        The classification is deliberately conservative. Buried and suspended
+        cards are not completed obligations, and unknown queue kinds cannot be
+        used to prove the final daily reward.
+        """
+
+        normalized_queue = int(queue)
+        normalized_due = int(due)
+        if normalized_queue in {-3, -2}:
+            return "buried"
+        if normalized_queue == -1:
+            return "suspended"
+        if normalized_queue == 0:
+            return "remaining"
+        if normalized_queue == 1:
+            return (
+                "remaining"
+                if normalized_due < max(0, int(cutoff_seconds))
+                else "completed"
+            )
+        if normalized_queue in {2, 3}:
+            return (
+                "remaining"
+                if normalized_due <= max(0, int(scheduler_day_index))
+                else "completed"
+            )
+        return "unknown"
+
+    @classmethod
+    def _committed_card_transition_snapshot(
+        cls,
+        collection: Any,
+        card_ids: Iterable[int],
+        *,
+        scheduler_day_index: int,
+        cutoff_seconds: int,
+    ) -> tuple[tuple[tuple[int, str], ...], tuple[int, ...]]:
+        """Return post-answer card states and explicitly related buried siblings."""
+
+        requested = tuple(sorted({
+            int(card_id)
+            for card_id in card_ids
+            if isinstance(card_id, int)
+            and not isinstance(card_id, bool)
+            and int(card_id) > 0
+        }))
+        if not requested:
+            return (), ()
+        rows_by_id: dict[int, tuple[int, int, int]] = {}
+        for offset in range(0, len(requested), 900):
+            chunk = requested[offset:offset + 900]
+            placeholders = ",".join("?" for _value in chunk)
+            rows = collection.db.all(
+                "select id, nid, queue, due from cards where id in "
+                f"({placeholders})",
+                *chunk,
+            )
+            for raw_card_id, raw_note_id, raw_queue, raw_due in rows:
+                try:
+                    card_id = int(raw_card_id)
+                    if card_id not in requested:
+                        continue
+                    rows_by_id[card_id] = (
+                        int(raw_note_id), int(raw_queue), int(raw_due)
+                    )
+                except (TypeError, ValueError):
+                    continue
+        transitions = tuple(
+            (
+                card_id,
+                cls._post_answer_card_state(
+                    queue=rows_by_id[card_id][1],
+                    due=rows_by_id[card_id][2],
+                    scheduler_day_index=scheduler_day_index,
+                    cutoff_seconds=cutoff_seconds,
+                ) if card_id in rows_by_id else "unknown",
+            )
+            for card_id in requested
+        )
+        note_ids = tuple(sorted({
+            note_id for note_id, _queue, _due in rows_by_id.values()
+            if note_id > 0
+        }))
+        buried_siblings: set[int] = set()
+        for offset in range(0, len(note_ids), 900):
+            chunk = note_ids[offset:offset + 900]
+            placeholders = ",".join("?" for _value in chunk)
+            rows = collection.db.all(
+                "select id from cards where nid in "
+                f"({placeholders}) and queue in (-3, -2)",
+                *chunk,
+            )
+            for row in rows:
+                raw_card_id = row[0] if isinstance(row, (tuple, list)) else row
+                try:
+                    card_id = int(raw_card_id)
+                except (TypeError, ValueError):
+                    continue
+                if card_id > 0 and card_id not in requested:
+                    buried_siblings.add(card_id)
+        return transitions, tuple(sorted(buried_siblings))
+
+    def due_obligations(
+        self,
+        *,
+        committed_card_ids: Iterable[int] = (),
+    ) -> DueObligationStatus:
+        """Return the live collection-wide Today’s Cards obligation set.
+
+        Scheduler-available New, Learn, and Review counts come from Anki's deck
+        tree, which applies active deck limits and includes filtered decks.
+        Learning and relearning cards remain obligations through the scheduler-day
+        cutoff even when an intraday step is not available at this exact second.
+        Negative queue values (suspended/buried) are deliberately excluded.
         """
         collection = getattr(self.mw, "col", None)
         if collection is None or getattr(collection, "db", None) is None or getattr(collection, "sched", None) is None:
             return DueObligationStatus(
                 available=False,
                 error=(
-                    "Anki Garden could not verify today’s due cards. "
+                    "Anki Garden could not verify today’s cards. "
                     "Normal Garden Growth is unaffected."
                 ),
             )
         try:
             tree = collection.sched.deck_due_tree()
-            review_count, tree_learning = self._due_tree_totals(tree)
+            new_count, tree_learning, review_count = self._due_tree_totals(tree)
             end_ms = self.current_day_end_ms()
             today_index = self.scheduler_day_index()
             if end_ms <= 0:
@@ -2967,27 +3163,60 @@ class GardenStorage:
                 )
                 if next_due_seconds:
                     next_due_ms = max(0, int(next_due_seconds) * 1000)
+            normalized_card_ids = tuple(sorted({
+                int(card_id)
+                for card_id in committed_card_ids
+                if isinstance(card_id, int)
+                and not isinstance(card_id, bool)
+                and int(card_id) > 0
+            }))
+            card_transitions: tuple[tuple[int, str], ...] = ()
+            buried_sibling_card_ids: tuple[int, ...] = ()
+            if normalized_card_ids:
+                try:
+                    (
+                        card_transitions,
+                        buried_sibling_card_ids,
+                    ) = self._committed_card_transition_snapshot(
+                        collection,
+                        normalized_card_ids,
+                        scheduler_day_index=today_index,
+                        cutoff_seconds=int(end_ms / 1000),
+                    )
+                except Exception:
+                    # Aggregate scheduler counts remain useful for progress,
+                    # but a final reward must fail closed when the committed
+                    # card identities cannot be classified.
+                    logger.debug(
+                        "Anki Garden: committed card transition classification "
+                        "unavailable",
+                        exc_info=True,
+                    )
             return DueObligationStatus(
-                max(0, int(review_count)),
-                learning_count,
+                review_count=max(0, int(review_count)),
+                learning_count=learning_count,
+                new_count=max(0, int(new_count)),
                 future_learning_count=future_learning,
                 next_learning_due_at_ms=next_due_ms,
                 cutoff_at_ms=max(0, int(end_ms)),
+                committed_card_ids=normalized_card_ids,
+                card_transitions=card_transitions,
+                buried_sibling_card_ids=buried_sibling_card_ids,
             )
         except Exception:
             logger.exception("Anki Garden: unable to evaluate all-due obligations")
             return DueObligationStatus(
                 available=False,
                 error=(
-                    "Anki Garden could not verify today’s due cards. "
+                    "Anki Garden could not verify today’s cards. "
                     "Normal Garden Growth is unaffected."
                 ),
             )
 
     @classmethod
-    def _due_tree_totals(cls, tree: Any) -> tuple[int, int]:
+    def _due_tree_totals(cls, tree: Any) -> tuple[int, int, int]:
         if tree is None:
-            return 0, 0
+            return 0, 0, 0
         children = list(getattr(tree, "children", []) or [])
         try:
             deck_id = int(getattr(tree, "deck_id", getattr(tree, "did", 0)) or 0)
@@ -2995,8 +3224,22 @@ class GardenStorage:
             deck_id = 0
         if deck_id == 0 and children:
             totals = [cls._due_tree_totals(child) for child in children]
-            return sum(item[0] for item in totals), sum(item[1] for item in totals)
-        review = max(0, int(getattr(tree, "review_count", getattr(tree, "rev", 0)) or 0))
-        learning = max(0, int(getattr(tree, "learn_count", getattr(tree, "lrn", 0)) or 0))
+            return (
+                sum(item[0] for item in totals),
+                sum(item[1] for item in totals),
+                sum(item[2] for item in totals),
+            )
+        new = max(
+            0,
+            int(getattr(tree, "new_count", getattr(tree, "new", 0)) or 0),
+        )
+        review = max(
+            0,
+            int(getattr(tree, "review_count", getattr(tree, "rev", 0)) or 0),
+        )
+        learning = max(
+            0,
+            int(getattr(tree, "learn_count", getattr(tree, "lrn", 0)) or 0),
+        )
         # DeckTreeNode counts include descendants; do not sum children again.
-        return review, learning
+        return new, learning, review

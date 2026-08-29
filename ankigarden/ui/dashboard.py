@@ -727,7 +727,7 @@ def _nursery_collection_receipt_actions(
 ) -> tuple[str, ...]:
     """Keep the final purchase action unique across banner and empty state."""
 
-    primary = "Place in garden" if bool(can_place) else "Open garden"
+    primary = "Place in garden" if bool(can_place) else "Open Garden"
     return (
         (primary,)
         if bool(collection_complete) else
@@ -766,7 +766,7 @@ def _nursery_catalog_product_visible(
     item_id: str,
     equipped_item_id: str | None,
 ) -> bool:
-    """Keep the equipped environment in its feature card, not the catalog."""
+    """Keep the equipped environment in its decoration card, not the catalog."""
 
     return (
         str(acquisition) in {"free", "purchase"}
@@ -6091,6 +6091,16 @@ def _learner_text(value: Any) -> str:
     )
 
 
+def _environment_kind_label(kind: object) -> str:
+    """Return the learner-facing name for one stable environment kind."""
+
+    return (
+        "Garden Decoration"
+        if str(kind) == "garden_feature"
+        else format_status_label(kind)
+    )
+
+
 def _plant_count(value: int) -> str:
     count = max(0, int(value))
     return f"{count:,} {'plant' if count == 1 else 'plants'}"
@@ -6854,6 +6864,7 @@ def _item_preview_label(
     label.setProperty("itemPreview", True)
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setAccessibleName(accessible_name)
+    label.setProperty("itemArtworkRef", str(item_key))
     asset = None
     try:
         resolver = getattr(engine, "resolve_item_asset", None)
@@ -6861,7 +6872,9 @@ def _item_preview_label(
     except Exception:
         logger.exception("Anki Garden: item preview resolution failed for %s", item_key)
     path = getattr(asset, "path", None) if asset is not None else None
+    label.setProperty("itemArtworkSource", str(path or ""))
     pixmap = QPixmap(str(path)) if path else QPixmap()
+    label.setProperty("itemArtworkFallback", pixmap.isNull())
     if pixmap.isNull():
         category = (
             placeholder_kind.value
@@ -6900,6 +6913,108 @@ def _item_preview_label(
         )
         scaled.setDevicePixelRatio(2.0)
         label.setPixmap(scaled)
+    return label
+
+
+def _garden_find_preview_label(
+    engine: Any,
+    finding: Any,
+    *,
+    size: int = 34,
+) -> QLabel:
+    """Render a named Find's canonical art, with semantic category fallback."""
+
+    name = str(getattr(finding, "display_name", "") or "Garden Find")
+    artwork_ref = str(getattr(finding, "artwork_ref", "") or "")
+    pool_id = str(getattr(finding, "pool_id", "") or "")
+    item_key = {
+        "ui_growth_charge_small": "growth_charge_small",
+        "ui_growth_charge_standard": "growth_charge_standard",
+        "ui_fertilizer_basic": "fertilizer_basic",
+        "ui_rich_compost": "rich_compost",
+        "ui_booster_potion": "booster_potion",
+    }.get(artwork_ref, artwork_ref)
+    dedicated_item_art = bool(item_key) and artwork_ref not in {
+        "garden_coin",
+        "growth",
+    }
+    if pool_id == "environment" and artwork_ref:
+        label = ArtworkThumbnail()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        resolver_names = (
+            ("resolve_garden_feature_preview_asset", "resolve_scenery_preview_asset")
+            if artwork_ref in GARDEN_FEATURE_CATALOG
+            else ("resolve_scenery_preview_asset", "resolve_garden_feature_preview_asset")
+        )
+        path = None
+        for resolver_name in resolver_names:
+            resolver = getattr(engine, resolver_name, None)
+            if not callable(resolver):
+                continue
+            try:
+                asset = resolver(artwork_ref)
+            except Exception:
+                asset = None
+            path = getattr(asset, "path", None) if asset is not None else None
+            if path:
+                break
+        pixmap = QPixmap(str(path)) if path else QPixmap()
+        if pixmap.isNull():
+            set_semantic_role(label, SemanticRole.MISSING_ART)
+            label.setPixmap(_environment_placeholder_pixmap(
+                size,
+                size,
+                category="environment",
+                item_key=artwork_ref,
+                source_path=path,
+            ))
+            label.setAccessibleName(f"{name} artwork unavailable")
+            label.setAccessibleDescription(
+                f"Artwork unavailable for {name}; an environment placeholder is shown."
+            )
+        else:
+            physical_target = max(1, (size - 4) * 2)
+            scaled = pixmap.scaled(
+                min(physical_target, pixmap.width()),
+                min(physical_target, pixmap.height()),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            scaled.setDevicePixelRatio(2.0)
+            label.setPixmap(scaled)
+            label.setAccessibleName(f"{name} artwork")
+    elif dedicated_item_art:
+        label = _item_preview_label(
+            engine,
+            item_key,
+            f"{name} artwork",
+            size=size,
+        )
+    else:
+        label = ArtworkThumbnail()
+        label.setFixedSize(size, size)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        reward_type = str(getattr(finding, "reward_type", "") or "")
+        if artwork_ref == "garden_coin" or reward_type == "coins":
+            icon_name = "coin"
+            icon_color = GARDEN_THEME["coin_accent"]
+        elif artwork_ref == "growth" or reward_type == "growth":
+            icon_name = "growth"
+            icon_color = GARDEN_THEME["growth_accent"]
+        else:
+            icon_name = "find"
+            icon_color = GARDEN_THEME["text_secondary"]
+        icon_size = max(14, size - 10)
+        label.setPixmap(garden_icon(icon_name, color=icon_color).pixmap(
+            icon_size,
+            icon_size,
+        ))
+        label.setAccessibleName(f"{name} category icon")
+    label.setProperty("gardenFindArtwork", True)
+    label.setProperty("gardenFindArtworkRef", artwork_ref)
+    if label.property("gardenRole") != SemanticRole.MISSING_ART.value:
+        label.setAccessibleDescription(f"Artwork for {name}.")
     return label
 
 
@@ -7072,7 +7187,7 @@ def _garden_bed_purchase_preview(
 
 
 def _weather_placeholder_overlay(width: int, height: int) -> QPixmap:
-    """Return a recognizable feature prop when packaged artwork fails."""
+    """Return a recognizable decoration prop when packaged artwork fails."""
 
     overlay = QPixmap(max(1, width), max(1, height))
     overlay.fill(Qt.GlobalColor.transparent)
@@ -7112,7 +7227,7 @@ def _environment_preview_pixmap(
     *,
     scenery_id: str = DEFAULT_SCENERY_ID,
 ) -> QPixmap:
-    """Render Scenery with a compact Garden Feature preview."""
+    """Render Scenery with a compact Garden Decoration preview."""
 
     return shared_environment_preview_pixmap(
         engine,
@@ -8988,9 +9103,6 @@ class GardenSettingsDialog(GardenDialog):
         self.behavior.manageEnvironmentRequested.connect(
             self._open_environment_management
         )
-        self.behavior.fine_tune_toggle.toggled.connect(
-            lambda _expanded: self._sync_settings_tab(self.tabs.currentIndex())
-        )
         self.behavior.advanced_toggle.toggled.connect(
             lambda _expanded: self._sync_settings_tab(self.tabs.currentIndex())
         )
@@ -9431,10 +9543,7 @@ class GardenSettingsDialog(GardenDialog):
 
     def _sync_settings_tab(self, index: int) -> None:
         diagnostics = int(index) == 1
-        display_expanded = bool(
-            self.behavior.fine_tune_toggle.isChecked()
-            or self.behavior.advanced_toggle.isChecked()
-        )
+        display_expanded = bool(self.behavior.advanced_toggle.isChecked())
         # Diagnostics is read-only. Keep draft actions reachable only when
         # the user arrived with unsaved Display changes.
         dirty = self._draft_is_dirty()
@@ -9692,7 +9801,7 @@ class GardenSettingsDialog(GardenDialog):
         if not ConfirmationDialog.confirm(
             self,
             "Restore display defaults?",
-            "Garden name, preview, review rewards, motion, and Garden Feature visibility return to defaults.",
+            "Garden name, preview, review rewards, motion, and Garden Decoration visibility return to defaults.",
             confirm_label="Restore",
         ):
             return
@@ -11143,7 +11252,7 @@ class NurseryDialog(DialogShell):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.environment_scroll.setAccessibleName(
-            "Garden Features and Scenery catalog"
+            "Garden Decorations and Scenery catalog"
         )
         self.environment_catalog = QWidget()
         self.environment_catalog.setProperty("nurseryCatalog", True)
@@ -11159,7 +11268,7 @@ class NurseryDialog(DialogShell):
         )
         self.catalog_tabs.addTab(
             catalog_page(self.environment_scroll),
-            "Garden Features and Scenery",
+            "Garden Decorations and Scenery",
         )
         self.starter_tab_note = QLabel(DISABLED_STARTER_TABS)
         self.starter_tab_note.setWordWrap(True)
@@ -12408,7 +12517,8 @@ class NurseryDialog(DialogShell):
         label.setProperty("nurseryArtwork", True)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setAccessibleName(
-            f"Locked {item.kind} silhouette" if silhouette else f"{item.name} preview"
+            f"Locked {_environment_kind_label(item.kind)} silhouette"
+            if silhouette else f"{item.name} preview"
         )
         if silhouette:
             label.setText("?")
@@ -12443,7 +12553,8 @@ class NurseryDialog(DialogShell):
         if not available:
             set_semantic_role(label, SemanticRole.MISSING_ART)
             label.setAccessibleDescription(
-                f"Artwork unavailable for {item.name}; a {item.kind} placeholder is shown."
+                f"Artwork unavailable for {item.name}; a "
+                f"{_environment_kind_label(item.kind)} placeholder is shown."
             )
             label.setToolTip(f"{item.name} artwork unavailable")
         return label
@@ -12457,11 +12568,33 @@ class NurseryDialog(DialogShell):
             if item.kind == "garden_feature" else
             self.storage.state.selected_background == item.item_id
         )
+        displayed = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.displayed_garden_feature == item.item_id
+            and self.storage.state.loadout.visibility.get("garden_feature", True)
+        )
+        visual_hidden = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.displayed_garden_feature == item.item_id
+            and not self.storage.state.loadout.visibility.get("garden_feature", True)
+        )
+        queued_bonus = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.daily_loadout.pending_garden_feature_id == item.item_id
+        )
+        bonus_locked = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.daily_loadout.garden_bonus_anki_day_id
+            == self.storage.state.daily_stats.day
+            and int(self.storage.state.daily_loadout.garden_bonus_locked_at_ms) > 0
+        )
         card = GardenSelectableCard()
         card.setProperty("nurseryPlant", True)
         card.setProperty("nurseryCatalogCard", True)
         card.setProperty("catalogItemId", str(item.item_id))
-        card.setAccessibleName(f"{item.name}, {item.rarity} {item.kind}")
+        card.setAccessibleName(
+            f"{item.name}, {item.rarity} {_environment_kind_label(item.kind)}"
+        )
         card.setAccessibleDescription(str(item.effect or "").strip().rstrip("."))
         card.activated.connect(
             lambda selected=item: self._preview_environment_item(selected)
@@ -12524,14 +12657,54 @@ class NurseryDialog(DialogShell):
                     int(self.storage.state.currency_balance),
                 ),
             ))))
-        if owned and not equipped:
+        if owned and item.kind == "garden_feature":
+            if displayed:
+                display_control = GardenBadge("Displayed in Garden", tone=FeedbackTone.SUCCESS)
+            elif visual_hidden:
+                display_control = GardenBadge("Hidden", tone=FeedbackTone.NEUTRAL)
+            else:
+                display_control = QPushButton("Display")
+                _set_button_variant(display_control, BUTTON_VARIANT_SECONDARY)
+                _set_compact_row_action(display_control)
+                display_control.setFixedHeight(32)
+                display_control.clicked.connect(
+                    lambda _checked=False, item_id=item.item_id:
+                    self._display_environment_from_nursery(item_id)
+                )
+            actions.addWidget(display_control)
+            if queued_bonus:
+                bonus_control = GardenBadge(
+                    "Garden Bonus queued for next Anki day",
+                    tone=FeedbackTone.INFO,
+                )
+            elif equipped and bonus_locked:
+                bonus_control = GardenBadge(
+                    "Garden Bonus active today",
+                    tone=FeedbackTone.SUCCESS,
+                )
+            elif equipped:
+                bonus_control = GardenBadge(
+                    "Ready for today",
+                    tone=FeedbackTone.INFO,
+                )
+            else:
+                bonus_control = QPushButton("Use bonus")
+                _set_button_variant(bonus_control, BUTTON_VARIANT_PRIMARY)
+                _set_compact_row_action(bonus_control)
+                bonus_control.setFixedHeight(32)
+                bonus_control.clicked.connect(
+                    lambda _checked=False, item_id=item.item_id:
+                    self._equip_environment_from_nursery("garden_feature", item_id)
+                )
+            actions.addWidget(bonus_control)
+        elif owned and not equipped:
             action = QPushButton("Equip")
             _set_button_variant(action, BUTTON_VARIANT_PRIMARY)
             _set_compact_row_action(action)
             action.setFixedHeight(36)
             action.setAccessibleName(f"Equip {item.name}")
             action.setAccessibleDescription(
-                f"Equip owned {item.kind} {item.name}."
+                f"Equip owned {_environment_kind_label(item.kind)} {item.name}."
             )
             action.clicked.connect(
                 lambda _checked=False, kind=item.kind, item_id=item.item_id:
@@ -12590,6 +12763,18 @@ class NurseryDialog(DialogShell):
         layout.addLayout(actions)
         card.setFixedHeight(300)
         return card
+
+    def _display_environment_from_nursery(self, item_id: str) -> None:
+        if not self._begin_catalog_transaction():
+            return
+        try:
+            ok, message = self.engine.display_garden_feature(item_id)
+            self._show_result(ok, message)
+            if ok:
+                self._refresh_parent()
+                self.refresh()
+        finally:
+            self._schedule_catalog_transaction_release()
 
     def _preview_environment_item(self, item: CatalogItem) -> None:
         if not hasattr(self, "environment_feature_art"):
@@ -12724,7 +12909,7 @@ class NurseryDialog(DialogShell):
         state = self.storage.state
         unlocked_count = max(0, min(6, int(state.unlocked_slots)))
         if unlocked_count >= 6:
-            view_garden = QPushButton("Open garden")
+            view_garden = QPushButton("Open Garden")
             _set_button_variant(view_garden, BUTTON_VARIANT_PRIMARY)
             view_garden.clicked.connect(self._return_to_garden)
             complete = EmptyState(
@@ -13025,7 +13210,7 @@ class NurseryDialog(DialogShell):
             outcome = self._execute_purchase(PurchaseKind(str(kind)), item_id)
         except Exception:
             self._show_catalog_transaction_exception(
-                "Garden Feature or Scenery purchase", committed=outcome is not None
+                "Garden Decoration or Scenery purchase", committed=outcome is not None
             )
         finally:
             self._schedule_catalog_transaction_release()
@@ -13043,7 +13228,7 @@ class NurseryDialog(DialogShell):
                 self.refresh()
         except Exception:
             self._show_catalog_transaction_exception(
-                "Garden Feature or Scenery equip",
+                "Garden Decoration or Scenery equip",
                 committed=committed,
             )
         finally:
@@ -13286,7 +13471,7 @@ class NurseryDialog(DialogShell):
                 "Garden Bed", "Bed"
             )
             message = f"{bed_name} unlocked."
-            primary = "Open garden"
+            primary = "Open Garden"
             secondary = "Keep browsing"
             secondary_callback = self._dismiss_product_receipt
         else:
@@ -13318,6 +13503,20 @@ class NurseryDialog(DialogShell):
                 purchased_artwork_name = (
                     f"{format_status_label(purchased_plant.species)} artwork"
                 )
+        elif str(outcome.category).casefold() == "fertilizer":
+            tier = str(outcome.item_id or "basic").casefold().removeprefix(
+                "fertilizer_"
+            )
+            artwork_ref = f"fertilizer_{tier}"
+            preview = _item_preview_label(
+                self.engine,
+                artwork_ref,
+                f"{item_name} artwork",
+                size=36,
+                placeholder_kind=PurchaseKind.FERTILIZER,
+            )
+            purchased_artwork = preview.pixmap()
+            purchased_artwork_name = f"{item_name} artwork"
         self.status.set_status("")
         _set_button_variant(self.nursery_toast.action, BUTTON_VARIANT_PRIMARY)
         self.nursery_toast.setProperty("semanticId", "nursery.purchase-receipt")
@@ -13405,7 +13604,7 @@ class NurseryDialog(DialogShell):
             status=PurchaseStatus.SUCCESS,
             item_id=product.item_id,
             item_name=product.name,
-            category=format_status_label(product.kind),
+            category=_environment_kind_label(product.kind),
             quantity=1,
             amount_spent=max(0, int(product.price or 0)),
             new_balance=max(0, int(self.storage.state.currency_balance)),
@@ -13424,7 +13623,7 @@ class NurseryDialog(DialogShell):
         )
         if (
             outcome.disposition is PurchaseDisposition.COLLECTION
-            and route == "Open garden"
+            and route == "Open Garden"
         ):
             self.accept()
             opener = getattr(parent, "_open_garden", None)
@@ -13482,7 +13681,7 @@ class NurseryDialog(DialogShell):
                     if garden_complete else
                     "Expand your garden"
                 ),
-                3: "Garden Features and Scenery",
+                3: "Garden Decorations and Scenery",
             }.get(int(index), "Nursery"))
             text = {
                 0: (
@@ -13803,7 +14002,7 @@ class NurseryDialog(DialogShell):
             equipped_weather = GARDEN_FEATURE_CATALOG.get(str(state.selected_garden_feature))
             self.environment_feature_card = None
             if equipped_weather is not None:
-                equipped_heading = QLabel("Equipped weather")
+                equipped_heading = QLabel("Garden Bonus active today")
                 equipped_heading.setProperty("nurserySection", True)
                 self.environment_layout.addWidget(equipped_heading)
                 self.environment_feature_art = self._environment_artwork(
@@ -13838,11 +14037,11 @@ class NurseryDialog(DialogShell):
                 feature_summary.addWidget(self.environment_feature_art)
                 feature_summary.addWidget(feature_copy_widget, 1)
                 self.environment_feature_action = GardenBadge(
-                    "Equipped",
+                    "Garden Bonus active today",
                     tone=FeedbackTone.SUCCESS,
                 )
                 self.environment_feature_action.setAccessibleName(
-                    f"{equipped_weather.name} is equipped"
+                    f"{equipped_weather.name} supplies today’s Garden Bonus"
                 )
                 feature = ResponsiveActionCard(
                     feature_summary_widget,
@@ -13857,13 +14056,13 @@ class NurseryDialog(DialogShell):
                 feature.setProperty("nurseryPlant", True)
                 feature.setProperty("nurseryCatalogCard", True)
                 feature.setAccessibleName(
-                    f"Equipped weather: {equipped_weather.name}"
+                    f"Garden Bonus active today: {equipped_weather.name}"
                 )
                 self.environment_feature_card = feature
                 self._catalog_responsive_controllers.append(feature.responsive)
                 self.environment_layout.addWidget(feature)
             for heading, catalog, equipped_id in (
-                ("Garden Feature", GARDEN_FEATURE_CATALOG, str(state.selected_garden_feature)),
+                ("Garden Decorations", GARDEN_FEATURE_CATALOG, str(state.selected_garden_feature)),
                 ("Scenery", SCENERY_CATALOG, str(state.selected_background)),
             ):
                 visible_items = [
@@ -15781,7 +15980,7 @@ def _today_cards_page_projection(
             "unavailable",
             "CARD STATUS UNAVAILABLE",
             (
-                "Anki Garden could not verify today’s due cards. "
+                "Anki Garden could not verify today’s cards. "
                 "Normal Garden Growth is unaffected."
             ),
             finds_line=today.finds_line,
@@ -15865,7 +16064,7 @@ def _today_cards_page_projection(
             "unavailable",
             "CARD STATUS UNAVAILABLE",
             (
-                "Anki Garden could not verify today’s due cards. "
+                "Anki Garden could not verify today’s cards. "
                 "Normal Garden Growth is unaffected."
             ),
             (),
@@ -15937,8 +16136,8 @@ def _today_cards_page_projection(
     scheduler_day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
     loadout_locked = bool(
         schedule is not None
-        and str(getattr(schedule, "scheduler_day", "") or "") == scheduler_day
-        and int(getattr(schedule, "locked_at_ms", 0) or 0) > 0
+        and str(getattr(schedule, "garden_bonus_anki_day_id", "") or "") == scheduler_day
+        and int(getattr(schedule, "garden_bonus_locked_at_ms", 0) or 0) > 0
     )
 
     weather_id = str(
@@ -16389,20 +16588,32 @@ class GardenDetailsDialog(GardenDialog):
             )
             name = str(getattr(finding, "display_name", "") or "Garden Find")
             tier = str(getattr(finding, "tier", "") or "")
+            find_cell = QFrame()
+            find_cell.setProperty("detailFindCell", True)
+            find_layout = QHBoxLayout(find_cell)
+            find_layout.setContentsMargins(4, 2, 4, 2)
+            find_layout.setSpacing(8)
+            find_layout.addWidget(
+                _garden_find_preview_label(self.engine, finding),
+                0,
+                Qt.AlignmentFlag.AlignVCenter,
+            )
             find_label = self._label(
                 f"{name} · {tier}" if tier else name,
                 "detailBody",
             )
+            find_label.setWordWrap(True)
+            find_layout.addWidget(find_label, 1)
             result = self._label(
                 self._garden_find_result_text(finding),
                 "detailPositive",
             )
             result.setAlignment(Qt.AlignmentFlag.AlignRight)
             apply_tabular_numerals(result)
-            for cell in (date_label, find_label, result):
+            for cell in (date_label, result):
                 cell.setContentsMargins(4, 7, 4, 7)
             grid.addWidget(date_label, row, 0)
-            grid.addWidget(find_label, row, 1)
+            grid.addWidget(find_cell, row, 1)
             grid.addWidget(result, row, 2)
         grid.setColumnStretch(1, 1)
         layout.addWidget(table)
@@ -16612,7 +16823,11 @@ class GardenDetailsDialog(GardenDialog):
         lock_badge.setProperty("todayLoadoutLocked", projection.loadout_locked)
         environment_header.addWidget(lock_badge, 0)
         environment_layout.addLayout(environment_header)
-        self._value_row(environment_layout, "Active Feature", projection.weather_name)
+        self._value_row(
+            environment_layout,
+            "Garden Bonus",
+            projection.weather_name,
+        )
         self._value_row(environment_layout, "Scenery", projection.scenery_name)
         layout.addWidget(environment)
 
@@ -16633,7 +16848,7 @@ class GardenDetailsDialog(GardenDialog):
             if projection.queued_weather_name:
                 self._value_row(
                     queued_layout,
-                    "Garden Feature",
+                    "Garden Decoration",
                     projection.queued_weather_name,
                 )
             if projection.queued_scenery_name:
@@ -17772,12 +17987,10 @@ class CollectibleDetailDialog(GardenDialog):
         self.snapshot_provider = snapshot_provider
         self._draft_weather = DEFAULT_GARDEN_FEATURE_ID
         self._draft_scenery = DEFAULT_SCENERY_ID
-        self._draft_decoration: str | None = None
         self._draft_visibility = {"garden_feature": True, "scenery": True}
-        self._persisted_draft: tuple[str, str, str | None, bool, bool] = (
+        self._persisted_draft: tuple[str, str, bool, bool] = (
             DEFAULT_GARDEN_FEATURE_ID,
             DEFAULT_SCENERY_ID,
-            None,
             True,
             True,
         )
@@ -17845,8 +18058,9 @@ class CollectibleDetailDialog(GardenDialog):
         self._catalog_contents: list[QWidget] = []
         self._catalog_scroll_by_page: dict[QWidget, QScrollArea] = {}
         self.scenery_page, self.scenery_grid = self._option_page("Scenery")
-        self.weather_page, self.weather_grid = self._option_page("Garden Features")
-        self.decoration_page, self.decoration_grid = self._option_page("Decorations")
+        self.weather_page, self.weather_grid = self._option_page(
+            "Garden Decorations"
+        )
         effects_host = QWidget()
         effects_layout = QVBoxLayout(effects_host)
         effects_layout.setContentsMargins(6, 10, 18, 10)
@@ -17859,11 +18073,13 @@ class CollectibleDetailDialog(GardenDialog):
         )
         effects_intro.setProperty("dialogSubtitle", True)
         effects_intro.setWordWrap(True)
-        self.show_weather = ToggleSwitch("Show equipped Garden Feature")
-        self.show_weather.setAccessibleName("Show equipped Garden Feature")
-        self.show_weather.setText("Show equipped Garden Feature")
+        self.show_weather = ToggleSwitch("Show displayed Garden Decoration")
+        self.show_weather.setAccessibleName(
+            "Show displayed Garden Decoration"
+        )
+        self.show_weather.setText("Show displayed Garden Decoration")
         self.show_weather.setToolTip(
-            "Your Garden Bonus remains active while the feature is hidden."
+            "Your Garden Bonus remains active while the decoration is hidden."
         )
         self.show_scenery = ToggleSwitch("Show scenery artwork")
         self.show_scenery.setAccessibleName("Show scenery artwork")
@@ -17906,8 +18122,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.effects_page = effects_host
         self.effects_page.setAccessibleName("Garden visual effects")
         self.option_tabs.addTab(self.scenery_page, "Scenery")
-        self.option_tabs.addTab(self.weather_page, "Garden Features")
-        self.option_tabs.addTab(self.decoration_page, "Decorations")
+        self.option_tabs.addTab(self.weather_page, "Garden Decorations")
         self.option_tabs.addTab(self.effects_page, "Effects")
         self.set_initial_focus(
             self.option_tabs,
@@ -18374,7 +18589,8 @@ class CollectibleDetailDialog(GardenDialog):
         if not available:
             set_semantic_role(label, SemanticRole.MISSING_ART)
             label.setAccessibleDescription(
-                f"Artwork unavailable for {item.name}; a {item.kind} placeholder is shown."
+                f"Artwork unavailable for {item.name}; a "
+                f"{_environment_kind_label(item.kind)} placeholder is shown."
             )
             label.setToolTip(f"{item.name} artwork unavailable")
         return label
@@ -18405,7 +18621,9 @@ class CollectibleDetailDialog(GardenDialog):
         tile.setCursor(
             Qt.CursorShape.PointingHandCursor if owned else Qt.CursorShape.ArrowCursor
         )
-        tile.setAccessibleName(f"{item.name}, {item.kind}")
+        tile.setAccessibleName(
+            f"{item.name}, {_environment_kind_label(item.kind)}"
+        )
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(5)
@@ -18417,6 +18635,7 @@ class CollectibleDetailDialog(GardenDialog):
         name.setMinimumWidth(0)
         name.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         state_text = (
+            "Displayed in Garden" if item.kind == "garden_feature" and equipped else
             "Equipped" if equipped and selected else
             "Equipped" if equipped else
             "Selected" if selected else
@@ -18459,8 +18678,13 @@ class CollectibleDetailDialog(GardenDialog):
         browse = QPushButton("Open nursery")
         _set_button_variant(browse, BUTTON_VARIANT_SECONDARY)
         browse.clicked.connect(self._browse_nursery)
+        category_label = (
+            "Garden Decorations"
+            if str(category) == "garden_feature"
+            else format_status_label(category)
+        )
         return EmptyState(
-            f"No other {str(category).strip().lower()}.",
+            f"No other {category_label.lower()}.",
             "",
             action=browse,
         )
@@ -18475,7 +18699,6 @@ class CollectibleDetailDialog(GardenDialog):
     def _rebuild_options(self) -> None:
         self._clear_grid(self.scenery_grid)
         self._clear_grid(self.weather_grid)
-        self._clear_grid(self.decoration_grid)
         self._tiles.clear()
         for kind, grid, catalog in (
             (
@@ -18506,53 +18729,6 @@ class CollectibleDetailDialog(GardenDialog):
             grid.setColumnStretch(0, 1)
             grid.setColumnStretch(1, 1)
             grid.setRowStretch((len(owned_items) + 2) // 2, 0)
-        decoration_options = [
-            (item_id, name)
-            for item_id, name in ((None, "No decorations"), ("lantern", "Garden Lantern"))
-            if item_id is None or item_id in self.storage.state.inventory.get("decorations", [])
-        ]
-        for index, (item_id, name) in enumerate(decoration_options):
-            owned = item_id is None or item_id in self.storage.state.inventory.get("decorations", [])
-            persisted_decoration = self._persisted_draft[2]
-            selected = self._draft_decoration == item_id
-            equipped = persisted_decoration == item_id
-            state_text = (
-                "Equipped"
-                if equipped and selected
-                else "Equipped"
-                if equipped
-                else "Selected"
-                if selected
-                else ""
-            )
-            button = QPushButton(
-                f"{name} · {state_text}" if state_text else name
-            )
-            button.setCheckable(True)
-            button.setChecked(selected)
-            button.setAccessibleDescription(
-                f"{name}. {state_text}." if state_text else f"{name}."
-            )
-            set_control_enabled(
-                button,
-                owned,
-                disabled_reason=f"{name} is locked.",
-                enabled_description=button.accessibleDescription(),
-            )
-            if owned:
-                button.clicked.connect(
-                    lambda _checked=False, selected=item_id: self._select_decoration(selected)
-                )
-            self.decoration_grid.addWidget(button, index, 0, 1, 2)
-        if len(decoration_options) <= 1:
-            self.decoration_grid.addWidget(
-                self._browse_nursery_empty_state("decorations"),
-                len(decoration_options),
-                0,
-                1,
-                2,
-            )
-        self.decoration_grid.setColumnStretch(0, 1)
         self._sync_option_page_geometry(self.option_tabs.currentIndex())
 
     def prepare_to_show(self) -> None:
@@ -18562,9 +18738,8 @@ class CollectibleDetailDialog(GardenDialog):
         self.set_dialog_in_flight(False)
         self.setProperty("transactionState", "ready")
         self.preview_feedback.clear()
-        self._draft_weather = str(state.selected_garden_feature)
+        self._draft_weather = str(state.displayed_garden_feature)
         self._draft_scenery = str(state.selected_background)
-        self._draft_decoration = state.loadout.decoration_id
         self._persisted_weather = self._draft_weather
         self._persisted_scenery = self._draft_scenery
         self._draft_visibility = {
@@ -18584,11 +18759,10 @@ class CollectibleDetailDialog(GardenDialog):
         self._refresh_preview()
         self._sync_dirty_state()
 
-    def _draft_key(self) -> tuple[str, str, str | None, bool, bool]:
+    def _draft_key(self) -> tuple[str, str, bool, bool]:
         return (
             self._draft_weather,
             self._draft_scenery,
-            self._draft_decoration,
             self._draft_visibility["garden_feature"],
             self._draft_visibility["scenery"],
         )
@@ -18609,18 +18783,10 @@ class CollectibleDetailDialog(GardenDialog):
         self._refresh_preview()
         self._sync_dirty_state()
 
-    def _select_decoration(self, item_id: str | None) -> None:
-        self.preview_feedback.clear()
-        self._draft_decoration = item_id
-        self._rebuild_options()
-        self._refresh_preview()
-        self._sync_dirty_state()
-
     def _reset_preview(self) -> None:
         (
             self._draft_weather,
             self._draft_scenery,
-            self._draft_decoration,
             weather_visible,
             scenery_visible,
         ) = self._persisted_draft
@@ -18758,21 +18924,13 @@ class CollectibleDetailDialog(GardenDialog):
             "resolve_nurtured_marker_spout_right_asset",
         )
         garden_feature = resolve_preview_asset(
-            f"Garden Feature {self._draft_weather}",
+            f"Garden Decoration {self._draft_weather}",
             "resolve_garden_feature_asset",
             self._draft_weather,
         )
         garden_feature_pad = resolve_preview_asset(
-            "Garden Feature pad",
+            "Garden Decoration pad",
             "resolve_garden_feature_pad_asset",
-        )
-        decoration = (
-            resolve_preview_asset(
-                f"decoration {self._draft_decoration}",
-                "resolve_decoration_asset",
-                self._draft_decoration,
-            )
-            if self._draft_decoration else None
         )
         plants = []
         for row in snapshot.get("plants", []):
@@ -18805,7 +18963,6 @@ class CollectibleDetailDialog(GardenDialog):
                 "nurtured_marker_spout_right": self._asset_payload(
                     nurtured_marker_spout_right
                 ),
-                "decoration": self._asset_payload(decoration),
             },
             "plants": plants,
         })
@@ -18821,17 +18978,10 @@ class CollectibleDetailDialog(GardenDialog):
             if scenery_item is not None
             else f"{format_status_label(self._draft_scenery)} (Unavailable)"
         )
-        decoration_name = (
-            "Garden Lantern"
-            if self._draft_decoration == "lantern"
-            else "No decorations"
-            if self._draft_decoration is None
-            else f"{format_status_label(self._draft_decoration)} (Unavailable)"
-        )
         effect_names = [
             label
             for key, label in (
-                ("garden_feature", "Garden Feature"),
+                ("garden_feature", "Garden Decoration"),
                 ("scenery", "Scenery effects"),
             )
             if self._draft_visibility[key]
@@ -18839,13 +18989,13 @@ class CollectibleDetailDialog(GardenDialog):
         effects_name = " and ".join(effect_names) or "No effects"
         previewing = self._draft_key() != self._persisted_draft
         self.preview_selection.setText(
-            f"Scenery · {scenery_name}    Active Feature · {weather_name}\n"
-            f"Decorations · {decoration_name}    Visible · {effects_name}"
+            f"Scenery · {scenery_name}    Displayed in Garden · {weather_name}\n"
+            f"Visible · {effects_name}"
         )
         self.preview_selection.setAccessibleDescription(
-            f"{'Previewing' if previewing else 'Equipped'}. "
-            f"{scenery_name} scenery with {weather_name} weather, "
-            f"{decoration_name}, and {effects_name.lower()}."
+            f"{'Previewing' if previewing else 'Displayed'}. "
+            f"{scenery_name} scenery with {weather_name} Garden Decoration "
+            f"and {effects_name.lower()}."
         )
 
     def _apply_draft(self) -> None:
@@ -18860,7 +19010,6 @@ class CollectibleDetailDialog(GardenDialog):
             ok, _message = self.engine.apply_garden_loadout(
                 self._draft_weather,
                 self._draft_scenery,
-                self._draft_decoration,
                 self._draft_visibility,
             )
         except Exception:
@@ -18935,9 +19084,6 @@ class CollectibleDetailDialog(GardenDialog):
         elif category == "scenery" and self.engine.owns_environment(category, item_id):
             self._draft_scenery = item_id
             self.option_tabs.setCurrentWidget(self.scenery_page)
-        elif category == "decorations" and item_id in self.storage.state.inventory.get("decorations", []):
-            self._draft_decoration = item_id
-            self.option_tabs.setCurrentWidget(self.decoration_page)
         self._rebuild_options()
         self._refresh_preview()
         self._sync_dirty_state()
@@ -19764,6 +19910,11 @@ class GardenDashboard(DialogShell):
         finally:
             QTimer.singleShot(0, self._release_collection_activation)
 
+    def open_plant_selection(self) -> None:
+        """Open the existing nonmodal Collection surface for plant selection."""
+
+        self._open_collection()
+
     def _release_collection_activation(self) -> None:
         self._collection_activation_pending = False
 
@@ -19963,7 +20114,7 @@ class GardenDashboard(DialogShell):
         selected_id = self.scene.selected_plant_id()
         self.scene.set_scene(
             {
-                "garden_feature": state.selected_garden_feature,
+                "garden_feature": state.displayed_garden_feature,
                 "scenery": snapshot.selected_background,
                 "visible_scenery": (
                     snapshot.selected_background
@@ -20010,11 +20161,6 @@ class GardenDashboard(DialogShell):
                     "nurtured_marker_spout_right": self._resolved_asset_payload(
                         "resolve_nurtured_marker_spout_right_asset",
                         "resolve_nurtured_marker_spout_right_image",
-                    ),
-                    "decoration": self._resolved_asset_payload(
-                        "resolve_decoration_asset",
-                        "resolve_decoration_image",
-                        state.equipped.get("decoration", "none"),
                     ),
                 },
                 "stage_transitions": [transition.to_dict() for transition in transitions],
@@ -21495,7 +21641,7 @@ class GardenDashboard(DialogShell):
             return
         self.same_day_catchup_note.show()
         self.same_day_catchup_note.setText(
-            f"Counted {_card_answer_count(review_count)} from same-day sync: "
+            f"Garden caught up with {_card_answer_count(review_count)}: "
             f"+{growth_gain:,} Growth."
         )
         self.same_day_catchup_note.setAccessibleDescription(self.same_day_catchup_note.text())
@@ -21608,7 +21754,7 @@ class GardenDashboard(DialogShell):
             ),
             "garden_feature": getattr(
                 state,
-                "selected_garden_feature",
+                "displayed_garden_feature",
                 getattr(state, "selected_weather", "seedling_sign"),
             ),
             "background": str(getattr(state, "selected_background", "verdant_twilight") or "verdant_twilight"),
@@ -22924,7 +23070,7 @@ class GardenDashboard(DialogShell):
             _set_button_variant(customize, BUTTON_VARIANT_PRIMARY)
             customize.setFixedHeight(36)
             customize.setAccessibleDescription(
-                "Edit your garden’s Scenery, Garden Feature, and Decorations."
+                "Edit your garden’s Scenery and Garden Decoration."
             )
             customize.clicked.connect(self._open_loadout_detail)
             environment_header = ResponsiveActionCard(
@@ -22954,7 +23100,7 @@ class GardenDashboard(DialogShell):
                     searchable_name = (
                         item.name
                         if owned or not item.drop_only else
-                        f"Mystery {format_status_label(item.kind)}"
+                        f"Mystery {_environment_kind_label(item.kind)}"
                     )
                     if self._collection_query and self._collection_query.casefold() not in searchable_name.casefold():
                         continue
@@ -22965,10 +23111,10 @@ class GardenDashboard(DialogShell):
                     )
                     environment_rendered += 1
             result_count += environment_rendered
-        if self._collection_category in {"all", "decorations", "garden_beds", "growth_items"}:
+        if self._collection_category in {"all", "garden_beds", "growth_items"}:
             extra = [
                 view for view in registry_views
-                if view.definition.category in {"decorations", "garden_beds", "growth_items"}
+                if view.definition.category in {"garden_beds", "growth_items"}
                 and (
                     self._collection_category == "all"
                     or view.definition.category == self._collection_category
@@ -22981,7 +23127,7 @@ class GardenDashboard(DialogShell):
             ]
             if self._collection_sort == "name":
                 extra.sort(key=lambda view: view.definition.name.casefold())
-            for category_key in ("decorations", "garden_beds", "growth_items"):
+            for category_key in ("garden_beds", "growth_items"):
                 group = [
                     view for view in extra
                     if view.definition.category == category_key
@@ -23067,8 +23213,6 @@ class GardenDashboard(DialogShell):
         weather = GARDEN_FEATURE_CATALOG.get(weather_id) or GARDEN_FEATURE_CATALOG[
             DEFAULT_GARDEN_FEATURE_ID
         ]
-        decoration_id = str(state.loadout.decoration_id or "")
-        decoration_name = "Garden Lantern" if decoration_id == "lantern" else "No decorations"
         schedule = state.daily_loadout
         queued_weather_id = str(schedule.pending_garden_feature_id or "")
         queued_scenery_id = str(schedule.queued_scenery_id or "")
@@ -23087,7 +23231,7 @@ class GardenDashboard(DialogShell):
         title.setProperty("appearanceSummaryTitle", True)
         summary_layout.addWidget(title)
         selection = QLabel(
-            f"Equipped today · {weather.name} · {scenery.name} · {decoration_name}"
+            f"Garden Bonus active today · {weather.name} · Scenery · {scenery.name}"
         )
         selection.setProperty("rowCriteria", True)
         selection.setWordWrap(True)
@@ -23106,8 +23250,8 @@ class GardenDashboard(DialogShell):
             queued.setWordWrap(True)
             summary_layout.addWidget(queued)
         summary.setAccessibleName(
-            f"Garden appearance. Active Feature {weather.name}; "
-            f"Scenery {scenery.name}; Decoration {decoration_name}."
+            f"Garden appearance. Garden Bonus active today {weather.name}; "
+            f"Scenery {scenery.name}."
         )
         if queued_parts:
             summary.setAccessibleDescription(
@@ -23209,9 +23353,11 @@ class GardenDashboard(DialogShell):
     def _collection_environment_metadata(item: CatalogItem) -> QLabel:
         """Return concise ownership rules without backend-style mechanics copy."""
 
-        kind = format_status_label(item.kind).lower()
+        kind = _environment_kind_label(item.kind).lower()
         details = QLabel(
-            f"Available every day\nOnly one {kind} can be equipped"
+            "Display and Garden Bonus are selected independently"
+            if item.kind == "garden_feature" else
+            f"Available every day\nOnly one {kind} can be active"
         )
         details.setTextFormat(Qt.TextFormat.PlainText)
         details.setProperty("rowCriteria", True)
@@ -23219,7 +23365,9 @@ class GardenDashboard(DialogShell):
         details.setProperty("collectionEnvironmentMetadata", True)
         details.setWordWrap(True)
         details.setAccessibleDescription(
-            f"Available every day. Only one {kind} can be equipped."
+            "Display and Garden Bonus are selected independently."
+            if item.kind == "garden_feature" else
+            f"Available every day. Only one {kind} can be active."
         )
         return details
 
@@ -23235,21 +23383,34 @@ class GardenDashboard(DialogShell):
         identity = QHBoxLayout()
         identity.setContentsMargins(0, 0, 0, 0)
         identity.setSpacing(9)
-        icon = QLabel("")
-        icon.setFixedSize(40, 40)
-        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setPixmap(
-            garden_icon(
-                {
-                    "decorations": "settings",
-                    "garden_beds": "bed",
-                    "growth_items": "growth",
-                }.get(definition.category, "collection"),
-                color=GARDEN_THEME["growth_accent"],
-            ).pixmap(24, 24)
-        )
-        icon.setProperty("collectibleIcon", True)
-        icon.setAccessibleName(f"{CATEGORY_LABELS[definition.category]} icon")
+        if definition.category == "growth_items":
+            artwork_ref = (
+                "rich_compost"
+                if str(definition.source_id) == "fertilizer_basic"
+                else str(definition.source_id or "")
+            )
+            icon = _item_preview_label(
+                self.engine,
+                artwork_ref,
+                f"{definition.name} artwork",
+                size=40,
+            )
+            icon.setProperty("collectibleItemArtwork", True)
+            icon.setProperty("collectibleItemArtworkRef", artwork_ref)
+        else:
+            icon = QLabel("")
+            icon.setFixedSize(40, 40)
+            icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon.setPixmap(
+                garden_icon(
+                    {
+                        "garden_beds": "bed",
+                    }.get(definition.category, "collection"),
+                    color=GARDEN_THEME["growth_accent"],
+                ).pixmap(24, 24)
+            )
+            icon.setProperty("collectibleIcon", True)
+            icon.setAccessibleName(f"{CATEGORY_LABELS[definition.category]} icon")
         title = QLabel(definition.name)
         title.setProperty("rowTitle", True)
         title.setWordWrap(True)
@@ -23288,17 +23449,7 @@ class GardenDashboard(DialogShell):
             layout.addWidget(facts)
 
         action: QPushButton | None = None
-        if definition.category == "decorations" and view.owned:
-            action = QPushButton("Preview")
-            _set_button_variant(action, BUTTON_VARIANT_PRIMARY)
-            action.setAccessibleDescription(
-                "Open a reversible preview. Applying is required to change the garden."
-            )
-            action.clicked.connect(
-                lambda _checked=False, item_id=definition.source_id:
-                self._open_loadout_detail("decorations", item_id)
-            )
-        elif definition.category == "garden_beds":
+        if definition.category == "garden_beds":
             action = QPushButton("View garden" if view.owned else "Open nursery")
             _set_button_variant(
                 action,
@@ -23853,7 +24004,7 @@ class GardenDashboard(DialogShell):
         label.setFixedSize(184, 108)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setAccessibleName(
-            f"Undiscovered {item.kind} silhouette"
+            f"Undiscovered {_environment_kind_label(item.kind)} silhouette"
             if silhouette else
             f"{item.name} collection preview"
         )
@@ -23878,14 +24029,35 @@ class GardenDashboard(DialogShell):
 
     def _environment_collection_card(self, item: CatalogItem) -> QFrame:
         owned = self.engine.owns_environment(item.kind, item.item_id)
-        equipped_today = (
-            self.engine.locked_environment_id(item.kind) == item.item_id
-        )
         schedule = self.storage.state.daily_loadout
+        bonus_locked = bool(
+            item.kind == "garden_feature"
+            and schedule.garden_bonus_anki_day_id == self.storage.state.daily_stats.day
+            and int(schedule.garden_bonus_locked_at_ms) > 0
+        )
+        equipped_today = bool(
+            self.engine.locked_environment_id(item.kind) == item.item_id
+            and (item.kind != "garden_feature" or bonus_locked)
+        )
+        ready_today = bool(
+            item.kind == "garden_feature"
+            and not bonus_locked
+            and self.storage.state.selected_garden_feature == item.item_id
+        )
         queued_tomorrow = (
             schedule.pending_garden_feature_id == item.item_id
             if item.kind == "garden_feature"
             else schedule.queued_scenery_id == item.item_id
+        )
+        displayed = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.displayed_garden_feature == item.item_id
+            and self.storage.state.loadout.visibility.get("garden_feature", True)
+        )
+        visual_hidden = bool(
+            item.kind == "garden_feature"
+            and self.storage.state.displayed_garden_feature == item.item_id
+            and not self.storage.state.loadout.visibility.get("garden_feature", True)
         )
         card = QFrame()
         card.setProperty("progressRow", True)
@@ -23897,7 +24069,10 @@ class GardenDashboard(DialogShell):
             silhouette=bool(item.drop_only and not owned),
         )
         mystery = bool(item.drop_only and not owned)
-        display_name = f"Mystery {format_status_label(item.kind)}" if mystery else item.name
+        display_name = (
+            f"Mystery {_environment_kind_label(item.kind)}"
+            if mystery else item.name
+        )
         copy_widget = QWidget()
         copy = QVBoxLayout(copy_widget)
         copy.setContentsMargins(0, 0, 0, 0)
@@ -23907,6 +24082,20 @@ class GardenDashboard(DialogShell):
         title.setWordWrap(True)
         title.setProperty("rowTitle", True)
         state_text = (
+            "Hidden · Garden Bonus active today"
+            if item.kind == "garden_feature" and visual_hidden and equipped_today else
+            "Hidden · Ready for today"
+            if item.kind == "garden_feature" and visual_hidden and ready_today else
+            "Hidden" if item.kind == "garden_feature" and visual_hidden else
+            "Displayed in Garden · Garden Bonus active today"
+            if item.kind == "garden_feature" and displayed and equipped_today else
+            "Displayed in Garden · Garden Bonus queued for next Anki day"
+            if item.kind == "garden_feature" and displayed and queued_tomorrow else
+            "Displayed in Garden" if item.kind == "garden_feature" and displayed else
+            "Garden Bonus active today" if item.kind == "garden_feature" and equipped_today else
+            "Ready for today" if item.kind == "garden_feature" and ready_today else
+            "Garden Bonus queued for next Anki day"
+            if item.kind == "garden_feature" and queued_tomorrow else
             "Equipped today · Queued for tomorrow"
             if equipped_today and queued_tomorrow else
             "Equipped today" if equipped_today else
@@ -23916,7 +24105,7 @@ class GardenDashboard(DialogShell):
             "Garden Find"
         )
         status_text = " · ".join(
-            part for part in (format_status_label(item.kind), state_text) if part
+            part for part in (_environment_kind_label(item.kind), state_text) if part
         )
         status = QLabel(status_text)
         status.setProperty("catalogStatus", True)
@@ -23932,6 +24121,32 @@ class GardenDashboard(DialogShell):
         copy.addWidget(status)
         if effect_copy:
             copy.addWidget(effect)
+        if item.drop_only and not owned and item.drop_tier:
+            tier_progress = next(
+                (
+                    tier
+                    for tier in environment_discovery_progress(self.storage.state)
+                    if tier.tier == item.drop_tier
+                ),
+                None,
+            )
+            if tier_progress is not None:
+                only_remaining = tier_progress.unowned_items == 1
+                discovery_copy = QLabel(
+                    (
+                        f"{item.name} is the only remaining {tier_progress.label} reward. "
+                        f"The next {tier_progress.label} discovery will unlock it."
+                        if only_remaining else
+                        f"{tier_progress.label} environment discovery\n"
+                        f"Tier chance: 1 in {tier_progress.base_denominator:,}\n"
+                        f"Guaranteed by: {tier_progress.hard_guarantee_cards:,} eligible cards\n"
+                        f"Unowned {tier_progress.label} rewards: {tier_progress.unowned_items}"
+                    )
+                )
+                discovery_copy.setProperty("rowCriteria", True)
+                discovery_copy.setWordWrap(True)
+                apply_tabular_numerals(discovery_copy)
+                copy.addWidget(discovery_copy)
         if owned and not mystery:
             copy.addWidget(self._collection_environment_metadata(item))
         summary = ResponsiveActionCard(
@@ -23958,7 +24173,7 @@ class GardenDashboard(DialogShell):
             ButtonSize.COMPACT_ROW if owned else ButtonSize.SECONDARY,
         )
         if owned:
-            action_description = f"Open garden appearance with {item.name} selected."
+            action_description = f"Open Garden appearance with {item.name} selected."
         elif item.purchasable:
             action_description = f"Open the Nursery to buy {item.name}."
         else:
@@ -23978,12 +24193,56 @@ class GardenDashboard(DialogShell):
         elif item.purchasable:
             action.clicked.connect(self._open_nursery_from_collection)
         actions.addWidget(action)
-        if equipped_today and item.item_id not in {DEFAULT_GARDEN_FEATURE_ID, DEFAULT_SCENERY_ID}:
+        if owned and item.kind == "garden_feature":
+            display_action = QPushButton("Displayed" if displayed else "Display")
+            _set_button_variant(display_action, BUTTON_VARIANT_SECONDARY)
+            set_button_size(display_action, ButtonSize.COMPACT_ROW)
+            set_control_enabled(
+                display_action,
+                not displayed,
+                disabled_reason=f"{item.name} is already displayed in Garden.",
+                enabled_description=f"Display {item.name} in Garden.",
+            )
+            display_action.clicked.connect(
+                lambda _checked=False, item_id=item.item_id:
+                self._set_collection_displayed_decoration(item_id)
+            )
+            actions.addWidget(display_action)
+            bonus_action = QPushButton(
+                "Queued tomorrow" if queued_tomorrow else
+                "Active today" if equipped_today else
+                "Ready for today" if ready_today else
+                "Use bonus"
+            )
+            _set_button_variant(bonus_action, BUTTON_VARIANT_PRIMARY)
+            set_button_size(bonus_action, ButtonSize.COMPACT_ROW)
+            set_control_enabled(
+                bonus_action,
+                not (equipped_today or ready_today or queued_tomorrow),
+                disabled_reason=(
+                    f"{item.name} is queued for the next Anki day."
+                    if queued_tomorrow else
+                    f"{item.name} is ready for today."
+                    if ready_today else
+                    f"{item.name} supplies today’s Garden Bonus."
+                ),
+                enabled_description=f"Use {item.name} as the Garden Bonus.",
+            )
+            bonus_action.clicked.connect(
+                lambda _checked=False, item_id=item.item_id:
+                self._set_collection_bonus_decoration(item_id)
+            )
+            actions.addWidget(bonus_action)
+        if (
+            item.kind == "scenery"
+            and equipped_today
+            and item.item_id != DEFAULT_SCENERY_ID
+        ):
             unequip = QPushButton("Unequip")
             _set_button_variant(unequip, BUTTON_VARIANT_SECONDARY)
             set_button_size(unequip, ButtonSize.COMPACT_ROW)
             unequip.setAccessibleDescription(
-                f"Reset {format_status_label(item.kind)} to the included neutral default."
+                f"Reset {_environment_kind_label(item.kind)} to the included neutral default."
             )
             unequip.clicked.connect(
                 lambda _checked=False, kind=item.kind: self._unequip_environment(kind)
@@ -23995,6 +24254,24 @@ class GardenDashboard(DialogShell):
         )
         card.setAccessibleDescription(effect_copy)
         return card
+
+    def _set_collection_displayed_decoration(self, item_id: str) -> None:
+        ok, message = self.engine.display_garden_feature(item_id)
+        if ok:
+            self._refresh_after_commit("collection decoration display")
+            self._refresh_collection_list()
+        (QMessageBox.information if ok else QMessageBox.warning)(
+            self, UI_TEXT["app_title"], _learner_text(message)
+        )
+
+    def _set_collection_bonus_decoration(self, item_id: str) -> None:
+        ok, message = self.engine.equip_environment("garden_feature", item_id)
+        if ok:
+            self._refresh_after_commit("collection Garden Bonus")
+            self._refresh_collection_list()
+        (QMessageBox.information if ok else QMessageBox.warning)(
+            self, UI_TEXT["app_title"], _learner_text(message)
+        )
 
     def _open_customize_from_collection(self) -> None:
         """Compatibility helper retained for one release of fixture callers."""
@@ -24008,7 +24285,6 @@ class GardenDashboard(DialogShell):
         ok, message = self.engine.apply_garden_loadout(
             weather_id,
             scenery_id,
-            state.loadout.decoration_id,
             state.environment_visibility,
         )
         if ok:
@@ -24539,7 +24815,18 @@ class GardenDashboard(DialogShell):
         message = _learner_text(message)
         if ok:
             self._refresh_after_commit("stored Fertilizer use")
-            self.toast_region.show_message(message)
+            artwork = _item_preview_label(
+                self.engine,
+                f"fertilizer_{normalized_tier}",
+                f"{spec.name} artwork",
+                size=36,
+                placeholder_kind=PurchaseKind.FERTILIZER,
+            ).pixmap()
+            self.toast_region.show_message(
+                message,
+                artwork=artwork,
+                artwork_accessible_name=f"{spec.name} artwork",
+            )
             dialog.accept()
             return
         set_control_enabled(
@@ -24565,7 +24852,20 @@ class GardenDashboard(DialogShell):
         ok, message = self._purchase_fertilizer(plant_id, tier, confirmation_parent=dialog)
         message = _learner_text(message)
         if ok:
-            self.toast_region.show_message(message)
+            spec = self.engine.FERTILIZERS.get(str(tier or "basic").lower())
+            item_name = str(getattr(spec, "name", "") or "Fertilizer")
+            artwork = _item_preview_label(
+                self.engine,
+                f"fertilizer_{str(tier or 'basic').lower()}",
+                f"{item_name} artwork",
+                size=36,
+                placeholder_kind=PurchaseKind.FERTILIZER,
+            ).pixmap()
+            self.toast_region.show_message(
+                message,
+                artwork=artwork,
+                artwork_accessible_name=f"{item_name} artwork",
+            )
             dialog.accept()
             return
         if not message:

@@ -154,10 +154,10 @@ def test_missing_file_fails_closed_without_a_packaged_placeholder(tmp_path):
     storage = DummyStorage(tmp_path)
     assets = [
         {
-            "asset_id": "decor_missing",
-            "category": "decorations",
-            "slot": {"decoration_id": "bench_corner"},
-            "file": "assets/decorations/bench_corner/missing.svg",
+            "asset_id": "garden_feature_missing",
+            "category": "garden_features",
+            "slot": {"garden_feature": "missing"},
+            "file": "assets/garden_features/missing.svg",
             "width": 1024,
             "height": 1024,
             "quality_tier": "balanced",
@@ -167,7 +167,9 @@ def test_missing_file_fails_closed_without_a_packaged_placeholder(tmp_path):
     _build_manifest(storage, assets)
 
     manager = AssetManager(DummyConfig(), storage)
-    picked = manager.get_or_fetch("decorations", "decor_bench_corner", "ignored")
+    picked = manager.get_or_fetch(
+        "garden_features", "garden_feature_missing", "ignored"
+    )
 
     assert picked is None
 

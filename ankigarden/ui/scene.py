@@ -1505,7 +1505,6 @@ class GardenSceneWidget(QWidget):
             self._draw_garden_feature(painter, r)
             # Runtime soil is resolved from the same six PlantPlacement rows as
             # artwork and interaction. No separate legacy bed overlay ships.
-            self._draw_decoration_asset(painter, r)
 
             planter_family = self._planter_family_record()
             replaces_surface_occlusion = bool(
@@ -3943,23 +3942,6 @@ class GardenSceneWidget(QWidget):
             painter.setPen(QPen(QColor(245, 249, 239, 235), 1.0))
             painter.drawText(int(label_x + 5), int(label_y + metrics.ascent() + 3), label)
         painter.restore()
-
-    def _draw_decoration_asset(self, painter: QPainter, rect: Any) -> bool:
-        path, placement = self._asset_record("decoration")
-        if not path:
-            return False
-        anchor_x = self._placement_number(placement, "anchor_x", 0.82, 0.0, 1.0)
-        baseline_y = self._placement_number(placement, "baseline_y", 0.88, 0.0, 1.0)
-        scale = self._placement_number(placement, "scale", 0.72, 0.1, 2.5)
-        width = rect.width() * 0.25 * scale
-        height = rect.height() * 0.42 * scale
-        box = QRectF(
-            rect.x() + rect.width() * anchor_x - width / 2,
-            rect.y() + rect.height() * baseline_y - height,
-            width,
-            height,
-        )
-        return self._draw_asset_contain(painter, path, box, opacity=0.96)
 
     @staticmethod
     def _plant_draw_box(layout: PlantPlacement, plant: dict[str, Any]) -> QRectF:

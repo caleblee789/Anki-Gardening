@@ -14,6 +14,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "show_home_widget": True,
     "show_progress_notifications": True,
     "show_reviewer_hud": True,
+    "show_rewards_after_syncing": True,
     "reviewer_hud_collapsed": False,
     "reviewer_hud_dock": "right",
     "onboarding_version": 0,

@@ -14,6 +14,7 @@ def _effect_rows(item):
             effect.every_nth_card,
             effect.every_nth_completion,
             effect.inventory_item_id,
+            effect.amount_units,
             tuple(
                 (reward.item_id, reward.weight_percent)
                 for reward in effect.weighted_rewards
@@ -36,28 +37,31 @@ def test_normalized_garden_feature_effects_are_structured_and_player_copy_is_pla
         None,
         None,
         None,
+        0,
         (),
     ),)
     assert _effect_rows(GARDEN_FEATURE_CATALOG["firefly_lantern"]) == ((
-        "growth_first_15_plus_5",
+        "growth_every_4_plus_3",
         "eligible_card",
         "growth",
-        5,
-        15,
+        3,
+        None,
+        4,
         None,
         None,
-        None,
+        0,
         (),
     ),)
     assert _effect_rows(GARDEN_FEATURE_CATALOG["prism_trellis"]) == ((
-        "completion_direct_growth_plus_100",
-        "today_cards_complete",
+        "prism_bank_per_answer_1_5",
+        "eligible_card",
         "instant_growth",
-        100,
+        0,
         None,
         None,
         None,
         None,
+        150,
         (),
     ),)
 
@@ -79,7 +83,7 @@ def test_normalized_scenery_effects_are_structured_and_bounded():
 
     halloween = _effect_rows(SCENERY_CATALOG["halloween"])[0]
     assert halloween[1] == "today_cards_complete"
-    assert halloween[8] == (
+    assert halloween[9] == (
         ("growth_charge_small", 85),
         ("growth_charge_standard", 10),
         ("booster_potion", 5),
@@ -107,4 +111,4 @@ def test_environment_copy_avoids_deprecated_completion_and_answer_terms():
     assert "all clear" not in player_copy
     assert "all due" not in player_copy
     assert "required card" not in player_copy
-    assert "card answer" not in player_copy
+    assert "eligible card answers" in player_copy

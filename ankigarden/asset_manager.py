@@ -541,7 +541,6 @@ class AssetPlacement:
         row = value if isinstance(value, dict) else {}
         defaults = {
             "backgrounds": cls(0.5, 0.5, 1.0, "cover", "background", focal_point=(0.5, 0.43)),
-            "decorations": cls(0.82, 0.86, 0.72, "contain", "decoration"),
             "plants": cls(0.5, 0.9, 1.0, "contain", "plants"),
             "ui": cls(),
         }.get(category, cls())
@@ -815,7 +814,6 @@ class AssetManager:
     MIN_DIMENSIONS = {
         "plants": (128, 128),
         "backgrounds": (512, 384),
-        "decorations": (128, 128),
         "garden_features": (128, 128),
         "overlays": (512, 384),
         "ui": (128, 96),
@@ -1157,8 +1155,6 @@ class AssetManager:
         if category == "garden_features":
             feature = key.replace("garden_feature_", "", 1)
             return {"garden_feature": feature}
-        if category == "decorations":
-            return {"decoration_id": key.replace("decor_", "", 1)}
         if category == "overlays":
             configured_theme = theme or str(self.config.value("visual_theme", "verdant_twilight"))
             return {
@@ -1309,7 +1305,6 @@ class AssetManager:
         if not preferred and category in {
             "plants",
             "garden_features",
-            "decorations",
             "overlays",
             "ui",
         }:

@@ -4,6 +4,7 @@
   "show_home_widget": true,
   "show_progress_notifications": true,
   "show_reviewer_hud": true,
+  "show_rewards_after_syncing": true,
   "reviewer_hud_collapsed": false,
   "reviewer_hud_dock": "right",
   "onboarding_version": 0,

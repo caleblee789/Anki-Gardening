@@ -13,12 +13,12 @@ from .environment import (
 
 GardenFeatureEffectKey = Literal[
     "none",
-    "growth_first_10_plus_1",
+    "growth_every_10_plus_1",
     "completion_coins_plus_5",
-    "growth_first_20_plus_1",
-    "booster_duration_multiplier_1_10",
-    "growth_first_15_plus_5",
-    "completion_direct_growth_plus_100",
+    "growth_every_5_plus_1",
+    "booster_cards_multiplier_1_25",
+    "growth_every_4_plus_3",
+    "prism_bank_per_answer_1_5",
 ]
 
 
@@ -31,12 +31,12 @@ class GardenFeatureDefinition:
 
 FEATURE_EFFECT_KEYS: dict[str, GardenFeatureEffectKey] = {
     "seedling_sign": "none",
-    "wind_chime": "growth_first_10_plus_1",
+    "wind_chime": "growth_every_10_plus_1",
     "harvest_bell": "completion_coins_plus_5",
-    "watering_station": "growth_first_20_plus_1",
-    "herbalist_hourglass": "booster_duration_multiplier_1_10",
-    "firefly_lantern": "growth_first_15_plus_5",
-    "prism_trellis": "completion_direct_growth_plus_100",
+    "watering_station": "growth_every_5_plus_1",
+    "herbalist_hourglass": "booster_cards_multiplier_1_25",
+    "firefly_lantern": "growth_every_4_plus_3",
+    "prism_trellis": "prism_bank_per_answer_1_5",
 }
 
 GARDEN_FEATURES: dict[str, GardenFeatureDefinition] = {

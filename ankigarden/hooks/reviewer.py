@@ -22,6 +22,7 @@ from ..game import (
     queue_and_lapse_from_revlog_type,
 )
 from ..growth import GROWTH_STAGES
+from ..garden_finds import standard_find_artwork_ref
 from ..notices import USER_NOTICES
 from ..performance import RUNTIME_PERFORMANCE
 from ..storage import assign_stable_answer_identities, unprocessed_revlog_entries
@@ -356,14 +357,13 @@ class ReviewerHookHandler:
             "unavailable",
         }:
             status = "unavailable"
-        stats = getattr(state, "daily_stats", None)
         cards_completed = max(
             0,
             int(
                 getattr(
                     completion,
-                    "cards_completed_today",
-                    getattr(stats, "reviewed", 0),
+                    "starting_required_cards_completed",
+                    0,
                 )
                 or 0
             ),
@@ -372,7 +372,6 @@ class ReviewerHookHandler:
             0,
             int(
                 getattr(completion, "future_learning_steps_before_cutoff", 0)
-                or getattr(completion, "remaining_learning_steps", 0)
                 or 0
             ),
         )
@@ -387,6 +386,7 @@ class ReviewerHookHandler:
         remaining = sum(
             max(0, int(getattr(completion, field, 0) or 0))
             for field in (
+                "remaining_new_cards",
                 "remaining_required_reviews",
                 "remaining_learning_steps",
                 "future_learning_steps_before_cutoff",
@@ -395,6 +395,7 @@ class ReviewerHookHandler:
         currently_due = sum(
             max(0, int(getattr(completion, field, 0) or 0))
             for field in (
+                "remaining_new_cards",
                 "remaining_required_reviews",
                 "remaining_learning_steps",
             )
@@ -404,14 +405,32 @@ class ReviewerHookHandler:
                 "complete", "not_eligible"
             } else remaining)
         )
-        cards_total = (
-            None
-            if status == "unavailable"
-            else cards_completed + max(0, int(verified_remaining or 0))
-        )
+        if status == "unavailable":
+            cards_total = None
+        else:
+            cards_total = max(
+                0,
+                int(getattr(completion, "starting_required_cards", 0) or 0),
+            )
+            if cards_total != (
+                cards_completed + max(0, int(verified_remaining or 0))
+            ):
+                logger.debug(
+                    "Anki Garden: Today’s Cards obligation projection is inconsistent"
+                )
+                return TodayCardsSnapshot(
+                    status="unavailable",
+                    cards_total=None,
+                    scope="unavailable",
+                )
         continuation_target = (
             self._review_continuation_target(currently_due)
-            if status == "in_progress" and currently_due > 0
+            if (
+                status == "in_progress"
+                and currently_due > 0
+                and waiting_cards == 0
+                and currently_due == max(0, int(verified_remaining or 0))
+            )
             else None
         )
         scope = "unavailable" if status == "unavailable" else "all_decks"
@@ -438,7 +457,11 @@ class ReviewerHookHandler:
     def _due_tree_node_total(node: Any) -> int:
         total = sum(
             max(0, int(getattr(node, primary, getattr(node, fallback, 0)) or 0))
-            for primary, fallback in (("review_count", "rev"), ("learn_count", "lrn"))
+            for primary, fallback in (
+                ("new_count", "new"),
+                ("learn_count", "lrn"),
+                ("review_count", "rev"),
+            )
         )
         try:
             deck_id = int(getattr(node, "deck_id", getattr(node, "did", 0)) or 0)
@@ -493,7 +516,7 @@ class ReviewerHookHandler:
 
     @classmethod
     def _selectable_due_subtree(cls, node: Any, required_cards: int) -> Any | None:
-        """Return the narrowest selectable subtree that owns every due card."""
+        """Return the narrowest selectable subtree that owns every Today’s Card."""
 
         required_cards = max(0, int(required_cards))
         if required_cards <= 0 or cls._due_tree_node_total(node) != required_cards:
@@ -963,6 +986,9 @@ class ReviewerHookHandler:
                 transaction_id=str(getattr(transaction, "transaction_id", "") or ""),
                 source_id=str(getattr(transaction, "source_id", "") or ""),
                 correlation_id=str(getattr(transaction, "correlation_id", "") or event_id),
+                included_in_total=bool(
+                    getattr(transaction, "included_in_total", True)
+                ),
             )
             for transaction in result.currency_transactions
             if int(getattr(transaction, "delta", 0) or 0) > 0
@@ -982,7 +1008,10 @@ class ReviewerHookHandler:
                 reward_type=str(outcome.reward_type or ""),
                 reward_label=str(outcome.description or ""),
                 reward_amount=max(0, int(outcome.amount or 0)),
-                art_asset=str(outcome.artwork_ref or ""),
+                art_asset=standard_find_artwork_ref(
+                    str(outcome.reward_id or ""),
+                    str(outcome.artwork_ref or ""),
+                ),
                 occurred_at=str(outcome.occurred_at or ""),
                 item_id=str(outcome.item_id or ""),
                 quantity=1,
@@ -1022,7 +1051,9 @@ class ReviewerHookHandler:
                     new_stage=next_stage,
                     coin_reward=(coin.amount if coin is not None else 0),
                     coin_award_event_ids=(coin.event_id,) if coin is not None else (),
-                    coin_included_in_total=coin is not None,
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
                 ))
             elif len(parts) == 3 and parts[0] == "stage":
                 _kind, plant_id, next_stage = parts
@@ -1077,7 +1108,9 @@ class ReviewerHookHandler:
                     ),
                     coin_reward=(coin.amount if coin is not None else 0),
                     coin_award_event_ids=(coin.event_id,) if coin is not None else (),
-                    coin_included_in_total=coin is not None,
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
                 ))
                 previous_stage = next_stage
 
@@ -1198,6 +1231,9 @@ class ReviewerHookHandler:
                 correlation_id=str(
                     getattr(item, "correlation_id", "") or event_id
                 ),
+                included_in_total=bool(
+                    getattr(item, "included_in_total", True)
+                ),
             )
             for item in new_transactions
         )
@@ -1225,7 +1261,10 @@ class ReviewerHookHandler:
                 str(getattr(outcome, "reward_type", "") or ""),
                 reward_label,
                 max(0, int(getattr(outcome, "amount", 0) or 0)),
-                str(getattr(outcome, "artwork_ref", "") or ""),
+                standard_find_artwork_ref(
+                    str(getattr(outcome, "reward_id", "") or ""),
+                    str(getattr(outcome, "artwork_ref", "") or ""),
+                ),
                 str(getattr(outcome, "occurred_at", "") or ""),
                 str(getattr(outcome, "item_id", "") or ""),
                 1,
@@ -1249,6 +1288,7 @@ class ReviewerHookHandler:
                     percent = max(0, int(percent_text))
                 except (TypeError, ValueError):
                     continue
+                coin = coin_by_event_key.get(reward_key)
                 milestones.append(PlantMilestone(
                     reward_key,
                     plant_id,
@@ -1261,11 +1301,11 @@ class ReviewerHookHandler:
                     .title(),
                     checkpoint_percent=percent,
                     new_stage=next_stage,
-                    coin_reward=max(0, int(getattr(transaction, "delta", 0) or 0)),
-                    coin_award_event_ids=(
-                        coin_by_event_key[reward_key].event_id,
-                    ) if reward_key in coin_by_event_key else (),
-                    coin_included_in_total=reward_key in coin_by_event_key,
+                    coin_reward=(coin.amount if coin is not None else 0),
+                    coin_award_event_ids=(coin.event_id,) if coin is not None else (),
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
                 ))
             elif len(parts) == 3 and parts[0] == "stage":
                 _kind, plant_id, next_stage = parts
@@ -1318,7 +1358,9 @@ class ReviewerHookHandler:
                     ),
                     coin_reward=(coin.amount if coin is not None else 0),
                     coin_award_event_ids=(coin.event_id,) if coin is not None else (),
-                    coin_included_in_total=coin is not None,
+                    coin_included_in_total=(
+                        coin.included_in_total if coin is not None else False
+                    ),
                 ))
                 previous_stage = next_stage
 
@@ -1535,7 +1577,46 @@ class ReviewerHookHandler:
             return
         self._session_summary_presentation_generation += 1
         self._pending_session_summary = payload
+        self._refresh_post_session_surfaces()
         self._schedule_session_summary_render()
+
+    def _refresh_post_session_surfaces(self) -> None:
+        """Refresh the visible Anki/Garden state before mounting the summary.
+
+        Session Summary is deliberately nonmodal, so the Deck Browser or
+        Overview behind it is part of the same presentation.  Publish one
+        post-commit revision before asking Anki to repaint that surface; the
+        home Garden banner and the frozen summary payload will then read the
+        same committed storage state.
+        """
+
+        if callable(self.state_changed):
+            try:
+                self.state_changed("Session summary committed")
+            except Exception:
+                logger.debug(
+                    "Anki Garden: post-session state revision could not be published",
+                    exc_info=True,
+                )
+        state_name = str(getattr(mw, "state", "") or "")
+        surface_name = {
+            "deckBrowser": "deckBrowser",
+            "overview": "overview",
+        }.get(state_name)
+        if surface_name is None:
+            return
+        try:
+            surface = getattr(mw, surface_name, None)
+            refresh = getattr(surface, "refresh", None)
+            if callable(refresh):
+                refresh()
+        except Exception:
+            # Rewards are already committed and the summary remains useful;
+            # a repaint failure must never roll state back or block dismissal.
+            logger.debug(
+                "Anki Garden: post-session Anki surface could not refresh",
+                exc_info=True,
+            )
 
     def _hide_session_summary(self, *, clear_pending: bool = False) -> None:
         card = self._session_summary_card
@@ -1697,6 +1778,10 @@ class ReviewerHookHandler:
             if (
                 not bool(getattr(refreshed, "can_continue_reviews", False))
                 or refreshed_target is None
+                or str(getattr(refreshed, "scope", ""))
+                != str(getattr(terminal_today, "scope", ""))
+                or str(getattr(refreshed, "kind", ""))
+                != str(getattr(terminal_today, "kind", ""))
                 or str(getattr(refreshed_target, "kind", ""))
                 != str(getattr(target, "kind", ""))
                 or getattr(refreshed_target, "deck_id", None)
@@ -1808,18 +1893,75 @@ class ReviewerHookHandler:
                 exc_info=True,
             )
 
+    def _select_another_plant_from_reviewer_hud(self) -> None:
+        """Open plant selection while leaving the current reviewer state intact."""
+
+        callback = self.open_garden
+        if not callable(callback):
+            return
+        try:
+            callback(select_another_plant=True)
+        except TypeError:
+            # Compatibility with integrations that still expose the former
+            # no-argument Garden opener. They can still reach the Garden even
+            # though only the current add-on provides the direct selector.
+            callback()
+        except Exception:
+            logger.debug(
+                "Anki Garden: plant selection could not open from Reviewer HUD",
+                exc_info=True,
+            )
+
+    def _choose_plant_from_reviewer_hud(self, plant_id: str) -> bool:
+        """Atomically nurture one projected choice without leaving Reviewer."""
+
+        plant_id = str(plant_id or "")
+        setter = getattr(self.engine, "set_active_plant", None)
+        if not plant_id or not callable(setter):
+            return False
+        try:
+            ok, _message = setter(plant_id)
+        except Exception:
+            logger.debug(
+                "Anki Garden: reviewer plant choice could not be committed",
+                exc_info=True,
+            )
+            return False
+        if not bool(ok):
+            logger.debug(
+                "Anki Garden: reviewer plant choice was rejected by the engine"
+            )
+            return False
+        if callable(self.state_changed):
+            try:
+                self.state_changed("Active plant changed")
+            except Exception:
+                logger.debug(
+                    "Anki Garden: reviewer plant choice could not publish state",
+                    exc_info=True,
+                )
+        # Refresh the mounted projection in place. This deliberately leaves
+        # the current Anki card and the session accumulator untouched.
+        self._ensure_reviewer_hud()
+        return True
+
     def _resolve_reviewer_reward_art(self, hero: Any) -> Any | None:
         """Resolve canonical reward references without teaching the widget catalogs."""
 
         asset_key = str(
-            getattr(hero, "artwork_ref", "")
+            hero
+            if isinstance(hero, str)
+            else getattr(hero, "artwork_ref", "")
             or getattr(hero, "art_asset", "")
             or ""
         )
         if not asset_key:
             return None
-        kind_value = getattr(getattr(hero, "kind", ""), "value", None)
-        kind = str(kind_value or getattr(hero, "kind", "") or "")
+        kind_source = getattr(hero, "kind", "") or getattr(
+            hero, "reward_type", ""
+        )
+        kind_value = getattr(kind_source, "value", None)
+        kind = str(kind_value or kind_source or "")
         resolver_names = (
             (
                 "resolve_garden_feature_preview_asset",
@@ -1976,7 +2118,12 @@ class ReviewerHookHandler:
         panel = getattr(self, "_reviewer_hud", None)
         present_committed = getattr(panel, "present_committed_result", None)
         present_reward = getattr(panel, "present_reward", None)
-        if not callable(present_committed) and not callable(present_reward):
+        notify_committed = getattr(panel, "notify_committed_card", None)
+        if (
+            not callable(present_committed)
+            and not callable(present_reward)
+            and not callable(notify_committed)
+        ):
             return
         try:
             from ..reward_presentation import project_committed_reward_bundle
@@ -2034,6 +2181,8 @@ class ReviewerHookHandler:
                     )
                 elif bundle is not None:
                     accepted = bool(present_reward(bundle, reveal=reveal))
+                elif callable(notify_committed):
+                    accepted = bool(notify_committed(result_id))
                 else:
                     accepted = True
                 if not accepted:
@@ -2146,6 +2295,8 @@ class ReviewerHookHandler:
                     parent,
                     on_open_garden=self._open_garden_from_reviewer_hud,
                     on_open_plant=self._open_active_plant_from_reviewer_hud,
+                    on_select_plant=self._select_another_plant_from_reviewer_hud,
+                    on_choose_plant=self._choose_plant_from_reviewer_hud,
                     on_toggle_collapsed=self._toggle_reviewer_hud,
                     resolve_reward_art=self._resolve_reviewer_reward_art,
                     animations_enabled=self._session_summary_animations_enabled(),
@@ -2170,6 +2321,8 @@ class ReviewerHookHandler:
                     set_callbacks(
                         on_open_garden=self._open_garden_from_reviewer_hud,
                         on_open_plant=self._open_active_plant_from_reviewer_hud,
+                        on_select_plant=self._select_another_plant_from_reviewer_hud,
+                        on_choose_plant=self._choose_plant_from_reviewer_hud,
                         on_toggle_collapsed=self._toggle_reviewer_hud,
                         resolve_reward_art=self._resolve_reviewer_reward_art,
                         animations_enabled=self._session_summary_animations_enabled(),
@@ -3610,7 +3763,20 @@ class ReviewerHookHandler:
         try:
             due_resolver = getattr(self.storage, "due_obligations", None)
             if callable(due_resolver):
-                due_status = due_resolver()
+                committed_card_ids = tuple(sorted({
+                    int(payload.get("card_id", 0) or 0)
+                    for payload in payloads
+                    if int(payload.get("card_id", 0) or 0) > 0
+                }))
+                try:
+                    due_status = due_resolver(
+                        committed_card_ids=committed_card_ids,
+                    )
+                except TypeError:
+                    # Compatibility for test and third-party storage adapters.
+                    # The engine still fails closed when an aggregate shrink
+                    # exceeds the number of committed answers.
+                    due_status = due_resolver()
                 due_status_resolved = True
         except Exception:
             logger.debug(
@@ -3664,7 +3830,7 @@ class ReviewerHookHandler:
             self._report_history_invalidation("review save failed")
             message = (
                 "Your card is safe in Anki, but Garden couldn’t save its Growth. "
-                "Open garden to try again."
+                "Open Garden to try again."
             )
             if USER_NOTICES.publish(message, key="review_history"):
                 try:
@@ -3685,7 +3851,8 @@ class ReviewerHookHandler:
                 self.engine.evaluate_all_due(
                     due_status
                     if due_status_resolved
-                    else self.storage.due_obligations()
+                    else self.storage.due_obligations(),
+                    record_completed_delta=True,
                 )
             except Exception:
                 logger.debug(
@@ -3902,7 +4069,7 @@ class ReviewerHookHandler:
             title = "Garden Find"
             tier = self._display_tier(find.tier)
             if str(find.pool_id) == "environment" and environment_total:
-                message = "Added to Garden Features"
+                message = "Added to Garden Decorations"
             elif not message:
                 message = self._player_reward_copy(find.description)
             first_find = presentations[0]
@@ -4640,6 +4807,8 @@ class ReviewerHookHandler:
             "growth": "Growth icon",
             "garden_coin": "Garden Coin icon",
             "garden_coins": "Garden Coin icon",
+            "garden_pouch": "Garden Pouch artwork",
+            "morning_dew": "Morning Dew artwork",
         }.get(str(getattr(event, "asset_key", "") or ""), "Reward artwork")
 
     def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:

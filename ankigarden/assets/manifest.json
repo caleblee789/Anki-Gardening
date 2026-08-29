@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "generated_by": "Anki Garden V6 Garden Feature and scenery collection",
+  "generated_by": "Anki Garden V6 Garden Decoration and scenery collection",
   "assets": [
     {
       "asset_id": "garden_feature_seedling_sign",
@@ -112,6 +112,38 @@
       "quality_tier": "ultra",
       "quality_score": 0.98,
       "source": "OpenAI image generation with deterministic Rich Compost label composition",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_garden_pouch",
+      "category": "ui",
+      "slot": {"ui_id": "garden_pouch"},
+      "variants": ["storybook_gouache", "catalog", "standard_find", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/garden_pouch.webp",
+      "width": 512,
+      "height": 512,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden"
+    },
+    {
+      "asset_id": "ui_morning_dew",
+      "category": "ui",
+      "slot": {"ui_id": "morning_dew"},
+      "variants": ["storybook_gouache", "catalog", "standard_find", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/morning_dew.webp",
+      "width": 512,
+      "height": 512,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
       "attribution": "Generated for Anki Garden"
     },
     {
@@ -252,37 +284,6 @@
         "spout_tip": [0.908203, 0.57]
       },
       "source": "Deterministic mirror of the generated watering can with upright Nurturing label recomposition",
-      "attribution": "Generated for Anki Garden"
-    },
-    {
-      "asset_id": "decor_lantern",
-      "category": "decorations",
-      "slot": {
-        "decoration_id": "lantern"
-      },
-      "variants": [
-        "storybook_gouache"
-      ],
-      "file": "assets/support/decorations/lantern.webp",
-      "width": 1254,
-      "height": 1254,
-      "format": "webp",
-      "alpha": true,
-      "style_family": "storybook_gouache",
-      "placement": {
-        "anchor_x": 0.95,
-        "baseline_y": 0.82,
-        "scale": 0.32,
-        "crop": "contain",
-        "layer": "decoration",
-        "scene_anchor": [
-          0.95,
-          0.82
-        ]
-      },
-      "quality_tier": "ultra",
-      "quality_score": 0.98,
-      "source": "OpenAI image generation",
       "attribution": "Generated for Anki Garden"
     },
     {
@@ -17338,18 +17339,18 @@
       "release_preferred": true,
       "quality_tier": "ultra",
       "quality_score": 0.995,
-      "source": "ImageGen line authored against the Verdant Twilight V6 background",
+      "source": "ImageGen high-DPI identity-preserving edit of the Verdant Twilight V6 Wisteria seed",
       "attribution": "Original AI-assisted artwork generated for Anki Garden",
-      "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_seed_chroma.png",
-      "source_master_sha256": "e8ff5400927dff059fb42c1ea3f7df9eaaca259ee7dc9aa6787f70a66ec2f4c9",
+      "source_master_file": "artwork_source/plants/v6/wisteria/wisteria_seed_retina_chroma.png",
+      "source_master_sha256": "f1a5ad730baa40e7d31c2d5819468e64edb6a45d2294d0efc00894b0d9a376e1",
       "placement": {
         "anchor_x": 0.5,
         "baseline_y": 0.913876,
         "scale": 1.0,
         "display_scale": 1.0,
         "visual_center": [
-          0.494418,
-          0.875997
+          0.513158,
+          0.772728
         ],
         "shadow_offset": [
           0.0,
@@ -17357,10 +17358,10 @@
         ],
         "minimum_bed_clearance": 0.04,
         "visible_bounds": [
-          0.456938,
-          0.833876,
-          0.074163,
-          0.08
+          0.39075,
+          0.628389,
+          0.242424,
+          0.289474
         ],
         "ground_anchor": [
           0.5,
@@ -17386,10 +17387,10 @@
         "scene_scale_correction": 0.55,
         "visual_scale_correction": 0.78,
         "art_bounds": [
-          0.464115,
-          0.842903,
-          0.060606,
-          0.066188
+          0.399522,
+          0.636364,
+          0.227273,
+          0.272727
         ],
         "base_bounds": [
           0.48,
@@ -17404,22 +17405,22 @@
           0.022
         ],
         "foliage_bounds": [
-          0.456938,
-          0.833876,
-          0.074163,
-          0.08
+          0.39075,
+          0.628389,
+          0.242424,
+          0.289474
         ],
         "plant_above_rim_bounds": [
-          0.456938,
-          0.833876,
-          0.074163,
-          0.08
+          0.39075,
+          0.628389,
+          0.242424,
+          0.289474
         ],
         "interaction_bounds": [
-          0.464115,
-          0.842903,
-          0.060606,
-          0.066188
+          0.399522,
+          0.636364,
+          0.227273,
+          0.272727
         ],
         "layout_family": "compact",
         "lateral_spacing_multiplier": 1.0,
@@ -18546,6 +18547,132 @@
         "slot_envelope_scale": 1.0,
         "release_layout_candidate": true
       }
+    },
+    {
+      "asset_id": "ui_sync_review_cards",
+      "category": "ui",
+      "slot": {"ui_id": "sync_review_cards"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/sync_review_cards.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/sync_review_cards.png",
+      "source_master_sha256": "c2e5319aa5cd88135ede33b328747dca7ad45fab8b2cf073504e000f4715ea14"
+    },
+    {
+      "asset_id": "ui_growth_resource",
+      "category": "ui",
+      "slot": {"ui_id": "growth_resource"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/growth_resource.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/growth_resource.png",
+      "source_master_sha256": "78ca8af5e98f8e720a72f724dcebded1179b23e8ee59d458545b0f8e94d4dc4d"
+    },
+    {
+      "asset_id": "ui_garden_coin",
+      "category": "ui",
+      "slot": {"ui_id": "garden_coin"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/garden_coin.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/garden_coin.png",
+      "source_master_sha256": "223f92e4d0152ab8edbb10485b2db26a94b64da56d0373f8550044be124f1246"
+    },
+    {
+      "asset_id": "ui_shared_growth",
+      "category": "ui",
+      "slot": {"ui_id": "shared_growth"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/shared_growth.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/shared_growth.png",
+      "source_master_sha256": "9f4dc7bae2af36f8b4a929733332a128e4c1a250de40f0ad5d379eeeebf5d264"
+    },
+    {
+      "asset_id": "ui_stored_growth",
+      "category": "ui",
+      "slot": {"ui_id": "stored_growth"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/stored_growth.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/stored_growth.png",
+      "source_master_sha256": "da3acc1d96e399150d9ac6df814020a10d95d98671a8518635708b05b7b8bd4e"
+    },
+    {
+      "asset_id": "ui_checkpoint_badge",
+      "category": "ui",
+      "slot": {"ui_id": "checkpoint_badge"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout"],
+      "file": "assets/v6_storybook_gouache/ui/checkpoint_badge.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/checkpoint_badge.png",
+      "source_master_sha256": "927cf258a08dcb12e858aef98be83891322c464d6fc559925c829cb321e11fb0"
+    },
+    {
+      "asset_id": "ui_garden_placeholder",
+      "category": "ui",
+      "slot": {"ui_id": "garden_placeholder"},
+      "variants": ["storybook_gouache", "sync_reward", "transparent_cutout", "fallback"],
+      "file": "assets/v6_storybook_gouache/ui/garden_placeholder.webp",
+      "width": 256,
+      "height": 256,
+      "format": "webp",
+      "alpha": true,
+      "style_family": "storybook_gouache",
+      "quality_tier": "ultra",
+      "quality_score": 0.99,
+      "source": "OpenAI image generation with transparent-background processing",
+      "attribution": "Generated for Anki Garden",
+      "source_master_file": "artwork_source/ui/sync_rewards/garden_placeholder.png",
+      "source_master_sha256": "9ddf3e75bacca404cdcaaa63141d44bedce2320d03e085bcc22087e9d78eefc7"
     },
     {
       "asset_id": "plant_dahlia_rare_twilight_v6",

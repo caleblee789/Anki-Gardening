@@ -427,10 +427,10 @@ def test_live_qt_component_gallery_renders_release_geometry_and_pixels_when_avai
     root.addLayout(content)
 
     controls = QHBoxLayout()
-    toggle_off = ToggleSwitch("Weather effects off")
+    toggle_off = ToggleSwitch("Garden Decoration hidden")
     toggle_off.setChecked(False)
     controls.addWidget(toggle_off)
-    toggle_on = ToggleSwitch("Weather effects on")
+    toggle_on = ToggleSwitch("Garden Decoration shown")
     toggle_on.setChecked(True)
     controls.addWidget(toggle_on)
     toast = ToastRegion()

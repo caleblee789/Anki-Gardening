@@ -1,6 +1,6 @@
 """Shared, high-DPI environment preview composition for native surfaces.
 
-Scenery is rendered directly. Garden Features (and their legacy Weather aliases)
+Scenery is rendered directly. Garden Decorations (and their legacy Weather aliases)
 are composited over the selected scenery, so discovery cards show the earned
 visual state instead of a generic symbol.
 Callers may provide their own branded fallback while the shared success path
@@ -166,7 +166,7 @@ def environment_preview_pixmap(
     scenery_id: str = DEFAULT_SCENERY_ID,
     fallback: EnvironmentFallback | None = None,
 ) -> Any:
-    """Render Scenery directly or one isolated Garden Feature cutout."""
+    """Render Scenery directly or one isolated Garden Decoration cutout."""
 
     _require_qt()
 

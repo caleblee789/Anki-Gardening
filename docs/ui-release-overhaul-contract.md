@@ -1,6 +1,6 @@
 # Anki Garden UI release contract
 
-Status: implemented contract for Anki Garden 2.1.0, state schema 22, and UI
+Status: implemented contract for Anki Garden 2.1.0, state schema 25, and UI
 capture contract v25. Source code and persisted behavior are authoritative.
 
 ## Authority map
@@ -34,8 +34,9 @@ states are in `docs/ui/state_scenarios.md`.
 | Plant selection | Contextual native actions for Nurture, Move, Story, Fertilizer, and Growth Charge when eligible |
 | Garden Progress or a metric | Focused Plant Growth, Anki streak, Garden Coins, Achievements, or Collection page |
 | Cottage or Collection action | Collection page in the existing Garden Progress window |
-| Nursery landmark | Four-tab Nursery for Plants, Fertilizers and boosts, Garden beds, and Weather and Scenery |
+| Nursery landmark | Four-tab Nursery for Plants, Fertilizers and boosts, Garden beds, and Garden Decorations and Scenery |
 | Settings action or Anki menu | Staged settings plus read-only Diagnostics with explicit save/discard behavior |
+| Sync completion | One centered, nonmodal Sync Rewards receipt over stable Anki Home, with **Close** and **Open Garden** actions |
 
 Home previews expose no scene actions, and Settings does not duplicate that
 preview. The full Garden alone owns plant selection, move destinations, and
@@ -47,7 +48,7 @@ One eligible completed card creates one engine-owned transaction:
 
 1. Review ingestion normalizes the card event and stable lineage identity.
 2. The nurtured unfinished plant receives full Answer Growth: the base award plus eligible
-   streak, Fertilizer, Booster, Weather, and Scenery modifiers.
+   streak, Fertilizer, Booster, Garden Bonus, and Scenery modifiers.
 3. Every other planted plant creates one exact 20% Shared Growth share. A plant
    still growing receives its own share; a Full Bloom plant’s share is divided
    among all planted plants still growing, including the nurtured plant.
@@ -67,6 +68,15 @@ The reviewer HUD is persistent, content-driven, and enabled by default through
 reviewer-reward setting controls active major reward-dock reveals, while core
 plant progress and the committed session footer remain available.
 
+Before a normal sync, Garden establishes a clean desktop review-history
+boundary. After sync it processes every newly unseen supported post-activation
+answer across its original Anki days, including delayed lower-ID rows. Past-day
+answers receive normal per-answer rewards; Today’s Cards completion is evaluated
+only for the current Anki day when the live transition can be proven. Rewards
+and one durable pending Sync Rewards receipt commit atomically. Initial setup
+and one-way collection replacement establish non-awarding baselines. The
+default-on `show_rewards_after_syncing` setting suppresses only presentation.
+
 The HUD shows global Today’s Cards progress, prominent current-stage art,
 checkpoint progress, next-answer Growth, and at most two compact active-effect
 chips. It hides Find caps and protection state, raw shares and Shared Growth,
@@ -84,7 +94,7 @@ per-event X buttons do not exist.
 
 ## Purchase and loadout flow
 
-Every species, Growth Charge, Fertilizer, Weather, Scenery, and Garden-bed
+Every species, Growth Charge, Fertilizer, Garden Decoration, Scenery, and Garden-bed
 purchase follows the same quote/confirm/commit boundary:
 
 1. The engine issues a typed quote with request ID, price, balance, target,
@@ -96,20 +106,23 @@ purchase follows the same quote/confirm/commit boundary:
 5. Exact replay returns the recorded outcome; typed stale or terminal errors do
    not mutate state; persistence failure restores the pre-request snapshot.
 
-Collection owns Weather/Scenery inspection, reversible preview, equipment, and
-visibility drafts. The first progression event locks today's artwork and
-mechanics; later changes are **Queued for tomorrow**. `apply_garden_loadout()`
-is the sole atomic mutation path. Nursery purchases never auto-equip an
-environment item.
+Collection owns Garden Decoration/Scenery inspection, reversible preview,
+equipment, and visibility drafts. The displayed Decoration is an independent
+cosmetic choice and may change or hide at any time. The first eligible answer
+locks the active Garden Bonus for that Anki day; the first progression action
+locks Scenery. Later mechanical selections queue for the next Anki day.
+`apply_garden_loadout()` is the sole atomic mutation path. Nursery purchases
+never auto-equip an environment item, and visibility never changes mechanics.
 
 ## Persistence and failure behavior
 
-- Schema 22 persists resumable `OnboardingProgress`, exact hundredth-Growth
+- Schema 25 persists resumable `OnboardingProgress`, exact hundredth-Growth
   units, Stored Growth, checkpoint and Full Bloom metadata, Today’s Cards
-  projection state, locked/queued daily loadouts, independent environment
-  guarantees, timed Fertilizer periods/queues, card-counted Booster batches,
-  inventory, and bounded
-  purchase/Growth-Charge replay records.
+  projection state, independent displayed Decoration and locked/queued Garden
+  Bonus/Scenery loadouts, independent environment guarantees, timed Fertilizer
+  periods/queues, card-counted Booster batches,
+  inventory, bounded purchase/Growth-Charge replay records, and the durable
+  pending Sync Rewards receipt.
 - Schema-21 JSON and authoritative SQLite profiles are backed up before the
   migration; established reward authorities and historical identities remain
   intact.
@@ -124,9 +137,9 @@ environment item.
 
 ## Visual, responsive, and accessibility contract
 
-- Verdant Twilight V6, its geometry-compatible Scenery reskins, seven Weather
-  overlays, six fixed planter spaces, and the current plant/item art remain the
-  visual foundation.
+- Verdant Twilight V6, its geometry-compatible Scenery reskins, seven static
+  Garden Decorations with one shared pad, six fixed planter spaces, and the
+  current plant/item art remain the visual foundation.
 - Dialogs schedule content fitting after layout, visibility, font, style,
   artwork, and state changes. They have one vertical overflow owner, reachable
   content, normal-flow feedback/footer actions, terminal-state shrinking, and
@@ -147,17 +160,19 @@ environment item.
 
 Capture contract v25 has two registry-derived ordered evidence tiers under
 `QT_SCALE_FACTOR=1.0`. The `representative` profile is the preflight and the
-`full` profile is the final release authority. The current registry derives a
-16-surface/two-sheet preflight and a 31-surface/five-sheet full profile after
-retiring 95 redundant IDs, including every watering-can capture. These totals
+`full` profile is the final release authority. The current registry derives an
+18-surface/two-sheet preflight and a 34-surface/five-sheet full profile after
+retiring 98 redundant or behavioral-only IDs, including every watering-can
+capture. These totals
 remain generated rather than fixed acceptance constants. A passing
 preflight may seed overlapping full-profile states; it does not replace the
 full release set.
 
-The independent validator must report contract 25 and exact agreement with the
-compiled active registry, with zero failures or text/geometry warnings.
-Production and
-capture archives must retain exact shared-payload parity and distinct
+The independent validator must report contract 25, exact agreement with the
+compiled active registry, and zero rejecting acquisition or lifecycle failures.
+Detailed semantic, copy, text-fit, geometry, layout, scroll, and duplicate-view
+findings remain visible review advisories rather than being silently normalized.
+Production and capture archives must retain exact shared-payload parity and distinct
 capability identities. Native dialogs accept only a direct widget grab; Home
 and Reviewer prefer a verified app-owned Qt/WebView capture and label any
 identity-verified compositor use as fallback. Per-state evidence may be reused

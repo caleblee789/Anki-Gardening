@@ -50,7 +50,9 @@ KNOWN_ELIGIBILITY_RULES = frozenset({
 })
 KNOWN_ARTWORK_REFS = frozenset({
     "garden_coin",
+    "garden_pouch",
     "growth",
+    "morning_dew",
     "ui_growth_charge_small",
     "ui_growth_charge_standard",
     "ui_fertilizer_basic",
@@ -131,7 +133,7 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
         4,
         170,
         "Common",
-        artwork_ref="garden_coin",
+        artwork_ref="garden_pouch",
         localization_key="garden_find.coin_pouch",
     ),
     GardenFindReward(
@@ -143,7 +145,7 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
         200,
         "Common",
         eligibility_rule="unfinished_nurtured_plant",
-        artwork_ref="growth",
+        artwork_ref="morning_dew",
         localization_key="garden_find.morning_dew",
     ),
     GardenFindReward(
@@ -256,6 +258,16 @@ STANDARD_FIND_REGISTRY: tuple[GardenFindReward, ...] = (
         localization_key="garden_find.coin_treasury",
     ),
 )
+
+
+def standard_find_artwork_ref(reward_id: str, fallback: str = "") -> str:
+    """Return current presentation art without rewriting earned reward facts."""
+
+    normalized = str(reward_id or "")
+    for reward in STANDARD_FIND_REGISTRY:
+        if reward.reward_id == normalized and reward.enabled:
+            return str(reward.artwork_ref or fallback)
+    return str(fallback or "")
 
 
 @dataclass(frozen=True)

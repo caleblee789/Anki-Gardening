@@ -568,7 +568,7 @@ def test_home_has_one_action_and_currency_unlocks_stay_in_dashboard() -> None:
     html = render_home_widget(HomeWidgetSnapshot(request_id=7, phase="success", data=base))
 
     assert 'data-testid="home-milestone"' not in html
-    assert "Open garden to claim it" not in html
+    assert "Open Garden to claim it" not in html
     assert html.count('data-testid="home-open"') == 1
 
 
@@ -1038,7 +1038,7 @@ def test_shared_preview_matrix_preserves_scene_data_phase_and_unified_fade(
     assert tuple(metric.metric_id for metric in preview.metrics) == (
         "today", "streak", "coins"
     )
-    assert preview.action_label == "Open garden"
+    assert preview.action_label == "Open Garden"
     assert preview.action_command == "home-open"
     assert preview.status_tone == {
         "loading": "info",

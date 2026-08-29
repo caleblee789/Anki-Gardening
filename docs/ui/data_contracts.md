@@ -1,8 +1,9 @@
 # Progression state and presentation contract
 
-The authoritative persisted boundary is the schema-22 reward database under
-`user_files/`. Schema-21 JSON and SQLite authorities are backed up before
-migration. Mutable state and caches never enter the distributable archive.
+The authoritative persisted boundary is the schema-25 reward database under
+`user_files/`. Supported schema-10–24 state migrates fail-closed; schema-21 JSON
+and SQLite authorities are backed up at their historical migration boundary.
+Mutable state and caches never enter the distributable archive.
 
 ## Persisted authorities
 
@@ -21,10 +22,14 @@ migration. Mutable state and caches never enter the distributable archive.
   `plant_shared_growth_units`, and `plant_instant_growth_units` maps.
 - `DailyCompletionState` is the technical Today’s Cards projection. Its
   obligation-oriented field names are internal and must never be rendered.
-- `DailyLoadoutSchedule` stores today’s locked Weather/Scenery and tomorrow's
-  optional queue.
+- The persisted loadout keeps the displayed Garden Decoration separate from the
+  selected Garden Bonus. `DailyLoadoutSchedule` stores today’s independently
+  locked Garden Bonus and Scenery plus their next-Anki-day queues.
 - `environment_pity_misses` stores independent Rare, Very Rare, and Ultra
   discovery counters.
+- `pending_sync_reward_summary` stores at most one committed, presentation-ready
+  Sync Rewards receipt until the presenter successfully mounts it or the
+  presentation setting explicitly suppresses it.
 - Currency transactions, reward events, stable answer lineages, Find outcomes,
   finalized days, purchase requests, and Growth Charge requests remain the
   idempotency authorities.
@@ -34,7 +39,7 @@ migration. Mutable state and caches never enter the distributable archive.
 One eligible completed card creates one engine-owned transaction:
 
 1. Calculate full Answer Growth in hundredth units: 10 base Growth, streak,
-   Fertilizer, Booster, locked Weather, and locked Scenery.
+   Fertilizer, Booster, the Anki-day-locked Garden Bonus, and locked Scenery.
 2. Snapshot every other planted plant as a Shared Growth share source and every
    planted unfinished plant as a possible recipient.
 3. Route the complete primary lane through the nurtured plant and then through
@@ -87,11 +92,13 @@ completion replay.
 
 ## Today’s Cards projection
 
-The service evaluates the live collection-wide due state before reward grant:
+The service evaluates one live collection-wide scheduler scope before reward
+grant:
 
-- Due reviews and introduced learning/relearning steps before the cutoff count,
-  including active filtered decks and active deck limits.
-- Unseen new cards are excluded until introduced.
+- Scheduler-available New, Learning, and Review cards count, including active
+  filtered decks and active deck limits.
+- New-to-Learning and relearning transitions remain outstanding until the card
+  leaves that scope; repeated answers do not increment the completed count.
 - Suspended and buried cards remain excluded while unavailable.
 - Restored cards may return the state to incomplete before grant.
 - At least one eligible card must be completed.
@@ -109,7 +116,7 @@ Projection states are `in_progress`, `waiting_for_learning`, `complete`,
 | Waiting | `2 more cards will be due in 6 minutes` | None |
 | Complete | `TODAY’S CARDS COMPLETE` | `+10 Garden Coins earned` and `176 cards complete` |
 | Not eligible | `NO COMPLETION REWARD TODAY` | `No cards were due today!` |
-| Unavailable | `CARD STATUS UNAVAILABLE` | `Anki Garden could not verify today’s due cards. Normal Garden Growth is unaffected.` |
+| Unavailable | `CARD STATUS UNAVAILABLE` | `Anki Garden could not verify today’s cards. Normal Garden Growth is unaffected.` |
 
 Never render internal `all_due`, obligation, or required-card identifiers.
 Never add explanatory commentary to the waiting or complete state. The activity
@@ -134,8 +141,8 @@ card, start, end, and source identity:
 timestamp, and source event key.
 
 - Booster Potion: +5 Growth for 100 applicable cards.
-- Snow Flurry extends a new Booster to 110 cards; Full Moon Garden to 125; both
-  to 135.
+- Herbalist’s Hourglass extends a new Booster to 125 cards; Full Moon Garden
+  also provides 125; together they provide 150.
 - Another Potion extends the remaining card count.
 - Only a Booster that contributes decrements.
 
@@ -146,13 +153,43 @@ be active or queued; a rejected dose remains in inventory.
 
 ## Daily loadout
 
-The first eligible progression event locks Weather and Scenery artwork and
-mechanics for the scheduler day. Later selection writes only the next-day queue.
-Completion effects, milestone modifiers, Booster extensions, and card effects
-read the locked snapshot. Visibility changes rendering, not mechanics.
+The first eligible answer locks the selected Garden Bonus for the scheduler
+day. Scenery locks independently on the first progression action, including a
+review, Growth Charge, or consumable activation. A later Garden Bonus or
+Scenery selection writes only the next-Anki-day queue. The displayed Garden
+Decoration remains an independent cosmetic choice that may change or hide
+immediately. Completion effects, milestone modifiers, Booster extensions, and
+card effects read the locked mechanics. Visibility changes rendering, not
+mechanics.
 
 The normalized effects are defined in the progression reference. Purchases do
 not auto-equip, and unlock ownership remains separate from selection.
+
+## Post-sync reward reconciliation
+
+Before a normal sync, Garden reconciles the review history already present on
+the desktop and records a clean boundary. After sync, it processes every newly
+unseen supported post-activation answer introduced beyond that boundary across
+the answer’s original Anki day. Stable answer identities allow delayed lower-ID
+rows and distinct answer events for the same card to apply exactly once.
+
+- Past-day answers receive their normal per-answer Growth, recurring rewards,
+  Finds, discoveries, and progression effects.
+- Today’s Cards completion is evaluated only for the current Anki day and only
+  when the live before/after transition can be proven.
+- Excluded or unsupported rows create no Growth and are not consumed.
+- Reward state, ledger rows, processed identities, and one pending nonmodal
+  Sync Rewards receipt commit atomically. A failed save leaves the prior
+  boundary and rewards available for safe retry.
+- Initial setup and a one-way collection replacement establish a non-awarding
+  baseline instead of replaying imported history.
+- Repeating sync or restarting before successful mount neither duplicates
+  rewards nor creates a second receipt. A successful mount clears only the
+  matching durable payload; **Close** and **Open Garden** act on the visible
+  in-memory receipt.
+
+The receipt is presentation only and never drives reward calculation. The local
+review-session accumulator and Session Summary exclude background sync rewards.
 
 ## Garden Finds and discoveries
 
@@ -223,6 +260,8 @@ Growth or rewards. Every species card states that Growth rules are identical.
 - `show_reviewer_hud` defaults on.
 - The existing reviewer-reward setting controls active major dock reveals, not
   the core plant projection or committed session footer.
+- `show_rewards_after_syncing` defaults on and controls only whether the already
+  committed pending Sync Rewards receipt is shown.
 - Dock side and expanded/collapsed state persist.
 - Reduced motion suppresses nonessential movement without changing state.
 - Card content, note fields, and deck names are never stored in Garden state.
@@ -242,5 +281,8 @@ Schema 22 upgrades both legacy JSON and authoritative SQLite schema-21 state:
    answer lineages, Find outcomes, and transaction ledgers.
 6. Commit SQLite at the expected revision; stop without overwrite on failure.
 
-Older supported JSON migrations continue through the same final schema-22
-normalization. Unsupported or unreadable state is preserved before recovery.
+Schemas 23–25 then replace persisted Weather identities with Garden
+Decorations, split displayed artwork from the active Garden Bonus, add
+independent Anki-day Bonus locking, and add the durable pending sync receipt.
+All supported schema-10–24 JSON/SQLite paths converge on schema 25. Unsupported
+or unreadable state is preserved before recovery.

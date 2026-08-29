@@ -85,12 +85,72 @@ def test_every_bundled_ui_catalog_item_resolves_through_production_resolver() ->
         )(),
     )
     ui_rows = [row for row in rows if row.get("category") == "ui"]
-    assert len(ui_rows) == 10
+    assert len(ui_rows) == 19
+    assert {
+        row["slot"]["ui_id"] for row in ui_rows
+    } >= {
+        "garden_pouch",
+        "morning_dew",
+        "sync_review_cards",
+        "growth_resource",
+        "garden_coin",
+        "shared_growth",
+        "stored_growth",
+        "checkpoint_badge",
+        "garden_placeholder",
+    }
     for row in ui_rows:
         key = row["slot"]["ui_id"]
         resolved = manager.resolve_ui_asset(key)
         assert resolved is not None
         assert resolved.path.is_file()
+
+
+def test_named_standard_find_art_is_retina_sized_and_transparent() -> None:
+    root = Path(__file__).resolve().parents[1]
+    runtime = root / "ankigarden/assets/v6_storybook_gouache/ui"
+
+    for item_key in ("garden_pouch", "morning_dew"):
+        path = runtime / f"{item_key}.webp"
+        with Image.open(path) as image:
+            rgba = image.convert("RGBA")
+            assert rgba.size == (512, 512)
+            assert rgba.getchannel("A").getextrema() == (0, 255)
+            assert rgba.getchannel("A").getbbox() is not None
+
+
+def test_sync_receipt_concept_art_is_retina_sized_and_not_duplicate_item_art() -> None:
+    root = Path(__file__).resolve().parents[1]
+    runtime = root / "ankigarden/assets/v6_storybook_gouache/ui"
+    concept_ids = {
+        "sync_review_cards",
+        "growth_resource",
+        "garden_coin",
+        "shared_growth",
+        "stored_growth",
+        "checkpoint_badge",
+        "garden_placeholder",
+    }
+    existing_item_ids = {
+        "booster_potion",
+        "fertilizer_basic",
+        "fertilizer_quality",
+        "fertilizer_premium",
+        "growth_charge_small",
+        "growth_charge_standard",
+        "growth_charge_grand",
+        "garden_pouch",
+        "morning_dew",
+        "rich_compost",
+    }
+
+    assert concept_ids.isdisjoint(existing_item_ids)
+    for item_key in concept_ids:
+        with Image.open(runtime / f"{item_key}.webp") as image:
+            rgba = image.convert("RGBA")
+            assert rgba.size == (256, 256)
+            assert rgba.getchannel("A").getextrema()[0] == 0
+            assert rgba.getchannel("A").getbbox() is not None
 
 
 def test_every_bundled_garden_feature_resolves_to_its_own_artwork() -> None:

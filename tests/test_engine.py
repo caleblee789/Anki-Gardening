@@ -330,6 +330,152 @@ def test_closed_day_delayed_ingestion_uses_durable_cutoffs_target_and_effects():
     assert storage.state.to_dict() == after_first
 
 
+def test_full_history_sync_reconciliation_rewards_past_and_current_but_not_future():
+    engine, storage = make_engine()
+    past_day = "2026-08-07"
+    current_day = storage.day
+    future_day = "2026-08-09"
+    storage.state.reward_state_initialized = True
+    storage.state.reward_activation_ms = 100
+    storage.state.progression_activation_ms = 100
+    storage.state.garden_find_activation_ms = 10_000
+    storage.state.active_plant_periods = [
+        ActivePlantPeriod(past_day, "p1", 100),
+        ActivePlantPeriod(current_day, "p1", 100),
+    ]
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    storage.state.daily_loadout.scheduler_day = current_day
+    storage.state.daily_loadout.locked_at_ms = 150
+    storage.state.daily_loadout.garden_feature_id = "seedling_sign"
+    storage.state.daily_loadout.garden_bonus_anki_day_id = current_day
+    storage.state.daily_loadout.garden_bonus_locked_at_ms = 150
+    storage.state.daily_loadout.scenery_id = "default"
+    current_loadout_before = dict(vars(storage.state.daily_loadout))
+
+    def history_entry(
+        revlog_id: int,
+        *,
+        card_id: int,
+        answer_ms: int,
+        scheduler_day: str,
+        ordinal: int,
+    ) -> HistoricalReviewEntry:
+        return HistoricalReviewEntry(
+            revlog_id=revlog_id,
+            card_id=card_id,
+            ease=3,
+            interval=1,
+            last_interval=0,
+            factor=2_500,
+            response_time_ms=500,
+            review_type=1,
+            answer_ms=answer_ms,
+            scheduler_day=scheduler_day,
+            card_day_ordinal=ordinal,
+            answer_identity=(
+                f"v1|{scheduler_day}|{card_id}|{ordinal}"
+            ),
+        )
+
+    past = history_entry(
+        400,
+        card_id=42,
+        answer_ms=1_000,
+        scheduler_day=past_day,
+        ordinal=1,
+    )
+    current = history_entry(
+        500,
+        card_id=43,
+        answer_ms=2_000,
+        scheduler_day=current_day,
+        ordinal=1,
+    )
+    future = history_entry(
+        600,
+        card_id=44,
+        answer_ms=3_000,
+        scheduler_day=future_day,
+        ordinal=1,
+    )
+    rows = [past, current, future]
+    storage.load_eligible_review_history = lambda: HistoricalReviewSnapshot(
+        entries=tuple(rows),
+        high_water_revlog_id=max(row.revlog_id for row in rows),
+        fingerprint=f"full-history-{len(rows)}",
+    )
+
+    def answer_key(entry: HistoricalReviewEntry) -> str:
+        return consumption_id(stable_answer_event_identity(
+            entry.revlog_id,
+            card_id=entry.card_id,
+            answered_at_ms=entry.answer_ms,
+            lineage_id=entry.stable_answer_key,
+        ))
+
+    first_results = []
+    reconciled, _message = engine.reconcile_reward_history(
+        result_collector=first_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert reconciled
+    assert [result.scheduler_day for result in first_results] == [
+        past_day,
+        current_day,
+    ]
+    assert all(result.award.total_growth_units > 0 for result in first_results)
+    assert not first_results[0].daily_completion_rewarded
+    assert first_results[1].daily_completion_rewarded
+    assert storage.state.daily_completion.scheduler_day == current_day
+    assert storage.state.daily_completion.reward_claimed
+    assert dict(vars(storage.state.daily_loadout)) == current_loadout_before
+    assert answer_key(past) in storage.state.processed_answer_keys
+    assert answer_key(current) in storage.state.processed_answer_keys
+    assert answer_key(future) not in storage.state.processed_answer_keys
+    assert storage.state.achievement_history_high_water_revlog_id == 500
+    assert 600 not in storage.state.processed_revlog_ids
+
+    # A later sync can insert a distinct answer for the same card with a lower
+    # revlog ID. It is still new by stable answer identity and is credited once.
+    late_lower_id = history_entry(
+        100,
+        card_id=past.card_id,
+        answer_ms=1_500,
+        scheduler_day=past_day,
+        ordinal=2,
+    )
+    rows.insert(1, late_lower_id)
+    late_results = []
+    repeated, _message = engine.reconcile_reward_history(
+        result_collector=late_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert repeated
+    assert len(late_results) == 1
+    assert late_results[0].scheduler_day == past_day
+    assert late_results[0].award.total_growth_units > 0
+    assert not late_results[0].daily_completion_rewarded
+    assert answer_key(late_lower_id) in storage.state.processed_answer_keys
+    assert answer_key(past) != answer_key(late_lower_id)
+    assert answer_key(future) not in storage.state.processed_answer_keys
+    after_late_arrival = storage.state.to_dict()
+
+    duplicate_results = []
+    final, _message = engine.reconcile_reward_history(
+        result_collector=duplicate_results,
+        due_status=DueObligationStatus(),
+        emit_feedback=False,
+    )
+
+    assert final
+    assert duplicate_results == []
+    assert storage.state.to_dict() == after_late_arrival
+
+
 def test_first_post_activation_answer_can_start_the_current_weekly_cycle():
     engine, storage = make_engine()
     storage.state.reward_state_initialized = True
@@ -366,12 +512,12 @@ def test_progress_export_reports_growth_reconciliation_without_mutation():
 
     report = json.loads(engine.export_progress_summary())
 
-    assert report["schema_version"] == STATE_VERSION == 23
-    assert report["growth_reconciliation"]["study_source_total"] == 11
-    assert report["growth_reconciliation"]["study_growth_generated"] == 11
-    assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 11}
+    assert report["schema_version"] == STATE_VERSION == 25
+    assert report["growth_reconciliation"]["study_source_total"] == 10
+    assert report["growth_reconciliation"]["study_growth_generated"] == 10
+    assert report["growth_reconciliation"]["nurtured_by_plant"] == {"p1": 10}
     assert report["growth_reconciliation"]["passive_exact_fifths_by_plant"] == {
-        "p2": 11,
+        "p2": 10,
     }
     assert report["plants"][1]["passive_growth_remainder_fifths"] == 0
     assert report["growth_charge_replay_ledger"]["healthy"] is True
@@ -581,6 +727,7 @@ def test_every_study_modifier_subset_is_applied_once_before_passive_fanout():
         if "booster" in enabled:
             nurtured.booster = Booster(5, event_seconds + 60, event_seconds - 60)
         storage.state.selected_weather = "breeze" if "weather" in enabled else "sunny"
+        storage.state.wind_chime_progress = 9 if "weather" in enabled else 0
         storage.state.selected_background = "spring" if "scenery" in enabled else "default"
 
         award = answer(engine, storage)
@@ -618,9 +765,9 @@ def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay()
     first_id = storage.now_ms + 1_000
 
     first = answer(engine, storage, revlog_id=first_id)
-    assert first.total_growth == 11
+    assert first.total_growth == 10
     assert storage.state.plants[1].growth_points == 2
-    assert storage.state.plants[1].growth_remainder_units == 20
+    assert storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage = FakeStorage()
     restarted_storage.now_ms = storage.now_ms
@@ -635,17 +782,17 @@ def test_shared_growth_units_survive_batch_restart_switch_and_duplicate_replay()
         ],
         latest_revlog_id=third_id,
     )
-    assert gained == 22
+    assert gained == 20
     assert restarted_storage.state.plants[1].growth_points == 6
-    assert restarted_storage.state.plants[1].growth_remainder_units == 60
+    assert restarted_storage.state.plants[1].growth_remainder_units == 0
 
     restarted_storage.now_ms = third_id + 1_000
     assert restarted.set_active_plant("p2")[0]
     switched_id = restarted_storage.now_ms + 1_000
     answer(restarted, restarted_storage, revlog_id=switched_id)
     p1, p2 = restarted_storage.state.plants
-    assert p1.growth_remainder_units == 20
-    assert p2.growth_remainder_units == 60
+    assert p1.growth_remainder_units == 0
+    assert p2.growth_remainder_units == 0
     snapshot = restarted_storage.state.to_dict()
     duplicate = answer(restarted, restarted_storage, revlog_id=switched_id)
     assert duplicate.total_growth == 0
@@ -709,6 +856,7 @@ def test_shared_growth_excludes_ineligible_plants_and_redirects_overflow_exactly
     storage.state.plants.extend((unplanted, finished))
     storage.state.daily_stats.reviewed = 1
     storage.state.selected_weather = "breeze"
+    storage.state.wind_chime_progress = 9
 
     award = answer(engine, storage)
 
@@ -1058,6 +1206,15 @@ def test_full_bloom_grants_the_completion_package_once():
     assert storage.state.consumables["growth_charge_small"] == inventory_after
     assert duplicate.total_growth_units == 0
     assert "full_bloom:p1" in storage.state.applied_reward_event_keys
+    full_bloom_coin_awards = [
+        transaction
+        for transaction in storage.state.currency_transactions
+        if transaction.event_key == "stage:p1:rare"
+    ]
+    assert len(full_bloom_coin_awards) == 1
+    assert full_bloom_coin_awards[0].source == "full_bloom_bonus"
+    assert full_bloom_coin_awards[0].source_id == plant.plant_id
+    assert full_bloom_coin_awards[0].included_in_total is True
 
 
 def test_exact_fractional_growth_is_conserved_when_every_plant_fills():
@@ -1208,17 +1365,20 @@ def test_saved_non_null_unusable_active_target_repairs_to_a_routable_plant(
 def test_todays_cards_completion_is_verified_live_and_claimed_once():
     engine, storage = make_engine()
     assert not engine.evaluate_today_cards(DueObligationStatus())[0]
-    assert engine.observe_due_start(
-        DueObligationStatus(review_count=2, learning_count=1)
-    )
+    assert engine.observe_due_start(DueObligationStatus(review_count=2))
     assert storage.state.daily_completion.status == "in_progress"
-    assert storage.state.daily_completion.starting_required_cards == 3
+    assert storage.state.daily_completion.starting_required_cards == 2
     answer(engine, storage)
     assert not engine.evaluate_today_cards(
-        DueObligationStatus(review_count=1)
+        DueObligationStatus(review_count=1),
+        record_completed_delta=True,
     )[0]
 
-    ok, message = engine.evaluate_today_cards(DueObligationStatus())
+    answer(engine, storage)
+    ok, message = engine.evaluate_today_cards(
+        DueObligationStatus(),
+        record_completed_delta=True,
+    )
     assert ok
     assert "today’s cards" in message.lower()
     assert "all clear" not in message.lower()
@@ -1249,18 +1409,175 @@ def test_no_due_baseline_remains_not_eligible_on_later_live_refresh():
     assert completion.reward_claimed is False
 
 
-def test_today_cards_projection_uses_global_review_count_plus_live_remaining():
+def test_today_cards_projection_keeps_answer_activity_out_of_obligation_progress():
     engine, storage = make_engine()
     storage.reviews_today = lambda: 176
+    status = DueObligationStatus(new_count=1, review_count=18)
 
-    completion = engine.today_cards_status(
-        DueObligationStatus(review_count=44)
+    assert engine.observe_due_start(status)
+    completion = engine.today_cards_status(status)
+
+    # Revlog activity remains available for other surfaces, but it is not the
+    # Today’s Cards completion numerator or denominator.
+    assert completion.cards_completed_today == 176
+    assert completion.starting_required_cards_completed == 0
+    assert completion.starting_required_cards == 19
+    assert completion.remaining_new_cards == 1
+    assert completion.remaining_required_reviews == 18
+
+
+def test_today_cards_obligation_stays_open_through_new_and_relearning_steps():
+    engine, storage = make_engine()
+    initial = DueObligationStatus(new_count=1, review_count=18)
+    storage.reviews_today = lambda: 0
+    assert engine.observe_due_start(initial)
+
+    # Answering the New card can move it into Learn without completing the
+    # scheduler obligation. Repeated answers remain raw activity only.
+    storage.reviews_today = lambda: 1
+    learning = engine.today_cards_status(DueObligationStatus(
+        review_count=18,
+        learning_count=1,
+        future_learning_count=1,
+    ))
+    assert learning.starting_required_cards == 19
+    assert learning.starting_required_cards_completed == 0
+    assert learning.cards_completed_today == 1
+
+    storage.reviews_today = lambda: 2
+    repeated = engine.today_cards_status(DueObligationStatus(
+        review_count=18,
+        learning_count=1,
+        future_learning_count=1,
+    ))
+    assert repeated.starting_required_cards == 19
+    assert repeated.starting_required_cards_completed == 0
+    assert repeated.cards_completed_today == 2
+
+    # A read-only queue shrink may be bury/suspend or a limit change. It
+    # rebases the denominator instead of claiming completed work.
+    reconciled = engine.today_cards_status(DueObligationStatus(review_count=18))
+    assert reconciled.starting_required_cards == 18
+    assert reconciled.starting_required_cards_completed == 0
+    assert reconciled.cards_completed_today == 2
+
+
+def test_committed_today_cards_delta_advances_obligation_completion():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(
+        DueObligationStatus(new_count=1, review_count=18)
+    )
+    storage.reviews_today = lambda: 1
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(review_count=18),
+        record_completed_delta=True,
     )
 
-    assert completion.cards_completed_today == 176
-    assert completion.starting_required_cards_completed == 176
-    assert completion.starting_required_cards == 220
-    assert completion.remaining_required_reviews == 44
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.starting_required_cards == 19
+    assert completion.starting_required_cards_completed == 1
+    assert completion.cards_completed_today == 1
+
+
+def test_committed_answer_caps_completion_when_siblings_are_auto_buried():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=5))
+    storage.reviews_today = lambda: 1
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(review_count=2),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.starting_required_cards_completed == 1
+    assert completion.remaining_required_reviews == 2
+    assert completion.unresolved_obligation_disappearances == 2
+    assert completion.status == "unavailable"
+    # One committed answer completed one obligation; the two unavailable
+    # siblings rebase out of the denominator instead of inflating progress.
+    assert completion.starting_required_cards == 3
+
+
+def test_committed_answer_cannot_complete_when_a_sibling_is_auto_buried():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=2))
+    answer(engine, storage)
+    balance = storage.state.currency_balance
+
+    ok, message = engine.evaluate_today_cards(
+        DueObligationStatus(
+            committed_card_ids=(101,),
+            card_transitions=((101, "completed"),),
+            buried_sibling_card_ids=(202,),
+        ),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    assert "unavailable" in message.lower()
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.unavailable_reason == "auto_buried_sibling_obligation"
+    assert completion.starting_required_cards_completed == 1
+    assert completion.starting_required_cards == 1
+    assert completion.unresolved_obligation_disappearances == 1
+    assert completion.starting_required_cards == (
+        completion.starting_required_cards_completed
+        + completion.remaining_new_cards
+        + completion.remaining_required_reviews
+        + completion.remaining_learning_steps
+        + completion.future_learning_steps_before_cutoff
+    )
+    assert completion.reward_claimed is False
+    assert storage.state.daily_stats.completed_due_cards is False
+    assert storage.state.currency_balance == balance
+
+    # A later read-only empty snapshot cannot turn the ambiguous transition
+    # into a completed day.
+    refreshed = engine.today_cards_status(DueObligationStatus())
+    assert refreshed.status == "unavailable"
+    assert refreshed.unresolved_obligation_disappearances == 1
+
+
+def test_terminal_completion_fails_closed_when_committed_identity_is_unavailable():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+
+    ok, _message = engine.evaluate_today_cards(
+        DueObligationStatus(committed_card_ids=(101,)),
+        record_completed_delta=True,
+    )
+
+    assert not ok
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.starting_required_cards_completed == 0
+    assert completion.unresolved_obligation_disappearances == 1
+    assert completion.reward_claimed is False
+
+
+def test_read_only_empty_queue_cannot_award_today_cards_completion():
+    engine, storage = make_engine()
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
+    answer(engine, storage)
+    balance = storage.state.currency_balance
+
+    ok, message = engine.evaluate_today_cards(DueObligationStatus())
+
+    assert not ok
+    assert "unavailable" in message.lower()
+    completion = storage.state.daily_completion
+    assert completion.status == "unavailable"
+    assert completion.starting_required_cards == 0
+    assert completion.starting_required_cards_completed == 0
+    assert completion.reward_claimed is False
+    assert storage.state.daily_stats.completed_due_cards is False
+    assert storage.state.currency_balance == balance
 
 
 def test_committed_answer_result_groups_final_due_rewards_under_answer_identity():
@@ -1363,6 +1680,24 @@ def test_progress_estimates_recalculate_from_the_effective_growth_rate():
     now = storage.now_ms / 1_000
     plant.fertilizer = Fertilizer("quality", 2, now + 2 * 60 * 60, now)
     assert engine.progress_estimates(plant) == math.ceil((2_500 - 500) / 12)
+
+
+def test_sync_reward_baseline_identifies_active_boost_items():
+    engine, storage = make_engine()
+    engine._now_seconds = lambda: storage.now_ms / 1_000
+    now = storage.now_ms / 1_000
+    plant = storage.state.plants[0]
+    plant.fertilizer = Fertilizer("quality", 2, now + 1_080, now)
+    plant.booster_card_batches = [
+        CardEffectBatch("booster_potion", 500, 100, 12)
+    ]
+
+    baseline = engine.sync_reward_baseline()
+
+    assert baseline["fertilizer_item_id"] == "fertilizer_quality"
+    assert baseline["fertilizer_remaining_seconds"] == 1_080
+    assert baseline["booster_item_id"] == "booster_potion"
+    assert baseline["booster_cards_remaining"] == 12
 
 
 def test_next_review_growth_projection_is_nonmutating_and_matches_the_award():
@@ -1511,7 +1846,7 @@ def test_booster_uses_the_locked_loadout_to_set_its_exact_card_count():
     assert ok
     assert "card" in message.lower()
     assert "hour" not in message.lower()
-    assert batch.total_cards == batch.remaining_cards == 135
+    assert batch.total_cards == batch.remaining_cards == 150
     assert engine.locked_environment_id("garden_feature") == "herbalist_hourglass"
     assert engine.locked_environment_id("scenery") == "full_moon"
 

@@ -8,7 +8,7 @@ the Qt-free `SurfaceSpec` registry compiled into
 manifest and contact-sheet paths are recorded in `ui/final-ui-audit-2.1.0.md`
 only after a complete run passes independent validation.
 
-The current v25 registry contains 17 representative and 33 full surfaces,
+The current v25 registry contains 18 representative and 34 full surfaces,
 rendered as two and five sheets. Those values are generated observations, not
 fixed acceptance constants. Redundant or behavioral-only IDs are permanently
 retired, including the starter-confirmation ID and every watering-can capture.
@@ -25,7 +25,7 @@ review aids.
 
 | Profile | Surface and entry point | Authoritative data | Primary behavior |
 |---|---|---|---|
-| First run | Garden onboarding, starter Nursery, and placement | Schema-22 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
+| First run | Garden onboarding, starter Nursery, and placement | Schema-25 onboarding, catalog, plants, slots, request revision | Choose starter, place, Nurture, resume, retry |
 | Home | Deck Browser preview | Shared preview snapshot, scene and asset metadata | Open Garden, retry; no scene mutation |
 | Garden | Dashboard, scene, plant card, Move, and Story | Plants, slots, active plant, Growth, effects, scene geometry | Select, Nurture, Move, Story, Progress, Collection, Nursery, Settings |
 | Fertilizer | Application dialog | Engine quote, target status, interval history, balance, replay record | Apply or extend without duplicating purchase logic |
@@ -33,9 +33,10 @@ review aids.
 | Collection | Species overview and loadout details | Inventory, entitlements and one reversible loadout draft | Inspect, preview, apply atomically, cancel and restore |
 | Nursery | Four commerce tabs plus a normal-flow receipt | Engine catalogs, quotes, ownership, inventory, slots, manifest readiness | Purchase, use, unlock, plant, route to Collection |
 | Growth Charge | Targeted Charge confirmation | Inventory, eligible target, quote/request/outcome, stage reward | Select Charge, use, retry, open Nursery |
-| Settings | Expanded Display state and Diagnostics warning | Staged add-on config, Garden name, capabilities and telemetry | Save, discard, refresh/copy diagnostics |
+| Settings | Expanded Display state and Diagnostics warning | Staged add-on config, Garden name, sync-receipt presentation, capabilities and telemetry | Save, discard, refresh/copy diagnostics |
 | Reviewer | Persistent content-driven HUD with integrated reward dock | Global Today’s Cards projection, committed plant/checkpoint state, active effects, stable reward bundles, and the local-session accumulator | Keep the shell mounted, update in place, collapse in one click, queue one major reveal at a time, and acknowledge stable event IDs without replay |
 | Review exit | Focus-safe Session Summary over the normal Anki surface | Proven local session events, Today’s Cards start/end snapshots, exact Growth/Coins/Finds, milestones, discoveries, and frozen remaining effects | Inspect or dismiss the harvest report without blocking the underlying Anki page |
+| Sync completion | Centered, nonmodal Sync Rewards receipt over stable Anki Home | Presentation-ready committed rewards spanning every eligible imported answer since the desktop baseline, with exact Growth allocation, Finds, discoveries, progression, All Clear, and changed effects | Read the already-applied reward receipt, choose **Close** or **Open Garden**, and continue without naming a device or interrupting review |
 
 All mutations remain engine-authoritative, rollback-safe, and atomically saved.
 Capture-only viewport, route, hover, focus, filter, and draft state must never be
@@ -57,8 +58,9 @@ host routes stay in focused parameterized tests instead of becoming duplicate
 screenshots.
 
 The representative profile includes the clean expanded Reviewer HUD, its
-seven-event integrated reward-bundle state, and the Session Summary. The full
-profile also includes the default Today’s Cards page in Garden Progress. The
+seven-event integrated reward-bundle state, the Session Summary, and one rich
+Sync Rewards receipt using `Rewards from 42 card answers on another device.`
+The full profile also includes the default Today’s Cards page in Garden Progress. The
 Reviewer captures use a maximized window and prove content-driven shell bounds,
 sticky-header/internal-scroll ownership, zero horizontal scroll, integrated
 reward-dock containment, session-footer identity, and clearance above Anki’s

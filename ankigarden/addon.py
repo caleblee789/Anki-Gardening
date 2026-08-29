@@ -24,6 +24,8 @@ from .hooks.reviewer import ReviewerHookHandler
 from .notices import USER_NOTICES
 from .performance import RUNTIME_PERFORMANCE
 from .storage import GardenStorage, RevlogReadError, SchedulerBoundaryError
+from .sync_review_detector import SyncReviewDetector
+from .sync_reward_processor import SyncRewardProcessor
 from .ui.dashboard import GardenDashboard
 from .ui.state import GardenUiCoordinator
 from .ui.home_widget import (
@@ -125,6 +127,25 @@ class AnkiGardenApp:
             history_invalidated=self._invalidate_maintenance_cache,
             open_garden=self.open_dashboard,
         )
+        # Import the Qt-heavy presenter only after Anki has constructed its
+        # main window.  This keeps the reward/detection core importable in
+        # headless validation while preserving parent-before-visibility on
+        # macOS.
+        from .sync_reward_presenter import SyncRewardPresenter
+
+        self.sync_reward_presenter = SyncRewardPresenter(
+            mw,
+            self.storage,
+            enabled=self._sync_reward_summary_enabled,
+            open_garden=self.open_dashboard,
+            can_present=self._sync_reward_can_present,
+        )
+        self.sync_review_detector = SyncReviewDetector(self.engine)
+        self.sync_reward_processor = SyncRewardProcessor(
+            self.engine,
+            self.storage,
+            self.sync_reward_presenter,
+        )
         self.dashboard: Optional[GardenDashboard] = None
         self._settings_action: Optional[QAction] = None
         self._home_widget_hooked = False
@@ -133,6 +154,16 @@ class AnkiGardenApp:
         self._undo_hooked = False
         self._sync_hooked = False
         self._sync_callback = self._on_sync_finished
+        self._sync_will_callback = self._on_sync_will_start
+        self._collection_will_temporarily_close_callback = (
+            self._on_collection_will_temporarily_close
+        )
+        self._collection_did_temporarily_close_callback = (
+            self._on_collection_did_temporarily_close
+        )
+        self._profile_will_close_callback = self._on_profile_will_close
+        self._profile_did_open_callback = self._on_profile_did_open
+        self._collection_replacement_pending = False
         self._collection_hooked = False
         self._collection_callback = self._on_collection_did_load
         self._home_widget_controller = HomeWidgetStateController()
@@ -146,6 +177,7 @@ class AnkiGardenApp:
         self._dashboard_focus_plant_id = ""
         self._settings_open_pending = False
         self._starter_open_pending = False
+        self._dashboard_select_plant_pending = False
 
     def _invalidate_home_cache(self, _reason: str = "") -> None:
         self._home_html_cache = None
@@ -166,6 +198,39 @@ class AnkiGardenApp:
         )
         if callable(invalidator):
             invalidator(reason)
+
+    def _sync_reward_summary_enabled(self) -> bool:
+        """Return the live presentation preference without affecting rewards."""
+
+        try:
+            return bool(self.config.value("show_rewards_after_syncing", True))
+        except Exception:
+            # Configuration reads should fail open for the default-enabled UI;
+            # reward correctness remains independent of this preference.
+            logger.debug(
+                "Anki Garden: sync-reward presentation setting is unavailable",
+                exc_info=True,
+            )
+            return True
+
+    def _sync_reward_can_present(self) -> bool:
+        """Arbitrate the sync receipt against Reviewer-owned surfaces."""
+
+        reviewer = getattr(self, "reviewer_hooks", None)
+        local_card = getattr(reviewer, "_session_summary_card", None)
+        if local_card is not None:
+            try:
+                if bool(local_card.isVisible()):
+                    return False
+            except RuntimeError:
+                pass
+            except Exception:
+                return False
+        if bool(getattr(reviewer, "_session_summary_continuation_in_progress", False)):
+            return False
+        if getattr(reviewer, "_pending_session_summary", None) is not None:
+            return False
+        return True
 
     def _mark_review_history_reconciled(self) -> None:
         marker = getattr(
@@ -198,6 +263,10 @@ class AnkiGardenApp:
         self._setup_sync_hooks()
         self._setup_collection_hooks()
         self._run_garden_maintenance("startup")
+        presenter = getattr(self, "sync_reward_presenter", None)
+        restore_pending = getattr(presenter, "restore_pending", None)
+        if callable(restore_pending):
+            restore_pending()
         self._maybe_start_ui_face_capture()
 
     def _maybe_start_ui_face_capture(self) -> None:
@@ -369,10 +438,21 @@ class AnkiGardenApp:
             )
             if state_will_hook is not None and callable(state_will_handler):
                 state_will_hook.append(state_will_handler)
+            sync_presenter = getattr(self, "sync_reward_presenter", None)
+            sync_state_will_handler = getattr(
+                sync_presenter,
+                "on_state_will_change",
+                None,
+            )
+            if state_will_hook is not None and callable(sync_state_will_handler):
+                state_will_hook.append(sync_state_will_handler)
             state_hook = getattr(gui_hooks, "state_did_change", None)
             state_handler = getattr(self.reviewer_hooks, "on_state_change", None)
             if state_hook is not None and callable(state_handler):
                 state_hook.append(state_handler)
+            sync_state_handler = getattr(sync_presenter, "on_state_change", None)
+            if state_hook is not None and callable(sync_state_handler):
+                state_hook.append(sync_state_handler)
             navigation_handler = getattr(
                 self.reviewer_hooks,
                 "dismiss_session_summary_for_navigation",
@@ -511,15 +591,26 @@ class AnkiGardenApp:
 
     def open_settings(self) -> None:
         """Open the dashboard and then its settings dialog."""
+        self._dashboard_select_plant_pending = False
         self._settings_open_pending = True
         self.open_dashboard()
 
     def open_starter_selection(self) -> None:
         """Open a visible Garden first, then its starter-mode Nursery."""
+        self._dashboard_select_plant_pending = False
         self._starter_open_pending = True
         self.open_dashboard()
 
-    def open_dashboard(self, *, plant_id: str = "") -> None:
+    def open_dashboard(
+        self,
+        *,
+        plant_id: str = "",
+        select_another_plant: bool = False,
+    ) -> None:
+        sync_presenter = getattr(self, "sync_reward_presenter", None)
+        dismiss_sync_summary = getattr(sync_presenter, "dismiss", None)
+        if callable(dismiss_sync_summary):
+            dismiss_sync_summary("garden")
         dismiss_summary = getattr(
             getattr(self, "reviewer_hooks", None),
             "dismiss_session_summary_for_navigation",
@@ -529,6 +620,10 @@ class AnkiGardenApp:
             dismiss_summary("garden")
         if str(plant_id or ""):
             self._dashboard_focus_plant_id = str(plant_id)
+        if bool(select_another_plant):
+            self._settings_open_pending = False
+            self._starter_open_pending = False
+            self._dashboard_select_plant_pending = True
         if getattr(self, "_dashboard_open_pending", False):
             return
         self._dashboard_open_pending = True
@@ -545,6 +640,7 @@ class AnkiGardenApp:
             self._dashboard_open_pending = False
             self._settings_open_pending = False
             self._starter_open_pending = False
+            self._dashboard_select_plant_pending = False
             logger.exception("Anki Garden: unable to schedule dashboard opening")
             self._notify_dashboard_open_failure(
                 "Anki Garden could not schedule its window. Please restart Anki and try again."
@@ -579,6 +675,7 @@ class AnkiGardenApp:
             self._dashboard_open_pending = False
             self._settings_open_pending = False
             self._starter_open_pending = False
+            self._dashboard_select_plant_pending = False
             logger.warning("Anki Garden: dashboard opening timed out while waiting for the collection")
             self._notify_dashboard_open_failure(
                 "Anki Garden is still waiting for the collection to finish opening. Please try again."
@@ -645,6 +742,9 @@ class AnkiGardenApp:
                 acknowledge()
             opening_settings = bool(getattr(self, "_settings_open_pending", False))
             opening_starter = bool(getattr(self, "_starter_open_pending", False))
+            opening_plant_selection = bool(
+                getattr(self, "_dashboard_select_plant_pending", False)
+            )
             if opening_settings:
                 self._settings_open_pending = False
                 try:
@@ -665,6 +765,16 @@ class AnkiGardenApp:
                     from aqt.qt import QTimer
 
                     QTimer.singleShot(0, open_starter)
+            elif opening_plant_selection:
+                open_plant_selection = getattr(
+                    self.dashboard,
+                    "open_plant_selection",
+                    None,
+                )
+                if not callable(open_plant_selection):
+                    raise RuntimeError("dashboard plant-selection route is unavailable")
+                open_plant_selection()
+                self._dashboard_select_plant_pending = False
             else:
                 prompt_starter = getattr(self.dashboard, "_present_starter_setup_if_needed", None)
                 if callable(prompt_starter):
@@ -700,10 +810,11 @@ class AnkiGardenApp:
                 logger.warning("Anki Garden: transient dashboard-open failure; retry %s/2", failures)
             else:
                 # This request is over. Discard its destination as well as its
-                # retry state so a later ordinary Open garden action cannot
+                # retry state so a later ordinary Open Garden action cannot
                 # inherit a stale request to open Settings.
                 self._settings_open_pending = False
                 self._starter_open_pending = False
+                self._dashboard_select_plant_pending = False
                 self._dashboard_focus_plant_id = ""
                 self._notify_dashboard_open_failure(
                     "Anki Garden could not open its window. No garden progress was changed; please try again."
@@ -724,20 +835,109 @@ class AnkiGardenApp:
             logger.debug("Anki Garden: unable to show dashboard-open warning", exc_info=True)
 
     def _setup_sync_hooks(self) -> None:
-        if self._sync_hooked:
+        if getattr(self, "_sync_hooked", False):
             return
         try:
             from aqt import gui_hooks
 
+            if hasattr(gui_hooks, "sync_will_start"):
+                gui_hooks.sync_will_start.append(
+                    getattr(
+                        self,
+                        "_sync_will_callback",
+                        self._on_sync_will_start,
+                    )
+                )
             if hasattr(gui_hooks, "sync_did_finish"):
-                gui_hooks.sync_did_finish.append(self._sync_callback)
+                gui_hooks.sync_did_finish.append(
+                    getattr(self, "_sync_callback", self._on_sync_finished)
+                )
                 self._sync_hooked = True
         except Exception:
             logger.exception("Anki Garden: failed to attach sync hooks")
 
+    def _on_sync_will_start(self, *_args: object, **_kwargs: object) -> None:
+        """Establish a clean local reward boundary before collection sync."""
+
+        detector = getattr(self, "sync_review_detector", None)
+        begin = getattr(detector, "begin", None)
+        if not callable(begin):
+            return
+        self._invalidate_review_history("sync start")
+        try:
+            snapshot = begin()
+            if snapshot is not None and not bool(getattr(snapshot, "valid", True)):
+                logger.info(
+                    "Anki Garden: sync reward comparison deferred: %s",
+                    getattr(snapshot, "invalidation_reason", "preflight unavailable"),
+                )
+        except Exception:
+            clear = getattr(detector, "clear", None)
+            if callable(clear):
+                clear()
+            # Sync itself must never be interrupted by Garden bookkeeping.
+            logger.exception(
+                "Anki Garden: pre-sync reward boundary could not be established"
+            )
+
     def _on_sync_finished(self, *_args: object, **_kwargs: object) -> None:
         self._invalidate_review_history("sync completion")
-        self._run_garden_maintenance("sync completion")
+        detector = getattr(self, "sync_review_detector", None)
+        processor = getattr(self, "sync_reward_processor", None)
+        finish = getattr(detector, "finish", None)
+        process = getattr(processor, "process", None)
+        if not callable(finish) or not callable(process):
+            self._run_garden_maintenance("sync completion")
+            return
+        snapshot = finish()
+        if snapshot is None:
+            # Older Anki builds or an interrupted add-on initialization can
+            # provide the finish hook without a corresponding start hook.
+            self._run_garden_maintenance("sync completion")
+            return
+        one_way_replacement = bool(
+            getattr(snapshot, "one_way_replacement", False)
+        )
+        summary = None
+        try:
+            summary = process(
+                snapshot,
+                presentation_enabled=self._sync_reward_summary_enabled(),
+            )
+        except Exception:
+            logger.exception("Anki Garden: post-sync reward processing deferred")
+            if not one_way_replacement:
+                self._run_garden_maintenance("sync completion")
+            return
+
+        if summary is None and not one_way_replacement:
+            # This is normally a cheap no-op because the processor has already
+            # reconciled the durable answer ledger. It also preserves the old
+            # recoverable maintenance behavior if a history read failed.
+            self._run_garden_maintenance("sync completion")
+        else:
+            try:
+                signature = self._maintenance_signature()
+            except Exception:
+                signature = None
+            if signature is not None:
+                self._maintenance_signature_cache = signature
+                self._mark_review_history_reconciled()
+            self._refresh_dashboard_after_maintenance(0, 0)
+        try:
+            self.state_events.notify("sync rewards reconciled")
+        except Exception:
+            logger.debug(
+                "Anki Garden: UI refresh after sync rewards was deferred",
+                exc_info=True,
+            )
+        retry = getattr(
+            getattr(self, "sync_reward_presenter", None),
+            "retry",
+            None,
+        )
+        if callable(retry):
+            retry()
 
     def _setup_collection_hooks(self) -> None:
         if getattr(self, "_collection_hooked", False):
@@ -745,22 +945,162 @@ class AnkiGardenApp:
         try:
             from aqt import gui_hooks
 
-            hook = getattr(gui_hooks, "collection_did_load", None)
-            if hook is not None:
-                callback = getattr(
-                    self,
-                    "_collection_callback",
-                    self._on_collection_did_load,
-                )
+            hook_callbacks = (
+                (
+                    "collection_did_load",
+                    getattr(
+                        self,
+                        "_collection_callback",
+                        self._on_collection_did_load,
+                    ),
+                ),
+                (
+                    "collection_will_temporarily_close",
+                    getattr(
+                        self,
+                        "_collection_will_temporarily_close_callback",
+                        self._on_collection_will_temporarily_close,
+                    ),
+                ),
+                (
+                    "collection_did_temporarily_close",
+                    getattr(
+                        self,
+                        "_collection_did_temporarily_close_callback",
+                        self._on_collection_did_temporarily_close,
+                    ),
+                ),
+                (
+                    "profile_will_close",
+                    getattr(
+                        self,
+                        "_profile_will_close_callback",
+                        self._on_profile_will_close,
+                    ),
+                ),
+                (
+                    "profile_did_open",
+                    getattr(
+                        self,
+                        "_profile_did_open_callback",
+                        self._on_profile_did_open,
+                    ),
+                ),
+            )
+            attached = False
+            for hook_name, callback in hook_callbacks:
+                hook = getattr(gui_hooks, hook_name, None)
+                if hook is None:
+                    continue
                 hook.append(callback)
-                self._collection_callback = callback
-                self._collection_hooked = True
+                attached = True
+            self._collection_hooked = attached
         except Exception:
             logger.exception("Anki Garden: failed to attach collection reload hook")
 
     def _on_collection_did_load(self, *_args: object, **_kwargs: object) -> None:
         self._invalidate_home_cache("collection reload")
         self._invalidate_review_history("collection reload")
+        detector = getattr(self, "sync_review_detector", None)
+        note_generation = getattr(detector, "note_collection_generation", None)
+        if callable(note_generation):
+            collection = getattr(mw, "col", None)
+            note_generation(token=str(id(collection)) if collection is not None else "")
+        retry = getattr(
+            getattr(self, "sync_reward_presenter", None),
+            "retry",
+            None,
+        )
+        if callable(retry):
+            retry()
+
+    def _on_collection_will_temporarily_close(
+        self,
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        self._collection_replacement_pending = True
+        detector = getattr(self, "sync_review_detector", None)
+        invalidate = getattr(detector, "invalidate_one_way", None)
+        if callable(invalidate):
+            invalidate("one_way_collection_replacement")
+        else:
+            fallback = getattr(detector, "invalidate", None)
+            if callable(fallback):
+                try:
+                    fallback(
+                        "one_way_collection_replacement",
+                        one_way_replacement=True,
+                    )
+                except TypeError:
+                    fallback("one_way_collection_replacement")
+        dismiss = getattr(
+            getattr(self, "sync_reward_presenter", None),
+            "dismiss",
+            None,
+        )
+        if callable(dismiss):
+            dismiss("collection replacement")
+
+    def _on_collection_did_temporarily_close(
+        self,
+        *args: object,
+        **_kwargs: object,
+    ) -> None:
+        detector = getattr(self, "sync_review_detector", None)
+        note_generation = getattr(detector, "note_collection_generation", None)
+        if callable(note_generation):
+            collection = args[0] if args else getattr(mw, "col", None)
+            note_generation(token=str(id(collection)) if collection is not None else "")
+        self._invalidate_review_history("collection replacement")
+        baseline = getattr(self.engine, "baseline_reward_history", None)
+        if callable(baseline):
+            try:
+                outcome = baseline(reason="collection_replaced", persist=True)
+                succeeded = not (
+                    isinstance(outcome, tuple)
+                    and outcome
+                    and outcome[0] is False
+                )
+                self._collection_replacement_pending = not succeeded
+                if not succeeded:
+                    logger.info(
+                        "Anki Garden: replacement collection baseline is waiting for history"
+                    )
+            except Exception:
+                # Leave the flag set. The invalid sync snapshot will retry the
+                # non-rewarding baseline at sync completion.
+                logger.exception(
+                    "Anki Garden: replacement collection baseline was deferred"
+                )
+
+    def _on_profile_will_close(self, *_args: object, **_kwargs: object) -> None:
+        self._collection_replacement_pending = False
+        detector = getattr(self, "sync_review_detector", None)
+        invalidate = getattr(detector, "invalidate", None)
+        if callable(invalidate):
+            invalidate("profile closing")
+        close_for_profile = getattr(
+            getattr(self, "sync_reward_presenter", None),
+            "close_for_profile",
+            None,
+        )
+        if callable(close_for_profile):
+            close_for_profile()
+
+    def _on_profile_did_open(self, *_args: object, **_kwargs: object) -> None:
+        detector = getattr(self, "sync_review_detector", None)
+        note_generation = getattr(detector, "note_collection_generation", None)
+        if callable(note_generation):
+            collection = getattr(mw, "col", None)
+            note_generation(token=str(id(collection)) if collection is not None else "")
+        restore = getattr(
+            getattr(self, "sync_reward_presenter", None),
+            "restore_pending",
+            None,
+        )
+        if callable(restore):
+            restore()
 
     def _setup_home_screen_widget(self) -> None:
         if self._home_widget_hooked:
@@ -1206,7 +1546,7 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else None
         except Exception:
             logger.debug(
-                "Anki Garden: unable to resolve Home Garden Feature",
+                "Anki Garden: unable to resolve Home Garden Decoration",
                 exc_info=True,
             )
             return ""
@@ -1219,7 +1559,7 @@ class AnkiGardenApp:
             path = asset.path if asset is not None and hasattr(asset, "path") else None
         except Exception:
             logger.debug(
-                "Anki Garden: unable to resolve Home Garden Feature pad",
+                "Anki Garden: unable to resolve Home Garden Decoration pad",
                 exc_info=True,
             )
             return ""

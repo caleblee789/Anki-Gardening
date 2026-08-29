@@ -29,6 +29,13 @@ TodayCardsScope = Literal["deck", "parent_deck", "all_decks", "unavailable"]
 ReviewContinuationKind = Literal["deck", "parent_deck"]
 MilestoneType = Literal["checkpoint", "stage_change", "full_bloom"]
 EnvironmentKind = Literal["garden_feature", "scenery"]
+UnlockCategory = Literal[
+    "garden_item",
+    "environment",
+    "plant",
+    "planter",
+    "background",
+]
 HighlightKind = Literal[
     "full_bloom",
     "environment",
@@ -47,11 +54,46 @@ _TODAY_STATUSES = {
 }
 _MILESTONE_TYPES = {"checkpoint", "stage_change", "full_bloom"}
 _ENVIRONMENT_KINDS = {"garden_feature", "scenery"}
+_UNLOCK_CATEGORIES = {
+    "garden_item", "environment", "plant", "planter", "background",
+}
 _TODAY_KINDS = {"reviewable", "daily_target"}
 _TODAY_SCOPES = {"deck", "parent_deck", "all_decks", "unavailable"}
 _CONTINUATION_KINDS = {"deck", "parent_deck"}
 
+_UNLOCK_CATEGORY_COPY: dict[str, tuple[str, str]] = {
+    "garden_item": (
+        "GARDEN ITEM UNLOCKED",
+        "Added to your Garden collection",
+    ),
+    "environment": (
+        "ENVIRONMENT UNLOCKED",
+        "Now available in the Garden",
+    ),
+    "plant": (
+        "PLANT UNLOCKED",
+        "Added to your plant collection",
+    ),
+    "planter": (
+        "PLANTER UNLOCKED",
+        "Added to your Garden collection",
+    ),
+    "background": (
+        "BACKGROUND UNLOCKED",
+        "Now available in the Garden",
+    ),
+}
+
 logger = logging.getLogger(__name__)
+
+
+def unlock_category_copy(category: UnlockCategory | str) -> tuple[str, str]:
+    """Return the public label and concise destination for one unlock type."""
+
+    return _UNLOCK_CATEGORY_COPY.get(
+        str(category or ""),
+        _UNLOCK_CATEGORY_COPY["environment"],
+    )
 
 
 def _nonnegative(value: Any, field_name: str) -> int:
@@ -269,7 +311,7 @@ class TodayCardsSnapshot:
             return (
                 "Card status unavailable",
                 (
-                    "Anki Garden could not verify today’s due cards. "
+                    "Anki Garden could not verify today’s cards. "
                     "Normal Garden Growth is unaffected."
                 ),
             )
@@ -483,6 +525,21 @@ class StandardFind:
         object.__setattr__(self, "notable", bool(self.notable))
 
 
+def _standard_find_display_name(find: StandardFind) -> str:
+    """Project the concrete inventory grant while retaining its Find ID."""
+
+    fallback = str(find.find_name or "Garden Find")
+    if str(find.reward_type or "") != "inventory_item":
+        return fallback
+    reward_label = str(find.reward_label or "").strip()
+    prefix = f"+{max(0, int(find.reward_amount)):,} "
+    if reward_label.startswith(prefix):
+        granted_name = reward_label[len(prefix):].strip()
+        if granted_name:
+            return granted_name
+    return fallback
+
+
 @dataclass(frozen=True)
 class RewardComponent:
     """One explicitly linked reward component shown in session accounting."""
@@ -491,6 +548,7 @@ class RewardComponent:
     reward_type: str
     included_in_session_total: bool
     source_event_ids: tuple[str, ...] = ()
+    component_type: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "amount", _positive(self.amount, "amount"))
@@ -498,6 +556,11 @@ class RewardComponent:
         if not reward_type:
             raise ValueError("reward_type must not be empty")
         object.__setattr__(self, "reward_type", reward_type)
+        object.__setattr__(
+            self,
+            "component_type",
+            str(self.component_type or "").strip(),
+        )
         object.__setattr__(
             self,
             "included_in_session_total",
@@ -574,9 +637,31 @@ class PlantMilestone:
                 reward_type="coins",
                 included_in_session_total=self.coin_included_in_total,
                 source_event_ids=self.coin_award_event_ids,
+                component_type=(
+                    "full_bloom_bonus"
+                    if self.milestone_type == "full_bloom"
+                    else "milestone_bonus"
+                ),
             )
             object.__setattr__(self, "reward", reward)
         elif reward is not None and reward.reward_type == "coins":
+            expected_component_type = (
+                "full_bloom_bonus"
+                if self.milestone_type == "full_bloom"
+                else "milestone_bonus"
+            )
+            if reward.component_type and (
+                reward.component_type != expected_component_type
+            ):
+                raise ValueError(
+                    "reward.component_type contradicts the milestone type"
+                )
+            if not reward.component_type:
+                reward = replace(
+                    reward,
+                    component_type=expected_component_type,
+                )
+                object.__setattr__(self, "reward", reward)
             if not reward.source_event_ids:
                 raise ValueError(
                     "a positive coin milestone reward must link to a source event"
@@ -622,6 +707,7 @@ class EnvironmentDiscovery:
     art_asset: str
     effect_summary: str
     occurred_at: str = ""
+    unlock_category: UnlockCategory | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "event_id", _event_id(self.event_id))
@@ -639,6 +725,14 @@ class EnvironmentDiscovery:
         )
         if kind not in _ENVIRONMENT_KINDS:
             raise ValueError(f"unsupported environment kind: {kind}")
+        unlock_category = str(self.unlock_category or "") or (
+            "garden_item" if kind == "garden_feature" else "environment"
+        )
+        if unlock_category not in _UNLOCK_CATEGORIES:
+            raise ValueError(
+                f"unsupported unlock category: {unlock_category}"
+            )
+        object.__setattr__(self, "unlock_category", unlock_category)
 
 
 def _unique_records(records: Iterable[Any]) -> tuple[Any, ...]:
@@ -859,7 +953,7 @@ def _reconcile_find_items(
             order.append(key)
             grouped[key] = FindItemQuantity(
                 find_id=find.find_id,
-                find_name=find.find_name,
+                find_name=_standard_find_display_name(find),
                 quantity=find.quantity,
                 rarity=find.rarity,
                 reward_type=find.reward_type,
@@ -878,7 +972,7 @@ def _reconcile_find_items(
             current.item_id,
         )
         candidate_identity = (
-            find.find_name,
+            _standard_find_display_name(find),
             find.rarity,
             find.reward_type,
             find.reward_label,
@@ -924,6 +1018,11 @@ def _validated_milestone_rewards(
         valid = bool(linked) and not reused and all(
             coin is not None
             and coin.included_in_total == reward.included_in_session_total
+            and (
+                not reward.component_type
+                or coin.source_type == reward.component_type
+                or reward.component_type == "milestone_bonus"
+            )
             for coin in linked
         )
         linked_total = sum(coin.amount for coin in linked if coin is not None)
@@ -1236,6 +1335,7 @@ class SessionHighlight:
     coin_reward: int = 0
     coin_award_event_ids: tuple[str, ...] = ()
     coin_included_in_total: bool = False
+    unlock_category: UnlockCategory | None = None
 
 
 @dataclass(frozen=True)
@@ -1434,11 +1534,10 @@ def _highlight_reward_text(
 ) -> str:
     if milestone.coin_reward <= 0:
         return ""
-    coin_word = "coin" if milestone.coin_reward == 1 else "coins"
     if milestone.coin_included_in_total:
-        return f"+{milestone.coin_reward:,} {coin_word} included"
+        return f"+{milestone.coin_reward:,} coin bonus included"
     return (
-        f"+{milestone.coin_reward:,} {coin_word} bonus"
+        f"+{milestone.coin_reward:,} coin bonus"
         f" · included in +{displayed_coin_total:,} total"
     )
 
@@ -1485,18 +1584,23 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
             coin_reward=milestone.coin_reward,
             coin_award_event_ids=milestone.coin_award_event_ids,
             coin_included_in_total=milestone.coin_included_in_total,
+            unlock_category="plant",
         )
         candidates.append((priority, milestone.occurred_at, milestone.event_id, highlight))
 
     for discovery in summary.environment_discoveries:
+        eyebrow, supporting = unlock_category_copy(
+            discovery.unlock_category or "environment"
+        )
         highlight = SessionHighlight(
             event_id=discovery.event_id,
             kind="environment",
             occurred_at=discovery.occurred_at,
-            eyebrow="ENVIRONMENT UNLOCKED",
+            eyebrow=eyebrow,
             title=discovery.environment_name,
-            supporting_text="Now available in the Garden",
+            supporting_text=supporting,
             art_asset=discovery.art_asset,
+            unlock_category=discovery.unlock_category,
         )
         candidates.append((1, discovery.occurred_at, discovery.event_id, highlight))
 
@@ -1508,9 +1612,10 @@ def _session_highlights(summary: SessionDaySummary) -> HighlightProjection:
             kind="rare_reward",
             occurred_at=find.occurred_at,
             eyebrow=f"{find.rarity.upper()} FIND",
-            title=find.find_name,
+            title=_standard_find_display_name(find),
             supporting_text=find.reward_label or "Rare Garden Find",
             art_asset=find.art_asset,
+            unlock_category="garden_item",
         )
         candidates.append((4, find.occurred_at, find.event_id, highlight))
 
@@ -1552,7 +1657,7 @@ def project_session_day(summary: SessionDaySummary) -> SessionDayProjection:
     if summary.total_finds:
         rows.append(ResultRow(
             "standard_finds",
-            "Find" if summary.total_finds == 1 else "Finds",
+            "Standard Finds",
             f"+{summary.total_finds:,}",
             summary.find_items_reconciled and bool(summary.find_items),
         ))
@@ -2198,7 +2303,9 @@ __all__ = [
     "TodayCardsKind",
     "TodayCardsScope",
     "TodayCardsSnapshot",
+    "UnlockCategory",
     "format_growth_units",
     "project_session_day",
     "project_today_cards",
+    "unlock_category_copy",
 ]

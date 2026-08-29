@@ -3083,8 +3083,10 @@ def reviewer_reward_dock_issue_codes(
         "eyebrow": "MILESTONE REACHED",
         "hero_title": "Full Bloom achieved",
         "secondary_summary_count": 2,
-        "hidden_reward_count": 2,
-        "more_label": "2 more rewards ›",
+        "details_action_copy": "Details ›",
+        "details_action_heading_row": True,
+        "obsolete_bottom_details_absent": True,
+        "milestone_chevron_absent": True,
         "individual_close_button_count": 0,
         "detached_toast_count": 0,
         "session_footer_visible": True,
@@ -3101,11 +3103,18 @@ def reviewer_reward_dock_issue_codes(
         bool(str(bundle.get("bundle_id", "")).strip())
         and bundle.get("rendered_bundle_id") == bundle.get("bundle_id")
         and bool(str(bundle.get("hero_event_id", "")).strip())
-        and bool(str(bundle.get("hero_subtitle", "")).strip())
+        and str(bundle.get("hero_subtitle", "")).strip() == ""
+        and bundle.get("active_plant_identity_suppressed") is True
+        and bool(str(bundle.get("projected_hero_subtitle", "")).strip())
         and bundle.get("visible_summary_labels") == [
-            "+40 growth",
-            "2 discoveries",
+            "1 Garden Find",
+            "2 new discoveries",
         ]
+        and bundle.get("visible_summary_reward_types") == [
+            "garden_find",
+            "environment_discovery",
+        ]
+        and all(bundle.get("visible_summary_artwork_refs", ()))
         and isinstance(bundle.get("visible_summary_event_ids"), list)
         and len(bundle["visible_summary_event_ids"]) == 2
         and all(
@@ -3132,7 +3141,7 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("in_normal_flow") is True
         and geometry.get("overlaps_bottom_controls") is False
         and geometry.get("horizontal_scroll_maximum") == 0
-        and 118 <= int(geometry.get("reveal_height", 0) or 0) <= 188
+        and 130 <= int(geometry.get("reveal_height", 0) or 0) <= 150
         and 48 <= int(geometry.get("footer_height", 0) or 0) <= 58
         and geometry.get("single_outer_surface") is True
         and geometry.get("divider_visible") is True
@@ -3140,11 +3149,13 @@ def reviewer_reward_dock_issue_codes(
         and geometry.get("hero_components_contained") is True
         and geometry.get("hero_components_non_overlapping") is True
         and geometry.get("title_details_non_overlapping") is True
-        and geometry.get("more_right_aligned") is True
-        and int(geometry.get("more_click_height", 0) or 0) >= 32
-        and geometry.get("more_visible_in_scroll_viewport") is True
-        and geometry.get("more_footer_non_overlapping") is True
-        and int(geometry.get("more_divider_clearance", -1)) >= 8
+        and geometry.get("details_heading_aligned") is True
+        and int(geometry.get("details_click_height", 0) or 0) >= 28
+        and geometry.get("details_visible_in_scroll_viewport") is True
+        and geometry.get("details_footer_non_overlapping") is True
+        and int(geometry.get("details_divider_clearance", -1)) >= 8
+        and geometry.get("obsolete_bottom_details_present") is False
+        and geometry.get("obsolete_milestone_disclosure_present") is False
         and int(geometry.get("compact_vertical_scroll_maximum", -1)) == 0
     ):
         issues.append("reviewer-reward-dock-geometry-mismatch")
@@ -3158,7 +3169,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
     interactions: Any = None,
     resilience: Any = None,
 ) -> tuple[str, ...]:
-    """Validate the exact transient twenty-state Reviewer release matrix."""
+    """Validate the expanded transient Reviewer release-polish matrix."""
 
     baseline_states = {
         "18-cards-left",
@@ -3166,23 +3177,49 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         "no-session-rewards",
         "growth-only",
         "growth-and-coins",
+        "progress-10-percent",
+        "progress-38-percent",
+        "before-checkpoint",
+        "exact-checkpoint",
+        "checkpoint-marker-semantics",
+        "early-stage-art",
+        "mature-stage-art",
+        "zero-effects",
+        "one-effect",
         "two-effects",
         "three-plus-effects",
+        "long-effects-one-column",
         "short-plant-name",
         "two-line-plant-name",
+        "estimate-1-card",
+        "estimate-14-cards",
+        "estimate-1240-cards",
         "checkpoint-crossing",
         "multiple-checkpoints-one-answer",
         "stage-change",
         "coin-balance-248",
         "coin-balance-9999",
         "coin-balance-10013",
+        "coin-balance-999999",
+        "coin-balance-1000000",
+        "header-stable-grouping",
         "short-height",
     }
     reward_states = {
         "all-cards-complete",
         "one-garden-find",
+        "discovery-new-wording",
         "full-bloom",
+        "full-bloom-celebration",
+        "full-bloom-settled",
+        "full-bloom-details",
         "full-bloom-several-secondary",
+        "reward-details-action-copy",
+        "settled-height-or-safe-scroll",
+        "full-bloom-short-height",
+        "session-footer-reconciliation",
+        "reward-reveal-lifecycle",
+        "session-history-named-growth",
     }
     issues: list[str] = []
     expected_content = (
@@ -3200,19 +3237,25 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and value[3] > 0
         )
 
-    def effect_geometry_passed(row: dict[str, Any], *, overflow: bool) -> bool:
+    def effect_geometry_passed(
+        row: dict[str, Any],
+        *,
+        expected_count: int,
+        overflow: bool,
+    ) -> bool:
         chip_bounds = row.get("effect_chip_bounds")
         label_bounds = row.get("effect_label_bounds")
         return bool(
             isinstance(chip_bounds, list)
-            and len(chip_bounds) == 2
+            and len(chip_bounds) == expected_count
             and all(valid_bounds(bounds) for bounds in chip_bounds)
             and isinstance(label_bounds, list)
-            and len(label_bounds) == 2
+            and len(label_bounds) == expected_count
             and all(valid_bounds(bounds) for bounds in label_bounds)
             and row.get("effect_chips_contained") is True
             and row.get("effect_labels_contained") is True
             and row.get("effect_labels_unclipped") is True
+            and row.get("effect_art_passed") is True
             and row.get("effect_chip_overlap_pairs") == []
             and row.get("overflow_contained") is True
             and row.get("overflow_visible") is overflow
@@ -3281,14 +3324,14 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 "progress_percent": 25,
                 "reward_visible": True,
                 "eyebrow": "CHECKPOINT REACHED",
-                "hero_title": "Checkpoint reached",
+                "hero_title": "25% checkpoint",
                 "coin_copy": "+2 coins",
                 "header_balance": 248,
             }
             and sequence.get("sequence") == expected_order
             and sequence.get("expected_sequence") == expected_order
             and sequence.get("eyebrow") == "CHECKPOINT REACHED"
-            and sequence.get("hero_title") == "Checkpoint reached"
+            and sequence.get("hero_title") == "25% checkpoint"
             and sequence.get("coin_copy") == "+2 coins"
             and sequence.get("final_progress_percent") == 38
             and sequence.get("final_header_balance") == 250
@@ -3340,25 +3383,29 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         transition = row.get("daily_completion_transition")
         if not isinstance(transition, dict):
             return False
+        before = transition.get("before")
+        initial = transition.get("initial")
+        final = transition.get("final")
         return bool(
             transition.get("passed") is True
-            and transition.get("before") == {
-                "displayed_progress_percent": 99,
+            and before == {
+                "displayed_progress_percent": 98.5,
                 "heading": "Today’s cards",
                 "header_balance": 250,
                 "session_coins": 0,
             }
-            and transition.get("initial") == {
-                "transition_active": True,
-                "completion_settling": True,
-                "displayed_progress_percent": 99,
-                "heading": "Today’s cards",
-                "coin_update_deferred": True,
-                "session_update_deferred": True,
-                "header_balance": 250,
-                "session_coins": 0,
-            }
-            and transition.get("final") == {
+            and isinstance(initial, dict)
+            and initial.get("transition_active") is True
+            and initial.get("completion_settling") is True
+            and 98.5
+            <= float(initial.get("displayed_progress_percent", 0) or 0)
+            < 100
+            and initial.get("heading") == "Today’s cards"
+            and initial.get("coin_update_deferred") is True
+            and initial.get("session_update_deferred") is True
+            and initial.get("header_balance") == 250
+            and initial.get("session_coins") == 0
+            and final == {
                 "transition_active": False,
                 "completion_status": "complete",
                 "heading": "All cards complete",
@@ -3391,6 +3438,129 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and row.get("divider_between_reward_and_footer") is True
         )
 
+    def checkpoint_projection_passed(
+        row: dict[str, Any],
+        *,
+        percent: int,
+        markers: dict[str, str],
+    ) -> bool:
+        return bool(
+            row.get("stage_percent_copy") == f"{percent}%"
+            and row.get("track_progress_percent") == percent
+            and row.get("painted_progress_percent") == percent
+            and row.get("marker_states") == markers
+            and row.get("current_position_handle") is False
+            and row.get("marker_shape") == "diamond-tick"
+        )
+
+    def visible_reward_detail_rows_passed(row: dict[str, Any]) -> bool:
+        rendered = row.get("visible_detail_rows")
+        expected = row.get("expected_detail_rows")
+        if not (
+            isinstance(rendered, list)
+            and isinstance(expected, list)
+            and len(rendered) == len(expected) == 7
+        ):
+            return False
+        return bool(
+            row.get("visible_detail_rows_match") is True
+            and all(
+                isinstance(rendered_row, dict)
+                and isinstance(expected_row, dict)
+                and rendered_row.get("category")
+                == expected_row.get("category")
+                and bool(str(rendered_row.get("category_visible_text", "")).strip())
+                and rendered_row.get("name") == expected_row.get("name")
+                and bool(str(rendered_row.get("name_visible_text", "")).strip())
+                and rendered_row.get("value") == expected_row.get("value")
+                and rendered_row.get("event_ids")
+                == expected_row.get("event_ids")
+                for rendered_row, expected_row in zip(rendered, expected)
+            )
+        )
+
+    def compact_reward_summary_passed(row: dict[str, Any]) -> bool:
+        summaries = row.get("visible_summary_rows")
+        if not isinstance(summaries, list) or len(summaries) != 2:
+            return False
+        find_row, discovery_row = summaries
+        if not isinstance(find_row, dict) or not isinstance(discovery_row, dict):
+            return False
+        return bool(
+            find_row.get("label") == "1 Garden Find"
+            and find_row.get("reward_type") == "garden_find"
+            and bool(str(find_row.get("artwork_ref", "")).strip())
+            and find_row.get("uses_item_art") is True
+            and find_row.get("icon_present") is True
+            and find_row.get("icon_kind") == "item-art"
+            and discovery_row.get("label") == "2 new discoveries"
+            and discovery_row.get("reward_type") == "environment_discovery"
+            and discovery_row.get("uses_item_art") is False
+            and discovery_row.get("icon_present") is True
+            and discovery_row.get("icon_kind")
+            == "environment-discovery"
+        )
+
+    def stage_art_passed(
+        row: dict[str, Any],
+        *,
+        stage_key: str,
+        stage_copy: str,
+    ) -> bool:
+        base_passed = bool(
+            row.get("stage_key") == stage_key
+            and row.get("stage_copy") == stage_copy
+            and bool(str(row.get("art_path", "")).strip())
+            and row.get("pixmap_present") is True
+            and int(row.get("pixmap_cache_key", 0) or 0) > 0
+            and row.get("ground_shadow_stage") == stage_key
+            and int(row.get("art_region_height", 0) or 0) >= 146
+            and int(row.get("plant_art_height", 0) or 0) >= 82
+            and row.get("distinct_from_other_stage") is True
+        )
+        if stage_key != "sprout":
+            return base_passed
+        return bool(
+            base_passed
+            and 45.0
+            <= float(row.get("visible_plant_width", 0) or 0)
+            <= 60.0
+            and 85.0
+            <= float(row.get("ground_shadow_width", 0) or 0)
+            <= 105.0
+        )
+
+    def estimate_passed(
+        row: dict[str, Any],
+        *,
+        count: int,
+        rendered: str,
+    ) -> bool:
+        return bool(
+            row.get("estimated_cards") == count
+            and row.get("rendered_text") == rendered
+            and row.get("contained") is True
+            and row.get("text_fits") is True
+            and row.get("uses_cards_copy") is True
+        )
+
+    def exact_balance_passed(
+        row: dict[str, Any],
+        *,
+        value: int,
+        rendered: str,
+    ) -> bool:
+        return bool(
+            row.get("exact_value") == value
+            and row.get("rendered_text") == rendered
+            and row.get("compacted") is False
+            and row.get("header_anchors_stable") is True
+            and row.get("header_group_object_names")
+            == ["reviewerHudTitleGroup", "reviewerHudHeaderActions"]
+            and int(row.get("header_reserved_width", 0) or 0) > 0
+            and row.get("balance_cluster_contained") is True
+        )
+
     if not isinstance(content, dict):
         issues.append("missing-reviewer-hud-content-matrix")
     else:
@@ -3417,7 +3587,16 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "1-card-left": lambda row: (
                 row.get("remaining_count") == 1
                 and row.get("copy") == "1 card left"
-                and 1 <= int(row.get("displayed_progress_percent", 0) or 0) <= 99
+                and row.get("near_complete_card") is True
+                and row.get("near_complete_detail") is True
+                and float(row.get("displayed_progress_percent", 0) or 0)
+                == 98.5
+                and row.get("progress_value") == 985
+                and row.get("progress_maximum") == 1_000
+                and row.get("minimum_unfilled_logical_pixels") == 4
+                and int(
+                    row.get("estimated_unfilled_logical_pixels", 0) or 0
+                ) >= 4
                 and row.get("visible_end_gap") is True
                 and daily_completion_transition_passed(row)
             ),
@@ -3436,16 +3615,120 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("metric_copy") == ["+18 growth", "+2 coins"]
                 and row.get("zero_categories_omitted") is True
             ),
+            "progress-10-percent": lambda row: checkpoint_projection_passed(
+                row,
+                percent=10,
+                markers={
+                    "25": "next",
+                    "50": "future",
+                    "75": "future",
+                    "100": "future",
+                },
+            ),
+            "progress-38-percent": lambda row: checkpoint_projection_passed(
+                row,
+                percent=38,
+                markers={
+                    "25": "completed",
+                    "50": "next",
+                    "75": "future",
+                    "100": "future",
+                },
+            ),
+            "before-checkpoint": lambda row: checkpoint_projection_passed(
+                row,
+                percent=24,
+                markers={
+                    "25": "next",
+                    "50": "future",
+                    "75": "future",
+                    "100": "future",
+                },
+            ),
+            "exact-checkpoint": lambda row: checkpoint_projection_passed(
+                row,
+                percent=25,
+                markers={
+                    "25": "completed",
+                    "50": "next",
+                    "75": "future",
+                    "100": "future",
+                },
+            ),
+            "checkpoint-marker-semantics": lambda row: (
+                row.get("semantic_id") == "reviewer.hud.checkpoint-track"
+                and row.get("checkpoint_percents") == [25, 50, 75, 100]
+                and row.get("marker_states") == {
+                    "25": "completed",
+                    "50": "next",
+                    "75": "future",
+                    "100": "future",
+                }
+                and row.get("transparent_for_mouse") is True
+                and row.get("focus_safe") is True
+                and row.get("is_abstract_slider") is False
+                and row.get("current_position_handle") is False
+                and row.get("marker_shape") == "diamond-tick"
+                and row.get("future_marker_diameter") == 4.5
+                and row.get("final_endpoint_inset") == 2.5
+                and row.get("final_endpoint_inside_track") is True
+                and row.get("checkpoint_reward_context")
+                == "Checkpoint reward"
+            ),
+            "early-stage-art": lambda row: stage_art_passed(
+                row,
+                stage_key="sprout",
+                stage_copy="Sprout · Stage 1 of 5",
+            ),
+            "mature-stage-art": lambda row: stage_art_passed(
+                row,
+                stage_key="mature",
+                stage_copy="Mature · Stage 3 of 5",
+            ),
+            "zero-effects": lambda row: (
+                row.get("visible_effect_count") == 0
+                and effect_geometry_passed(
+                    row,
+                    expected_count=0,
+                    overflow=False,
+                )
+            ),
+            "one-effect": lambda row: (
+                row.get("visible_effect_count") == 1
+                and effect_geometry_passed(
+                    row,
+                    expected_count=1,
+                    overflow=False,
+                )
+            ),
             "two-effects": lambda row: (
                 row.get("visible_effect_count") == 2
-                and effect_geometry_passed(row, overflow=False)
+                and effect_geometry_passed(
+                    row,
+                    expected_count=2,
+                    overflow=False,
+                )
             ),
             "three-plus-effects": lambda row: (
                 row.get("visible_effect_count") == 2
                 and row.get("overflow_visible") is True
                 and row.get("overflow_text") == "1 more effect ›"
                 and row.get("overflow_right_aligned") is True
-                and effect_geometry_passed(row, overflow=True)
+                and effect_geometry_passed(
+                    row,
+                    expected_count=2,
+                    overflow=True,
+                )
+            ),
+            "long-effects-one-column": lambda row: (
+                row.get("visible_effect_count") == 2
+                and row.get("single_column") is True
+                and row.get("vertically_stacked") is True
+                and effect_geometry_passed(
+                    row,
+                    expected_count=2,
+                    overflow=False,
+                )
             ),
             "short-plant-name": lambda row: (
                 row.get("title") == "Rose"
@@ -3457,6 +3740,21 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("title_clamped") is False
                 and row.get("class_label") == "Bonsai"
                 and measured_plant_layout_passed(row, compare_short=True)
+            ),
+            "estimate-1-card": lambda row: estimate_passed(
+                row,
+                count=1,
+                rendered="~1 card",
+            ),
+            "estimate-14-cards": lambda row: estimate_passed(
+                row,
+                count=14,
+                rendered="~14 cards",
+            ),
+            "estimate-1240-cards": lambda row: estimate_passed(
+                row,
+                count=1_240,
+                rendered="~1,240 cards",
             ),
             "checkpoint-crossing": lambda row: (
                 row.get("crossed_checkpoints") == [25]
@@ -3480,23 +3778,22 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 row.get("stage_changed") is True
                 and row.get("celebration") == "stage-change"
             ),
-            "coin-balance-248": lambda row: (
-                row.get("exact_value") == 248
-                and row.get("rendered_text") == "248"
-                and row.get("compacted") is False
-                and row.get("header_anchors_stable") is True
+            "coin-balance-248": lambda row: exact_balance_passed(
+                row,
+                value=248,
+                rendered="248",
             ),
-            "coin-balance-9999": lambda row: (
-                row.get("exact_value") == 9_999
-                and row.get("rendered_text") == "9,999"
-                and row.get("compacted") is False
-                and row.get("header_anchors_stable") is True
+            "coin-balance-9999": lambda row: exact_balance_passed(
+                row,
+                value=9_999,
+                rendered="9,999",
             ),
             "coin-balance-10013": lambda row: (
-                row.get("exact_value") == 10_013
-                and row.get("rendered_text") == "10,013"
-                and row.get("compacted") is False
-                and row.get("header_anchors_stable") is True
+                exact_balance_passed(
+                    row,
+                    value=10_013,
+                    rendered="10,013",
+                )
                 and row.get("large_balance_samples") == [
                     {
                         "exact_value": 999_999,
@@ -3513,6 +3810,33 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                         "passed": True,
                     },
                 ]
+            ),
+            "coin-balance-999999": lambda row: exact_balance_passed(
+                row,
+                value=999_999,
+                rendered="999,999",
+            ),
+            "coin-balance-1000000": lambda row: exact_balance_passed(
+                row,
+                value=1_000_000,
+                rendered="1,000,000",
+            ),
+            "header-stable-grouping": lambda row: (
+                row.get("balance_states") == [
+                    "coin-balance-248",
+                    "coin-balance-9999",
+                    "coin-balance-10013",
+                    "coin-balance-999999",
+                    "coin-balance-1000000",
+                ]
+                and row.get("object_names")
+                == ["reviewerHudTitleGroup", "reviewerHudHeaderActions"]
+                and int(row.get("reserved_width", 0) or 0) > 0
+                and len(row.get("anchor_snapshots", [])) == 5
+                and len({
+                    tuple(tuple(bounds) for bounds in snapshot)
+                    for snapshot in row.get("anchor_snapshots", [])
+                }) == 1
             ),
             "short-height": lambda row: (
                 row.get("horizontal_scroll_maximum") == 0
@@ -3541,24 +3865,145 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 row.get("find_count") == 1
                 and row.get("footer_copy") == "1 find"
             ),
+            "discovery-new-wording": lambda row: (
+                row.get("visible_summary_labels")
+                == ["1 Garden Find", "2 new discoveries"]
+                and row.get("discovery_summary") == "2 new discoveries"
+            ),
             "full-bloom": lambda row: (
                 row.get("eyebrow") == "MILESTONE REACHED"
                 and row.get("hero_title") == "Full Bloom achieved"
-                and bool(str(row.get("hero_subtitle", "")).strip())
+                and str(row.get("hero_subtitle", "")).strip() == ""
+                and row.get("active_plant_identity_suppressed") is True
                 and row.get("class_label") == "Bonsai"
                 and row.get("bed_visible") is False
                 and row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
+                and row.get("settled_copy")
+                == "Future growth will be shared or stored."
+                and row.get("select_another_visible") is True
+                and row.get("select_another_copy") == "Choose next plant ›"
+                and row.get("art_scale") == 1.0
+                and row.get("particles_active") is False
+            ),
+            "full-bloom-celebration": lambda row: (
+                row.get("celebration") == "full-bloom"
+                and row.get("settled") is False
+                and row.get("temporary_gold_visible") is True
+                and (
+                    row.get("motion_animation_active") is True
+                    or float(row.get("art_scale", 1.0) or 1.0) > 1.0
+                    or row.get("particles_active") is True
+                )
+                and row.get("select_another_visible") is False
+            ),
+            "full-bloom-settled": lambda row: (
+                row.get("settled") is True
+                and row.get("temporary_gold_cleared") is True
+                and row.get("settled_copy")
+                == "Future growth will be shared or stored."
+                and row.get("select_another_visible") is True
+                and row.get("select_another_copy") == "Choose next plant ›"
+                and row.get("art_scale") == 1.0
+                and row.get("particles_active") is False
+            ),
+            "full-bloom-details": lambda row: (
+                row.get("details_expanded") is True
+                and row.get("all_secondary_items_present") is True
+                and row.get("details_action_copy") == "Hide details"
+                and int(row.get("maximum_height", 0) or 0) >= 240
+                and row.get("detail_row_count") == 7
+                and visible_reward_detail_rows_passed(row)
+                and row.get("detail_event_ids_reconciled") is True
+                and row.get("detail_panel_visible") is True
+                and row.get("reveal_state") == "details_open"
+                and int(row.get("vertical_scroll_maximum", 0) or 0) > 0
             ),
             "full-bloom-several-secondary": lambda row: (
                 row.get("visible_summary_count") == 2
+                and str(row.get("hero_subtitle", "")).strip() == ""
+                and row.get("active_plant_identity_suppressed") is True
                 and row.get("visible_summary_labels") == [
-                    "+40 growth",
-                    "2 discoveries",
+                    "1 Garden Find",
+                    "2 new discoveries",
                 ]
-                and row.get("more_label") == "2 more rewards ›"
-                and int(row.get("more_click_height", 0) or 0) >= 32
+                and compact_reward_summary_passed(row)
+                and row.get("details_action_copy") == "Details ›"
+                and int(row.get("details_click_height", 0) or 0) >= 28
+                and row.get("details_heading_aligned") is True
+                and 130 <= int(row.get("reveal_height", 0) or 0) <= 150
                 and row.get("title_details_non_overlapping") is True
+                and row.get("detail_event_ids_reconciled") is True
+                and row.get("obsolete_bottom_details_present") is False
+                and row.get("obsolete_milestone_disclosure_present") is False
+                and row.get("milestone_medallion") is True
+                and row.get("medallion_pixmap_present") is True
+                and row.get("reveal_state") == "celebrating"
+            ),
+            "reward-details-action-copy": lambda row: (
+                row.get("collapsed_action_copy") == "Details ›"
+                and int(row.get("minimum_click_height", 0) or 0) >= 28
+                and row.get("event_ids_reconciled") is True
+                and row.get("heading_row_action") is True
+                and row.get("obsolete_bottom_action_absent") is True
+                and row.get("milestone_chevron_absent") is True
+            ),
+            "settled-height-or-safe-scroll": lambda row: (
+                row.get("safe_area_passed") is True
+                and row.get("horizontal_scroll_maximum") == 0
+                and (
+                    row.get("height_at_most_660") is True
+                    or row.get("safe_scroll") is True
+                )
+            ),
+            "full-bloom-short-height": lambda row: (
+                row.get("requested_host_size") == [1_280, 600]
+                and row.get("host_shortened") is True
+                and row.get("hud_safe_area_passed") is True
+                and row.get("horizontal_scroll_maximum") == 0
+                and (
+                    row.get("middle_content_fits") is True
+                    or row.get("middle_scroll_owns_overflow") is True
+                )
+                and row.get("major_reward_visible") is True
+                and row.get("session_footer_visible") is True
+                and row.get("fixed_header_visible") is True
+                and row.get("fixed_header_outside_middle_scroll") is True
+                and row.get("fixed_session_footer_outside_middle_scroll") is True
+                and row.get("fixed_regions_non_overlapping") is True
+                and row.get("sticky_reward_and_footer") is True
+                and row.get("reward_footer_non_overlapping") is True
+                and 130 <= int(row.get("reveal_height", 0) or 0) <= 150
+                and row.get("canonical_viewport_restored") is True
+            ),
+            "session-footer-reconciliation": lambda row: (
+                row.get("bundle_id") in row.get("history_bundle_ids", [])
+                and row.get("footer_growth_units")
+                == row.get("live_growth_units") == 4_000
+                and row.get("footer_coins") == row.get("live_coins") == 14
+                and row.get("footer_finds") == row.get("live_finds") == 1
+                and row.get("footer_copy")
+                == ["+40 growth", "+14 coins", "1 find"]
+            ),
+            "reward-reveal-lifecycle": lambda row: (
+                row.get("celebrating") == "celebrating"
+                and row.get("details_open") == "details_open"
+                and row.get("settled") == "settled"
+                and row.get("archived") == "archived"
+                and row.get("details_paused_archive") is True
+            ),
+            "session-history-named-growth": lambda row: (
+                "Full Bloom achieved" in row.get("meaningful_names", [])
+                and "Morning Dew" in row.get("meaningful_names", [])
+                and "Firefly Lantern" in row.get("meaningful_names", [])
+                and "Verdant Twilight" in row.get("meaningful_names", [])
+                and row.get("routine_row_count") == 1
+                and row.get("routine_name") == "Growth applied"
+                and row.get("routine_value") == "+6 Growth"
+                and row.get("routine_event_ids")
+                == ["capture-routine-growth-next-commit"]
+                and row.get("routine_line") == "Growth applied · +6 Growth"
+                and row.get("routine_non_clickable") is True
             ),
         }
         for name in expected_content:
@@ -3573,6 +4018,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
 
     if label == "reviewer-hud-expanded":
         expected_windows = {
+            "1710x1041",
             "1600x1000",
             "1280x800",
             "short-height",
@@ -3580,6 +4026,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "collapsed",
         }
         expected_rows = {
+            "1710x1041-expanded",
             "1600x1000-expanded",
             "1280x800-expanded",
             "1280x600-short-expanded",
@@ -3616,6 +4063,9 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "reviewer-reload-after-reward",
             "history-remount-idempotence",
             "history-reopen",
+            "no-replay",
+            "details-pause-archive",
+            "archive-after-next-commit",
         }
         if not isinstance(interactions, dict):
             issues.append("missing-reviewer-reward-interaction-matrix")
@@ -3635,6 +4085,57 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 if name != "passed" and isinstance(record, dict)
             ):
                 issues.append("reviewer-reward-interaction-state-not-passed")
+            no_replay = interactions.get("no-replay")
+            if not (
+                isinstance(no_replay, dict)
+                and no_replay.get(
+                    "duplicate_call_idempotently_accepted"
+                ) is True
+                and no_replay.get("history_count_after")
+                == no_replay.get("history_count_before")
+                and no_replay.get("queue_count_after")
+                == no_replay.get("queue_count_before")
+                and no_replay.get("reveal_visible_after")
+                == no_replay.get("reveal_visible_before")
+                and no_replay.get("rendered_bundle_after")
+                == no_replay.get("rendered_bundle_before")
+                and no_replay.get("seen_id_preserved") is True
+                and no_replay.get("sync_state_preserved") is True
+                and no_replay.get("resize_reposition_preserved") is True
+                and no_replay.get("details_round_trip_preserved") is True
+                and no_replay.get("duplicate_projection_accepted") is True
+                and no_replay.get("projection_update_exercised") is True
+                and no_replay.get("next_card_projection_preserved") is True
+            ):
+                issues.append(
+                    "reviewer-reward-interaction-semantic-mismatch:no-replay"
+                )
+            details_pause = interactions.get("details-pause-archive")
+            if not (
+                isinstance(details_pause, dict)
+                and details_pause.get("routine_commit_accepted") is True
+                and details_pause.get("state_before_commit") == "details_open"
+                and details_pause.get("state_after_commit") == "details_open"
+                and details_pause.get("details_remained_open") is True
+                and details_pause.get("next_commit_seen") is True
+                and details_pause.get("reward_remained_visible") is True
+                and details_pause.get("active_bundle_preserved") is True
+                and details_pause.get("history_advanced_once") is True
+            ):
+                issues.append(
+                    "reviewer-reward-interaction-semantic-mismatch:details-pause-archive"
+                )
+            archived = interactions.get("archive-after-next-commit")
+            if not (
+                isinstance(archived, dict)
+                and archived.get("reveal_state") == "archived"
+                and archived.get("details_expanded") is False
+                and archived.get("reward_visible") is False
+                and archived.get("active_reward_cleared") is True
+            ):
+                issues.append(
+                    "reviewer-reward-interaction-semantic-mismatch:archive-after-next-commit"
+                )
     else:
         issues.append("unexpected-reviewer-hud-matrix-label")
 
@@ -4010,9 +4511,9 @@ def _visual_contract_record_issues(
         elif label == "home-preview-error":
             if not (
                 "garden preview unavailable" in str(rendered).casefold()
-                and action == "Open garden"
+                and action == "Open Garden"
             ):
-                reject("Home error state must retain the Open garden action")
+                reject("Home error state must retain the Open Garden action")
         elif not label.startswith("starter-"):
             compact_growth_present = bool(
                 re.search(
@@ -4025,12 +4526,12 @@ def _visual_contract_record_issues(
             )
             if not (
                 compact_growth_present
-                and action == "Open garden"
+                and action == "Open Garden"
                 and type(compact.get("action_width")) is int
                 and 104 <= compact["action_width"] <= 128
                 and compact.get("action_height") == 36
             ):
-                reject("compact Home must show growth progress and a 104-128 by 36 Open garden CTA")
+                reject("compact Home must show growth progress and a 104-128 by 36 Open Garden CTA")
 
     if label == "full-garden":
         steady = audit_object("steady_state_visual")
@@ -4644,6 +5145,7 @@ def _unpainted_client_record_issues(
                 "active-deck-browser-home-after-nurture",
                 "active-overview-home-after-nurture",
                 "session-summary-after-review",
+                "sync-rewards-summary",
                 "home-preview-loading",
                 "home-preview-error",
                 "home-preview-stale",

@@ -7,9 +7,12 @@ from ankigarden.reward_presentation import (
     RewardBundleProjection,
     RewardCompactProjection,
     RewardCompactSummary,
+    RewardDetailRow,
     RewardHero,
     RewardItemProjection,
     project_committed_reward_bundle,
+    project_reward_detail_rows,
+    project_reward_session_history,
 )
 from ankigarden.ui.session_summary import (
     CoinAward,
@@ -134,11 +137,19 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert bundle.compact.hero_title == "Full Bloom achieved"
     assert bundle.compact.hero_subtitle == "Rose"
     assert [summary.label for summary in bundle.visible_summaries] == [
-        "+55 growth",
-        "1 discovery",
+        "1 Garden Find",
+        "Verdant Twilight",
     ]
-    assert bundle.remaining_count == 2
-    assert bundle.more_label == "2 more rewards ›"
+    assert [summary.reward_type for summary in bundle.visible_summaries] == [
+        "garden_find",
+        "environment_discovery",
+    ]
+    assert bundle.visible_summaries[0].artwork_ref == "morning_dew.webp"
+    assert bundle.visible_summaries[0].rarity == "common"
+    assert bundle.visible_summaries[1].artwork_ref == "twilight.webp"
+    assert bundle.visible_summaries[1].rarity == "rare"
+    assert bundle.remaining_count == 5
+    assert bundle.more_label == "Details ›"
     assert bundle.compact == project_committed_reward_bundle(event).compact
     assert bundle.routine_only is False
     assert sum(item.garden_coins for item in bundle.all_items) == 14
@@ -264,7 +275,8 @@ def test_routine_growth_bundle_is_typed_and_nonduplicating():
     ]
     assert [item.growth_units for item in first.all_items] == [1_000, 200, 500]
     assert first.remaining_count == 0
-    assert first.more_label == ""
+    assert first.more_label == "Details ›"
+    assert first.detail_expansion_available is True
 
 
 def test_typed_booster_receipt_is_major_and_must_share_answer_correlation():
@@ -447,33 +459,38 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
         hero_subtitle="Rose",
         visible_summaries=(
             RewardCompactSummary(
-                "growth",
-                "+40 growth",
+                "garden_finds",
+                "1 Garden Find",
                 ("find:morning-dew",),
+                reward_type="garden_find",
             ),
             RewardCompactSummary(
                 "discoveries",
-                "2 discoveries",
+                "2 new discoveries",
                 ("discovery:rain", "discovery:twilight"),
+                reward_type="environment_discovery",
             ),
         ),
         hidden_summaries=(
             RewardCompactSummary(
-                "inventory:booster:answer",
-                "Booster +10 cards",
-                ("booster:answer",),
-            ),
-            RewardCompactSummary(
                 "checkpoint:checkpoint:rose:75",
                 "Checkpoint reached",
                 ("checkpoint:rose:75",),
+                reward_type="checkpoint",
+            ),
+            RewardCompactSummary(
+                "inventory:booster:answer",
+                "Booster +10 cards",
+                ("booster:answer",),
+                "booster_potion",
+                reward_type="booster",
             ),
         ),
-        more_label="2 more rewards ›",
+        more_label="Details ›",
     )
     assert compact.hidden_event_ids == (
-        "booster:answer",
         "checkpoint:rose:75",
+        "booster:answer",
     )
     assert "stage:rose:mature" not in {
         event_id
@@ -483,6 +500,360 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
     assert "stage:rose:mature" in {item.event_id for item in bundle.all_items}
     assert len(compact.visible_summaries) == 2
     assert bundle.remaining_count == 2
+
+
+def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> None:
+    hero = RewardItemProjection(
+        "bloom:rose",
+        RewardHero.FULL_BLOOM,
+        "Rose",
+        "Full Bloom",
+        plant_id="rose",
+        plant_name="Rose",
+    )
+    candidates = (
+        RewardItemProjection(
+            "growth:routine",
+            RewardHero.ROUTINE_GROWTH,
+            "Growth earned",
+            "Routine Growth",
+            growth_units=1_800,
+            sequence=17,
+        ),
+        RewardItemProjection(
+            "coins:daily",
+            RewardHero.COIN_OR_BOOSTER,
+            "Garden Coins",
+            "Garden Coin reward",
+            garden_coins=10,
+            sequence=16,
+        ),
+        RewardItemProjection(
+            "fertilizer:quality",
+            RewardHero.COIN_OR_BOOSTER,
+            "Fertilizer extended",
+            "Garden reward",
+            inventory_items=(("fertilizer_quality", 1),),
+            sequence=15,
+        ),
+        RewardItemProjection(
+            "booster:answer",
+            RewardHero.COIN_OR_BOOSTER,
+            "Booster extended",
+            "Garden reward",
+            inventory_items=(("booster_potion", 1),),
+            sequence=14,
+        ),
+        RewardItemProjection(
+            "checkpoint:rose:75",
+            RewardHero.CHECKPOINT,
+            "Rose",
+            "Checkpoint reached",
+            checkpoint_percent=75,
+            sequence=13,
+        ),
+        RewardItemProjection(
+            "discovery:firefly-evening",
+            RewardHero.ENVIRONMENT_DISCOVERY,
+            "Firefly Evening",
+            "Environment discovery",
+            rarity="rare",
+            artwork_ref="firefly-evening.webp",
+            sequence=12,
+        ),
+        RewardItemProjection(
+            "customization:moonlit-planter",
+            RewardHero.COIN_OR_BOOSTER,
+            "Moonlit Planter",
+            "Customization reward",
+            inventory_items=(("moonlit_planter", 1),),
+            artwork_ref="moonlit-planter.webp",
+            sequence=11,
+        ),
+        RewardItemProjection(
+            "find:morning-dew",
+            RewardHero.GARDEN_FIND,
+            "Morning Dew",
+            "Garden Find",
+            growth_units=4_000,
+            rarity="common",
+            artwork_ref="morning-dew.webp",
+            sequence=10,
+        ),
+    )
+    bundle = RewardBundleProjection(
+        "answer:priority",
+        "2026-08-28T10:00:00Z",
+        (hero, *candidates),
+    )
+
+    summaries = (*bundle.visible_summaries, *bundle.hidden_summaries)
+    assert tuple(summary.reward_type for summary in summaries) == (
+        "garden_find",
+        "customization_unlock",
+        "environment_discovery",
+        "checkpoint",
+        "booster",
+        "fertilizer",
+        "coins",
+        "growth",
+    )
+    assert tuple(summary.label for summary in bundle.visible_summaries) == (
+        "1 Garden Find",
+        "Moonlit Planter +1",
+    )
+    assert summaries[0].event_ids == ("find:morning-dew",)
+    assert summaries[0].artwork_ref == "morning-dew.webp"
+    assert summaries[0].artwork_refs == ("morning-dew.webp",)
+    assert summaries[0].art_assets == ("morning-dew.webp",)
+    assert summaries[0].rarity == "common"
+    assert summaries[0].semantic_type == "garden_find"
+    growth = summaries[-1]
+    assert growth.event_ids == ("growth:routine",)
+    assert "find:morning-dew" not in growth.event_ids
+
+
+def test_secondary_ties_use_event_sequence_then_event_id() -> None:
+    hero = RewardItemProjection(
+        "bloom:rose",
+        RewardHero.FULL_BLOOM,
+        "Rose",
+        "Full Bloom",
+    )
+    later_id = RewardItemProjection(
+        "customization:zeta",
+        RewardHero.COIN_OR_BOOSTER,
+        "Zeta Planter",
+        "Customization reward",
+        inventory_items=(("zeta_planter", 1),),
+        sequence=4,
+    )
+    earlier_id = RewardItemProjection(
+        "customization:alpha",
+        RewardHero.COIN_OR_BOOSTER,
+        "Alpha Planter",
+        "Customization reward",
+        inventory_items=(("alpha_planter", 1),),
+        sequence=4,
+    )
+    first = RewardBundleProjection(
+        "answer:stable-tie",
+        "2026-08-28T10:00:00Z",
+        (hero, later_id, earlier_id),
+    )
+    second = RewardBundleProjection(
+        "answer:stable-tie",
+        "2026-08-28T10:00:00Z",
+        (hero, earlier_id, later_id),
+    )
+
+    expected = ("customization:alpha", "customization:zeta")
+    assert tuple(summary.event_ids[0] for summary in first.visible_summaries) == expected
+    assert tuple(summary.event_ids[0] for summary in second.visible_summaries) == expected
+
+
+def test_session_history_names_meaningful_events_and_aggregates_routine_growth() -> None:
+    bloom = RewardBundleProjection(
+        "answer:bloom",
+        "2026-08-28T10:00:00Z",
+        (
+            RewardItemProjection(
+                "bloom:rose",
+                RewardHero.FULL_BLOOM,
+                "Rose",
+                "Full Bloom",
+                garden_coins=14,
+                plant_name="Rose",
+                artwork_ref="rose-rare.webp",
+            ),
+            RewardItemProjection(
+                "growth:plant",
+                RewardHero.ROUTINE_GROWTH,
+                "Growth earned",
+                "Routine Growth",
+                growth_units=1_000,
+            ),
+        ),
+    )
+    collectibles = RewardBundleProjection(
+        "answer:collectibles",
+        "2026-08-28T10:01:00Z",
+        (
+            RewardItemProjection(
+                "find:morning-dew",
+                RewardHero.GARDEN_FIND,
+                "Morning Dew",
+                "Garden Find",
+                growth_units=4_000,
+                rarity="common",
+                artwork_ref="morning-dew.webp",
+                detail="+40 Growth",
+            ),
+            RewardItemProjection(
+                "discovery:firefly-evening",
+                RewardHero.ENVIRONMENT_DISCOVERY,
+                "Firefly Evening",
+                "Environment discovery",
+                artwork_ref="firefly-evening.webp",
+                detail="Cosmetic environment",
+            ),
+            RewardItemProjection(
+                "growth:shared",
+                RewardHero.ROUTINE_GROWTH,
+                "Shared Growth",
+                "Routine Growth",
+                growth_units=800,
+            ),
+        ),
+    )
+    original_items = (bloom.all_items, collectibles.all_items)
+
+    rows = project_reward_session_history((bloom, collectibles, bloom))
+
+    assert tuple(row.name for row in rows) == (
+        "Full Bloom achieved",
+        "Morning Dew",
+        "Firefly Evening",
+        "Growth applied",
+    )
+    assert rows[0].value == "Rose · +14 Garden Coins"
+    assert rows[1].category_label == "Garden Find"
+    assert rows[1].value == "+40 Growth"
+    assert rows[2].category_label == "Discovery"
+    assert rows[2].artwork_ref == "firefly-evening.webp"
+    assert rows[-1] == RewardDetailRow(
+        category_label="Routine Growth",
+        name="Growth applied",
+        value="+18 Growth",
+        event_ids=("growth:plant", "growth:shared"),
+    )
+    assert (bloom.all_items, collectibles.all_items) == original_items
+
+
+def test_detail_action_tracks_structured_rows_instead_of_hidden_count() -> None:
+    full_bloom = RewardBundleProjection(
+        "answer:full-bloom-only",
+        "2026-08-28T10:00:00Z",
+        (RewardItemProjection(
+            "bloom:rose",
+            RewardHero.FULL_BLOOM,
+            "Rose",
+            "Full Bloom",
+            plant_id="rose",
+            plant_name="Rose",
+        ),),
+    )
+    coin_only = RewardBundleProjection(
+        "answer:coin-only",
+        "2026-08-28T10:00:00Z",
+        (RewardItemProjection(
+            "coins:daily",
+            RewardHero.COIN_OR_BOOSTER,
+            "Garden Coins",
+            "Garden Coin reward",
+            garden_coins=3,
+        ),),
+    )
+
+    assert full_bloom.remaining_count == 0
+    assert full_bloom.detail_expansion_available is True
+    assert full_bloom.has_detail_expansion is True
+    assert full_bloom.more_label == "Details ›"
+    assert coin_only.detail_expansion_available is False
+    assert coin_only.more_label == ""
+
+
+def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() -> None:
+    items = (
+        RewardItemProjection(
+            "bloom:rose",
+            RewardHero.FULL_BLOOM,
+            "Rose",
+            "Full Bloom",
+            garden_coins=14,
+            artwork_ref="rose-rare.webp",
+            plant_id="rose",
+            plant_name="Rose",
+            new_stage="rare",
+        ),
+        RewardItemProjection(
+            "find:morning-dew",
+            RewardHero.GARDEN_FIND,
+            "Morning Dew",
+            "Garden Find",
+            growth_units=4_000,
+            artwork_ref="morning-dew.webp",
+        ),
+        RewardItemProjection(
+            "discovery:twilight",
+            RewardHero.ENVIRONMENT_DISCOVERY,
+            "Verdant Twilight",
+            "Environment discovery",
+            artwork_ref="twilight.webp",
+        ),
+        RewardItemProjection(
+            "booster:answer",
+            RewardHero.COIN_OR_BOOSTER,
+            "Booster extended",
+            "Garden reward",
+            inventory_items=(("booster_potion", 2),),
+            detail="+10 cards",
+        ),
+        RewardItemProjection(
+            "checkpoint:rose:75",
+            RewardHero.CHECKPOINT,
+            "Rose",
+            "Checkpoint reached",
+            garden_coins=2,
+            checkpoint_percent=75,
+            new_stage="flowering",
+        ),
+    )
+    bundle = RewardBundleProjection(
+        "answer:detail-rows",
+        "2026-08-28T10:00:00Z",
+        items,
+    )
+
+    expected = (
+        RewardDetailRow(
+            category_label="Full Bloom",
+            name="Rose",
+            value="Reached Full Bloom · +14 Garden Coins",
+            event_ids=("bloom:rose",),
+            artwork_ref="rose-rare.webp",
+        ),
+        RewardDetailRow(
+            category_label="Garden Find",
+            name="Morning Dew",
+            value="+40 Growth",
+            event_ids=("find:morning-dew",),
+            artwork_ref="morning-dew.webp",
+        ),
+        RewardDetailRow(
+            category_label="Environment discovery",
+            name="Verdant Twilight",
+            value="New discovery",
+            event_ids=("discovery:twilight",),
+            artwork_ref="twilight.webp",
+        ),
+        RewardDetailRow(
+            category_label="Garden reward",
+            name="Booster extended",
+            value="+10 cards · +2 Booster Potions",
+            event_ids=("booster:answer",),
+        ),
+        RewardDetailRow(
+            category_label="Checkpoint reached",
+            name="Rose",
+            value="75% toward Flowering · +2 Garden Coins",
+            event_ids=("checkpoint:rose:75",),
+        ),
+    )
+    assert project_reward_detail_rows(items) == expected
+    assert bundle.detail_rows == expected
+    assert expected[0].category == "Full Bloom"
+    assert expected[0].art_asset == "rose-rare.webp"
 
 
 def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
@@ -512,6 +883,10 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
     assert bundle is not None
     assert bundle.hero.event_id == "stage:rose:mature"
     assert bundle.hero.detail == "Reached Mature"
+    assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
+    assert bundle.compact.hero_title == "Mature reached"
+    assert bundle.compact.hero_subtitle == "Advanced 2 stages"
+    assert bundle.compact.visible_summaries == ()
     assert {item.event_id for item in bundle.all_items} == {
         "stage:rose:young",
         "stage:rose:mature",
@@ -520,17 +895,22 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
 
 
 @pytest.mark.parametrize(
-    ("kind", "eyebrow"),
+    ("kind", "eyebrow", "more_label"),
     (
-        (RewardHero.FULL_BLOOM, "MILESTONE REACHED"),
-        (RewardHero.GARDEN_FIND, "GARDEN FIND"),
-        (RewardHero.CHECKPOINT, "CHECKPOINT REACHED"),
-        (RewardHero.ENVIRONMENT_DISCOVERY, "DISCOVERY"),
+        (
+            RewardHero.FULL_BLOOM,
+            "MILESTONE REACHED",
+            "Details ›",
+        ),
+        (RewardHero.GARDEN_FIND, "GARDEN FIND", ""),
+        (RewardHero.CHECKPOINT, "CHECKPOINT REACHED", ""),
+        (RewardHero.ENVIRONMENT_DISCOVERY, "NEW DISCOVERY", ""),
     ),
 )
 def test_compact_projection_uses_event_specific_eyebrows(
     kind: RewardHero,
     eyebrow: str,
+    more_label: str,
 ) -> None:
     item = RewardItemProjection(
         f"event:{kind.value}",
@@ -547,4 +927,148 @@ def test_compact_projection_uses_event_specific_eyebrows(
 
     assert bundle.compact.eyebrow == eyebrow
     assert bundle.compact.visible_summaries == ()
-    assert bundle.more_label == ""
+    assert bundle.more_label == more_label
+
+
+def test_checkpoint_compact_copy_names_progress_and_next_target() -> None:
+    event = _event(
+        coin_awards=(CoinAward(
+            "coin:checkpoint",
+            "checkpoint",
+            "50% checkpoint",
+            2,
+        ),),
+        milestones=(PlantMilestone(
+            "checkpoint:rose:50",
+            "rose",
+            "Rose",
+            "checkpoint",
+            "2026-08-28T10:00:00Z",
+            plant_art_asset="rose-young.webp",
+            checkpoint_percent=50,
+            new_stage="mature",
+            coin_reward=2,
+            coin_award_event_ids=("coin:checkpoint",),
+            coin_included_in_total=True,
+        ),),
+    )
+
+    bundle = project_committed_reward_bundle(event)
+
+    assert bundle is not None
+    assert bundle.hero.kind is RewardHero.CHECKPOINT
+    assert bundle.hero.artwork_ref == "rose-young.webp"
+    assert bundle.hero.garden_coins == 2
+    assert bundle.compact.eyebrow == "CHECKPOINT REACHED"
+    assert bundle.compact.hero_title == "50% checkpoint"
+    assert bundle.compact.hero_subtitle == "Next checkpoint at 75%"
+
+
+def test_single_stage_compact_copy_names_only_the_final_stage() -> None:
+    event = _event(milestones=(PlantMilestone(
+        "stage:rose:young",
+        "rose",
+        "Rose",
+        "stage_change",
+        "2026-08-28T10:00:00Z",
+        new_stage="young",
+    ),))
+
+    bundle = project_committed_reward_bundle(event)
+
+    assert bundle is not None
+    assert bundle.compact.eyebrow == "NEW GROWTH STAGE"
+    assert bundle.compact.hero_title == "Young reached"
+    assert bundle.compact.hero_subtitle == ""
+
+
+def test_environment_discovery_uses_named_discovery_contract() -> None:
+    event = _event(environment_discoveries=(EnvironmentDiscovery(
+        "environment:firefly-evening",
+        "firefly_evening",
+        "Firefly Evening",
+        "scenery",
+        "rare",
+        "firefly-evening.webp",
+        "Cosmetic environment",
+    ),))
+
+    bundle = project_committed_reward_bundle(event)
+
+    assert bundle is not None
+    assert bundle.hero.kind is RewardHero.ENVIRONMENT_DISCOVERY
+    assert bundle.compact.eyebrow == "NEW DISCOVERY"
+    assert bundle.compact.hero_title == "Firefly Evening"
+    assert bundle.compact.hero_subtitle == "Cosmetic environment"
+
+
+@pytest.mark.parametrize(
+    ("source_type", "source_label", "amount", "routine_only"),
+    (
+        ("daily_activity", "First card today", 2, True),
+        ("review", "Review reward", 4, True),
+        ("review", "Review reward", 5, False),
+        ("all_due", "Today’s Cards", 2, False),
+        ("achievement", "Seven-day streak", 2, False),
+        ("checkpoint", "25% checkpoint", 2, False),
+    ),
+)
+def test_small_ordinary_coin_only_bundle_does_not_become_a_major_reveal(
+    source_type: str,
+    source_label: str,
+    amount: int,
+    routine_only: bool,
+) -> None:
+    event = _event(coin_awards=(CoinAward(
+        f"coin:{source_type}",
+        source_type,
+        source_label,
+        amount,
+        event_key=f"{source_type}:stable",
+    ),))
+
+    bundle = project_committed_reward_bundle(event)
+
+    assert bundle is not None
+    assert bundle.hero.garden_coins == amount
+    assert bundle.routine_only is routine_only
+    assert bundle.has_major_reward is (not routine_only)
+
+
+def test_small_receipt_only_coin_reward_is_routine_but_inventory_is_major() -> None:
+    event_id = "answer:receipt-routine"
+    coin_receipt = RewardReceipt(
+        "daily_activity:2026-08-28",
+        "coins",
+        "daily_activity",
+        "2026-08-28",
+        "2026-08-28",
+        event_id,
+        "2026-08-28T10:00:00Z",
+        amount=2,
+        title="First card today",
+    )
+    booster_receipt = RewardReceipt(
+        "booster:2026-08-28",
+        "inventory_item",
+        "daily_activity",
+        "2026-08-28",
+        "2026-08-28",
+        event_id,
+        "2026-08-28T10:00:00Z",
+        amount=1,
+        item_id="booster_potion",
+        title="Booster Potion",
+    )
+
+    routine_bundle = project_committed_reward_bundle(
+        _event(event_id=event_id, reward_receipts=(coin_receipt,)),
+    )
+    major_bundle = project_committed_reward_bundle(
+        _event(event_id=event_id, reward_receipts=(booster_receipt,)),
+    )
+
+    assert routine_bundle is not None
+    assert routine_bundle.routine_only is True
+    assert major_bundle is not None
+    assert major_bundle.routine_only is False

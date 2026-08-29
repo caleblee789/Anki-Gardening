@@ -18,6 +18,7 @@ from ankigarden.ui.reviewer_hud import (
     HUD_COLLAPSED_HEIGHT,
     HUD_COLLAPSED_WIDTH,
     NurtureProjection,
+    project_plant_choices,
     project_reviewer_hud,
     project_today_cards,
     reviewer_hud_geometry,
@@ -25,13 +26,19 @@ from ankigarden.ui.reviewer_hud import (
 )
 from ankigarden.ui.reviewer_hud_widget import (
     ReviewGardenHud,
+    _COMPACT_REWARD_MAX_HEIGHT,
+    _COMPACT_REWARD_MIN_HEIGHT,
+    _TODAY_INCOMPLETE_VISUAL_MAX,
+    _TODAY_PROGRESS_SCALE,
     _all_secondary_items,
     _bundle_has_kind,
     _bundle_growth_units,
     _checkpoint_marker_states,
     _checkpoint_sequence_is_chronological,
+    _effect_display_text,
     _effect_overflow_label,
     _format_coin_balance,
+    _ground_shadow_metrics,
     _hero_amounts,
     _hero_inventory_labels,
     _hero_kind,
@@ -47,6 +54,8 @@ DAY = "2026-08-28"
 WIDGET_SOURCE = Path(
     "ankigarden/ui/reviewer_hud_widget.py"
 ).read_text(encoding="utf-8")
+DASHBOARD_SOURCE = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
+REVIEWER_HOOK_SOURCE = Path("ankigarden/hooks/reviewer.py").read_text(encoding="utf-8")
 
 
 def completion(status: str, **overrides):
@@ -146,6 +155,15 @@ def test_incomplete_today_progress_retains_an_end_gap_at_175_of_176() -> None:
     assert projection.primary == "175 / 176"
     assert projection.secondary == ("1 card left",)
     assert projection.progress_percent == 99
+    assert (_TODAY_PROGRESS_SCALE, _TODAY_INCOMPLETE_VISUAL_MAX) == (1_000, 985)
+
+    today_copy = WIDGET_SOURCE.split("def _apply_today_copy", 1)[1].split(
+        "def _settle_today_completion",
+        1,
+    )[0]
+    assert "round(actual_percent * 10.0)" in today_copy
+    assert "_TODAY_INCOMPLETE_VISUAL_MAX" in today_copy
+    assert '"minimumUnfilledLogicalPixels"' in today_copy
 
 
 def test_waiting_and_unavailable_states_remain_concise() -> None:
@@ -186,7 +204,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
         growth_remainder_units=0,
         planted=True,
         fully_grown=False,
-        fertilizer=SimpleNamespace(expires_at=4_600),
+        fertilizer=SimpleNamespace(tier="quality", expires_at=4_600),
         booster_card_batches=(SimpleNamespace(remaining_cards=38),),
     )
     state = state_for("in_progress")
@@ -224,25 +242,119 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.estimated_cards_to_checkpoint == 45
     assert nurture.next_checkpoint_percent == 75
     assert nurture.next_checkpoint_reward_coins == 4
-    assert nurture.next_stage_line == "+4 coins at next checkpoint"
+    assert nurture.checkpoint_percents == (25, 50, 75, 100)
+    assert nurture.next_stage_line == "Checkpoint reward · +4 coins"
     assert nurture.art_path == "/art/bonsai-young.webp"
     assert nurture.art_placement is placement
     assert nurture.visible_effect_chips == (
-        "Fertilizer 1h",
-        "Booster 38 cards",
+        "Fertilizer · 1h",
+        "Booster · 38 cards",
     )
     assert nurture.effect_chips == (
-        "Fertilizer 1h",
-        "Booster 38 cards",
-        "Weather +0.5 growth",
-        "Scenery +0.25 growth",
-        "Streak bonus +1 growth",
+        "Fertilizer · 1h",
+        "Booster · 38 cards",
+        "Garden Decoration · +0.5 growth",
+        "Scenery · +0.25 growth",
+        "Streak bonus · +1 growth",
+    )
+    assert nurture.visible_effect_art_refs == (
+        "fertilizer_quality",
+        "booster_potion",
+    )
+    assert nurture.effect_art_refs == (
+        "fertilizer_quality",
+        "booster_potion",
+        "",
+        "",
+        "",
     )
     assert nurture.effect_overflow_count == 3
     assert nurture.shared_line == ""
     assert nurture.environment_line == ""
     assert nurture.queued_line == ""
     assert nurture.stored_growth_line == ""
+
+
+def test_plant_choices_are_engine_confirmed_planted_unfinished_alternatives() -> None:
+    active = SimpleNamespace(
+        plant_id="active",
+        species="bonsai",
+        name="Active Plant",
+        slot_index=0,
+        planted=True,
+        fully_grown=True,
+        growth_stage="rare",
+    )
+    second = SimpleNamespace(
+        plant_id="second",
+        species="ivy",
+        name="Quiet Ivy",
+        slot_index=2,
+        planted=True,
+        fully_grown=False,
+        growth_stage="young",
+    )
+    first = SimpleNamespace(
+        plant_id="first",
+        species="rose",
+        name="Amber Rose",
+        slot_index=1,
+        planted=True,
+        fully_grown=False,
+        growth_stage="sprout",
+    )
+    unplanted = SimpleNamespace(
+        plant_id="stored",
+        species="fern",
+        name="Stored Fern",
+        slot_index=None,
+        planted=False,
+        fully_grown=False,
+        growth_stage="seed",
+    )
+    complete = SimpleNamespace(
+        plant_id="complete",
+        species="oak",
+        name="Finished Oak",
+        slot_index=3,
+        planted=True,
+        fully_grown=True,
+        growth_stage="rare",
+    )
+    stale = SimpleNamespace(
+        plant_id="stale",
+        species="moss",
+        name="Stale Moss",
+        slot_index=4,
+        planted=True,
+        fully_grown=False,
+        growth_stage="seed",
+    )
+    state = SimpleNamespace(
+        active_plant_id="active",
+        plants=[second, stale, active, complete, first, unplanted],
+    )
+    by_id = {
+        plant.plant_id: plant
+        for plant in (active, second, first, unplanted, complete)
+    }
+    placement = object()
+    engine = SimpleNamespace(
+        plant_story=lambda plant_id: by_id.get(plant_id),
+        resolve_plant_asset=lambda species, stage: SimpleNamespace(
+            path=f"/art/{species}-{stage}.webp",
+            placement=placement,
+        ),
+    )
+
+    choices = project_plant_choices(engine, state)
+
+    assert tuple(choice.plant_id for choice in choices) == ("first", "second")
+    assert choices[0].plant_name == "Amber Rose"
+    assert choices[0].species_name == "Rose"
+    assert choices[0].stage_label == "Sprout"
+    assert choices[0].art_path == "/art/rose-sprout.webp"
+    assert choices[0].art_placement is placement
 
 
 def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
@@ -277,15 +389,13 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
     assert projection.next_checkpoint_percent == 0
     assert projection.next_answer_value == ""
     assert projection.species_name == "Rose"
-    assert projection.empty_message == (
-        "Future growth will be shared or stored until you select another plant."
-    )
+    assert projection.empty_message == "Future growth will be shared or stored."
 
 
 def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
     assert reviewer_hud_width(1_280) == 312
     assert reviewer_hud_width(1_600) == 320
-    assert reviewer_hud_width(2_000) == 328
+    assert reviewer_hud_width(2_000) == 324
 
     expanded = reviewer_hud_geometry(
         1_600,
@@ -352,6 +462,15 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
         "future",
         "future",
     )
+    assert _checkpoint_marker_states(38, 50, (20, 50, 80, 100)) == (
+        "completed",
+        "next",
+        "future",
+        "future",
+    )
+    assert _effect_display_text("Fertilizer 1h 24m") == "Fertilizer · 1h 24m"
+    assert _effect_display_text("Booster · 38 cards") == "Booster · 38 cards"
+    assert _effect_display_text("Unrelated effect") == "Unrelated effect"
     assert _effect_overflow_label(1) == "1 more effect ›"
     assert _effect_overflow_label(3) == "3 more effects ›"
     assert _session_metric_labels(0, 0, 0) == ()
@@ -383,16 +502,36 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
 
     two_effects = NurtureProjection(
         True,
-        effect_chips=("Fertilizer 1h", "Booster 38 cards"),
+        effect_chips=("Fertilizer · 1h", "Booster · 38 cards"),
+        effect_art_refs=("fertilizer_quality", "booster_potion"),
     )
     assert two_effects.visible_effect_chips == two_effects.effect_chips
+    assert two_effects.visible_effect_art_refs == two_effects.effect_art_refs
     assert two_effects.effect_overflow_count == 0
     three_effects = NurtureProjection(
         True,
-        effect_chips=("Fertilizer 1h", "Booster 38 cards", "Weather +1 growth"),
+        effect_chips=(
+            "Fertilizer · 1h",
+            "Booster · 38 cards",
+            "Garden Decoration +1 growth",
+        ),
     )
     assert three_effects.visible_effect_chips == three_effects.effect_chips[:2]
     assert three_effects.effect_overflow_count == 1
+
+
+def test_ground_shadow_tracks_visible_stage_bounds_without_floating() -> None:
+    seed = _ground_shadow_metrics("seed", 50, 120, 146)
+    sprout = _ground_shadow_metrics("sprout", 60, 123, 146)
+    young = _ground_shadow_metrics("young", 100, 126, 146)
+    mature = _ground_shadow_metrics("mature", 130, 130, 146)
+
+    assert seed == pytest.approx((70, 121, 7))
+    assert sprout == pytest.approx((85, 124, 7))
+    assert young == pytest.approx((135, 127, 7))
+    assert mature == pytest.approx((175.5, 131, 7))
+    assert seed[0] < sprout[0] < young[0] < mature[0]
+    assert _ground_shadow_metrics("seed", 50, 145, 146)[1] == 142
 
 
 def test_checkpoint_crossings_are_chronological_and_include_multiple_markers() -> None:
@@ -464,6 +603,31 @@ def test_widget_consumes_the_canonical_reward_bundle_shape() -> None:
     assert hasattr(ReviewGardenHud, "update_projection")
 
 
+def test_named_find_art_uses_the_shared_item_resolver_in_reviewer_ui() -> None:
+    assert 'getattr(hero, "artwork_ref", "")' in REVIEWER_HOOK_SOURCE
+    assert 'resolver_names = (' in REVIEWER_HOOK_SOURCE
+    assert '("resolve_item_asset",)' in REVIEWER_HOOK_SOURCE
+    assert 'asset_category == "ui" and asset_key' in REVIEWER_HOOK_SOURCE
+    assert 'hero, "reward_type", ""' in REVIEWER_HOOK_SOURCE
+    assert '"garden_pouch": "Garden Pouch artwork"' in REVIEWER_HOOK_SOURCE
+    assert '"morning_dew": "Morning Dew artwork"' in REVIEWER_HOOK_SOURCE
+    assert "self._reward_art.setFixedSize(52, 52)" in WIDGET_SOURCE
+    assert "if isinstance(hero, str)" in REVIEWER_HOOK_SOURCE
+    assert 'icon.setProperty("hudEffectArtwork", True)' in WIDGET_SOURCE
+    assert "icon.setFixedSize(18, 18)" in WIDGET_SOURCE
+    assert "icon.setAlignment(Qt.AlignmentFlag.AlignCenter)" in WIDGET_SOURCE
+    assert '"hudEffectUsesItemArt"' in WIDGET_SOURCE
+    assert "self._effect_art_pixmap(artwork_ref)" in WIDGET_SOURCE
+    assert '"hudRewardSummaryArtworkRef"' in WIDGET_SOURCE
+    assert '"hudRewardSummaryUsesItemArt"' in WIDGET_SOURCE
+    assert "summary if summary is not None else artwork_ref" in WIDGET_SOURCE
+    alpha_crop = WIDGET_SOURCE.split("def _alpha_cropped_pixmap", 1)[1].split(
+        "def _session_metric_labels", 1
+    )[0]
+    assert "pixmap.mask().boundingRect()" in alpha_crop
+    assert "pixelColor" not in alpha_crop
+
+
 def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> None:
     stage = RewardItemProjection(
         event_id="stage-1",
@@ -509,10 +673,16 @@ def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> N
     assert len(_all_secondary_items(bundle)) == 4
     assert len(bundle.visible_summaries) == 2
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "+4 growth",
         "1 Garden Find",
+        "Checkpoint reached",
     )
-    assert bundle.more_label == "2 more rewards ›"
+    booster_summary = next(
+        summary
+        for summary in bundle.hidden_summaries
+        if summary.key.startswith("inventory:")
+    )
+    assert booster_summary.artwork_ref == "booster_potion"
+    assert bundle.more_label == "Details ›"
 
 
 def test_inventory_quantities_are_visible_for_hero_secondary_and_plural_copy() -> None:
@@ -599,10 +769,10 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     assert bundle.compact.hero_title == "Full Bloom achieved"
     assert bundle.compact.hero_subtitle == "Rose"
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "+40 growth",
-        "2 discoveries",
+        "1 Garden Find",
+        "2 new discoveries",
     )
-    assert bundle.more_label == "2 more rewards ›"
+    assert bundle.more_label == "Details ›"
     compact_event_ids = {
         event_id
         for summary in (*bundle.visible_summaries, *bundle.hidden_summaries)
@@ -635,6 +805,9 @@ def test_committed_entrypoint_respects_an_explicit_zero_applied_growth() -> None
         _reward_history_page=0,
         _collapsed=False,
         _unseen_major=0,
+        _current_reward=None,
+        _reward_minimum_hold_elapsed=False,
+        _reward_details_expanded=False,
         setProperty=lambda *_args: None,
         _sync_history_rows=lambda: None,
         _sync_unseen_badge=lambda: None,
@@ -703,6 +876,9 @@ def test_routine_answers_remain_reconciled_with_an_early_major_reward() -> None:
         _reward_history_page=0,
         _collapsed=False,
         _unseen_major=0,
+        _current_reward=None,
+        _reward_minimum_hold_elapsed=False,
+        _reward_details_expanded=False,
         setProperty=lambda *_args: None,
         _sync_history_rows=lambda: None,
         _sync_unseen_badge=lambda: None,
@@ -748,6 +924,9 @@ def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> No
         _reward_history_page=0,
         _collapsed=True,
         _unseen_major=0,
+        _current_reward=None,
+        _reward_minimum_hold_elapsed=False,
+        _reward_details_expanded=False,
         _reward_queue=deque(),
         setProperty=lambda *_args: None,
         _sync_history_rows=lambda: None,
@@ -760,6 +939,348 @@ def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> No
     assert tuple(fake._reward_history) == (bundle,)
     assert tuple(fake._reward_queue) == (bundle,)
     assert fake._unseen_major == 1
+
+
+def test_reward_archives_only_after_minimum_hold_and_next_distinct_commit() -> None:
+    reveal_properties: dict[str, object] = {}
+    hud_properties: dict[str, object] = {}
+    archives: list[str] = []
+    current = object()
+    readable = SimpleNamespace(
+        _current_reward=current,
+        _reward_minimum_hold_elapsed=False,
+        _reward_next_commit_seen=False,
+        _reward_details_expanded=False,
+        _history_reward_inspection=None,
+        _reward_reveal_state="celebrating",
+        _reward_reveal=SimpleNamespace(setProperty=reveal_properties.__setitem__),
+        setProperty=hud_properties.__setitem__,
+        _archive_current_reward=lambda: archives.append("archived"),
+    )
+
+    ReviewGardenHud._mark_reward_hold_elapsed(readable)
+
+    assert readable._current_reward is current
+    assert readable._reward_minimum_hold_elapsed is True
+    assert readable._reward_reveal_state == "settled"
+    assert hud_properties == {
+        "hudRewardMinimumHoldElapsed": True,
+        "hudRewardRevealState": "settled",
+    }
+    assert reveal_properties == {"rewardRevealState": "settled"}
+    assert archives == []
+
+    readable._reward_next_commit_seen = True
+    assert ReviewGardenHud._maybe_archive_current_reward(readable) is True
+    assert archives == ["archived"]
+
+
+def test_zero_reward_commit_advances_reveal_once_by_stable_event_id() -> None:
+    archives: list[str] = []
+    properties: dict[str, object] = {}
+    fake = SimpleNamespace(
+        _seen_commit_ids=set(),
+        _current_reward=object(),
+        _reward_minimum_hold_elapsed=True,
+        _reward_next_commit_seen=False,
+        _reward_details_expanded=False,
+        _history_reward_inspection=None,
+        setProperty=properties.__setitem__,
+        _archive_current_reward=lambda: archives.append("archived"),
+    )
+
+    assert ReviewGardenHud.notify_committed_card(fake, "answer:no-reward") is True
+    assert fake._reward_next_commit_seen is True
+    assert properties["hudRewardNextCommitSeen"] is True
+    assert archives == ["archived"]
+
+    fake._current_reward = object()
+    fake._reward_next_commit_seen = False
+    assert ReviewGardenHud.notify_committed_card(fake, "answer:no-reward") is True
+    assert fake._reward_next_commit_seen is False
+    assert archives == ["archived"]
+
+
+def test_early_next_commit_waits_for_hold_and_details_pause_archiving() -> None:
+    current = object()
+    archives: list[str] = []
+
+    new_bundle = RewardBundleProjection(
+        "answer-after-readable-reward",
+        "2026-08-28T12:00:01Z",
+        (RewardItemProjection(
+            event_id="growth-after-readable-reward",
+            kind=RewardHero.ROUTINE_GROWTH,
+            title="Growth earned",
+            category_label="Routine Growth",
+        ),),
+    )
+    committed = SimpleNamespace(
+        _seen_bundle_ids=set(),
+        _current_reward=current,
+        _reward_minimum_hold_elapsed=False,
+        _reward_next_commit_seen=False,
+        _reward_details_expanded=True,
+        _history_reward_inspection=None,
+        _reward_reveal_state="details_open",
+        _reward_reveal=SimpleNamespace(setProperty=lambda *_args: None),
+        _archive_current_reward=lambda: archives.append("archived"),
+        _reward_history=deque(),
+        _reward_history_page=0,
+        _collapsed=False,
+        _unseen_major=0,
+        setProperty=lambda *_args: None,
+        _sync_history_rows=lambda: None,
+        animate_growth_delta=lambda _units: None,
+    )
+
+    assert ReviewGardenHud.present_committed_result(
+        committed,
+        new_bundle,
+        reveal=False,
+    )
+    assert committed._reward_next_commit_seen is True
+    assert archives == []
+    assert tuple(committed._reward_history) == (new_bundle,)
+
+    ReviewGardenHud._mark_reward_hold_elapsed(committed)
+    assert archives == []
+    committed._reward_details_expanded = False
+    assert ReviewGardenHud._maybe_archive_current_reward(committed) is True
+    assert archives == ["archived"]
+
+    # A replay of the same stable bundle returns before it can satisfy or
+    # repeat any lifecycle transition.
+    assert ReviewGardenHud.present_committed_result(
+        committed,
+        new_bundle,
+        reveal=False,
+    )
+    assert archives == ["archived"]
+
+
+def test_collapsing_preserves_the_mounted_reward_and_running_hold() -> None:
+    current = object()
+    visibility: list[tuple[str, bool]] = []
+    timer_stops: list[str] = []
+    fake = SimpleNamespace(
+        _collapsed=False,
+        _current_reward=current,
+        _reward_queue=deque(),
+        _expanded=SimpleNamespace(
+            setVisible=lambda visible: visibility.append(("expanded", visible))
+        ),
+        _collapsed_tab=SimpleNamespace(
+            setVisible=lambda visible: visibility.append(("tab", visible))
+        ),
+        _reward_timer=SimpleNamespace(
+            stop=lambda: timer_stops.append("stopped")
+        ),
+        setProperty=lambda *_args: None,
+        _sync_reward_dock_visibility=lambda: None,
+        reposition=lambda: None,
+    )
+
+    ReviewGardenHud.set_collapsed(fake, True)
+    ReviewGardenHud.set_collapsed(fake, False)
+
+    assert fake._current_reward is current
+    assert tuple(fake._reward_queue) == ()
+    assert timer_stops == []
+    assert visibility == [
+        ("expanded", False),
+        ("tab", True),
+        ("expanded", True),
+        ("tab", False),
+    ]
+
+
+def test_reward_remount_restores_the_readable_event_without_representing_it() -> None:
+    current = RewardBundleProjection(
+        "answer-readable-remount",
+        "2026-08-28T12:00:00Z",
+        (RewardItemProjection(
+            event_id="find-readable-remount",
+            kind=RewardHero.GARDEN_FIND,
+            title="Moonlit Sprout",
+            category_label="Garden Find",
+        ),),
+    )
+    queued = RewardBundleProjection(
+        "answer-queued-remount",
+        "2026-08-28T12:00:01Z",
+        (RewardItemProjection(
+            event_id="checkpoint-queued-remount",
+            kind=RewardHero.CHECKPOINT,
+            title="50% checkpoint",
+            category_label="Checkpoint",
+        ),),
+    )
+    exported = SimpleNamespace(
+        _history_reward_inspection=None,
+        _current_reward=current,
+        _reward_minimum_hold_elapsed=True,
+        _reward_details_expanded=False,
+        _reward_next_commit_seen=False,
+        _reward_reveal_state="settled",
+        _reward_timer=SimpleNamespace(remainingTime=lambda: -1),
+        _checkpoint_pending_bundles=[],
+        _reward_queue=deque((current, queued)),
+        _seen_bundle_ids={current.bundle_id, queued.bundle_id},
+        _reward_history=deque((current, queued)),
+        _unseen_major=1,
+    )
+
+    snapshot = ReviewGardenHud.export_reward_state(exported)
+    assert snapshot["current"] == {
+        "bundle": current,
+        "minimum_hold_elapsed": True,
+        "details_expanded": False,
+        "next_commit_seen": False,
+        "reveal_state": "settled",
+        "hold_remaining_ms": 0,
+    }
+    assert tuple(snapshot["pending"]) == (queued,)
+
+    presentations: list[tuple[object, dict[str, object]]] = []
+    restored = SimpleNamespace(
+        _seen_bundle_ids=set(),
+        _reward_history=deque(),
+        _reward_history_page=0,
+        _checkpoint_pending_bundles=[],
+        _reward_queue=deque(),
+        _unseen_major=0,
+        _collapsed=False,
+        _current_reward=None,
+        _history_reward_inspection=None,
+        setProperty=lambda *_args: None,
+        _sync_history_rows=lambda: None,
+        _sync_unseen_badge=lambda: None,
+        _sync_reward_dock_visibility=lambda: None,
+        _show_reward=lambda bundle, **options: presentations.append(
+            (bundle, options)
+        ),
+    )
+
+    ReviewGardenHud.restore_reward_state(restored, snapshot)
+
+    assert presentations == [(
+        current,
+        {
+            "expanded": False,
+            "presentation": "restored",
+            "minimum_hold_elapsed": True,
+            "next_commit_seen": False,
+            "reveal_state": "settled",
+            "hold_remaining_ms": 0,
+        },
+    )]
+    assert tuple(restored._reward_queue) == (queued,)
+
+
+def test_history_reward_inspection_suspends_and_restores_the_live_event() -> None:
+    live = RewardBundleProjection(
+        "answer-live-readable",
+        "2026-08-28T12:00:01Z",
+        (RewardItemProjection(
+            event_id="find-live-readable",
+            kind=RewardHero.GARDEN_FIND,
+            title="Current Find",
+            category_label="Garden Find",
+        ),),
+    )
+    historical = RewardBundleProjection(
+        "answer-historical-details",
+        "2026-08-28T11:59:59Z",
+        (RewardItemProjection(
+            event_id="bloom-historical-details",
+            kind=RewardHero.FULL_BLOOM,
+            title="Full Bloom achieved",
+            category_label="Full Bloom",
+        ),),
+    )
+    presentations: list[tuple[object, dict[str, object]]] = []
+    timer_stops: list[str] = []
+    fake = SimpleNamespace(
+        _visible_history_bundles=(historical,),
+        _reward_history_panel=SimpleNamespace(hide=lambda: None),
+        _session_footer=SimpleNamespace(setProperty=lambda *_args: None),
+        _set_session_history_chevron=lambda _expanded: None,
+        _current_reward=live,
+        _reward_minimum_hold_elapsed=True,
+        _reward_details_expanded=False,
+        _reward_next_commit_seen=False,
+        _reward_reveal_state="settled",
+        _history_reward_inspection=None,
+        _reward_timer=SimpleNamespace(
+            remainingTime=lambda: -1,
+            stop=lambda: timer_stops.append("stopped"),
+        ),
+        _reward_queue=deque(),
+        _collapsed=False,
+        setProperty=lambda *_args: None,
+        _show_reward=lambda bundle, **options: presentations.append(
+            (bundle, options)
+        ),
+    )
+
+    ReviewGardenHud._reopen_history_reward(fake, 0)
+
+    assert fake._history_reward_inspection == {
+        "bundle": live,
+        "minimum_hold_elapsed": True,
+        "details_expanded": False,
+        "next_commit_seen": False,
+        "reveal_state": "settled",
+        "hold_remaining_ms": 0,
+    }
+    assert tuple(fake._reward_queue) == ()
+    assert presentations[-1] == (
+        historical,
+        {
+            "expanded": True,
+            "presentation": "history",
+            "minimum_hold_elapsed": True,
+        },
+    )
+
+    ReviewGardenHud._close_history_reward_inspection(fake)
+
+    assert fake._history_reward_inspection is None
+    assert presentations[-1] == (
+        live,
+        {
+            "expanded": False,
+            "presentation": "restored",
+            "minimum_hold_elapsed": True,
+            "next_commit_seen": False,
+            "reveal_state": "settled",
+            "hold_remaining_ms": 0,
+        },
+    )
+    assert timer_stops == ["stopped"]
+
+
+def test_duplicate_commit_does_not_disturb_history_inspection() -> None:
+    bundle = RewardBundleProjection(
+        "answer-already-seen-during-history",
+        "2026-08-28T12:00:00Z",
+        (RewardItemProjection(
+            event_id="find-already-seen-during-history",
+            kind=RewardHero.GARDEN_FIND,
+            title="Moonlit Sprout",
+            category_label="Garden Find",
+        ),),
+    )
+    closes: list[str] = []
+    fake = SimpleNamespace(
+        _seen_bundle_ids={bundle.bundle_id},
+        _history_reward_inspection={"bundle": object()},
+        _close_history_reward_inspection=lambda: closes.append("closed"),
+    )
+
+    assert ReviewGardenHud.present_committed_result(fake, bundle)
+    assert closes == []
 
 
 def test_mixed_reward_bundle_delays_for_its_checkpoint_item() -> None:
@@ -801,10 +1322,14 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
         "reviewerHudRewardDockSurface",
         "reviewerHudRewardScroll",
         "reviewerHudRewardReveal",
+        "reviewerHudRewardAccent",
+        "reviewerHudRewardHeading",
+        "reviewerHudRewardDetailsToggle",
         "reviewerHudRewardEyebrow",
         "reviewerHudRewardSubtitle",
         "reviewerHudRewardSummaryChip0",
         "reviewerHudRewardSummaryChip1",
+        "reviewerHudRewardDetails",
         "reviewerHudRewardDivider",
         "reviewerHudSessionFooter",
         "reviewerHudRewardHistory",
@@ -826,14 +1351,34 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
     assert "animate_checkpoint_crossing" in WIDGET_SOURCE
     assert "animate_checkpoint_sequence" in WIDGET_SOURCE
     assert "when_checkpoint_reached" in WIDGET_SOURCE
+    assert 'self.setProperty("markerShape", "diamond-tick")' in WIDGET_SOURCE
+    assert 'self.setProperty("interactive", False)' in WIDGET_SOURCE
+    assert 'self.setProperty("currentPositionHandleVisible", False)' in WIDGET_SOURCE
+    checkpoint_paint = WIDGET_SOURCE.split(
+        "class CheckpointTrack",
+        1,
+    )[1].split("class _MiniProgressRing", 1)[0]
+    assert "painter.rotate(45.0)" in checkpoint_paint
+    assert "painter.drawRoundedRect" in checkpoint_paint
+    assert "painter.drawEllipse" in checkpoint_paint
     assert "_reopen_history_reward" in WIDGET_SOURCE
-    assert 'setObjectName("reviewerHudRewardMore")' in WIDGET_SOURCE
-    assert "_COMPACT_REWARD_MAX_HEIGHT = 188" in WIDGET_SOURCE
+    assert 'setObjectName("reviewerHudRewardMore")' not in WIDGET_SOURCE
+    assert "reviewerHudRewardDisclosureChevron" not in WIDGET_SOURCE
+    assert (_COMPACT_REWARD_MIN_HEIGHT, _COMPACT_REWARD_MAX_HEIGHT) == (130, 150)
     assert "if self._reward_details_expanded\n            else _COMPACT_REWARD_MAX_HEIGHT" in WIDGET_SOURCE
     assert "self._reward_summary_chips: list[_ElidedLabel]" in WIDGET_SOURCE
     assert "visible_summaries[:2]" in WIDGET_SOURCE
-    assert "self._reward_more.setMinimumWidth(" in WIDGET_SOURCE
-    assert "self._reward_more.setMinimumHeight(32)" in WIDGET_SOURCE
+    assert "self._reward_details_toggle.setMinimumWidth(" in WIDGET_SOURCE
+    assert "self._reward_details_toggle.setMinimumHeight(28)" in WIDGET_SOURCE
+    assert 'self._reward_details_toggle.setText("Details ›")' in WIDGET_SOURCE
+    assert 'details_text = "Hide details"' in WIDGET_SOURCE
+    assert 'self._reward_reveal.setProperty("rewardDetailEventIds", detail_event_ids)' in WIDGET_SOURCE
+    assert "self._reward_timer.timeout.connect(self._mark_reward_hold_elapsed)" in WIDGET_SOURCE
+    hold_elapsed = WIDGET_SOURCE.split(
+        "def _mark_reward_hold_elapsed",
+        1,
+    )[1].split("def _current_reward_reveal_state", 1)[0]
+    assert "_maybe_archive_current_reward" in hold_elapsed
     assert "class _PreferredHeightScrollArea" in WIDGET_SOURCE
     assert "self._reward_scroll.set_preferred_height(target)" in WIDGET_SOURCE
     assert "layout.heightForWidth(natural_width)" in WIDGET_SOURCE
@@ -867,9 +1412,9 @@ def test_native_component_has_stable_audit_targets_and_no_toast_stack() -> None:
         "def _build_reward_dock",
         1,
     )[0]
-    assert plant_builder.index("layout.addWidget(self._next_answer)") < plant_builder.index(
+    assert plant_builder.index(
         "layout.addWidget(self._checkpoint_reward_row)"
-    )
+    ) < plant_builder.index("layout.addWidget(self._next_answer)")
     assert "metadata.addWidget(self._bed)" not in plant_builder
 
 
@@ -921,9 +1466,59 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
     full_bloom_override = WIDGET_SOURCE.split(
         "def _apply_full_bloom_override",
         1,
-    )[1].split("def _apply_stage_change_override", 1)[0]
+    )[1].split("def _apply_projected_full_bloom_settled", 1)[0]
     assert "self._select_plant.setVisible(bool(settled))" in full_bloom_override
     assert "self._select_plant.show()" not in full_bloom_override
+    projected_full_bloom = WIDGET_SOURCE.split(
+        "def _apply_projected_full_bloom_settled",
+        1,
+    )[1].split("def _apply_stage_change_override", 1)[0]
+    assert (
+        'self._plant_message.setText("Future growth will be shared or stored.")'
+        in projected_full_bloom
+    )
+    assert "self._select_plant.show()" in projected_full_bloom
+    assert "self._effects.hide()" in projected_full_bloom
+    assert "elif nurture.fully_grown:" in WIDGET_SOURCE
+    assert 'self._select_plant.setText("Choose next plant ›")' in WIDGET_SOURCE
+    assert "self._select_plant.clicked.connect(self._select_another_plant)" in WIDGET_SOURCE
+    select_action = WIDGET_SOURCE.split(
+        "def _select_another_plant",
+        1,
+    )[1].split("def _open_current_reward", 1)[0]
+    assert "_call(self._on_select_plant)" in select_action
+    assert "_on_open_garden" not in select_action
+    assert REVIEWER_HOOK_SOURCE.count(
+        "on_select_plant=self._select_another_plant_from_reviewer_hud"
+    ) == 2
+    assert REVIEWER_HOOK_SOURCE.count(
+        "on_choose_plant=self._choose_plant_from_reviewer_hud"
+    ) == 2
+    assert 'QMenu(self._select_plant)' in select_action
+    assert 'menu.popup(' in select_action
+    assert 'normalized_plant_pixmap(' in select_action
+    identity_sync = WIDGET_SOURCE.split(
+        "def _sync_reward_identity_visibility",
+        1,
+    )[1].split("def _sync_current_reward_secondary", 1)[0]
+    assert "event_plant_id == displayed_plant_id" in identity_sync
+    plant_update = WIDGET_SOURCE.split(
+        "def _update_plant",
+        1,
+    )[1].split("def _update_plant_art", 1)[0]
+    assert "self._sync_reward_identity_visibility()" in plant_update
+    assert "self._settled_full_bloom_bundle = None" in plant_update
+    public_selection = DASHBOARD_SOURCE.split(
+        "def open_plant_selection",
+        1,
+    )[1].split("def _release_collection_activation", 1)[0]
+    assert "self._open_collection()" in public_selection
+    select_style = WIDGET_SOURCE.split(
+        '"QToolButton#reviewerHudSelectPlant',
+        1,
+    )[1].split('"QScrollArea#reviewerHudBodyScroll', 1)[0]
+    assert 't["reviewer_hud_growth_strong"]' in select_style
+    assert "reviewer_hud_coin" not in select_style
 
     routine_feedback = WIDGET_SOURCE.split("def animate_growth_delta", 1)[1].split(
         "def _swap_next_answer_row",

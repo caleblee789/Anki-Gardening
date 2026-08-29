@@ -28,6 +28,7 @@ from ankigarden.ui.session_summary import (
     format_growth_units,
     project_session_day,
     project_today_cards,
+    unlock_category_copy,
 )
 
 
@@ -248,7 +249,7 @@ def test_reward_strip_uses_applied_growth_and_signed_non_additive_totals():
     assert [(row.key, row.label, row.value) for row in projection.reward_metrics] == [
         ("growth_applied", "Growth applied", "+2,080"),
         ("garden_coins", "Coins", "+67"),
-        ("standard_finds", "Finds", "+3"),
+        ("standard_finds", "Standard Finds", "+3"),
     ]
     assert not any(row.key == "shared_growth" for row in projection.result_rows)
     assert not any(row.key == "stored_growth" for row in projection.result_rows)
@@ -388,7 +389,7 @@ def test_exact_typed_reward_receipts_survive_grouping_without_double_counting():
 def test_milestone_coin_component_has_an_explicit_total_inclusion_link():
     coin = CoinAward(
         "coin:bloom",
-        "plant_stage",
+        "full_bloom_bonus",
         "Full Bloom",
         20,
         event_key="stage:p1:rare",
@@ -417,7 +418,12 @@ def test_milestone_coin_component_has_an_explicit_total_inclusion_link():
     assert payload.segments[0].garden_coins_earned == 20
     assert highlight.coin_award_event_ids == ("coin:bloom",)
     assert highlight.coin_included_in_total is True
-    assert highlight.reward_text == "+20 coins included"
+    assert highlight.reward_text == "+20 coin bonus included"
+    assert payload.segments[0].milestones[0].reward is not None
+    assert (
+        payload.segments[0].milestones[0].reward.component_type
+        == "full_bloom_bonus"
+    )
 
     with pytest.raises(ValueError, match="must link"):
         PlantMilestone(
@@ -443,7 +449,7 @@ def test_additional_milestone_coin_component_names_the_displayed_total():
     )
     additional = CoinAward(
         "coin:bloom-bonus",
-        "plant_stage",
+        "full_bloom_bonus",
         "Full Bloom bonus",
         50,
         included_in_total=False,
@@ -473,7 +479,7 @@ def test_additional_milestone_coin_component_names_the_displayed_total():
     assert summary.additional_coins_earned == 50
     assert summary.garden_coins_total == 67
     assert highlight.reward_text == (
-        "+50 coins bonus · included in +67 total"
+        "+50 coin bonus · included in +67 total"
     )
 
 
@@ -488,7 +494,7 @@ def test_additional_milestone_coin_component_names_the_displayed_total():
         (
             CoinAward(
                 "coin:wrong-amount",
-                "plant_stage",
+                "full_bloom_bonus",
                 "Full Bloom bonus",
                 49,
                 included_in_total=False,
@@ -976,6 +982,39 @@ def test_find_quantities_reconcile_to_explicit_total_and_limit_by_occurrence():
     assert details.more_label == "1 more find"
 
 
+def test_inventory_find_names_the_granted_item_not_internal_flavor_copy():
+    accumulator = _accumulator()
+    finds = tuple(
+        StandardFind(
+            f"find:charge:{index}",
+            "find_small_charge",
+            "Charged Seed",
+            "Uncommon",
+            "inventory_item",
+            "+1 Small Growth Charge",
+            1,
+            "ui_growth_charge_small",
+            item_id="growth_charge_small",
+        )
+        for index in range(3)
+    )
+    accumulator.accept_committed(_event(
+        "card:concrete-find",
+        finds=finds,
+        total_finds=3,
+    ))
+
+    payload = _finish(accumulator)
+    assert payload is not None
+    summary = payload.segments[0]
+    assert summary.standard_finds[0].find_name == "Charged Seed"
+    assert summary.find_items[0].find_name == "Small Growth Charge"
+    assert summary.find_items[0].quantity == 3
+    assert project_session_day(summary).find_details.visible[0].find_name == (
+        "Small Growth Charge"
+    )
+
+
 def test_incomplete_find_items_keep_authoritative_total_and_omit_details(caplog):
     accumulator = _accumulator()
     accumulator.accept_committed(_event(
@@ -1087,7 +1126,7 @@ def test_owned_environment_is_not_reported_as_a_new_discovery():
         discoveries=(
             EnvironmentDiscovery(
                 "environment:old", "firefly", "Firefly Evening", "weather",
-                "rare", "firefly.webp", "+5 Growth on the first 15 cards",
+                "rare", "firefly.webp", "+3 Growth every 4 eligible cards",
             ),
             EnvironmentDiscovery(
                 "environment:new", "horizon", "Rainbow Horizon", "scenery",
@@ -1100,6 +1139,27 @@ def test_owned_environment_is_not_reported_as_a_new_discovery():
     assert [item.environment_id for item in payload.segments[0].environment_discoveries] == [
         "horizon"
     ]
+    discovery = payload.segments[0].environment_discoveries[0]
+    assert discovery.environment_kind == "scenery"
+    assert discovery.unlock_category == "environment"
+    highlight = project_session_day(payload.segments[0]).highlights.featured[0]
+    assert highlight.unlock_category == "environment"
+    assert highlight.eyebrow == "ENVIRONMENT UNLOCKED"
+    assert highlight.supporting_text == "Now available in the Garden"
+
+
+@pytest.mark.parametrize(
+    ("category", "label"),
+    (
+        ("garden_item", "GARDEN ITEM UNLOCKED"),
+        ("environment", "ENVIRONMENT UNLOCKED"),
+        ("plant", "PLANT UNLOCKED"),
+        ("planter", "PLANTER UNLOCKED"),
+        ("background", "BACKGROUND UNLOCKED"),
+    ),
+)
+def test_unlock_categories_have_specific_public_labels(category, label):
+    assert unlock_category_copy(category)[0] == label
 
 
 def test_legacy_and_canonical_garden_feature_discoveries_share_one_identity():
@@ -1113,7 +1173,7 @@ def test_legacy_and_canonical_garden_feature_discoveries_share_one_identity():
             "weather",
             "rare",
             "fireflies.svg",
-            "+5 Growth on the first 15 cards",
+            "+3 Growth every 4 eligible cards",
         ),),
     ))
     accumulator.accept_committed(_event(
@@ -1125,7 +1185,7 @@ def test_legacy_and_canonical_garden_feature_discoveries_share_one_identity():
             "garden_feature",
             "rare",
             "fireflies.svg",
-            "+5 Growth on the first 15 cards",
+            "+3 Growth every 4 eligible cards",
         ),),
     ))
 
@@ -1136,6 +1196,7 @@ def test_legacy_and_canonical_garden_feature_discoveries_share_one_identity():
     assert len(discoveries) == 1
     assert discoveries[0].environment_id == "firefly_lantern"
     assert discoveries[0].environment_kind == "garden_feature"
+    assert discoveries[0].unlock_category == "garden_item"
 
 
 def test_legacy_owned_weather_alias_filters_canonical_garden_feature_discovery():
@@ -1149,7 +1210,7 @@ def test_legacy_owned_weather_alias_filters_canonical_garden_feature_discovery()
             "garden_feature",
             "rare",
             "fireflies.svg",
-            "+5 Growth on the first 15 cards",
+            "+3 Growth every 4 eligible cards",
         ),),
     ))
 
@@ -1294,6 +1355,14 @@ def test_unified_highlights_follow_product_priority_before_chronology():
     assert [item.kind for item in highlights.featured] == [
         "full_bloom", "environment"
     ]
+    assert [item.unlock_category for item in highlights.featured] == [
+        "plant", "garden_item"
+    ]
+    assert highlights.featured[1].eyebrow == "GARDEN ITEM UNLOCKED"
+    assert (
+        highlights.featured[1].supporting_text
+        == "Added to your Garden collection"
+    )
     assert [item.kind for item in highlights.overflow] == [
         "stage_change", "major_checkpoint", "rare_reward"
     ]

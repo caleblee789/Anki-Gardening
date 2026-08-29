@@ -729,9 +729,10 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # The Display page no longer carries a 100 px live preview. Keep the
         # shell content-fit around the remaining identity and appearance rows.
         "display": DialogHeightProfile(390, 400, 420, 800, 820, 840),
-        # Advanced adds three compact setting rows beneath the same preview-free
-        # Display content. Shorter screens still retain the outer scroll owner.
-        "advanced": DialogHeightProfile(580, 590, 620, 800, 820, 840),
+        # Advanced adds four compact setting rows beneath the same preview-free
+        # Display content. Its canonical height keeps all four rows visible;
+        # shorter screens still retain the outer scroll owner.
+        "advanced": DialogHeightProfile(620, 620, 620, 800, 820, 840),
         "diagnostics-clean": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-warning": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-expanded": DialogHeightProfile(430, 470, 520, 760, 780, 800),
@@ -742,7 +743,7 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "owned": DialogHeightProfile(470, 500, 530),
         "fertilizer": DialogHeightProfile(500, 506, 560, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
-        # Garden Feature cards use the canonical 940 x 488 catalog window.
+        # Garden Decoration cards use the canonical 940 x 488 catalog window.
         # Keep one complete product row in view without compressing its copy.
         "garden_features": DialogHeightProfile(488, 488, 500, 925, 940, 950),
         "collection-complete": DialogHeightProfile(300, 315, 330, 925, 940, 950),

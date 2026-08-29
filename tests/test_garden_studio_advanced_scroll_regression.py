@@ -233,7 +233,7 @@ def test_nursery_scroll_regions_have_stable_accessible_names() -> None:
         "Plants catalog",
         "Fertilizers and boosts catalog",
         "Garden beds catalog",
-        "Garden Features and Scenery catalog",
+        "Garden Decorations and Scenery catalog",
     ):
         assert f'"{name}"' in nursery
     assert nursery.count("setAccessibleName") >= 8
@@ -605,7 +605,7 @@ def test_live_qt_surface_breakpoints_are_stable_when_available(
         "Plants catalog",
         "Fertilizers and boosts catalog",
         "Garden Spaces catalog",
-        "Weather and Scenery catalog",
+        "Garden Decorations and Scenery catalog",
     )
     progress = dashboard.progress_dialog
     customize = dashboard.customize_dialog
@@ -1546,7 +1546,7 @@ def test_live_qt_named_dialog_scroll_and_footer_contracts_when_available(
         (0, "Plants catalog", (930, 970), (520, 570)),
         (1, "Fertilizers and boosts catalog", (930, 970), (540, 570)),
         (2, "Garden Spaces catalog", (900, 950), (340, 370)),
-        (3, "Weather and Scenery catalog", (930, 970), (500, 550)),
+        (3, "Garden Decorations and Scenery catalog", (930, 970), (500, 550)),
     ):
         nursery.catalog_tabs.setCurrentIndex(index)
         application.processEvents()

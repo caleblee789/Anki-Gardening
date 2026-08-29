@@ -42,10 +42,15 @@ SCHEMA_21_REQUIRED_RUNTIME_FILES = frozenset({
     "game.py",
     "garden_finds.py",
     "hooks/reviewer.py",
+    "models/sync_reward.py",
     "models/state.py",
     "reward_ledger.py",
     "reward_presentation.py",
     "storage.py",
+    "sync_review_detector.py",
+    "sync_reward_presenter.py",
+    "sync_reward_processor.py",
+    "ui/sync_reward_summary.py",
 })
 
 EXPECTED_PACKAGED_USER_FILES = frozenset({"user_files/README.txt"})
@@ -83,6 +88,17 @@ def test_distribution_manifest_is_complete() -> None:
     assert payload["package"] == "anki_garden"
     assert payload["min_point_version"] <= payload["max_point_version"]
     assert payload["min_point_version"] <= 260800 <= payload["max_point_version"]
+
+
+def test_required_runtime_files_are_in_production_source_set() -> None:
+    names = {
+        path.relative_to(ADDON).as_posix()
+        for path in package_files(PRODUCTION_BUILD)
+    }
+
+    assert SCHEMA_21_REQUIRED_RUNTIME_FILES <= names, sorted(
+        SCHEMA_21_REQUIRED_RUNTIME_FILES - names
+    )
 
 
 def test_package_contains_runtime_and_excludes_mutable_data(
@@ -159,10 +175,10 @@ def test_package_contains_runtime_and_excludes_mutable_data(
     # The current release ships all nine responsive scenery plates, the
     # complete six-stage plant library, the geometry-matched planter set, and
     # the canonical Rich Compost reward artwork.
-    # The seven standardized 1024-square Feature canvases and reusable pad add
-    # roughly three MiB while keeping the complete existing art library intact.
-    # Retain a strict ceiling below the historical 82 MiB package budget.
-    assert production_output.stat().st_size < 82 * 1024 * 1024
+    # The seven standardized 1024-square Feature canvases, reusable pad, and
+    # Retina-ready reward/HUD assets keep the complete existing art library
+    # intact. Retain a strict ceiling below the revised 83 MiB package budget.
+    assert production_output.stat().st_size < 83 * 1024 * 1024
 
 
 def test_capture_package_explicitly_enables_and_contains_capture_capabilities(

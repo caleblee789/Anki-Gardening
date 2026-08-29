@@ -285,7 +285,7 @@ def test_nurtured_marker_uses_close_plant_side_lane_for_every_plot(
 
 
 @pytest.mark.parametrize("device_pixel_ratio", (1.0, 1.5, 2.0, 3.0))
-@pytest.mark.skip(reason="near-left bed is intentionally reserved away from the Feature bay")
+@pytest.mark.skip(reason="near-left bed is intentionally reserved away from the Decoration bay")
 def test_scene_geometry_matrix_covers_six_beds_popovers_markers_and_scaling(
     device_pixel_ratio: float,
 ) -> None:
@@ -870,7 +870,7 @@ def test_six_bed_three_two_layout_preserves_middle_right_without_planter_overlap
     )
 
 
-@pytest.mark.skip(reason="near-left 3:2 bed anchor is intentionally reserved for Garden Features")
+@pytest.mark.skip(reason="near-left 3:2 bed anchor is intentionally reserved for Garden Decorations")
 def test_storybook_profiles_use_registered_source_soil_contact_coordinates():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     manifest = json.loads(manifest_path.read_text("utf-8"))

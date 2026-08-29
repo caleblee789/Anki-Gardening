@@ -162,7 +162,7 @@ def test_engine_committed_result_contains_causal_receipts_and_due_rewards(monkey
     engine, storage = _engine()
     storage.state.starter_selection_complete = True
     storage.state.progression_activation_ms = storage.day_start_ms - 1
-    storage.state.daily_stats.due_started_with_cards = True
+    assert engine.observe_due_start(DueObligationStatus(review_count=1))
     revlog_id = storage.now_ms + 1
 
     result = engine.commit_reviewer_answer(
@@ -456,6 +456,7 @@ class _ReviewerEngine:
     def __init__(self, storage: _ReviewerStorage) -> None:
         self.storage = storage
         self.committed_payloads: list[dict[str, object]] = []
+        self.evaluate_calls: list[bool] = []
 
     def apply_same_day_reviews_with_results(
         self,
@@ -484,7 +485,8 @@ class _ReviewerEngine:
             award=award,
         ),)
 
-    def evaluate_all_due(self, _status):
+    def evaluate_all_due(self, _status, *, record_completed_delta=False):
+        self.evaluate_calls.append(bool(record_completed_delta))
         return False, ""
 
 
@@ -494,6 +496,7 @@ class _LegacyReviewerEngine:
     def __init__(self, storage: _ReviewerStorage) -> None:
         self.storage = storage
         self.committed_payloads: list[dict[str, object]] = []
+        self.evaluate_calls: list[bool] = []
 
     def apply_same_day_reviews_with_awards(
         self,
@@ -512,7 +515,8 @@ class _LegacyReviewerEngine:
             correlation_id=f"answer:{latest_revlog_id}",
         ),)
 
-    def evaluate_all_due(self, _status):
+    def evaluate_all_due(self, _status, *, record_completed_delta=False):
+        self.evaluate_calls.append(bool(record_completed_delta))
         return False, ""
 
 
@@ -576,6 +580,7 @@ def test_legacy_commit_that_enters_footer_also_enters_reward_history(monkeypatch
 
     assert accumulator.events == [event]
     assert handler._pending_reviewer_results == [(None, event)]
+    assert engine.evaluate_calls == [True]
 
 
 def test_only_a_proven_local_commit_enters_the_session_accumulator(monkeypatch):
@@ -997,6 +1002,37 @@ def test_legacy_session_event_uses_same_integrated_history_entrypoint(monkeypatc
     assert handler._presented_reviewer_result_ids == {"answer:legacy"}
 
 
+def test_zero_reward_commit_notifies_hud_once_without_a_bundle(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+    )
+    notified: list[str] = []
+
+    class _Panel:
+        def notify_committed_card(self, event_id):
+            notified.append(event_id)
+            return True
+
+    event = CommittedSessionEvent(
+        event_id="answer:no-reward",
+        anki_day_id=DAY,
+        occurred_at="2026-08-28T10:00:00Z",
+    )
+    handler._reviewer_hud = _Panel()
+    handler._pending_reviewer_results = [(None, event)]
+    monkeypatch.setattr(handler, "_update_reviewer_hud_session_totals", lambda: None)
+    monkeypatch.setattr(handler, "_retry_reviewer_feedback_acknowledgements", lambda: None)
+
+    handler._flush_pending_reviewer_results()
+    handler._flush_pending_reviewer_results()
+
+    assert notified == ["answer:no-reward"]
+    assert handler._pending_reviewer_results == []
+    assert handler._presented_reviewer_result_ids == {"answer:no-reward"}
+
+
 def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
     reviewer_module = _load_reviewer_module(monkeypatch)
     p1 = Plant("p1", "bonsai", "Moss", 0)
@@ -1022,6 +1058,7 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
         "2026-08-28T10:00:01Z",
         source="plant_checkpoint",
         correlation_id="answer:local",
+        included_in_total=False,
     )
     excluded_spend = CurrencyTransaction(
         "coin:purchase",
@@ -1098,11 +1135,13 @@ def test_reviewer_event_builder_preserves_exact_reward_categories(monkeypatch):
         ("coin:daily", 2),
         ("coin:checkpoint", 1),
     ]
+    assert [item.included_in_total for item in event.coin_awards] == [True, False]
     assert [item.find_id for item in event.standard_finds] == ["morning_dew"]
     assert [item.event_id for item in event.milestones] == [
         "stage_checkpoint:p1:sprout:25"
     ]
     assert event.milestones[0].plant_class == "Bonsai"
+    assert event.milestones[0].coin_included_in_total is False
     assert [item.environment_id for item in event.environment_discoveries] == [
         "firefly_lantern"
     ]
@@ -1291,6 +1330,237 @@ def test_zero_card_exit_schedules_no_summary_and_duplicate_exit_schedules_once(m
     assert renders[0].cards_completed == 1
 
 
+def test_finalized_summary_refreshes_committed_home_surface_before_render(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    calls: list[str] = []
+    reviewer_module.mw.state = "deckBrowser"
+    reviewer_module.mw.deckBrowser = SimpleNamespace(
+        refresh=lambda: calls.append("refresh")
+    )
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(end_review_session=lambda: calls.append("end")),
+        SimpleNamespace(state=SimpleNamespace()),
+        state_changed=lambda reason: calls.append(f"state:{reason}"),
+    )
+    monkeypatch.setattr(
+        handler,
+        "_session_end_snapshot",
+        lambda **_kwargs: SessionEndSnapshot(
+            TodayCardsSnapshot("in_progress", cards_remaining=1)
+        ),
+    )
+    accumulator = _empty_accumulator()
+    accumulator.accept_committed(CommittedSessionEvent(
+        event_id="answer:committed",
+        anki_day_id=DAY,
+        occurred_at="2026-08-28T10:01:00Z",
+    ))
+    handler._session_summary_accumulator = accumulator
+    monkeypatch.setattr(
+        handler,
+        "_schedule_session_summary_render",
+        lambda: calls.append("render"),
+    )
+
+    handler._show_reviewer_session_summary()
+
+    assert calls == [
+        "end",
+        "state:Session summary committed",
+        "refresh",
+        "render",
+    ]
+
+
+def test_today_snapshot_unifies_new_learn_review_without_using_answer_count(
+    monkeypatch,
+):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    due_tree = SimpleNamespace(
+        deck_id=55,
+        name="Default",
+        new_count=1,
+        learn_count=0,
+        review_count=18,
+        children=[],
+    )
+    completion = SimpleNamespace(
+        status="in_progress",
+        starting_required_cards=144,
+        starting_required_cards_completed=125,
+        remaining_new_cards=1,
+        remaining_required_reviews=18,
+        remaining_learning_steps=0,
+        future_learning_steps_before_cutoff=0,
+        next_learning_due_at_ms=0,
+        # A repeated/relearning answer can make raw activity larger than the
+        # number of scheduler obligations that have actually completed.
+        cards_completed_today=126,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(
+            daily_completion=completion,
+            daily_stats=SimpleNamespace(reviewed=126),
+        ),
+        mw=SimpleNamespace(
+            col=SimpleNamespace(
+                sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+            ),
+        ),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+
+    snapshot = handler._today_cards_snapshot(refresh=False)
+
+    assert snapshot.cards_completed == 125
+    assert snapshot.cards_remaining == 19
+    assert snapshot.currently_due_cards == 19
+    assert snapshot.cards_total == 144
+    assert snapshot.continuation_target == ReviewContinuationTarget(
+        "deck",
+        55,
+        "Default",
+    )
+    assert snapshot.can_continue_reviews
+
+
+def test_today_snapshot_fails_closed_when_all_decks_have_no_single_target(
+    monkeypatch,
+):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    tree = SimpleNamespace(
+        deck_id=0,
+        new_count=0,
+        learn_count=0,
+        review_count=0,
+        children=[
+            SimpleNamespace(
+                deck_id=11,
+                name="New",
+                new_count=1,
+                learn_count=0,
+                review_count=0,
+                children=[],
+            ),
+            SimpleNamespace(
+                deck_id=22,
+                name="Due",
+                new_count=0,
+                learn_count=0,
+                review_count=18,
+                children=[],
+            ),
+        ],
+    )
+    completion = SimpleNamespace(
+        status="in_progress",
+        starting_required_cards=19,
+        starting_required_cards_completed=0,
+        remaining_new_cards=1,
+        remaining_required_reviews=18,
+        remaining_learning_steps=0,
+        future_learning_steps_before_cutoff=0,
+        next_learning_due_at_ms=0,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(daily_completion=completion),
+        mw=SimpleNamespace(
+            col=SimpleNamespace(
+                sched=SimpleNamespace(deck_due_tree=lambda: tree),
+            ),
+        ),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+
+    snapshot = handler._today_cards_snapshot(refresh=False)
+
+    assert snapshot.cards_remaining == snapshot.currently_due_cards == 19
+    assert snapshot.contributing_deck_count == 2
+    assert snapshot.continuation_target is None
+    assert not snapshot.can_continue_reviews
+
+
+def test_today_snapshot_hides_continue_when_future_learning_is_outside_target(
+    monkeypatch,
+):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    due_tree = SimpleNamespace(
+        deck_id=55,
+        name="Default",
+        new_count=0,
+        learn_count=0,
+        review_count=18,
+        children=[],
+    )
+    completion = SimpleNamespace(
+        status="in_progress",
+        starting_required_cards=19,
+        starting_required_cards_completed=0,
+        remaining_new_cards=0,
+        remaining_required_reviews=18,
+        remaining_learning_steps=0,
+        future_learning_steps_before_cutoff=1,
+        next_learning_due_at_ms=2_000_000_000_000,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(daily_completion=completion),
+        mw=SimpleNamespace(
+            col=SimpleNamespace(
+                sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+            ),
+        ),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+
+    snapshot = handler._today_cards_snapshot(refresh=False)
+
+    assert snapshot.cards_remaining == 19
+    assert snapshot.currently_due_cards == 18
+    assert snapshot.continuation_target is None
+    assert not snapshot.can_continue_reviews
+
+
+def test_today_snapshot_keeps_current_learning_cards_reviewable(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    due_tree = SimpleNamespace(
+        deck_id=55,
+        name="Default",
+        new_count=0,
+        learn_count=2,
+        review_count=0,
+        children=[],
+    )
+    completion = SimpleNamespace(
+        status="in_progress",
+        starting_required_cards=2,
+        starting_required_cards_completed=0,
+        remaining_new_cards=0,
+        remaining_required_reviews=0,
+        remaining_learning_steps=2,
+        future_learning_steps_before_cutoff=0,
+        next_learning_due_at_ms=0,
+    )
+    storage = SimpleNamespace(
+        state=SimpleNamespace(daily_completion=completion),
+        mw=SimpleNamespace(
+            col=SimpleNamespace(
+                sched=SimpleNamespace(deck_due_tree=lambda: due_tree),
+            ),
+        ),
+    )
+    handler = reviewer_module.ReviewerHookHandler(SimpleNamespace(), storage)
+
+    snapshot = handler._today_cards_snapshot(refresh=False)
+
+    assert snapshot.cards_remaining == 2
+    assert snapshot.currently_due_cards == 2
+    assert snapshot.waiting_cards == 0
+    assert snapshot.can_continue_reviews
+    assert snapshot.continuation_target == ReviewContinuationTarget(
+        "deck", 55, "Default"
+    )
+
+
 def test_continue_reviews_uses_native_overview_timebox_review_path(monkeypatch):
     reviewer_module = _load_reviewer_module(monkeypatch)
     calls: list[str] = []
@@ -1332,6 +1602,54 @@ def test_continue_reviews_uses_native_overview_timebox_review_path(monkeypatch):
 
     assert handler._continue_reviews_from_session_summary() is True
     assert calls == ["select:55", "overview", "timebox", "review"]
+
+
+def test_continue_reviews_revalidates_current_today_scope(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+    calls: list[str] = []
+    reviewer_module.mw.state = "deckBrowser"
+    reviewer_module.mw.moveToState = lambda state: calls.append(state)
+    reviewer_module.mw.col.startTimebox = lambda: calls.append("timebox")
+    reviewer_module.mw.col.decks = SimpleNamespace(
+        select=lambda deck_id: calls.append(f"select:{deck_id}"),
+        get_current_id=lambda: 1,
+    )
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(), SimpleNamespace(state=SimpleNamespace())
+    )
+    target = ReviewContinuationTarget("deck", 55, "Default")
+    terminal = TodayCardsSnapshot(
+        "in_progress",
+        cards_remaining=19,
+        cards_completed=125,
+        cards_total=144,
+        currently_due_cards=19,
+        scope="all_decks",
+        can_continue_reviews=True,
+        continuation_target=target,
+    )
+    refreshed = TodayCardsSnapshot(
+        "in_progress",
+        cards_remaining=19,
+        cards_completed=125,
+        cards_total=144,
+        currently_due_cards=19,
+        scope="deck",
+        scope_label="Default",
+        can_continue_reviews=True,
+        continuation_target=target,
+    )
+    handler._presented_session_summary_payload = SimpleNamespace(
+        terminal_today_cards=terminal,
+    )
+    monkeypatch.setattr(
+        handler,
+        "_today_cards_snapshot",
+        lambda **_kwargs: refreshed,
+    )
+
+    assert handler._continue_reviews_from_session_summary() is False
+    assert calls == []
 
 
 def test_continue_reviews_failure_returns_false_without_dismissing_card(monkeypatch):

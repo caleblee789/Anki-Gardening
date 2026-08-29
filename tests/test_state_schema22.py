@@ -137,7 +137,7 @@ def test_schema22_exact_progression_fields_round_trip() -> None:
 
     restored = GardenState.from_dict(state.to_dict())
 
-    assert restored.version == STATE_VERSION == 23
+    assert restored.version == STATE_VERSION == 25
     assert restored.plants[0].growth_units == 99_975
     assert restored.plants[0].fertilizer_card_batches == [batch]
     assert restored.stored_growth_units == 1_250
@@ -188,7 +188,7 @@ def test_schema21_migration_preserves_value_and_preclaims_crossed_rewards() -> N
     migrated = migrate_modern_state(payload, migrated_at=1_500.0)
     plant = migrated.plants[0]
 
-    assert migrated.version == 23
+    assert migrated.version == STATE_VERSION
     assert plant.growth_remainder_units == 0
     assert migrated.streak_growth_remainder_units == 50
     assert plant.stage_reward_claims == ["sprout"]
@@ -276,7 +276,7 @@ def test_schema21_json_load_is_backed_up_and_upgraded(tmp_path: Path) -> None:
 
     restored = storage._load()
 
-    assert restored.version == 23
+    assert restored.version == STATE_VERSION
     assert restored.currency_balance == 321
     backup = storage.data_path.with_suffix(".schema-21.legacy.json")
     assert backup.exists()
@@ -297,12 +297,12 @@ def test_authoritative_schema21_sqlite_is_backed_up_and_upgraded(
 
     restored = storage._load_authoritative_state()
 
-    assert restored.version == 23
+    assert restored.version == STATE_VERSION
     assert restored.currency_balance == 444
     assert storage._reward_ledger is not None
     snapshot = storage._reward_ledger.load_state_snapshot()
     assert snapshot is not None
-    assert snapshot.schema_version == 23
+    assert snapshot.schema_version == STATE_VERSION
     assert snapshot.revision == 2
     assert storage._reward_ledger.reward_applied("legacy:reward")
     backups = list(tmp_path.glob("garden_state.schema-21.legacy-*.sqlite3"))

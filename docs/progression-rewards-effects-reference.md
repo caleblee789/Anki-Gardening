@@ -1,6 +1,6 @@
 # Anki Garden progression, rewards, and effects
 
-> Current working-tree reference for schema 23. This describes active
+> Current working-tree reference for schema 25. This describes active
 > player-facing mechanics. Development tools and retired compatibility fields
 > are excluded.
 
@@ -101,14 +101,15 @@ An Anki day follows Anki's configured next-day cutoff.
 
 Today’s Cards is a live collection-wide state:
 
-- Due reviews and introduced learning or relearning steps before the cutoff
-  count, including active filtered decks and active deck limits.
-- Unseen new cards do not count until introduced.
+- Scheduler-available New, Learning, and Review cards count within Anki's
+  active collection-wide deck limits, including filtered decks.
+- A New card that enters Learning remains one outstanding card until its
+  scheduler obligation is complete; repeated answers do not inflate progress.
 - Suspended and buried cards remain excluded while unavailable.
 - Restored cards can return the day to an incomplete state before reward grant.
 - If Anki Garden cannot verify the state, the reward fails closed while normal
   Garden Growth continues.
-- The session-snapshotted Garden Feature and locked Scenery determine completion effects.
+- The Anki-day-locked Garden Bonus and locked Scenery determine completion effects.
 
 Approved HUD copy:
 
@@ -118,10 +119,28 @@ Approved HUD copy:
   **176 cards complete**.
 - Ineligible: **NO COMPLETION REWARD TODAY** and **No cards were due today!**
 - Unavailable: **CARD STATUS UNAVAILABLE** and **Anki Garden could not verify
-  today’s due cards. Normal Garden Growth is unaffected.**
+  today’s cards. Normal Garden Growth is unaffected.**
 
 The activity count is informational. It has no denominator, progress bar,
 threshold color, checkmark, or separate reward.
+
+## Post-sync rewards
+
+Before normal sync, Garden establishes a clean boundary from review history
+already present on the desktop. After sync, every newly unseen supported
+post-activation answer beyond that boundary is processed exactly once across
+its original Anki day, including delayed lower-ID rows and distinct answers for
+the same card.
+
+- Past-day answers receive normal per-answer Growth, rewards, Finds,
+  discoveries, and progression effects.
+- Today’s Cards completion is evaluated only for the current Anki day when its
+  live transition can be proven.
+- Rewards and one pending nonmodal Sync Rewards receipt commit atomically.
+- Initial setup and one-way collection replacement create a non-awarding
+  baseline instead of replaying history.
+- **Show rewards after syncing** defaults on and controls only presentation;
+  reward processing is unchanged when it is off.
 
 ## Consumables
 
@@ -153,44 +172,47 @@ threshold color, checkmark, or separate reward.
   | Locked effects when used | Booster cards |
   |---|---:|
   | Neither | 100 |
-  | Herbalist’s Hourglass | 110 |
+  | Herbalist’s Hourglass | 125 |
   | Full Moon Garden | 125 |
-  | Both | 135 |
+  | Both | 150 |
 
 ### Growth Charge rules
 
 - A Charge can target any owned, planted, unfinished plant.
 - It is consumed only in the successful transaction that grants its value.
-- It receives no streak, Fertilizer, Booster, Garden Feature, or Scenery modifier and
+- It receives no streak, Fertilizer, Booster, Garden Decoration, or Scenery modifier and
   is not shared.
 - Overflow continues to other eligible plants or Stored Growth.
 - Every crossed checkpoint and stage still grants its milestone reward.
 
 ## Daily loadout
 
-Exactly one Garden Feature and one Scenery may be selected.
+Exactly one owned Garden Decoration may be displayed, exactly one owned
+decoration supplies the Garden Bonus, and exactly one Scenery may be selected.
 
-- A continuous local review session snapshots its Active Feature when it begins.
-- Changing the Active Feature during that session queues it for the next session;
-  the two bonuses cannot stack.
+- The first eligible answer locks the selected Garden Bonus for the Anki day.
+- Changing the Garden Bonus after that lock queues it for the next Anki day;
+  bonuses cannot stack.
+- The displayed decoration is cosmetic and may change independently at any time.
 - Scenery selection is free before the day's first progression event. The first
   eligible completed card, Growth Charge, or other progression event locks it
   until the next Anki cutoff.
-- Completion gifts, checkpoint effects, Potion extensions, and card effects all
-  use the locked snapshot.
+- After the first eligible answer, completion gifts, Potion extensions, and
+  card effects use the locked Garden Bonus. Before that answer, the decoration
+  labeled Ready for today is authoritative.
 - Hiding artwork does not disable its locked effect.
 
-## Garden Features
+## Garden Decorations
 
-| Garden Feature | Acquisition | Garden Bonus |
+| Garden Decoration | Acquisition | Garden Bonus |
 |---|---|---|
 | Seedling Sign | Included | None |
-| Wind Chime | Nursery: 100 Coins | +1 Growth on the first 10 eligible cards |
+| Wind Chime | Nursery: 100 Coins | +1 Growth every 10 eligible cards |
 | Harvest Bell | Nursery: 175 Coins | +5 Coins when Today’s Cards is complete |
-| Watering Station | Nursery: 250 Coins | +1 Growth on the first 20 eligible cards |
-| Herbalist’s Hourglass | Nursery: 350 Coins | +10 cards to each Booster activation |
-| Firefly Lantern | Rare discovery | +5 Growth on the first 15 eligible cards |
-| Prism Trellis | Very Rare discovery | +100 direct Growth when Today’s Cards is complete |
+| Watering Station | Nursery: 250 Coins | +1 Growth every 5 eligible cards |
+| Herbalist’s Hourglass | Nursery: 350 Coins | Booster Potions add 25% more Booster cards |
+| Firefly Lantern | Rare discovery | +3 Growth every 4 eligible cards |
+| Prism Trellis | Very Rare discovery | Banks 1.5 direct Growth per eligible card and releases it when Today’s Cards is complete |
 
 ## Scenery
 
@@ -304,11 +326,13 @@ while at least one plant remains unfinished.
 
 ## Persistence and presentation authority
 
-Schema 22 persists exact hundredth-Growth units, Stored Growth, milestone
+Schema 25 persists exact hundredth-Growth units, Stored Growth, milestone
 claims, Full Bloom metadata, Today’s Cards state, daily loadout locks and queue,
 environment guarantees, timed Fertilizer intervals/queues, and card-counted
-Booster batches. Schema-21 JSON and
-SQLite profiles are backed up before migration.
+Booster batches, independent displayed Decoration and active Garden Bonus
+choices, and the pending sync receipt. Supported schema-10–24 state migrates
+fail-closed; schema-21 JSON and SQLite profiles are backed up at their
+historical migration boundary.
 
 The engine returns the committed Growth breakdown and routing receipt. The UI
 does not independently calculate Growth, remaining cards, milestones, or reward
@@ -335,6 +359,6 @@ currency, or unlimited environment stacking.
 - [Achievement registry](../ankigarden/achievements.py)
 - [Garden Find registries](../ankigarden/garden_finds.py)
 - [Growth contracts](../ankigarden/growth.py)
-- [Schema-22 state](../ankigarden/models/state.py)
+- [Schema-25 state](../ankigarden/models/state.py)
 - [Detailed data contracts](ui/data_contracts.md)
 - [Reviewer HUD specification](reviewer-hud-specification.md)

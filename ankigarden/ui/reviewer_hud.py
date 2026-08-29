@@ -14,15 +14,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..growth import GROWTH_UNITS_PER_POINT, stage_progress
+from ..environment import GARDEN_FEATURE_CATALOG
+from ..garden_features import FEATURE_EFFECT_KEYS
 from .formatters import format_approximate_cards, format_quantity
 
 
-# The expanded width follows ``clamp(312px, 20vw, 328px)``. The compatibility
+# The expanded width follows ``clamp(312px, 20vw, 324px)``. The compatibility
 # constant remains the preferred nominal size used by fixtures without a live
 # viewport.
 HUD_EXPANDED_WIDTH = 312
 HUD_MIN_WIDTH = 312
-HUD_MAX_WIDTH = 328
+HUD_MAX_WIDTH = 324
 HUD_COLLAPSED_WIDTH = 56
 HUD_COLLAPSED_HEIGHT = 112
 HUD_DEFAULT_CONTENT_HEIGHT = 558
@@ -101,6 +103,7 @@ class NurtureProjection:
     next_card_line: str = ""
     shared_line: str = ""
     effect_chips: tuple[str, ...] = ()
+    effect_art_refs: tuple[str, ...] = ()
     environment_line: str = ""
     queued_line: str = ""
     stored_growth_line: str = ""
@@ -108,6 +111,7 @@ class NurtureProjection:
     empty_message: str = ""
     stage_key: str = ""
     next_stage_key: str = ""
+    checkpoint_percents: tuple[int, ...] = (25, 50, 75, 100)
     next_checkpoint_percent: int = 0
     next_checkpoint_reward_coins: int = 0
     checkpoint_growth_remaining: int = 0
@@ -129,8 +133,25 @@ class NurtureProjection:
         return self.effect_chips[:2]
 
     @property
+    def visible_effect_art_refs(self) -> tuple[str, ...]:
+        return self.effect_art_refs[:2]
+
+    @property
     def effect_overflow_count(self) -> int:
         return max(0, len(self.effect_chips) - 2)
+
+
+@dataclass(frozen=True)
+class PlantChoiceProjection:
+    """One engine-confirmed alternative for the reviewer plant selector."""
+
+    plant_id: str
+    plant_name: str
+    species_name: str
+    stage_key: str
+    stage_label: str
+    art_path: str = ""
+    art_placement: Any = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +161,7 @@ class ReviewerHudProjection:
     nurture: NurtureProjection
     collapsed: bool
     dock: str
+    plant_choices: tuple[PlantChoiceProjection, ...] = ()
 
 
 def format_growth_units(units: Any, *, signed: bool = False) -> str:
@@ -306,11 +328,29 @@ def _active_target(engine: Any, state: Any) -> Any | None:
     )
 
 
-def _next_checkpoint(total_growth: int) -> tuple[int, int, int] | None:
+def _reviewer_checkpoint_percents(engine: Any) -> tuple[int, ...]:
+    values: list[int] = []
+    for raw in tuple(
+        getattr(engine, "reviewer_checkpoint_percents", (25, 50, 75, 100))
+        or (25, 50, 75, 100)
+    ):
+        try:
+            percent = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if 0 < percent <= 100 and percent not in values:
+            values.append(percent)
+    return tuple(sorted(values)) or (25, 50, 75, 100)
+
+
+def _next_checkpoint(
+    total_growth: int,
+    checkpoint_percents: tuple[int, ...] = (25, 50, 75, 100),
+) -> tuple[int, int, int] | None:
     progress = stage_progress(total_growth)
     if progress.fully_grown or progress.next_threshold is None:
         return None
-    for percent in (25, 50, 75, 100):
+    for percent in checkpoint_percents:
         point = progress.stage_start + math.ceil(progress.stage_goal * percent / 100)
         if total_growth < point:
             return percent, point - total_growth, point
@@ -331,16 +371,58 @@ def _remaining_time_label(seconds: Any) -> str:
     return f"{hours}h" if extra_minutes == 0 else f"{hours}h {extra_minutes}m"
 
 
-def _active_effect_chips(
+def _active_effect_rows(
     engine: Any,
     plant: Any,
     award: Any,
     *,
     now_ms: int | None = None,
-) -> tuple[str, ...]:
-    """Return short, non-control effect labels in display priority order."""
+) -> tuple[tuple[str, str], ...]:
+    """Return compact effect copy paired with canonical item artwork refs."""
 
-    chips: list[str] = []
+    rows: list[tuple[str, str]] = []
+    state = getattr(engine, "state", None)
+    active_feature_resolver = getattr(engine, "active_garden_feature_id", None)
+    try:
+        active_id = str(
+            active_feature_resolver()
+            if callable(active_feature_resolver)
+            else ""
+        )
+    except Exception:
+        active_id = ""
+    active_item = GARDEN_FEATURE_CATALOG.get(active_id)
+    effect = FEATURE_EFFECT_KEYS.get(active_id, "none")
+    progress_copy = {
+        "growth_every_10_plus_1": (
+            f"{max(0, int(getattr(state, 'wind_chime_progress', 0) or 0))} / 10 cards to next +1 Growth"
+        ),
+        "growth_every_5_plus_1": (
+            f"{max(0, int(getattr(state, 'watering_station_progress', 0) or 0))} / 5 cards to next +1 Growth"
+        ),
+        "growth_every_4_plus_3": (
+            f"{max(0, int(getattr(state, 'firefly_lantern_progress', 0) or 0))} / 4 cards to next +3 Growth"
+        ),
+        "completion_coins_plus_5": "+5 Coins when Today’s Cards are complete",
+        "booster_cards_multiplier_1_25": "Booster Potions add 25% more cards",
+        "none": "No mechanical bonus",
+    }.get(effect, "")
+    if effect == "prism_bank_per_answer_1_5":
+        day = str(getattr(getattr(state, "daily_stats", None), "day", "") or "")
+        released = str(getattr(state, "prism_released_anki_day_id", "") or "") == day
+        progress_copy = (
+            "+1.5 direct Growth per eligible card · Today’s Prism Harvest released"
+            if released else
+            f"{format_growth_units(getattr(state, 'prism_pending_growth_units', 0))} Growth banked"
+        )
+    feature_row = (
+        (
+            f"{active_item.name} · {progress_copy}",
+            f"garden_feature_{active_id}",
+        )
+        if active_item is not None and progress_copy
+        else None
+    )
     current_seconds = (
         float(time.time())
         if now_ms is None
@@ -372,7 +454,10 @@ def _active_effect_chips(
                 )
             else:
                 break
-        chips.append(f"Fertilizer {_remaining_time_label(effective_end - current_seconds)}")
+        rows.append((
+            f"Fertilizer · {_remaining_time_label(effective_end - current_seconds)}",
+            f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else "",
+        ))
 
     booster_batches = list(getattr(plant, "booster_card_batches", ()) or ())
     if booster_batches:
@@ -380,27 +465,63 @@ def _active_effect_chips(
             max(0, int(getattr(batch, "remaining_cards", 0) or 0))
             for batch in booster_batches
         )
-        chips.append(f"Booster {plural_cards(booster_cards)}")
+        rows.append((
+            f"Booster · {plural_cards(booster_cards)}",
+            "booster_potion",
+        ))
 
-    # Garden Feature and Scenery contributions are active per-card modifiers,
+    # Garden Decoration and Scenery contributions are active per-card modifiers,
     # so they precede the derived streak bonus while remaining behind timed
     # Fertilizer and card-limited Booster effects.
     for label, units in (
-        ("Weather", getattr(award, "weather_growth_units", 0)),
+        ("Garden Decoration", getattr(award, "weather_growth_units", 0)),
         ("Scenery", getattr(award, "scenery_growth_units", 0)),
     ):
         normalized_units = max(0, int(units or 0))
         if normalized_units:
-            chips.append(
-                f"{label} {format_growth_units(normalized_units, signed=True)} growth"
-            )
+            rows.append((
+                f"{label} · {format_growth_units(normalized_units, signed=True)} growth",
+                "",
+            ))
+
+    # Named mechanical features remain useful when they affect a later card or
+    # completion rather than this answer. Avoid duplicating the active feature
+    # when its direct Growth is already represented above.
+    if feature_row is not None and (
+        effect != "none"
+        and max(0, int(getattr(award, "weather_growth_units", 0) or 0)) == 0
+    ):
+        rows.append(feature_row)
 
     streak_units = max(0, int(getattr(award, "streak_growth_units", 0) or 0))
     if streak_units:
-        chips.append(
-            f"Streak bonus {format_growth_units(streak_units, signed=True)} growth"
+        rows.append((
+            f"Streak bonus · {format_growth_units(streak_units, signed=True)} growth",
+            "",
+        ))
+    if feature_row is not None and effect == "none":
+        rows.append(feature_row)
+    return tuple(rows)
+
+
+def _active_effect_chips(
+    engine: Any,
+    plant: Any,
+    award: Any,
+    *,
+    now_ms: int | None = None,
+) -> tuple[str, ...]:
+    """Compatibility projection for callers that only consume effect copy."""
+
+    return tuple(
+        copy
+        for copy, _artwork_ref in _active_effect_rows(
+            engine,
+            plant,
+            award,
+            now_ms=now_ms,
         )
-    return tuple(chips)
+    )
 
 
 def _checkpoint_reward(engine: Any, next_stage: str, percent: int) -> int:
@@ -439,6 +560,70 @@ def _resolved_plant_art(engine: Any, species: str, stage: str) -> tuple[str, Any
     return (str(path) if path else "", placement)
 
 
+def project_plant_choices(
+    engine: Any,
+    state: Any,
+) -> tuple[PlantChoiceProjection, ...]:
+    """Project planted, unfinished alternatives without mutating Garden state."""
+
+    active_id = str(getattr(state, "active_plant_id", "") or "")
+    story = getattr(engine, "plant_story", None)
+    choices: list[tuple[tuple[Any, ...], PlantChoiceProjection]] = []
+    for candidate in tuple(getattr(state, "plants", ()) or ()):
+        plant_id = str(getattr(candidate, "plant_id", "") or "")
+        if not plant_id or plant_id == active_id:
+            continue
+        plant = candidate
+        if callable(story):
+            try:
+                plant = story(plant_id)
+            except Exception:
+                plant = None
+            if plant is None:
+                continue
+        planted = bool(
+            getattr(
+                plant,
+                "planted",
+                getattr(plant, "slot_index", None) is not None,
+            )
+        )
+        if not planted or bool(getattr(plant, "fully_grown", False)):
+            continue
+        species_key = str(getattr(plant, "species", "") or "")
+        species_name = species_key.replace("_", " ").title()
+        plant_name = str(getattr(plant, "name", "") or species_name or "Plant")
+        stage_key = str(getattr(plant, "growth_stage", "") or "seed")
+        stage_label = STAGE_NAMES.get(
+            stage_key,
+            stage_key.replace("_", " ").title(),
+        )
+        art_path, art_placement = _resolved_plant_art(
+            engine,
+            species_key,
+            stage_key,
+        )
+        choice = PlantChoiceProjection(
+            plant_id=plant_id,
+            plant_name=plant_name,
+            species_name=species_name,
+            stage_key=stage_key,
+            stage_label=stage_label,
+            art_path=art_path,
+            art_placement=art_placement,
+        )
+        try:
+            slot_order = int(getattr(plant, "slot_index", 0) or 0)
+        except (TypeError, ValueError):
+            slot_order = 0
+        choices.append((
+            (slot_order, plant_name.casefold(), plant_id),
+            choice,
+        ))
+    choices.sort(key=lambda item: item[0])
+    return tuple(choice for _sort_key, choice in choices)
+
+
 def project_nurture(
     engine: Any,
     state: Any,
@@ -467,7 +652,12 @@ def project_nurture(
         getattr(target, "growth_stage", "") or progress.stage or "seed"
     )
     next_stage = str(progress.next_stage or "")
-    checkpoint = None if fully_grown else _next_checkpoint(total_growth)
+    checkpoint_percents = _reviewer_checkpoint_percents(engine)
+    checkpoint = (
+        None
+        if fully_grown
+        else _next_checkpoint(total_growth, checkpoint_percents)
+    )
 
     award = None
     projector = getattr(engine, "project_review_growth", None)
@@ -522,6 +712,7 @@ def project_nurture(
     }:
         plant_name = species_name or plant_name
     art_path, art_placement = _resolved_plant_art(engine, species_key, stage_key)
+    effect_rows = _active_effect_rows(engine, target, award, now_ms=now_ms)
     schedule = getattr(state, "daily_loadout", None)
     weather_id = str(
         getattr(schedule, "weather_id", "")
@@ -550,21 +741,23 @@ def project_nurture(
         progress_percent=100 if fully_grown else max(0, min(100, round(progress.progress * 100))),
         checkpoint_line=checkpoint_line,
         next_stage_line=(
-            f"+{format_quantity(checkpoint_reward, 'coin')} at next checkpoint"
+            f"Checkpoint reward · +{format_quantity(checkpoint_reward, 'coin')}"
             if checkpoint_reward
             else ""
         ),
         estimate_line=estimate_line,
         next_card_line=next_answer_line,
-        effect_chips=_active_effect_chips(engine, target, award, now_ms=now_ms),
+        effect_chips=tuple(copy for copy, _artwork_ref in effect_rows),
+        effect_art_refs=tuple(artwork_ref for _copy, artwork_ref in effect_rows),
         stored_growth_line="",
         empty_message=(
-            "Future growth will be shared or stored until you select another plant."
+            "Future growth will be shared or stored."
             if fully_grown
             else ""
         ),
         stage_key=stage_key,
         next_stage_key=next_stage,
+        checkpoint_percents=checkpoint_percents,
         next_checkpoint_percent=checkpoint_percent,
         next_checkpoint_reward_coins=checkpoint_reward,
         checkpoint_growth_remaining=growth_remaining,
@@ -603,6 +796,7 @@ def project_reviewer_hud(
         nurture=project_nurture(engine, state, now_ms=now_ms),
         collapsed=bool(collapsed),
         dock="left" if str(dock) == "left" else "right",
+        plant_choices=project_plant_choices(engine, state),
     )
 
 
@@ -681,11 +875,13 @@ __all__ = [
     "HUD_NARROW_VIEWPORT",
     "HUD_TOP_MARGIN",
     "NurtureProjection",
+    "PlantChoiceProjection",
     "ReviewerHudProjection",
     "TodayCardsProjection",
     "create_reviewer_hud",
     "format_growth_units",
     "plural_cards",
+    "project_plant_choices",
     "project_nurture",
     "project_reviewer_hud",
     "project_today_cards",

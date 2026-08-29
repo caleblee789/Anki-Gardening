@@ -61,6 +61,7 @@ class EnvironmentEffect:
     trigger: EffectTrigger
     value_kind: EffectValueKind
     amount: int = 0
+    amount_units: int = 0
     first_cards: int | None = None
     every_nth_card: int | None = None
     every_nth_completion: int | None = None
@@ -76,6 +77,12 @@ class EnvironmentEffect:
             or self.amount < 0
         ):
             raise ValueError("environment effect amount must be a nonnegative integer")
+        if (
+            isinstance(self.amount_units, bool)
+            or not isinstance(self.amount_units, int)
+            or self.amount_units < 0
+        ):
+            raise ValueError("environment effect amount_units must be a nonnegative integer")
         for value, label in (
             (self.first_cards, "first_cards"),
             (self.every_nth_card, "every_nth_card"),
@@ -113,8 +120,8 @@ class CatalogItem:
 
     @property
     def descriptor(self) -> EffectDescriptor:
-        kind_name = "Garden Feature" if self.kind == "garden_feature" else "Scenery"
-        other_kind = "Scenery" if self.kind == "garden_feature" else "Garden Feature"
+        kind_name = "Garden Decoration" if self.kind == "garden_feature" else "Scenery"
+        other_kind = "Scenery" if self.kind == "garden_feature" else "Garden Decoration"
         return EffectDescriptor(
             function=f"Changes {kind_name}.",
             buff=self.effect,
@@ -168,15 +175,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Common",
         "purchase",
-        "+1 Growth on your first 10 cards each Anki day.",
+        "Every 10 eligible card answers: +1 Growth.",
         "Nursery: 100 Garden Coins.",
         100,
         effects=(EnvironmentEffect(
-            "growth_first_10_plus_1",
+            "growth_every_10_plus_1",
             "eligible_card",
             "growth",
             amount=1,
-            first_cards=10,
+            every_nth_card=10,
         ),),
     ),
     "harvest_bell": CatalogItem(
@@ -201,15 +208,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "+1 Growth on your first 20 cards each Anki day.",
+        "Every 5 eligible card answers: +1 Growth.",
         "Nursery: 250 Garden Coins.",
         250,
         effects=(EnvironmentEffect(
-            "growth_first_20_plus_1",
+            "growth_every_5_plus_1",
             "eligible_card",
             "growth",
             amount=1,
-            first_cards=20,
+            every_nth_card=5,
         ),),
     ),
     "herbalist_hourglass": CatalogItem(
@@ -218,14 +225,14 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Uncommon",
         "purchase",
-        "Booster Potions last 10 percent longer.",
+        "Booster Potions provide 25 percent more Booster cards.",
         "Nursery: 350 Garden Coins.",
         350,
         effects=(EnvironmentEffect(
-            "booster_duration_multiplier_1_10",
+            "booster_cards_multiplier_1_25",
             "booster_activation",
             "booster_cards",
-            amount=10,
+            amount=25,
         ),),
     ),
     "firefly_lantern": CatalogItem(
@@ -234,15 +241,15 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Rare",
         "drop",
-        "+5 Growth on your first 15 cards each Anki day.",
+        "Every 4 eligible card answers: +3 Growth.",
         "Discover through an occasional Garden Find while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
-            "growth_first_15_plus_5",
+            "growth_every_4_plus_3",
             "eligible_card",
             "growth",
-            amount=5,
-            first_cards=15,
+            amount=3,
+            every_nth_card=4,
         ),),
     ),
     "prism_trellis": CatalogItem(
@@ -251,14 +258,14 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "garden_feature",
         "Very Rare",
         "drop",
-        "+100 Instant Growth when today’s cards are complete.",
+        "Bank 1.5 Growth per eligible card; release it when Today’s Cards are complete.",
         "Discover through an occasional Garden Find while reviewing.",
         drop_tier="very_rare_environment",
         effects=(EnvironmentEffect(
-            "completion_direct_growth_plus_100",
-            "today_cards_complete",
+            "prism_bank_per_answer_1_5",
+            "eligible_card",
             "instant_growth",
-            amount=100,
+            amount_units=150,
         ),),
     ),
 }
@@ -473,7 +480,7 @@ LEGACY_WEATHER_TO_GARDEN_FEATURE: dict[str, str] = {
     "rainbow_sunshower": "prism_trellis",
 }
 # Supported migration-window aliases. New code and saved state use only the
-# Garden Feature names above.
+# Garden Decoration names above. Internal identifiers remain stable for save compatibility.
 DEFAULT_WEATHER_ID = DEFAULT_GARDEN_FEATURE_ID
 WEATHER_CATALOG = GARDEN_FEATURE_CATALOG
 

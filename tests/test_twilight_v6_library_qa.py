@@ -56,6 +56,8 @@ def _expected_file(species: str, stage: str) -> Path:
 
 
 def _expected_source(species: str, stage: str) -> Path:
+    if species == "wisteria" and stage == "seed":
+        return SOURCE_ROOT / species / "wisteria_seed_retina_chroma.png"
     return SOURCE_ROOT / species / f"{species}_{stage}_chroma.png"
 
 
@@ -384,10 +386,9 @@ def test_completed_v6_line_has_six_unique_direct_soil_stages(species: str) -> No
         placement = asset["placement"]
         assert asset["release_preferred"] is True
         assert asset["alpha"] is True
-        assert asset["file"] == (
-            f"assets/v6_storybook_gouache/plants/{species}/{stage}/"
-            f"{species}_{stage}_twilight_v6.webp"
-        )
+        assert asset["file"] == _expected_file(species, stage).relative_to(
+            ADDON
+        ).as_posix()
         assert placement["base_type"] == "direct_soil"
         assert placement["release_layout_candidate"] is True
         assert placement["review_provenance"] == "verdant-twilight-line-contact-sheet-v6"

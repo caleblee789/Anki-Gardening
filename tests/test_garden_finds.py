@@ -22,6 +22,7 @@ from ankigarden.garden_finds import (
     resolve_standard_find,
     simulate_standard_find_economy,
     stable_answer_event_identity,
+    standard_find_artwork_ref,
     standard_find_status,
     standard_chance_for_answer,
     ultra_denominator,
@@ -90,6 +91,14 @@ def test_v2_registry_and_drought_schedule_match_the_approved_contract():
         ),
         ("find_coin_treasury", "Garden Treasury", "coins", 40, None, "Exceptional", 4),
     ]
+    artwork_by_reward = {
+        reward.reward_id: reward.artwork_ref
+        for reward in STANDARD_FIND_REGISTRY
+    }
+    assert artwork_by_reward["find_coin_pouch"] == "garden_pouch"
+    assert artwork_by_reward["find_morning_dew"] == "morning_dew"
+    assert standard_find_artwork_ref("find_morning_dew", "growth") == "morning_dew"
+    assert standard_find_artwork_ref("unknown", "fallback") == "fallback"
     assert sum(reward.weight_tenths for reward in STANDARD_FIND_REGISTRY) == 1_000
     assert {
         tier: sum(

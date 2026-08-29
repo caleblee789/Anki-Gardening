@@ -60,7 +60,13 @@ class _Hooks:
         self.webview_will_set_content = []
         self.webview_did_inject_style_into_page = []
         self.webview_did_receive_js_message = []
+        self.sync_will_start = []
         self.sync_did_finish = []
+        self.collection_did_load = []
+        self.collection_will_temporarily_close = []
+        self.collection_did_temporarily_close = []
+        self.profile_will_close = []
+        self.profile_did_open = []
         self.reviewer_did_answer_card = []
         self.reviewer_did_show_question = []
         self.state_did_change = []
@@ -149,11 +155,26 @@ def _new_app(addon_module):
     app._reviewer_hooked = False
     app._sync_hooked = False
     app._sync_callback = app._on_sync_finished
+    app._sync_will_callback = app._on_sync_will_start
+    app._collection_hooked = False
+    app._collection_callback = app._on_collection_did_load
+    app._collection_will_temporarily_close_callback = (
+        app._on_collection_will_temporarily_close
+    )
+    app._collection_did_temporarily_close_callback = (
+        app._on_collection_did_temporarily_close
+    )
+    app._profile_will_close_callback = app._on_profile_will_close
+    app._profile_did_open_callback = app._on_profile_did_open
+    app._collection_replacement_pending = False
     app._home_widget_controller = HomeWidgetStateController()
     app._dashboard_open_pending = False
     app._dashboard_open_attempts = 0
     app._dashboard_open_failures = 0
     app._settings_open_pending = False
+    app._starter_open_pending = False
+    app._dashboard_focus_plant_id = ""
+    app._dashboard_select_plant_pending = False
     app._apply_same_day_catchup = lambda: None
     app.engine = SimpleNamespace(rollover_if_needed=lambda: None)
     app.storage = SimpleNamespace(
@@ -674,6 +695,86 @@ def test_reviewer_reward_unmounts_when_anki_leaves_reviewer(monkeypatch):
     assert handler._reviewer_notice_shown is False
 
 
+def test_reviewer_hud_select_plant_requests_dedicated_dashboard_route(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    requests = []
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(),
+        open_garden=lambda **kwargs: requests.append(kwargs),
+    )
+
+    handler._select_another_plant_from_reviewer_hud()
+
+    assert requests == [{"select_another_plant": True}]
+
+
+def test_reviewer_hud_select_plant_supports_legacy_garden_callback(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    requests = []
+
+    def legacy_open_garden():
+        requests.append("garden")
+
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(),
+        open_garden=legacy_open_garden,
+    )
+
+    handler._select_another_plant_from_reviewer_hud()
+
+    assert requests == ["garden"]
+
+
+def test_reviewer_hud_inline_plant_choice_commits_without_resetting_session(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    selected = []
+    changes = []
+    engine = SimpleNamespace(
+        set_active_plant=lambda plant_id: (selected.append(plant_id) or True, "ok"),
+    )
+    handler = reviewer_module.ReviewerHookHandler(
+        engine,
+        SimpleNamespace(state=SimpleNamespace(active_plant_id="old")),
+        state_changed=changes.append,
+    )
+    refreshes = []
+    handler._ensure_reviewer_hud = lambda: refreshes.append("hud")
+    accumulator = object()
+    handler._session_summary_accumulator = accumulator
+
+    accepted = handler._choose_plant_from_reviewer_hud("next")
+
+    assert accepted is True
+    assert selected == ["next"]
+    assert changes == ["Active plant changed"]
+    assert refreshes == ["hud"]
+    assert handler._session_summary_accumulator is accumulator
+
+
+def test_reviewer_hud_rejected_inline_choice_preserves_current_projection(monkeypatch):
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
+    changes = []
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(set_active_plant=lambda _plant_id: (False, "stale")),
+        SimpleNamespace(state=SimpleNamespace(active_plant_id="old")),
+        state_changed=changes.append,
+    )
+    refreshes = []
+    handler._ensure_reviewer_hud = lambda: refreshes.append("hud")
+
+    accepted = handler._choose_plant_from_reviewer_hud("stale")
+
+    assert accepted is False
+    assert changes == []
+    assert refreshes == []
+
+
 def test_reviewer_exit_summary_is_local_card_based_and_nonmodal(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     reviewer_module = importlib.reload(importlib.import_module("ankigarden.hooks.reviewer"))
@@ -920,7 +1021,10 @@ def test_reviewer_reward_feedback_keeps_delayed_correlations_separate_with_find_
     assert feedback.reward_detail == ""
     assert (feedback.coins_total, feedback.growth_total) == (5, 40)
     assert feedback.tier == "Common"
-    assert (feedback.asset_category, feedback.asset_key) == ("ui", "growth")
+    assert (feedback.asset_category, feedback.asset_key) == (
+        "ui",
+        "morning_dew",
+    )
     assert feedback.amount == 0
     assert feedback.correlation_id == "answer:abc"
     assert consumed == [tuple(event.event_id for event in events)]
@@ -986,7 +1090,7 @@ def test_reviewer_reward_copy_reports_environment_and_grouped_results() -> None:
     assert environment is not None
     assert environment.title == "Garden Find"
     assert environment.tier == "Rare"
-    assert environment.message == "Added to Garden Features"
+    assert environment.message == "Added to Garden Decorations"
 
     grouped_finds = tuple(
         SimpleNamespace(
@@ -1702,6 +1806,111 @@ def test_dashboard_open_coordinator_coalesces_repeated_requests(monkeypatch):
     assert scheduled == [0]
 
 
+def test_reviewer_plant_selection_request_coalesces_and_preserves_session(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    del app.open_dashboard
+    scheduled = []
+    accumulator = object()
+    app.reviewer_hooks = SimpleNamespace(
+        _session_summary_accumulator=accumulator,
+        dismiss_session_summary_for_navigation=lambda _reason: None,
+    )
+    app.sync_reward_presenter = SimpleNamespace(dismiss=lambda _reason: None)
+    app._schedule_dashboard_open = lambda delay: scheduled.append(delay)
+
+    app.open_dashboard(select_another_plant=True)
+    app.open_dashboard(select_another_plant=True)
+
+    assert scheduled == [0]
+    assert app._dashboard_select_plant_pending is True
+    assert app.reviewer_hooks._session_summary_accumulator is accumulator
+
+
+def test_dashboard_opens_public_plant_selection_route_after_presenting(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    calls = []
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        prepare_to_show=lambda: calls.append("prepare"),
+        showNormal=lambda: calls.append("show"),
+        acknowledge_rendered_feedback=lambda: calls.append("acknowledge"),
+        open_plant_selection=lambda: calls.append("plant-selection"),
+        _present_starter_setup_if_needed=lambda: calls.append("starter"),
+    )
+    app._dashboard_open_pending = True
+    app._dashboard_select_plant_pending = True
+    app._run_garden_maintenance = lambda _source: True
+
+    app._open_dashboard_when_ready()
+
+    assert calls == ["prepare", "show", "acknowledge", "plant-selection"]
+    assert app._dashboard_select_plant_pending is False
+    assert app._dashboard_open_pending is False
+
+
+def test_transient_selection_failure_preserves_destination_for_retry(monkeypatch):
+    aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    retries = []
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        prepare_to_show=lambda: None,
+        showNormal=lambda: None,
+        acknowledge_rendered_feedback=lambda: None,
+        open_plant_selection=lambda: (_ for _ in ()).throw(
+            RuntimeError("selection failed")
+        ),
+        close=lambda: None,
+        deleteLater=lambda: None,
+    )
+    app._dashboard_open_pending = True
+    app._dashboard_select_plant_pending = True
+    app._run_garden_maintenance = lambda _source: True
+    app._schedule_dashboard_open = lambda delay: retries.append(delay)
+
+    app._open_dashboard_when_ready()
+
+    assert retries == [120]
+    assert app._dashboard_select_plant_pending is True
+    assert app._dashboard_open_pending is True
+
+
+def test_terminal_selection_failure_clears_destination(monkeypatch):
+    aqt_mod, _hooks, warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    addon.mw = aqt_mod.mw
+    app = _new_app(addon)
+    app.dashboard = SimpleNamespace(
+        isVisible=lambda: True,
+        prepare_to_show=lambda: None,
+        showNormal=lambda: None,
+        acknowledge_rendered_feedback=lambda: None,
+        open_plant_selection=lambda: (_ for _ in ()).throw(
+            RuntimeError("selection failed")
+        ),
+        close=lambda: None,
+        deleteLater=lambda: None,
+    )
+    app._dashboard_open_pending = True
+    app._dashboard_select_plant_pending = True
+    app._dashboard_open_failures = 2
+    app._run_garden_maintenance = lambda _source: True
+
+    app._open_dashboard_when_ready()
+
+    assert app._dashboard_select_plant_pending is False
+    assert app._dashboard_open_pending is False
+    assert warnings
+
+
 def test_dashboard_construction_failure_does_not_poison_retry(monkeypatch):
     aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
     addon = importlib.reload(importlib.import_module("ankigarden.addon"))
@@ -1937,6 +2146,7 @@ def test_schedule_failure_clears_pending_settings_destination(monkeypatch):
     app = _new_app(addon)
     app._dashboard_open_pending = True
     app._settings_open_pending = True
+    app._dashboard_select_plant_pending = True
 
     # The fake Qt module intentionally has no QTimer, exercising the terminal
     # scheduling error without starting an event loop.
@@ -1944,6 +2154,7 @@ def test_schedule_failure_clears_pending_settings_destination(monkeypatch):
 
     assert app._dashboard_open_pending is False
     assert app._settings_open_pending is False
+    assert app._dashboard_select_plant_pending is False
     assert warnings
 
 
@@ -1954,6 +2165,7 @@ def test_collection_timeout_clears_pending_settings_destination(monkeypatch):
     app = _new_app(addon)
     app._dashboard_open_pending = True
     app._settings_open_pending = True
+    app._dashboard_select_plant_pending = True
     app._dashboard_open_attempts = 10
     aqt_mod.mw.col = None
 
@@ -1961,6 +2173,7 @@ def test_collection_timeout_clears_pending_settings_destination(monkeypatch):
 
     assert app._dashboard_open_pending is False
     assert app._settings_open_pending is False
+    assert app._dashboard_select_plant_pending is False
     assert warnings
 
 
@@ -2015,7 +2228,110 @@ def test_setup_sync_hook_is_idempotent(monkeypatch):
     app._setup_sync_hooks()
     app._setup_sync_hooks()
 
+    assert hooks.sync_will_start.count(app._sync_will_callback) == 1
     assert hooks.sync_did_finish.count(app._sync_callback) == 1
+
+
+def test_setup_collection_lifecycle_hooks_is_idempotent(monkeypatch):
+    _aqt_mod, hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+
+    app._setup_collection_hooks()
+    app._setup_collection_hooks()
+
+    assert hooks.collection_did_load.count(app._collection_callback) == 1
+    assert hooks.collection_will_temporarily_close.count(
+        app._collection_will_temporarily_close_callback
+    ) == 1
+    assert hooks.collection_did_temporarily_close.count(
+        app._collection_did_temporarily_close_callback
+    ) == 1
+    assert hooks.profile_will_close.count(app._profile_will_close_callback) == 1
+    assert hooks.profile_did_open.count(app._profile_did_open_callback) == 1
+
+
+def test_sync_lifecycle_processes_snapshot_with_live_presentation_setting(monkeypatch):
+    _aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    snapshot = SimpleNamespace(valid=True, one_way_replacement=False)
+    calls = []
+    app.sync_review_detector = SimpleNamespace(
+        begin=lambda: calls.append("begin") or snapshot,
+        finish=lambda: calls.append("finish") or snapshot,
+    )
+    app.sync_reward_processor = SimpleNamespace(
+        process=lambda value, *, presentation_enabled: calls.append(
+            ("process", value, presentation_enabled)
+        ) or SimpleNamespace(batch_id="batch")
+    )
+    app.sync_reward_presenter = SimpleNamespace(retry=lambda: calls.append("retry"))
+    app.config = SimpleNamespace(
+        value=lambda key, default=None: False
+        if key == "show_rewards_after_syncing"
+        else default
+    )
+    app.state_events = SimpleNamespace(notify=lambda reason: calls.append(("notify", reason)))
+    app._maintenance_signature = lambda: ("clean",)
+    app._refresh_dashboard_after_maintenance = lambda count, growth: calls.append(
+        ("refresh", count, growth)
+    )
+    app._invalidate_review_history = lambda reason: calls.append(("invalidate", reason))
+
+    app._on_sync_will_start()
+    app._on_sync_finished()
+
+    assert calls[:3] == [
+        ("invalidate", "sync start"),
+        "begin",
+        ("invalidate", "sync completion"),
+    ]
+    assert ("process", snapshot, False) in calls
+    assert ("refresh", 0, 0) in calls
+    assert ("notify", "sync rewards reconciled") in calls
+    assert calls[-1] == "retry"
+
+
+def test_one_way_sync_invalidation_never_falls_back_to_rewarding_maintenance(monkeypatch):
+    _aqt_mod, _hooks, _warnings, _infos = _install_fake_aqt(monkeypatch)
+    addon = importlib.reload(importlib.import_module("ankigarden.addon"))
+    app = _new_app(addon)
+    invalidations = []
+    baselines = []
+    maintenance = []
+    dismissals = []
+    snapshot = SimpleNamespace(valid=False, one_way_replacement=True)
+    app.sync_review_detector = SimpleNamespace(
+        invalidate_one_way=lambda reason: invalidations.append(reason),
+        finish=lambda: snapshot,
+        note_collection_generation=lambda **_kwargs: None,
+    )
+    app.sync_reward_processor = SimpleNamespace(
+        process=lambda value, *, presentation_enabled: baselines.append(value) or None
+    )
+    app.sync_reward_presenter = SimpleNamespace(
+        dismiss=lambda reason: dismissals.append(reason),
+        retry=lambda: None,
+    )
+    app.engine = SimpleNamespace(
+        baseline_reward_history=lambda **kwargs: baselines.append(kwargs)
+        or (True, "baselined")
+    )
+    app._run_garden_maintenance = lambda source: maintenance.append(source)
+    app._invalidate_review_history = lambda _reason: None
+    app._refresh_dashboard_after_maintenance = lambda *_args: None
+    app.state_events = SimpleNamespace(notify=lambda _reason: None)
+
+    app._on_collection_will_temporarily_close()
+    app._on_collection_did_temporarily_close(SimpleNamespace())
+    app._on_sync_finished()
+
+    assert invalidations == ["one_way_collection_replacement"]
+    assert dismissals == ["collection replacement"]
+    assert {"reason": "collection_replaced", "persist": True} in baselines
+    assert snapshot in baselines
+    assert maintenance == []
 
 
 def test_generated_non_iterable_hooks_register_idempotently(monkeypatch):

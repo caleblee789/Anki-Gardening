@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the static two-layout Garden Feature visual review lane."""
+"""Build the static two-layout Garden Decoration visual review lane."""
 
 from __future__ import annotations
 

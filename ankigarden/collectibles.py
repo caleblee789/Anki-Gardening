@@ -17,7 +17,6 @@ CollectibleCategory = Literal[
     "plants",
     "scenery",
     "garden_features",
-    "decorations",
     "garden_beds",
     "growth_items",
 ]
@@ -25,8 +24,7 @@ CollectibleCategory = Literal[
 CATEGORY_LABELS: dict[CollectibleCategory, str] = {
     "plants": "Plants",
     "scenery": "Scenery",
-    "garden_features": "Garden Features",
-    "decorations": "Decorations",
+    "garden_features": "Garden Decorations",
     "garden_beds": "Garden beds",
     "growth_items": "Growth items",
 }
@@ -97,11 +95,15 @@ class EnvironmentDiscoveryProgress:
 
     @property
     def base_chance_text(self) -> str:
-        return f"Base chance: 1 in {self.base_denominator:,} per card"
+        return f"Tier chance: 1 in {self.base_denominator:,} per eligible card"
 
     @property
     def progress_label(self) -> str:
-        return f"{self.label} guarantee progress"
+        return f"Progress to the next guaranteed {self.label} discovery"
+
+    @property
+    def unowned_items(self) -> int:
+        return max(0, int(self.total_items) - int(self.collected_items))
 
     @property
     def progress_value_text(self) -> str:
@@ -267,25 +269,6 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
     basic_duration = compact_duration(basic_fertilizer.duration_seconds)
     plants = tuple(_species_definition(species) for species in CURRENT_CATALOG_SPECIES_ORDER)
     environments = tuple(_environment_definitions())
-    decorations = (
-        CollectibleDefinition(
-            item_id="decorations:lantern",
-            name="Garden Lantern",
-            category="decorations",
-            rarity="Common",
-            descriptor=EffectDescriptor(
-                function="Adds a warm lantern to the garden scene.",
-                buff="Adds a warm light to your garden.",
-                activation_condition="Active while equipped.",
-                duration="Shown until unequipped.",
-                stacking="One Decoration at a time.",
-                replacement="Another Decoration replaces it; ownership stays.",
-                unlock_requirement="Included with Anki Garden.",
-            ),
-            source_kind="decoration",
-            source_id="lantern",
-        ),
-    )
     beds = tuple(
         CollectibleDefinition(
             item_id=f"garden_beds:{index}",
@@ -337,6 +320,33 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
             source_kind="growth_item",
             source_id=rich_compost.inventory_item_id,
         ),
+        *(
+            CollectibleDefinition(
+                item_id=f"growth_items:fertilizer_{tier}",
+                name=spec.name,
+                category="growth_items",
+                rarity="",
+                descriptor=EffectDescriptor(
+                    function=f"Adds one {spec.name} to Growth Items inventory.",
+                    buff=(
+                        f"+{spec.growth_per_answer:,} Growth per card while active."
+                    ),
+                    activation_condition=(
+                        "Use on a nurtured plant that is still growing."
+                    ),
+                    duration=compact_duration(spec.duration_seconds),
+                    stacking=(
+                        "Same tier adds time; a different tier waits its turn."
+                    ),
+                    replacement="Remaining paid time is never replaced.",
+                    unlock_requirement="Buy in the Nursery.",
+                ),
+                source_kind="growth_item",
+                source_id=f"fertilizer_{tier}",
+            )
+            for tier, spec in GardenGameEngine.FERTILIZERS.items()
+            if tier != "basic"
+        ),
         CollectibleDefinition(
             item_id="growth_items:booster_potion",
             name="Booster Potion",
@@ -359,7 +369,7 @@ def collectible_registry() -> tuple[CollectibleDefinition, ...]:
         )
         for charge in GROWTH_CHARGES.values()
     )
-    return (*plants, *environments, *decorations, *beds, *growth_items)
+    return (*plants, *environments, *beds, *growth_items)
 
 
 def collection_categories(
@@ -403,11 +413,6 @@ def collectible_views(state: Any) -> tuple[CollectibleView, ...]:
                 else state.loadout.scenery_id
             )
             views.append(CollectibleView(definition, owned, equipped=equipped_id == source_id))
-        elif definition.category == "decorations":
-            owned = source_id in (inventory.get("decorations", []) or [])
-            views.append(CollectibleView(
-                definition, owned, equipped=state.loadout.decoration_id == source_id
-            ))
         elif definition.category == "garden_beds":
             index = int(source_id)
             views.append(CollectibleView(

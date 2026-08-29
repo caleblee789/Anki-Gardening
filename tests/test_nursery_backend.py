@@ -341,7 +341,8 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
     )
 
     assert ok and message == "Garden appearance saved."
-    assert storage.state.selected_garden_feature == "wind_chime"
+    assert storage.state.displayed_garden_feature == "wind_chime"
+    assert storage.state.selected_garden_feature == "seedling_sign"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
         "garden_feature": False,
@@ -355,7 +356,8 @@ def test_collection_loadout_draft_commits_atomically_and_rolls_back_on_save_fail
     )
 
     assert not ok and message == "Couldn’t save changes. Your garden is unchanged."
-    assert storage.state.selected_garden_feature == "wind_chime"
+    assert storage.state.displayed_garden_feature == "wind_chime"
+    assert storage.state.selected_garden_feature == "seedling_sign"
     assert storage.state.selected_background == "spring"
     assert storage.state.environment_visibility == {
         "garden_feature": False,
@@ -424,13 +426,11 @@ def test_schema10_inventory_only_species_becomes_a_usable_shelved_plant_without_
             "plants": ["sunflower"],
             "pots": ["ceramic_minimal"],
             "backgrounds": ["default"],
-            "decorations": ["lantern"],
             "weather": ["sunny"],
         },
         "equipped": {
             "pot": "ceramic_minimal",
             "background": "default",
-            "decoration": "none",
             "weather": "sunny",
         },
         "last_active_day": "2026-08-08",

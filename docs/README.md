@@ -1,6 +1,6 @@
 # Documentation index
 
-These documents describe the current schema-22 Anki Garden 2.1.0 product.
+These documents describe the current schema-25 Anki Garden 2.1.0 product.
 Runtime source and persisted-state behavior remain authoritative when prose and
 implementation disagree.
 
@@ -13,7 +13,7 @@ implementation disagree.
   sources.
 - `e2e_display_assertions.md`: exact-package isolated-Anki journeys that remain
   required for live acceptance.
-- `ui/data_contracts.md`: schema-22 persistence, reward identity, Garden Finds,
+- `ui/data_contracts.md`: schema-25 persistence, reward identity, Garden Finds,
   Growth, purchases, and migration boundaries.
 - `reviewer-hud-specification.md`: exact Today’s Cards copy, HUD geometry,
   plant/checkpoint presentation, persistent-copy exclusions, integrated
@@ -29,6 +29,9 @@ implementation disagree.
   explicitly unrun human/platform gates.
 - `garden-features.md`: the active registry, fixed layout, migration boundary,
   and static Home/native rendering contract.
+- `references/garden-decorations-reference.docx`: illustrated current Garden
+  Decoration catalog, acquisition methods, Garden Find rates, Garden Bonuses,
+  and runtime artwork.
 
 ## Visual and future-work contracts
 
@@ -40,6 +43,7 @@ implementation disagree.
   including layered foliage wind animation.
 
 Superseded capture chronologies, intermediate package hashes, and pre-overhaul
-audit ledgers remain available through Git history. They are not active product
-or release evidence, and their ignored build output is not retained in the
-working folder.
+audit ledgers remain available through Git history or preserved raw local
+evidence. They are not active product or release evidence. Raw runs, manifests,
+archives, and lineage may remain under ignored `build/`; only the current full
+contact-sheet set is retained as the active presentation aid.

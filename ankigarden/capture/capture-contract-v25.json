@@ -1,5 +1,5 @@
 {
-  "contract_digest": "c666e2661b805f1240b98c41a1fbb56ffa58c30491bd298ec973be558f1d17e2",
+  "contract_digest": "74b9028d3b8bb696fa8f4a8af541211c28731693e4b4fc0fc8b7f6d16b79e882",
   "contract_version": 25,
   "profiles": {
     "full": {
@@ -60,6 +60,7 @@
             "diagnostics-warning",
             "reviewer-hud-expanded",
             "session-summary-after-review",
+            "sync-rewards-summary",
             "reviewer-reward-dock-bundle",
             "purchase-confirmation-growth-charge",
             "purchase-success-inventory-collection",
@@ -69,8 +70,8 @@
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 33,
-      "topology_digest": "a4e55c86a0f4ee83eb421ac9a4080e3a4139a60ee3c1995148425f51d122caaf"
+      "surface_count": 34,
+      "topology_digest": "135ac3adb0d8f58a711e2ba247b70299ab2a2777787562220a9b591c9ddcfc7d"
     },
     "representative": {
       "contact_sheet_page_count": 2,
@@ -116,6 +117,7 @@
             "settings-display-advanced-open",
             "reviewer-hud-expanded",
             "session-summary-after-review",
+            "sync-rewards-summary",
             "reviewer-reward-dock-bundle",
             "purchase-confirmation-growth-charge",
             "growth-charge-use-ready"
@@ -123,8 +125,8 @@
           "name": "Settings, rewards, and transactions"
         }
       ],
-      "surface_count": 17,
-      "topology_digest": "bd7c4184efc3d3cec55f2a4bf50fb4a7c8cfe37041ef143fba8cfdd8d0a72b65"
+      "surface_count": 18,
+      "topology_digest": "ad65aa1d28bbcee260f4fd78d253511029c386106b0459b7eeaeee90fe0f0623"
     }
   },
   "retired_ids": [
@@ -229,7 +231,7 @@
   ],
   "scenario_schema_version": 2,
   "schema_version": 1,
-  "surface_count": 33,
+  "surface_count": 34,
   "surfaces": [
     {
       "acquisition_policy": "qt-shell-webview-verified",
@@ -6670,7 +6672,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "ffaff5f87c9e4607ac9c1985383c7cc40a6b5978ab01d0472326f57a9d85118f",
+      "dependency_digest": "0c4861014f7a7d019f7cdb8e8f2b4b8e21c67e3a937a7a76530189540a264771",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6691,6 +6693,8 @@
         "hooks/reviewer.py",
         "ui/reviewer_hud.py",
         "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "reward_presentation.py",
@@ -6763,7 +6767,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "3c457b393a66ee5fe56b8279d9480de86dd1311b0da83788873b6d7edbfad172",
+      "dependency_digest": "ece79fc938d574ad368eb48540aa7f9b67f6bc91cf18d5e6e303fe043f8e7621",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6783,6 +6787,8 @@
         "hooks/reviewer.py",
         "ui/reviewer_hud.py",
         "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "reward_presentation.py",
@@ -6849,6 +6855,109 @@
           "session_summary_content_matrix",
           "session_summary_home_counts",
           "session_summary_window_screen_filling"
+        ]
+      }
+    },
+    {
+      "acquisition_policy": "qt-shell-webview-verified",
+      "active": true,
+      "allow_foreground_fallback": true,
+      "arguments": [],
+      "checkpoint": "development-stress",
+      "checkpoint_cohort": "reviewer-transaction",
+      "cleanup": [
+        "close-overlays",
+        "drain-deferred-delete",
+        "restore-checkpoint"
+      ],
+      "dependency_digest": "cfadf6f3646816b98f86b314e827b79af716134407eeaac813aea1a84451d38d",
+      "evidence_requirements": [
+        "fixture-identity",
+        "geometry",
+        "semantic-state",
+        "nonblank-pixels",
+        "webview-painted",
+        "process-window-identity",
+        "overlay-pixels"
+      ],
+      "executor": "_capture_sync_rewards_summary",
+      "id": "sync-rewards-summary",
+      "internal_setups": [
+        "development-stress"
+      ],
+      "owned_dependency_groups": [],
+      "owned_module_dependencies": [
+        "models/sync_reward.py",
+        "asset_manager.py",
+        "reward_presentation.py",
+        "garden_finds.py",
+        "ui/environment_art.py",
+        "ui/garden_asset_thumbnail.py",
+        "ui/plant_art.py",
+        "ui/session_summary.py",
+        "ui/session_summary_card.py",
+        "ui/sync_reward_summary.py"
+      ],
+      "placements": [
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 14,
+          "profile": "representative",
+          "within_group_order": 3
+        },
+        {
+          "group": "Settings, rewards, and transactions",
+          "group_order": 5,
+          "order": 28,
+          "profile": "full",
+          "within_group_order": 4
+        }
+      ],
+      "prerequisites": [],
+      "readiness": [
+        "semantic-state",
+        "two-stable-painted-frames",
+        "webview-painted"
+      ],
+      "renderer_family": "AnkiQt",
+      "retired_reason": "",
+      "state_contract": {
+        "expected_fact_values": {
+          "anki_surface": "deckBrowser",
+          "dom_capture_label": "sync-rewards-summary",
+          "ordered_fixture_label": "sync-rewards-summary",
+          "source_fixture_state": "nurtured-active",
+          "state_profile_declared": "sync-rewards-summary",
+          "window_family": "AnkiQt"
+        },
+        "fact_constraints": {},
+        "kind": "home",
+        "profile": {
+          "fixture_state": "nurtured-active",
+          "kind": "home",
+          "profile_id": "sync-rewards-summary",
+          "surface": "deckBrowser",
+          "window_family": "AnkiQt"
+        },
+        "required_facts": [
+          "ordered_fixture_label",
+          "state_profile_declared",
+          "window_family",
+          "anki_surface",
+          "source_fixture_state",
+          "dom_capture_label",
+          "dom_fixture_ready",
+          "home_garden_feature_visibility_contract",
+          "compact_home_copy",
+          "home_progress_geometry",
+          "home_preview_information_model",
+          "sync_reward_summary_visible",
+          "sync_reward_summary_geometry",
+          "sync_reward_summary_copy",
+          "sync_reward_summary_content",
+          "sync_reward_summary_nonmodal",
+          "sync_reward_summary_window_screen_filling"
         ]
       }
     },
@@ -6946,7 +7055,7 @@
         "drain-deferred-delete",
         "restore-checkpoint"
       ],
-      "dependency_digest": "6a6dcc52c237bae4c718470e102bbeb536f832032353ac181bc56db9afbaed84",
+      "dependency_digest": "92f42f666f1ae17ff71cfa87e65649b70fa9cc611d50b51eaaf4084585903f30",
       "evidence_requirements": [
         "fixture-identity",
         "geometry",
@@ -6967,6 +7076,8 @@
         "hooks/reviewer.py",
         "ui/reviewer_hud.py",
         "ui/reviewer_hud_widget.py",
+        "ui/environment_art.py",
+        "ui/plant_art.py",
         "ui/session_summary.py",
         "ui/session_summary_card.py",
         "reward_presentation.py",
@@ -6976,16 +7087,16 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 14,
+          "order": 15,
           "profile": "representative",
-          "within_group_order": 3
+          "within_group_order": 4
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 28,
+          "order": 29,
           "profile": "full",
-          "within_group_order": 4
+          "within_group_order": 5
         }
       ],
       "prerequisites": [],
@@ -7847,16 +7958,16 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 15,
+          "order": 16,
           "profile": "representative",
-          "within_group_order": 4
+          "within_group_order": 5
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 29,
+          "order": 30,
           "profile": "full",
-          "within_group_order": 5
+          "within_group_order": 6
         }
       ],
       "prerequisites": [],
@@ -8689,9 +8800,9 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 30,
+          "order": 31,
           "profile": "full",
-          "within_group_order": 6
+          "within_group_order": 7
         }
       ],
       "prerequisites": [],
@@ -9174,16 +9285,16 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 16,
+          "order": 17,
           "profile": "representative",
-          "within_group_order": 5
+          "within_group_order": 6
         },
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 31,
+          "order": 32,
           "profile": "full",
-          "within_group_order": 7
+          "within_group_order": 8
         }
       ],
       "prerequisites": [],
@@ -9575,9 +9686,9 @@
         {
           "group": "Settings, rewards, and transactions",
           "group_order": 5,
-          "order": 32,
+          "order": 33,
           "profile": "full",
-          "within_group_order": 8
+          "within_group_order": 9
         }
       ],
       "prerequisites": [],

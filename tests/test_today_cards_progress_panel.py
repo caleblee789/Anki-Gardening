@@ -172,10 +172,12 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
             cutoff_at_ms=123_000,
         ),
         daily_stats=SimpleNamespace(day="2026-08-28"),
-        daily_loadout=SimpleNamespace(
-            scheduler_day="2026-08-28",
-            locked_at_ms=100,
-            pending_garden_feature_id="snow",
+            daily_loadout=SimpleNamespace(
+                scheduler_day="2026-08-28",
+                locked_at_ms=100,
+                garden_bonus_anki_day_id="2026-08-28",
+                garden_bonus_locked_at_ms=100,
+                pending_garden_feature_id="snow",
             queued_scenery_id="moon",
         ),
         selected_garden_feature="rain",
@@ -241,7 +243,7 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
 
     assert result.status.heading == "CARD STATUS UNAVAILABLE"
     assert result.status.primary == (
-        "Anki Garden could not verify today’s due cards. "
+        "Anki Garden could not verify today’s cards. "
         "Normal Garden Growth is unaffected."
     )
     assert result.status.finds_line == "Garden Find · Next card guaranteed"

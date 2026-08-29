@@ -19,7 +19,6 @@ from aqt.qt import (
     QProgressBar,
     QScrollArea,
     QSizePolicy,
-    QSlider,
     QTimer,
     QToolButton,
     QVBoxLayout,
@@ -29,6 +28,11 @@ from aqt.qt import (
 )
 
 from ..config import DEFAULT_CONFIG
+from ..environment import (
+    DEFAULT_GARDEN_FEATURE_ID,
+    GARDEN_FEATURE_CATALOG,
+    canonical_garden_feature_id,
+)
 from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
 from .accessibility import effective_motion_enabled, read_system_reduced_motion
 from .controls import GardenToggleSwitch
@@ -38,7 +42,6 @@ from .responsive import AdaptiveRegion, AdaptiveRow, COMPACT_MODE, WIDE_MODE
 from .theme import (
     BUTTON_MIN_HEIGHT,
     GARDEN_THEME,
-    set_control_enabled,
     tool_button_stylesheet,
 )
 
@@ -48,11 +51,10 @@ STUDIO_TEXT = {
     "reduced_motion_description": REDUCED_MOTION_DESCRIPTION,
     "theme_label": "Garden style",
     "asset_quality_label": "Artwork detail",
-    "animation_label": "Legacy motion",
-    "particle_label": "Legacy detail",
     "home_widget_label": "Show garden card on Anki home",
     "reviewer_hud_label": "Show Garden panel while reviewing",
     "progress_notifications_label": "Show review rewards",
+    "sync_rewards_label": "Show rewards after syncing",
 }
 
 SETTINGS_CONTROLS_WIDE_MIN_WIDTH = 190
@@ -358,18 +360,6 @@ class GardenStudioWidget(QWidget):
             bool(self.config.value("reduced_motion", False)),
         )
         self._animation_control_changed = False
-        self._override_values = {
-            "animation_intensity": float(
-                self.config.nested("theme_overrides", "animation_intensity", default=0.7)
-            ),
-            "weather_particle_density": float(
-                self.config.nested("theme_overrides", "weather_particle_density", default=1.0)
-            ),
-        }
-        self._override_control_changed = {
-            "animation_intensity": False,
-            "weather_particle_density": False,
-        }
         self.preview = self._default_preview()
         self._compact_layout: bool | None = None
         self._loading_controls = True
@@ -380,12 +370,8 @@ class GardenStudioWidget(QWidget):
         snapshot = self._garden_snapshot()
         return {
             "theme": self._normalize_theme(str(self.config.value("visual_theme", "verdant_twilight"))),
-            "weather": str(snapshot.get("weather") or "breeze"),
+            "decoration": str(snapshot.get("garden_feature") or snapshot.get("weather") or "seedling_sign"),
             "growth_stage": "young",
-            "animation_intensity": float(self.config.nested("theme_overrides", "animation_intensity", default=0.7)),
-            "weather_particle_density": float(
-                self.config.nested("theme_overrides", "weather_particle_density", default=1.0)
-            ),
         }
 
     @staticmethod
@@ -437,13 +423,6 @@ class GardenStudioWidget(QWidget):
             QComboBox[keyboardFocusVisible='true']:focus {{ border:2px solid {t['focus_ring']}; padding:0 27px 0 7px; }}
             QComboBox::drop-down {{ border:0; width:24px; }}
             QComboBox QAbstractItemView {{ color:{t['text_primary']}; background:#142c27; selection-background-color:{t['action_accent']}; border:1px solid {t['secondary_border']}; }}
-            QSlider {{ min-height:36px; max-height:36px; border:2px solid transparent; border-radius:8px; }}
-            QSlider[keyboardFocusVisible='true']:focus {{ border-color:{t['focus_ring']}; }}
-            QSlider::groove:horizontal {{ height:6px; background:#203d36; border-radius:3px; }}
-            QSlider::sub-page:horizontal {{ background:{t['growth_accent']}; border-radius:3px; }}
-            QSlider::handle:horizontal {{ width:18px; height:18px; margin:-6px 0; background:{t['focus_ring']}; border:2px solid {t['action_accent']}; border-radius:10px; }}
-            QSlider::handle:horizontal:hover {{ background:#f4f8cf; border-color:{t['growth_accent']}; }}
-            QSlider:disabled {{ color:#74877d; }}
             QCheckBox {{ min-height:36px; max-height:36px; color:{t['text_primary']}; border:2px solid transparent; border-radius:6px; padding:0 4px; }}
             QCheckBox[keyboardFocusVisible='true']:focus {{ border-color:{t['focus_ring']}; }}
             QCheckBox::indicator {{ width:18px; height:18px; background:#102622; border:1px solid #527563; border-radius:5px; }}
@@ -504,7 +483,7 @@ class GardenStudioWidget(QWidget):
         self.theme_title.setWordWrap(True)
         self.theme_title.setMinimumWidth(0)
         self.theme_summary = QLabel(
-            "Clear Skies · No decorations · No effects"
+            "Seedling Sign · Garden Decoration"
         )
         self.theme_summary.setProperty("settingsNote", True)
         self.theme_summary.setWordWrap(True)
@@ -518,7 +497,7 @@ class GardenStudioWidget(QWidget):
         self.manage_environment.setText("Edit appearance")
         self.manage_environment.setFixedHeight(BUTTON_MIN_HEIGHT)
         self.manage_environment.setAccessibleDescription(
-            "Open garden appearance in Collection."
+            "Open Garden appearance in Collection."
         )
         self.manage_environment.clicked.connect(self.manageEnvironmentRequested.emit)
         theme_layout.addWidget(
@@ -542,34 +521,6 @@ class GardenStudioWidget(QWidget):
         # Compatibility alias for callers that used the old internal widget
         # name. Its checked state now directly represents reduced motion.
         self.animations_enabled = self.reduced_motion
-        self.anim_slider = QSlider(Qt.Orientation.Horizontal)
-        self.anim_slider.setAccessibleName(STUDIO_TEXT["animation_label"])
-        self.anim_slider.setRange(0, 100)
-        _describe_control(
-            self.anim_slider,
-            "Adjust how strongly weather moves. Lower values are calmer; higher values are more active.",
-        )
-        self.anim_value = QLabel()
-        self.anim_value.setAccessibleName("Motion amount value")
-        self.anim_value.setProperty("settingValue", True)
-        anim_row = QHBoxLayout()
-        anim_row.addWidget(self.anim_slider, 1)
-        anim_row.addWidget(self.anim_value)
-
-        self.particle_slider = QSlider(Qt.Orientation.Horizontal)
-        self.particle_slider.setAccessibleName(STUDIO_TEXT["particle_label"])
-        self.particle_slider.setRange(10, 200)
-        _describe_control(
-            self.particle_slider,
-            "Adjust how much weather detail appears. Lower values use fewer effects; higher values use more.",
-        )
-        self.particle_value = QLabel()
-        self.particle_value.setAccessibleName("Legacy detail value")
-        self.particle_value.setProperty("settingValue", True)
-        particle_row = QHBoxLayout()
-        particle_row.addWidget(self.particle_slider, 1)
-        particle_row.addWidget(self.particle_value)
-
         self.motion_row = ToggleSettingRow(
             STUDIO_TEXT["animations_label"],
             "Limits movement and transitions.",
@@ -594,6 +545,14 @@ class GardenStudioWidget(QWidget):
             self.show_reviewer_hud,
             "Show or hide the persistent Garden panel while reviewing cards.",
         )
+        self.show_rewards_after_syncing = GardenToggleSwitch()
+        self.show_rewards_after_syncing.setAccessibleName(
+            STUDIO_TEXT["sync_rewards_label"]
+        )
+        _describe_control(
+            self.show_rewards_after_syncing,
+            "Shows a compact summary when reviews from another device add Garden rewards.",
+        )
         self.home_preview_row = ToggleSettingRow(
             STUDIO_TEXT["home_widget_label"],
             "Show the compact garden card on Anki home.",
@@ -601,26 +560,9 @@ class GardenStudioWidget(QWidget):
         )
         controls_layout.insertWidget(0, self.home_preview_row)
 
-        self.fine_tune_toggle = QToolButton()
-        self.fine_tune_toggle.setText("Fine tune")
-        self.fine_tune_toggle.setCheckable(True)
-        self.fine_tune_toggle.setChecked(False)
-        self.fine_tune_toggle.setArrowType(Qt.ArrowType.RightArrow)
-        self.fine_tune_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.fine_tune_toggle.setAccessibleName("Show fine-tune settings")
-        self.fine_tune_toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self.fine_tune_toggle.setMinimumHeight(BUTTON_MIN_HEIGHT)
-        self.fine_tune_section, fine_tune_form = self._section(
-            "Legacy visual controls",
-            "Retained internally for settings compatibility; not shown.",
-        )
-        # Artwork Detail previously only changed weather-overlay variants while
-        # implying that all plant/background art would change. Preserve the
-        # stored compatibility value, but remove the misleading visible control.
+        # Artwork Detail previously only changed retired overlay variants.
+        # Preserve the stored compatibility value without exposing a control.
         self.asset_quality_combo.hide()
-        fine_tune_form.addRow(STUDIO_TEXT["animation_label"], anim_row)
-        fine_tune_form.addRow(STUDIO_TEXT["particle_label"], particle_row)
-        self.fine_tune_section.hide()
         self.advanced_toggle = QToolButton(self)
         self.advanced_toggle.setText("Advanced")
         self.advanced_toggle.setCheckable(True)
@@ -663,11 +605,17 @@ class GardenStudioWidget(QWidget):
             "Keep today’s cards and plant progress visible while reviewing.",
             self.show_reviewer_hud,
         )
+        self.sync_rewards_row = ToggleSettingRow(
+            STUDIO_TEXT["sync_rewards_label"],
+            "Shows a compact summary when reviews from another device add Garden rewards.",
+            self.show_rewards_after_syncing,
+        )
         self.advanced_actions_layout.addWidget(self.motion_row, 0, 0, 1, 2)
         self.advanced_actions_layout.addWidget(self.reviewer_hud_row, 1, 0, 1, 2)
         self.advanced_actions_layout.addWidget(self.notifications_row, 2, 0, 1, 2)
+        self.advanced_actions_layout.addWidget(self.sync_rewards_row, 3, 0, 1, 2)
         self.advanced_panel.setMinimumHeight(0)
-        self.advanced_panel.setMaximumHeight(164)
+        self.advanced_panel.setMaximumHeight(16777215)
         self.advanced_panel.hide()
 
         # This compatibility wrapper is deliberately non-scrolling; the outer
@@ -715,17 +663,11 @@ class GardenStudioWidget(QWidget):
         self.show_progress_notifications.toggled.connect(self._sync_switch_copy)
         self.show_reviewer_hud.toggled.connect(self._on_persistent_change)
         self.show_reviewer_hud.toggled.connect(self._sync_switch_copy)
-        self.fine_tune_toggle.toggled.connect(self._set_fine_tune_expanded)
+        self.show_rewards_after_syncing.toggled.connect(self._on_persistent_change)
+        self.show_rewards_after_syncing.toggled.connect(self._sync_switch_copy)
         self.advanced_toggle.toggled.connect(self._set_advanced_expanded)
-        self.anim_slider.valueChanged.connect(
-            lambda _value: self._on_slider_changed("animation_intensity")
-        )
-        self.particle_slider.valueChanged.connect(
-            lambda _value: self._on_slider_changed("weather_particle_density")
-        )
 
         self.apply_persistent_payload(self._config_payload())
-        self._update_slider_labels()
         self._update_motion_controls()
         self._apply_studio_layout_mode(WIDE_MODE)
 
@@ -738,17 +680,6 @@ class GardenStudioWidget(QWidget):
         """Compatibility hook retained after removing the Settings preview."""
 
         del name
-
-    def _set_fine_tune_expanded(self, expanded: bool) -> None:
-        self.fine_tune_section.setVisible(bool(expanded))
-        self.fine_tune_toggle.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
-        self.fine_tune_toggle.setAccessibleName(
-            "Hide fine-tune settings" if expanded else "Show fine-tune settings"
-        )
-        self.controls_layout.invalidate()
-        QTimer.singleShot(0, self._refresh_controls_height)
 
     def _refresh_controls_height(self) -> None:
         self.controls_layout.activate()
@@ -825,7 +756,6 @@ class GardenStudioWidget(QWidget):
     def collapse_disclosures(self) -> None:
         """Return expandable Display sections to their default state."""
 
-        self.fine_tune_toggle.setChecked(False)
         self.advanced_toggle.setChecked(False)
 
     def collapse_preview_examples(self) -> None:
@@ -844,6 +774,10 @@ class GardenStudioWidget(QWidget):
             ),
             "show_reviewer_hud": self.config.value(
                 "show_reviewer_hud", DEFAULT_CONFIG["show_reviewer_hud"]
+            ),
+            "show_rewards_after_syncing": self.config.value(
+                "show_rewards_after_syncing",
+                DEFAULT_CONFIG["show_rewards_after_syncing"],
             ),
             "assets": {"quality_preference": self.config.nested("assets", "quality_preference", default="balanced")},
             "theme_overrides": {},
@@ -870,21 +804,11 @@ class GardenStudioWidget(QWidget):
                 "show_reviewer_hud",
                 DEFAULT_CONFIG["show_reviewer_hud"],
             )))
-            overrides = payload.get("theme_overrides", {})
-            self._override_values = {
-                "animation_intensity": float(overrides.get("animation_intensity", 0.7)),
-                "weather_particle_density": float(overrides.get("weather_particle_density", 1.0)),
-            }
-            self._override_control_changed = {
-                "animation_intensity": False,
-                "weather_particle_density": False,
-            }
-            self.anim_slider.setValue(round(self._override_values["animation_intensity"] * 100))
-            self.particle_slider.setValue(round(self._override_values["weather_particle_density"] * 100))
+            self.show_rewards_after_syncing.setChecked(bool(payload.get(
+                "show_rewards_after_syncing",
+                DEFAULT_CONFIG["show_rewards_after_syncing"],
+            )))
             self.preview["theme"] = theme
-            self.preview["animation_intensity"] = self.anim_slider.value() / 100.0
-            self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
-            self._update_slider_labels()
             self._update_motion_controls()
             self._refresh_appearance_card()
         finally:
@@ -895,7 +819,8 @@ class GardenStudioWidget(QWidget):
             key: deepcopy(DEFAULT_CONFIG[key])
             for key in (
                 "visual_theme", "enable_animations", "reduced_motion",
-                "show_home_widget", "show_progress_notifications", "show_reviewer_hud", "assets", "theme_overrides",
+                "show_home_widget", "show_progress_notifications", "show_reviewer_hud",
+                "show_rewards_after_syncing", "assets", "theme_overrides",
             )
         }
         self.apply_persistent_payload(payload)
@@ -906,7 +831,10 @@ class GardenStudioWidget(QWidget):
 
         self._loading_controls = True
         try:
-            self.preview["weather"] = str(self._garden_snapshot().get("weather") or "breeze")
+            snapshot = self._garden_snapshot()
+            self.preview["decoration"] = str(
+                snapshot.get("garden_feature") or snapshot.get("weather") or "seedling_sign"
+            )
             self.preview["growth_stage"] = "young"
             self._refresh_appearance_card()
         finally:
@@ -968,39 +896,15 @@ class GardenStudioWidget(QWidget):
         self._sync_controls_scroll_width()
         QTimer.singleShot(0, self._sync_controls_scroll_width)
 
-    def _update_slider_labels(self) -> None:
-        self.anim_value.setText(self._level_label(self.anim_slider.value(), 35, 75))
-        self.particle_value.setText(self._level_label(self.particle_slider.value(), 60, 110))
-
-    @staticmethod
-    def _level_label(value: int, low_max: int, standard_max: int) -> str:
-        if value <= low_max:
-            return "Low"
-        if value <= standard_max:
-            return "Standard"
-        return "High"
-
     def _update_motion_controls(self) -> None:
         enabled = effective_motion_enabled(
             bool(self._animation_flags[0]),
             self.reduced_motion.isChecked(),
             os_reader=lambda: self._system_reduced_motion,
         )
-        reason = (
-            "Motion controls are unavailable because animations are disabled "
-            "by Anki Garden or the operating-system reduced-motion preference."
+        self.reduced_motion.setAccessibleDescription(
+            "Reduced motion is active." if not enabled else REDUCED_MOTION_DESCRIPTION
         )
-        for widget in (self.anim_slider, self.particle_slider):
-            set_control_enabled(
-                widget,
-                enabled,
-                disabled_reason=reason,
-            )
-        for value_label in (self.anim_value, self.particle_value):
-            value_label.setEnabled(enabled)
-            value_label.setAccessibleDescription(
-                value_label.text() if enabled else reason
-            )
 
     def _on_persistent_change(self, *_args: Any) -> None:
         if not self._loading_controls:
@@ -1019,14 +923,6 @@ class GardenStudioWidget(QWidget):
     def _on_animation_toggled(self, *_args: Any) -> None:
         self._on_reduced_motion_toggled(*_args)
 
-    def _on_slider_changed(self, key: str) -> None:
-        if not self._loading_controls and key in self._override_control_changed:
-            self._override_control_changed[key] = True
-        self.preview["animation_intensity"] = self.anim_slider.value() / 100.0
-        self.preview["weather_particle_density"] = self.particle_slider.value() / 100.0
-        self._update_slider_labels()
-        self._on_persistent_change()
-
     def _schedule_preview(self) -> None:
         """Compatibility hook retained after removing the Settings preview."""
 
@@ -1044,21 +940,20 @@ class GardenStudioWidget(QWidget):
         real_plants = snapshot.get("plants", [])
         if not isinstance(real_plants, list):
             real_plants = []
-        preview_weather = (
-            str(snapshot.get("weather") or self.preview["weather"])
+        preview_decoration = (
+            str(snapshot.get("garden_feature") or snapshot.get("weather") or self.preview["decoration"])
             if self.garden_snapshot_provider is not None
-            else str(self.preview["weather"])
+            else str(self.preview["decoration"])
         )
-        weather_label = {
-            "sunny": "Clear Skies",
-            "clear": "Clear Skies",
-            "breeze": "Soft Breeze",
-        }.get(
-            preview_weather.strip().lower(),
-            preview_weather.replace("_", " ").title() or "Clear Skies",
+        decoration_id = canonical_garden_feature_id(preview_decoration)
+        decoration = GARDEN_FEATURE_CATALOG.get(decoration_id)
+        decoration_label = (
+            decoration.name
+            if decoration is not None
+            else GARDEN_FEATURE_CATALOG[DEFAULT_GARDEN_FEATURE_ID].name
         )
         self.theme_summary.setText(
-            f"{weather_label} · No decorations · No effects"
+            f"{decoration_label} · Garden Decoration"
         )
         quality = "balanced"
         asset_paths: dict[str, Any] = {}
@@ -1067,7 +962,7 @@ class GardenStudioWidget(QWidget):
                 try:
                     asset_paths = self.asset_resolver(
                         self._normalize_theme(str(self.preview["theme"])),
-                        preview_weather,
+                        preview_decoration,
                         str(self.preview["growth_stage"]),
                         quality,
                         real_plants,
@@ -1075,7 +970,7 @@ class GardenStudioWidget(QWidget):
                 except TypeError:
                     asset_paths = self.asset_resolver(
                         self._normalize_theme(str(self.preview["theme"])),
-                        preview_weather,
+                        preview_decoration,
                         str(self.preview["growth_stage"]),
                         quality,
                     )
@@ -1124,6 +1019,7 @@ class GardenStudioWidget(QWidget):
             "show_home_widget": self.show_home_widget.isChecked(),
             "show_progress_notifications": self.show_progress_notifications.isChecked(),
             "show_reviewer_hud": self.show_reviewer_hud.isChecked(),
+            "show_rewards_after_syncing": self.show_rewards_after_syncing.isChecked(),
             "assets": {"quality_preference": quality},
             "theme_overrides": {},
         }

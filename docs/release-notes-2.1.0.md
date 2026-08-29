@@ -34,8 +34,10 @@
 - Rare, Very Rare, and Ultra environment discoveries now have separate finite
   guarantees at 5,000, 20,000, and 50,000 eligible cards. Random ownership no
   longer creates an unbounded wait.
-- Weather and Scenery are chosen for an Anki day. The first progression event
-  locks both artwork and mechanics; later changes are **Queued for tomorrow**.
+- Garden Decoration artwork is independent from the active Garden Bonus. The
+  displayed prop may change or hide at any time; the first eligible answer
+  locks the Garden Bonus for the Anki day, while the first progression action
+  locks Scenery. Later mechanical selections queue for the next day.
   Environment power is normalized, including capped Celestial Eclipse and a
   meaningful Rainbow Sunshower completion award.
 - Fertilizer uses wall-clock time to reward faster review: Basic grants +1 for
@@ -48,6 +50,12 @@
 - Stable completed-card identities, reward-event keys, and normalized ledger
   rows prevent duplicate Growth or rewards across retry, restart, sync, and
   rerender. Correlation IDs group related receipts for presentation.
+- Normal sync now processes every newly unseen supported post-activation answer
+  across its original Anki days, including delayed lower-ID rows. Past-day
+  answers receive per-answer rewards while Today’s Cards completion stays a
+  cautiously proven current-day event. Rewards and one durable nonmodal Sync
+  Rewards receipt commit together; initial setup and one-way replacement
+  establish a non-awarding baseline instead of replaying history.
 
 Earlier development designs for Permanent Streak XP, a variable daily Coin
 track, a separate study target, a guaranteed weekly Small Growth Charge, a
@@ -88,8 +96,10 @@ bands are not part of this release.
 - Settings uses staged edits, an accurate unsaved-change count, compact
   Discard/Save actions, Restore defaults, dirty-close protection, validation,
   **Reduce animations**, a default-on **Show reviewer HUD** setting, the
-  separate **Show reviewer rewards** setting for active major dock reveals, and a
-  read-only **Diagnostics** tab. Production mutation controls remain excluded.
+  separate **Show reviewer rewards** setting for active major dock reveals,
+  a default-on **Show rewards after syncing** setting for the presentation-only sync
+  receipt, and a read-only **Diagnostics** tab. Production mutation controls
+  remain excluded.
 - The persistent reviewer HUD hugs its content and shows global Today’s Cards,
   prominent plant/checkpoint progress, next-answer Growth, and compact active
   effects. It hides raw routing, environment names, Find limits, and irrelevant
@@ -108,18 +118,20 @@ this release. Anki Garden retains its established styling.
 
 ## Persistence and development-state compatibility
 
-- Schema 22 retains the verified SQLite reward database as the authoritative
-  state and idempotency boundary. Schema-21 JSON and SQLite profiles are backed
-  up before migration.
+- Schema 25 retains the verified SQLite reward database as the authoritative
+  state and idempotency boundary. Supported schema-10–24 development state
+  migrates fail-closed; schema-21 JSON and SQLite profiles are backed up at
+  their historical migration boundary.
 - Reward receipts, processed cards, completed-card lineages, finalized days, Garden
   Find outcomes/counts, and replay authorities are normalized while bounded
   presentation caches remain available to the UI.
 - Migrated state preserves plants, exact Growth, Stored Growth, checkpoints,
   Full Bloom records, onboarding, purchases, Growth Charges, entitlements,
-  locked/queued loadouts, environment guarantees, timed Fertilizer queues,
-  card-counted Booster effects, and Today’s Cards state. Read, backup, or save
-  failure remains fail-closed. The
-  add-on has no released-user migration base.
+  independent displayed Decoration and locked/queued Garden Bonus/Scenery
+  loadouts, environment guarantees, timed Fertilizer queues, card-counted
+  Booster effects, Today’s Cards state, and the pending sync receipt. Read,
+  backup, or save failure remains fail-closed. The add-on has no released-user
+  migration base.
 
 ## Release validation status
 

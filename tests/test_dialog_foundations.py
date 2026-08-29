@@ -197,7 +197,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
         },
         DialogSizeClass.SETTINGS: {
             "display": (800, 820, 840, 390, 400, 420),
-            "advanced": (800, 820, 840, 580, 590, 620),
+            "advanced": (800, 820, 840, 620, 620, 620),
             "diagnostics-clean": (760, 780, 800, 280, 300, 320),
             "diagnostics-warning": (760, 780, 800, 280, 300, 320),
             "diagnostics-expanded": (760, 780, 800, 430, 470, 520),

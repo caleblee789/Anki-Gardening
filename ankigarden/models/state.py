@@ -25,8 +25,9 @@ from ..growth import (
     stage_progress,
 )
 from ..purchases import CompletedPurchaseRequest
+from .sync_reward import SyncRewardSummary
 
-STATE_VERSION = 23
+STATE_VERSION = 25
 
 
 class GardenFeatureIdList(list[str]):
@@ -219,25 +220,30 @@ class DailyCompletionState:
 
     scheduler_day: str = field(default_factory=lambda: date.today().isoformat())
     status: str = "unavailable"
+    obligation_projection_initialized: bool = False
     starting_required_cards: int = 0
     starting_required_cards_completed: int = 0
+    remaining_new_cards: int = 0
     remaining_required_reviews: int = 0
     remaining_learning_steps: int = 0
     future_learning_steps_before_cutoff: int = 0
     next_learning_due_at_ms: int = 0
     cutoff_at_ms: int = 0
     cards_completed_today: int = 0
+    unresolved_obligation_disappearances: int = 0
     reward_claimed: bool = False
     unavailable_reason: str = ""
 
 
 @dataclass(init=False)
 class DailyLoadoutSchedule:
-    """Scenery day lock plus the continuous-session Garden Feature snapshot."""
+    """Independent Scenery and Garden Bonus Anki-day locks."""
 
     scheduler_day: str = ""
     locked_at_ms: int = 0
     garden_feature_id: str = ""
+    garden_bonus_anki_day_id: str = ""
+    garden_bonus_locked_at_ms: int = 0
     scenery_id: str = ""
     queued_for_day: str = ""
     pending_garden_feature_id: str = ""
@@ -248,6 +254,8 @@ class DailyLoadoutSchedule:
         scheduler_day: str = "",
         locked_at_ms: int = 0,
         garden_feature_id: str = "",
+        garden_bonus_anki_day_id: str = "",
+        garden_bonus_locked_at_ms: int = 0,
         scenery_id: str = "",
         queued_for_day: str = "",
         pending_garden_feature_id: str = "",
@@ -261,6 +269,8 @@ class DailyLoadoutSchedule:
         self.garden_feature_id = canonical_garden_feature_id(
             weather_id if weather_id is not None else garden_feature_id
         )
+        self.garden_bonus_anki_day_id = str(garden_bonus_anki_day_id)
+        self.garden_bonus_locked_at_ms = int(garden_bonus_locked_at_ms)
         self.scenery_id = str(scenery_id)
         self.queued_for_day = str(queued_for_day)
         self.pending_garden_feature_id = canonical_garden_feature_id(
@@ -291,6 +301,8 @@ class DailyLoadoutSchedule:
             "scheduler_day": self.scheduler_day,
             "locked_at_ms": self.locked_at_ms,
             "garden_feature_id": self.garden_feature_id,
+            "garden_bonus_anki_day_id": self.garden_bonus_anki_day_id,
+            "garden_bonus_locked_at_ms": self.garden_bonus_locked_at_ms,
             "scenery_id": self.scenery_id,
             "queued_for_day": self.queued_for_day,
             "pending_garden_feature_id": self.pending_garden_feature_id,
@@ -387,8 +399,8 @@ class DailyStats:
     legacy_plant_growth: Dict[str, int] = field(default_factory=dict)
     growth_accounting_stale: bool = False
     completed_due_cards: bool = False
-    # None means the start-of-day due state was not observed, so All Clear
-    # must fail closed rather than infer a historical obligation.
+    # None means the start-of-day Today’s Cards scope was not observed, so the
+    # completion reward must fail closed rather than infer an obligation.
     due_started_with_cards: Optional[bool] = None
     # Schema-22 exact accounting. These counters are event-flow totals, not
     # compatibility mirrors of the whole-point maps above.
@@ -499,6 +511,7 @@ class CurrencyTransaction:
     source_id: str = ""
     scheduler_day: str = ""
     correlation_id: str = ""
+    included_in_total: bool = True
 
 
 @dataclass
@@ -777,11 +790,11 @@ class OnboardingProgress:
 
 @dataclass(init=False)
 class GardenLoadoutState:
-    """The single persisted authority for garden appearance and passives."""
+    """Persisted cosmetic selection and pre-lock Garden Bonus selection."""
 
-    garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID
+    displayed_garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID
+    active_bonus_garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID
     scenery_id: str = DEFAULT_SCENERY_ID
-    decoration_id: Optional[str] = None
     visibility: Dict[str, bool] = field(default_factory=lambda: {
         "garden_feature": True,
         "scenery": True,
@@ -790,17 +803,27 @@ class GardenLoadoutState:
     def __init__(
         self,
         garden_feature_id: str = DEFAULT_GARDEN_FEATURE_ID,
+        displayed_garden_feature_id: str | None = None,
+        active_bonus_garden_feature_id: str | None = None,
         scenery_id: str = DEFAULT_SCENERY_ID,
-        decoration_id: Optional[str] = None,
         visibility: Dict[str, bool] | None = None,
         *,
         weather_id: str | None = None,
     ) -> None:
-        self.garden_feature_id = canonical_garden_feature_id(
+        legacy_feature = canonical_garden_feature_id(
             weather_id if weather_id is not None else garden_feature_id
-        )
+        ) or DEFAULT_GARDEN_FEATURE_ID
+        self.displayed_garden_feature_id = canonical_garden_feature_id(
+            displayed_garden_feature_id
+            if displayed_garden_feature_id is not None
+            else legacy_feature
+        ) or DEFAULT_GARDEN_FEATURE_ID
+        self.active_bonus_garden_feature_id = canonical_garden_feature_id(
+            active_bonus_garden_feature_id
+            if active_bonus_garden_feature_id is not None
+            else legacy_feature
+        ) or DEFAULT_GARDEN_FEATURE_ID
         self.scenery_id = str(scenery_id)
-        self.decoration_id = decoration_id
         raw_visibility = dict(visibility or {})
         self.visibility = {
             "garden_feature": bool(
@@ -814,9 +837,9 @@ class GardenLoadoutState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "garden_feature_id": self.garden_feature_id,
+            "displayed_garden_feature_id": self.displayed_garden_feature_id,
+            "active_bonus_garden_feature_id": self.active_bonus_garden_feature_id,
             "scenery_id": self.scenery_id,
-            "decoration_id": self.decoration_id,
             "visibility": {
                 "garden_feature": bool(self.visibility.get("garden_feature", True)),
                 "scenery": bool(self.visibility.get("scenery", True)),
@@ -825,11 +848,21 @@ class GardenLoadoutState:
 
     @property
     def weather_id(self) -> str:
-        return self.garden_feature_id
+        return self.active_bonus_garden_feature_id
 
     @weather_id.setter
     def weather_id(self, value: str) -> None:
-        self.garden_feature_id = canonical_garden_feature_id(value)
+        self.active_bonus_garden_feature_id = canonical_garden_feature_id(value)
+
+    @property
+    def garden_feature_id(self) -> str:
+        """Compatibility alias for the mechanical Garden Bonus selection."""
+
+        return self.active_bonus_garden_feature_id
+
+    @garden_feature_id.setter
+    def garden_feature_id(self, value: str) -> None:
+        self.active_bonus_garden_feature_id = canonical_garden_feature_id(value)
 
 
 @dataclass
@@ -851,6 +884,11 @@ class GardenState:
     daily_stats: DailyStats = field(default_factory=DailyStats)
     daily_completion: DailyCompletionState = field(default_factory=DailyCompletionState)
     daily_loadout: DailyLoadoutSchedule = field(default_factory=DailyLoadoutSchedule)
+    wind_chime_progress: int = 0
+    watering_station_progress: int = 0
+    firefly_lantern_progress: int = 0
+    prism_pending_growth_units: int = 0
+    prism_released_anki_day_id: str = ""
     stored_growth_units: int = 0
     streak_growth_remainder_units: int = 0
     checkpoint_coin_carry_units: int = 0
@@ -904,7 +942,6 @@ class GardenState:
     inventory: Dict[str, List[str]] = field(default_factory=lambda: InventoryState({
         "pots": ["ceramic_minimal"],
         "scenery": [DEFAULT_SCENERY_ID],
-        "decorations": ["lantern"],
         "garden_features": [DEFAULT_GARDEN_FEATURE_ID],
     }))
     last_active_day: str = field(default_factory=lambda: date.today().isoformat())
@@ -914,6 +951,7 @@ class GardenState:
     processed_revlog_floor: int = 0
     processed_revlog_ids: List[int] = field(default_factory=list)
     revlog_ledger_migration_pending: bool = False
+    pending_sync_reward_summary: Optional[Dict[str, Any]] = None
     scene_geometry_version: int = 6
     # Runtime-only repair marker. A non-null saved reference that cannot route
     # Growth is recoverable, while an explicit null means the user intentionally
@@ -933,6 +971,9 @@ class GardenState:
                 *(canonical_garden_feature_id(item) for item in canonical_features),
             )))
             self.inventory = InventoryState(source_inventory)
+        # Ignore remnants of the retired standalone prop slot instead of
+        # persisting a dead development-only category.
+        self.inventory.pop("decorations", None)
         # A state constructed around an existing collection represents an
         # established garden, even when the caller predates the starter flag.
         if self.plants:
@@ -950,7 +991,7 @@ class GardenState:
 
     @property
     def selected_weather(self) -> str:
-        """Legacy migration-window alias for the active Garden Feature."""
+        """Legacy migration-window alias for the active Garden Decoration."""
 
         return self.loadout.garden_feature_id
 
@@ -965,6 +1006,14 @@ class GardenState:
     @selected_garden_feature.setter
     def selected_garden_feature(self, value: str) -> None:
         self.loadout.garden_feature_id = canonical_garden_feature_id(value)
+
+    @property
+    def displayed_garden_feature(self) -> str:
+        return self.loadout.displayed_garden_feature_id
+
+    @displayed_garden_feature.setter
+    def displayed_garden_feature(self, value: str) -> None:
+        self.loadout.displayed_garden_feature_id = canonical_garden_feature_id(value)
 
     @property
     def selected_background(self) -> str:
@@ -1000,7 +1049,6 @@ class GardenState:
         return {
             "garden_feature": self.loadout.garden_feature_id,
             "background": self.loadout.scenery_id,
-            "decoration": self.loadout.decoration_id or "none",
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -1075,6 +1123,11 @@ class GardenState:
             },
             "daily_completion": self.daily_completion.__dict__,
             "daily_loadout": self.daily_loadout.to_dict(),
+            "wind_chime_progress": max(0, min(9, int(self.wind_chime_progress))),
+            "watering_station_progress": max(0, min(4, int(self.watering_station_progress))),
+            "firefly_lantern_progress": max(0, min(3, int(self.firefly_lantern_progress))),
+            "prism_pending_growth_units": max(0, int(self.prism_pending_growth_units)),
+            "prism_released_anki_day_id": str(self.prism_released_anki_day_id or ""),
             "stored_growth_units": self.stored_growth_units,
             "streak_growth_remainder_units": self.streak_growth_remainder_units,
             "checkpoint_coin_carry_units": self.checkpoint_coin_carry_units,
@@ -1148,7 +1201,11 @@ class GardenState:
                 for tier in ENVIRONMENT_PITY_TIERS
             },
             "consumables": dict(self.consumables),
-            "inventory": self.inventory,
+            "inventory": InventoryState({
+                key: value
+                for key, value in self.inventory.items()
+                if key != "decorations"
+            }),
             "last_active_day": self.last_active_day,
             "active_plant_id": self.active_plant_id,
             "active_plant_periods": [
@@ -1163,6 +1220,9 @@ class GardenState:
                 and value > self.processed_revlog_floor
             })[-MAX_PROCESSED_REVLOG_IDS:],
             "revlog_ledger_migration_pending": self.revlog_ledger_migration_pending,
+            "pending_sync_reward_summary": deepcopy(
+                self.pending_sync_reward_summary
+            ),
             "scene_geometry_version": self.scene_geometry_version,
         })
 
@@ -1194,6 +1254,26 @@ class GardenState:
         )
         state.daily_loadout = _daily_loadout_schedule(
             data.get("daily_loadout"), issues
+        )
+        state.wind_chime_progress = _bounded_int(
+            data.get("wind_chime_progress"), 0, 0, 9, "wind_chime_progress", issues
+        )
+        state.watering_station_progress = _bounded_int(
+            data.get("watering_station_progress"), 0, 0, 4,
+            "watering_station_progress", issues
+        )
+        state.firefly_lantern_progress = _bounded_int(
+            data.get("firefly_lantern_progress"), 0, 0, 3,
+            "firefly_lantern_progress", issues
+        )
+        state.prism_pending_growth_units = _nonnegative_int(
+            data.get("prism_pending_growth_units"), 0,
+            "prism_pending_growth_units", issues
+        )
+        raw_prism_day = data.get("prism_released_anki_day_id", "")
+        state.prism_released_anki_day_id = (
+            _iso_date(raw_prism_day, "", "prism_released_anki_day_id", issues)
+            if raw_prism_day not in (None, "") else ""
         )
         state.stored_growth_units = _nonnegative_int(
             data.get("stored_growth_units"), 0, "stored_growth_units", issues
@@ -1441,13 +1521,16 @@ class GardenState:
             issues.append("selected_background: repaired to an owned scenery")
             state.selected_background = DEFAULT_SCENERY_ID
         if state.selected_garden_feature not in state.inventory["garden_features"]:
-            issues.append("selected_garden_feature: repaired to an owned Garden Feature")
+            issues.append("selected_garden_feature: repaired to an owned Garden Decoration")
             state.selected_garden_feature = DEFAULT_GARDEN_FEATURE_ID
+        if state.displayed_garden_feature not in state.inventory["garden_features"]:
+            issues.append("displayed_garden_feature: repaired to an owned Garden Decoration")
+            state.displayed_garden_feature = DEFAULT_GARDEN_FEATURE_ID
         if (
             state.daily_loadout.garden_feature_id
             and state.daily_loadout.garden_feature_id not in state.inventory["garden_features"]
         ):
-            issues.append("daily_loadout.garden_feature_id: repaired to the active feature")
+            issues.append("daily_loadout.garden_feature_id: repaired to the active Garden Decoration")
             state.daily_loadout.garden_feature_id = state.selected_garden_feature
         if (
             state.daily_loadout.scenery_id
@@ -1459,7 +1542,7 @@ class GardenState:
             state.daily_loadout.pending_garden_feature_id
             and state.daily_loadout.pending_garden_feature_id not in state.inventory["garden_features"]
         ):
-            issues.append("daily_loadout.pending_garden_feature_id: removed unowned feature")
+            issues.append("daily_loadout.pending_garden_feature_id: removed unowned Garden Decoration")
             state.daily_loadout.pending_garden_feature_id = ""
         if (
             state.daily_loadout.queued_scenery_id
@@ -1475,11 +1558,6 @@ class GardenState:
             )
         ):
             state.daily_loadout.queued_for_day = ""
-        decorations = state.inventory.get("decorations", [])
-        if state.loadout.decoration_id not in decorations:
-            if state.loadout.decoration_id is not None:
-                issues.append("loadout.decoration_id: repaired to none")
-            state.loadout.decoration_id = None
         state.last_active_day = _iso_date(
             data.get("last_active_day"), state.daily_stats.day, "last_active_day", issues
         )
@@ -1524,6 +1602,16 @@ class GardenState:
             issues.append("revlog_ledger_migration_pending: expected bool")
             pending = False
         state.revlog_ledger_migration_pending = pending
+        raw_sync_summary = data.get("pending_sync_reward_summary")
+        if raw_sync_summary is None:
+            state.pending_sync_reward_summary = None
+        else:
+            sync_summary = SyncRewardSummary.from_dict(raw_sync_summary)
+            if sync_summary is None:
+                issues.append("pending_sync_reward_summary: invalid summary")
+                state.pending_sync_reward_summary = None
+            else:
+                state.pending_sync_reward_summary = sync_summary.to_dict()
         state.scene_geometry_version = _bounded_int(
             data.get("scene_geometry_version"), 0, 0, 99, "scene_geometry_version", issues
         )
@@ -1833,15 +1921,27 @@ def _daily_completion_state(
         issues.append("daily_completion.status: unsupported value")
         status = "unavailable"
     result.status = str(status)
+    projection_initialized = value.get(
+        "obligation_projection_initialized",
+        False,
+    )
+    if not isinstance(projection_initialized, bool):
+        issues.append(
+            "daily_completion.obligation_projection_initialized: expected bool"
+        )
+        projection_initialized = False
+    result.obligation_projection_initialized = projection_initialized
     for key in (
         "starting_required_cards",
         "starting_required_cards_completed",
+        "remaining_new_cards",
         "remaining_required_reviews",
         "remaining_learning_steps",
         "future_learning_steps_before_cutoff",
         "next_learning_due_at_ms",
         "cutoff_at_ms",
         "cards_completed_today",
+        "unresolved_obligation_disappearances",
     ):
         setattr(
             result,
@@ -1866,11 +1966,13 @@ def _daily_completion_state(
     result.unavailable_reason = reason.strip()[:240]
     if result.status == "complete":
         if (
-            result.remaining_required_reviews
+            result.remaining_new_cards
+            or result.remaining_required_reviews
             or result.remaining_learning_steps
             or result.future_learning_steps_before_cutoff
         ):
             issues.append("daily_completion: complete state cleared remaining obligations")
+        result.remaining_new_cards = 0
         result.remaining_required_reviews = 0
         result.remaining_learning_steps = 0
         result.future_learning_steps_before_cutoff = 0
@@ -1915,16 +2017,28 @@ def _daily_loadout_schedule(value: Any, issues: list[str]) -> DailyLoadoutSchedu
     locked_at_ms = _nonnegative_int(
         value.get("locked_at_ms"), 0, "daily_loadout.locked_at_ms", issues
     )
+    bonus_day = _iso_date(
+        value.get("garden_bonus_anki_day_id"), "",
+        "daily_loadout.garden_bonus_anki_day_id", issues
+    ) if value.get("garden_bonus_anki_day_id") not in (None, "") else ""
+    bonus_locked_at_ms = _nonnegative_int(
+        value.get("garden_bonus_locked_at_ms"), 0,
+        "daily_loadout.garden_bonus_locked_at_ms", issues
+    )
     if not scheduler_day:
         locked_at_ms = 0
-        feature_id = ""
         scenery_id = ""
+    if not bonus_day:
+        bonus_locked_at_ms = 0
+        feature_id = ""
     if not queued_for_day:
         queued_scenery_id = ""
     return DailyLoadoutSchedule(
         scheduler_day=scheduler_day,
         locked_at_ms=locked_at_ms,
         garden_feature_id=str(feature_id),
+        garden_bonus_anki_day_id=bonus_day,
+        garden_bonus_locked_at_ms=bonus_locked_at_ms,
         scenery_id=str(scenery_id),
         queued_for_day=queued_for_day,
         pending_garden_feature_id=str(pending_feature_id),
@@ -2785,6 +2899,7 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
         source_id = raw.get("source_id", "")
         scheduler_day = raw.get("scheduler_day", "")
         correlation_id = raw.get("correlation_id", "")
+        included_in_total = raw.get("included_in_total", True)
         if not isinstance(transaction_type, str) or not transaction_type:
             transaction_type = "legacy"
         if not isinstance(source, str) or not source:
@@ -2798,6 +2913,11 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
             scheduler_day = ""
         if not isinstance(correlation_id, str):
             correlation_id = ""
+        if not isinstance(included_in_total, bool):
+            issues.append(
+                f"currency_transactions[{index}].included_in_total: expected bool"
+            )
+            included_in_total = True
         result.append(CurrencyTransaction(
             tx_id,
             event_key,
@@ -2810,6 +2930,7 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
             source_id,
             scheduler_day,
             correlation_id,
+            included_in_total,
         ))
     if result:
         opening_balance = balance - sum(item.delta for item in result)
@@ -2840,6 +2961,7 @@ def _transactions(value: Any, balance: int, issues: list[str]) -> list[CurrencyT
                 item.source_id,
                 item.scheduler_day,
                 item.correlation_id,
+                item.included_in_total,
             ))
         result = repaired
     return result
@@ -3071,7 +3193,10 @@ def _garden_loadout(value: Any, issues: list[str]) -> GardenLoadoutState:
         issues.append("loadout: expected object")
         return GardenLoadoutState()
     feature = canonical_garden_feature_id(_string(
-        value.get("garden_feature_id", value.get("weather_id")),
+        value.get(
+            "active_bonus_garden_feature_id",
+            value.get("garden_feature_id", value.get("weather_id")),
+        ),
         DEFAULT_GARDEN_FEATURE_ID,
         "loadout.garden_feature_id",
         issues,
@@ -3082,19 +3207,25 @@ def _garden_loadout(value: Any, issues: list[str]) -> GardenLoadoutState:
     if feature not in GARDEN_FEATURE_CATALOG:
         issues.append(f"loadout.garden_feature_id: unexpected value {feature!r}")
         feature = DEFAULT_GARDEN_FEATURE_ID
+    displayed = canonical_garden_feature_id(_string(
+        value.get("displayed_garden_feature_id", feature),
+        feature,
+        "loadout.displayed_garden_feature_id",
+        issues,
+    ))
+    if displayed not in GARDEN_FEATURE_CATALOG:
+        issues.append(
+            f"loadout.displayed_garden_feature_id: unexpected value {displayed!r}"
+        )
+        displayed = DEFAULT_GARDEN_FEATURE_ID
     if scenery not in SCENERY_CATALOG:
         issues.append(f"loadout.scenery_id: unexpected value {scenery!r}")
         scenery = DEFAULT_SCENERY_ID
-    decoration = value.get("decoration_id")
-    if decoration in ("", "none"):
-        decoration = None
-    if decoration is not None and not isinstance(decoration, str):
-        issues.append("loadout.decoration_id: expected string or null")
-        decoration = None
     return GardenLoadoutState(
         garden_feature_id=feature,
+        displayed_garden_feature_id=displayed,
+        active_bonus_garden_feature_id=feature,
         scenery_id=scenery,
-        decoration_id=decoration,
         visibility=_environment_visibility(value.get("visibility"), issues),
     )
 
@@ -3190,6 +3321,10 @@ def _inventory(value: Any, default: dict[str, list[str]], issues: list[str]) -> 
         return default
     result = {key: list(items) for key, items in default.items()}
     for key, raw in value.items():
+        if key == "decorations":
+            # Tolerate schema-23 development saves without retaining the
+            # retired, unreleased standalone prop inventory slot.
+            continue
         normalized_key = (
             "scenery" if key == "backgrounds"
             else "garden_features" if key == "weather"

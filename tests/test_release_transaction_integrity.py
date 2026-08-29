@@ -957,7 +957,7 @@ def test_environment_receipt_does_not_replace_the_equipped_garden_feature() -> N
         status=PurchaseStatus.SUCCESS,
         item_id="wind_chime",
         item_name="Wind Chime",
-        category="Garden Feature",
+        category="Garden Decoration",
         quantity=1,
         amount_spent=100,
         new_balance=400,

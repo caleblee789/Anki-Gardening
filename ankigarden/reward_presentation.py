@@ -26,6 +26,7 @@ from .garden_finds import (
     STANDARD_FIND_REGISTRY,
     GardenFindReward,
     PreparedRewardRegistry,
+    standard_find_artwork_ref,
 )
 from .models.state import Achievement, GardenFindOutcome, GardenState, RewardReceipt
 from .ui.formatters import format_quantity
@@ -114,6 +115,7 @@ class RewardItemProjection:
     new_stage: str = ""
     stage_path: tuple[str, ...] = ()
     sequence: int = 0
+    is_routine: bool = False
 
     def __post_init__(self) -> None:
         event_id = str(self.event_id or "").strip()
@@ -162,6 +164,7 @@ class RewardItemProjection:
             ),
         )
         object.__setattr__(self, "sequence", max(0, int(self.sequence)))
+        object.__setattr__(self, "is_routine", bool(self.is_routine))
         inventory: dict[str, int] = {}
         order: list[str] = []
         for raw_item_id, raw_quantity in self.inventory_items:
@@ -181,7 +184,7 @@ class RewardItemProjection:
 
     @property
     def routine(self) -> bool:
-        return self.kind is RewardHero.ROUTINE_GROWTH
+        return self.kind is RewardHero.ROUTINE_GROWTH or self.is_routine
 
     @property
     def growth_total_units(self) -> int:
@@ -216,6 +219,10 @@ class RewardCompactSummary:
     key: str
     label: str
     event_ids: tuple[str, ...]
+    artwork_ref: str = ""
+    reward_type: str = ""
+    rarity: str = ""
+    artwork_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         key = str(self.key or "").strip()
@@ -234,6 +241,86 @@ class RewardCompactSummary:
         object.__setattr__(self, "key", key)
         object.__setattr__(self, "label", label)
         object.__setattr__(self, "event_ids", event_ids)
+        artwork_ref = str(self.artwork_ref or "").strip()
+        artwork_refs = tuple(dict.fromkeys(
+            str(candidate or "").strip()
+            for candidate in self.artwork_refs
+            if str(candidate or "").strip()
+        ))
+        if artwork_ref:
+            artwork_refs = tuple(dict.fromkeys((artwork_ref, *artwork_refs)))
+        elif artwork_refs:
+            artwork_ref = artwork_refs[0]
+        object.__setattr__(self, "artwork_ref", artwork_ref)
+        object.__setattr__(self, "artwork_refs", artwork_refs)
+        object.__setattr__(
+            self,
+            "reward_type",
+            str(self.reward_type or "").strip().casefold(),
+        )
+        object.__setattr__(self, "rarity", str(self.rarity or "").strip().casefold())
+
+    @property
+    def semantic_type(self) -> str:
+        """Compatibility-friendly name for icon and color selection."""
+
+        return self.reward_type
+
+    @property
+    def art_assets(self) -> tuple[str, ...]:
+        """Return every exact artwork source represented by the summary."""
+
+        return self.artwork_refs
+
+
+@dataclass(frozen=True)
+class RewardDetailRow:
+    """One render-ready detail row backed by exact atomic reward events."""
+
+    category_label: str
+    name: str
+    value: str
+    event_ids: tuple[str, ...]
+    artwork_ref: str = ""
+
+    def __post_init__(self) -> None:
+        category_label = str(self.category_label or "").strip()
+        name = str(self.name or "").strip()
+        value = str(self.value or "").strip()
+        event_ids = tuple(dict.fromkeys(
+            str(event_id or "").strip()
+            for event_id in self.event_ids
+            if str(event_id or "").strip()
+        ))
+        if not category_label:
+            raise ValueError("reward detail category_label must not be empty")
+        if not name:
+            raise ValueError("reward detail name must not be empty")
+        if not value:
+            raise ValueError("reward detail value must not be empty")
+        if not event_ids:
+            raise ValueError("reward detail row must reference an event")
+        object.__setattr__(self, "category_label", category_label)
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "event_ids", event_ids)
+        object.__setattr__(
+            self,
+            "artwork_ref",
+            str(self.artwork_ref or "").strip(),
+        )
+
+    @property
+    def category(self) -> str:
+        """Compatibility-friendly short name for category renderers."""
+
+        return self.category_label
+
+    @property
+    def art_asset(self) -> str:
+        """Compatibility-friendly art name shared by reward renderers."""
+
+        return self.artwork_ref
 
 
 @dataclass(frozen=True)
@@ -336,6 +423,32 @@ class RewardBundleProjection:
     @property
     def items(self) -> tuple[RewardItemProjection, ...]:
         return self.all_items
+
+    @property
+    def detail_rows(self) -> tuple[RewardDetailRow, ...]:
+        """Return render-ready rows without asking the widget to parse copy."""
+
+        return project_reward_detail_rows(self.all_items)
+
+    @property
+    def detail_expansion_available(self) -> bool:
+        """Return whether expanding reveals meaningful structured detail."""
+
+        if len(self.detail_rows) > 1:
+            return True
+        hero = self.hero
+        if str(hero.detail or "").strip():
+            return True
+        return bool(
+            hero.kind is RewardHero.FULL_BLOOM
+            and (hero.plant_name or hero.plant_class)
+        )
+
+    @property
+    def has_detail_expansion(self) -> bool:
+        """Concise compatibility name for detail-expansion consumers."""
+
+        return self.detail_expansion_available
 
     @property
     def remaining_count(self) -> int:
@@ -604,13 +717,48 @@ def _stage_label(stage: str) -> str:
 
 _COMPACT_EYEBROWS = {
     RewardHero.FULL_BLOOM: "MILESTONE REACHED",
-    RewardHero.STAGE_CHANGE: "MILESTONE REACHED",
-    RewardHero.ENVIRONMENT_DISCOVERY: "DISCOVERY",
+    RewardHero.STAGE_CHANGE: "NEW GROWTH STAGE",
+    RewardHero.ENVIRONMENT_DISCOVERY: "NEW DISCOVERY",
     RewardHero.GARDEN_FIND: "GARDEN FIND",
     RewardHero.CHECKPOINT: "CHECKPOINT REACHED",
     RewardHero.COIN_OR_BOOSTER: "REWARD EARNED",
     RewardHero.ROUTINE_GROWTH: "GROWTH APPLIED",
 }
+
+# First-card and similarly small incidental Coin grants update the header and
+# session accumulator without opening a major reward reveal. Four Coins is the
+# largest routine grant currently used by reviewer reward paths; named
+# milestones remain major regardless of amount.
+_MAX_ROUTINE_COIN_ONLY_AMOUNT = 4
+
+# A compact reveal has room for only two secondary facts. Collectibles and
+# named discoveries therefore outrank resource totals that are already visible
+# in the progress animation and Session footer. Values are intentionally spaced
+# so future semantic types can be inserted without changing existing ordering.
+_SECONDARY_REWARD_PRIORITY = {
+    "garden_find": 100,
+    "customization_unlock": 95,
+    "environment_discovery": 90,
+    "checkpoint": 80,
+    "booster": 70,
+    "fertilizer": 65,
+    "coins": 50,
+    "growth": 10,
+    "other": 0,
+}
+
+_MAJOR_COIN_SOURCE_MARKERS = (
+    "achievement",
+    "all_due",
+    "checkpoint",
+    "completion",
+    "full_bloom",
+    "garden_find",
+    "milestone",
+    "stage",
+    "streak",
+    "today_cards",
+)
 
 _STAGE_SORT_ORDER = {
     "seed": 0,
@@ -651,6 +799,74 @@ def _same_full_bloom_plant(
     return bool(hero_name and candidate_name and hero_name == candidate_name)
 
 
+def _same_stage_change_plant(
+    hero: RewardItemProjection,
+    candidate: RewardItemProjection,
+) -> bool:
+    """Return whether two ordinary stage events belong to one plant."""
+
+    if candidate.kind is not RewardHero.STAGE_CHANGE:
+        return False
+    if hero.plant_id and candidate.plant_id:
+        return hero.plant_id == candidate.plant_id
+    hero_name = str(hero.plant_name or hero.title).strip().casefold()
+    candidate_name = str(candidate.plant_name or candidate.title).strip().casefold()
+    return bool(hero_name and candidate_name and hero_name == candidate_name)
+
+
+def _stage_advance_count(
+    bundle: RewardBundleProjection,
+    hero: RewardItemProjection,
+) -> int:
+    """Count compacted stage crossings without discarding atomic history."""
+
+    atomic_count = sum(
+        1
+        for item in bundle.all_items
+        if item.kind is RewardHero.STAGE_CHANGE
+        and _same_stage_change_plant(hero, item)
+    )
+    path_count = max(0, len(tuple(hero.stage_path)) - 1)
+    return max(1, atomic_count, path_count)
+
+
+def _next_checkpoint_context(percent: int) -> str:
+    """Return the next standard checkpoint after a committed milestone."""
+
+    current = max(0, int(percent))
+    next_percent = next(
+        (candidate for candidate in (25, 50, 75, 100) if candidate > current),
+        0,
+    )
+    return f"Next checkpoint at {next_percent}%" if next_percent else ""
+
+
+def _coin_source_is_major(*values: object) -> bool:
+    """Recognize milestone-backed Coin sources without parsing reward copy."""
+
+    normalized = " ".join(
+        str(value or "").strip().casefold().replace("-", "_").replace(" ", "_")
+        for value in values
+        if str(value or "").strip()
+    )
+    return any(marker in normalized for marker in _MAJOR_COIN_SOURCE_MARKERS)
+
+
+def _ordinary_coin_total(awards: Iterable[Any]) -> int:
+    """Return engine-confirmed Coins not identified as a named milestone."""
+
+    return sum(
+        max(0, int(getattr(award, "amount", 0) or 0))
+        for award in awards
+        if not _coin_source_is_major(
+            getattr(award, "source_type", ""),
+            getattr(award, "source_label", ""),
+            getattr(award, "event_key", ""),
+            getattr(award, "source_id", ""),
+        )
+    )
+
+
 def _inventory_compact_label(item: RewardItemProjection) -> str:
     item_id, quantity = item.inventory_items[0]
     if "booster" in item_id.casefold():
@@ -667,6 +883,238 @@ def _inventory_compact_label(item: RewardItemProjection) -> str:
     return f"{name} +{quantity:,}"
 
 
+def _inventory_reward_type(item: RewardItemProjection) -> str:
+    """Return the semantic priority family for an inventory-backed reward."""
+
+    item_ids = " ".join(
+        str(item_id or "").strip().casefold()
+        for item_id, _quantity in item.inventory_items
+    )
+    if "booster" in item_ids:
+        return "booster"
+    if "fertilizer" in item_ids:
+        return "fertilizer"
+    return "customization_unlock"
+
+
+def _compact_artwork_refs(
+    items: Iterable[RewardItemProjection],
+) -> tuple[str, ...]:
+    """Preserve every exact artwork reference in stable event order."""
+
+    return tuple(dict.fromkeys(
+        str(item.artwork_ref or "").strip()
+        for item in items
+        if str(item.artwork_ref or "").strip()
+    ))
+
+
+def _compact_rarity(items: Iterable[RewardItemProjection]) -> str:
+    """Choose the first engine-provided rarity using stable event order."""
+
+    return next(
+        (
+            str(item.rarity or "").strip().casefold()
+            for item in items
+            if str(item.rarity or "").strip()
+        ),
+        "",
+    )
+
+
+def _compact_summary(
+    *,
+    key: str,
+    label: str,
+    items: Iterable[RewardItemProjection],
+    reward_type: str,
+    artwork_ref: str = "",
+) -> RewardCompactSummary:
+    """Build one semantic summary while retaining every atomic event ID."""
+
+    typed_items = tuple(items)
+    artwork_refs = _compact_artwork_refs(typed_items)
+    primary_artwork = str(artwork_ref or "").strip() or (
+        artwork_refs[0] if artwork_refs else ""
+    )
+    return RewardCompactSummary(
+        key=key,
+        label=label,
+        event_ids=tuple(item.event_id for item in typed_items),
+        artwork_ref=primary_artwork,
+        reward_type=reward_type,
+        rarity=_compact_rarity(typed_items),
+        artwork_refs=artwork_refs,
+    )
+
+
+def _compact_summary_sort_key(
+    entry: tuple[int, RewardCompactSummary],
+) -> tuple[int, int, str, str]:
+    """Rank summaries deterministically without depending on rerender order."""
+
+    sequence, summary = entry
+    return (
+        -_SECONDARY_REWARD_PRIORITY.get(summary.reward_type, 0),
+        max(0, int(sequence)),
+        summary.event_ids[0],
+        summary.key,
+    )
+
+
+def _reward_detail_value(item: RewardItemProjection) -> str:
+    """Format exact typed facts for one expandable reward-detail row."""
+
+    values: list[str] = []
+
+    detail = str(item.detail or "").strip()
+    if detail:
+        values.append(detail)
+    elif item.kind is RewardHero.FULL_BLOOM:
+        values.append("Reached Full Bloom")
+    elif item.kind is RewardHero.STAGE_CHANGE and item.new_stage:
+        values.append(f"Reached {_stage_label(item.new_stage)}")
+    elif item.kind is RewardHero.CHECKPOINT and item.checkpoint_percent:
+        values.append(
+            f"{item.checkpoint_percent:,}% toward "
+            f"{_stage_label(item.new_stage)}"
+        )
+
+    if item.growth_units:
+        values.append(
+            f"{format_growth_units(item.growth_units, signed=True)} Growth"
+        )
+    if item.garden_coins:
+        values.append(
+            f"+{format_quantity(item.garden_coins, 'Garden Coin', 'Garden Coins')}"
+        )
+    values.extend(item.learner_inventory_labels)
+
+    unique_values: list[str] = []
+    seen_values: set[str] = set()
+    for value in values:
+        normalized = value.casefold()
+        if not value or normalized in seen_values:
+            continue
+        seen_values.add(normalized)
+        unique_values.append(value)
+    unique = tuple(unique_values)
+    if unique:
+        return " · ".join(unique)
+    if item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
+        return "New discovery"
+    return item.category_label
+
+
+def project_reward_detail_rows(
+    items: Iterable[RewardItemProjection],
+) -> tuple[RewardDetailRow, ...]:
+    """Project atomic bundle items into stable, structured display rows."""
+
+    typed_items = tuple(items)
+    if not all(isinstance(item, RewardItemProjection) for item in typed_items):
+        raise TypeError("reward detail rows require RewardItemProjection values")
+    return tuple(
+        RewardDetailRow(
+            category_label=item.category_label,
+            name=item.title,
+            value=_reward_detail_value(item),
+            event_ids=(item.event_id,),
+            artwork_ref=item.artwork_ref,
+        )
+        for item in typed_items
+    )
+
+
+def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
+    """Project one meaningful atomic item with concise event-specific copy."""
+
+    category = item.category_label
+    name = item.title
+    value = _reward_detail_value(item)
+
+    if item.kind is RewardHero.FULL_BLOOM:
+        category = "Milestone"
+        name = "Full Bloom achieved"
+        values = tuple(value for value in (
+            str(item.plant_name or item.title).strip(),
+            (
+                f"+{format_quantity(item.garden_coins, 'Garden Coin', 'Garden Coins')}"
+                if item.garden_coins
+                else ""
+            ),
+        ) if value)
+        value = " · ".join(values) or "Milestone reached"
+    elif item.kind is RewardHero.STAGE_CHANGE:
+        category = "Growth stage"
+        name = f"{_stage_label(item.new_stage)} reached"
+    elif item.kind is RewardHero.CHECKPOINT:
+        category = "Checkpoint reward"
+        name = (
+            f"{item.checkpoint_percent:,}% checkpoint"
+            if item.checkpoint_percent
+            else "Checkpoint reached"
+        )
+    elif item.kind is RewardHero.GARDEN_FIND:
+        category = "Garden Find"
+    elif item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
+        category = "Discovery"
+
+    return RewardDetailRow(
+        category_label=category,
+        name=name,
+        value=value,
+        event_ids=(item.event_id,),
+        artwork_ref=item.artwork_ref,
+    )
+
+
+def project_reward_session_history(
+    bundles: Iterable[RewardBundleProjection],
+) -> tuple[RewardDetailRow, ...]:
+    """Return named history rows with routine Growth aggregated once.
+
+    Bundles and their immutable ledger-backed items remain untouched. Duplicate
+    bundle or event identities are ignored at this presentation boundary so a
+    remount cannot create duplicate history copy. Meaningful reward rows retain
+    their original order; the session-level routine Growth aggregate is last.
+    """
+
+    typed_bundles = tuple(bundles)
+    if not all(isinstance(bundle, RewardBundleProjection) for bundle in typed_bundles):
+        raise TypeError("reward session history requires RewardBundleProjection values")
+
+    rows: list[RewardDetailRow] = []
+    routine_growth_units = 0
+    routine_growth_event_ids: list[str] = []
+    seen_bundle_ids: set[str] = set()
+    seen_event_ids: set[str] = set()
+    for bundle in typed_bundles:
+        if bundle.bundle_id in seen_bundle_ids:
+            continue
+        seen_bundle_ids.add(bundle.bundle_id)
+        for item in bundle.all_items:
+            if item.event_id in seen_event_ids:
+                continue
+            seen_event_ids.add(item.event_id)
+            if item.kind is RewardHero.ROUTINE_GROWTH:
+                routine_growth_units += item.growth_units
+                routine_growth_event_ids.append(item.event_id)
+                continue
+            rows.append(_session_history_row(item))
+
+    if routine_growth_event_ids:
+        rows.append(RewardDetailRow(
+            category_label="Routine Growth",
+            name="Growth applied",
+            value=(
+                f"{format_growth_units(routine_growth_units, signed=True)} Growth"
+            ),
+            event_ids=tuple(routine_growth_event_ids),
+        ))
+    return tuple(rows)
+
+
 def _project_compact_reward(
     bundle: RewardBundleProjection,
 ) -> RewardCompactProjection:
@@ -677,8 +1125,20 @@ def _project_compact_reward(
         hero_title = "Full Bloom achieved"
         hero_subtitle = hero.plant_name or hero.title
     elif hero.kind is RewardHero.STAGE_CHANGE:
-        hero_title = hero.detail or "Milestone reached"
-        hero_subtitle = hero.plant_name or hero.title
+        hero_title = f"{_stage_label(hero.new_stage)} reached"
+        stages_advanced = _stage_advance_count(bundle, hero)
+        hero_subtitle = (
+            f"Advanced {stages_advanced:,} stages"
+            if stages_advanced > 1
+            else ""
+        )
+    elif hero.kind is RewardHero.CHECKPOINT:
+        hero_title = (
+            f"{hero.checkpoint_percent:,}% checkpoint"
+            if hero.checkpoint_percent
+            else "Checkpoint reached"
+        )
+        hero_subtitle = _next_checkpoint_context(hero.checkpoint_percent)
     else:
         hero_title = hero.title
         hero_subtitle = hero.detail
@@ -690,94 +1150,126 @@ def _project_compact_reward(
             hero.kind is RewardHero.FULL_BLOOM
             and _same_full_bloom_plant(hero, item)
         )
+        if not (
+            hero.kind is RewardHero.STAGE_CHANGE
+            and _same_stage_change_plant(hero, item)
+        )
     )
 
-    growth_units = 0
-    growth_event_ids: list[str] = []
-    discovery_event_ids: list[str] = []
-    find_event_ids: list[str] = []
-    inventory_summaries: list[RewardCompactSummary] = []
-    checkpoint_summaries: list[RewardCompactSummary] = []
-    stage_summaries: list[RewardCompactSummary] = []
-    coin_summaries: list[RewardCompactSummary] = []
-    other_summaries: list[RewardCompactSummary] = []
+    grouped: dict[str, list[RewardItemProjection]] = {
+        "garden_find": [],
+        "environment_discovery": [],
+        "coins": [],
+        "growth": [],
+    }
+    ranked_summaries: list[tuple[int, RewardCompactSummary]] = []
 
     for item in candidates:
-        if item.growth_units:
-            growth_units += item.growth_units
-            growth_event_ids.append(item.event_id)
+        # Semantic event identity wins over an attached payout. A Garden Find
+        # that grants Growth is still a Find in the scarce compact reveal; its
+        # Growth remains exact in details and the cumulative Session footer.
+        if item.kind is RewardHero.GARDEN_FIND:
+            grouped["garden_find"].append(item)
             continue
         if item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
-            discovery_event_ids.append(item.event_id)
-            continue
-        if item.inventory_items:
-            inventory_summaries.append(RewardCompactSummary(
-                key=f"inventory:{item.event_id}",
-                label=_inventory_compact_label(item),
-                event_ids=(item.event_id,),
-            ))
-            continue
-        if item.kind is RewardHero.GARDEN_FIND:
-            find_event_ids.append(item.event_id)
+            grouped["environment_discovery"].append(item)
             continue
         if item.kind is RewardHero.CHECKPOINT:
-            checkpoint_summaries.append(RewardCompactSummary(
+            ranked_summaries.append((item.sequence, _compact_summary(
                 key=f"checkpoint:{item.event_id}",
                 label="Checkpoint reached",
-                event_ids=(item.event_id,),
-            ))
+                items=(item,),
+                reward_type="checkpoint",
+            )))
+            continue
+        if item.inventory_items:
+            reward_type = _inventory_reward_type(item)
+            ranked_summaries.append((item.sequence, _compact_summary(
+                key=f"inventory:{item.event_id}",
+                label=_inventory_compact_label(item),
+                items=(item,),
+                reward_type=reward_type,
+                artwork_ref=str(item.inventory_items[0][0] or ""),
+            )))
             continue
         if item.kind is RewardHero.STAGE_CHANGE:
-            stage_summaries.append(RewardCompactSummary(
+            ranked_summaries.append((item.sequence, _compact_summary(
                 key=f"stage:{item.event_id}",
                 label=item.detail or "Stage advanced",
-                event_ids=(item.event_id,),
-            ))
+                items=(item,),
+                reward_type="other",
+            )))
             continue
         if item.garden_coins:
-            coin_summaries.append(RewardCompactSummary(
-                key=f"coins:{item.event_id}",
-                label=f"+{format_quantity(item.garden_coins, 'coin')}",
-                event_ids=(item.event_id,),
-            ))
+            grouped["coins"].append(item)
             continue
-        other_summaries.append(RewardCompactSummary(
+        if item.growth_units:
+            grouped["growth"].append(item)
+            continue
+        ranked_summaries.append((item.sequence, _compact_summary(
             key=f"reward:{item.event_id}",
             label=item.detail or item.title,
-            event_ids=(item.event_id,),
+            items=(item,),
+            reward_type="other",
+        )))
+
+    find_items = tuple(grouped["garden_find"])
+    if find_items:
+        ranked_summaries.append((min(item.sequence for item in find_items), _compact_summary(
+            key="garden_finds",
+            label=format_quantity(len(find_items), "Garden Find"),
+            items=find_items,
+            reward_type="garden_find",
+        )))
+
+    discovery_items = tuple(grouped["environment_discovery"])
+    if discovery_items:
+        discovery_label = (
+            discovery_items[0].title
+            if len(discovery_items) == 1
+            else format_quantity(
+                len(discovery_items),
+                "new discovery",
+                "new discoveries",
+            )
+        )
+        ranked_summaries.append((
+            min(item.sequence for item in discovery_items),
+            _compact_summary(
+                key="discoveries",
+                label=discovery_label,
+                items=discovery_items,
+                reward_type="environment_discovery",
+            ),
         ))
 
-    summaries: list[RewardCompactSummary] = []
-    if growth_event_ids:
-        summaries.append(RewardCompactSummary(
+    coin_items = tuple(grouped["coins"])
+    if coin_items:
+        coin_total = sum(item.garden_coins for item in coin_items)
+        ranked_summaries.append((min(item.sequence for item in coin_items), _compact_summary(
+            key="coins",
+            label=f"+{format_quantity(coin_total, 'coin')}",
+            items=coin_items,
+            reward_type="coins",
+        )))
+
+    growth_items = tuple(grouped["growth"])
+    if growth_items:
+        growth_units = sum(item.growth_units for item in growth_items)
+        ranked_summaries.append((min(item.sequence for item in growth_items), _compact_summary(
             key="growth",
             label=f"+{format_growth_units(growth_units)} growth",
-            event_ids=tuple(growth_event_ids),
-        ))
-    if discovery_event_ids:
-        summaries.append(RewardCompactSummary(
-            key="discoveries",
-            label=format_quantity(
-                len(tuple(dict.fromkeys(discovery_event_ids))),
-                "discovery",
-                "discoveries",
-            ),
-            event_ids=tuple(discovery_event_ids),
-        ))
-    if find_event_ids:
-        summaries.append(RewardCompactSummary(
-            key="garden_finds",
-            label=format_quantity(
-                len(tuple(dict.fromkeys(find_event_ids))),
-                "Garden Find",
-            ),
-            event_ids=tuple(find_event_ids),
-        ))
-    summaries.extend(inventory_summaries)
-    summaries.extend(checkpoint_summaries)
-    summaries.extend(stage_summaries)
-    summaries.extend(coin_summaries)
-    summaries.extend(other_summaries)
+            items=growth_items,
+            reward_type="growth",
+        )))
+
+    summaries = tuple(
+        summary
+        for _sequence, summary in sorted(
+            ranked_summaries,
+            key=_compact_summary_sort_key,
+        )
+    )
 
     visible = tuple(summaries[:2])
     hidden = tuple(summaries[2:])
@@ -787,8 +1279,8 @@ def _project_compact_reward(
         for event_id in summary.event_ids
     })
     more_label = (
-        f"{format_quantity(hidden_event_count, 'more reward')} ›"
-        if hidden_event_count
+        "Details ›"
+        if bundle.detail_expansion_available
         else ""
     )
     return RewardCompactProjection(
@@ -1045,6 +1537,14 @@ def project_committed_reward_bundle(
             (str(receipt.description) for receipt in group if receipt.description),
             "",
         )
+        routine_coin_only = bool(
+            coins
+            and not growth_units
+            and not inventory
+            and not environment_items
+            and coins <= _MAX_ROUTINE_COIN_ONLY_AMOUNT
+            and not _coin_source_is_major(event_key, *sources)
+        )
         embedded_coins += coins
         embedded_direct_growth_units += growth_units
         items.append(RewardItemProjection(
@@ -1059,6 +1559,7 @@ def project_committed_reward_bundle(
             artwork_ref=artwork,
             detail=detail,
             sequence=len(items),
+            is_routine=routine_coin_only,
         ))
 
     # The live footer includes both the engine's base Coin total and positive
@@ -1083,6 +1584,10 @@ def project_committed_reward_bundle(
             occurred_at=event.occurred_at,
             garden_coins=standalone_coins,
             sequence=len(items),
+            is_routine=(
+                standalone_coins <= _MAX_ROUTINE_COIN_ONLY_AMOUNT
+                and _ordinary_coin_total(event.coin_awards) >= standalone_coins
+            ),
         ))
 
     plant_growth_units = sum(
@@ -1176,7 +1681,7 @@ def recurring_reward_presentations(
     )
     if today_all_due_receipts:
         # Once earned, the committed ledger remains authoritative even if the
-        # learner later changes the equipped Garden Feature or Scenery.
+        # learner later changes the equipped Garden Decoration or Scenery.
         all_due_coins = sum(
             max(0, int(receipt.amount))
             for receipt in today_all_due_receipts
@@ -1314,7 +1819,7 @@ def _environment_item_destination(item_id: str) -> str:
     for kind, catalog in ENVIRONMENT_CATALOG.items():
         if normalized not in catalog:
             continue
-        return "Garden Features" if kind == "garden_feature" else "Scenery"
+        return "Garden Decorations" if kind == "garden_feature" else "Scenery"
     return "Collection"
 
 
@@ -1403,7 +1908,10 @@ def lookup(
                 outcome.description,
             ),
             tier=outcome.tier,
-            artwork_ref=outcome.artwork_ref,
+            artwork_ref=standard_find_artwork_ref(
+                reward_id,
+                outcome.artwork_ref,
+            ),
             localization_key=outcome.localization_key,
         )
     if outcome.pool_id == ENVIRONMENT_POOL_ID:
@@ -1433,7 +1941,7 @@ def lookup(
             item_id=outcome.item_id or environment.item_id,
             display_name=environment.display_name,
             description=(
-                "Added to Garden Features"
+                "Added to Garden Decorations"
                 if environment.environment_kind == "garden_feature"
                 else "Added to Scenery"
             ),
@@ -1775,6 +2283,7 @@ __all__ = [
     "RewardBundleProjection",
     "RewardCompactProjection",
     "RewardCompactSummary",
+    "RewardDetailRow",
     "RewardHero",
     "RewardItemProjection",
     "RewardLine",
@@ -1784,6 +2293,8 @@ __all__ = [
     "lookup",
     "project_achievements",
     "project_committed_reward_bundle",
+    "project_reward_detail_rows",
+    "project_reward_session_history",
     "project_reward_bundle",
     "recent_garden_finds",
     "recent_reward_summaries",

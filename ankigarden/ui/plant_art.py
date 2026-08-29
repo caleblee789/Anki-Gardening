@@ -182,12 +182,12 @@ def normalized_plant_pixmap(
         left, top, width, height = (0.0, 0.0, 1.0, 1.0)
 
     stage_fill = {
-        # Reviewer art uses a stable 136px logical canvas. These fills yield
-        # roughly 82/94/106/118/124/136px of visible stage occupancy after the
-        # transparent manifest padding is removed.
-        "seed": 0.60,
-        "sprout": 0.69,
-        "young": 0.78,
+        # Reviewer art uses a stable 136px logical canvas. Early stages receive
+        # a small optical correction inside that unchanged canvas so the plant
+        # remains the focus without moving the surrounding layout.
+        "seed": 0.66,
+        "sprout": 0.73,
+        "young": 0.80,
         "mature": 0.87,
         "flowering": 0.91,
         "rare": 1.00,

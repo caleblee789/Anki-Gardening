@@ -7,11 +7,11 @@ profile window, the disposable filesystem, and logged-out/sync-off state. Never
 control the normal profile.
 
 1. Launch cleanly with one **Caleb M. Add-ons Settings → Anki Garden settings** action, no direct **Tools → Anki Garden** action, and no add-on warning.
-2. Confirm Deck Browser and Overview show the noninteractive scene,
-   nurtured-plant Growth, cards complete today, Anki streak, Garden Coins, the
-   closest locked immediate achievement when useful, and **Open Garden**. Plant
-   and Nursery clicks must do nothing there.
-3. With fresh schema-22 state, choose **Open Garden**, verify the introduction,
+2. Confirm Deck Browser and Overview show the noninteractive named scene,
+   nurtured plant, relative Growth, and **Open Garden**. Today’s Cards, Anki
+   streak, Garden Coins, and achievements must remain in the full Garden and
+   Garden Progress. Plant and Nursery clicks must do nothing there.
+3. With fresh schema-25 state, choose **Open Garden**, verify the introduction,
    and proceed to the Starter Nursery. It must offer every release-ready species
    as a free starter and show no hard-coded collection denominator. Complete
    confirmation, placement, nurture, and completion; the other unlocked
@@ -30,13 +30,13 @@ control the normal profile.
    outlines, anchored labels, click/Enter/Space activation, and no empty-air
    rectangle. Confirm both targets are disabled while moving a plant.
 7. In Nursery, verify **Plants**, **Fertilizers and boosts**, **Garden beds**,
-   and **Weather and Scenery** tabs. Plant counts are data-driven;
+   and **Garden Decorations and Scenery** tabs. Plant counts are data-driven;
    stage artwork is clear; Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove,
    Japanese Maple, Wisteria, and Dahlia are stocked by the current complete V6
    lines, while seeded legacy-owned species remain visible and usable.
 8. Purchase, move to Collection, and plant in garden a species; unlock spaces
    three through six sequentially; purchase Small/Standard Growth Charges and
-   use both; purchase a Weather and Scenery and confirm neither auto-equips.
+   use both; purchase a Garden Decoration and Scenery and confirm neither auto-activates.
    Confirm Grand shows no current acquisition path. For every Coin purchase,
    inspect artwork, item/category/quantity,
    exact mechanics, target where applicable, price, current/resulting balance,
@@ -63,16 +63,16 @@ control the normal profile.
     time continues outside the reviewer and transfers at Full Bloom. Seed a
     Booster Potion, use and extend it, and verify +5 stacks with Fertilizer for
     100 applicable cards.
-    Equip Snow Flurry plus Full Moon before the daily lock and verify a newly
-    used Potion grants 135 cards.
+    Select Herbalist’s Hourglass and Full Moon before the day’s locks, complete
+    the first eligible answer, and verify a newly used Potion grants 150 cards.
 12. Complete real Again and Good cards. Each eligible card gives the full 10
-    base Growth plus displayed streak, Fertilizer, Booster, Weather, and Scenery
+    base Growth plus displayed streak, Fertilizer, Booster, the locked Garden Bonus, and Scenery
     bonuses to the nurtured unfinished plant. Every other planted plant creates
     an exact 20% Shared Growth share. Verify a growing source receives its own
     share and a Full Bloom source divides its share among all planted plants
     still growing, including the nurtured plant. Switch with
     **Nurture** and verify old Growth never moves. Confirm Growth details
-    reconcile requested, applied, redirected, Shared, Stored, Weather, Scenery,
+    reconcile requested, applied, redirected, Shared, Stored, Garden Decoration, Scenery,
     Growth Charge, and Instant Growth totals. Garden Find Instant Growth has no
     card modifier or Shared fan-out.
 13. Cross 25/50/75/100 stage-local checkpoints and one stage threshold. Confirm
@@ -86,12 +86,13 @@ control the normal profile.
     can stack with predictable rewards, yet each stable card/pool identity is
     consumed once with no reroll. At Full Bloom, confirm overflow and remaining
     effects continue to the next planted unfinished plant or Stored Growth.
-14. Exercise Today’s Cards with due reviews, intraday learning/relearning,
-    unseen new, active filtered, suspended, and buried cards. Confirm exact
-    inclusion, exclusions, at-least-one-eligible-card guard, one award, and no
+14. Exercise Today’s Cards with available New, Review, intraday
+    learning/relearning, active filtered, suspended, and buried cards. Confirm
+    exact inclusion, exclusions, new-to-learning continuity, repeated-answer
+    stability, the at-least-one-eligible-card guard, one award, and no
     revocation. Verify in-progress copy emphasizes the global number left and
-    completion becomes `All cards complete`, the exact Coin reward, and `176
-    reviewed today`. Waiting, ineligible, and unavailable engine states remain
+    completion becomes `All cards complete`, the exact Coin reward, and the
+    scheduler-owned completed-card count. Waiting, ineligible, and unavailable engine states remain
     truthful and compact without exposing internal obligation names. In a
     maximized Anki window, verify the clean expanded right-docked HUD hugs its
     content, keeps its sticky header and session footer visible, wraps a long
@@ -105,22 +106,33 @@ control the normal profile.
     remaining effects. It must omit synced/background rewards, internal Find
     protection, zero rows, and any backdrop; the underlying Anki page remains
     usable.
-15. Run same-day synced-card catch-up and refresh twice. Sync a lower ID after
-    a higher one and include prior-day and future/device-skew rows. Current-day
-    supported rows apply exactly once; excluded rows create no Growth and are
-    not consumed. Simulate review-log, scheduler-cutoff, and save failure, then
-    retry and confirm no completed card is lost or duplicated.
+15. Establish a clean desktop reconciliation boundary, then sync supported
+    answers from both the current Anki day and earlier days. Include a delayed
+    lower-ID answer after a higher one, distinct answer events for the same
+    card, and a future/device-skew row. Every eligible answer introduced after
+    the boundary applies exactly once regardless of day or ID ordering; only a
+    cautiously proven current-day transition may award All Clear. Excluded rows
+    create no Growth and are not consumed. Repeat the sync and simulate
+    review-log, scheduler-cutoff, and save failure, then retry and confirm no
+    completed card is lost or duplicated. Verify rewards and one centered,
+    nonmodal Sync Rewards receipt commit together, survive a restart before
+    successful mount, clear on that mount when presentation is enabled, and do
+    not replay. Disable **Show rewards after syncing** and
+    confirm reward processing continues without showing the receipt. Initial
+    setup and one-way replacement must baseline without replaying history.
 16. In the cottage's **Collection** page, inspect every shared exact mechanic,
     textual Equipped state, how-to-earn entry, locked silhouette, ordered odds,
-    and deterministic progress to each environment guarantee. Before the first
-    progression event, change the Weather and Scenery freely. After it, confirm
-    artwork and mechanics stay locked and later choices display **Queued for
-    tomorrow**. Toggle each visual layer and confirm its locked effect still
-    applies. Inspect the dormant 4:3/16:9 background compatibility reskins and
-    the active Home master: plants, path, Nursery, cottage, occlusion, and
-    hotspots must not move. Live Weather itself is accepted only on Home and
-    the fixed native 3:2 placement containing 4:3 artwork; do not create a
-    capture-only Weather route for the dormant selectors.
+    and deterministic progress to each environment guarantee. Before any
+    progression action, change the displayed Garden Decoration, selected Garden
+    Bonus, and Scenery freely. Confirm the displayed prop changes immediately.
+    Complete the first eligible answer, then confirm Garden Bonus and Scenery
+    changes queue for the next Anki day while displayed art may still change.
+    In a separate fresh-day case, use a Growth Charge or consumable before
+    answering and confirm it locks only Scenery; the Garden Bonus remains ready
+    to change until the first eligible answer.
+    Toggle each visual layer and confirm its passive still applies. Verify static
+    Decorations only in Home and the native 3:2 scene using covered 4:3 source
+    art; do not create a 16:9 or standalone 4:3 release route.
 17. Open Plant Story and confirm enlarged actual-stage art, distinct editable
     name/species/stage labels, relative Growth bar, inline rename, oldest-to-newest
     timeline, warm early-story state, **Up next**, keyboard flow, rename
@@ -130,15 +142,18 @@ control the normal profile.
     The persistent reviewer HUD is on by default through its own setting; the
     existing reviewer-reward setting controls active major dock reveals while
     the core plant projection and committed session footer remain available.
-    Confirm Weather/Scenery, art quality/detail/performance, animation, and Fine
+    **Show rewards after syncing** is on by default and controls only the
+    nonmodal Sync Rewards receipt.
+    Confirm Garden Decoration/Scenery selection, art quality/detail/performance,
+    decoration animation, and Fine
     tune controls are absent; reduced motion remains automatic.
 19. Stage settings and verify unsaved-state feedback updates immediately. Confirm
     Cancel restores persisted values, Restore defaults only stages values, Save
     settings commits once, the confirmation clears, and settings survive restart.
 20. Repeat the Garden, Nursery, Story, movement, and Settings journeys with
     keyboard only, visible focus, reduced motion, minimum supported window size,
-    4:3, 16:9, home, and wide compositions.
-21. Restart only the disposable Anki process and re-verify the schema-22 SQLite
+    Home, and native 3:2 compositions.
+21. Restart only the disposable Anki process and re-verify the schema-25 SQLite
     reward authority, `starter_selection_complete`, nurtured plant, exact
     hundredth-Growth units, Stored Growth, checkpoint/Full Bloom metadata,
     streak, Garden Coin
@@ -147,7 +162,8 @@ control the normal profile.
     Cards projection, environment entitlements/locked and queued loadout/
     visibility, Growth Charge inventory, timed Fertilizer periods/queues,
     Booster card batches, collection,
-    placements, stories, display preferences, completed-purchase replay history,
+    placements, stories, display preferences, pending sync receipt,
+    completed-purchase replay history,
     and home visibility. Re-submit one completed purchase request and confirm
     its stored outcome returns without another debit or grant. Re-sync one
     already processed row and one late lower-ID row to verify restart

@@ -160,7 +160,7 @@ def test_soil_geometry_is_paired_and_uses_monotonic_depth_scales() -> None:
         (1000, 420, "home", "home"),
     ],
 )
-@pytest.mark.skip(reason="dormant aspect-band selectors are not live Garden Feature routes")
+@pytest.mark.skip(reason="dormant aspect-band selectors are not live Garden Decoration routes")
 def test_surface_variant_selection_uses_registered_aspect_bands(
     width: int, height: int, context: str, expected: str
 ) -> None:

@@ -11,7 +11,7 @@ Scenario assumptions
 * Every simulated day is active and all of that day's cards are completed.
 * The player starts with a free Bonsai and the two included beds.
 * Purchases happen at the end of each day in this fixed order: remaining plant
-  species, beds, purchasable Weather, then purchasable Scenery. Consumables are
+  species, beds, purchasable Garden Decorations, then purchasable Scenery. Consumables are
   never purchased.
 * Purchased plants are immediately available as the next nurture target.
 * Find consumables and Full Bloom Charges are used automatically whenever a
@@ -179,7 +179,11 @@ def _purchase_plan() -> tuple[PurchaseTarget, ...]:
         for current, price in sorted(GardenGameEngine.BED_PRICES.items())
     )
     weather = tuple(
-        PurchaseTarget("purchasable Weather", item.item_id, int(item.price or 0))
+        PurchaseTarget(
+            "purchasable Garden Decorations",
+            item.item_id,
+            int(item.price or 0),
+        )
         for item in WEATHER_CATALOG.values()
         if item.price is not None
     )
@@ -749,7 +753,7 @@ def _timed_fertilizer_value_report() -> tuple[TimedFertilizerValueReport, ...]:
 ASSUMPTIONS = (
     "365 consecutive active Anki days; every day’s cards are completed.",
     "Free Bonsai and two included beds at the start.",
-    "End-of-day purchase order: species, beds, purchasable Weather, purchasable Scenery.",
+    "End-of-day purchase order: species, beds, purchasable Garden Decorations, purchasable Scenery.",
     "Find and Full Bloom consumables are automatically used; no consumables are purchased.",
     "The baseline session runs at 100 cards/hour; Rich Compost lasts one wall-clock hour.",
     "Discovered environments are not equipped in baseline progression.",
@@ -821,7 +825,7 @@ def render_markdown(report: BalanceReport) -> str:
         _markdown_table(
             (
                 "Cards/day", "Gross Coins", "Today’s Cards share",
-                "All species", "All beds", "Weather", "Scenery", "All Coin unlocks",
+                "All species", "All beds", "Garden Decorations", "Scenery", "All Coin unlocks",
             ),
             (
                 (
@@ -830,7 +834,11 @@ def render_markdown(report: BalanceReport) -> str:
                     f"{profile.completion_reward_share_percent:.1f}%",
                     _day(profile.purchase_completion_day["all species"]),
                     _day(profile.purchase_completion_day["all beds"]),
-                    _day(profile.purchase_completion_day["purchasable Weather"]),
+                    _day(
+                        profile.purchase_completion_day[
+                            "purchasable Garden Decorations"
+                        ]
+                    ),
                     _day(profile.purchase_completion_day["purchasable Scenery"]),
                     _day(profile.purchase_completion_day["all modeled Coin unlocks"]),
                 )

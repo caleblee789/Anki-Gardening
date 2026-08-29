@@ -36,6 +36,7 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
         "coin",
         "currency",
         "growth",
+        "environment-discovery",
         "streak",
         "stage",
         "collection",
@@ -60,6 +61,13 @@ def test_release_icons_share_one_grid_and_stroke_contract() -> None:
         root = ET.fromstring(payload)
         assert root.tag.endswith("svg")
         assert root.attrib["viewBox"] == "0 0 24 24"
+
+
+def test_environment_discovery_icon_is_not_a_generic_image_frame() -> None:
+    payload = GARDEN_ICON_PATHS["environment-discovery"]
+
+    assert "<rect" not in payload
+    assert "M17.5 3.5v5" in payload
 
 
 

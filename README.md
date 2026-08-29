@@ -4,9 +4,9 @@ Anki Garden is a calm, local-first Anki add-on that turns completed cards into a
 
 > Cards complete → Growth → plant stages
 >
-> Today’s Cards, streak rewards, achievements, plant stages, and Garden Finds → rewards → Nursery plants, spaces, supplements, Garden Features, and Scenery
+> Today’s Cards, streak rewards, achievements, plant stages, and Garden Finds → rewards → Nursery plants, spaces, supplements, Garden Decorations, and Scenery
 
-For exact current Growth, reward, consumable, Garden Feature, Scenery, Garden Find,
+For exact current Growth, reward, consumable, Garden Decoration, Scenery, Garden Find,
 achievement, and economy rules, see the
 [progression, rewards, and effects reference](docs/progression-rewards-effects-reference.md).
 
@@ -21,7 +21,7 @@ achievement, and economy rules, see the
   switch-state treatment, keeping interaction geometry and state feedback
   consistent across Settings, Garden Progress, Collection, Nursery, and
   transaction dialogs.
-- The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open garden** visible without duplicating Today’s Cards, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
+- The fixed-height Home preview keeps the garden name, nurtured plant, Growth, and **Open Garden** visible without duplicating Today’s Cards, Anki streak, or Garden Coins; the full Garden provides the richer progression and interaction detail.
 - Native dialogs now fit their visible state, use one deliberate overflow owner, normal-flow feedback and footers, text-fit button sizes, and compact left-accent status banners. Every add-on window now uses a native parented dialog, and visibility-sensitive controls receive parents before they can be shown; an opt-in audit can report unexpected parentless windows without creating native handles.
 - The full Garden uses one centered 1260 × 840 (3:2) release canvas. Existing 4:3 scenery art covers that canvas at 50% 48%, preserving horizontal composition and cropping vertically without stretching.
 - Reviewer progression stays inside one compact, content-driven HUD. Routine answers update the plant and session totals in place; meaningful committed rewards use one integrated reveal and one correlation-bound bundle rather than detached toast cards.
@@ -29,7 +29,7 @@ achievement, and economy rules, see the
 - Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. The current representative/full profiles contain 17/33 structurally distinct surfaces and two/five generated sheets, including the clean content-driven Reviewer HUD, its seven-event integrated reward bundle, the post-review Session Summary, and the full profile's default Today’s Cards page. Removed or behavioral-only IDs remain permanently reserved, including the retired starter-confirmation and detached Reviewer-stack IDs. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, HUD geometry, reward-dock containment, bundle composition, and session-footer identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
+- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. The current representative/full profiles contain 18/34 structurally distinct surfaces and two/five generated sheets, including the clean content-driven Reviewer HUD, its seven-event integrated reward bundle, the post-review Session Summary, the nonmodal sync-reward summary, and the full profile's default Today’s Cards page. Removed or behavioral-only IDs remain permanently reserved, including the retired starter-confirmation and detached Reviewer-stack IDs. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, HUD geometry, reward-dock containment, bundle composition, and session-footer identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -43,11 +43,11 @@ achievement, and economy rules, see the
 | **Anki streak** | Anki days in a row with at least one eligible card completed. | Gives 0% Growth at day 1, then +5%, +10%, +15%, +20%, and +25% at days 7, 14, 30, 100, and 365. The first completed card each active day grants 2 Garden Coins; every seventh day grants 10 Coins. |
 | **Today’s Cards** | The live collection-wide cards and learning steps that must be finished before Anki's cutoff. | Completing them grants 10 Garden Coins and the locked Scenery completion gift. |
 | **Garden Coins** | A separate spendable reward recorded in the reward and transaction ledgers. | Earned from daily study, streak rewards, achievements, Today’s Cards, plant milestones, environment effects, and Garden Finds; spent in the Nursery. |
-| **Garden Find** | A deterministic chance after an eligible, newly processed card, with protection from long gaps and a daily limit. | Can grant Garden Coins, Instant Growth, a consumable, or an unowned Garden Feature or Scenery item. |
+| **Garden Find** | A deterministic chance after an eligible, newly processed card, with protection from long gaps and a daily limit. | Can grant Garden Coins, Instant Growth, a consumable, or an unowned Garden Decoration or Scenery item. |
 | **Fertilizer** | A timed bonus to Answer Growth. | Adds `+1`, `+2`, or `+3` Growth per eligible card for one, two, or four hours. Faster review earns more value; a different tier queues without losing time. |
 | **Booster Potion** | A rare, non-purchasable study gift kept in your collection. | Adds `+5` Growth for the next 100 applicable cards and stacks with Fertilizer. |
 | **Growth Charge** | A stored one-use supplement applied to any owned, planted, unfinished plant. | Adds `+100`, `+500`, or `+2,000` Instant Growth. Any excess is redirected or stored. |
-| **Garden Feature** | One small prop equipped in the fixed front-left Feature bay. | Supplies one Garden Bonus. Its artwork can be hidden without disabling the bonus. |
+| **Garden Decoration** | One small prop equipped in the fixed front-left Decoration bay. | Supplies one Garden Bonus. Its artwork can be hidden without disabling the bonus. |
 | **Scenery** | One equipped reskin of the world around the fixed V6 garden. | Changes the setting and adds a passive without moving plants, Nursery, cottage, or path. |
 
 ## Progression details
@@ -78,11 +78,11 @@ every reward produced by the same completed card.
 
 Today’s Cards uses a live collection-wide check at the moment of completion. It includes:
 
-- review cards exposed by Anki’s active deck limits, including active filtered decks;
-- introduced learning and relearning steps due before Anki's next-day cutoff;
+- new and review cards exposed by Anki’s active deck limits, including active filtered decks;
+- learning and relearning steps due before Anki's next-day cutoff;
 - cards restored from suspended or buried state before the award, if they are then due.
 
-Unseen new cards are excluded until introduced. Cards remain excluded while suspended or buried. At least one eligible card must be completed, the reward can be earned once per Anki day, and it is never revoked after being granted.
+Scheduler-available new cards count from the start; moving one into Learning does not mark it complete. Cards remain excluded while suspended or buried. At least one eligible card must be completed, the reward can be earned once per Anki day, and it is never revoked after being granted.
 
 The compact HUD keeps Today's Cards globally scoped. In progress it emphasizes
 the number left alongside reviewed/starting progress. Completion becomes `All
@@ -90,13 +90,18 @@ cards complete`, the exact Coin reward, and `176 reviewed today`. Find caps,
 pity state, `Daily limit reached`, and an `ALL DECKS` control are never persistent
 Reviewer copy.
 
-Only unseen supported card-completion records inside Anki's current `[day start, next-day
-cutoff)` window are caught up after a same-day sync. A bounded persisted ID
-ledger counts late out-of-order rows exactly once, including a lower ID that
-arrives after a higher one. Prior-day and future/device-skew rows are neither
-credited nor marked processed. If Anki's cutoff or review log is unavailable,
-or saving fails, Garden defers the update without advancing its ledger and
-retries later.
+Before a normal sync, Garden reconciles review history already present on the
+desktop to establish a clean boundary. After sync, every previously unseen,
+supported post-activation answer introduced beyond that boundary is processed
+exactly once across its original Anki days, including delayed or out-of-order
+rows whose IDs are lower than the desktop's latest answer. Past-day answers
+receive their normal per-answer rewards; Today's Cards completion is evaluated
+only for the current Anki day, where the live due state can still be verified.
+
+Rewards and the pending nonmodal sync receipt are committed together before the
+receipt can appear. Initial setup and one-way collection replacement establish a
+non-awarding baseline instead of replaying history. Disabling **Show rewards
+after syncing** suppresses only the receipt, not reward processing.
 
 ## Garden interaction
 
@@ -117,7 +122,7 @@ release-ready starter for free and begins with a second empty unlocked space.
 Garden naming is optional personalization in Settings; unnamed Gardens display
 **My Garden**. New plants begin with an unambiguous generated name such as
 **Bonsai Plant**. The Nursery is a warm catalog with **Plants**, **Fertilizers and
-boosts**, **Garden beds**, and **Garden Features and Scenery** tabs, stage artwork
+boosts**, **Garden beds**, and **Garden Decorations and Scenery** tabs, stage artwork
 previews, and item art.
 
 ## Fertilizer and collection
@@ -135,7 +140,7 @@ or waits for the next Nurture choice when no recipient exists.
 
 Booster Potions are not sold. A Garden Find can add one to the collection; using
 it grants `+5` Growth for the next 100 applicable cards. Herbalist’s Hourglass changes
-that to 110 cards, Full Moon Garden to 125, or both to 135. Potions stack with
+that to 125 cards, Full Moon Garden to 125, or both to 150. Potions stack with
 Fertilizer.
 Using another Potion extends the remaining card count.
 
@@ -149,33 +154,39 @@ request identity; it receives no card modifiers and is not shared. Overflow is
 redirected or stored. Normal milestone and Coin rewards still apply. A failed save restores Growth,
 inventory, rewards, feedback, and the replay ledger.
 
-## Garden Features, Scenery, and Garden Finds
+## Garden Decorations, Scenery, and Garden Finds
 
-Exactly one Garden Feature and one Scenery may be equipped, and their effects stack.
-The Nursery sells one-time Common and Uncommon choices but never auto-equips a
-purchase. The Garden Progress cottage's **Garden Features and Scenery** collection tab shows the active
+Exactly one owned Garden Decoration may be displayed, and one owned decoration
+supplies the Garden Bonus. Those choices may differ. One Scenery remains active,
+and its effect stacks with the single Garden Bonus.
+The Nursery sells one-time Common and Uncommon choices but never auto-activates a
+purchase. The Garden Progress cottage's **Garden Decorations and Scenery** collection tab shows the active
 loadout, every effect, how each item is earned, exact drop odds, and finite
 progress to each environment guarantee.
 Find-only art remains a silhouette until unlocked while its rules stay visible.
-Scenery locks on the first progression event of the Anki day. The Active Feature
-is snapshotted at the beginning of a continuous local review session; a change
-during that session applies to the next session and cannot stack. Separate
+The Garden Bonus locks on the first eligible answer of the Anki day; Scenery
+locks independently on the first progression action. Later mechanical changes
+queue for the next Anki day and cannot stack. The displayed decoration may
+change at any time. Separate
 visibility switches hide either visual layer without disabling its effect.
 
-Garden Features and Scenery stay within a bounded daily power budget. Completion gifts
+See the [illustrated Garden Decorations reference](docs/references/garden-decorations-reference.docx)
+for the complete visual catalog and effect summary.
+
+Garden Decorations and Scenery stay within a bounded daily power budget. Completion gifts
 trigger only when Today’s Cards is complete, not from opening the reviewer or
 completing a single card. Each gift has its own durable reward identity and does
 not suppress either Garden Find pool.
 
-| Garden Feature | Acquisition | Garden Bonus |
+| Garden Decoration | Acquisition | Garden Bonus |
 |---|---|---|
 | Seedling Sign | Included | None |
-| Wind Chime | Nursery: 100 Coins | +1 Growth on the first 10 cards |
+| Wind Chime | Nursery: 100 Coins | +1 Growth every 10 eligible cards |
 | Harvest Bell | Nursery: 175 Coins | +5 Coins when Today’s Cards is complete |
-| Watering Station | Nursery: 250 Coins | +1 Growth on the first 20 cards |
-| Herbalist’s Hourglass | Nursery: 350 Coins | Booster Potions apply to 10 additional cards |
-| Firefly Lantern | Rare Garden Find | +5 Growth on the first 15 cards |
-| Prism Trellis | Very Rare Garden Find | +100 direct Growth when Today’s Cards is complete |
+| Watering Station | Nursery: 250 Coins | +1 Growth every 5 eligible cards |
+| Herbalist’s Hourglass | Nursery: 350 Coins | Booster Potions add 25% more Booster cards |
+| Firefly Lantern | Rare environment discovery | +3 Growth every 4 eligible cards |
+| Prism Trellis | Very Rare environment discovery | Banks 1.5 Growth per eligible card and releases it when Today’s Cards is complete |
 
 The Standard Find pool contains Garden Coin awards, 40/60/100 Instant Growth,
 Small and Standard Growth Charges, Basic Fertilizer (shown as **Rich Compost**),
@@ -204,25 +215,32 @@ The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower
 ## Persistence
 
 Mutable data stays under `ankigarden/user_files/`, which Anki preserves during
-add-on upgrades. Schema 23 stores exact hundredth-Growth units, Stored Growth,
-checkpoint and Full Bloom metadata, Today’s Cards projection state, locked and
-queued daily loadouts, independent environment guarantees, timed Fertilizer
-intervals/queues, and card-counted Booster batches. The canonical reward ledger
-and stable processed-card identities remain authoritative. Schema-21 JSON and
-SQLite profiles are backed up before
-migration; failed reads or writes remain fail-closed.
+add-on upgrades. Schema 25 stores exact hundredth-Growth units, Stored Growth,
+checkpoint and Full Bloom metadata, Today’s Cards projection state, independent
+displayed Decoration and daily-locked/queued Garden Bonus choices, Scenery
+locks, environment guarantees, timed Fertilizer queues, card-counted Booster
+batches, and the durable pending sync-reward receipt. The canonical reward
+ledger and stable processed-card identities remain authoritative. Supported
+schema 10–24 profiles migrate forward; schema-21 JSON and SQLite profiles are
+backed up before migration. Failed reads or writes remain fail-closed.
 
 ## Interface
 
-- The Deck Browser, Overview, first-run state, and active-plant state adapt one shared preview snapshot. Its compact scenic postcard renders the static equipped Garden Feature and pad between scenery and plants while the Garden name, nurtured-plant summary, and **Open garden** action remain legible.
-- The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens **Plants**, **Fertilizers and boosts**, **Garden beds**, and **Garden Features and Scenery**; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
+- The Deck Browser, Overview, first-run state, and active-plant state adapt one shared preview snapshot. Its compact scenic postcard renders the static equipped Garden Decoration and pad between scenery and plants while the Garden name, nurtured-plant summary, and **Open Garden** action remain legible.
+- The Nursery and Collection cottage use artwork-following hover/focus outlines and in-scene labels. Nursery opens **Plants**, **Fertilizers and boosts**, **Garden beds**, and **Garden Decorations and Scenery**; the cottage opens Collection in the existing Garden Progress window. Both work with mouse and keyboard.
 - The full Garden header gives the Garden name primary title position, followed by **Garden Progress**, **Collection**, and secondary **Settings** navigation.
 - Long metric values keep their normal type size; the Nurtured Plant, Anki Streak, and Garden Coin groups wrap onto two rows when their measured content no longer fits.
 - The watering-can artwork remains bundled and resolvable for compact **Nurtured** badges, but Garden and preview scenes do not place it beside plants.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Reviewer rewards stay inside the HUD: one active major reveal, at most two categorized result chips, an event-ID-backed remainder action, and a zero-free **This session** footer sourced from the exit Summary accumulator.
 - Collection is the collectible browser and Garden loadout manager. It derives categories from the registry, distinguishes explicit mysteries from ordinary locked items, manages plant placement, and owns reversible previews plus atomic equipment and visibility changes.
-- Production Settings keeps only the applicable display/notification choices, including **Reduce animations** and **Show reviewer rewards**, uses automatically balanced artwork, and presents read-only **Diagnostics** separately. Backup, populate, and restore controls exist only in an explicitly built capture package and are absent from the distributable.
+- Production Settings keeps only the applicable display/notification choices,
+  including **Reduce animations**, **Show reviewer HUD**, **Show reviewer
+  rewards**, and default-on **Show rewards after syncing**. The sync setting
+  changes receipt presentation only; imported rewards are still processed.
+  Settings uses automatically balanced artwork and presents read-only
+  **Diagnostics** separately. Backup, populate, and restore controls exist only
+  in an explicitly built capture package and are absent from the distributable.
 
 ## Runtime bundle
 
@@ -231,14 +249,14 @@ development generation:
 
 - one canonical Verdant Twilight V6 responsive environment plus eight compatible Scenery reskins with unchanged masks, anchors, path, Nursery, and cottage;
 - one approved transparent, pixel-lossless WebP for each of 10 species across 6 Growth stages;
-- seven standardized 1024 × 1024 Garden Feature masters plus one reusable stone pad. Legacy Weather ownership migrates without requiring legacy visual assets.
+- seven standardized 1024 × 1024 Garden Decoration masters plus one reusable stone pad. Legacy Weather ownership migrates without requiring legacy visual assets.
 
 V2–V5 scene and plant alternatives, migration-only catalogs, draft review
 assets, and the packaged placeholder bitmap are excluded. Missing or unreadable
 art does not alter saved plants or progression: the UI keeps the plant's name
 and stage and draws its code-native fallback. The package tests enforce the
 current-only file set and the release archive size ceiling for the complete
-schema-22 scenery, plant, and planter library.
+Scenery, Garden Decoration, plant, planter, and UI asset library.
 
 The accepted file count, byte size, and SHA-256 are recorded from the final
 rebuilt archive only after the exact-package tests and complete UI capture pass.
@@ -343,10 +361,10 @@ root:
 Capture contract and orchestration tests are deliberately small and Qt-free;
 the real exact-package Qt/WebView, shutdown, manifest, and contact-sheet
 proof is produced by the repository capture command instead of simulated by a
-large pytest matrix. The fast lane, release-evidence lane, and explicit union
-are each maintained below one minute on the canonical development machine. CI
-shards release evidence and enforces a 60-second ceiling on the fast lane and
-on each independently scheduled release-evidence shard.
+large pytest matrix. The fast and release-evidence lanes are kept compact, while
+the explicit union is the complete local check. CI gives the fast lane a
+120-second outer timeout and each independently scheduled release-evidence
+shard a 60-second timeout.
 
 The runtime target is Anki 25.07 through 26.08. Release acceptance installs the exact rebuilt archive into a separately keyed, disposable Anki 26.08 base/profile with sync disabled.
 

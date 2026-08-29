@@ -81,8 +81,8 @@ The plant card always retains the species/class overline and a stable two-line
 but is not rendered in the Reviewer. Short names do not move art or progress.
 
 The art region is approximately 146 px high. Alpha-aware placement metadata
-crops transparent padding and targets visible heights of approximately 82, 94,
-106, 118, 124, and 136 px from Seed through Full Bloom. A soft painted ground
+crops transparent padding and targets visible heights of approximately 90, 99,
+109, 118, 124, and 136 px from Seed through Full Bloom. A soft painted ground
 ellipse and low-opacity glow anchor the art without a rectangular backdrop.
 
 The stage row is concise and numeric values use tabular figures:
@@ -104,11 +104,12 @@ Distance and estimate use a two-column layout:
 250 growth to next checkpoint              ~14 cards
 ```
 
-Immediate result outranks the future reward:
+Distance, future reward, and immediate result form three parallel rows:
 
 ```text
-Next answer                            +18 growth
-coin icon  +2 coins  at next checkpoint
+250 growth to next checkpoint              ~14 cards
+Checkpoint reward                            +2 coins
+Next answer                              +18 growth
 ```
 
 Only the icon and `+2 coins` are gold. No learner-facing quantity uses
@@ -165,7 +166,9 @@ This session
 
 The footer is clickable only when exact history exists. All accepted nonempty
 bundles, including routine Growth, remain in in-memory history; only major
-rewards enter the reveal queue. Four history rows are shown at a time.
+rewards enter the reveal queue. History presents named milestone, Find,
+discovery, checkpoint, and effect rows while aggregating routine Growth into
+one session-level row. Four presentation rows are shown at a time.
 
 Each major answer has one bundle keyed by its committed event ID. Rapid rewards
 queue inside the dock rather than stacking toasts. Answer display, next-card
@@ -176,30 +179,32 @@ load, sync, resize, collapse, remount, and webview reopening cannot replay it.
 | Full Bloom or stage change | `MILESTONE REACHED` |
 | Garden Find | `GARDEN FIND` |
 | Checkpoint | `CHECKPOINT REACHED` |
-| Environment discovery | `DISCOVERY` |
+| Environment discovery | `NEW DISCOVERY` |
 | Other major reward | `REWARD EARNED` |
 
-Full Bloom uses `Full Bloom achieved` as hero and the plant name as subtitle.
-Artwork is 52–60 px. Compact reveals show at most two typed summary chips,
-never mixed `Also earned:` prose. Same-plant intermediate stages remain in exact
-history but are excluded from the compact reveal and overflow count.
+Full Bloom uses `Full Bloom achieved` as hero. When the event plant is already
+shown above, its name is suppressed. Artwork is a 52 px milestone medallion.
+Compact reveals show at most two typed summary chips in deterministic priority:
+Find, customization, discovery, checkpoint, Booster, Fertilizer, Coins, then
+routine Growth. Same-plant intermediate stages remain in exact history but are
+excluded from the compact reveal and overflow count.
 
 ```text
-MILESTONE REACHED
+MILESTONE REACHED                         Details ›
 
-[art] Full Bloom achieved
-      Juniper of the Moonlit Library Garden
+[badge] Full Bloom achieved
       coin icon  +14 coins
 
-[+40 growth] [2 discoveries]
-                         2 more rewards ›
+[1 Garden Find] [2 new discoveries]
 ────────────────────────────────────────
 This session
 +40 growth · +14 coins · 1 find
 ```
 
-The overflow action is right-aligned with at least 28 px visual and 32 px
-clickable height. Hidden counts derive from represented event IDs, not text.
+`Details ›` is the only active-reward disclosure. It becomes `Hide details`
+while exact itemized rows are open. The session footer retains its separate
+down/up history chevron. Hidden counts derive from represented event IDs, not
+text.
 
 ## Full Bloom plant state
 
@@ -212,10 +217,18 @@ Otherwise retain a calm completed snapshot with normal border, small gold
 accent, class/name/art, `Full Bloom`, and this exact copy:
 
 ```text
-Future growth will be shared or stored until you select another plant.
+Future growth will be shared or stored.
+Choose next plant ›
 ```
 
-`Select another plant ›` is secondary; the plant card still opens Garden.
+The action opens a nonmodal HUD-anchored chooser and uses the existing
+Collection selection route as its no-choice or compatibility fallback. It
+commits through the engine without resetting the reviewer or session totals.
+
+The active reward lifecycle is explicit: `celebrating`, `settled`,
+`details_open`, then `archived`. Archiving requires both the 2.5-second minimum
+hold and a subsequent committed card. Open details defer archiving. Archived
+events remain in session history and never replay on remount, sync, or resize.
 
 ## Visual hierarchy and data integrity
 
@@ -240,8 +253,10 @@ tabular numerals.
 
 ## Release acceptance
 
-The existing v25 capture topology remains unchanged. Native macOS review at
-100 percent scaling exercises these transient states:
+The reviewer-specific states remain covered within the current v25
+18-representative/34-full capture topology; the separate Sync Rewards receipt
+is its own registered surface. Native macOS review at 100 percent scaling
+exercises these transient states:
 
 1. 18 cards left.
 2. 1 card left.

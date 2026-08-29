@@ -708,7 +708,7 @@ def _home_weather_markup(
     source_width: int,
     source_height: int,
 ) -> str:
-    """Render the one static Home Garden Feature at the shared anchor."""
+    """Render the one static Home Garden Decoration at the shared anchor."""
 
     if (
         not data.weather_visible
@@ -1382,7 +1382,11 @@ def build_home_widget_success_data(
             if starter_waiting_for_nurture else ""
         ),
         selected_weather=str(
-            getattr(state, "selected_garden_feature", "seedling_sign")
+            getattr(
+                state,
+                "displayed_garden_feature",
+                getattr(state, "selected_garden_feature", "seedling_sign"),
+            )
             or "seedling_sign"
         ),
         selected_scenery=visible_scenery,
@@ -1402,7 +1406,14 @@ def build_home_widget_success_data(
         next_streak_day=_next_streak_day(int(state.streak_days)),
         next_streak_bonus_percent=_next_streak_bonus(int(state.streak_days)),
         garden_currency=max(0, int(getattr(state, "currency_balance", 0))),
-        weather=str(getattr(state, "selected_garden_feature", state.selected_weather) or "N/A"),
+        weather=str(
+            getattr(
+                state,
+                "displayed_garden_feature",
+                getattr(state, "selected_garden_feature", state.selected_weather),
+            )
+            or "N/A"
+        ),
         weather_visible=weather_visible,
         visible_scenery=visible_scenery,
         scene_items=tuple(scene_items),

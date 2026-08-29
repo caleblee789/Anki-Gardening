@@ -34,6 +34,7 @@ from .session_summary import (
     StandardFind,
     format_growth_units,
     project_session_day,
+    unlock_category_copy,
 )
 from .theme import GARDEN_THEME, apply_tabular_numerals
 
@@ -43,12 +44,15 @@ SESSION_SUMMARY_MIN_WIDTH = 336
 SESSION_SUMMARY_MAX_WIDTH = 416
 SESSION_SUMMARY_EDGE_MARGIN = 20
 SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN = 32
+SESSION_SUMMARY_PREFERRED_TOP_MARGIN = 48
+SESSION_SUMMARY_MIN_VERTICAL_MARGIN = 16
 # Height is intentionally viewport-driven.  ``None`` documents that there is
 # no second, arbitrary desktop cap competing with the viewport contract.
 SESSION_SUMMARY_MAX_HEIGHT: int | None = None
 SESSION_SUMMARY_HEADER_HEIGHT = 52
 SESSION_SUMMARY_FOOTER_HEIGHT = 60
 SESSION_SUMMARY_FRAME_BORDER_WIDTH = 1
+SESSION_SUMMARY_COMPACT_HOST_HEIGHT = 903
 
 
 def session_summary_palette(background_lightness: int | None = None) -> dict[str, str]:
@@ -69,6 +73,7 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "text_primary": GARDEN_THEME["session_summary_text_primary"],
         "text_secondary": GARDEN_THEME["session_summary_text_secondary"],
         "text_muted": GARDEN_THEME["session_summary_text_muted"],
+        "metric_label": "#AEBFB7",
         "growth_accent": GARDEN_THEME["session_summary_growth"],
         "coin_accent": GARDEN_THEME["session_summary_coin"],
         "action_text": GARDEN_THEME["session_summary_primary_text"],
@@ -85,6 +90,18 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "chip_surface": GARDEN_THEME["session_summary_chip_surface"],
         "today_surface": GARDEN_THEME["session_summary_card_bg_raised"],
         "boost_surface": GARDEN_THEME["session_summary_card_bg"],
+        "receipt_panel": "#062C25",
+        "receipt_primary_surface": "#0C3A31",
+        "receipt_secondary_surface": "#0A342C",
+        "receipt_hover_surface": "#11463A",
+        "receipt_text_primary": "#F2F7F4",
+        "receipt_text_secondary": "#BDCDC5",
+        "receipt_text_muted": "#91A59B",
+        "receipt_primary_mint": "#62DCAA",
+        "receipt_coin": "#E2C05D",
+        "receipt_milestone": "#D9BC68",
+        "receipt_border": "rgba(128, 211, 177, 51)",
+        "receipt_border_strong": "rgba(128, 211, 177, 82)",
     }
     if background_lightness is None or int(background_lightness) < 160:
         return shared
@@ -98,6 +115,7 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "text_primary": "#1B3025",
         "text_secondary": "#586B60",
         "text_muted": "#718178",
+        "metric_label": "#586B60",
         "growth_accent": "#397D4E",
         "coin_accent": "#8A6819",
         "action_text": "#F7FAF5",
@@ -114,6 +132,18 @@ def session_summary_palette(background_lightness: int | None = None) -> dict[str
         "chip_surface": "#E1EAE2",
         "today_surface": "#DFE9DC",
         "boost_surface": "#EEF2EA",
+        "receipt_panel": "#F5F1E7",
+        "receipt_primary_surface": "#FFFCF5",
+        "receipt_secondary_surface": "#F0EDE3",
+        "receipt_hover_surface": "#E8EDE5",
+        "receipt_text_primary": "#22322B",
+        "receipt_text_secondary": "#5F7168",
+        "receipt_text_muted": "#7D8C84",
+        "receipt_primary_mint": "#477D58",
+        "receipt_coin": "#8A6823",
+        "receipt_milestone": "#80651F",
+        "receipt_border": "#D7D4C8",
+        "receipt_border_strong": "#B8B9AE",
     }
 
 
@@ -127,9 +157,10 @@ def session_summary_geometry(
     """Return a top-right, viewport-bounded ``(x, y, width, height)``.
 
     The preferred width and hard cap are both 416 px. On narrow windows the
-    card contracts to preserve 20 px side margins. Height is content-fit up to
-    the viewport minus 16 px at the top and bottom; the host content origin
-    provides the remaining toolbar-aware screen offset.
+    card contracts to preserve 20 px side margins. Prefer the approved 48 px
+    top offset when the natural card also preserves the 16 px bottom safety
+    margin. When the content is taller, fall back to 16 px at both edges and
+    let only the body scroll.
     """
 
     viewport_width = max(1, int(viewport_width))
@@ -151,12 +182,33 @@ def session_summary_geometry(
         0,
         viewport_width - width - SESSION_SUMMARY_EDGE_MARGIN,
     )
-    top_margin = SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN // 2
+    preferred_height_limit = max(
+        1,
+        viewport_height
+        - SESSION_SUMMARY_PREFERRED_TOP_MARGIN
+        - SESSION_SUMMARY_MIN_VERTICAL_MARGIN,
+    )
+    top_margin = (
+        SESSION_SUMMARY_PREFERRED_TOP_MARGIN
+        if content_height <= preferred_height_limit
+        else SESSION_SUMMARY_MIN_VERTICAL_MARGIN
+    )
     y = min(
         top_margin,
         max(0, viewport_height - height),
     )
     return x, y, width, height
+
+
+def session_summary_uses_compact_density(viewport_height: int) -> bool:
+    """Use the measured short-window density below the Retina host height.
+
+    Anki's 1440x900 and 1600x960 windows leave content hosts of roughly 813
+    and 873 logical pixels after native chrome.  The compact variant preserves
+    reward artwork and actions while removing default scrolling at both sizes.
+    """
+
+    return max(0, int(viewport_height)) < SESSION_SUMMARY_COMPACT_HOST_HEIGHT
 
 
 def session_effect_remaining_text(
@@ -261,6 +313,22 @@ def session_inventory_reward_lines(
     return tuple(projected)
 
 
+def session_find_summary_plan(
+    find_items: Sequence[tuple[str, str, str, int]],
+    *,
+    visible_limit: int = 3,
+) -> tuple[tuple[tuple[str, str, str, int], ...], int]:
+    """Keep up to three reconciled Find groups visible and account for the rest."""
+
+    normalized = tuple(find_items)
+    limit = max(1, int(visible_limit))
+    visible = normalized[:limit]
+    hidden_quantity = sum(
+        max(0, int(item[3])) for item in normalized[len(visible):]
+    )
+    return visible, hidden_quantity
+
+
 try:  # Keep the geometry helper importable in non-Anki test processes.
     from aqt.qt import (
         QColor,
@@ -284,6 +352,7 @@ try:  # Keep the geometry helper importable in non-Anki test processes.
         QSizePolicy,
         QToolButton,
         QTimer,
+        QVariantAnimation,
         QVBoxLayout,
         Qt,
     )
@@ -312,6 +381,7 @@ except Exception as exc:  # pragma: no cover - exercised only outside Anki/Qt.
     QSizePolicy = object  # type: ignore[assignment,misc]
     QToolButton = object  # type: ignore[assignment,misc]
     QTimer = object  # type: ignore[assignment,misc]
+    QVariantAnimation = object  # type: ignore[assignment,misc]
     QVBoxLayout = object  # type: ignore[assignment,misc]
     Qt = object  # type: ignore[assignment,misc]
     _QT_AVAILABLE = False
@@ -487,6 +557,9 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._effect_deadlines: dict[str, float] = {}
         self._boost_rows: dict[str, tuple[Any, Any, Any, Any | None]] = {}
         self._active_boosts_section: Any | None = None
+        self._compact_density = session_summary_uses_compact_density(
+            int(parent.height())
+        )
         self._summary_theme = session_summary_palette(
             _host_background_lightness(parent)
         )
@@ -496,6 +569,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self.setProperty("semanticId", "reviewer.session-summary")
         self.setProperty("reviewerOverlay", True)
         self.setProperty("summaryNonmodal", True)
+        self.setProperty("summaryCompactDensity", self._compact_density)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -509,6 +583,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         self._apply_style()
         self._build_shell()
+        self._apply_shell_density()
         self._rebuild_page()
         self.reposition()
         try:
@@ -584,31 +659,36 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             "QLabel[summaryTitle='true'] {font-size:18px;font-weight:650;}"
             "QLabel[summaryHero='true'] {font-size:40px;font-weight:700;}"
             "QLabel[summaryHeroLabel='true'] {"
-            f"color:{t['text_secondary']};font-size:14px;font-weight:500;}}"
+            f"color:{t['text_secondary']};font-size:14px;font-weight:520;}}"
             "QLabel[summarySection='true'] {"
             f"color:{t['text_secondary']};font-size:12px;font-weight:650;}}"
             "QLabel[summaryValue='true'] {font-size:13px;font-weight:650;}"
             "QLabel[summaryGrowth='true'] {"
-            f"color:{t['growth_accent']};font-size:19px;font-weight:700;}}"
+            f"color:{t['growth_accent']};font-size:20px;font-weight:700;}}"
             "QLabel[summaryCoin='true'] {"
-            f"color:{t['coin_accent']};font-size:19px;font-weight:700;}}"
+            f"color:{t['coin_accent']};font-size:20px;font-weight:700;}}"
             "QLabel[summaryDetailGrowth='true'] {"
             f"color:{t['growth_accent']};font-size:13px;font-weight:650;}}"
-            "QLabel[summaryDetailCoin='true'], QLabel[summaryCoinChipValue='true'] {"
+            "QLabel[summaryDetailCoin='true'] {"
             f"color:{t['coin_accent']};font-size:13px;font-weight:650;}}"
+            "QLabel[summaryCoinChipValue='true'] {"
+            f"color:{t['coin_accent']};font-size:11px;font-weight:600;}}"
             "QLabel[summaryMuted='true'] {"
             f"color:{t['text_muted']};font-size:11px;font-weight:500;}}"
+            "QLabel[summaryMetricLabel='true'] {"
+            f"color:{t['metric_label']};font-size:11px;font-weight:520;}}"
             "QLabel[summarySupporting='true'] {"
             f"color:{t['text_secondary']};font-size:12px;font-weight:500;}}"
             "QLabel[summaryStatusTitle='true'] {font-size:12px;font-weight:600;}"
             "QLabel[summaryMilestone='true'] {font-size:15px;font-weight:650;}"
             "QLabel[summaryEyebrow='true'] {font-size:10px;font-weight:700;}"
             "QLabel[summaryFind='true'] {"
-            f"color:{t['find_accent']};font-size:19px;font-weight:700;}}"
+            f"color:{t['find_accent']};font-size:20px;font-weight:700;}}"
+            "QLabel[summaryLongMetric='true'] {font-size:17px;}"
             "QLabel[summaryRarity='true'] {"
             f"color:{t['text_secondary']};font-size:11px;font-weight:650;}}"
-            "QLabel[summaryFindName='true'], QLabel[summaryBoostName='true'] {"
-            "font-size:13px;font-weight:550;}"
+            "QLabel[summaryFindName='true'] {font-size:13px;font-weight:580;}"
+            "QLabel[summaryBoostName='true'] {font-size:13px;font-weight:550;}"
             "QLabel[summaryFindQuantity='true'], QLabel[summaryBoostValue='true'] {"
             "font-size:13px;font-weight:650;}"
             "QProgressBar#ankiGardenSessionTodayProgress {"
@@ -728,6 +808,20 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._footer_layout.setSpacing(8)
         root.addWidget(self._footer)
 
+    def _apply_shell_density(self) -> None:
+        """Tighten only fixed shell chrome in measured short host viewports."""
+
+        if self._compact_density:
+            self._header.setFixedHeight(44)
+            self._header.layout().setContentsMargins(16, 6, 16, 6)
+            self._footer.setFixedHeight(48)
+            self._footer_layout.setContentsMargins(12, 4, 12, 4)
+            return
+        self._header.setFixedHeight(SESSION_SUMMARY_HEADER_HEIGHT)
+        self._header.layout().setContentsMargins(16, 7, 16, 7)
+        self._footer.setFixedHeight(SESSION_SUMMARY_FOOTER_HEIGHT)
+        self._footer_layout.setContentsMargins(12, 10, 12, 10)
+
     def _divider(self, parent: Any | None = None) -> Any:
         divider = QFrame(parent or self)
         divider.setProperty("summaryDivider", True)
@@ -764,7 +858,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         body.setObjectName("ankiGardenSessionBody")
         body.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         body_layout = QVBoxLayout(body)
-        body_layout.setContentsMargins(16, 16, 16, 16)
+        body_layout.setContentsMargins(
+            16,
+            8 if self._compact_density else 16,
+            16,
+            8 if self._compact_density else 16,
+        )
         body_layout.setSpacing(14)
 
         if self._payload.page_count > 1:
@@ -868,10 +967,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         hero.setObjectName("ankiGardenSessionHero")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(0, 0, 0, 0)
-        hero_layout.setSpacing(4)
+        hero_layout.setSpacing(5)
         number = QLabel(value, hero)
         number.setObjectName("ankiGardenSessionHeroValue")
         number.setProperty("summaryHero", True)
+        number.setFixedHeight(40)
         apply_tabular_numerals(number)
         noun = "card" if count == 1 else "cards"
         number.setAccessibleName(f"{value} {noun} completed this session")
@@ -879,6 +979,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         label = QLabel(f"{noun} completed this session", hero)
         label.setObjectName("ankiGardenSessionHeroLabel")
         label.setProperty("summaryHeroLabel", True)
+        label.setFixedHeight(19)
         hero_layout.addWidget(label)
         layout.addWidget(hero)
 
@@ -945,15 +1046,20 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         band.setObjectName("ankiGardenSessionToday")
         band.setProperty("summaryStatus", True)
         status_layout = QVBoxLayout(band)
-        status_layout.setContentsMargins(12, 12, 12, 12)
-        status_layout.setSpacing(7)
+        status_layout.setContentsMargins(
+            12,
+            5 if self._compact_density else 12,
+            12,
+            5 if self._compact_density else 12,
+        )
+        status_layout.setSpacing(4 if self._compact_density else 7)
 
         heading_row = QHBoxLayout()
         heading_row.setSpacing(8)
         kind = str(getattr(today, "kind", "reviewable") or "reviewable")
         band.setProperty("todayCardsKind", kind)
         band.setProperty("todayCardsScope", str(getattr(today, "scope", "") or ""))
-        heading = QLabel("Daily target" if kind == "daily_target" else "Today’s cards")
+        heading = QLabel("Daily Target" if kind == "daily_target" else "Today’s Cards")
         heading.setProperty("summaryStatusTitle", True)
         heading_row.addWidget(heading, 1)
         is_complete = bool(getattr(today, "is_complete", end.status == "complete"))
@@ -1015,7 +1121,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 ),
             )
             progress.setAccessibleName(
-                f"{'Daily target' if kind == 'daily_target' else 'Today’s cards'}: "
+                f"{'Daily Target' if kind == 'daily_target' else 'Today’s Cards'}: "
                 f"{progress_value:,} of "
                 f"{format_quantity(progress_max, 'card')} completed"
             )
@@ -1178,7 +1284,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     )
                 )
                 reward = (
-                    f"+{coin_reward:,} coins included"
+                    f"+{coin_reward:,} coin bonus included"
                     if included
                     else (
                         f"+{coin_reward:,} coin bonus"
@@ -1186,9 +1292,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                     )
                 )
         elif isinstance(source, EnvironmentDiscovery):
-            eyebrow = eyebrow or "ENVIRONMENT UNLOCKED"
+            unlock_eyebrow, unlock_supporting = unlock_category_copy(
+                str(getattr(source, "unlock_category", "") or "environment")
+            )
+            eyebrow = eyebrow or unlock_eyebrow
             title = title or source.environment_name or "New environment"
-            supporting = supporting or "Now available in the Garden"
+            supporting = supporting or unlock_supporting
         elif isinstance(source, StandardFind):
             eyebrow = eyebrow or "RARE GARDEN FIND"
             title = title or source.find_name or "Garden Find"
@@ -1201,7 +1310,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(8)
-        container_layout.addWidget(self._section_heading("Session highlights"))
+        container_layout.addWidget(self._section_heading("Session Highlights"))
 
         projected = getattr(projection, "highlights", None)
         if projected is not None:
@@ -1299,17 +1408,45 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             ". ".join(part for part in (eyebrow_text, title_text, supporting_text, reward_text) if part)
         )
         row = QHBoxLayout(card)
-        row.setContentsMargins(12, 8, 12, 8)
+        row.setContentsMargins(
+            12,
+            4 if self._compact_density else 8,
+            12,
+            4 if self._compact_density else 8,
+        )
         row.setSpacing(12)
 
+        source_unlock_category = str(
+            getattr(source, "unlock_category", "")
+            or getattr(highlight, "unlock_category", "")
+            or ""
+        )
+        source_environment_kind = str(
+            getattr(source, "environment_kind", "") or ""
+        )
+        garden_item = bool(
+            source_unlock_category == "garden_item"
+            or (
+                not source_unlock_category
+                and source_environment_kind in {"garden_feature", "weather"}
+            )
+        )
         if isinstance(source, EnvironmentDiscovery) or kind == "environment":
-            art = self._environment_art_label(source, 88, 56)
+            art = self._environment_art_label(
+                source,
+                58 if garden_item else 88,
+                58 if garden_item else 56,
+            )
         elif isinstance(source, PlantMilestone) or kind in {
             "full_bloom", "stage_change", "major_checkpoint", "minor_checkpoint"
         }:
-            art = self._plant_art_label(source, 64 if kind == "full_bloom" else 52)
+            art = self._plant_art_label(source, 60 if kind == "full_bloom" else 52)
         else:
             art = self._reward_art_label(source, 48)
+        if kind == "full_bloom":
+            self._apply_art_glow(art, self._summary_theme["milestone_accent"], 18)
+        elif garden_item:
+            self._apply_art_glow(art, self._summary_theme["coin_accent"], 16)
         media_rail = QFrame(card)
         media_rail.setProperty("summaryMediaRail", True)
         media_rail.setFixedWidth(88)
@@ -1325,7 +1462,6 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         eyebrow.setProperty("summaryEyebrow", True)
         if kind == "full_bloom":
             eyebrow.setStyleSheet(f"color:{self._summary_theme['milestone_accent']};")
-        copy.addWidget(eyebrow)
         title = self._name_label(title_text)
         title.setProperty("summaryMilestone", True)
         title.setMaximumHeight(44)
@@ -1334,44 +1470,35 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             chip = QFrame()
             chip.setProperty("summaryCoinChip", True)
             chip_layout = QHBoxLayout(chip)
-            chip_layout.setContentsMargins(7, 3, 7, 3)
-            chip_layout.setSpacing(4)
-            icon = QLabel()
-            icon.setPixmap(
-                garden_icon(
-                    "coin",
-                    color=self._summary_theme["coin_accent"],
-                    logical_size=14,
-                ).pixmap(14, 14)
-            )
-            icon.setFixedSize(14, 14)
-            chip_layout.addWidget(icon)
+            chip_layout.setContentsMargins(8, 2, 8, 2)
+            chip_layout.setSpacing(0)
             reward = QLabel(reward_text)
             reward.setProperty("summaryCoinChipValue", True)
             apply_tabular_numerals(reward)
             chip_layout.addWidget(reward)
             chip.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-            chip.setMinimumHeight(24)
+            chip.setMinimumHeight(22)
             return chip
 
-        inline_reward = bool(
-            reward_text
-            and len(title_text) <= 18
-            and len(reward_text) <= 24
-        )
-        if inline_reward:
-            title_row = QHBoxLayout()
-            title_row.setSpacing(8)
-            title_row.addWidget(title, 1)
-            title_row.addWidget(reward_chip(), 0, Qt.AlignmentFlag.AlignVCenter)
-            copy.addLayout(title_row)
+        compact_reward_chip = bool(reward_text and len(reward_text) <= 24)
+        if compact_reward_chip:
+            eyebrow_row = QHBoxLayout()
+            eyebrow_row.setSpacing(8)
+            eyebrow_row.addWidget(eyebrow, 1, Qt.AlignmentFlag.AlignVCenter)
+            eyebrow_row.addWidget(
+                reward_chip(),
+                0,
+                Qt.AlignmentFlag.AlignVCenter,
+            )
+            copy.addLayout(eyebrow_row)
         else:
-            copy.addWidget(title)
+            copy.addWidget(eyebrow)
+        copy.addWidget(title)
         supporting = QLabel(supporting_text)
         supporting.setWordWrap(True)
         supporting.setProperty("summarySupporting", True)
         copy.addWidget(supporting)
-        if reward_text and not inline_reward:
+        if reward_text and not compact_reward_chip:
             copy.addWidget(reward_chip(), 0, Qt.AlignmentFlag.AlignLeft)
         row.addLayout(copy, 1)
         layout.addWidget(card)
@@ -1390,7 +1517,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if applied:
             metrics.append((
                 "growth_applied",
-                "Growth",
+                "Growth applied",
                 format_growth_units(applied, signed=True),
                 "growth",
             ))
@@ -1412,7 +1539,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if total_finds:
             metrics.append((
                 "standard_finds",
-                "Finds",
+                "Standard Finds",
                 f"+{total_finds:,}",
                 "find",
             ))
@@ -1485,10 +1612,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     ) -> None:
         section = QFrame()
         section.setObjectName("ankiGardenSessionRewardsSection")
+        section.setProperty("summaryRevealAfterHighlights", True)
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
-        section_layout.addWidget(self._section_heading("Rewards earned"))
+        section_layout.addWidget(self._section_heading("Rewards Earned"))
 
         card = QFrame()
         card.setObjectName("ankiGardenSessionRewardCard")
@@ -1532,7 +1660,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             metric.setProperty("summaryMetricKey", key)
             metric.setAccessibleName(f"{label_text}: {value_text}")
             metric_layout = QVBoxLayout(metric)
-            metric_layout.setContentsMargins(11, 8, 11, 8)
+            metric_layout.setContentsMargins(
+                11,
+                4 if self._compact_density else 8,
+                11,
+                4 if self._compact_density else 8,
+            )
             metric_layout.setSpacing(4)
             top = QHBoxLayout()
             top.setSpacing(4)
@@ -1544,11 +1677,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 if key == "standard_finds"
                 else self._summary_theme["growth_accent"]
             )
-            icon.setPixmap(garden_icon(icon_name, color=color, logical_size=16).pixmap(16, 16))
-            icon.setFixedSize(16, 16)
+            icon.setPixmap(
+                garden_icon(icon_name, color=color, logical_size=14).pixmap(14, 14)
+            )
+            icon.setFixedSize(14, 14)
             top.addWidget(icon)
             title = QLabel(label_text)
-            title.setProperty("summaryMuted", True)
+            title.setProperty("summaryMetricLabel", True)
             top.addWidget(title, 1)
             metric_layout.addLayout(top)
             value = QLabel(value_text)
@@ -1559,6 +1694,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 "summaryGrowth",
                 True,
             )
+            value.setProperty("summaryLongMetric", len(value_text) > 7)
             metric_layout.addWidget(value)
             row.addWidget(metric, 1)
         layout.addWidget(container)
@@ -1571,25 +1707,71 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         container = QFrame()
         container.setObjectName("ankiGardenSessionFindSummary")
         rows = QVBoxLayout(container)
-        rows.setContentsMargins(12, 4, 12, 4)
-        rows.setSpacing(4)
-        visible = tuple(find_items[:1])
-        hidden_quantity = sum(item[3] for item in find_items[len(visible):])
-        more_label = ""
-        if hidden_quantity:
-            noun = "find" if hidden_quantity == 1 else "finds"
-            more_label = f"{hidden_quantity:,} more {noun}"
-        for identity, name, art, quantity in visible:
-            self._add_find_row(
-                rows,
-                identity,
-                name,
-                art,
-                quantity,
-                compact=True,
-                more_label=more_label,
+        rows.setContentsMargins(
+            12,
+            0 if self._compact_density else 4,
+            12,
+            0 if self._compact_density else 4,
+        )
+        rows.setSpacing(0)
+        visible, hidden_quantity = session_find_summary_plan(find_items)
+        for index, item in enumerate(visible):
+            if index:
+                rows.addWidget(self._divider(container))
+            rows.addWidget(self._find_row_widget(*item, compact=True))
+        if hidden_quantity and not self._details_expanded:
+            if visible:
+                rows.addWidget(self._divider(container))
+            more = QToolButton(container)
+            more.setObjectName("ankiGardenSessionMoreFinds")
+            more.setText(f"View {hidden_quantity:,} more Standard Finds")
+            more.setIcon(garden_icon(
+                "chevron-down",
+                color=self._summary_theme["text_secondary"],
+            ))
+            more.setIconSize(QSize(14, 14))
+            more.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
             )
+            more.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+            more.setFixedHeight(28)
+            more.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            more.setCursor(Qt.CursorShape.PointingHandCursor)
+            more.setAccessibleName(
+                f"Show {hidden_quantity:,} more Standard Finds in Reward breakdown"
+            )
+            more.clicked.connect(self._expand_find_breakdown)
+            rows.addWidget(more)
         layout.addWidget(container)
+
+    def _find_row_widget(
+        self,
+        identity: str,
+        name: str,
+        art: str,
+        quantity: int,
+        *,
+        compact: bool,
+    ) -> Any:
+        row_widget = QFrame()
+        row_widget.setProperty("summaryFindRow", True)
+        row_widget.setProperty("summaryFindRowCompact", bool(compact))
+        row_widget.setProperty("summaryFindId", identity)
+        row_widget.setAccessibleName(f"{name} ×{max(1, int(quantity)):,}")
+        if compact:
+            row_widget.setFixedHeight(36)
+        row = QHBoxLayout(row_widget)
+        row.setContentsMargins(0, 2, 0, 2)
+        row.setSpacing(6 if compact else 8)
+        row.addWidget(self._reward_art_label(art, 26))
+        label = self._name_label(name)
+        label.setProperty("summaryFindName", True)
+        row.addWidget(label, 1)
+        value = QLabel(f"×{max(1, int(quantity)):,}")
+        value.setProperty("summaryFindQuantity", True)
+        apply_tabular_numerals(value)
+        row.addWidget(value)
+        return row_widget
 
     def _add_find_row(
         self,
@@ -1600,28 +1782,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         quantity: int,
         *,
         compact: bool,
-        more_label: str = "",
     ) -> None:
-        row_widget = QFrame()
-        row_widget.setProperty("summaryFindRow", True)
-        row_widget.setProperty("summaryFindId", identity)
-        row = QHBoxLayout(row_widget)
-        row.setContentsMargins(0, 2, 0, 2)
-        row.setSpacing(8)
-        row.addWidget(self._reward_art_label(art, 28))
-        label = self._name_label(name)
-        label.setProperty("summaryFindName", True)
-        row.addWidget(label, 1)
-        value = QLabel(f"×{max(1, int(quantity)):,}")
-        value.setProperty("summaryFindQuantity", True)
-        apply_tabular_numerals(value)
-        row.addWidget(value)
-        if more_label:
-            more = QLabel(more_label)
-            more.setObjectName("ankiGardenSessionMoreFinds")
-            more.setProperty("summaryMuted", True)
-            row.addWidget(more)
-        layout.addWidget(row_widget)
+        layout.addWidget(self._find_row_widget(
+            identity,
+            name,
+            art,
+            quantity,
+            compact=compact,
+        ))
 
     def _has_breakdown(self, summary: SessionDaySummary, projection: Any) -> bool:
         return bool(
@@ -1652,7 +1820,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _add_breakdown(self, layout: Any, summary: SessionDaySummary, projection: Any) -> None:
         toggle = QToolButton()
         toggle.setObjectName("ankiGardenSessionBreakdownToggle")
-        toggle.setText("Reward details")
+        toggle.setText("Reward breakdown")
         toggle.setIcon(garden_icon(
             "chevron-up" if self._details_expanded else "chevron-down",
             color=self._summary_theme["text_secondary"],
@@ -1660,13 +1828,14 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         toggle.setIconSize(QSize(16, 16))
         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         toggle.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        toggle.setMinimumHeight(36)
+        toggle.setFixedHeight(40)
         toggle.setStyleSheet("text-align:left;padding-left:12px;padding-right:12px;")
         toggle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         toggle.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         toggle.setAccessibleName(
-            "Collapse Reward details" if self._details_expanded else "Expand Reward details"
+            "Collapse Reward breakdown"
+            if self._details_expanded else "Expand Reward breakdown"
         )
         toggle.clicked.connect(self._toggle_details)
         layout.addWidget(toggle)
@@ -1840,7 +2009,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 self._breakdown_total_row(
                     layout,
                     f"coin_source:{source_key}",
-                    award.source_label or "Review rewards",
+                    (
+                        "Full Bloom bonus"
+                        if str(getattr(award, "source_type", "") or "")
+                        == "full_bloom_bonus"
+                        else award.source_label or "Review rewards"
+                    ),
                     f"+{award.amount:,}",
                     supporting_text=(
                         "Included in the session total."
@@ -1861,7 +2035,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             )
         find_items = self._find_items(summary)
         if find_items:
-            layout.addWidget(self._section_heading("Finds"))
+            layout.addWidget(self._section_heading("Standard Finds"))
             for identity, name, art, quantity in find_items:
                 self._add_find_row(
                     layout,
@@ -1928,6 +2102,34 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return kind
         return "fertilizer" if hasattr(effect, "remaining_seconds") else "booster"
 
+    def _effect_art_reference(self, effect: Any) -> str:
+        """Map one active effect to its bundled item artwork without using instance IDs."""
+
+        kind = self._effect_kind(effect)
+        if kind == "booster":
+            return "booster_potion"
+        if kind != "fertilizer":
+            return ""
+        effect_id = str(getattr(effect, "effect_id", "") or "")
+        parts = effect_id.split(":")
+        tier = parts[2].casefold() if len(parts) > 2 and parts[0] == "fertilizer" else ""
+        name = str(
+            getattr(effect, "label", "")
+            or getattr(effect, "name", "")
+            or ""
+        ).casefold()
+        if not tier:
+            tier = (
+                "quality"
+                if "quality" in name
+                else "premium"
+                if "magical" in name or "premium" in name
+                else "basic"
+                if "basic" in name
+                else ""
+            )
+        return f"fertilizer_{tier}" if tier in {"basic", "quality", "premium"} else ""
+
     def _effect_value(self, effect: Any) -> str:
         kind = self._effect_kind(effect)
         fallback_remaining: int | None = None
@@ -1956,7 +2158,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         section_layout = QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
         section_layout.setSpacing(8)
-        section_layout.addWidget(self._section_heading("Active boosts"))
+        section_layout.addWidget(self._section_heading("Active Boosts"))
 
         card = QFrame()
         card.setObjectName("ankiGardenSessionBoostCard")
@@ -1975,25 +2177,29 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             row_widget = QFrame(card)
             row_widget.setProperty("summaryBoostRow", True)
             row_widget.setProperty("summaryBoostKind", kind)
-            row_widget.setMinimumHeight(30)
+            # A single-line row remains 36 px, while a localized two-line name
+            # may grow instead of clipping beneath the fixed remaining value.
+            row_widget.setMinimumHeight(36)
             row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(12, 6, 12, 6)
+            row_layout.setContentsMargins(12, 5, 12, 5)
             row_layout.setSpacing(8)
-            icon = QLabel()
-            icon.setPixmap(
-                garden_icon(
-                    "fertilizer" if kind == "fertilizer" else "booster",
-                    color=self._summary_theme["growth_accent"],
-                    logical_size=17,
-                ).pixmap(17, 17)
-            )
-            icon.setFixedSize(18, 18)
-            row_layout.addWidget(icon)
-            label = self._name_label(str(
+            effect_name = str(
                 getattr(effect, "label", "")
                 or getattr(effect, "name", "")
                 or _title_case(kind)
-            ))
+            )
+            art_reference = self._effect_art_reference(effect)
+            art = self._reward_art_label(
+                art_reference,
+                26,
+                semantic_kind="active boost",
+                fallback_icon=kind if kind in {"fertilizer", "booster"} else "find",
+            )
+            art.setProperty("summaryBoostArt", True)
+            art.setProperty("summaryBoostArtReference", art_reference)
+            art.setAccessibleName(f"{effect_name} artwork")
+            row_layout.addWidget(art)
+            label = self._name_label(effect_name)
             label.setProperty("summaryBoostName", True)
             row_layout.addWidget(label, 1)
             value = QLabel(self._effect_value(effect))
@@ -2039,6 +2245,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _toggle_details(self) -> None:
         self._details_expanded = not self._details_expanded
+        self._rebuild_page()
+
+    def _expand_find_breakdown(self) -> None:
+        if self._details_expanded:
+            return
+        self._details_expanded = True
         self._rebuild_page()
 
     def _toggle_growth_details(self) -> None:
@@ -2094,6 +2306,21 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         label.setAccessibleName(f"{_title_case(kind)} artwork")
         label.setPixmap(pixmap)
         return label
+
+    @staticmethod
+    def _apply_art_glow(label: Any, color: str, blur_radius: int) -> None:
+        """Apply one restrained, non-animated glow to earned artwork."""
+
+        try:
+            glow_color = QColor(str(color))
+            glow_color.setAlpha(42)
+            glow = QGraphicsDropShadowEffect(label)
+            glow.setBlurRadius(max(1, int(blur_radius)))
+            glow.setOffset(0, 2)
+            glow.setColor(glow_color)
+            label.setGraphicsEffect(glow)
+        except Exception:
+            pass
 
     def _engine_plant(self, plant_id: str) -> Any | None:
         state = getattr(self._engine, "state", None)
@@ -2193,7 +2420,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             or getattr(record, "art_asset", "")
             or ""
         )
-        kind = str(getattr(record, "environment_kind", "") or "")
+        record_kind = str(getattr(record, "environment_kind", "") or "")
+        kind = record_kind
         feature_id = canonical_garden_feature_id(raw_item_id)
         if feature_id in GARDEN_FEATURE_CATALOG:
             item_id = feature_id
@@ -2204,7 +2432,11 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if item is not None:
             kind = str(getattr(item, "kind", "") or kind)
         source_path = ""
-        is_feature = kind == "garden_feature"
+        is_feature = bool(
+            record_kind in {"garden_item", "garden_feature", "weather"}
+            or feature_id in GARDEN_FEATURE_CATALOG
+            or kind == "garden_feature"
+        )
         resolver = getattr(
             self._engine,
             "resolve_garden_feature_asset" if is_feature else "resolve_scenery_preview_asset",
@@ -2239,7 +2471,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             source_path = candidate if Path(candidate).exists() else ""
         source = _source_pixmap(source_path)
         pixmap = QPixmap()
-        if self._engine is not None and item is not None:
+        if is_feature and not source.isNull():
+            # Garden items are transparent collectible art, not scenery
+            # thumbnails.  Showing the resolved source directly avoids an
+            # invented inner frame or scene background around the item.
+            pixmap = _alpha_bounded_thumbnail(source, min(width, height))
+        elif self._engine is not None and item is not None:
             try:
                 pixmap = environment_preview_pixmap(
                     self._engine,
@@ -2258,7 +2495,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if pixmap.isNull() and not source.isNull():
             pixmap = self._cover_art(source, width, height)
         label = self._semantic_art_label(
-            kind="environment",
+            kind="garden_item" if is_feature else "environment",
             source_path=source_path,
             pixmap=pixmap,
             logical_width=width,
@@ -2266,11 +2503,19 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             fallback_icon="environment",
             source_pixmap=source,
         )
-        label.setProperty("summaryEnvironmentArt", True)
+        label.setProperty("summaryGardenItemArt", is_feature)
+        label.setProperty("summaryEnvironmentArt", not is_feature)
         label.setProperty("summaryEnvironmentId", item_id)
         return label
 
-    def _reward_art_label(self, record: Any, size: int) -> Any:
+    def _reward_art_label(
+        self,
+        record: Any,
+        size: int,
+        *,
+        semantic_kind: str = "find",
+        fallback_icon: str = "find",
+    ) -> Any:
         reference = str(
             record
             if isinstance(record, str)
@@ -2313,12 +2558,12 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if pixmap.isNull() and not source.isNull():
             pixmap = _alpha_bounded_thumbnail(source, size)
         label = self._semantic_art_label(
-            kind="find",
+            kind=semantic_kind,
             source_path=source_path,
             pixmap=pixmap,
             logical_width=size,
             logical_height=size,
-            fallback_icon="find",
+            fallback_icon=fallback_icon,
             source_pixmap=source,
         )
         if icon_name:
@@ -2398,8 +2643,8 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         except Exception:
             body_height = 1
         return (
-            SESSION_SUMMARY_HEADER_HEIGHT
-            + SESSION_SUMMARY_FOOTER_HEIGHT
+            int(self._header.height())
+            + int(self._footer.height())
             + body_height
             + 2
             + (SESSION_SUMMARY_FRAME_BORDER_WIDTH * 2)
@@ -2417,6 +2662,13 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return (0, 0, max(1, int(self.width())), max(1, int(self.height())))
         width = max(1, int(parent.width())) if viewport_width is None else int(viewport_width)
         height = max(1, int(parent.height())) if viewport_height is None else int(viewport_height)
+
+        compact_density = session_summary_uses_compact_density(height)
+        if compact_density != self._compact_density:
+            self._compact_density = compact_density
+            self.setProperty("summaryCompactDensity", compact_density)
+            self._apply_shell_density()
+            self._rebuild_page()
 
         provisional = session_summary_geometry(width, height, 1)
         self.setFixedWidth(provisional[2])
@@ -2517,7 +2769,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             pass
         try:
             destination = self.pos()
-            self.move(destination + QPoint(8, 0))
+            self.move(destination + QPoint(6, 0))
             slide = QPropertyAnimation(self, b"pos", self)
             slide.setDuration(200)
             slide.setStartValue(self.pos())
@@ -2530,7 +2782,7 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         if progress is not None:
             try:
                 progress_fill = QPropertyAnimation(progress, b"value", self)
-                progress_fill.setDuration(350)
+                progress_fill.setDuration(320)
                 progress_fill.setStartValue(progress_start)
                 progress_fill.setEndValue(progress_target)
                 progress_fill.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -2541,17 +2793,24 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._start_highlight_animation()
 
     def _start_highlight_animation(self) -> None:
-        """Give static highlights one short, staggered 4 px reveal."""
+        """Reveal earned progression in priority order without blocking actions."""
 
         try:
             highlights = tuple(
                 widget
                 for widget in self._body.findChildren(QFrame)
                 if bool(widget.property("summaryHighlight"))
+                and not bool(widget.property("summaryHighlightCompact"))
             )
+            rewards = tuple(
+                widget
+                for widget in self._body.findChildren(QFrame)
+                if bool(widget.property("summaryRevealAfterHighlights"))
+            )
+            reveal_widgets = (*highlights[:2], *rewards[:1])
         except Exception:
             return
-        for index, widget in enumerate(highlights):
+        for index, widget in enumerate(reveal_widgets):
             try:
                 opacity = QGraphicsOpacityEffect(widget)
                 opacity.setOpacity(0.0)
@@ -2575,16 +2834,66 @@ class SessionSummaryCard(QFrame):  # type: ignore[misc,valid-type]
                 slide.setEasingCurve(QEasingCurve.Type.OutCubic)
                 self._animations.extend((fade, slide))
 
+                bloom_animations: list[Any] = []
+                if str(widget.property("summaryHighlightKind") or "") == "full_bloom":
+                    art = next((
+                        candidate
+                        for candidate in widget.findChildren(QLabel)
+                        if str(candidate.property("summaryArtKind") or "") == "plant"
+                    ), None)
+                    if art is not None and art.pixmap() is not None:
+                        original = QPixmap(art.pixmap())
+                        scale = QVariantAnimation(self)
+                        scale.setDuration(420)
+                        scale.setStartValue(0.96)
+                        scale.setEndValue(1.0)
+                        scale.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+                        def apply_scale(
+                            value: Any,
+                            label: Any = art,
+                            source: Any = original,
+                        ) -> None:
+                            factor = max(0.96, min(1.0, float(value)))
+                            label.setPixmap(source.scaled(
+                                max(1, round(source.width() * factor)),
+                                max(1, round(source.height() * factor)),
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation,
+                            ))
+
+                        scale.valueChanged.connect(apply_scale)
+                        scale.finished.connect(
+                            lambda label=art, source=original: label.setPixmap(source)
+                        )
+                        bloom_animations.append(scale)
+                    glow = art.graphicsEffect() if art is not None else None
+                    if isinstance(glow, QGraphicsDropShadowEffect):
+                        glow_animation = QPropertyAnimation(
+                            glow,
+                            b"blurRadius",
+                            self,
+                        )
+                        glow_animation.setDuration(420)
+                        glow_animation.setStartValue(24.0)
+                        glow_animation.setEndValue(18.0)
+                        glow_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+                        bloom_animations.append(glow_animation)
+                    self._animations.extend(bloom_animations)
+
                 def start_pair(
                     first: Any = fade,
                     second: Any = slide,
+                    bloom: tuple[Any, ...] = tuple(bloom_animations),
                 ) -> None:
                     if self._dismissed:
                         return
                     first.start()
                     second.start()
+                    for animation in bloom:
+                        animation.start()
 
-                QTimer.singleShot(index * 50, start_pair)
+                QTimer.singleShot(index * 60, start_pair)
             except Exception:
                 continue
 
@@ -2619,14 +2928,19 @@ __all__ = [
     "SESSION_SUMMARY_EDGE_MARGIN",
     "SESSION_SUMMARY_FOOTER_HEIGHT",
     "SESSION_SUMMARY_FRAME_BORDER_WIDTH",
+    "SESSION_SUMMARY_COMPACT_HOST_HEIGHT",
     "SESSION_SUMMARY_HEADER_HEIGHT",
     "SESSION_SUMMARY_MAX_HEIGHT",
     "SESSION_SUMMARY_MAX_WIDTH",
     "SESSION_SUMMARY_MIN_WIDTH",
+    "SESSION_SUMMARY_MIN_VERTICAL_MARGIN",
+    "SESSION_SUMMARY_PREFERRED_TOP_MARGIN",
     "SESSION_SUMMARY_VIEWPORT_VERTICAL_MARGIN",
     "SessionSummaryCard",
     "session_effect_remaining_text",
+    "session_find_summary_plan",
     "session_summary_geometry",
+    "session_summary_uses_compact_density",
     "session_inventory_reward_lines",
     "session_summary_palette",
 ]
