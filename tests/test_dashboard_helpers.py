@@ -35,6 +35,33 @@ def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> No
     )
 
 
+def test_fertilizer_inventory_card_derives_active_card_batch_tier() -> None:
+    source = DASHBOARD.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DASHBOARD))
+    nursery = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "NurseryDialog"
+    )
+    inventory_card = next(
+        node
+        for node in nursery.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_fertilizer_inventory_card"
+    )
+    method_source = ast.get_source_segment(source, inventory_card) or ""
+    assigned_names = {
+        node.id
+        for node in ast.walk(inventory_card)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
+
+    assert "active_fertilizer" in assigned_names
+    assert "active_fertilizer = active_batches[0] if active_batches else None" in method_source
+    assert 'getattr(active_fertilizer, "effect_id", "")' in method_source
+    assert 'getattr(active_fertilizer, "tier", "")' not in method_source
+
+
 def _compiled_function(
     function_name: str,
     namespace: dict[str, object] | None = None,

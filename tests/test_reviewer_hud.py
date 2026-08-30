@@ -36,6 +36,7 @@ from ankigarden.ui.reviewer_hud_widget import (
     _bundle_growth_units,
     _checkpoint_marker_states,
     _checkpoint_sequence_is_chronological,
+    _effect_chip_placements,
     _effect_display_text,
     _effect_overflow_label,
     _format_coin_balance,
@@ -579,6 +580,18 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
     assert _effect_display_text("Unrelated effect") == "Unrelated effect"
     assert _effect_overflow_label(1) == "1 more effect ›"
     assert _effect_overflow_label(3) == "3 more effects ›"
+    assert _effect_chip_placements(0, single_column=False) == ()
+    assert _effect_chip_placements(1, single_column=False) == (
+        (0, 0, 0, 1, 2),
+    )
+    assert _effect_chip_placements(2, single_column=False) == (
+        (0, 0, 0, 1, 1),
+        (1, 0, 1, 1, 1),
+    )
+    assert _effect_chip_placements(2, single_column=True) == (
+        (0, 0, 0, 1, 2),
+        (1, 1, 0, 1, 2),
+    )
     assert _session_metric_labels(0, 0, 0) == ()
     assert _session_metric_labels(1_800, 0, 0) == ("+18 growth",)
     assert _session_metric_labels(1_800, 2, 1) == (
@@ -605,6 +618,15 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
     assert _session_find_count(SimpleNamespace(
         standard_finds=(SimpleNamespace(event_id="find-raw"),),
     )) == 1
+
+    one_effect = NurtureProjection(
+        True,
+        effect_chips=("Fertilizer · 84 cards",),
+        effect_art_refs=("fertilizer_quality",),
+    )
+    assert one_effect.visible_effect_chips == ("Fertilizer · 84 cards",)
+    assert one_effect.visible_effect_art_refs == ("fertilizer_quality",)
+    assert one_effect.effect_overflow_count == 0
 
     two_effects = NurtureProjection(
         True,

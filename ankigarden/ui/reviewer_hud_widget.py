@@ -442,6 +442,34 @@ def _effect_display_text(value: Any) -> str:
     return text
 
 
+def _effect_chip_placements(
+    visible_count: Any,
+    *,
+    single_column: bool,
+) -> tuple[tuple[int, int, int, int, int], ...]:
+    """Return ``(index, row, column, row_span, column_span)`` chip slots.
+
+    A lone effect owns the full two-column row. Omitting every unpopulated
+    chip from the layout matters because a hidden placeholder can still
+    reserve half of a live Qt grid after a transient projection update.
+    """
+
+    count = min(2, _integer(visible_count))
+    if count <= 0:
+        return ()
+    if count == 1:
+        return ((0, 0, 0, 1, 2),)
+    if single_column:
+        return (
+            (0, 0, 0, 1, 2),
+            (1, 1, 0, 1, 2),
+        )
+    return (
+        (0, 0, 0, 1, 1),
+        (1, 0, 1, 1, 1),
+    )
+
+
 def _ground_shadow_metrics(
     stage: Any,
     visible_width: Any,
@@ -2154,6 +2182,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         effects_layout.setHorizontalSpacing(6)
         effects_layout.setVerticalSpacing(1)
         self._effects_single_column = False
+        self._effects_visible_count = -1
         self._effect_chips: list[Any] = []
         self._effect_icons: list[Any] = []
         self._effect_labels: list[_ElidedLabel] = []
@@ -3819,6 +3848,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         """Stack long passive effects rather than shrinking or clipping them."""
 
         texts = tuple(visible or ())
+        visible_count = min(2, len(texts))
         layout = self._effects.layout()
         if layout is None:
             return
@@ -3845,8 +3875,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 )
             )
         )
-        if single_column == bool(self._effects_single_column):
+        if (
+            single_column == bool(self._effects_single_column)
+            and visible_count == int(self._effects_visible_count)
+        ):
             self._effects.setProperty("singleColumn", single_column)
+            self._effects.setProperty("visibleEffectCount", visible_count)
             layout.invalidate()
             layout.activate()
             self._effects.updateGeometry()
@@ -3854,14 +3888,19 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         for chip in self._effect_chips:
             layout.removeWidget(chip)
         layout.removeWidget(self._effects_overflow)
-        if single_column:
-            for row, chip in enumerate(self._effect_chips):
-                layout.addWidget(chip, row, 0, 1, 2)
-            overflow_row = 2
-        else:
-            for column, chip in enumerate(self._effect_chips):
-                layout.addWidget(chip, 0, column)
-            overflow_row = 1
+        placements = _effect_chip_placements(
+            visible_count,
+            single_column=single_column,
+        )
+        for index, row, column, row_span, column_span in placements:
+            layout.addWidget(
+                self._effect_chips[index],
+                row,
+                column,
+                row_span,
+                column_span,
+            )
+        overflow_row = 2 if single_column else 1
         layout.addWidget(
             self._effects_overflow,
             overflow_row,
@@ -3871,7 +3910,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             Qt.AlignmentFlag.AlignRight,
         )
         self._effects_single_column = single_column
+        self._effects_visible_count = visible_count
         self._effects.setProperty("singleColumn", single_column)
+        self._effects.setProperty("visibleEffectCount", visible_count)
         layout.invalidate()
         layout.activate()
         self._effects.updateGeometry()

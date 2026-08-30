@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from scripts.validate_ui_capture import (
+    collection_loadout_state_matrix_issue_codes,
     cosmetic_purchase_display_issue_codes,
     earned_bed_unlock_issue_codes,
     landmark_transaction_state_issue_codes,
@@ -16,6 +17,37 @@ from scripts.validate_ui_capture import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_collection_loadout_capture_requires_separate_scenery_effect_copy() -> None:
+    evidence = {
+        "structured_values": {
+            "scenery": "Verdant Twilight",
+            "displayed_decoration": "Seedling Sign",
+            "active_bonus": "Seedling Sign",
+            "active_scenery_effect": "Verdant Twilight",
+            "visual_effects": "On",
+        },
+        "structured_values_visible": True,
+        "initial_apply_enabled": False,
+        "dirty_apply_enabled": True,
+        "restored_apply_enabled": False,
+        "selection_preserved_across_tabs": True,
+        "selected_tile_checked_after_tabs": True,
+        "dirty_state_painted": True,
+        "restored_state_painted": True,
+        "restored_to_persisted_draft": True,
+        "selected_scenery_id": "autumn",
+        "preview_size": [548, 308],
+        "passed": True,
+    }
+    assert collection_loadout_state_matrix_issue_codes(evidence) == ()
+
+    missing_effect = deepcopy(evidence)
+    del missing_effect["structured_values"]["active_scenery_effect"]
+    assert "collection-loadout-structured-value-keys" in (
+        collection_loadout_state_matrix_issue_codes(missing_effect)
+    )
 
 
 def _fertilizer_matrix() -> dict[str, object]:

@@ -818,9 +818,9 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
     },
     DialogSizeClass.LOADOUT: {
         # The wide preview is a complete 16:9 garden scene beside two native
-        # catalogue rows. Its natural height must include both the structured
-        # appearance summary and the uncropped artwork.
-        "default": DialogHeightProfile(680, 680, 680, 980, 1000, 1020),
+        # catalogue rows. Its natural height must include all five structured
+        # appearance/effect rows and the uncropped artwork.
+        "default": DialogHeightProfile(704, 704, 704, 980, 1000, 1020),
     },
     DialogSizeClass.PLANT_STORY: {
         "default": DialogHeightProfile(480, 500, 520, 740, 760, 780),

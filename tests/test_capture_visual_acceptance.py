@@ -96,7 +96,7 @@ def _canonical_fertilizer_flow_records() -> dict[str, dict[str, object]]:
         "plant_id": "dev_rose",
         "plant_name": "Rose",
         "species": "rose",
-        "growth_points": 500,
+        "growth_points": 400,
         "growth_remainder_units": 0,
         "growth_stage": "sprout",
         "artwork_asset_id": "plant_rose_sprout_twilight_v6",
@@ -121,6 +121,13 @@ def test_fertilizer_flow_is_independently_bound_to_sprout_artwork() -> None:
 
     assert fertilizer_flow_source_issue_codes(records["source"]) == ()
     assert fertilizer_flow_continuity_issue_codes(records) == ()
+
+    stale_threshold = deepcopy(records["source"])
+    stale_threshold["growth_points"] = 500
+    assert (
+        "fertilizer-flow-source:growth-points"
+        in fertilizer_flow_source_issue_codes(stale_threshold)
+    )
 
     identity_drift = deepcopy(records)
     identity_drift["quote"]["plant_id"] = "dev_bonsai"
@@ -440,14 +447,14 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "inventory_value": "2 → 1",
         "stage_badge": "Result: Sprout",
         "stage_badge_accessible": "New stage: Sprout",
-        "stage_progress": "50 / 2,000 toward Young",
+        "stage_progress": "50 / 1,600 toward Young",
         "primary_action": "Use 1 charge",
         "current_growth": 350,
         "projected_growth": 450,
         "inventory_before": 2,
         "inventory_after": 1,
         "stage_carryover": 50,
-        "next_stage_goal": 2_000,
+        "next_stage_goal": 1_600,
         "passed": True,
     }
     assert growth_charge_rendered_value_issue_codes(
@@ -469,7 +476,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "stage_transition": "Bonsai Plant reached Sprout",
         "receipt_copy": (
             "+100 Growth · 1 growth charge remaining\n"
-            "Next-stage progress · 50 / 2,000 toward Young"
+            "Next-stage progress · 50 / 1,600 toward Young"
         ),
         "stage_reward_heading": "Stage reward",
         "reward_texts": ["Stage reward", "+2 Garden Coins"],
@@ -477,7 +484,7 @@ def test_growth_charge_ready_and_success_require_rendered_carryover() -> None:
         "secondary_action": "Close",
         "resulting_growth": 450,
         "stage_carryover": 50,
-        "next_stage_goal": 2_000,
+        "next_stage_goal": 1_600,
         "inventory_remaining": 1,
         "stage_reward_total": 2,
         "passed": True,
@@ -707,7 +714,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "zero_categories_omitted": True,
         },
         "two-effects": {
+            "projected_effect_count": 2,
             "visible_effect_count": 2,
+            "populated_effect_count": 2,
+            "empty_visible_effect_count": 0,
+            "layout_effect_count": 2,
             "overflow_visible": False,
             "effect_chip_bounds": [[0, 0, 130, 28], [136, 0, 130, 28]],
             "effect_label_bounds": [[20, 0, 100, 28], [20, 0, 100, 28]],
@@ -719,7 +730,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "overflow_contained": True,
         },
         "three-plus-effects": {
+            "projected_effect_count": 3,
             "visible_effect_count": 2,
+            "populated_effect_count": 2,
+            "empty_visible_effect_count": 0,
+            "layout_effect_count": 2,
             "overflow_visible": True,
             "overflow_text": "1 more effect ›",
             "overflow_right_aligned": True,
@@ -733,7 +748,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "overflow_contained": True,
         },
         "long-effects-one-column": {
+            "projected_effect_count": 2,
             "visible_effect_count": 2,
+            "populated_effect_count": 2,
+            "empty_visible_effect_count": 0,
+            "layout_effect_count": 2,
             "overflow_visible": False,
             "single_column": True,
             "vertically_stacked": True,
@@ -1001,7 +1020,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "distinct_from_other_stage": True,
         },
         "zero-effects": {
+            "projected_effect_count": 0,
             "visible_effect_count": 0,
+            "populated_effect_count": 0,
+            "empty_visible_effect_count": 0,
+            "layout_effect_count": 0,
             "overflow_visible": False,
             "effect_chip_bounds": [],
             "effect_label_bounds": [],
@@ -1013,7 +1036,11 @@ def _reviewer_baseline_content() -> dict[str, object]:
             "overflow_contained": True,
         },
         "one-effect": {
+            "projected_effect_count": 1,
             "visible_effect_count": 1,
+            "populated_effect_count": 1,
+            "empty_visible_effect_count": 0,
+            "layout_effect_count": 1,
             "overflow_visible": False,
             "effect_chip_bounds": [[0, 0, 266, 28]],
             "effect_label_bounds": [[20, 0, 236, 28]],
@@ -1776,6 +1803,10 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
     regressions: tuple[tuple[str, tuple[object, ...], object], ...] = (
         # Effect chips and their labels must have valid measured bounds, stay
         # contained, not overlap, and render their full unelided copy.
+        ("one-effect", ("projected_effect_count",), 2),
+        ("one-effect", ("populated_effect_count",), 2),
+        ("one-effect", ("empty_visible_effect_count",), 1),
+        ("one-effect", ("layout_effect_count",), 2),
         ("two-effects", ("effect_chip_bounds", 0, 2), 0),
         ("two-effects", ("effect_label_bounds", 0, 2), 0),
         ("two-effects", ("effect_chips_contained",), False),
@@ -1784,6 +1815,7 @@ def test_reviewer_hud_release_matrix_rejects_each_measured_sequence_regression()
         ("two-effects", ("effect_chip_overlap_pairs",), [[0, 1]]),
         ("two-effects", ("overflow_contained",), False),
         ("three-plus-effects", ("overflow_contained",), False),
+        ("three-plus-effects", ("projected_effect_count",), 2),
         # Title stability is based on actual title/art/progress geometry, not a
         # widget property that could remain true while the layout moves.
         ("short-plant-name", ("title_bounds", 2), 0),

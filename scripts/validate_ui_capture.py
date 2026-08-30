@@ -2822,7 +2822,7 @@ def fertilizer_flow_source_issue_codes(evidence: Any) -> tuple[str, ...]:
         issues.append("fertilizer-flow-source:plant-name")
     if species != "rose":
         issues.append("fertilizer-flow-source:species")
-    if evidence.get("growth_points") != 500:
+    if evidence.get("growth_points") != 400:
         issues.append("fertilizer-flow-source:growth-points")
     if evidence.get("growth_remainder_units") != 0:
         issues.append("fertilizer-flow-source:growth-remainder")
@@ -4039,14 +4039,14 @@ def growth_charge_rendered_value_issue_codes(
             "inventory_value": "2 → 1",
             "stage_badge": "Result: Sprout",
             "stage_badge_accessible": "New stage: Sprout",
-            "stage_progress": "50 / 2,000 toward Young",
+            "stage_progress": "50 / 1,600 toward Young",
             "primary_action": "Use 1 charge",
             "current_growth": 350,
             "projected_growth": 450,
             "inventory_before": 2,
             "inventory_after": 1,
             "stage_carryover": 50,
-            "next_stage_goal": 2_000,
+            "next_stage_goal": 1_600,
         }
     elif label == "growth-charge-success-stage-reward":
         expected = {
@@ -4054,7 +4054,7 @@ def growth_charge_rendered_value_issue_codes(
             "stage_transition": "Bonsai Plant reached Sprout",
             "receipt_copy": (
                 "+100 Growth · 1 growth charge remaining\n"
-                "Next-stage progress · 50 / 2,000 toward Young"
+                "Next-stage progress · 50 / 1,600 toward Young"
             ),
             "stage_reward_heading": "Stage reward",
             "reward_texts": ["Stage reward", "+2 Garden Coins"],
@@ -4062,7 +4062,7 @@ def growth_charge_rendered_value_issue_codes(
             "secondary_action": "Close",
             "resulting_growth": 450,
             "stage_carryover": 50,
-            "next_stage_goal": 2_000,
+            "next_stage_goal": 1_600,
             "inventory_remaining": 1,
             "stage_reward_total": 2,
         }
@@ -4293,6 +4293,7 @@ def collection_loadout_state_matrix_issue_codes(
         "scenery",
         "displayed_decoration",
         "active_bonus",
+        "active_scenery_effect",
         "visual_effects",
     }
     if not isinstance(values, dict) or set(values) != expected_keys:
@@ -5143,11 +5144,21 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         *,
         expected_count: int,
         overflow: bool,
+        projected_count: int | None = None,
     ) -> bool:
         chip_bounds = row.get("effect_chip_bounds")
         label_bounds = row.get("effect_label_bounds")
+        expected_projected_count = (
+            expected_count
+            if projected_count is None
+            else max(0, int(projected_count))
+        )
         return bool(
-            isinstance(chip_bounds, list)
+            row.get("projected_effect_count") == expected_projected_count
+            and row.get("populated_effect_count") == expected_count
+            and row.get("empty_visible_effect_count") == 0
+            and row.get("layout_effect_count") == expected_count
+            and isinstance(chip_bounds, list)
             and len(chip_bounds) == expected_count
             and all(valid_bounds(bounds) for bounds in chip_bounds)
             and isinstance(label_bounds, list)
@@ -5619,6 +5630,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                     row,
                     expected_count=2,
                     overflow=True,
+                    projected_count=3,
                 )
             ),
             "long-effects-one-column": lambda row: (

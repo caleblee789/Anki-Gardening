@@ -12824,6 +12824,14 @@ class NurseryDialog(DialogShell):
             target_id=quote_target_id,
         )
         duration = str(quote.descriptor.duration or "").strip().rstrip(".")
+        active_batches = tuple(
+            batch
+            for batch in (
+                getattr(target_plant, "fertilizer_card_batches", ()) or ()
+            )
+            if max(0, int(getattr(batch, "remaining_cards", 0) or 0)) > 0
+        ) if target_plant is not None else ()
+        active_fertilizer = active_batches[0] if active_batches else None
         queued_fertilizers = tuple(
             getattr(target_plant, "fertilizer_card_queue", ()) or ()
         ) if target_plant is not None else ()
@@ -12934,7 +12942,9 @@ class NurseryDialog(DialogShell):
             "fertilizerActive",
             bool(
                 active_fertilizer is not None
-                and str(getattr(active_fertilizer, "tier", "") or "").lower()
+                and str(getattr(active_fertilizer, "effect_id", "") or "")
+                .removeprefix("fertilizer_")
+                .lower()
                 == normalized_tier
             ),
         )

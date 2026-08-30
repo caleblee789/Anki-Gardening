@@ -256,7 +256,7 @@ def test_named_dialog_views_match_the_authoritative_width_and_height_profiles() 
             "collection-empty": (940, 950, 960, 360, 400, 460),
         },
         DialogSizeClass.LOADOUT: {
-            "default": (980, 1000, 1020, 680, 680, 680),
+            "default": (980, 1000, 1020, 704, 704, 704),
         },
         DialogSizeClass.PLANT_STORY: {
             "default": (740, 760, 780, 480, 500, 520),

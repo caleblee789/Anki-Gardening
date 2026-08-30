@@ -3522,21 +3522,21 @@ def growth_charge_transient_variant_issue_codes(
             "growth_value": "600 → 700",
             "stage_value": "Remains Sprout",
             "stage_badge_visible": False,
-            "stage_progress": "200 / 2,000 toward Young",
+            "stage_progress": "300 / 1,600 toward Young",
             "current_growth": 600,
             "projected_growth": 700,
             "inventory_before": 2,
             "inventory_after": 1,
             "progress_minimum": 0,
-            "progress_maximum": 2_000,
-            "progress_value": 200,
+            "progress_maximum": 1_600,
+            "progress_value": 300,
             "painted": True,
         },
         "success-no-stage-reward": {
             "receipt_title": "Growth added to Bonsai Plant",
             "receipt_copy": (
                 "+100 Growth · 1 growth charge remaining\n"
-                "Next-stage progress · 200 / 2,000 toward Young"
+                "Next-stage progress · 300 / 1,600 toward Young"
             ),
             "completed_stage_count": 0,
             "reward_total": 0,
@@ -3545,8 +3545,8 @@ def growth_charge_transient_variant_issue_codes(
             "resulting_growth": 700,
             "inventory_remaining": 1,
             "progress_minimum": 0,
-            "progress_maximum": 2_000,
-            "progress_value": 200,
+            "progress_maximum": 1_600,
+            "progress_value": 300,
             "painted": True,
         },
     }
@@ -3864,6 +3864,7 @@ def collection_loadout_state_matrix_issue_codes(
         "scenery",
         "displayed_decoration",
         "active_bonus",
+        "active_scenery_effect",
         "visual_effects",
     }
     if set(values) != expected_keys:
@@ -4527,7 +4528,7 @@ def fertilizer_flow_source_issue_codes(evidence: Any) -> tuple[str, ...]:
         issues.append("fertilizer-flow-source:plant-name")
     if species != "rose":
         issues.append("fertilizer-flow-source:species")
-    if evidence.get("growth_points") != 500:
+    if evidence.get("growth_points") != 400:
         issues.append("fertilizer-flow-source:growth-points")
     if evidence.get("growth_remainder_units") != 0:
         issues.append("fertilizer-flow-source:growth-remainder")
@@ -13053,6 +13054,7 @@ class _UiFaceCaptureRunner:
                     tuple(getattr(hud, "_effect_labels", ()) or ())
                 )
                 if index < len(tuple(getattr(hud, "_effect_chips", ()) or ()))
+                and hud._effect_chips[index].isVisibleTo(hud)
             ]
             record = {
                 "visible_copy": copy,
@@ -13419,6 +13421,26 @@ class _UiFaceCaptureRunner:
                     for index, chip in enumerate(candidate._effect_chips)
                     if chip in visible_chips
                 ]
+                effects_layout = candidate._effects.layout()
+                projected_effect_count = len(tuple(
+                    getattr(candidate, "_all_effects", ()) or ()
+                ))
+                populated_effect_count = sum(
+                    bool(str(getattr(label, "_full_text", "") or "").strip())
+                    for label in candidate._effect_labels
+                )
+                empty_visible_effect_count = sum(
+                    not bool(
+                        str(getattr(label, "_full_text", "") or "").strip()
+                    )
+                    for label in visible_labels
+                )
+                layout_effect_count = sum(
+                    1
+                    for chip in candidate._effect_chips
+                    if effects_layout is not None
+                    and int(effects_layout.indexOf(chip)) >= 0
+                )
                 effect_art_refs = tuple(
                     str(icon.property("hudEffectArtworkRef") or "")
                     for icon in visible_icons
@@ -13463,7 +13485,11 @@ class _UiFaceCaptureRunner:
                 )
                 return {
                     "projected_effects": list(expected),
+                    "projected_effect_count": projected_effect_count,
                     "visible_effect_count": visible_count,
+                    "populated_effect_count": populated_effect_count,
+                    "empty_visible_effect_count": empty_visible_effect_count,
+                    "layout_effect_count": layout_effect_count,
                     "overflow_visible": overflow_visible,
                     "overflow_text": str(overflow.text()),
                     "overflow_right_aligned": overflow_right_aligned,
@@ -13487,7 +13513,11 @@ class _UiFaceCaptureRunner:
                         or overflow_bounds.get("contained", False)
                     ),
                     "passed": bool(
-                        visible_count == min(2, len(expected))
+                        projected_effect_count == len(expected)
+                        and visible_count == min(2, len(expected))
+                        and populated_effect_count == min(2, len(expected))
+                        and empty_visible_effect_count == 0
+                        and layout_effect_count == min(2, len(expected))
                         and chips_contained
                         and labels_contained
                         and labels_unclipped
@@ -34355,8 +34385,8 @@ class _UiFaceCaptureRunner:
                     dialog.compact_summary_card.property("inventoryAfter")
                     or -1
                 ),
-                "stage_carryover": 50,
-                "next_stage_goal": 2_000,
+                "stage_carryover": int(dialog.compact_progress_bar.value()),
+                "next_stage_goal": int(dialog.compact_progress_bar.maximum()),
             })
             rendered_values["passed"] = bool(
                 dialog.compact_summary_card.isVisibleTo(dialog)
@@ -34375,12 +34405,14 @@ class _UiFaceCaptureRunner:
                 and rendered_values["stage_badge_accessible"]
                 == "New stage: Sprout"
                 and rendered_values["stage_progress"]
-                == "50 / 2,000 toward Young"
+                == "50 / 1,600 toward Young"
                 and rendered_values["primary_action"] == "Use 1 charge"
                 and rendered_values["current_growth"] == 350
                 and rendered_values["projected_growth"] == 450
                 and rendered_values["inventory_before"] == 2
                 and rendered_values["inventory_after"] == 1
+                and rendered_values["stage_carryover"] == 50
+                and rendered_values["next_stage_goal"] == 1_600
             )
         elif variant == "success":
             reward_texts = [
@@ -34412,8 +34444,8 @@ class _UiFaceCaptureRunner:
                     dialog.cancel_action
                 ).strip(),
                 "resulting_growth": int(getattr(target, "growth_points", -1)),
-                "stage_carryover": 50,
-                "next_stage_goal": 2_000,
+                "stage_carryover": int(dialog.receipt_progress.value()),
+                "next_stage_goal": int(dialog.receipt_progress.maximum()),
                 "inventory_remaining": inventory,
                 "stage_reward_total": sum(
                     int(reward.garden_coins)
@@ -34429,7 +34461,7 @@ class _UiFaceCaptureRunner:
                 and rendered_values["receipt_copy"]
                 == (
                     "+100 Growth · 1 growth charge remaining\n"
-                    "Next-stage progress · 50 / 2,000 toward Young"
+                    "Next-stage progress · 50 / 1,600 toward Young"
                 )
                 and rendered_values["stage_reward_heading"] == "Stage reward"
                 and rendered_values["reward_texts"]
@@ -34439,6 +34471,8 @@ class _UiFaceCaptureRunner:
                 and rendered_values["resulting_growth"] == 450
                 and rendered_values["inventory_remaining"] == 1
                 and rendered_values["stage_reward_total"] == 2
+                and rendered_values["stage_carryover"] == 50
+                and rendered_values["next_stage_goal"] == 1_600
             )
         conditions.append(bool(rendered_values["passed"]))
         active_scrolls = tuple(dialog.active_vertical_scroll_regions())
@@ -35771,6 +35805,7 @@ class _UiFaceCaptureRunner:
                 "scenery",
                 "displayed_decoration",
                 "active_bonus",
+                "active_scenery_effect",
                 "visual_effects",
             }
             and all(
