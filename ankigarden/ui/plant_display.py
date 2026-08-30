@@ -2028,15 +2028,29 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             placement = item.get("placement", {}) if isinstance(item, dict) else {}
             slot_scale, offset_x, offset_y = adjustments.get(slot, (1.0, 0.0, 0.0))
             base_type = str(placement.get("base_type", "legacy"))
+            layout_family = str(placement.get("layout_family", "standard"))
+            release_layout_candidate = bool(
+                placement.get("release_layout_candidate", False)
+            )
             has_semantic_base = isinstance(placement.get("base_bounds"), (list, tuple))
             has_semantic_support = isinstance(placement.get("support_bounds"), (list, tuple))
             canvas_aspect = _number(item.get("canvas_aspect"), 1.0, 0.05, 20.0)
             vessel_multiplier = _number(placement.get("vessel_class_multiplier"), 1.0, 0.5, 1.5)
             asset_correction = _number(placement.get("scene_scale_correction"), 1.0, 0.5, 1.5)
-            visual_correction = _number(placement.get("visual_scale_correction"), 1.0, 0.70, 1.40)
+            # Preserve the complete reviewed manifest range. Earlier parsing
+            # silently raised values below 0.70, making authored Seed and
+            # Sprout corrections render too large even though the asset
+            # validator accepted them.
+            visual_correction = _number(
+                placement.get("visual_scale_correction"),
+                1.0,
+                0.50,
+                1.50,
+            )
             depth_scale = _number(bed.plant_scale, 1.0, 0.5, 1.5)
             ideal_scale = min(height * bed.physical_width_ratio, available_w * 0.14)
             target_vessel_w = ideal_scale * depth_scale * vessel_multiplier * asset_correction * visual_correction
+            readability_lift = 1.0
             if base_type in {"pot", "dirt_mound", "direct_soil"} and has_semantic_base:
                 # Geometry-v2 assets declare the lower support separately. The
                 # base fallback remains only for third-party/legacy assets and
@@ -2051,6 +2065,25 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                 draw_h = draw_w / canvas_aspect
                 visible_w, visible_h = draw_w * vb[2], draw_h * vb[3]
                 final_scale = draw_w
+                if (
+                    release_layout_candidate
+                    and base_type == "direct_soil"
+                    and layout_family == "compact"
+                ):
+                    # Keep the authored visual correction as metadata and as
+                    # the target-size authority, then apply only the minimum
+                    # runtime readability lift used by the validator. This
+                    # matters at the 572px six-bed dashboard: a reviewed 0.55
+                    # Seed correction would otherwise render at about 15px.
+                    readability_lift = max(
+                        1.0,
+                        20.01 / max(1.0, visible_w, visible_h),
+                    )
+                    draw_w *= readability_lift
+                    draw_h *= readability_lift
+                    visible_w *= readability_lift
+                    visible_h *= readability_lift
+                    final_scale *= readability_lift
             else:
                 legacy_scale = _number(
                     placement.get("display_scale", placement.get("scale", 1.0)), 1.0, 0.25, 2.5
@@ -2211,7 +2244,14 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
             if base_type not in {"pot", "dirt_mound", "direct_soil"} or not has_semantic_base or not has_semantic_support:
                 slot_warnings.add("legacy visible-height fallback")
             fit_scale = group_scale * slot_scale
-            target_width = ideal_scale * depth_scale * vessel_multiplier * asset_correction * visual_correction
+            target_width = (
+                ideal_scale
+                * depth_scale
+                * vessel_multiplier
+                * asset_correction
+                * visual_correction
+                * readability_lift
+            )
             measured_width = visible.width if base_type == "direct_soil" else support_rect.width
             target_error = abs(measured_width - target_width) / max(1.0, target_width)
             result.append(PlantPlacement(slot, draw, visible, hit, footprint, base_y,
@@ -2231,9 +2271,9 @@ def plant_layout(width: float, height: float, plants: int | Iterable[dict[str, A
                                          bed.occlusion_id,
                                          slot_envelope,
                                          (base_x, base_y),
-                                         str(placement.get("layout_family", "standard")),
+                                         layout_family,
                                          visual_correction,
-                                         bool(placement.get("release_layout_candidate", False)),
+                                         release_layout_candidate,
                                          grounding,
                                          bed.surface_kind,
                                          bed.allowed_base_types,

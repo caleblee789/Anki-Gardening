@@ -48,14 +48,14 @@ ALL_DUE_EXPLANATION = (
 )
 
 GARDEN_CURRENCY_EXPLANATION = (
-    "Earn Garden Coins from cards, streaks, achievements, and Garden Finds. "
+    "Earn Garden Coins from cards, streaks, achievements, and Standard Finds. "
     "Spend them in the Nursery."
 )
 
 FERTILIZER_EXPLANATION = (
-    "Fertilizer adds Growth per card for a limited time."
+    "Fertilizer adds Growth per eligible card answer for a limited time."
 )
 
 PROGRESSION_SUMMARY = (
-    "Each card adds Growth. Cards, streaks, achievements, and Garden Finds can also earn rewards."
+    "Each card adds Growth. Cards, streaks, achievements, and Standard Finds can also earn rewards."
 )

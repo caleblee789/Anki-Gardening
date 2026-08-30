@@ -146,6 +146,38 @@ def _restart(
     return restarted_engine, restarted_storage
 
 
+def test_committed_starter_undo_does_not_reuse_a_stale_ledger_checkpoint(
+    tmp_path: Path,
+) -> None:
+    storage = _RestartStorage(
+        tmp_path / "garden_state.json",
+        GardenState(daily_stats=DailyStats(day="2026-08-08")),
+    )
+    engine = _engine(storage)
+    checkpoint = object()
+    rollback_calls: list[object] = []
+
+    storage.reward_ledger_checkpoint = lambda: checkpoint  # type: ignore[method-assign]
+
+    def reject_stale_checkpoint(value: object) -> None:
+        rollback_calls.append(value)
+        raise AssertionError("a committed checkpoint must not be rolled back")
+
+    storage.rollback_reward_ledger = reject_stale_checkpoint  # type: ignore[method-assign]
+
+    assert engine.enter_starter_nursery()[0]
+    assert engine.select_starter_species("bonsai")[0]
+    ok, _message, starter, change = engine.place_starter_with_change(0)
+
+    assert ok and starter is not None and change is not None
+    assert change._before.ledger_checkpoint is None
+    assert engine.undo_starter_placement(change)[0]
+    assert rollback_calls == []
+    assert storage.state.onboarding.step is OnboardingStep.PLACEMENT
+    assert storage.state.onboarding.pending_species == "bonsai"
+    assert storage.state.plants == []
+
+
 def test_committed_release_journey_survives_each_restart_without_replaying_ui_state(
     tmp_path: Path,
 ) -> None:

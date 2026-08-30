@@ -178,7 +178,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     assert [key for key, _label in collection_categories()] == [
         "plants", "scenery", "garden_features", "garden_beds", "growth_items"
     ]
-    assert ("garden_features", "Garden Decorations") in collection_categories()
+    assert ("garden_features", "Garden decorations") in collection_categories()
     registry = collectible_registry()
     assert not any(item.category == "decorations" for item in registry)
     assert not any(item.item_id == "decorations:lantern" for item in registry)
@@ -230,7 +230,7 @@ def test_catalog_prices_tiers_charges_and_ultra_pity_match_the_product_contract(
     assert compost_view.owned
     assert compost_view.quantity == 2
     assert booster.descriptor.unlock_requirement == (
-        "Earn from a Garden Find or Scenery reward."
+        "Earn from a Standard Find or Scenery reward."
     )
     assert booster.descriptor.buff == (
         f"+{GardenGameEngine.BOOSTER_GROWTH_PER_ANSWER:,} Growth per card."

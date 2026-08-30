@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the repository-owned v25 incremental Garden capture pipeline."""
+"""Run the repository-owned v26 incremental Garden capture pipeline."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import time
@@ -23,6 +22,7 @@ os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
 from ankigarden.capture.contract import (
     CAPTURE_CONTRACT_PATH,
+    CONTRACT_VERSION,
     compile_contract,
     contract_diff,
     load_compiled_contract,
@@ -180,7 +180,7 @@ def _inspection_mode(arguments: argparse.Namespace) -> int | None:
 
     if arguments.list_surfaces:
         print(json.dumps({
-            "contract_version": 25,
+            "contract_version": CONTRACT_VERSION,
             "profiles": {
                 profile: list(REGISTRY.profile_labels(profile))
                 for profile in ("representative", "full")
@@ -188,6 +188,9 @@ def _inspection_mode(arguments: argparse.Namespace) -> int | None:
             "surfaces": [
                 {
                     "id": surface.stable_id,
+                    "scenario_id": surface.scenario_id,
+                    "fixture_id": surface.fixture_id,
+                    "scenario_step": surface.scenario_step,
                     "profiles": list(surface.profiles),
                     "renderer_family": surface.renderer_family,
                     "checkpoint_cohort": surface.checkpoint_cohort,
@@ -242,6 +245,14 @@ def _inspection_mode(arguments: argparse.Namespace) -> int | None:
             "profile": arguments.profile,
             "requested": list(plan.requested),
             "execution": list(plan.execution),
+            "scenario_sequence": {
+                label: {
+                    "scenario_id": REGISTRY[label].scenario_id,
+                    "fixture_id": REGISTRY[label].fixture_id,
+                    "scenario_step": REGISTRY[label].scenario_step,
+                }
+                for label in plan.execution
+            },
             "reused": list(plan.reused),
             "checkpoint_domains": [
                 {"name": name, "surfaces": list(labels)}
@@ -658,12 +669,32 @@ def _capture_reuse_plan(
     return evidence_manifests, reuse_plan
 
 
-# Frozen solely for recognizing and retaining historical v24 evidence.  v25
+# Frozen solely for recognizing and retaining historical v24 evidence.  v26
 # capture, validation, and contact-sheet totals are registry-derived.
 _PROFILE_EVIDENCE_COUNTS: dict[str, tuple[int, int]] = {
     "representative": (26, 4),
     "full": (126, 17),
 }
+
+
+def _profile_evidence_counts(
+    contract_version: int,
+    profile: str,
+) -> tuple[int, int] | None:
+    """Return the version-owned surface and sheet counts used by retention."""
+
+    if int(contract_version) == CONTRACT_VERSION:
+        try:
+            profile_contract = load_compiled_contract()["profiles"][profile]
+            return (
+                int(profile_contract["surface_count"]),
+                int(profile_contract["contact_sheet_page_count"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+    if int(contract_version) == 24:
+        return _PROFILE_EVIDENCE_COUNTS.get(profile)
+    return None
 
 
 def _report_path(value: object, *, relative_to: Path) -> Path | None:
@@ -726,7 +757,7 @@ def _profile_complete_capture_stamp(
     path: Path,
     output_root: Path,
 ) -> str | None:
-    """Recognize one complete relocatable v25 profile run for retention."""
+    """Recognize one complete relocatable v26 profile run for retention."""
 
     if path.is_symlink() or not path.is_dir():
         return None
@@ -744,18 +775,10 @@ def _profile_complete_capture_stamp(
         return None
     profile = str(report.get("capture_profile", ""))
     report_version = int(report.get("capture_contract_version", 0) or 0)
-    if report_version == 25:
-        try:
-            compiled_contract = load_compiled_contract()
-            profile_contract = compiled_contract["profiles"][profile]
-            expected_screenshots = int(profile_contract["surface_count"])
-            expected_sheets = int(profile_contract["contact_sheet_page_count"])
-        except (KeyError, TypeError, ValueError):
-            return None
-    elif report_version == 24 and profile in _PROFILE_EVIDENCE_COUNTS:
-        expected_screenshots, expected_sheets = _PROFILE_EVIDENCE_COUNTS[profile]
-    else:
+    expected_counts = _profile_evidence_counts(report_version, profile)
+    if expected_counts is None:
         return None
+    expected_screenshots, expected_sheets = expected_counts
     if output_root.name != profile:
         return None
     screenshots = report.get("screenshots")
@@ -793,7 +816,7 @@ def _profile_complete_capture_stamp(
     manifest_payload = _json_object(manifest)
     if manifest_payload is None:
         return None
-    if report_version == 25:
+    if report_version == CONTRACT_VERSION:
         try:
             contract = load_capture_contract(
                 REPO_ROOT / "ankigarden" / "capture" / "runtime.py",
@@ -1000,7 +1023,15 @@ def _enforce_profile_capture_retention(
     *,
     keep: int = BASE.CONTACT_SHEET_RETENTION,
 ) -> tuple[list[Path], list[Path], list[Path]]:
-    """Retain three complete runs per profile and preserve every partial."""
+    """Inventory complete runs without deleting release evidence.
+
+    Capture runs, manifests, reports, lineage, and their paired archives are
+    immutable release evidence.  Contact-sheet presentation cleanup is a
+    separate, explicit post-validation step, so ``keep`` remains accepted for
+    compatibility but cannot make raw evidence eligible for pruning.
+    """
+
+    del keep
 
     complete: list[tuple[str, Path]] = []
     for path in output_root.iterdir():
@@ -1012,28 +1043,14 @@ def _enforce_profile_capture_retention(
         key=lambda item: (item[0], item[1].name),
         reverse=True,
     )
-    retained = [path for _stamp, path in newest_first[: max(0, int(keep))]]
-    pruned = [path for _stamp, path in newest_first[max(0, int(keep)) :]]
-    pruned_archives: list[Path] = []
-    root = output_root.resolve()
-    for path in pruned:
-        stamp = _profile_complete_capture_stamp(path, output_root)
-        resolved = path.resolve()
-        if path.is_symlink() or resolved.parent != root or stamp is None:
-            raise CaptureError(f"Refusing to prune unexpected capture path: {path}")
-        archive = output_root / f"{BASE.CAPTURE_ARCHIVE_PREFIX}{stamp}.zip"
-        if archive.is_symlink() or not archive.is_file():
-            raise CaptureError(f"Refusing to prune unexpected capture archive: {archive}")
-        archive.unlink()
-        pruned_archives.append(archive)
-        shutil.rmtree(path)
-    return retained, pruned, pruned_archives
+    retained = [path for _stamp, path in newest_first]
+    return retained, [], []
 
 
 def _enforce_profile_evidence_retention(
     output_root: Path,
 ) -> tuple[list[Path], list[Path], list[Path], list[Path], list[Path]]:
-    """Prune paired runs before their contact sheets can lose completeness."""
+    """Inventory evidence while preserving all raw and presentation artifacts."""
 
     retained_runs, pruned_runs, pruned_archives = (
         _enforce_profile_capture_retention(output_root)
@@ -1841,10 +1858,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     report["archive"] = str(archive)
     report["archive_sha256"] = sha256_file(archive)
-    # The current report must bind the completed archive before it can enter
-    # retention. Run pruning must happen while every paired contact-sheet set
-    # still exists; pruning sheets first would make the oldest run look partial
-    # and strand its directory and ZIP forever.
+    # Bind the completed archive before inventorying immutable evidence.  The
+    # inventory intentionally performs no deletion; post-validation release
+    # cleanup is limited to explicitly reviewed contact-sheet directories.
     atomic_json(report_path, report)
     (
         retained_runs,

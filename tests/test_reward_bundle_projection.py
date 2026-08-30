@@ -137,7 +137,7 @@ def test_bundle_uses_exact_priority_bounds_secondary_items_and_preserves_all_dat
     assert bundle.compact.hero_title == "Full Bloom achieved"
     assert bundle.compact.hero_subtitle == "Rose"
     assert [summary.label for summary in bundle.visible_summaries] == [
-        "1 Garden Find",
+        "1 Standard Find",
         "Verdant Twilight",
     ]
     assert [summary.reward_type for summary in bundle.visible_summaries] == [
@@ -229,7 +229,7 @@ def test_find_history_reconciles_missing_details_without_duplicate_payouts() -> 
     assert sum(item.growth_units for item in find_items) == 4_000
     assert sum(item.garden_coins for item in find_items) == 0
     assert tuple(item.inventory_items for item in find_items) == ((), (), ())
-    assert bundle.visible_summaries[0].label == "2 Garden Finds"
+    assert bundle.visible_summaries[0].label == "2 Standard Finds"
     assert project_committed_reward_bundle(event) == bundle
 
 
@@ -417,7 +417,7 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
                 "find:morning-dew",
                 RewardHero.GARDEN_FIND,
                 "Morning Dew",
-                "Garden Find",
+                "Standard Find",
                 growth_units=4_000,
             ),
             RewardItemProjection(
@@ -460,13 +460,13 @@ def test_full_bloom_compact_projection_groups_and_counts_hidden_event_ids() -> N
         visible_summaries=(
             RewardCompactSummary(
                 "garden_finds",
-                "1 Garden Find",
+                "1 Standard Find",
                 ("find:morning-dew",),
                 reward_type="garden_find",
             ),
             RewardCompactSummary(
                 "discoveries",
-                "2 new discoveries",
+                "Garden discoveries",
                 ("discovery:rain", "discovery:twilight"),
                 reward_type="environment_discovery",
             ),
@@ -574,7 +574,7 @@ def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> Non
             "find:morning-dew",
             RewardHero.GARDEN_FIND,
             "Morning Dew",
-            "Garden Find",
+            "Standard Find",
             growth_units=4_000,
             rarity="common",
             artwork_ref="morning-dew.webp",
@@ -599,7 +599,7 @@ def test_secondary_reward_priority_is_semantic_stable_and_metadata_rich() -> Non
         "growth",
     )
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "1 Garden Find",
+        "1 Standard Find",
         "Moonlit Planter +1",
     )
     assert summaries[0].event_ids == ("find:morning-dew",)
@@ -683,7 +683,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
                 "find:morning-dew",
                 RewardHero.GARDEN_FIND,
                 "Morning Dew",
-                "Garden Find",
+                "Standard Find",
                 growth_units=4_000,
                 rarity="common",
                 artwork_ref="morning-dew.webp",
@@ -717,7 +717,7 @@ def test_session_history_names_meaningful_events_and_aggregates_routine_growth()
         "Growth applied",
     )
     assert rows[0].value == "Rose · +14 Garden Coins"
-    assert rows[1].category_label == "Garden Find"
+    assert rows[1].category_label == "Standard Find"
     assert rows[1].value == "+40 Growth"
     assert rows[2].category_label == "Discovery"
     assert rows[2].artwork_ref == "firefly-evening.webp"
@@ -780,7 +780,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
             "find:morning-dew",
             RewardHero.GARDEN_FIND,
             "Morning Dew",
-            "Garden Find",
+            "Standard Find",
             growth_units=4_000,
             artwork_ref="morning-dew.webp",
         ),
@@ -824,7 +824,7 @@ def test_detail_rows_are_pure_structured_projections_of_atomic_bundle_items() ->
             artwork_ref="rose-rare.webp",
         ),
         RewardDetailRow(
-            category_label="Garden Find",
+            category_label="Standard Find",
             name="Morning Dew",
             value="+40 Growth",
             event_ids=("find:morning-dew",),
@@ -902,7 +902,7 @@ def test_multi_stage_bundle_uses_highest_stage_as_hero_and_keeps_each_event():
             "MILESTONE REACHED",
             "Details ›",
         ),
-        (RewardHero.GARDEN_FIND, "GARDEN FIND", ""),
+        (RewardHero.GARDEN_FIND, "STANDARD FIND", ""),
         (RewardHero.CHECKPOINT, "CHECKPOINT REACHED", ""),
         (RewardHero.ENVIRONMENT_DISCOVERY, "NEW DISCOVERY", ""),
     ),

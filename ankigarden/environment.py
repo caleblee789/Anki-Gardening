@@ -242,7 +242,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "Every 4 eligible card answers: +3 Growth.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
             "growth_every_4_plus_3",
@@ -259,7 +259,7 @@ GARDEN_FEATURE_CATALOG: dict[str, CatalogItem] = {
         "Very Rare",
         "drop",
         "Bank 1.5 Growth per eligible card; release it when Today’s Cards are complete.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="very_rare_environment",
         effects=(EnvironmentEffect(
             "prism_bank_per_answer_1_5",
@@ -356,7 +356,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Rare",
         "drop",
         "+1 Growth on your first 100 cards each Anki day.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="rare_environment",
         effects=(EnvironmentEffect(
             "rainbow_horizon_growth",
@@ -373,7 +373,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Very Rare",
         "drop",
         "When today’s cards are complete: Small Charge 85%, Standard Charge 10%, or Booster Potion 5%.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="very_rare_environment",
         effects=(EnvironmentEffect(
             "halloween_completion_gift",
@@ -394,7 +394,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Ultra Rare",
         "drop",
         "Every fourth day you complete today’s cards, gain 1 Booster Potion; Potions apply to 25 additional cards.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="ultra_environment",
         effects=(
             EnvironmentEffect(
@@ -420,7 +420,7 @@ SCENERY_CATALOG: dict[str, CatalogItem] = {
         "Ultra Rare",
         "drop",
         "+2 Growth on your first 100 cards each Anki day.",
-        "Discover through an occasional Garden Find while reviewing.",
+        "Discover through an occasional Garden discovery while reviewing.",
         drop_tier="ultra_environment",
         effects=(EnvironmentEffect(
             "celestial_eclipse_growth",
@@ -446,7 +446,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         100,
         30,
         "Common",
-        "Nursery: 30 Garden Coins; daily Scenery; achievements; or Garden Finds.",
+        "Nursery: 30 Garden Coins; daily Scenery; achievements; or Standard Finds.",
     ),
     "growth_charge_standard": GrowthChargeSpec(
         "growth_charge_standard",
@@ -454,7 +454,7 @@ GROWTH_CHARGES: dict[str, GrowthChargeSpec] = {
         500,
         125,
         "Rare",
-        "Nursery: 125 Garden Coins; Halloween Garden; achievements; or Garden Finds.",
+        "Nursery: 125 Garden Coins; Halloween Garden; achievements; or Standard Finds.",
     ),
     "growth_charge_grand": GrowthChargeSpec(
         "growth_charge_grand",

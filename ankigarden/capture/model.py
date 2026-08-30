@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 
 SURFACE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SCENARIO_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 ACQUISITION_POLICIES = frozenset({
     "qt-widget-grab",
     "qt-shell-webview-verified",
@@ -72,6 +73,9 @@ class SurfaceSpec:
     """One stable, extensible UI-surface capture declaration."""
 
     stable_id: str
+    scenario_id: str
+    fixture_id: str
+    scenario_step: int
     active: bool
     placements: tuple[ProfilePlacement, ...]
     executor: str
@@ -94,6 +98,20 @@ class SurfaceSpec:
     def __post_init__(self) -> None:
         if SURFACE_ID.fullmatch(self.stable_id) is None:
             raise ValueError(f"invalid stable capture ID: {self.stable_id!r}")
+        if SCENARIO_ID.fullmatch(self.scenario_id) is None:
+            raise ValueError(
+                f"surface {self.stable_id!r} has invalid scenario ID "
+                f"{self.scenario_id!r}"
+            )
+        if SCENARIO_ID.fullmatch(self.fixture_id) is None:
+            raise ValueError(
+                f"surface {self.stable_id!r} has invalid fixture ID "
+                f"{self.fixture_id!r}"
+            )
+        if type(self.scenario_step) is not int or self.scenario_step < 1:
+            raise ValueError(
+                f"surface {self.stable_id!r} has invalid scenario step"
+            )
         if self.active and self.retired_reason:
             raise ValueError(f"active surface {self.stable_id!r} has a retirement reason")
         if not self.active and not self.retired_reason.strip():
@@ -163,6 +181,9 @@ class SurfaceSpec:
 
         return {
             "stable_id": self.stable_id,
+            "scenario_id": self.scenario_id,
+            "fixture_id": self.fixture_id,
+            "scenario_step": self.scenario_step,
             "executor": self.executor,
             "arguments": _json_copy(self.arguments),
             "renderer_family": self.renderer_family,
@@ -209,6 +230,9 @@ class CandidateRejection:
 @dataclass(frozen=True)
 class CaptureResult:
     surface_id: str
+    scenario_id: str
+    fixture_id: str
+    scenario_step: int
     accepted: bool
     backend: str
     rejected_candidates: tuple[CandidateRejection, ...]
@@ -226,6 +250,14 @@ class CaptureResult:
     blocked_by: str = ""
 
     def __post_init__(self) -> None:
+        if SURFACE_ID.fullmatch(self.surface_id) is None:
+            raise ValueError("invalid capture surface ID")
+        if SCENARIO_ID.fullmatch(self.scenario_id) is None:
+            raise ValueError("invalid capture scenario ID")
+        if SCENARIO_ID.fullmatch(self.fixture_id) is None:
+            raise ValueError("invalid capture fixture ID")
+        if type(self.scenario_step) is not int or self.scenario_step < 1:
+            raise ValueError("invalid capture scenario step")
         if self.failure_classification not in FAILURE_CLASSIFICATIONS:
             raise ValueError("unknown capture failure classification")
         if self.accepted and self.failure_classification != "none":
@@ -238,6 +270,9 @@ class CaptureResult:
     def as_dict(self) -> dict[str, Any]:
         return {
             "surface_id": self.surface_id,
+            "scenario_id": self.scenario_id,
+            "fixture_id": self.fixture_id,
+            "scenario_step": self.scenario_step,
             "accepted": self.accepted,
             "backend": self.backend,
             "rejected_candidates": [item.as_dict() for item in self.rejected_candidates],

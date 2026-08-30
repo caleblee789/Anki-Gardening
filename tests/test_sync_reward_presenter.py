@@ -79,6 +79,11 @@ class _Presenter(SyncRewardPresenter):
         self.created.append(card)
         return card
 
+    def _install_escape_shortcut(self) -> None:
+        # Source-only presenter tests have no Qt runtime. Tests that exercise
+        # shortcut failure override this method explicitly.
+        return None
+
 
 def _presenter(storage: _Storage, *, enabled=True, can_present=None):
     opened: list[str] = []
@@ -288,3 +293,41 @@ def test_profile_close_releases_card_but_preserves_unmounted_durable_receipt() -
     assert presenter.pending is None
     assert storage.state.pending_sync_reward_summary == summary.to_dict()
     assert storage.saves == 0
+
+
+def test_escape_is_modal_guarded_and_routes_only_the_owned_sync_summary(
+    monkeypatch,
+) -> None:
+    class _Coordinator:
+        def __init__(self) -> None:
+            self.active_kind = "sync"
+            self.dismissed: list[str] = []
+
+        def owns(self, kind: str) -> bool:
+            return self.active_kind == kind
+
+        def dismiss(self, reason: str) -> bool:
+            self.dismissed.append(reason)
+            return True
+
+    coordinator = _Coordinator()
+    presenter = _Presenter(
+        SimpleNamespace(state="deckBrowser"),
+        _Storage(),
+        enabled=lambda: True,
+        open_garden=lambda: None,
+        summary_coordinator=coordinator,
+    )
+
+    monkeypatch.setattr(presenter, "_modal_active", lambda: True)
+    presenter._dismiss_on_escape()
+    assert coordinator.dismissed == []
+
+    monkeypatch.setattr(presenter, "_modal_active", lambda: False)
+    coordinator.active_kind = "session"
+    presenter._dismiss_on_escape()
+    assert coordinator.dismissed == []
+
+    coordinator.active_kind = "sync"
+    presenter._dismiss_on_escape()
+    assert coordinator.dismissed == ["escape"]

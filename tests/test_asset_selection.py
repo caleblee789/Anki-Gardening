@@ -1,13 +1,20 @@
 import base64
 import json
+import math
 import os
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ankigarden.asset_manager import AssetManager, AssetPlacement
 from ankigarden.config import DEFAULT_CONFIG, ConfigManager
+from ankigarden.ui.plant_art import (
+    calibrated_thumbnail_fill,
+    calibrated_thumbnail_scale,
+)
 
 
 class DummyConfig:
@@ -544,6 +551,44 @@ def test_invalid_placement_values_fall_back_or_clamp():
     assert len(placement.bed_anchors) == 6
 
 
+def test_visual_scale_round_trips_and_calibrates_independent_thumbnail_scale():
+    placement = AssetPlacement.from_manifest(
+        {"visual_scale_correction": 0.55},
+        category="plants",
+    )
+    payload = placement.to_dict()
+
+    assert placement.visual_scale_correction == 0.55
+    assert payload["visual_scale_correction"] == 0.55
+    assert placement.thumbnail_scale == 1.20
+    assert calibrated_thumbnail_scale(payload) == 1.20
+
+    explicit = AssetPlacement.from_manifest(
+        {
+            "visual_scale_correction": 0.55,
+            "thumbnail_scale": 0.93,
+        },
+        category="plants",
+    )
+    assert explicit.thumbnail_scale == 0.93
+    assert calibrated_thumbnail_scale(explicit) == 0.93
+
+
+def test_thumbnail_optical_scale_stays_inside_the_stage_canvas_envelope() -> None:
+    assert calibrated_thumbnail_fill(
+        "sprout",
+        {"visual_scale_correction": 0.78},
+    ) == pytest.approx(0.73)
+    assert calibrated_thumbnail_fill(
+        "sprout",
+        {"visual_scale_correction": 1.05},
+    ) == pytest.approx(0.73 / math.sqrt(1.05))
+    assert calibrated_thumbnail_fill(
+        "rare",
+        {"visual_scale_correction": 0.55},
+    ) == pytest.approx(1.0)
+
+
 def test_legacy_planting_zone_receives_stable_six_bed_fallback():
     placement = AssetPlacement.from_manifest(
         {"planting_zone": {"left": 0.1, "right": 0.9, "far_y": 0.6, "near_y": 0.94}},
@@ -593,8 +638,20 @@ def test_current_production_plants_use_alpha_aware_grounding_metadata():
         assert thumbnail["thumbnail_bounds"][2] > 0
         assert thumbnail["thumbnail_bounds"][3] > 0
         assert len(thumbnail["thumbnail_optical_center"]) == 2
+        assert thumbnail["visual_scale_correction"] == placement[
+            "visual_scale_correction"
+        ]
+        expected_thumbnail_scale = max(
+            0.85,
+            min(
+                1.20,
+                1.0 / math.sqrt(placement["visual_scale_correction"]),
+            ),
+        )
+        assert thumbnail["thumbnail_scale"] == expected_thumbnail_scale
         assert 0.5 <= thumbnail["thumbnail_scale"] <= 1.5
         assert 0.0 <= thumbnail["thumbnail_safe_padding"] <= 0.3
+        assert len(thumbnail["bed_anchors"]) == 6
 
 
 def test_runtime_catalog_contains_one_current_asset_per_species_and_stage():

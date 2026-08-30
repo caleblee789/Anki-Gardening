@@ -129,8 +129,8 @@ SPECIES_VISUAL_SCALE = {
         "rare": 0.964,
     },
     # Hydrangea's broad source canvases need a smaller Seed target and modest
-    # Young/Mature readability lifts. This preserves real botanical growth
-    # while clearing the unchanged rear-row minimum in every responsive view.
+    # Young/Mature readability lifts. Runtime layout supplies the shared
+    # compact-stage readability floor without rewriting this authored scale.
     "hydrangea": {
         "seed": 0.55,
         "young": 1.02,

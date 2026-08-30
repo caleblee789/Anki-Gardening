@@ -396,7 +396,8 @@ def test_fertilizer_presentations_distinguish_extension_and_queueing() -> None:
     assert queued.title == "Queue Magical Fertilizer?"
     assert queued.primary_label == "Buy and queue · 300 coins"
     assert queued.outcome == (
-        "Queued for 4 hours after Basic Fertilizer."
+        "Starts after Basic Fertilizer ends, then lasts 4 hours. "
+        "+3 Growth per eligible card answer."
     )
     assert queued_quote.current_seconds_remaining == 2_700
     assert queued_quote.resulting_seconds_remaining == 17_100
@@ -746,6 +747,75 @@ def test_confirmation_distinguishes_stale_terms_and_target_changes(
     assert engine.confirm_purchase(bed_request).status is PurchaseStatus.STALE_TARGET
 
 
+def test_fertilizer_confirmation_does_not_rebind_a_disappeared_source() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "premium",
+        target_id="p1",
+    )
+    request = PurchaseRequest.from_quote(quote)
+    source, remaining = storage.state.plants
+    storage.state.plants = [remaining]
+    storage.state.active_plant_id = remaining.plant_id
+    before_balance = storage.state.currency_balance
+    before_inventory = dict(storage.state.consumables)
+    before_transactions = tuple(storage.state.currency_transactions)
+
+    outcome = engine.confirm_purchase(request)
+
+    assert outcome.status is PurchaseStatus.TARGET_INVALID
+    assert outcome.disposition is not PurchaseDisposition.INVENTORY
+    assert outcome.amount_spent == 0
+    assert storage.state.currency_balance == before_balance
+    assert storage.state.consumables == before_inventory
+    assert tuple(storage.state.currency_transactions) == before_transactions
+    assert remaining.fertilizer is None
+    assert remaining.fertilizer_history == []
+    assert source.plant_id == request.target_id == quote.target_id == "p1"
+
+
+def test_fertilizer_commit_preflight_rejects_a_late_disappeared_source() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "quality",
+        target_id="p1",
+    )
+    source, remaining = storage.state.plants
+    storage.state.plants = [remaining]
+    storage.state.active_plant_id = remaining.plant_id
+    before = storage.state.to_dict()
+
+    outcome = engine._apply_confirmed_purchase(
+        quote,
+        "purchase-request:late-target-removal",
+    )
+
+    assert outcome.status is PurchaseStatus.TARGET_INVALID
+    assert outcome.amount_spent == 0
+    assert storage.state.to_dict() == before
+    assert source.plant_id == quote.target_id == "p1"
+    assert remaining.fertilizer is None
+    assert remaining.fertilizer_history == []
+
+
+def test_owned_fertilizer_treats_an_explicit_empty_target_as_invalid() -> None:
+    engine, storage = _make_engine()
+    storage.state.consumables["fertilizer_basic"] = 1
+    before_saves = storage.save_count
+
+    ok, message = engine.use_fertilizer_item("", tier="basic")
+
+    assert not ok
+    assert "nurtured plant" in message
+    assert storage.state.consumables["fertilizer_basic"] == 1
+    assert storage.state.plants[0].fertilizer is None
+    assert storage.save_count == before_saves
+
+
 @pytest.mark.parametrize(
     ("setup", "kind", "item_id", "target_id", "expected"),
     (
@@ -805,6 +875,99 @@ def test_different_fertilizer_tier_queues_without_authorization_or_discard() -> 
     assert active is not None and active.tier == "basic"
     assert [period.tier for period in waiting] == ["premium"]
     assert active.expires_at == waiting[0].started_at
+
+
+def test_fertilizer_queue_remains_bound_when_the_active_plant_changes() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 500
+    engine._now_seconds = lambda: 1_000.0
+    source, next_active = storage.state.plants
+
+    assert engine.purchase_fertilizer(source.plant_id, "basic")[0]
+    assert engine.purchase_fertilizer(source.plant_id, "premium")[0]
+    storage.state.active_plant_id = next_active.plant_id
+
+    source_active, source_queue = engine.fertilizer_schedule(
+        source,
+        now=1_000.0,
+    )
+    next_active_period, next_active_queue = engine.fertilizer_schedule(
+        next_active,
+        now=1_000.0,
+    )
+
+    assert source_active is not None and source_active.tier == "basic"
+    assert [period.tier for period in source_queue] == ["premium"]
+    assert next_active_period is None
+    assert next_active_queue == ()
+
+
+def test_fertilizer_queue_quote_names_the_actual_schedule_tail_predecessor() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    engine._now_seconds = lambda: 1_000.0
+
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    assert engine.purchase_fertilizer("p1", "quality")[0]
+
+    engine._now_seconds = lambda: 1_200.0
+    quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "premium",
+        target_id="p1",
+    )
+    presentation = purchase_presentation(quote)
+
+    current, waiting = engine.fertilizer_schedule(
+        storage.state.plants[0],
+        now=1_200.0,
+    )
+    assert current is not None and current.tier == "basic"
+    assert [period.tier for period in waiting] == ["quality"]
+    assert quote.target_id == "p1"
+    assert quote.disposition is PurchaseDisposition.QUEUED
+    assert quote.current_item_name == "Quality Fertilizer"
+    assert quote.current_effect == "+2 Growth per eligible card answer"
+    assert quote.current_seconds_remaining == 10_600
+    assert presentation.outcome == (
+        "Starts after Quality Fertilizer ends, then lasts 4 hours. "
+        "+3 Growth per eligible card answer."
+    )
+
+    outcome = engine.confirm_purchase(PurchaseRequest.from_quote(quote))
+    assert outcome.success
+    assert outcome.result_id == "p1"
+    current, waiting = engine.fertilizer_schedule(
+        storage.state.plants[0],
+        now=1_200.0,
+    )
+    assert current is not None and current.tier == "basic"
+    assert [period.tier for period in waiting] == ["quality", "premium"]
+    assert waiting[0].expires_at == waiting[1].started_at
+
+
+def test_fertilizer_actions_follow_the_queued_schedule_tail() -> None:
+    engine, storage = _make_engine()
+    storage.state.currency_balance = 5_000
+    engine._now_seconds = lambda: 1_000.0
+
+    assert engine.purchase_fertilizer("p1", "basic")[0]
+    assert engine.purchase_fertilizer("p1", "quality")[0]
+
+    engine._now_seconds = lambda: 1_200.0
+    basic_quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "basic",
+        target_id="p1",
+    )
+    quality_quote = engine.quote_purchase(
+        PurchaseKind.FERTILIZER,
+        "quality",
+        target_id="p1",
+    )
+
+    assert basic_quote.disposition is PurchaseDisposition.QUEUED
+    assert quality_quote.disposition is PurchaseDisposition.EXTENDED
 
 
 def test_fertilizer_queue_debits_once_and_rolls_back_on_save_failure() -> None:
@@ -1225,6 +1388,176 @@ def test_nursery_timed_fertilizer_queues_without_confirmation_and_uses_item_once
     assert refreshes == ["parent", "nursery"]
     assert scheduled == [True]
     assert results[0] == (True, "Basic Fertilizer queued.")
+
+
+def test_nursery_fertilizer_purchase_keeps_a_stale_explicit_source_id() -> None:
+    calls: list[tuple[PurchaseKind, str, str | None]] = []
+    active_lookups: list[bool] = []
+    releases: list[bool] = []
+    purchase = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_purchase_fertilizer",
+        {"PurchaseKind": PurchaseKind},
+    )
+    begin = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_begin_catalog_transaction",
+    )
+
+    def active_plant() -> Any:
+        active_lookups.append(True)
+        return SimpleNamespace(plant_id="new-active")
+
+    nursery = SimpleNamespace(
+        _catalog_transaction_pending=False,
+        _target_plant_id="rose-source",
+        _begin_catalog_transaction=lambda: begin(nursery),
+        _schedule_catalog_transaction_release=lambda: releases.append(True),
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
+        _execute_purchase=lambda kind, tier, *, target_id=None: calls.append(
+            (kind, tier, target_id)
+        ),
+        engine=SimpleNamespace(active_plant=active_plant),
+    )
+
+    purchase(nursery, "premium", "rose-source")
+
+    assert calls == [
+        (PurchaseKind.FERTILIZER, "premium", "rose-source")
+    ]
+    assert active_lookups == []
+    assert releases == [True]
+
+
+def test_nursery_owned_fertilizer_keeps_the_card_source_plant_id() -> None:
+    calls: list[tuple[str, str, bool]] = []
+    active_lookups: list[bool] = []
+    releases: list[bool] = []
+    source = SimpleNamespace(plant_id="rose-source", name="Rose")
+    changed_active = SimpleNamespace(plant_id="bonsai-active", name="Bonsai")
+    basic = SimpleNamespace(
+        tier="basic",
+        name="Basic Fertilizer",
+        growth_per_answer=1,
+        duration_seconds=3_600,
+    )
+    use_fertilizer = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_use_owned_fertilizer",
+        {
+            "collectible_registry": lambda: (
+                SimpleNamespace(
+                    item_id="growth_items:fertilizer_basic",
+                    name="Rich Compost",
+                ),
+            ),
+            "_learner_text": str,
+        },
+    )
+    begin = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_begin_catalog_transaction",
+    )
+
+    def active_plant() -> Any:
+        active_lookups.append(True)
+        return changed_active
+
+    nursery = SimpleNamespace(
+        _catalog_transaction_pending=False,
+        _target_plant_id="",
+        _begin_catalog_transaction=lambda: begin(nursery),
+        _schedule_catalog_transaction_release=lambda: releases.append(True),
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
+        _show_result=lambda *_args: None,
+        _refresh_parent=lambda: None,
+        refresh=lambda: None,
+        engine=SimpleNamespace(
+            FERTILIZERS={"basic": basic},
+            plant_story=lambda plant_id: source if plant_id == source.plant_id else None,
+            active_plant=active_plant,
+            use_fertilizer_item=lambda plant_id, *, tier, replace_active: (
+                calls.append((plant_id, tier, replace_active)) or True,
+                "Basic Fertilizer queued.",
+            ),
+        ),
+    )
+
+    use_fertilizer(nursery, "basic", source.plant_id)
+
+    assert calls == [(source.plant_id, "basic", False)]
+    assert active_lookups == []
+    assert releases == [True]
+
+
+def test_nursery_owned_fertilizer_fails_when_explicit_source_disappears() -> None:
+    calls: list[tuple[str, str, bool]] = []
+    active_lookups: list[bool] = []
+    results: list[tuple[bool, str]] = []
+    releases: list[bool] = []
+    inventory = {"fertilizer_basic": 1}
+    basic = SimpleNamespace(
+        tier="basic",
+        name="Basic Fertilizer",
+        growth_per_answer=1,
+        duration_seconds=3_600,
+    )
+    use_fertilizer = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_use_owned_fertilizer",
+        {
+            "collectible_registry": lambda: (),
+            "_learner_text": str,
+        },
+    )
+    begin = _compiled_method(
+        DASHBOARD_PATH,
+        "NurseryDialog",
+        "_begin_catalog_transaction",
+    )
+
+    def active_plant() -> Any:
+        active_lookups.append(True)
+        return SimpleNamespace(plant_id="new-active", name="Bonsai")
+
+    nursery = SimpleNamespace(
+        _catalog_transaction_pending=False,
+        _target_plant_id="rose-source",
+        _begin_catalog_transaction=lambda: begin(nursery),
+        _schedule_catalog_transaction_release=lambda: releases.append(True),
+        _show_catalog_transaction_exception=lambda *_args, **_kwargs: None,
+        _show_result=lambda ok, message: results.append((ok, message)),
+        _refresh_parent=lambda: None,
+        refresh=lambda: None,
+        storage=SimpleNamespace(state=SimpleNamespace(consumables=inventory)),
+        engine=SimpleNamespace(
+            FERTILIZERS={"basic": basic},
+            plant_story=lambda _plant_id: None,
+            active_plant=active_plant,
+            use_fertilizer_item=lambda plant_id, *, tier, replace_active: (
+                calls.append((plant_id, tier, replace_active)) or True,
+                "Basic Fertilizer queued.",
+            ),
+        ),
+    )
+
+    use_fertilizer(nursery, "basic", "rose-source")
+
+    assert calls == []
+    assert active_lookups == []
+    assert inventory == {"fertilizer_basic": 1}
+    assert results == [
+        (
+            False,
+            "That plant is no longer in your garden. Basic Fertilizer was not used.",
+        )
+    ]
+    assert releases == [True]
 
 
 @pytest.mark.parametrize(

@@ -22,6 +22,7 @@ from ankigarden.ui.reviewer_hud import (
     project_reviewer_hud,
     project_today_cards,
     reviewer_hud_geometry,
+    reviewer_hud_safe_bottom,
     reviewer_hud_width,
 )
 from ankigarden.ui.reviewer_hud_widget import (
@@ -64,6 +65,7 @@ def completion(status: str, **overrides):
         "status": status,
         "starting_required_cards": 194,
         "starting_required_cards_completed": 176,
+        "remaining_new_cards": 0,
         "remaining_required_reviews": 16,
         "remaining_learning_steps": 2,
         "future_learning_steps_before_cutoff": 0,
@@ -121,6 +123,39 @@ def test_today_cards_is_global_compact_and_has_no_find_cap_copy() -> None:
     )).casefold()
     for forbidden in ("garden find", "daily limit", "all decks", "reward cap"):
         assert forbidden not in visible
+
+
+def test_today_cards_counts_new_only_obligations_once() -> None:
+    projection = project_today_cards(state_for(
+        "in_progress",
+        starting_required_cards=20,
+        starting_required_cards_completed=0,
+        remaining_new_cards=20,
+        remaining_required_reviews=0,
+        remaining_learning_steps=0,
+        future_learning_steps_before_cutoff=0,
+        cards_completed_today=0,
+    ))
+
+    assert projection.primary == "0 / 20"
+    assert projection.secondary == ("20 cards left",)
+    assert (projection.progress_value, projection.progress_maximum) == (0, 20)
+    assert projection.remaining_count == 20
+
+
+def test_today_cards_reconciles_mixed_new_review_and_learning_obligations() -> None:
+    projection = project_today_cards(state_for(
+        "in_progress",
+        remaining_new_cards=4,
+        remaining_required_reviews=10,
+        remaining_learning_steps=2,
+        future_learning_steps_before_cutoff=2,
+    ))
+
+    assert projection.primary == "176 / 194"
+    assert projection.secondary == ("18 cards left",)
+    assert (projection.progress_value, projection.progress_maximum) == (176, 194)
+    assert projection.remaining_count == 18
 
 
 def test_complete_today_card_uses_engine_confirmed_coin_reward() -> None:
@@ -232,7 +267,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     nurture = project_reviewer_hud(engine, state, now_ms=1_000_000).nurture
 
     assert nurture.plant_name == "Juniper of the Moonlit Terrace"
-    assert nurture.stage_label == "Young · Stage 2 of 5"
+    assert nurture.stage_label == "Young · 3 of 6 stages"
     assert nurture.species_name == "Bonsai"
     assert nurture.next_answer_value == "+13.5 growth"
     assert nurture.next_card_line == "Next answer · +13.5 growth"
@@ -253,7 +288,7 @@ def test_nurture_projection_keeps_only_the_outcomes_needed_during_review() -> No
     assert nurture.effect_chips == (
         "Fertilizer · 1h",
         "Booster · 38 cards",
-        "Garden Decoration · +0.5 growth",
+        "Garden decoration · +0.5 growth",
         "Scenery · +0.25 growth",
         "Streak bonus · +1 growth",
     )
@@ -385,17 +420,20 @@ def test_no_plant_and_full_bloom_use_contextual_copy() -> None:
         full_state,
     ).nurture
     assert projection.fully_grown is True
-    assert projection.stage_label == "Full Bloom"
+    assert projection.stage_label == "Full Bloom · 6 of 6 stages"
     assert projection.next_checkpoint_percent == 0
     assert projection.next_answer_value == ""
     assert projection.species_name == "Rose"
-    assert projection.empty_message == "Future growth will be shared or stored."
+    assert projection.empty_message == (
+        "Future Growth will go to other planted plants. "
+        "Any remainder will be stored."
+    )
 
 
 def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
-    assert reviewer_hud_width(1_280) == 312
-    assert reviewer_hud_width(1_600) == 320
-    assert reviewer_hud_width(2_000) == 324
+    assert reviewer_hud_width(1_280) == 296
+    assert reviewer_hud_width(1_600) == 296
+    assert reviewer_hud_width(2_000) == 296
 
     expanded = reviewer_hud_geometry(
         1_600,
@@ -404,7 +442,7 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
         dock="right",
         content_height=590,
     )
-    assert expanded == (1_268, 16, 320, 590)
+    assert expanded == (1_288, 44, 296, 590)
 
     short = reviewer_hud_geometry(
         1_280,
@@ -413,9 +451,31 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
         dock="right",
         content_height=700,
     )
-    assert short == (956, 16, 312, 372)
+    assert short == (968, 44, 296, 384)
+    assert reviewer_hud_safe_bottom(509) == 437
+    short_reviewer = reviewer_hud_geometry(
+        1_280,
+        509,
+        collapsed=False,
+        dock="right",
+        content_height=700,
+    )
+    assert short_reviewer == (968, 44, 296, 393)
+    assert short_reviewer[1] + short_reviewer[3] == (
+        reviewer_hud_safe_bottom(509)
+    )
+    actual_controls = reviewer_hud_geometry(
+        1_600,
+        1_000,
+        collapsed=False,
+        dock="right",
+        content_height=900,
+        answer_controls_top=850,
+    )
+    assert actual_controls == (1_288, 44, 296, 806)
+    assert reviewer_hud_safe_bottom(1_000, 850) == 850
     collapsed = reviewer_hud_geometry(1_200, 800, collapsed=True, dock="left")
-    assert collapsed == (12, 16, HUD_COLLAPSED_WIDTH, HUD_COLLAPSED_HEIGHT)
+    assert collapsed == (16, 44, HUD_COLLAPSED_WIDTH, HUD_COLLAPSED_HEIGHT)
     assert DEFAULT_CONFIG["show_reviewer_hud"] is True
     assert DEFAULT_CONFIG["reviewer_hud_dock"] == "right"
     assert "content_height = 46 + body_height + reward_height" in WIDGET_SOURCE
@@ -441,6 +501,44 @@ def test_geometry_is_responsive_content_hugging_and_answer_bar_safe() -> None:
         1,
     )[1].split("def update_session_totals", 1)[0]
     assert "if self._disposed" in clear_celebration
+
+
+def test_widget_consumes_versioned_answer_control_rect_and_rejects_stale_viewport() -> None:
+    class Host:
+        def __init__(self, properties):
+            self.properties = dict(properties)
+
+        def property(self, name):
+            return self.properties.get(name)
+
+        def findChildren(self, _kind):
+            return []
+
+    measured = Host({
+        "reviewerAnswerControlsSchemaVersion": 1,
+        "reviewerAnswerControlsRect": [80, 648, 1_040, 88],
+        "reviewerAnswerControlsTop": 648,
+        "reviewerAnswerControlsClearance": 152,
+        "reviewerAnswerControlsViewport": [1_200, 800],
+        "reviewerAnswerControlsSource": "webengine-dom",
+        "reviewerAnswerControlsMeasured": True,
+    })
+    receiver = SimpleNamespace()
+
+    assert ReviewGardenHud._host_answer_controls_geometry(
+        receiver,
+        measured,
+        1_200,
+        800,
+    ) == (648, (80, 648, 1_040, 88), 152, "webengine-dom")
+
+    measured.properties["reviewerAnswerControlsViewport"] = [1_200, 700]
+    assert ReviewGardenHud._host_answer_controls_geometry(
+        receiver,
+        measured,
+        1_200,
+        800,
+    ) == (None, None, 72, "fallback")
 
 
 def test_plant_art_bounds_remove_empty_canvas_without_mutating_source() -> None:
@@ -478,7 +576,7 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
     assert _session_metric_labels(1_800, 2, 1) == (
         "+18 growth",
         "+2 coins",
-        "1 find",
+        "1 Standard Find",
     )
     # A rapid answer may arrive while the prior Coin count-up is still showing
     # an intermediate value. Change detection must use the last committed
@@ -513,7 +611,7 @@ def test_release_copy_helpers_cover_balance_markers_effects_and_zero_free_sessio
         effect_chips=(
             "Fertilizer · 1h",
             "Booster · 38 cards",
-            "Garden Decoration +1 growth",
+            "Garden decoration +1 growth",
         ),
     )
     assert three_effects.visible_effect_chips == three_effects.effect_chips[:2]
@@ -582,7 +680,7 @@ def test_widget_consumes_the_canonical_reward_bundle_shape() -> None:
         event_id="find-1",
         kind=RewardHero.GARDEN_FIND,
         title="Moonlit Sprout",
-        category_label="Garden Find",
+        category_label="Standard Find",
         growth_units=4_000,
         garden_coins=4,
         rarity="common",
@@ -647,7 +745,7 @@ def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> N
             event_id="find-1",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),
         RewardItemProjection(
             event_id="booster-1",
@@ -673,7 +771,7 @@ def test_reward_amounts_stay_on_the_hero_and_overflow_remains_inspectable() -> N
     assert len(_all_secondary_items(bundle)) == 4
     assert len(bundle.visible_summaries) == 2
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "1 Garden Find",
+        "1 Standard Find",
         "Checkpoint reached",
     )
     booster_summary = next(
@@ -749,7 +847,7 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
             event_id="find-1",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),
         RewardItemProjection(
             event_id="booster-1",
@@ -769,8 +867,8 @@ def test_full_bloom_compact_projection_suppresses_only_same_plant_stage_copy() -
     assert bundle.compact.hero_title == "Full Bloom achieved"
     assert bundle.compact.hero_subtitle == "Rose"
     assert tuple(summary.label for summary in bundle.visible_summaries) == (
-        "1 Garden Find",
-        "2 new discoveries",
+        "1 Standard Find",
+        "Garden discoveries",
     )
     assert bundle.more_label == "Details ›"
     compact_event_ids = {
@@ -820,7 +918,7 @@ def test_committed_entrypoint_respects_an_explicit_zero_applied_growth() -> None
             event_id="find-1",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
             growth_units=4_000,
         ),),
     )
@@ -867,7 +965,7 @@ def test_routine_answers_remain_reconciled_with_an_early_major_reward() -> None:
             event_id="find-1",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),),
     )
     fake = SimpleNamespace(
@@ -915,7 +1013,7 @@ def test_committed_major_reward_is_idempotent_and_queues_while_collapsed() -> No
             event_id="find-collapsed",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),),
     )
     fake = SimpleNamespace(
@@ -1103,7 +1201,7 @@ def test_reward_remount_restores_the_readable_event_without_representing_it() ->
             event_id="find-readable-remount",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),),
     )
     queued = RewardBundleProjection(
@@ -1186,7 +1284,7 @@ def test_history_reward_inspection_suspends_and_restores_the_live_event() -> Non
             event_id="find-live-readable",
             kind=RewardHero.GARDEN_FIND,
             title="Current Find",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),),
     )
     historical = RewardBundleProjection(
@@ -1269,7 +1367,7 @@ def test_duplicate_commit_does_not_disturb_history_inspection() -> None:
             event_id="find-already-seen-during-history",
             kind=RewardHero.GARDEN_FIND,
             title="Moonlit Sprout",
-            category_label="Garden Find",
+            category_label="Standard Find",
         ),),
     )
     closes: list[str] = []
@@ -1288,7 +1386,7 @@ def test_mixed_reward_bundle_delays_for_its_checkpoint_item() -> None:
         event_id="find-1",
         kind=RewardHero.GARDEN_FIND,
         title="Moonlit Sprout",
-        category_label="Garden Find",
+        category_label="Standard Find",
     )
     checkpoint = RewardItemProjection(
         event_id="checkpoint-1",
@@ -1474,7 +1572,7 @@ def test_release_revision_feedback_and_numeric_roles_are_wired() -> None:
         1,
     )[1].split("def _apply_stage_change_override", 1)[0]
     assert (
-        'self._plant_message.setText("Future growth will be shared or stored.")'
+        "self._plant_message.setText(FULL_BLOOM_GROWTH_ROUTE_COPY)"
         in projected_full_bloom
     )
     assert "self._select_plant.show()" in projected_full_bloom

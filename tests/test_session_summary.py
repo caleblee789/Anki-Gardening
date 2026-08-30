@@ -546,7 +546,7 @@ def test_live_snapshot_is_exact_once_non_finalizing_and_matches_final_reducer():
         plant_growth=(PlantGrowthDelta("juniper", "Juniper", 1_250),),
         shared_growth=(PlantGrowthDelta("rose", "Rose", 400),),
         stored=500,
-        coins=(CoinAward("coin:live:1", "find", "Garden Find", 4),),
+        coins=(CoinAward("coin:live:1", "find", "Standard Find", 4),),
         finds=(StandardFind(
             "find:live:1",
             "morning_dew",
@@ -636,7 +636,7 @@ def test_authoritative_reversal_removes_whole_card_or_selected_reward_once():
     accumulator.accept_committed(_event(
         "card:2",
         plant_growth=(PlantGrowthDelta("rose", "Rose", 2_000),),
-        coins=(CoinAward("coin:2", "find", "Garden Find", 4),),
+        coins=(CoinAward("coin:2", "find", "Standard Find", 4),),
     ))
 
     selective = AuthoritativeEventReversal("undo:reward", ("coin:1", "find:1"))
@@ -979,7 +979,32 @@ def test_find_quantities_reconcile_to_explicit_total_and_limit_by_occurrence():
         "Garden Coin Cache",
     ]
     assert details.remaining_count == 1
-    assert details.more_label == "1 more find"
+    assert details.more_label == "1 more Standard Find"
+
+    plural = _accumulator()
+    plural.accept_committed(_event(
+        "card:four-mixed-finds",
+        finds=tuple(
+            StandardFind(
+                f"find:plural:{index}",
+                f"plural-{index}",
+                f"Find reward {index}",
+                "common",
+                "inventory_item",
+                f"Find reward {index}",
+                item_id=f"plural-{index}",
+            )
+            for index in range(4)
+        ),
+        total_finds=4,
+    ))
+    plural_payload = _finish(plural)
+    assert plural_payload is not None
+    plural_details = project_session_day(
+        plural_payload.segments[0]
+    ).find_details
+    assert plural_details.remaining_count == 2
+    assert plural_details.more_label == "2 more Standard Finds"
 
 
 def test_inventory_find_names_the_granted_item_not_internal_flavor_copy():
@@ -1151,7 +1176,7 @@ def test_owned_environment_is_not_reported_as_a_new_discovery():
 @pytest.mark.parametrize(
     ("category", "label"),
     (
-        ("garden_item", "GARDEN ITEM UNLOCKED"),
+        ("garden_item", "GARDEN DISCOVERY UNLOCKED"),
         ("environment", "ENVIRONMENT UNLOCKED"),
         ("plant", "PLANT UNLOCKED"),
         ("planter", "PLANTER UNLOCKED"),
@@ -1307,7 +1332,7 @@ def test_large_result_projection_limits_details_without_hiding_full_bloom():
     assert projection.environment_discoveries.remaining_count == 2
     assert (
         projection.environment_discoveries.more_label
-        == "View 2 more environment discoveries"
+            == "View 2 more Garden discoveries"
     )
     assert [item.kind for item in projection.highlights.featured] == [
         "full_bloom", "full_bloom"
@@ -1358,7 +1383,7 @@ def test_unified_highlights_follow_product_priority_before_chronology():
     assert [item.unlock_category for item in highlights.featured] == [
         "plant", "garden_item"
     ]
-    assert highlights.featured[1].eyebrow == "GARDEN ITEM UNLOCKED"
+    assert highlights.featured[1].eyebrow == "GARDEN DISCOVERY UNLOCKED"
     assert (
         highlights.featured[1].supporting_text
         == "Added to your Garden collection"

@@ -1,4 +1,4 @@
-"""Materialize and query the single v25 capture surface registry."""
+"""Materialize and query the single v26 capture surface registry."""
 
 from __future__ import annotations
 
@@ -41,6 +41,9 @@ def _surface_from_row(row: Mapping[str, object]) -> SurfaceSpec:
     )
     return SurfaceSpec(
         stable_id=str(row["id"]),
+        scenario_id=str(row["scenario_id"]),
+        fixture_id=str(row["fixture_id"]),
+        scenario_step=int(row["scenario_step"]),
         active=bool(row["active"]),
         placements=placements,
         executor=str(row["executor"]),
@@ -82,12 +85,46 @@ class SurfaceRegistry:
         if len(self._by_id) != len(self._surfaces):
             raise ValueError("capture registry contains duplicate stable IDs")
         active_ids = {surface.stable_id for surface in self.active_surfaces}
+        scenario_fixtures: dict[str, str] = {}
+        scenario_seeded_checkpoints: dict[str, tuple[str, str, str]] = {}
+        scenario_steps: dict[str, list[int]] = {}
         for surface in self.active_surfaces:
+            fixture_id = scenario_fixtures.setdefault(
+                surface.scenario_id,
+                surface.fixture_id,
+            )
+            if fixture_id != surface.fixture_id:
+                raise ValueError(
+                    f"scenario {surface.scenario_id!r} has multiple fixture IDs"
+                )
+            seeded_checkpoint = (
+                surface.checkpoint_cohort,
+                surface.checkpoint,
+                surface.internal_setups[0],
+            )
+            prior_seeded_checkpoint = scenario_seeded_checkpoints.setdefault(
+                surface.scenario_id,
+                seeded_checkpoint,
+            )
+            if prior_seeded_checkpoint != seeded_checkpoint:
+                raise ValueError(
+                    f"scenario {surface.scenario_id!r} has multiple seeded "
+                    "checkpoint lineages"
+                )
+            scenario_steps.setdefault(surface.scenario_id, []).append(
+                surface.scenario_step
+            )
             unknown = set(surface.prerequisites).difference(active_ids)
             if unknown:
                 raise ValueError(
                     f"surface {surface.stable_id!r} has unknown prerequisites: "
                     + ", ".join(sorted(unknown))
+                )
+
+        for scenario_id, steps in scenario_steps.items():
+            if sorted(steps) != list(range(1, len(steps) + 1)):
+                raise ValueError(
+                    f"scenario {scenario_id!r} steps must be unique and contiguous"
                 )
 
         for profile in self.profile_names:
@@ -274,3 +311,15 @@ def capture_scenario_prerequisites(stable_id: str) -> tuple[str, ...]:
 
 def capture_scenario_checkpoint(stable_id: str) -> str:
     return REGISTRY[stable_id].checkpoint
+
+
+def capture_scenario_id(stable_id: str) -> str:
+    return REGISTRY[stable_id].scenario_id
+
+
+def capture_fixture_id(stable_id: str) -> str:
+    return REGISTRY[stable_id].fixture_id
+
+
+def capture_scenario_step(stable_id: str) -> int:
+    return REGISTRY[stable_id].scenario_step

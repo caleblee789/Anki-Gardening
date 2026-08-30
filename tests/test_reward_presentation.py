@@ -110,7 +110,7 @@ def test_garden_find_lookup_joins_registry_metadata_and_hides_non_hits() -> None
     )
     environment_presentation = lookup(environment_hit)
     assert environment_presentation is not None
-    assert environment_presentation.description == "Added to Garden Decorations"
+    assert environment_presentation.description == "Added to Garden decorations"
 
     scenery_hit = GardenFindOutcome(
         "answer:6b", "2026-08-20", "hit", "environment", "environment-v1",

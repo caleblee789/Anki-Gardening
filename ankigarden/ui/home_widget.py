@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from html import escape
 import logging
 from math import isfinite
@@ -88,6 +89,116 @@ class HomeWidgetData:
     growth_accounting_stale: bool = False
     weather_visible: bool = True
     visible_scenery: str = DEFAULT_SCENERY_ID
+
+
+class HomeSurfaceMode(str, Enum):
+    """Product states rendered by the one compact Home-card shell."""
+
+    STARTER = "starter"
+    EMPTY = "empty"
+    ACTIVE_ZERO = "active-zero"
+    ACTIVE_PARTIAL = "active-partial"
+    ACTIVE_COMPLETE = "active-complete"
+
+
+@dataclass(frozen=True)
+class HomeSurfaceViewModel:
+    """Renderer-neutral state shared by starter and established Home cards.
+
+    The lifecycle snapshot still owns loading/error/stale behavior. This model
+    owns the product state inside the successful compact shell so Surfaces 01
+    and 12 cannot drift into separate geometry or progress calculations.
+    """
+
+    mode: HomeSurfaceMode
+    action_text: str
+    action_command: str
+    progress_current: int = 0
+    progress_maximum: int = 0
+
+    @property
+    def progress_percent(self) -> float:
+        if self.mode is HomeSurfaceMode.ACTIVE_COMPLETE:
+            return 100.0
+        if self.progress_maximum <= 0:
+            return 0.0
+        return min(
+            100.0,
+            max(0.0, self.progress_current / self.progress_maximum * 100.0),
+        )
+
+    @property
+    def shows_progress(self) -> bool:
+        return self.mode in {
+            HomeSurfaceMode.ACTIVE_ZERO,
+            HomeSurfaceMode.ACTIVE_PARTIAL,
+            HomeSurfaceMode.ACTIVE_COMPLETE,
+        }
+
+
+def home_surface_view_model(data: HomeWidgetData) -> HomeSurfaceViewModel:
+    """Project starter/empty/zero/partial/complete through one state machine."""
+
+    if not bool(data.starter_selected):
+        return HomeSurfaceViewModel(
+            HomeSurfaceMode.STARTER,
+            CHOOSE_STARTER_ACTION,
+            "choose-starter",
+        )
+    if not str(data.active_plant_name or "") and not str(
+        data.planted_starter_name or ""
+    ):
+        return HomeSurfaceViewModel(
+            HomeSurfaceMode.EMPTY,
+            HOME_ACTIVE_ACTION,
+            "open",
+        )
+
+    if not str(data.active_plant_name or ""):
+        starter_progress = growth_display(max(0, int(data.active_growth_points)))
+        current = max(0, int(starter_progress.stage_points))
+        maximum = max(0, int(starter_progress.stage_goal))
+        mode = (
+            HomeSurfaceMode.ACTIVE_ZERO
+            if current <= 0
+            else HomeSurfaceMode.ACTIVE_COMPLETE
+            if bool(starter_progress.fully_grown)
+            else HomeSurfaceMode.ACTIVE_PARTIAL
+        )
+        return HomeSurfaceViewModel(
+            mode,
+            HOME_ACTIVE_ACTION,
+            "open",
+            current,
+            maximum,
+        )
+
+    if bool(data.active_fully_grown):
+        total = max(0, int(data.active_growth_points))
+        return HomeSurfaceViewModel(
+            HomeSurfaceMode.ACTIVE_COMPLETE,
+            HOME_ACTIVE_ACTION,
+            "open",
+            total,
+            max(1, total),
+        )
+
+    current = max(0, int(data.active_stage_points))
+    maximum = max(0, int(data.active_stage_goal))
+    mode = (
+        HomeSurfaceMode.ACTIVE_ZERO
+        if current <= 0
+        else HomeSurfaceMode.ACTIVE_COMPLETE
+        if maximum > 0 and current >= maximum
+        else HomeSurfaceMode.ACTIVE_PARTIAL
+    )
+    return HomeSurfaceViewModel(
+        mode,
+        HOME_ACTIVE_ACTION,
+        "open",
+        current,
+        maximum,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -749,7 +860,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         return (
             HOME_WIDGET_STYLE
             +
-            f'<div id="ag-home-root" data-state="empty"{motion_attribute} role="region" aria-label="Anki Garden">'
+            f'<div id="ag-home-root" data-state="empty" data-home-mode="starter"{motion_attribute} role="region" aria-label="Anki Garden">'
             '<div class="ag-home__state" data-testid="home-empty" role="status">'
             '<div class="ag-home__identity-row"><div class="ag-home__identity">'
             '<div class="ag-home__eyebrow">Anki Garden</div>'
@@ -814,6 +925,8 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
             route="home_widget",
             field="garden_feature",
         )
+
+    surface_view = home_surface_view_model(data)
 
     source_preview = data.preview_snapshot
     if source_preview is None:
@@ -1221,9 +1334,9 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
         )
         + '</div>'
     )
-    action_text = HOME_ACTIVE_ACTION if starter_selected else CHOOSE_STARTER_ACTION
+    action_text = surface_view.action_text
     action_label = f"Open {garden_name_value}" if starter_selected else CHOOSE_STARTER_ACTION
-    action_command = "open" if starter_selected else "choose-starter"
+    action_command = surface_view.action_command
     action_reset = HOME_ACTIVE_ACTION if starter_selected else CHOOSE_STARTER_ACTION
     no_starter_body = (
         f'<span id="home-no-starter-accessible" class="ag-home__sr-only">{HOME_NO_STARTER_ACCESSIBLE}</span>'
@@ -1268,7 +1381,7 @@ def render_home_widget(snapshot: HomeWidgetSnapshot) -> str:
 
     root_class = "ag-home--no-starter" if not starter_selected else ""
     return f"""{HOME_WIDGET_STYLE}
-<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-motion=\"{motion_mode}\" data-active-slot=\"{active_slot}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
+<div id=\"ag-home-root\" class=\"{root_class}\" data-state=\"{escape(phase)}\" data-home-mode=\"{surface_view.mode.value}\" data-progress-current=\"{surface_view.progress_current}\" data-progress-maximum=\"{surface_view.progress_maximum}\" data-progress-percent=\"{surface_view.progress_percent:.2f}\" data-motion=\"{motion_mode}\" data-active-slot=\"{active_slot}\" data-active-band=\"{active_band}\" data-active-side=\"{active_side}\" data-summary-clearance=\"{summary_clearance}\"{focal_style} role=\"region\"
   aria-label=\"{escape(garden_name_value, quote=True)} Anki Garden summary. {escape(preview_support, quote=True)}\">
   <div class=\"ag-home__body\">
     {stage_up_html}

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import copy
+import json
+from pathlib import Path
+
 import pytest
 
 from scripts.audit_assets import (
     RETINA_PLANT_MIN_VISIBLE_HEIGHT,
     RETINA_RASTER_MAX_CSS_SIZE,
     RETINA_SCENERY_MAX_CSS_SIZE,
+    _validate_background,
+    _validate_bed_anchor_positions,
+    _validate_plants,
     _validate_retina_density,
     audit,
 )
@@ -99,3 +106,55 @@ def test_retina_density_gate_exempts_vector_backed_artwork() -> None:
             }
         ]
     )
+
+
+def _production_rows() -> list[dict[str, object]]:
+    manifest = (
+        Path(__file__).resolve().parents[1]
+        / "ankigarden"
+        / "assets"
+        / "manifest.json"
+    )
+    return json.loads(manifest.read_text(encoding="utf-8"))["assets"]
+
+
+def test_plant_audit_rejects_implicit_visual_scale_correction() -> None:
+    rows = copy.deepcopy(_production_rows())
+    plant = next(row for row in rows if row.get("category") == "plants")
+    plant["placement"].pop("visual_scale_correction")
+
+    with pytest.raises(ValueError, match="lacks explicit visual scale correction"):
+        _validate_plants(rows)
+
+
+def test_plant_audit_rejects_uncalibrated_thumbnail_override() -> None:
+    rows = copy.deepcopy(_production_rows())
+    plant = next(row for row in rows if row.get("category") == "plants")
+    plant["placement"]["thumbnail_scale"] = 0.51
+
+    with pytest.raises(ValueError, match="thumbnail scale is not calibrated"):
+        _validate_plants(rows)
+
+
+def test_background_audit_rejects_incomplete_bed_positions() -> None:
+    rows = copy.deepcopy(_production_rows())
+    background = next(row for row in rows if row.get("category") == "backgrounds")
+    background["placement"]["bed_anchors"].pop()
+
+    with pytest.raises(ValueError, match="exactly six bed anchors"):
+        _validate_background(rows)
+
+
+def test_bed_position_gate_rejects_duplicate_coordinates() -> None:
+    rows = _production_rows()
+    background = next(row for row in rows if row.get("category") == "backgrounds")
+    anchors = copy.deepcopy(background["placement"]["bed_anchors"])
+    anchors[1]["x"] = anchors[0]["x"]
+    anchors[1]["y"] = anchors[0]["y"]
+
+    with pytest.raises(ValueError, match="positions must be unique"):
+        _validate_bed_anchor_positions(
+            anchors,
+            context="test background",
+            require_surface_identity=True,
+        )

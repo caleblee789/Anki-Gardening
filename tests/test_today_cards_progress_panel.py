@@ -112,6 +112,16 @@ def _page_projection_function() -> Any:
             ),
             "_catalog_display_name": lambda catalog, item_id: catalog[item_id].name,
             "_today_cutoff_text": lambda value: f"cutoff:{value}",
+            "project_garden_appearance": lambda state: SimpleNamespace(
+                active_bonus_decoration_id=state.selected_garden_feature,
+                displayed_decoration_id=getattr(
+                    state,
+                    "displayed_garden_feature",
+                    state.selected_garden_feature,
+                ),
+                scenery_id=state.selected_background,
+                visual_effects_enabled=True,
+            ),
             "GARDEN_FEATURE_CATALOG": garden_features,
             "SCENERY_CATALOG": scenery,
             "DEFAULT_GARDEN_FEATURE_ID": "rain",
@@ -166,8 +176,9 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     state = SimpleNamespace(
         daily_completion=SimpleNamespace(
             starting_required_cards=194,
-            remaining_required_reviews=16,
-            remaining_learning_steps=0,
+            remaining_new_cards=4,
+            remaining_required_reviews=10,
+            remaining_learning_steps=2,
             future_learning_steps_before_cutoff=2,
             cutoff_at_ms=123_000,
         ),
@@ -200,7 +211,7 @@ def test_today_projection_shows_exact_find_state_and_changed_queue_only() -> Non
     assert result.remaining_cards == 18
     assert result.cutoff_text == "cutoff:123000"
     assert result.status.finds_line == (
-        "Garden Finds · 3 of 3 today · Daily limit reached"
+        "Standard Finds · 3 of 3 today · Daily limit reached"
     )
     assert result.status.finds_detail == ""
     assert result.status.heading == "TODAY’S CARDS"
@@ -246,7 +257,7 @@ def test_today_projection_uses_unavailable_copy_when_verification_fails() -> Non
         "Anki Garden could not verify today’s cards. "
         "Normal Garden Growth is unaffected."
     )
-    assert result.status.finds_line == "Garden Find · Next card guaranteed"
+    assert result.status.finds_line == "Standard Find · Next card guaranteed"
     assert result.starting_cards is None
     assert result.remaining_cards is None
     assert result.claim_state == "unavailable"

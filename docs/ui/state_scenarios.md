@@ -15,13 +15,29 @@
 - Species choice and confirmation do not create a plant. Placement atomically
   creates the Seed-stage starter in the selected unlocked bed. Nurture then
   atomically makes it active; completion saves `done` before either destination
-  action. The other unlocked space remains empty.
+  action. The other unlocked space remains empty. Nursery selection, placement
+  copy, and creation retain the same species identity and created `plant_id`;
+  a default Bonsai is displayed as **Bonsai Plant**.
 - Cards completed before starter selection still count toward study
   totals and the Anki streak, but receive no retroactive plant Growth or
   recurring rewards. Reliably reconstructable one-time achievements are handled
   separately by authoritative history reconciliation.
 - If no species is release-ready, Nursery explains that it is stocking plants
   and leaves starter selection incomplete.
+
+## Shared presentation projections
+
+- `PlantIdentity(plant_id, display_name, species_name)` keeps the durable plant
+  instance, learner-visible name, and species label separate for every renderer.
+- The six visible stages are Seed, Sprout, Young, Mature, Flowering, and Full
+  Bloom. Persisted `rare` remains compatible but is never visible; the compact
+  HUD says `Sprout · 2 of 6 stages`.
+- Collection completion reports `10 of 10 species discovered` separately from
+  `30 of 39 collection entries discovered`; 30 is never labeled as plants.
+- Garden appearance presents four independent rows: Scenery, Displayed
+  decoration, Active garden bonus, and Visual effects.
+- Standard Finds and Garden discoveries retain their internal ledger/event IDs
+  but use distinct player-facing labels.
 
 ## Home preview
 
@@ -63,6 +79,9 @@
   never moves.
 - Reviewer HUD, full Garden, selected-plant card, and the persisted schema-25
   state snapshot agree after refresh.
+- The expanded HUD reserves 296 px at top 44/right 16, measures its lower edge
+  from Anki's answer controls with a 72 px fallback, and collapses rather than
+  squeezing at narrow widths.
 - Before normal sync, Garden records a clean desktop review-history boundary.
   Every newly unseen supported post-activation answer introduced beyond it is
   processed exactly once across its original Anki day, including delayed lower
@@ -73,6 +92,12 @@
 - Rewards, processed identities, and one pending nonmodal Sync Rewards receipt
   commit atomically. Restart and repeated sync do not replay them. Initial setup
   and one-way collection replacement establish a non-awarding baseline.
+- Sync summary milestones paint deterministically: Full Bloom, stage change,
+  the highest valid checkpoint in the resulting stage, then ordinary Growth.
+  Superseded checkpoints do not paint or leak into Home banners. The canonical
+  receipt reconciles `420 + 80 + 20 = 520`.
+- Session Summary and Sync Rewards share one coordinator for mutual exclusion,
+  Escape ownership, focus restoration, and safe upper-right Sync docking.
 
 ## Today’s Cards and Garden Coins
 
@@ -92,6 +117,10 @@
   eligible day grants +10, and day 7 integrates that recurring payout with its
   one-time achievement. The first valid Today’s Cards completion also grants
   the separate +5 Review Day Complete reward.
+- The canonical expanded HUD reconciles `176 + 18 = 194`; Session Summary uses
+  the independent daily total `126 + 19 = 145`.
+- The 30-Day Anki Streak reward is **100 Garden Coins + 1 Small Growth Charge**
+  in achievement cards, receipts, and summaries.
 - Standard Finds use centralized protection and a three-per-day cap. The full
   Garden may explain those mechanics; the persistent HUD shows a Find only as a
   committed reward reveal and never shows the cap, guarantee, daily limit, or
@@ -127,6 +156,10 @@ Exact presentation states:
   action. Typed errors distinguish insufficient Coins, persistence failure,
   unavailable/already-owned items, invalid targets, stale price/balance, and
   request-ID conflict.
+- The canonical Small Growth Charge confirmation and receipt show 450→550
+  Growth, Seed→Sprout, two charges→one, and 50/2,000 toward Young.
+  Separate painted cases prove no transition and no stage reward; Full Bloom
+  rejection and overflow conservation retain their existing engine behavior.
 
 ## Anki streak, Fertilizer, and Booster Potions
 
@@ -136,6 +169,10 @@ Exact presentation states:
 - Fertilize opens the dedicated Fertilizer dialog. Basic, Quality, and Magical
   cards show exact Garden Coin cost and `+1 for 1 hour`, `+2 for 2 hours`, or
   `+3 for 4 hours`.
+- Selection, quote, confirmation, and the active or queued period retain one
+  immutable source `plant_id`. Actions use **Apply/Queue** and
+  **Buy and apply/Buy and queue**. **Extend** is reserved for the same-tier
+  extension disposition.
 - Fertilizer uses wall-clock time, including time outside review. Purchasing the
   same tier extends its remaining time. Another tier queues without discarding
   either duration. A sixth queued/active dose is rejected without consuming
@@ -166,6 +203,8 @@ Exact presentation states:
 - A configured species appears for selection or purchase only when all six
   Verdant Twilight V6 stages are local, release-preferred, geometry-valid
   `direct_soil` assets. Incomplete lines remain hidden.
+- All 60 species-stage assets serialize `visual_scale_correction`, use a
+  calibrated thumbnail scale, and validate against all six V6 bed positions.
 - An already-owned legacy species remains visible, plantable, and progress-safe
   even when it is not currently stocked.
 - Moving to Collection preserves Growth, memories, Fertilizer, and Booster
@@ -241,7 +280,8 @@ Exact presentation states:
   diagnostics. The production package has no state-mutation controls; temporary
   confirm/back up/populate/restore tools appear only in an explicitly built,
   disposable capture package.
-- Wide layout places controls beside preview; compact layout stacks and scrolls.
+- Wide layout places controls beside the structured appearance summary; compact
+  layout stacks and scrolls without restoring the removed live scene preview.
   Reduced motion is honored without hiding information.
 
 ## Migration, invalid data, and failures
@@ -273,3 +313,24 @@ Exact presentation states:
 - Failed state or settings writes restore the prior in-memory value. Due-data
   failure grants no completion reward. Missing artwork preserves the named plant,
   stage, and progression through fallback rendering.
+
+## v26 scenario evidence
+
+Capture contract v26 uses contract schema 2 and scenario schema 3. It registers
+18 representative and 34 full surfaces and produces two and five sheets.
+`scenario_id`, `fixture_id`, and one-based `scenario_step` are mandatory in
+specs, dependency digests, runtime records, manifests, validators, PNG metadata,
+and sheet indexes. Shared fixture IDs establish sequential lineage for
+`first_run`, `fertilizer_queue`, and `growth_charge_transition`; v25 evidence is
+never reused. Surfaces 27–30 use the named one-step scenarios
+`reviewer_hud_base`, `session_summary`, `sync_rewards`, and
+`reviewer_hud_full_bloom`.
+
+Hard gates cover deprecated visible copy, root/DOM overflow, progress
+fractions, asset mappings, Reviewer exclusion rectangles, four-state scrolling,
+and lineage. Current run paths, archive and capture hashes, artifact sizes, and
+validation totals are recorded only in the
+[final 2.1.0 UI audit](final-ui-audit-2.1.0.md).
+`quality_status: review-required` and `release_ready: false` remain unchanged;
+manual macOS interaction, Windows/Linux, mixed-DPI, forced-colors,
+screen-reader, broader-keyboard, and human release approval remain open.

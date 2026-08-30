@@ -13,25 +13,38 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ..growth import GROWTH_UNITS_PER_POINT, stage_progress
+from ..growth import GROWTH_UNITS_PER_POINT, stage_presentation, stage_progress
+from ..presentation import PlantIdentity
 from ..environment import GARDEN_FEATURE_CATALOG
 from ..garden_features import FEATURE_EFFECT_KEYS
 from .formatters import format_approximate_cards, format_quantity
 
 
-# The expanded width follows ``clamp(312px, 20vw, 324px)``. The compatibility
-# constant remains the preferred nominal size used by fixtures without a live
-# viewport.
-HUD_EXPANDED_WIDTH = 312
-HUD_MIN_WIDTH = 312
-HUD_MAX_WIDTH = 324
+# The reviewer brief uses one fixed safe-area width. A fixed value also keeps
+# two-line plant-name and checkpoint geometry stable across desktop widths.
+HUD_EXPANDED_WIDTH = 296
+HUD_MIN_WIDTH = 296
+HUD_MAX_WIDTH = 296
 HUD_COLLAPSED_WIDTH = 56
 HUD_COLLAPSED_HEIGHT = 112
 HUD_DEFAULT_CONTENT_HEIGHT = 558
-HUD_TOP_MARGIN = 16
-HUD_EDGE_MARGIN = 12
-HUD_CONTROLS_CLEARANCE = 112
+HUD_TOP_MARGIN = 44
+HUD_EDGE_MARGIN = 16
+HUD_CONTROLS_CLEARANCE = 72
+HUD_ANSWER_CONTROLS_SCHEMA_VERSION = 1
 HUD_NARROW_VIEWPORT = 620
+HUD_HEADER_LEFT_INSET = 14
+HUD_HEADER_RIGHT_INSET = 6
+HUD_HEADER_ACTIONS_PREFERRED_WIDTH = 170
+
+# Full Bloom does not discard later review value: primary Growth routes to the
+# next planted unfinished plant, Shared Growth is distributed among unfinished
+# planted beds, and only a remainder with no available capacity is stored.
+# Keep one renderer-neutral learner-facing contract so the projection and the
+# native HUD cannot drift.
+FULL_BLOOM_GROWTH_ROUTE_COPY = (
+    "Future Growth will go to other planted plants. Any remainder will be stored."
+)
 
 
 STAGE_NAMES = {
@@ -216,6 +229,7 @@ def _completion_counts(completion: Any, stats: Any) -> tuple[int, int, int]:
     remaining = sum(
         max(0, int(getattr(completion, field, 0) or 0))
         for field in (
+            "remaining_new_cards",
             "remaining_required_reviews",
             "remaining_learning_steps",
             "future_learning_steps_before_cutoff",
@@ -474,7 +488,7 @@ def _active_effect_rows(
     # so they precede the derived streak bonus while remaining behind timed
     # Fertilizer and card-limited Booster effects.
     for label, units in (
-        ("Garden Decoration", getattr(award, "weather_growth_units", 0)),
+        ("Garden decoration", getattr(award, "weather_growth_units", 0)),
         ("Scenery", getattr(award, "scenery_growth_units", 0)),
     ):
         normalized_units = max(0, int(units or 0))
@@ -696,21 +710,23 @@ def project_nurture(
         checkpoint_line = f"{growth_remaining:,} growth to next checkpoint"
         checkpoint_reward = _checkpoint_reward(engine, next_stage, checkpoint_percent)
 
-    if fully_grown:
-        stage_label = "Full Bloom"
-    else:
-        stage_number = max(1, min(5, int(progress.stage_index)))
-        stage_name = STAGE_NAMES.get(stage_key, stage_key.replace("_", " ").title())
-        stage_label = f"{stage_name} · Stage {stage_number} of 5"
+    canonical_stage = stage_presentation(stage_key)
+    stage_name = (
+        canonical_stage.display_name
+        if canonical_stage is not None else
+        STAGE_NAMES.get(stage_key, stage_key.replace("_", " ").title())
+    )
+    stage_label = (
+        f"{stage_name} · {canonical_stage.display_ordinal} of "
+        f"{canonical_stage.display_total} stages"
+        if canonical_stage is not None else
+        stage_name
+    )
 
     species_key = str(getattr(target, "species", "") or "")
-    species_name = species_key.replace("_", " ").title()
-    plant_name = str(getattr(target, "name", "") or species_name or "Plant")
-    if plant_name.casefold().strip() in {
-        species_name.casefold().strip(),
-        f"{species_name.casefold().strip()} plant",
-    }:
-        plant_name = species_name or plant_name
+    identity = PlantIdentity.from_plant(target)
+    species_name = identity.species_name
+    plant_name = identity.display_name
     art_path, art_placement = _resolved_plant_art(engine, species_key, stage_key)
     effect_rows = _active_effect_rows(engine, target, award, now_ms=now_ms)
     schedule = getattr(state, "daily_loadout", None)
@@ -751,7 +767,7 @@ def project_nurture(
         effect_art_refs=tuple(artwork_ref for _copy, artwork_ref in effect_rows),
         stored_growth_line="",
         empty_message=(
-            "Future growth will be shared or stored."
+            FULL_BLOOM_GROWTH_ROUTE_COPY
             if fully_grown
             else ""
         ),
@@ -809,6 +825,42 @@ def reviewer_hud_width(viewport_width: int) -> int:
     return min(available, max(HUD_MIN_WIDTH, min(HUD_MAX_WIDTH, responsive)))
 
 
+def reviewer_hud_header_actions_width(title_width: int) -> int:
+    """Return the largest action reserve that keeps the header contained.
+
+    The title is content-sized while the balance and collapse control share a
+    right-aligned reserve.  Deriving that reserve from the fixed Reviewer safe
+    area prevents either group from crossing the header boundary when native
+    font metrics make the title wider than its former nominal allocation.
+    """
+
+    available = (
+        HUD_EXPANDED_WIDTH
+        - HUD_HEADER_LEFT_INSET
+        - HUD_HEADER_RIGHT_INSET
+        - max(0, int(title_width))
+    )
+    return max(0, min(HUD_HEADER_ACTIONS_PREFERRED_WIDTH, available))
+
+
+def reviewer_hud_safe_bottom(
+    viewport_height: int,
+    answer_controls_top: int | None = None,
+) -> int:
+    """Return the shared lower boundary for the Reviewer HUD safe area."""
+
+    viewport = max(1, int(viewport_height))
+    if answer_controls_top is None:
+        return max(
+            HUD_TOP_MARGIN + 1,
+            viewport - HUD_CONTROLS_CLEARANCE,
+        )
+    return max(
+        HUD_TOP_MARGIN + 1,
+        min(viewport, int(answer_controls_top)),
+    )
+
+
 def reviewer_hud_geometry(
     viewport_width: int,
     viewport_height: int,
@@ -816,6 +868,7 @@ def reviewer_hud_geometry(
     collapsed: bool,
     dock: str,
     content_height: int | None = None,
+    answer_controls_top: int | None = None,
 ) -> tuple[int, int, int, int]:
     """Return content-hugging, answer-bar-safe ``(x, y, width, height)``.
 
@@ -832,10 +885,11 @@ def reviewer_hud_geometry(
         if collapsed
         else reviewer_hud_width(viewport_width)
     )
-    available_height = max(
-        1,
-        viewport_height - HUD_TOP_MARGIN - HUD_CONTROLS_CLEARANCE,
+    safe_bottom = reviewer_hud_safe_bottom(
+        viewport_height,
+        answer_controls_top,
     )
+    available_height = max(1, safe_bottom - HUD_TOP_MARGIN)
     if collapsed:
         height = min(HUD_COLLAPSED_HEIGHT, available_height)
     else:
@@ -866,10 +920,14 @@ def create_reviewer_hud(parent: Any, **callbacks: Any) -> Any:
 __all__ = [
     "HUD_COLLAPSED_HEIGHT",
     "HUD_COLLAPSED_WIDTH",
+    "HUD_ANSWER_CONTROLS_SCHEMA_VERSION",
     "HUD_CONTROLS_CLEARANCE",
     "HUD_DEFAULT_CONTENT_HEIGHT",
     "HUD_EDGE_MARGIN",
     "HUD_EXPANDED_WIDTH",
+    "HUD_HEADER_ACTIONS_PREFERRED_WIDTH",
+    "HUD_HEADER_LEFT_INSET",
+    "HUD_HEADER_RIGHT_INSET",
     "HUD_MAX_WIDTH",
     "HUD_MIN_WIDTH",
     "HUD_NARROW_VIEWPORT",
@@ -886,6 +944,8 @@ __all__ = [
     "project_reviewer_hud",
     "project_today_cards",
     "reviewer_hud_geometry",
+    "reviewer_hud_header_actions_width",
+    "reviewer_hud_safe_bottom",
     "reviewer_hud_width",
     "should_start_collapsed",
 ]

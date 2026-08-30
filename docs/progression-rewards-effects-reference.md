@@ -2,7 +2,8 @@
 
 > Current working-tree reference for schema 25. This describes active
 > player-facing mechanics. Development tools and retired compatibility fields
-> are excluded.
+> are excluded. Capture/evidence versioning is separate: the current visual
+> contract is v26, contract schema 2 and scenario schema 3.
 
 ## The three Growth concepts
 
@@ -59,6 +60,9 @@ progress. These rewards remain separate from Growth calculation.
 
 - Internal persistence retains the legacy final-stage identifier; all
   player-facing copy says **Full Bloom**.
+- Every renderer consumes the same six-stage projection: Seed, Sprout, Young,
+  Mature, Flowering, and Full Bloom. Compact progression copy uses
+  `Sprout · 2 of 6 stages`; internal `rare` is never visible.
 - A single Growth event may cross and reward several checkpoints or stages.
 - Autumn Hearth adds 50% to checkpoint and stage Coins. Fractional bonus Coins
   carry between payouts instead of being rounded independently.
@@ -124,6 +128,10 @@ Approved HUD copy:
 The activity count is informational. It has no denominator, progress bar,
 threshold color, checkmark, or separate reward.
 
+Canonical cross-surface arithmetic is `176 + 18 = 194` in the expanded HUD and
+`126 + 19 = 145` in Session Summary. These are independent projections, not a
+shared session/daily total.
+
 ## Post-sync rewards
 
 Before normal sync, Garden establishes a clean boundary from review history
@@ -141,6 +149,11 @@ the same card.
   baseline instead of replaying history.
 - **Show rewards after syncing** defaults on and controls only presentation;
   reward processing is unchanged when it is off.
+- Milestones paint deterministically as Full Bloom, stage change, the highest
+  valid checkpoint in the resulting stage, then ordinary Growth. Superseded
+  checkpoints and sync-created Home banners are suppressed.
+- The canonical sync total reconciles 420 direct Growth + 80 Shared Growth +
+  20 Stored Growth = 520 Growth.
 
 ## Consumables
 
@@ -156,6 +169,11 @@ the same card.
 
 ### Fertilizer and Booster rules
 
+- Selection, quote, confirmation, and the active or queued period carry one
+  immutable source `plant_id`.
+- Owned inventory uses **Apply** or **Queue**; a purchase uses **Buy and apply**
+  or **Buy and queue**. **Extend** appears only for an active same-tier
+  extension.
 - Fertilizer uses wall-clock time, including time outside the reviewer, so more
   cards completed during its window produce more total Growth.
 - Reusing the same Fertilizer tier extends its remaining time.
@@ -184,6 +202,10 @@ the same card.
   is not shared.
 - Overflow continues to other eligible plants or Stored Growth.
 - Every crossed checkpoint and stage still grants its milestone reward.
+- The canonical Small Charge case is 450→550 Growth, Seed→Sprout,
+  two charges→one, and 50/2,000 toward Young. No-transition and
+  no-stage-reward success variants remain separate; Full Bloom rejection and
+  overflow conservation are unchanged.
 
 ## Daily loadout
 
@@ -276,6 +298,13 @@ resets only that tier and selects uniformly among its unowned items.
 A completed tier stops rolling. Collection displays deterministic progress to
 the next tier guarantee; the reviewer does not show raw counters.
 
+## Collection presentation
+
+The shared collection projection keeps plant species, owned plant instances,
+and all collectible entries distinct. The canonical completion state says
+**10 of 10 species discovered** and separately
+**30 of 39 collection entries discovered**. It never calls 30 plants.
+
 ## Achievements and historical recognition
 
 Achievements never reward avoiding Again.
@@ -346,6 +375,11 @@ totals. Projected quantities use `card/cards`; the immediate action remains
 cap/protection state, and irrelevant Stored Growth out of the persistent view
 while retaining those typed facts for detailed surfaces.
 
+Its expanded safe area is 296 px wide at top 44/right 16. The lower boundary is
+measured from Anki's answer controls with a 72 px fallback, and narrow layouts
+collapse. Session Summary and Sync Rewards share mutual exclusion, one Escape
+owner, focus restoration, and safe upper-right Sync docking.
+
 ## Explicit non-mechanics
 
 There is no plant decay, watering obligation, missed-day loss, rating-button
@@ -362,3 +396,18 @@ currency, or unlimited environment stacking.
 - [Schema-25 state](../ankigarden/models/state.py)
 - [Detailed data contracts](ui/data_contracts.md)
 - [Reviewer HUD specification](reviewer-hud-specification.md)
+
+## v26 evidence status
+
+The capture topology is 18 representative and 34 full surfaces with two- and
+five-page contact sheets. Every evidence record carries scenario ID, fixture
+ID, and one-based step under contract schema 2/scenario schema 3; v25 reuse is
+rejected. Deprecated visible copy, overflow, progress fractions, asset mapping,
+Reviewer exclusion rectangles, four-state scrolling, and lineage fail closed.
+
+Current run paths, archive and capture hashes, artifact sizes, and validation
+totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). It remains
+`quality_status: review-required` and `release_ready: false`; manual macOS,
+platform, mixed-DPI, forced-colors, screen-reader, broader-keyboard, and human
+approval remain open.

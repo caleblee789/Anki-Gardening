@@ -1048,6 +1048,48 @@ def test_calibrated_lower_support_is_the_physical_width_authority(support_width)
     assert .92 <= row.fit_scale <= 1.0
 
 
+def test_visual_scale_correction_preserves_the_authored_manifest_range():
+    placement = {
+        "art_bounds": [0.04, 0.04, 0.92, 0.90],
+        "base_bounds": [0.25, 0.68, 0.50, 0.20],
+        "support_bounds": [0.38, 0.86, 0.24, 0.05],
+        "foliage_bounds": [0.08, 0.04, 0.84, 0.64],
+        "soil_contact": [0.50, 0.91],
+        "interaction_bounds": [0.02, 0.02, 0.96, 0.91],
+        "geometry_version": 2,
+        "vessel_class": "standard_upright",
+        "vessel_class_multiplier": 1.0,
+        "scene_scale_correction": 1.0,
+        "base_type": "pot",
+    }
+    calibrated = plant_layout(
+        2_000,
+        924,
+        [{
+            "slot_index": 3,
+            "placement": {**placement, "visual_scale_correction": 0.55},
+            "canvas_aspect": 1.0,
+        }],
+        protected_status=False,
+    )[0]
+    baseline = plant_layout(
+        2_000,
+        924,
+        [{
+            "slot_index": 3,
+            "placement": {**placement, "visual_scale_correction": 1.0},
+            "canvas_aspect": 1.0,
+        }],
+        protected_status=False,
+    )[0]
+
+    assert calibrated.visual_scale_correction == pytest.approx(0.55)
+    assert calibrated.support_rect.width == pytest.approx(
+        baseline.support_rect.width * 0.55,
+        rel=0.01,
+    )
+
+
 def test_mixed_release_catalog_arrangement_stays_grounded_on_v6_soil():
     manifest_path = Path(__file__).resolve().parents[1] / "ankigarden/assets/manifest.json"
     assets = json.loads(manifest_path.read_text("utf-8"))["assets"]

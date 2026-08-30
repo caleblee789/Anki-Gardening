@@ -27,8 +27,9 @@ SYNC_REWARD_MIN_WIDTH = 400
 SYNC_REWARD_MAX_WIDTH = 480
 SYNC_REWARD_MAX_HEIGHT = 640
 SYNC_REWARD_VIEWPORT_MARGIN = 24
-SYNC_REWARD_TOP_OFFSET = 22
+SYNC_REWARD_TOP_OFFSET = 24
 SYNC_REWARD_MIN_HEIGHT = 210
+SYNC_REWARD_BODY_SPACING = 12
 SYNC_REWARD_METRIC_ANIMATION_MS = 360
 SYNC_REWARD_FULL_BLOOM_PULSE_MS = 520
 
@@ -40,7 +41,7 @@ def sync_reward_summary_geometry(
     *,
     preferred_width: int = SYNC_REWARD_PREFERRED_WIDTH,
 ) -> tuple[int, int, int, int]:
-    """Return centered, viewport-bounded ``(x, y, width, height)`` geometry."""
+    """Return safe upper-right, viewport-bounded ``(x, y, width, height)``."""
 
     viewport_width = max(1, int(viewport_width))
     viewport_height = max(1, int(viewport_height))
@@ -62,7 +63,7 @@ def sync_reward_summary_geometry(
         minimum_height,
         min(max(1, int(content_height)), height_limit),
     )
-    x = max(0, (viewport_width - width) // 2)
+    x = max(0, viewport_width - width - SYNC_REWARD_VIEWPORT_MARGIN)
     y = min(SYNC_REWARD_TOP_OFFSET, max(0, viewport_height - height))
     return x, y, width, height
 
@@ -169,7 +170,13 @@ def sync_reward_visibility_plan(
 def sync_reward_metric_plan(
     summary: SyncRewardSummary,
 ) -> tuple[tuple[str, str, str], ...]:
-    """Return the two required metrics and the optional third metric."""
+    """Return required totals plus independently labelled reward metrics.
+
+    ``finds`` and ``environment_discoveries`` are separate committed streams.
+    Keeping their projections separate prevents a Garden discovery from being
+    presented as a Standard Find without changing either stream's persisted
+    reward or event identity.
+    """
 
     metrics: list[tuple[str, str, str]] = [
         (f"{summary.eligible_answer_count:,}", "Card answers", "sync_review_cards"),
@@ -177,12 +184,20 @@ def sync_reward_metric_plan(
     ]
     if summary.garden_coin_delta > 0:
         metrics.append((f"+{summary.garden_coin_delta:,}", "Garden Coins", "garden_coin"))
-    else:
-        finds = sum(_quantity(row) for row in summary.finds) + len(
-            summary.environment_discoveries
-        )
-        if finds > 0:
-            metrics.append((f"+{finds:,}", "Finds", "find"))
+    standard_finds = sum(_quantity(row) for row in summary.finds)
+    if standard_finds > 0:
+        metrics.append((
+            f"+{standard_finds:,}",
+            "Standard Finds",
+            "standard_find",
+        ))
+    garden_discoveries = len(summary.environment_discoveries)
+    if garden_discoveries > 0:
+        metrics.append((
+            f"+{garden_discoveries:,}",
+            "Garden discoveries",
+            "garden_discovery",
+        ))
     return tuple(metrics)
 
 
@@ -564,11 +579,13 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         self._metric_animations: list[Any] = []
         self._progress_animations: list[Any] = []
         self._full_bloom_animations: list[Any] = []
+        self._settled_reposition_pending = False
 
         self.setObjectName("ankiGardenSyncRewardSummary")
         self.setProperty("semanticId", "sync-rewards.summary")
         self.setProperty("summaryNonmodal", True)
-        self.setProperty("summaryCentered", True)
+        self.setProperty("summaryCentered", False)
+        self.setProperty("summaryDock", "upper-right")
         self.setProperty("summaryFixedHeaderFooter", True)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -789,7 +806,10 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         body.setObjectName("ankiGardenSyncRewardBody")
         layout = QVBoxLayout(body)
         layout.setContentsMargins(0, 0, 8, 0)
-        layout.setSpacing(14)
+        # Six canonical first-fold blocks must fit without partially clipping
+        # the first reward row at the fixed 640 px dock height.  Twelve pixels
+        # keeps the section rhythm while leaving the reward fully visible.
+        layout.setSpacing(SYNC_REWARD_BODY_SPACING)
         self._body_scroll.setWidget(body)
         self._body_widget = body
         return layout
@@ -822,16 +842,17 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         asset_id = icon_name
         asset_type = "ui"
         explicit_path = ""
-        if icon_name == "find":
+        if icon_name == "standard_find":
+            if self._summary.finds:
+                first = self._summary.finds[0]
+                asset_id = str(first.get("reward_id", "") or "")
+                explicit_path = str(first.get("image_asset", "") or "")
+        elif icon_name == "garden_discovery":
             if self._summary.environment_discoveries:
                 first = self._summary.environment_discoveries[0]
                 asset_id = str(first.get("environment_id", "") or "")
                 asset_type = "environment"
                 explicit_path = str(first.get("preview_asset", "") or "")
-            elif self._summary.finds:
-                first = self._summary.finds[0]
-                asset_id = str(first.get("reward_id", "") or "")
-                explicit_path = str(first.get("image_asset", "") or "")
         icon = GardenAssetThumbnail(
             tile,
             engine=self._engine,
@@ -841,6 +862,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             explicit_path=explicit_path,
         )
         icon.setProperty("syncMetricArtwork", True)
+        tile.setProperty("syncMetricKey", icon_name)
         value_label = QLabel(value, tile)
         value_label.setProperty("syncMetricValue", True)
         value_label.setTextFormat(Qt.TextFormat.PlainText)
@@ -1064,6 +1086,12 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return frame
 
         progress = QProgressBar(frame)
+        progress.setProperty(
+            "semanticId",
+            "sync-rewards.plant."
+            + str(row.get("plant_id", "") or "unknown")
+            + ".stage-progress",
+        )
         progress.setRange(0, 100)
         progress_target = 100 if fully_grown else progress_after
         progress.setTextVisible(False)
@@ -1211,10 +1239,16 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _environment_row(self, row: Mapping[str, Any], parent: Any) -> QFrame:
         frame = QFrame(parent)
         frame.setProperty("syncRow", True)
+        frame.setProperty("syncRewardKind", "garden_discovery")
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(10)
         identity = str(row.get("environment_id", "") or "")
+        frame.setProperty("syncRewardIdentity", identity)
+        frame.setProperty(
+            "syncRewardEventId",
+            str(row.get("event_id", "") or ""),
+        )
         layout.addWidget(self._art_label(
             frame,
             kind="environment",
@@ -1226,13 +1260,20 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         copy = QVBoxLayout()
         copy.setContentsMargins(0, 0, 0, 0)
         copy.setSpacing(1)
-        name = QLabel(str(row.get("display_name", "Environment") or "Environment"), frame)
+        name = QLabel(
+            str(row.get("display_name", "Garden discovery") or "Garden discovery"),
+            frame,
+        )
         name.setProperty("syncPrimary", True)
         name.setWordWrap(True)
         name.setTextFormat(Qt.TextFormat.PlainText)
         copy.addWidget(name)
         rarity = str(row.get("rarity", "") or "").replace("_", " ").title()
-        status_text = f"{rarity} · New environment" if rarity else "New environment"
+        status_text = (
+            f"{rarity} · Garden decoration"
+            if rarity else
+            "Garden decoration"
+        )
         status = QLabel(status_text, frame)
         status.setProperty("syncSecondary", True)
         copy.addWidget(status)
@@ -1242,10 +1283,16 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
     def _find_card(self, row: Mapping[str, Any], parent: Any) -> QFrame:
         frame = QFrame(parent)
         frame.setProperty("syncRow", True)
+        frame.setProperty("syncRewardKind", "standard_find")
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(9, 8, 9, 8)
         layout.setSpacing(8)
         reward_id = str(row.get("reward_id", "") or "")
+        frame.setProperty("syncRewardIdentity", reward_id)
+        frame.setProperty(
+            "syncRewardEventId",
+            str(row.get("event_id", "") or ""),
+        )
         layout.addWidget(self._art_label(
             frame,
             kind="find",
@@ -1257,7 +1304,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         copy = QVBoxLayout()
         copy.setContentsMargins(0, 0, 0, 0)
         copy.setSpacing(1)
-        title = str(row.get("display_name", reward_id) or reward_id or "Garden Find")
+        title = str(row.get("display_name", reward_id) or reward_id or "Standard Find")
         label = QLabel(title, frame)
         label.setProperty("syncPrimary", True)
         label.setWordWrap(True)
@@ -1416,20 +1463,29 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
         metrics_frame = QFrame(self._body_widget)
         metrics_frame.setProperty("syncMetricStrip", True)
-        metrics_layout = QHBoxLayout(metrics_frame)
+        metrics_layout = QGridLayout(metrics_frame)
         metrics_layout.setContentsMargins(0, 0, 0, 0)
         metrics_layout.setSpacing(8)
-        for value, label, icon_name in sync_reward_metric_plan(self._summary):
-            metrics_layout.addWidget(
-                self._metric_tile(
-                    value,
-                    label,
-                    icon_name,
-                    metrics_frame,
-                    motion=metric_motion.get(label),
-                ),
-                1,
-            )
+        metrics = sync_reward_metric_plan(self._summary)
+        for column in range(6):
+            metrics_layout.setColumnStretch(column, 1)
+        for row_index, offset in enumerate(range(0, len(metrics), 3)):
+            row_metrics = metrics[offset:offset + 3]
+            column_span = 6 // len(row_metrics)
+            for column_index, (value, label, icon_name) in enumerate(row_metrics):
+                metrics_layout.addWidget(
+                    self._metric_tile(
+                        value,
+                        label,
+                        icon_name,
+                        metrics_frame,
+                        motion=metric_motion.get(label),
+                    ),
+                    row_index,
+                    column_index * column_span,
+                    1,
+                    column_span,
+                )
         layout.addWidget(metrics_frame)
 
         has_growth = bool(
@@ -1526,6 +1582,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         else:
             self._disclosure = None
         self.reposition()
+        self._schedule_settled_reposition()
 
     def update_model(self, summary: SyncRewardSummary) -> None:
         """Update the one mounted card while retaining disclosure state."""
@@ -1548,6 +1605,11 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
 
     def _natural_height(self) -> int:
         try:
+            body_layout = self._body_widget.layout()
+            if body_layout is not None:
+                body_layout.invalidate()
+                body_layout.activate()
+            self._body_widget.updateGeometry()
             self.layout().activate()
             self._body_widget.adjustSize()
             body_height = max(1, int(self._body_widget.sizeHint().height()))
@@ -1556,6 +1618,25 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
             return 16 + header_height + 12 + body_height + 12 + footer_height
         except Exception:
             return SYNC_REWARD_MIN_HEIGHT
+
+    def _schedule_settled_reposition(self) -> None:
+        """Refit once Qt has committed the scroll body's native size hint."""
+
+        if self._dismissed or self._settled_reposition_pending:
+            return
+        self._settled_reposition_pending = True
+        QTimer.singleShot(0, self._reposition_after_layout_settles)
+
+    def _reposition_after_layout_settles(self) -> None:
+        self._settled_reposition_pending = False
+        if self._dismissed:
+            return
+        try:
+            self.reposition()
+        except RuntimeError:
+            # The nonmodal receipt may have been deleted before the queued
+            # layout turn. Its dismissal callback already owns teardown.
+            return
 
     def reposition(
         self,
@@ -1600,6 +1681,7 @@ class SyncRewardSummaryCard(QFrame):  # type: ignore[misc,valid-type]
         except Exception:
             pass
         self.reposition()
+        self._schedule_settled_reposition()
         if self._entrance_started or not self._animations_enabled:
             return
         self._entrance_started = True
@@ -1680,6 +1762,7 @@ __all__ = [
     "SYNC_REWARD_MAX_WIDTH",
     "SYNC_REWARD_METRIC_ANIMATION_MS",
     "SYNC_REWARD_FULL_BLOOM_PULSE_MS",
+    "SYNC_REWARD_BODY_SPACING",
     "SYNC_REWARD_MIN_HEIGHT",
     "SYNC_REWARD_MIN_WIDTH",
     "SYNC_REWARD_PREFERRED_WIDTH",

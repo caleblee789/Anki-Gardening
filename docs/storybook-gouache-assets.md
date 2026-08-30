@@ -58,6 +58,13 @@ geometry-v2 visible bounds, interaction bounds, and soil-contact metadata.
 Runtime grounding—contact shadow, contact line, foreground vegetation, and
 occlusion—belongs to the scene renderer rather than the bitmap.
 
+Every placement record also serializes an authored
+`visual_scale_correction`. Scene layout combines it with the canonical scene
+scale without changing soil contact. Catalog and dialog art use an independent
+explicit or optically calibrated `thumbnail_scale`, so large transparent
+margins do not make Seed art appear undersized and thumbnail tuning cannot move
+a plant in the Garden.
+
 A species enters **Available now** only when all six stages are present locally
 as release-preferred Verdant Twilight V6 `direct_soil` assets and every entry
 passes geometry validation. Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony,
@@ -66,6 +73,11 @@ complete-line contract. Retired or incomplete lines are not bundled and remain
 hidden from starter selection and purchase. A previously owned plant is never
 removed or damaged; if its old bitmap is unavailable, the renderer keeps its
 name and stage and uses the code-native plant fallback.
+
+The release audit treats the ten species by six stages as 60 independent asset
+contracts and validates each against all six bed positions. Missing or implicit
+`visual_scale_correction`, uncalibrated thumbnail scale, invalid alpha/contact
+geometry, or an incomplete species line fails closed.
 
 The shipped asset tree is deliberately small: current V6 backgrounds, reskins,
 plant sprites, item art, and eight Garden Decoration assets live under
@@ -106,3 +118,18 @@ inspect for fringe, cropped foliage, false shadows, and base drift. Acceptance
 requires the asset audit, complete-line readiness check, all-stage/all-space
 geometry matrix, responsive renders, package parity, and the exact-package
 isolated-Anki visual pass.
+
+## v26 visual evidence
+
+Capture contract v26 uses contract schema 2 and scenario schema 3 with 18
+representative and 34 full surfaces, producing two and five sheets. Scenario
+ID, fixture ID, and one-based step persist through every evidence layer; v25
+reuse is rejected. Asset mapping, visible-copy, overflow, progress, Reviewer
+exclusion, scroll-state, and lineage checks are hard gates.
+
+Current run paths, archive and capture hashes, artifact sizes, and validation
+totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). The evidence remains
+`quality_status: review-required` and `release_ready: false`; manual macOS,
+cross-platform, mixed-DPI, forced-colors, screen-reader, keyboard, and human
+approval gates remain open.

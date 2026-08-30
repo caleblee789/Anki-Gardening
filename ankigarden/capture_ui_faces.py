@@ -1,4 +1,4 @@
-"""Compatibility bootstrap for the capture-only v25 runtime.
+"""Compatibility bootstrap for the capture-only v26 runtime.
 
 Production archives exclude both this file and :mod:`ankigarden.capture`.
 Capture archives include them only when the immutable build capability enables

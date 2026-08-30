@@ -75,6 +75,7 @@ class DialogLayoutMetrics:
     """Shared non-scrolling shell and central-body spacing contract."""
 
     horizontal_padding: int = 24
+    compact_body_padding: int = 20
     header_top_padding: int = 24
     body_top_padding: int = 16
     body_bottom_padding: int = 24
@@ -495,6 +496,38 @@ def merge_content_fit_preservation(
     return None
 
 
+def workspace_content_fit_natural_height(
+    natural_height: int,
+    *,
+    window_mode: DialogWindowMode | str,
+    window_height: int,
+    viewport_height: int | None,
+    scroll_content_height: int | None,
+) -> int:
+    """Replace a workspace viewport with its natural scroll-content height.
+
+    A ``QScrollArea`` reports the allocated viewport in its parent layout's
+    size hint. For content-fit workspaces that makes the current window height
+    self-reinforcing: content can overflow while the root still claims it
+    fits. Derive the fixed header/tab/footer chrome from the live geometry and
+    replace only the central viewport with its layout hint. The result is
+    stable before and after a resize and still leaves the family and screen
+    caps authoritative.
+    """
+
+    base = max(1, int(natural_height))
+    if DialogWindowMode(window_mode) is not DialogWindowMode.WORKSPACE:
+        return base
+    if viewport_height is None or scroll_content_height is None:
+        return base
+    viewport = max(0, int(viewport_height))
+    content = max(0, int(scroll_content_height))
+    if viewport <= 0 or content <= 0:
+        return base
+    fixed_chrome = max(0, int(window_height) - viewport)
+    return max(base, fixed_chrome + content)
+
+
 def should_preserve_transition_height(
     *,
     policy_enabled: bool,
@@ -558,7 +591,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         820,
         510,
         840,
-        680,
+        720,
         1.0,
         1.0,
         False,
@@ -571,7 +604,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         940,
         420,
         950,
-        560,
+        580,
         1.0,
         1.0,
         False,
@@ -597,7 +630,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         1000,
         540,
         1020,
-        560,
+        680,
         1.0,
         1.0,
         False,
@@ -682,6 +715,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         1.0,
         1.0,
         False,
+        True,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
     DialogSizeClass.PREVIEW: DialogSizePolicy(
@@ -694,6 +728,7 @@ DIALOG_SIZE_POLICIES: dict[DialogSizeClass, DialogSizeProfile] = {
         1.0,
         1.0,
         False,
+        True,
         window_mode=DialogWindowMode.WORKSPACE,
     ),
 }
@@ -730,28 +765,51 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # shell content-fit around the remaining identity and appearance rows.
         "display": DialogHeightProfile(390, 400, 420, 800, 820, 840),
         # Advanced adds four compact setting rows beneath the same preview-free
-        # Display content. Its canonical height keeps all four rows visible;
-        # shorter screens still retain the outer scroll owner.
-        "advanced": DialogHeightProfile(620, 620, 620, 800, 820, 840),
+        # Display content. The pinned shell consumes about 217 logical px, so
+        # reserve the measured content height plus breathing room rather than
+        # opening with the final row behind the emergency scroll viewport.
+        # Shorter screens still retain the outer scroll owner.
+        "advanced": DialogHeightProfile(700, 700, 720, 800, 820, 840),
         "diagnostics-clean": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-warning": DialogHeightProfile(280, 300, 320, 760, 780, 800),
         "diagnostics-expanded": DialogHeightProfile(430, 470, 520, 760, 780, 800),
     },
     DialogSizeClass.NURSERY: {
-        "starter": DialogHeightProfile(340, 350, 360, 925, 940, 950),
+        # Four starter cards form two complete 90 px rows. The workspace's
+        # content-derived fit lands near 377 px at canonical scale; keep the
+        # semantic bounds wide enough for that natural height instead of
+        # forcing the second row through the central scroll viewport.
+        "starter": DialogHeightProfile(370, 380, 410, 925, 940, 950),
         "plants": DialogHeightProfile(300, 360, 520, 925, 940, 950),
         "owned": DialogHeightProfile(470, 500, 530),
-        "fertilizer": DialogHeightProfile(500, 506, 560, 925, 940, 950),
+        # The Fertilizer catalogue deliberately opens on three complete 88 px
+        # cards: both stored items and Basic Fertilizer's full price/action
+        # row. 541 px is the largest verified client height that keeps the
+        # following Quality card wholly below the initial fold. Content-fit
+        # still owns heights below this semantic ceiling, and the same central
+        # scroll owner keeps every later product reachable.
+        "fertilizer": DialogHeightProfile(500, 506, 541, 925, 940, 950),
         "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
-        # Garden Decoration cards use the canonical 940 x 488 catalog window.
-        # Keep one complete product row in view without compressing its copy.
-        "garden_features": DialogHeightProfile(488, 488, 500, 925, 940, 950),
-        "collection-complete": DialogHeightProfile(300, 315, 330, 925, 940, 950),
+        # Garden Decoration cards keep one complete product row in view. The
+        # active-bonus summary consumes 147 px above the 276 px product row,
+        # so the content-fit ceiling must leave the catalogue a complete fold
+        # instead of clipping all three first-row cards.
+        "garden_features": DialogHeightProfile(488, 575, 580, 925, 940, 950),
+        # The compact completion body has a 156 px native minimum on macOS.
+        # Eight more client pixels remove the otherwise spurious scrollbar.
+        "collection-complete": DialogHeightProfile(308, 323, 338, 925, 940, 950),
         "collection-complete-receipt": DialogHeightProfile(390, 400, 410, 925, 940, 950),
         "empty": DialogHeightProfile(300, 335, 370),
     },
     DialogSizeClass.PROGRESS: {
-        "growth": DialogHeightProfile(460, 480, 500, 940, 940, 960),
+        # The native six-stage strip is three logical pixels taller than the
+        # root layout hint on macOS. Keep the complete strip in the viewport
+        # instead of exposing a three-pixel emergency scrollbar.
+        "growth": DialogHeightProfile(501, 501, 510, 940, 940, 960),
+        # The final Today setup card extends four logical pixels beyond the
+        # generic Progress minimum. Give this real content state its own
+        # profile so the card is painted as a complete surface.
+        "today": DialogHeightProfile(564, 570, 580),
         "streak": DialogHeightProfile(440, 460, 480, 940, 940, 960),
         "currency": DialogHeightProfile(340, 380, 440, 940, 950, 960),
         "achievements": DialogHeightProfile(570, 570, 570, 950, 950, 950),
@@ -759,7 +817,10 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         "collection-empty": DialogHeightProfile(360, 400, 460, 940, 950, 960),
     },
     DialogSizeClass.LOADOUT: {
-        "default": DialogHeightProfile(520, 540, 560, 980, 1000, 1020),
+        # The wide preview is a complete 16:9 garden scene beside two native
+        # catalogue rows. Its natural height must include both the structured
+        # appearance summary and the uncropped artwork.
+        "default": DialogHeightProfile(680, 680, 680, 980, 1000, 1020),
     },
     DialogSizeClass.PLANT_STORY: {
         "default": DialogHeightProfile(480, 500, 520, 740, 760, 780),
@@ -878,6 +939,26 @@ def content_fit_geometry_limited(
             and fitted_height_value >= height_cap
         )
     return bool(width_limited or height_limited)
+
+
+def should_schedule_content_fit(
+    window_mode: DialogWindowMode | str,
+    *,
+    policy_content_fit: bool,
+) -> bool:
+    """Return whether descendant layout changes should trigger a native fit.
+
+    ``workspace`` describes a pinned header/body/footer composition, not a
+    fixed-height window.  Any family that explicitly opts into ``content_fit``
+    therefore follows the same settled-layout scheduler as compact Content
+    dialogs.  Canvas windows remain the sole exception because their viewport
+    is intentionally independent of descendant size hints.
+    """
+
+    return bool(
+        policy_content_fit
+        and DialogWindowMode(window_mode) is not DialogWindowMode.CANVAS
+    )
 
 
 def resolved_dialog_geometry(

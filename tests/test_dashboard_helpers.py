@@ -4,15 +4,34 @@ import ast
 from math import isfinite
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 from ankigarden.game import GROWTH_THRESHOLDS
+from ankigarden.purchases import PurchaseDisposition, fertilizer_action_label
 from ankigarden.ui.plant_presenters import fertilizer_status
 
 
 DASHBOARD = (
     Path(__file__).resolve().parents[1] / "ankigarden" / "ui" / "dashboard.py"
 )
+
+
+def test_fertilizer_action_vocabulary_uses_the_authoritative_disposition() -> None:
+    assert fertilizer_action_label(PurchaseDisposition.APPLIED, owned=True) == "Apply"
+    assert fertilizer_action_label(PurchaseDisposition.QUEUED, owned=True) == "Queue"
+    assert fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=True) == "Extend"
+    assert (
+        fertilizer_action_label(PurchaseDisposition.APPLIED, owned=False)
+        == "Buy and apply"
+    )
+    assert (
+        fertilizer_action_label(PurchaseDisposition.QUEUED, owned=False)
+        == "Buy and queue"
+    )
+    assert (
+        fertilizer_action_label(PurchaseDisposition.EXTENDED, owned=False)
+        == "Extend"
+    )
 
 
 def _compiled_function(
@@ -56,6 +75,10 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     receipt_actions = _compiled_function("_nursery_collection_receipt_actions")
     empty_copy = _compiled_function("_nursery_empty_state_copy")
     product_visible = _compiled_function("_nursery_catalog_product_visible")
+    prioritize_environment = _compiled_function(
+        "_prioritize_nursery_environment_items",
+        {"CatalogItem": Any, "Callable": Callable},
+    )
     fold_plan = _compiled_function("_catalog_fold_alignment_plan")
 
     assert compact_cost(1) == "1 coin"
@@ -65,18 +88,50 @@ def test_nursery_catalog_helpers_cover_costs_receipts_empty_states_and_folds() -
     assert compact_shortfall(100, 100) == ""
     assert receipt_actions(False) == ("Place in garden", "View collection")
     assert receipt_actions(True) == ("Place in garden",)
+    complete_collection = SimpleNamespace(
+        species_text="10 of 10 species discovered",
+        collection_entries_text="30 of 39 collection entries discovered",
+    )
     assert empty_copy(
         starter_mode=False,
         collection_complete=True,
-        owned_count=10,
-        release_ready_count=10,
+        collection_projection=complete_collection,
     ) == (
-        "All 10 plant species collected",
-        "You own every plant species currently available.",
+        "10 of 10 species discovered",
+        "30 of 39 collection entries discovered",
+    )
+    assert empty_copy(
+        starter_mode=False,
+        collection_complete=False,
+        collection_projection=SimpleNamespace(
+            species_text="4 of 10 species discovered",
+        ),
+    ) == (
+        "New species are being prepared",
+        "4 of 10 species discovered",
     )
     assert product_visible("purchase", "soft_breeze", "clear_skies")
     assert not product_visible("purchase", "clear_skies", "clear_skies")
-    assert not product_visible("drop", "rain", "clear_skies")
+    assert product_visible("drop", "rain", "clear_skies")
+    items = [
+        SimpleNamespace(item_id="harvest_bell", purchasable=True),
+        SimpleNamespace(item_id="firefly_lantern", purchasable=False),
+        SimpleNamespace(item_id="seedling_sign", purchasable=False),
+        SimpleNamespace(item_id="wind_chime", purchasable=True),
+    ]
+    assert [
+        item.item_id
+        for item in prioritize_environment(
+            items,
+            displayed_item_id="seedling_sign",
+            owned_item_ids={"seedling_sign"},
+        )
+    ] == [
+        "seedling_sign",
+        "harvest_bell",
+        "firefly_lantern",
+        "wind_chime",
+    ]
     assert fold_plan(
         viewport_height=300,
         row_spans=((220, 308),),
@@ -117,7 +172,7 @@ def test_nursery_bed_actions_include_the_exact_price() -> None:
 
     assert methods.keys() == {"_space_card", "_space_progression"}
     for method_source in methods.values():
-        assert 'f"Unlock for {_compact_catalog_cost(price)}"' in method_source
+        assert 'f"Unlock for {_garden_coin_count(price)}"' in method_source
 
 
 def test_recent_find_rows_render_canonical_artwork_refs() -> None:
@@ -320,7 +375,7 @@ def test_shared_plant_presenter_covers_fertilizer_time() -> None:
     active = fertilizer_status(engine, plant, now=1_000.0)
     assert (active.name, active.effect, active.duration) == (
         "Basic Fertilizer",
-        "+1 Growth per card",
+        "+1 Growth per eligible card answer",
         "1h 55m left",
     )
     plant.fertilizer.expires_at = 1_030.0

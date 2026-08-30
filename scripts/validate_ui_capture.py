@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
 CAPTURE_BOOTSTRAP_SOURCE = ROOT / "ankigarden" / "capture_ui_faces.py"
 DEFAULT_CAPTURE_CONTRACT = (
-    ROOT / "ankigarden" / "capture" / "capture-contract-v25.json"
+    ROOT / "ankigarden" / "capture" / "capture-contract-v26.json"
 )
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CONTINUED_SUFFIX = " (continued)"
@@ -46,6 +46,21 @@ CONTACT_SHEET_FRAME_OUTLINE_WIDTH = 3
 CONTACT_SHEET_OUTLINE_WIDTH = 6
 CONTACT_SHEET_PADDING_LEGEND = "Cream = contact-sheet padding outside captured UI"
 CONTACT_SHEET_QUALITY_STATUS = "Automated checks passed; visual review pending"
+LEGACY_CAPTURE_ACCEPTANCE_POLICY = "gross-failures-only"
+V26_CAPTURE_ACCEPTANCE_POLICY = "gross-and-semantic-fail-closed"
+_V26_DEPRECATED_VISIBLE_COPY_PATTERNS = (
+    r"\bstage [1-5] of 5\b",
+    r"\bgarden finds?\b",
+    r"\b1 find\b",
+    r"\bnew environments?\b",
+    r"\buse bonus\b",
+    r"\benvironment discoveries\b",
+    r"\benvironment discovery guarantees\b",
+    r"\bfuture growth will be shared or stored\b",
+    r"\btoday['’]s environment\b",
+    r"\bnursery weather scenery\b",
+    r"\bgarden item unlocked\b",
+)
 LEGACY_V24_PROFILE_SURFACE_COUNTS = {
     "representative": 26,
     "full": 126,
@@ -68,6 +83,12 @@ MEMORY_PROBE_CLASSES = (
     "FertilizerReplacementDialog",
     "GrowthChargeConfirmationDialog",
 )
+DIALOG_SCROLL_FOUR_STATE_NAMES = (
+    "no-overflow-list",
+    "one-row-list",
+    "enough-rows-to-scroll",
+    "final-item-at-maximum-scroll",
+)
 COMPACT_HOME_BANNED_COPY = (
     "today",
     "streak",
@@ -82,6 +103,9 @@ MISSING_ARTWORK_CAPTURE_TYPES = (
     "weather",
     "scenery",
     "growth-charge",
+)
+WEB_ROOT_OVERFLOW_EVIDENCE_SOURCE = (
+    "document-root-and-visible-addon-roots"
 )
 RENDERED_PIXEL_EVIDENCE_KEYS: dict[str, tuple[str, ...]] = {
     "full-garden": ("full-garden-scene",),
@@ -180,7 +204,7 @@ class CaptureContract:
         ).hexdigest()
 
 
-def _is_current_v25_source(source_path: Path) -> bool:
+def _is_current_contract_source(source_path: Path) -> bool:
     try:
         resolved = source_path.resolve()
     except OSError:
@@ -191,17 +215,17 @@ def _is_current_v25_source(source_path: Path) -> bool:
     }
 
 
-def _load_v25_contract_payload(
+def _load_current_contract_payload(
     path: Path = DEFAULT_CAPTURE_CONTRACT,
 ) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise CaptureValidationError(
-            (f"could not read compiled v25 capture contract {path}: {error}",)
+            (f"could not read compiled v26 capture contract {path}: {error}",)
         ) from error
     if not isinstance(payload, dict):
-        raise CaptureValidationError(("compiled v25 capture contract must be an object",))
+        raise CaptureValidationError(("compiled v26 capture contract must be an object",))
     normalized = dict(payload)
     expected_digest = normalized.pop("contract_digest", None)
     actual_digest = hashlib.sha256(
@@ -215,30 +239,72 @@ def _load_v25_contract_payload(
     profiles = payload.get("profiles")
     surfaces = payload.get("surfaces")
     issues: list[str] = []
-    if payload.get("contract_version") != 25:
-        issues.append("compiled capture contract is not v25")
-    if payload.get("scenario_schema_version") != 2:
-        issues.append("compiled capture scenario schema is not v2")
+    if payload.get("schema_version") != 2:
+        issues.append("compiled capture contract schema is not v2")
+    if payload.get("contract_version") != 26:
+        issues.append("compiled capture contract is not v26")
+    if payload.get("scenario_schema_version") != 3:
+        issues.append("compiled capture scenario schema is not v3")
     if expected_digest != actual_digest:
         issues.append("compiled capture contract digest is stale")
     if not isinstance(profiles, dict) or not profiles:
         issues.append("compiled capture contract has no profiles")
+    elif set(profiles) != {"representative", "full"}:
+        issues.append("compiled capture profiles must be representative and full")
     if not isinstance(surfaces, list) or not surfaces:
         issues.append("compiled capture contract has no surfaces")
+    else:
+        active = [
+            row for row in surfaces
+            if isinstance(row, dict) and row.get("active") is True
+        ]
+        active_ids = {str(row.get("id", "")) for row in active}
+        retired_ids = set(payload.get("retired_ids", ()))
+        if len(active) != 34 or payload.get("surface_count") != 34:
+            issues.append("compiled v26 contract must contain 34 active surfaces")
+        if "nursery-garden-decorations-scenery" not in active_ids:
+            issues.append("compiled v26 contract is missing renamed nursery surface")
+        if "nursery-weather-scenery" not in retired_ids:
+            issues.append("compiled v26 contract did not reserve the retired nursery ID")
+        for index, row in enumerate(surfaces):
+            if not isinstance(row, dict):
+                continue
+            if not isinstance(row.get("scenario_id"), str):
+                issues.append(f"compiled surface {index} has no scenario_id")
+            if not isinstance(row.get("fixture_id"), str):
+                issues.append(f"compiled surface {index} has no fixture_id")
+            if type(row.get("scenario_step")) is not int or row.get(
+                "scenario_step", 0
+            ) < 1:
+                issues.append(f"compiled surface {index} has invalid scenario_step")
+    if isinstance(profiles, dict):
+        for profile, expected in {
+            "representative": (18, 2),
+            "full": (34, 5),
+        }.items():
+            raw_profile = profiles.get(profile)
+            if not isinstance(raw_profile, dict) or (
+                raw_profile.get("surface_count"),
+                raw_profile.get("contact_sheet_page_count"),
+            ) != expected:
+                issues.append(
+                    f"compiled {profile} topology must remain {expected[0]} surfaces / "
+                    f"{expected[1]} pages"
+                )
     if issues:
         raise CaptureValidationError(issues)
     return payload
 
 
-def _v25_surface_map() -> dict[str, dict[str, Any]]:
-    payload = _load_v25_contract_payload()
+def _current_surface_map() -> dict[str, dict[str, Any]]:
+    payload = _load_current_contract_payload()
     result = {
         str(row.get("id")): dict(row)
         for row in payload.get("surfaces", ())
         if isinstance(row, dict) and row.get("active") is True
     }
     if len(result) != int(payload.get("surface_count", -1)):
-        raise CaptureValidationError(("compiled v25 surface count is stale",))
+        raise CaptureValidationError(("compiled v26 surface count is stale",))
     return result
 
 
@@ -276,8 +342,8 @@ def load_capture_contract(
     """Read one canonical capture profile without importing Anki or Qt."""
 
     profile = str(profile).strip().lower()
-    if _is_current_v25_source(source_path):
-        payload = _load_v25_contract_payload()
+    if _is_current_contract_source(source_path):
+        payload = _load_current_contract_payload()
         raw_profile = dict(payload.get("profiles", {}).get(profile, {}) or {})
         raw_groups = raw_profile.get("groups")
         if not isinstance(raw_groups, list) or not raw_groups:
@@ -299,10 +365,10 @@ def load_capture_contract(
         ):
             raise CaptureValidationError((f"compiled profile {profile!r} is malformed",))
         return CaptureContract(
-            25,
+            26,
             groups,
             profile,
-            2,
+            3,
             str(payload.get("contract_digest", "")),
         )
     assignment_name = {
@@ -397,9 +463,9 @@ def load_dialog_scroll_capture_coverage(
 ) -> dict[str, dict[str, str]]:
     """Load the source-owned surface, label, and page-semantic scroll proof."""
 
-    if _is_current_v25_source(source_path):
+    if _is_current_contract_source(source_path):
         contract = contract or load_capture_contract(source_path)
-        surfaces = _v25_surface_map()
+        surfaces = _current_surface_map()
         names = {
             "PurchaseConfirmationDialog": "Purchase confirmation",
             "NurseryDialog": "Nursery",
@@ -715,9 +781,9 @@ def load_expected_renderer_families(
 ) -> dict[str, str]:
     """Derive label-to-renderer ownership from source without importing Anki."""
 
-    if _is_current_v25_source(source_path):
+    if _is_current_contract_source(source_path):
         contract = contract or load_capture_contract(source_path)
-        surfaces = _v25_surface_map()
+        surfaces = _current_surface_map()
         missing = [label for label in contract.labels if label not in surfaces]
         if missing:
             raise CaptureValidationError((
@@ -1201,9 +1267,9 @@ def load_expected_state_evidence_contracts(
 ) -> dict[str, dict[str, Any]]:
     """Derive each label's state kind and exact fact keys from capture source."""
 
-    if _is_current_v25_source(source_path):
+    if _is_current_contract_source(source_path):
         contract = contract or load_capture_contract(source_path)
-        surfaces = _v25_surface_map()
+        surfaces = _current_surface_map()
         result: dict[str, dict[str, Any]] = {}
         for label in contract.labels:
             raw = surfaces[label].get("state_contract")
@@ -1404,8 +1470,8 @@ def load_capture_scenario_contracts(
 
     module = _source_module(source_path)
     contract = contract or load_capture_contract(source_path)
-    v25_surfaces = (
-        _v25_surface_map() if _is_current_v25_source(source_path) else None
+    current_surfaces = (
+        _current_surface_map() if _is_current_contract_source(source_path) else None
     )
     selected_names = {
         "EXHAUSTIVE_CAPTURE_FACE_GROUPS",
@@ -1423,7 +1489,7 @@ def load_capture_scenario_contracts(
         "capture_scenario_checkpoint",
     }
     namespace: dict[str, Any] = {}
-    if v25_surfaces is None:
+    if current_surfaces is None:
         selected: list[ast.stmt] = []
         for node in module.body:
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -1457,7 +1523,7 @@ def load_capture_scenario_contracts(
         full_contract = load_capture_contract(source_path, profile="full")
         full_labels = full_contract.labels
         callable_rows = tuple(
-            (label, str(v25_surfaces[label].get("executor", "")))
+            (label, str(current_surfaces[label].get("executor", "")))
             for label in full_labels
         )
     callable_map = dict(callable_rows)
@@ -1531,7 +1597,7 @@ def load_capture_scenario_contracts(
 
     hidden_raw = (
         {"_next_after": ("_next_step",)}
-        if v25_surfaces is not None else
+        if current_surfaces is not None else
         namespace.get("CAPTURE_SCENARIO_HIDDEN_METHOD_REFERENCES", {})
     )
     if not isinstance(hidden_raw, dict):
@@ -1674,21 +1740,29 @@ def load_capture_scenario_contracts(
         source_path,
         contract=contract,
     )
-    if v25_surfaces is None:
+    if current_surfaces is None:
         internal_setups = namespace["capture_scenario_internal_setups"]
         prerequisites = namespace["capture_scenario_prerequisites"]
         checkpoint = namespace["capture_scenario_checkpoint"]
     else:
         internal_setups = lambda label: tuple(
-            v25_surfaces[label].get("internal_setups", ())
+            current_surfaces[label].get("internal_setups", ())
         )
         prerequisites = lambda label: tuple(
-            v25_surfaces[label].get("prerequisites", ())
+            current_surfaces[label].get("prerequisites", ())
         )
-        checkpoint = lambda label: str(v25_surfaces[label].get("checkpoint", ""))
+        checkpoint = lambda label: str(current_surfaces[label].get("checkpoint", ""))
     results: dict[str, dict[str, Any]] = {}
     for label in contract.labels:
         callable_name = str(callable_map.get(label, ""))
+        raw_surface = (
+            current_surfaces.get(label, {})
+            if current_surfaces is not None else
+            {}
+        )
+        scenario_id = str(raw_surface.get("scenario_id", label))
+        fixture_id = str(raw_surface.get("fixture_id", f"{label}-v1"))
+        scenario_step = raw_surface.get("scenario_step", 1)
         setup_values = tuple(str(value) for value in internal_setups(label))
         prerequisite_values = tuple(str(value) for value in prerequisites(label))
         checkpoint_value = str(checkpoint(label))
@@ -1696,6 +1770,10 @@ def load_capture_scenario_contracts(
             not callable_name
             or not setup_values
             or not checkpoint_value
+            or not scenario_id
+            or not fixture_id
+            or type(scenario_step) is not int
+            or scenario_step < 1
             or any(value not in full_labels for value in prerequisite_values)
         ):
             raise CaptureValidationError(
@@ -1704,6 +1782,9 @@ def load_capture_scenario_contracts(
         method_inputs, top_level_inputs = method_dependency_inputs(callable_name)
         identity = {
             "label": label,
+            "scenario_id": scenario_id,
+            "fixture_id": fixture_id,
+            "scenario_step": scenario_step,
             "callable": callable_name,
             "checkpoint": checkpoint_value,
             "capture_prerequisites": list(prerequisite_values),
@@ -1713,9 +1794,9 @@ def load_capture_scenario_contracts(
             "method_inputs": method_inputs,
             "top_level_inputs": top_level_inputs,
         }
-        if v25_surfaces is not None:
+        if current_surfaces is not None:
             identity["surface_spec_dependency_digest"] = str(
-                v25_surfaces[label].get("dependency_digest", "")
+                current_surfaces[label].get("dependency_digest", "")
             )
         identity["digest"] = _canonical_digest(identity)
         results[label] = identity
@@ -2123,6 +2204,91 @@ def _contact_preview_issues(
     return issues
 
 
+def _canonical_json_text(value: Any) -> str:
+    """Serialize embedded provenance in one stable representation."""
+
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _surface_scenario_identity_map(
+    labels: Sequence[str],
+    scenario_contracts: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Project only the scenario fields that must travel with PNG evidence."""
+
+    identity_map: dict[str, dict[str, Any]] = {}
+    for label in labels:
+        scenario = scenario_contracts.get(label)
+        if not isinstance(scenario, Mapping):
+            raise CaptureValidationError((
+                f"scenario identity is unavailable for {label}",
+            ))
+        identity_map[label] = {
+            "scenario_id": scenario.get("scenario_id"),
+            "fixture_id": scenario.get("fixture_id"),
+            "scenario_step": scenario.get("scenario_step"),
+        }
+    return identity_map
+
+
+def _read_png_text_metadata(path: Path) -> tuple[dict[str, str] | None, str | None]:
+    try:
+        with Image.open(path) as opened:
+            opened.load()
+            return (
+                {str(key): str(value) for key, value in opened.text.items()},
+                None,
+            )
+    except (OSError, UnidentifiedImageError, ValueError) as error:
+        return None, str(error)
+
+
+def _raw_scenario_metadata_issues(
+    page_path: Path,
+    scenario_contract: Mapping[str, Any],
+) -> list[str]:
+    """Verify scalar v26 scenario provenance embedded in one raw screenshot."""
+
+    metadata, error = _read_png_text_metadata(page_path)
+    if metadata is None:
+        return [f"could not read raw PNG scenario provenance: {error}"]
+    issues: list[str] = []
+    for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+        expected = str(scenario_contract.get(identity_field, ""))
+        if metadata.get(identity_field) != expected:
+            issues.append(
+                f"PNG metadata {identity_field!r} must be {expected!r}"
+            )
+    return issues
+
+
+def _contact_scenario_metadata_issues(
+    metadata: Mapping[str, str],
+    surface_identity_map: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    """Verify the deterministic, per-page v26 scenario identity projection."""
+
+    expected_metadata = {
+        "surface_ids": _canonical_json_text(list(surface_identity_map)),
+        "surface_identity_map": _canonical_json_text(surface_identity_map),
+    }
+    for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+        expected_metadata[identity_field] = _canonical_json_text({
+            label: identity.get(identity_field)
+            for label, identity in surface_identity_map.items()
+        })
+    return [
+        f"PNG metadata {key!r} must be {value!r}"
+        for key, value in expected_metadata.items()
+        if metadata.get(key) != value
+    ]
+
+
 def _contact_metadata_issues(
     page_path: Path,
     *,
@@ -2133,14 +2299,12 @@ def _contact_metadata_issues(
     manifest_path: Path,
     capture_profile: str,
     capture_contract_digest: str,
+    surface_identity_map: Mapping[str, Mapping[str, Any]],
 ) -> list[str]:
     """Verify generator-owned PNG text provenance for one contact page."""
 
-    try:
-        with Image.open(page_path) as opened:
-            opened.load()
-            metadata = dict(opened.text)
-    except (OSError, UnidentifiedImageError, ValueError) as error:
+    metadata, error = _read_png_text_metadata(page_path)
+    if metadata is None:
         return [f"could not read contact-sheet PNG provenance: {error}"]
 
     issues: list[str] = []
@@ -2160,6 +2324,9 @@ def _contact_metadata_issues(
     resolved_manifest = _resolved_evidence_path(raw_manifest, page_path.parent)
     if resolved_manifest != manifest_path.resolve():
         issues.append("PNG metadata 'Capture manifest' references a different manifest")
+    issues.extend(
+        _contact_scenario_metadata_issues(metadata, surface_identity_map)
+    )
     return issues
 
 
@@ -2178,6 +2345,181 @@ def _strict_size(value: Any, *, minimum: int = 1) -> tuple[int, int] | None:
     ):
         return None
     return value[0], value[1]
+
+
+def dialog_scroll_state_observation_issue_codes(
+    observation: Any,
+) -> tuple[str, ...]:
+    """Independently validate one painted scroll-state witness."""
+
+    if not isinstance(observation, dict):
+        return ("invalid-scroll-state-observation",)
+    issues: list[str] = []
+    state = str(observation.get("state", ""))
+    if state not in DIALOG_SCROLL_FOUR_STATE_NAMES:
+        issues.append("unknown-scroll-state")
+    if observation.get("painted") is not True:
+        issues.append("scroll-state-not-painted")
+    digest = observation.get("paint_digest")
+    if not isinstance(digest, str) or len(digest) != 64:
+        issues.append("invalid-scroll-state-paint-digest")
+    paint_size = observation.get("paint_size")
+    if not (
+        isinstance(paint_size, list)
+        and len(paint_size) == 2
+        and all(type(value) is int and value > 0 for value in paint_size)
+    ):
+        issues.append("invalid-scroll-state-paint-size")
+    integer_fields = (
+        "row_count",
+        "scroll_minimum",
+        "scroll_maximum",
+        "scroll_value",
+        "horizontal_scroll_minimum",
+        "horizontal_scroll_maximum",
+        "content_width",
+        "viewport_width",
+        "viewport_height",
+    )
+    invalid = [
+        field for field in integer_fields
+        if type(observation.get(field)) is not int
+    ]
+    issues.extend(f"invalid-scroll-state-metric:{field}" for field in invalid)
+    for field in (
+        "vertical_scrollbar_visible",
+        "horizontal_scrollbar_visible",
+    ):
+        if type(observation.get(field)) is not bool:
+            issues.append(f"invalid-scroll-state-metric:{field}")
+    intrusions = observation.get("fixed_region_intrusions")
+    if not isinstance(intrusions, list):
+        issues.append("invalid-fixed-region-intrusions")
+    elif intrusions:
+        issues.append("scrollbar-fixed-region-intrusion")
+    if invalid or any(
+        issue.startswith("invalid-scroll-state-metric:")
+        for issue in issues
+    ):
+        return tuple(dict.fromkeys(issues))
+
+    row_count = int(observation["row_count"])
+    scroll_minimum = int(observation["scroll_minimum"])
+    scroll_maximum = int(observation["scroll_maximum"])
+    scroll_value = int(observation["scroll_value"])
+    horizontal_minimum = int(observation["horizontal_scroll_minimum"])
+    horizontal_maximum = int(observation["horizontal_scroll_maximum"])
+    content_width = int(observation["content_width"])
+    viewport_width = int(observation["viewport_width"])
+    viewport_height = int(observation["viewport_height"])
+    scroll_span = scroll_maximum - scroll_minimum
+    if (
+        row_count < 0
+        or scroll_minimum < 0
+        or scroll_maximum < scroll_minimum
+        or not scroll_minimum <= scroll_value <= scroll_maximum
+        or viewport_width <= 0
+        or viewport_height <= 0
+        or content_width <= 0
+    ):
+        issues.append("invalid-scroll-state-geometry")
+    if (
+        horizontal_maximum != horizontal_minimum
+        or observation.get("horizontal_scrollbar_visible") is True
+        or content_width > viewport_width
+    ):
+        issues.append("horizontal-scroll-overflow")
+    if state == "no-overflow-list":
+        if scroll_span != 0:
+            issues.append("no-overflow-state-has-scroll-range")
+        if observation.get("vertical_scrollbar_visible") is True:
+            issues.append("scrollbar-shown-when-content-fits")
+    elif state == "one-row-list":
+        if row_count != 1:
+            issues.append("one-row-state-row-count")
+        if scroll_span != 0:
+            issues.append("one-row-state-has-scroll-range")
+        if observation.get("vertical_scrollbar_visible") is True:
+            issues.append("scrollbar-shown-when-content-fits")
+    elif state == "enough-rows-to-scroll":
+        if row_count < 2:
+            issues.append("scrolling-state-row-count")
+        if scroll_span <= 0:
+            issues.append("scrolling-state-missing-range")
+        if scroll_value != scroll_minimum:
+            issues.append("scrolling-state-not-at-start")
+    elif state == "final-item-at-maximum-scroll":
+        if row_count < 2:
+            issues.append("maximum-scroll-state-row-count")
+        if scroll_span <= 0:
+            issues.append("maximum-scroll-state-missing-range")
+        if scroll_value != scroll_maximum:
+            issues.append("maximum-scroll-value")
+        final_bounds = observation.get("final_item_bounds")
+        if not (
+            isinstance(final_bounds, list)
+            and len(final_bounds) == 4
+            and all(type(value) is int for value in final_bounds)
+            and int(final_bounds[2]) > 0
+            and int(final_bounds[3]) > 0
+        ):
+            issues.append("invalid-final-item-bounds")
+        else:
+            _left, top, _width, height = final_bounds
+            if top < 0 or top + height > viewport_height:
+                issues.append("clipped-final-row")
+        if observation.get("final_item_visible") is not True:
+            issues.append("final-item-not-visible")
+    if observation.get("issues") not in (None, []):
+        issues.append("scroll-state-reported-issues")
+    if observation.get("passed") not in (None, True):
+        issues.append("scroll-state-did-not-pass")
+    return tuple(dict.fromkeys(issues))
+
+
+def dialog_scroll_state_matrix_issue_codes(
+    matrix: Any,
+    *,
+    require_complete: bool,
+) -> tuple[str, ...]:
+    """Independently validate local or aggregate four-state evidence."""
+
+    if not isinstance(matrix, dict):
+        return ("missing-scroll-state-matrix",)
+    observations = matrix.get("observations")
+    if not isinstance(observations, list):
+        return ("invalid-scroll-state-observations",)
+    issues: list[str] = []
+    seen: set[str] = set()
+    for index, observation in enumerate(observations):
+        if not isinstance(observation, dict):
+            issues.append(f"invalid-scroll-state-observation:{index}")
+            continue
+        state = str(observation.get("state", ""))
+        if state in seen:
+            issues.append(f"duplicate-scroll-state:{state}")
+        seen.add(state)
+        issues.extend(
+            f"{state or index}:{issue}"
+            for issue in dialog_scroll_state_observation_issue_codes(
+                observation
+            )
+        )
+    if matrix.get("canonical_scroll_restored") is not True:
+        issues.append("canonical-scroll-not-restored")
+    before = matrix.get("canonical_scroll_value_before")
+    after = matrix.get("canonical_scroll_value_after")
+    if type(before) is not int or type(after) is not int or before != after:
+        issues.append("canonical-scroll-value-mismatch")
+    if require_complete:
+        for state in DIALOG_SCROLL_FOUR_STATE_NAMES:
+            if state not in seen:
+                issues.append(f"missing-scroll-state:{state}")
+    if matrix.get("issues") not in (None, []):
+        issues.append("scroll-state-matrix-reported-issues")
+    if matrix.get("passed") not in (None, True):
+        issues.append("scroll-state-matrix-did-not-pass")
+    return tuple(dict.fromkeys(issues))
 
 
 def dialog_scroll_audit_issue_codes(
@@ -2217,6 +2559,14 @@ def dialog_scroll_audit_issue_codes(
             issues.append("expected-scroll-page-semantic-mismatch")
         if audit.get("actual_page_semantic") != expected_page_semantic:
             issues.append("actual-scroll-page-semantic-mismatch")
+    if "four_state_scroll_matrix" in audit:
+        issues.extend(
+            f"scroll-state:{issue}"
+            for issue in dialog_scroll_state_matrix_issue_codes(
+                audit.get("four_state_scroll_matrix"),
+                require_complete=False,
+            )
+        )
 
     integer_fields = (
         "registered_count",
@@ -2446,6 +2796,301 @@ def dialog_scroll_audit_issue_codes(
     return tuple(dict.fromkeys(issues))
 
 
+def fertilizer_flow_source_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate the canonical Rose state painted in step 1."""
+
+    if not isinstance(evidence, dict):
+        return ("fertilizer-flow-source:missing",)
+    issues: list[str] = []
+    plant_id = str(evidence.get("plant_id", "") or "")
+    plant_name = str(evidence.get("plant_name", "") or "")
+    species = str(evidence.get("species", "") or "").casefold()
+    stage = str(evidence.get("growth_stage", "") or "").casefold()
+    asset_id = str(evidence.get("artwork_asset_id", "") or "")
+    asset_source = "/" + str(
+        evidence.get("artwork_source", "") or ""
+    ).replace("\\", "/").lstrip("/")
+    if not plant_id:
+        issues.append("fertilizer-flow-source:plant-id")
+    if not plant_name:
+        issues.append("fertilizer-flow-source:plant-name")
+    if species != "rose":
+        issues.append("fertilizer-flow-source:species")
+    if evidence.get("growth_points") != 500:
+        issues.append("fertilizer-flow-source:growth-points")
+    if evidence.get("growth_remainder_units") != 0:
+        issues.append("fertilizer-flow-source:growth-remainder")
+    if stage != "sprout":
+        issues.append("fertilizer-flow-source:growth-stage")
+    if not asset_id.startswith(f"plant_{species}_{stage}_"):
+        issues.append("fertilizer-flow-source:artwork-asset")
+    if f"/{species}/{stage}/" not in asset_source:
+        issues.append("fertilizer-flow-source:artwork-source")
+    if evidence.get("artwork_resolved") is not True:
+        issues.append("fertilizer-flow-source:artwork-resolved")
+    if evidence.get("artwork_painted") is not True:
+        issues.append("fertilizer-flow-source:artwork-painted")
+    return tuple(dict.fromkeys(issues))
+
+
+def fertilizer_flow_continuity_issue_codes(records: Any) -> tuple[str, ...]:
+    """Independently bind one plant and Growth artwork through both steps."""
+
+    if not isinstance(records, dict):
+        return ("fertilizer-flow:missing-records",)
+    roles = ("source", "fixture", "quote", "request", "confirmation")
+    issues: list[str] = []
+    source = records.get("source")
+    issues.extend(fertilizer_flow_source_issue_codes(source))
+    if not isinstance(source, dict):
+        return tuple(dict.fromkeys(issues))
+    continuity_fields = (
+        "plant_id",
+        "plant_name",
+        "species",
+        "growth_points",
+        "growth_remainder_units",
+        "growth_stage",
+        "artwork_asset_id",
+        "artwork_source",
+    )
+    for role in roles[1:]:
+        record = records.get(role)
+        if not isinstance(record, dict):
+            issues.append(f"fertilizer-flow:{role}:missing")
+            continue
+        for field in continuity_fields:
+            if record.get(field) != source.get(field):
+                issues.append(f"fertilizer-flow:{role}:{field.replace('_', '-')}")
+        if record.get("artwork_resolved") is not True:
+            issues.append(f"fertilizer-flow:{role}:artwork-resolved")
+    confirmation = records.get("confirmation")
+    if (
+        isinstance(confirmation, dict)
+        and confirmation.get("artwork_painted") is not True
+    ):
+        issues.append("fertilizer-flow:confirmation:artwork-painted")
+    return tuple(dict.fromkeys(issues))
+
+
+def deprecated_visible_copy_evidence_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently reject missing or contradictory painted-copy proof."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-deprecated-visible-copy-audit",)
+    issues: list[str] = []
+    visible_copy = evidence.get("visible_copy")
+    if not isinstance(visible_copy, str):
+        issues.append("invalid-deprecated-visible-copy-text")
+        normalized = ""
+    else:
+        normalized = " ".join(visible_copy.casefold().split())
+    recomputed_hits = tuple(
+        pattern
+        for pattern in _V26_DEPRECATED_VISIBLE_COPY_PATTERNS
+        if re.search(pattern, normalized)
+    )
+    reported_hits = evidence.get("hits")
+    if not (
+        isinstance(reported_hits, list)
+        and all(isinstance(hit, str) for hit in reported_hits)
+    ):
+        issues.append("invalid-deprecated-visible-copy-hits")
+    else:
+        if tuple(reported_hits) != recomputed_hits:
+            issues.append("deprecated-visible-copy-hits-mismatch")
+        if reported_hits:
+            issues.append("deprecated-visible-copy-detected")
+    if recomputed_hits:
+        issues.append("deprecated-visible-copy-detected")
+    if evidence.get("collection_issues") != []:
+        issues.append("deprecated-visible-copy-collection-not-passed")
+    if evidence.get("passed") is not True:
+        issues.append("deprecated-visible-copy-audit-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def v26_capture_semantic_gate_issue_codes(
+    record: Any,
+) -> tuple[str, ...]:
+    """Validate the v26 per-surface semantic acceptance envelope."""
+
+    if not isinstance(record, dict):
+        return ("invalid-capture-record",)
+    issues: list[str] = []
+
+    fixture = record.get("fixture_validation")
+    if not isinstance(fixture, dict):
+        issues.append("missing-fixture-validation")
+    else:
+        if fixture.get("semantic_audit_passed") is not True:
+            issues.append("fixture-semantic-audit-not-passed")
+        postcondition = fixture.get("postcondition")
+        if (
+            not isinstance(postcondition, dict)
+            or postcondition.get("passed") is not True
+            or postcondition.get("issues") != []
+        ):
+            issues.append("fixture-postcondition-not-passed")
+
+    acceptance = record.get("capture_acceptance")
+    if not isinstance(acceptance, dict):
+        issues.append("missing-capture-acceptance")
+    else:
+        if acceptance.get("policy") != V26_CAPTURE_ACCEPTANCE_POLICY:
+            issues.append("capture-acceptance-policy-mismatch")
+        gross_checks = acceptance.get("gross_checks")
+        if (
+            not isinstance(gross_checks, dict)
+            or not gross_checks
+            or any(value is not True for value in gross_checks.values())
+            or acceptance.get("gross_passed") is not True
+        ):
+            issues.append("gross-capture-result-not-passed")
+        if acceptance.get("semantic_audit_passed") is not True:
+            issues.append("semantic-capture-acceptance-not-passed")
+        if acceptance.get("passed") is not True:
+            issues.append("capture-acceptance-not-passed")
+
+    audit = record.get("audit")
+    if (
+        not isinstance(audit, dict)
+        or audit.get("semantic_audit_passed") is not True
+    ):
+        issues.append("capture-audit-semantic-result-not-passed")
+    deprecated_copy = (
+        audit.get("deprecated_visible_copy")
+        if isinstance(audit, dict) else
+        None
+    )
+    issues.extend(
+        deprecated_visible_copy_evidence_issue_codes(deprecated_copy)
+    )
+    if str(record.get("label", "")) == "fertilizer-active":
+        source = (
+            audit.get("fertilizer_flow_source")
+            if isinstance(audit, dict) else
+            None
+        )
+        if not (
+            isinstance(source, dict)
+            and source.get("passed") is True
+            and source.get("issues") == []
+            and not fertilizer_flow_source_issue_codes(source)
+        ):
+            issues.append("fertilizer-flow-source-not-passed")
+    if (
+        str(record.get("label", ""))
+        == "purchase-confirmation-fertilizer-queue"
+    ):
+        confirmation = (
+            audit.get("fertilizer_queue_confirmation")
+            if isinstance(audit, dict) else
+            None
+        )
+        continuity = (
+            confirmation.get("plant_state_continuity")
+            if isinstance(confirmation, dict) else
+            None
+        )
+        records = (
+            continuity.get("records")
+            if isinstance(continuity, dict) else
+            None
+        )
+        if not (
+            isinstance(confirmation, dict)
+            and confirmation.get("passed") is True
+            and isinstance(continuity, dict)
+            and continuity.get("passed") is True
+            and continuity.get("issues") == []
+            and not fertilizer_flow_continuity_issue_codes(records)
+        ):
+            issues.append("fertilizer-flow-continuity-not-passed")
+    if str(record.get("label", "")) == "starter-nursery-plants":
+        selection = (
+            audit.get("first_run_selection")
+            if isinstance(audit, dict) else
+            None
+        )
+        selected = (
+            str(selection.get("selected_species", "") or "").casefold()
+            if isinstance(selection, dict) else
+            ""
+        )
+        pending = (
+            str(selection.get("pending_species", "") or "").casefold()
+            if isinstance(selection, dict) else
+            ""
+        )
+        if not (
+            isinstance(selection, dict)
+            and selection.get("passed") is True
+            and selection.get("issues") == []
+            and selection.get("nursery_entry_persisted") is True
+            and selection.get("step_before_selection") == "nursery"
+            and selection.get("selection_action") == "Choose"
+            and selection.get("selection_action_triggered") is True
+            and selection.get("selection_persisted") is True
+            and selection.get("step_after_selection") == "placement"
+            and bool(selected)
+            and selected == pending
+        ):
+            issues.append("first-run-selection-transition-not-passed")
+    if str(record.get("label", "")) == "nursery-plants":
+        counts = audit if isinstance(audit, dict) else {}
+        if not (
+            counts.get("passed") is True
+            and counts.get("fixture_state_passed") is True
+            and counts.get("species_copy")
+            == "10 of 10 species discovered"
+            and counts.get("collection_entries_copy")
+            == "30 of 39 collection entries discovered"
+            and counts.get("species_copy_visible") is True
+            and counts.get("collection_entries_copy_visible") is True
+        ):
+            issues.append("nursery-collection-counts-not-canonical")
+
+    native_layout = record.get("native_layout_telemetry")
+    if (
+        not isinstance(native_layout, dict)
+        or native_layout.get("passed") is not True
+        or native_layout.get("issues") != []
+    ):
+        issues.append("native-layout-telemetry-not-passed")
+
+    visual_contract = record.get("visual_contract_audit")
+    if (
+        not isinstance(visual_contract, dict)
+        or visual_contract.get("passed") is not True
+        or visual_contract.get("issues") != []
+    ):
+        issues.append("visual-contract-audit-not-passed")
+
+    scroll_audit = record.get("dialog_scroll_audit")
+    if not isinstance(scroll_audit, dict):
+        issues.append("missing-dialog-scroll-audit")
+    elif scroll_audit.get("applicable") is True:
+        if (
+            scroll_audit.get("passed") is not True
+            or scroll_audit.get("issues") != []
+        ):
+            issues.append("dialog-scroll-audit-not-passed")
+        four_state = scroll_audit.get("four_state_scroll_matrix")
+        if (
+            not isinstance(four_state, dict)
+            or four_state.get("passed") is not True
+            or four_state.get("issues") != []
+        ):
+            issues.append("four-state-scroll-evidence-not-passed")
+    elif scroll_audit.get("applicable") is not False:
+        issues.append("invalid-dialog-scroll-applicability")
+
+    return tuple(dict.fromkeys(issues))
+
+
 def _validate_dialog_scroll_summary(
     payload: dict[str, Any],
     coverage: dict[str, dict[str, str]],
@@ -2474,6 +3119,20 @@ def _validate_dialog_scroll_summary(
             issues.append("dialog_scroll_audits required_count must be 0")
         if summary.get("records") != []:
             issues.append("dialog_scroll_audits records must be empty")
+        matrix = summary.get("four_state_scroll_matrix")
+        if not isinstance(matrix, dict):
+            issues.append(
+                "dialog_scroll_audits four_state_scroll_matrix must be an object"
+            )
+        else:
+            if matrix.get("required") is not False:
+                issues.append("four-state scroll matrix required must be false")
+            if matrix.get("required_states") != []:
+                issues.append("four-state scroll matrix required_states must be empty")
+            if matrix.get("observations") != []:
+                issues.append("four-state scroll matrix observations must be empty")
+            if matrix.get("passed") is not True:
+                issues.append("four-state scroll matrix passed must be true")
         return
     if summary.get("required") is not True:
         issues.append("dialog_scroll_audits required must be true")
@@ -2541,9 +3200,67 @@ def _validate_dialog_scroll_summary(
         if summary_record.get("passed") is not True:
             issues.append(f"{prefix}: passed must be true")
         audit = record_audits.get(label, {})
+        local_matrix = audit.get("four_state_scroll_matrix")
+        local_matrix_issues = dialog_scroll_state_matrix_issue_codes(
+            local_matrix,
+            require_complete=False,
+        )
+        for issue in local_matrix_issues:
+            issues.append(f"{prefix}: scroll state {issue}")
+        if summary_record.get("four_state_scroll_matrix") != local_matrix:
+            issues.append(
+                f"{prefix}: four_state_scroll_matrix does not match capture audit"
+            )
         for field in metric_fields:
             if summary_record.get(field) != audit.get(field):
                 issues.append(f"{prefix}: {field} does not match capture audit")
+
+    matrix = summary.get("four_state_scroll_matrix")
+    if not isinstance(matrix, dict):
+        issues.append(
+            "dialog_scroll_audits four_state_scroll_matrix must be an object"
+        )
+        return
+    if matrix.get("required") is not True:
+        issues.append("four-state scroll matrix required must be true")
+    if matrix.get("required_states") != list(DIALOG_SCROLL_FOUR_STATE_NAMES):
+        issues.append("four-state scroll matrix required_states are invalid")
+    matrix_issues = dialog_scroll_state_matrix_issue_codes(
+        matrix,
+        require_complete=True,
+    )
+    issues.extend(f"four-state scroll matrix: {issue}" for issue in matrix_issues)
+    witnesses = matrix.get("witness_labels")
+    if not isinstance(witnesses, dict):
+        issues.append("four-state scroll matrix witness_labels must be an object")
+        return
+    if set(witnesses) != set(DIALOG_SCROLL_FOUR_STATE_NAMES):
+        issues.append("four-state scroll matrix witnesses are incomplete")
+    observations = matrix.get("observations")
+    if not isinstance(observations, list):
+        return
+    for observation in observations:
+        if not isinstance(observation, dict):
+            continue
+        state = str(observation.get("state", ""))
+        label = str(observation.get("label", ""))
+        if witnesses.get(state) != label or label not in record_audits:
+            issues.append(
+                f"four-state scroll matrix witness is invalid for {state!r}"
+            )
+            continue
+        source_matrix = record_audits[label].get("four_state_scroll_matrix")
+        source_observations = (
+            list(source_matrix.get("observations", ()) or ())
+            if isinstance(source_matrix, dict) else
+            []
+        )
+        comparable = dict(observation)
+        comparable.pop("label", None)
+        if comparable not in source_observations:
+            issues.append(
+                f"four-state scroll matrix witness does not match {label!r}"
+            )
 
 
 def expected_resize_geometry_acceptance(
@@ -2785,37 +3502,293 @@ def _validate_memory_probe(
 
 
 def web_root_overflow_issue_codes(evidence: Any) -> tuple[str, ...]:
-    """Independently verify the HTML document-root overflow measurement."""
+    """Independently verify document and visible add-on root measurements."""
 
     if not isinstance(evidence, dict):
         return ("missing-web-root-overflow",)
     issues: list[str] = []
-    if evidence.get("source") != "document.documentElement":
+    if evidence.get("source") != WEB_ROOT_OVERFLOW_EVIDENCE_SOURCE:
         issues.append("unexpected-web-root-source")
-    client_width = evidence.get("client_width")
-    scroll_width = evidence.get("scroll_width")
-    overflow = evidence.get("horizontal_overflow")
-    if type(client_width) is not int or client_width <= 0:
-        issues.append("invalid-web-root-client-width")
-    if type(scroll_width) is not int or scroll_width <= 0:
-        issues.append("invalid-web-root-scroll-width")
-    if type(overflow) is not int or overflow < 0:
-        issues.append("invalid-web-root-overflow")
+    surface_kind = evidence.get("surface_kind")
+    if surface_kind not in {"home", "reviewer"}:
+        issues.append("invalid-web-root-surface-kind")
+
+    def validate_measurement(record: Any, *, prefix: str) -> None:
+        if not isinstance(record, dict):
+            issues.append(f"missing-{prefix}-measurement")
+            return
+        client_width = record.get("client_width")
+        scroll_width = record.get("scroll_width")
+        overflow = record.get("horizontal_overflow")
+        if type(client_width) is not int or client_width <= 0:
+            issues.append(f"invalid-{prefix}-client-width")
+        if type(scroll_width) is not int or scroll_width <= 0:
+            issues.append(f"invalid-{prefix}-scroll-width")
+        if type(overflow) is not int or overflow < 0:
+            issues.append(f"invalid-{prefix}-overflow")
+        if (
+            type(client_width) is int
+            and type(scroll_width) is int
+            and type(overflow) is int
+            and overflow != max(0, scroll_width - client_width)
+        ):
+            issues.append(f"{prefix}-overflow-arithmetic-mismatch")
+        if (
+            type(client_width) is int
+            and type(scroll_width) is int
+            and scroll_width > client_width
+        ):
+            issues.append(f"{prefix}-horizontal-overflow")
+        if record.get("passed") is not True:
+            issues.append(f"{prefix}-overflow-not-passed")
+
+    document_root = evidence.get("document_root")
+    if isinstance(document_root, dict):
+        if document_root.get("identity") != "document.documentElement":
+            issues.append("unexpected-web-document-root-identity")
+        if document_root.get("source") != "document.documentElement":
+            issues.append("unexpected-web-document-root-source")
+    validate_measurement(document_root, prefix="web-document-root")
+
+    candidate_count = evidence.get("addon_root_candidate_count")
+    visible_count = evidence.get("visible_addon_root_count")
+    records = evidence.get("visible_addon_roots")
+    if type(candidate_count) is not int or candidate_count < 0:
+        issues.append("invalid-addon-root-candidate-count")
+    if type(visible_count) is not int or visible_count < 0:
+        issues.append("invalid-visible-addon-root-count")
+    if not isinstance(records, list):
+        issues.append("invalid-visible-addon-root-records")
+        records = []
+    if type(visible_count) is int and visible_count != len(records):
+        issues.append("visible-addon-root-count-mismatch")
     if (
-        type(client_width) is int
-        and type(scroll_width) is int
-        and type(overflow) is int
-        and overflow != max(0, scroll_width - client_width)
+        type(candidate_count) is int
+        and type(visible_count) is int
+        and candidate_count < visible_count
     ):
-        issues.append("web-root-overflow-arithmetic-mismatch")
-    if (
-        type(client_width) is int
-        and type(scroll_width) is int
-        and scroll_width > client_width
-    ):
-        issues.append("web-root-horizontal-overflow")
+        issues.append("addon-root-candidate-count-mismatch")
+    if surface_kind == "home" and not records:
+        issues.append("home-visible-addon-root-missing")
+
+    identities: set[str] = set()
+    prior_dom_ordinal = 0
+    for index, record in enumerate(records, start=1):
+        prefix = f"visible-addon-root-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"invalid-{prefix}-record")
+            continue
+        identity = record.get("identity")
+        root_kind = record.get("root_kind")
+        selector = record.get("selector")
+        dom_ordinal = record.get("dom_ordinal")
+        kind_ordinal = record.get("kind_ordinal")
+        if not isinstance(root_kind, str) or not root_kind:
+            issues.append(f"invalid-{prefix}-kind")
+        if type(kind_ordinal) is not int or kind_ordinal < 1:
+            issues.append(f"invalid-{prefix}-kind-ordinal")
+        expected_identity = (
+            f"anki-garden:{root_kind}:{kind_ordinal}"
+            if isinstance(root_kind, str)
+            and root_kind
+            and type(kind_ordinal) is int
+            and kind_ordinal >= 1
+            else None
+        )
+        if not isinstance(identity, str) or not identity:
+            issues.append(f"invalid-{prefix}-identity")
+        elif identity in identities:
+            issues.append("duplicate-visible-addon-root-identity")
+        elif expected_identity is not None and identity != expected_identity:
+            issues.append(f"unstable-{prefix}-identity")
+        if isinstance(identity, str):
+            identities.add(identity)
+        if not isinstance(selector, str) or not selector:
+            issues.append(f"invalid-{prefix}-selector")
+        if type(dom_ordinal) is not int or dom_ordinal <= prior_dom_ordinal:
+            issues.append(f"nondeterministic-{prefix}-dom-order")
+        else:
+            prior_dom_ordinal = dom_ordinal
+        if record.get("visible") is not True:
+            issues.append(f"{prefix}-not-visible")
+        validate_measurement(record, prefix=prefix)
+
+    if evidence.get("dom_audit_passed") is not True:
+        issues.append("web-root-dom-audit-not-passed")
     if evidence.get("passed") is not True:
         issues.append("web-root-overflow-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def native_progress_fraction(
+    minimum: int,
+    value: int,
+    maximum: int,
+) -> float:
+    """Independently recompute a bounded native progress fraction."""
+
+    lower = int(minimum)
+    upper = int(maximum)
+    if upper <= lower:
+        return 0.0
+    clamped = min(upper, max(lower, int(value)))
+    return round((clamped - lower) / (upper - lower), 9)
+
+
+def native_progress_bar_evidence_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently reject missing or contradictory QProgressBar paint proof."""
+
+    if not isinstance(evidence, dict):
+        return ("native-progress-evidence-missing",)
+    issues: list[str] = []
+    if evidence.get("source") != "QProgressBar.initStyleOption":
+        issues.append("native-progress-source")
+    if evidence.get("scanned") is not True:
+        issues.append("native-progress-scan-missing")
+    root_semantic_id = evidence.get("root_semantic_id")
+    if not isinstance(root_semantic_id, str) or not root_semantic_id.strip():
+        issues.append("native-progress-root-semantic-id")
+    root_geometry = evidence.get("root_geometry")
+    if not (
+        isinstance(root_geometry, list)
+        and len(root_geometry) == 4
+        and all(type(number) is int for number in root_geometry)
+        and root_geometry[2] > 0
+        and root_geometry[3] > 0
+    ):
+        issues.append("native-progress-root-geometry")
+
+    records = evidence.get("bars")
+    candidate_count = evidence.get("candidate_count")
+    if not isinstance(records, list):
+        return tuple(dict.fromkeys((*issues, "native-progress-records")))
+    if type(candidate_count) is not int or candidate_count < 0:
+        issues.append("native-progress-candidate-count")
+    elif candidate_count != len(records):
+        issues.append("native-progress-candidate-count-mismatch")
+
+    semantic_ids: list[str] = []
+    for index, record in enumerate(records):
+        prefix = f"native-progress-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"{prefix}-record")
+            continue
+        semantic_id = record.get("semantic_id")
+        if not isinstance(semantic_id, str) or not semantic_id.strip():
+            issues.append(f"{prefix}-semantic-id")
+        else:
+            semantic_ids.append(semantic_id)
+        if record.get("native_class") != "QProgressBar":
+            issues.append(f"{prefix}-native-class")
+        if (
+            record.get("visible") is not True
+            or record.get("visible_to_root") is not True
+            or record.get("visible_region_nonempty") is not True
+        ):
+            issues.append(f"{prefix}-visibility")
+
+        geometry = record.get("geometry")
+        visible_geometry = record.get("visible_geometry")
+        geometry_valid = bool(
+            isinstance(geometry, list)
+            and len(geometry) == 4
+            and all(type(number) is int for number in geometry)
+            and geometry[2] > 0
+            and geometry[3] > 0
+        )
+        visible_geometry_valid = bool(
+            isinstance(visible_geometry, list)
+            and len(visible_geometry) == 4
+            and all(type(number) is int for number in visible_geometry)
+            and visible_geometry[2] > 0
+            and visible_geometry[3] > 0
+        )
+        if not geometry_valid:
+            issues.append(f"{prefix}-geometry")
+        if not visible_geometry_valid:
+            issues.append(f"{prefix}-visible-geometry")
+        if geometry_valid and visible_geometry_valid and (
+            visible_geometry[0] < 0
+            or visible_geometry[1] < 0
+            or not isinstance(root_geometry, list)
+            or len(root_geometry) != 4
+            or visible_geometry[0] + visible_geometry[2] > root_geometry[2]
+            or visible_geometry[1] + visible_geometry[3] > root_geometry[3]
+        ):
+            issues.append(f"{prefix}-visible-geometry-containment")
+
+        minimum = record.get("logical_minimum")
+        value = record.get("logical_value")
+        maximum = record.get("logical_maximum")
+        logical_valid = bool(
+            type(minimum) is int
+            and type(value) is int
+            and type(maximum) is int
+            and maximum >= minimum
+        )
+        if not logical_valid:
+            issues.append(f"{prefix}-logical-range")
+            expected_fraction = None
+        else:
+            expected_fraction = native_progress_fraction(
+                minimum,
+                value,
+                maximum,
+            )
+            if record.get("clamped_logical_value") != min(
+                maximum,
+                max(minimum, value),
+            ):
+                issues.append(f"{prefix}-logical-clamp")
+            if record.get("denominator_zero") is not (maximum <= minimum):
+                issues.append(f"{prefix}-denominator-zero")
+            if record.get("denominator_zero_fallback") != "zero":
+                issues.append(f"{prefix}-denominator-zero-fallback")
+            if record.get("expected_fraction") != expected_fraction:
+                issues.append(f"{prefix}-expected-fraction")
+
+        paint = record.get("paint_input")
+        if not isinstance(paint, dict):
+            issues.append(f"{prefix}-paint-input")
+            continue
+        if (
+            paint.get("source") != "QStyleOptionProgressBar"
+            or paint.get("initialized") is not True
+        ):
+            issues.append(f"{prefix}-paint-source")
+        painted_minimum = paint.get("minimum")
+        painted_value = paint.get("value")
+        painted_maximum = paint.get("maximum")
+        if not (
+            type(painted_minimum) is int
+            and type(painted_value) is int
+            and type(painted_maximum) is int
+            and logical_valid
+            and painted_minimum == minimum
+            and painted_value == value
+            and painted_maximum == maximum
+        ):
+            issues.append(f"{prefix}-paint-range")
+        elif paint.get("fraction") != expected_fraction:
+            issues.append(f"{prefix}-paint-fraction")
+        paint_geometry = paint.get("geometry")
+        if not (
+            geometry_valid
+            and isinstance(paint_geometry, list)
+            and paint_geometry == [0, 0, geometry[2], geometry[3]]
+        ):
+            issues.append(f"{prefix}-paint-geometry")
+        if record.get("paint_input_consistent") is not True:
+            issues.append(f"{prefix}-paint-input-consistency")
+
+    if len(set(semantic_ids)) != len(semantic_ids):
+        issues.append("native-progress-semantic-id-collision")
+    if evidence.get("issues") != []:
+        issues.append("native-progress-runtime-issues")
+    if evidence.get("passed") is not True:
+        issues.append("native-progress-runtime-not-passed")
     return tuple(dict.fromkeys(issues))
 
 
@@ -3042,7 +4015,7 @@ def growth_charge_rendered_value_issue_codes(
     elif label == "growth-charge-success-stage-reward":
         expected = {
             "variant": "success",
-            "stage_transition": "Seed → Sprout",
+            "stage_transition": "Bonsai Plant reached Sprout",
             "receipt_copy": (
                 "+100 Growth · 1 growth charge remaining\n"
                 "Next-stage progress · 50 / 2,000 toward Young"
@@ -3064,6 +4037,679 @@ def growth_charge_rendered_value_issue_codes(
             issues.append(f"growth-charge-rendered-value-mismatch:{key}")
     if evidence.get("passed") is not True:
         issues.append("growth-charge-rendered-values-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def diagnostics_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate Surface 26's five painted Diagnostics states."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-diagnostics-state-matrix",)
+    expected: dict[str, dict[str, Any]] = {
+        "success": {
+            "diagnostic_state": "success",
+            "result_state": "success",
+            "title": "All artwork is available",
+            "summary": "",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "warning": {
+            "diagnostic_state": "warning",
+            "result_state": "warning",
+            "title": "3 artwork files are missing",
+            "summary": "Some plants, decorations, or scenery may not appear.",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "failure": {
+            "diagnostic_state": "failure",
+            "result_state": "failure",
+            "title": "Display issues detected",
+            "summary": (
+                "Check again. Copy the current report if the issue continues."
+            ),
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "checking": {
+            "diagnostic_state": "checking",
+            "result_state": "success",
+            "title": "Checking display diagnostics",
+            "summary": "Scanning artwork and display telemetry.",
+            "check_enabled": False,
+            "check_label": "Checking…",
+            "copy_confirmation_visible": False,
+            "copy_confirmation": "",
+            "painted": True,
+        },
+        "copy-confirmation": {
+            "diagnostic_state": "copy-confirmation",
+            "result_state": "warning",
+            "title": "3 artwork files are missing",
+            "summary": "Some plants, decorations, or scenery may not appear.",
+            "check_enabled": True,
+            "check_label": "Check again",
+            "copy_confirmation_visible": True,
+            "copy_confirmation": "Report copied to clipboard",
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    records = evidence.get("records")
+    if not isinstance(records, dict) or set(records) != set(expected):
+        issues.append("diagnostics-state-set")
+        records = records if isinstance(records, dict) else {}
+    for state, expected_values in expected.items():
+        actual = records.get(state)
+        if not isinstance(actual, dict):
+            issues.append(f"diagnostics-{state}:missing")
+            continue
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"diagnostics-{state}:{key}")
+    topology = evidence.get("topology")
+    if not isinstance(topology, dict):
+        issues.append("diagnostics-topology")
+    else:
+        if topology.get("visible_central_scroll_owners") != 1:
+            issues.append("diagnostics-central-scroll-owner")
+        if topology.get("diagnostics_scroll_is_owner") is not True:
+            issues.append("diagnostics-scroll-identity")
+        if topology.get("chrome_outside_scroll") is not True:
+            issues.append("diagnostics-pinned-chrome")
+    if evidence.get("passed") is not True:
+        issues.append("diagnostics-state-matrix-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def sync_reward_discovery_state_matrix_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently validate Surface 29's painted discovery variants."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-sync-reward-discovery-state-matrix",)
+    base_metrics = {
+        "sync_review_cards": {"label": "Card answers", "value": "42"},
+        "growth_resource": {"label": "Growth", "value": "+520"},
+        "garden_coin": {"label": "Garden Coins", "value": "+12"},
+    }
+    expected: dict[str, dict[str, Any]] = {
+        "no-discovery": {
+            "environment_count": 0,
+            "rewards_section_visible": False,
+            "rewards_heading_visible": False,
+            "visible_environment_rows": 0,
+            "visible_standard_find_rows": 0,
+            "visible_environment_ids": [],
+            "visible_environment_event_ids": [],
+            "visible_standard_find_ids": [],
+            "visible_standard_find_event_ids": [],
+            "metric_tile_count": 3,
+            "metric_projection": base_metrics,
+            "disclosure_visible": False,
+            "disclosure_text": "",
+            "expanded": False,
+            "painted": True,
+        },
+        "multi-discovery-collapsed": {
+            "environment_count": 5,
+            "rewards_section_visible": True,
+            "rewards_heading_visible": True,
+            "visible_environment_rows": 2,
+            "visible_standard_find_rows": 1,
+            "visible_environment_ids": ["firefly_lantern", "moon_arch"],
+            "visible_environment_event_ids": [
+                "capture-sync-discovery:firefly_lantern",
+                "capture-sync-discovery:moon_arch",
+            ],
+            "visible_standard_find_ids": ["growth_charge_small"],
+            "visible_standard_find_event_ids": [
+                "capture-sync-standard-find:growth_charge_small",
+            ],
+            "metric_tile_count": 5,
+            "metric_projection": {
+                **base_metrics,
+                "standard_find": {
+                    "label": "Standard Finds",
+                    "value": "+3",
+                },
+                "garden_discovery": {
+                    "label": "Garden discoveries",
+                    "value": "+5",
+                },
+            },
+            "disclosure_visible": True,
+            "disclosure_text": "Show 3 more",
+            "disclosure_accessible_name": (
+                "Show 3 more sync reward entries"
+            ),
+            "expanded": False,
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    records = evidence.get("records")
+    if not isinstance(records, dict) or set(records) != set(expected):
+        issues.append("sync-reward-discovery-state-set")
+        records = records if isinstance(records, dict) else {}
+    for state, expected_values in expected.items():
+        actual = records.get(state)
+        if not isinstance(actual, dict):
+            issues.append(f"sync-reward-{state}:missing")
+            continue
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"sync-reward-{state}:{key}")
+    restored = evidence.get("restored")
+    if not isinstance(restored, dict):
+        issues.append("sync-reward-restored:missing")
+    else:
+        for key, expected_value in {
+            "environment_count": 1,
+            "rewards_section_visible": True,
+            "visible_environment_rows": 1,
+            "visible_standard_find_rows": 0,
+            "visible_environment_ids": ["firefly_lantern"],
+            "visible_environment_event_ids": [
+                "capture-sync-environment-discovery:firefly_lantern",
+            ],
+            "visible_standard_find_ids": [],
+            "visible_standard_find_event_ids": [],
+            "metric_tile_count": 4,
+            "metric_projection": {
+                **base_metrics,
+                "garden_discovery": {
+                    "label": "Garden discoveries",
+                    "value": "+1",
+                },
+            },
+            "disclosure_visible": False,
+            "expanded": False,
+        }.items():
+            if restored.get(key) != expected_value:
+                issues.append(f"sync-reward-restored:{key}")
+    if evidence.get("passed") is not True:
+        issues.append("sync-reward-discovery-state-matrix-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def collection_loadout_state_matrix_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently validate Surface 20's appearance draft lifecycle."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-collection-loadout-state-matrix",)
+    issues: list[str] = []
+    values = evidence.get("structured_values")
+    expected_keys = {
+        "scenery",
+        "displayed_decoration",
+        "active_bonus",
+        "visual_effects",
+    }
+    if not isinstance(values, dict) or set(values) != expected_keys:
+        issues.append("collection-loadout-structured-value-keys")
+        values = values if isinstance(values, dict) else {}
+    if any(not str(values.get(key, "")).strip() for key in expected_keys):
+        issues.append("collection-loadout-structured-value-copy")
+    for key, expected_value in {
+        "structured_values_visible": True,
+        "initial_apply_enabled": False,
+        "dirty_apply_enabled": True,
+        "restored_apply_enabled": False,
+        "selection_preserved_across_tabs": True,
+        "selected_tile_checked_after_tabs": True,
+        "dirty_state_painted": True,
+        "restored_state_painted": True,
+        "restored_to_persisted_draft": True,
+    }.items():
+        if evidence.get(key) != expected_value:
+            issues.append(f"collection-loadout:{key}")
+    if not str(evidence.get("selected_scenery_id", "")).strip():
+        issues.append("collection-loadout-selected-scenery-id")
+    preview_size = evidence.get("preview_size")
+    if (
+        not isinstance(preview_size, list)
+        or len(preview_size) != 2
+        or any(type(value) is not int or value <= 0 for value in preview_size)
+        or preview_size[1] != round(preview_size[0] * 9 / 16)
+    ):
+        issues.append("collection-loadout-preview-aspect-ratio")
+    if evidence.get("passed") is not True:
+        issues.append("collection-loadout-state-matrix-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def nursery_bed_incomplete_state_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently validate Surface 23's painted Bed 3 expansion."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-nursery-bed-incomplete-state",)
+    expected = {
+        "unlocked_beds": 2,
+        "summary": "2 of 6 beds unlocked",
+        "bed_number": 3,
+        "bed_title": "Unlock Bed 3",
+        "price": 150,
+        "price_copy": "150 Garden Coins",
+        "resulting_capacity": 3,
+        "action_copy": "Unlock for 150 Garden Coins",
+        "action_accessible_name": "Unlock Bed 3 for 150 Garden Coins",
+        "action_enabled": True,
+        "painted": True,
+        "contained": True,
+    }
+    issues: list[str] = []
+    for key, expected_value in expected.items():
+        if evidence.get(key) != expected_value:
+            issues.append(f"nursery-bed-incomplete:{key}")
+    if (
+        "Unlocks Bed 3 and increases Garden capacity to 3 plants."
+        not in str(evidence.get("capacity_copy", ""))
+    ):
+        issues.append("nursery-bed-incomplete:capacity_copy")
+    if evidence.get("passed") is not True:
+        issues.append("nursery-bed-incomplete-state-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def starter_nursery_geometry_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Reject a starter catalog whose complete two-row choice grid is clipped."""
+
+    if not isinstance(evidence, dict):
+        return ("starter-nursery:missing",)
+    issues: list[str] = []
+
+    def valid_bounds(value: Any) -> bool:
+        return bool(
+            isinstance(value, list)
+            and len(value) == 4
+            and all(type(component) is int for component in value)
+        )
+
+    if evidence.get("applicable") is not True:
+        issues.append("starter-nursery:not-applicable")
+    if evidence.get("passed") is not True:
+        issues.append("starter-nursery:not-passed")
+    height = evidence.get("dialog_height")
+    if type(height) is not int or not 370 <= height <= 410:
+        issues.append("starter-nursery:dialog-height")
+    viewport_size = evidence.get("catalog_viewport_size")
+    if not (
+        isinstance(viewport_size, list)
+        and len(viewport_size) == 2
+        and all(type(value) is int and value > 0 for value in viewport_size)
+    ):
+        issues.append("starter-nursery:catalog-viewport")
+    scroll_maximum = evidence.get("catalog_scroll_maximum")
+    if type(scroll_maximum) is not int or scroll_maximum != 0:
+        issues.append("starter-nursery:catalog-scroll")
+    if evidence.get("partial_card_ids") != []:
+        issues.append("starter-nursery:partial-cards")
+    records = evidence.get("records")
+    if not isinstance(records, list) or len(records) != 4:
+        issues.append("starter-nursery:card-count")
+        records = []
+    for index, record in enumerate(records):
+        prefix = f"starter-nursery:card-{index + 1}"
+        if not isinstance(record, dict):
+            issues.append(f"{prefix}:record")
+            continue
+        if not str(record.get("item_id", "")).strip():
+            issues.append(f"{prefix}:item-id")
+        if record.get("passed") is not True:
+            issues.append(f"{prefix}:not-passed")
+        if record.get("contained_in_catalog_viewport") is not True:
+            issues.append(f"{prefix}:viewport-containment")
+        viewport_bounds = record.get("viewport_bounds")
+        if not valid_bounds(viewport_bounds):
+            issues.append(f"{prefix}:viewport-bounds")
+        card_size = record.get("card_size")
+        if not (
+            isinstance(card_size, list)
+            and len(card_size) == 2
+            and all(type(value) is int for value in card_size)
+            and 88 <= card_size[1] <= 92
+        ):
+            issues.append(f"{prefix}:card-size")
+        for key, width_bounds, height_bounds in (
+            ("seed_badge_bounds", (44, 64), (22, 26)),
+            ("choose_bounds", (64, 100), (34, 36)),
+        ):
+            bounds = record.get(key)
+            if not (
+                valid_bounds(bounds)
+                and width_bounds[0] <= bounds[2] <= width_bounds[1]
+                and height_bounds[0] <= bounds[3] <= height_bounds[1]
+            ):
+                issues.append(f"{prefix}:{key.replace('_', '-')}")
+        details = record.get("details_bounds")
+        if not valid_bounds(details):
+            issues.append(f"{prefix}:details-bounds")
+    footer = evidence.get("footer")
+    if not isinstance(footer, dict):
+        issues.append("starter-nursery:footer")
+    elif not (
+        footer.get("contained") is True
+        and footer.get("action_text") == "Skip for now"
+        and footer.get("action_contained") is True
+        and valid_bounds(footer.get("bounds"))
+        and 36 <= footer["bounds"][3] <= 48
+    ):
+        issues.append("starter-nursery:footer")
+    return tuple(dict.fromkeys(issues))
+
+
+def move_occupied_hover_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently require Surface 08's painted occupied hover state."""
+
+    if not isinstance(evidence, dict):
+        return ("move-hover:missing",)
+    issues: list[str] = []
+    occupied_slot = evidence.get("occupied_destination_slot")
+    expected_label = str(evidence.get("expected_label", ""))
+    occupant_name = str(evidence.get("occupant_display_name", ""))
+    valid_destinations = list(evidence.get("valid_destinations", ()) or ())
+    if evidence.get("move_mode_active") is not True:
+        issues.append("move-hover:move-mode-inactive")
+    if not str(evidence.get("source_plant_id", "")).strip():
+        issues.append("move-hover:source-plant-id")
+    if not str(evidence.get("occupant_plant_id", "")).strip():
+        issues.append("move-hover:occupant-plant-id")
+    if evidence.get("source_plant_id") == evidence.get("occupant_plant_id"):
+        issues.append("move-hover:source-occupant-identity")
+    if type(occupied_slot) is not int or occupied_slot < 0:
+        issues.append("move-hover:occupied-slot")
+    elif occupied_slot not in valid_destinations:
+        issues.append("move-hover:occupied-slot-validity")
+    if evidence.get("hovered_slot") != occupied_slot:
+        issues.append("move-hover:hovered-slot")
+    if not occupant_name or expected_label != f"Swap with {occupant_name}":
+        issues.append("move-hover:expected-label")
+    if evidence.get("painted_label") != expected_label:
+        issues.append("move-hover:painted-label")
+    if evidence.get("pointer_reached_target") is not True:
+        issues.append("move-hover:pointer-target")
+    if evidence.get("source_slot_not_selectable") is not True:
+        issues.append("move-hover:source-selectable")
+    if evidence.get("unrelated_controls_disabled") is not True:
+        issues.append("move-hover:unrelated-controls")
+    if evidence.get("issues") != []:
+        issues.append("move-hover:runtime-issues")
+    if evidence.get("passed") is not True:
+        issues.append("move-hover:runtime-passed")
+    return tuple(issues)
+
+
+def growth_stage_strip_issue_codes(records: Any) -> tuple[str, ...]:
+    """Independently require the canonical muted six-stage Growth strip."""
+
+    expected = (
+        ("Seed", "reached", "Reached", False),
+        ("Sprout", "current", "Current", False),
+        ("Young", "next", "Next", True),
+        ("Mature", "locked", "Locked", True),
+        ("Flowering", "locked", "Locked", True),
+        ("Full Bloom", "locked", "Locked", True),
+    )
+    if not isinstance(records, list) or len(records) != len(expected):
+        return ("growth-stage-strip-count",)
+    issues: list[str] = []
+    for index, (record, expected_values) in enumerate(
+        zip(records, expected),
+        start=1,
+    ):
+        label, state, state_label, future = expected_values
+        prefix = f"growth-stage-strip-{index}"
+        if not isinstance(record, dict):
+            issues.append(f"{prefix}:record")
+            continue
+        if record.get("label") != label:
+            issues.append(f"{prefix}:label")
+        if record.get("state") != state:
+            issues.append(f"{prefix}:state")
+        if record.get("state_label") != state_label:
+            issues.append(f"{prefix}:state-label")
+        if record.get("preview_enabled") is not True:
+            issues.append(f"{prefix}:preview-enabled")
+        if record.get("label_enabled") is not True:
+            issues.append(f"{prefix}:label-enabled")
+        if record.get("preview_future_treatment") is not future:
+            issues.append(f"{prefix}:preview-treatment")
+        if record.get("label_future_treatment") is not future:
+            issues.append(f"{prefix}:label-treatment")
+        if record.get("extra_text") != []:
+            issues.append(f"{prefix}:extra-text")
+    return tuple(issues)
+
+
+def nursery_supplement_state_matrix_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently validate Surface 22's painted production states."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-nursery-supplement-state-matrix",)
+    expected: dict[str, dict[str, Any]] = {
+        "sufficient-balance": {
+            "balance": 500,
+            "balance_copy": "500",
+            "item_id": "premium",
+            "price_copy": "300 coins",
+            "action": "Buy and apply",
+            "action_disposition": "apply",
+            "action_enabled": True,
+            "painted": True,
+        },
+        "stored-multiple": {
+            "item_id": "fertilizer_basic",
+            "item_name": "Rich Compost",
+            "owned_copy": "3 owned",
+            "action": "Apply",
+            "action_disposition": "apply",
+            "meta_copy": (
+                "+1 Growth per eligible card answer · Lasts 1 hour"
+            ),
+            "artwork_ref": "rich_compost",
+            "artwork_source_matches": True,
+            "artwork_fallback": False,
+            "booster_item_id": "booster_potion",
+            "booster_owned_copy": "2 owned",
+            "booster_action": "Use",
+            "booster_painted": True,
+            "painted": True,
+        },
+        "active": {
+            "engine_tier": "basic",
+            "item_id": "fertilizer_basic",
+            "owned_copy": "2 owned",
+            "action": "Extend",
+            "action_disposition": "extend",
+            "status_phase": "active",
+            "status_copy": (
+                "Basic Fertilizer · +1 Growth per eligible card answer · "
+                "1 hour left"
+            ),
+            "painted": True,
+        },
+        "queued": {
+            "engine_tiers": ["quality"],
+            "item_id": "fertilizer_quality",
+            "owned_copy": "1 owned",
+            "queued_copy": "Queued",
+            "action": "Extend",
+            "action_disposition": "extend",
+            "final_basic_action": "Queue",
+            "final_basic_action_disposition": "queue",
+            "final_basic_painted": True,
+            "final_quality_action": "Extend",
+            "final_quality_action_disposition": "extend",
+            "final_quality_painted": True,
+            "meta_copy": (
+                "+2 Growth per eligible card answer · Lasts 2 hours"
+            ),
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    records = evidence.get("records")
+    if not isinstance(records, dict) or set(records) != set(expected):
+        issues.append("nursery-supplement-state-set")
+        records = records if isinstance(records, dict) else {}
+    for state, expected_values in expected.items():
+        actual = records.get(state)
+        if not isinstance(actual, dict):
+            issues.append(f"nursery-supplement-{state}:missing")
+            continue
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"nursery-supplement-{state}:{key}")
+    if evidence.get("passed") is not True:
+        issues.append("nursery-supplement-state-matrix-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def nursery_environment_fixture_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate Surface 24's exact catalog state fixture."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-nursery-environment-fixture",)
+    expected = {
+        "displayed_decoration": {
+            "item_id": "seedling_sign",
+            "ownership_state": "owned",
+            "display_state": "displayed",
+            "display_action": "Displayed",
+            "bonus_action": "Select today’s bonus",
+            "painted": True,
+        },
+        "active_bonus": {
+            "item_id": "watering_station",
+            "ownership_state": "owned",
+            "bonus_state": "active",
+            "action": "Garden Bonus active today",
+            "painted": True,
+        },
+        "purchasable": {
+            "item_id": "wind_chime",
+            "ownership_state": "available",
+            "price": 100,
+            "action": "Buy",
+            "action_enabled": True,
+            "painted": True,
+        },
+        "locked": {
+            "item_id": "firefly_lantern",
+            "ownership_state": "locked",
+            "price": 0,
+            "action": "How to unlock",
+            "action_enabled": False,
+            "painted": True,
+        },
+        "scenery_heading": {
+            "text": "Scenery",
+            "reachable": True,
+            "painted": True,
+        },
+    }
+    issues: list[str] = []
+    for state, expected_values in expected.items():
+        actual = evidence.get(state)
+        if not isinstance(actual, dict):
+            issues.append(f"nursery-environment-{state}:missing")
+            continue
+        for key, expected_value in expected_values.items():
+            if actual.get(key) != expected_value:
+                issues.append(f"nursery-environment-{state}:{key}")
+    if evidence.get("fixture_profiles") != ["full", "representative"]:
+        issues.append("nursery-environment-fixture-profiles")
+    if evidence.get("reversible") is not True:
+        issues.append("nursery-environment-fixture-reversible")
+    return tuple(dict.fromkeys(issues))
+
+
+def appearance_state_matrix_issue_codes(evidence: Any) -> tuple[str, ...]:
+    """Independently validate Surface 25's exact projected appearance rows."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-appearance-state-matrix",)
+    expected_rows = [
+        ["Scenery", "Verdant Twilight"],
+        ["Displayed decoration", "Seedling Sign"],
+        ["Active garden bonus", "Watering Station"],
+    ]
+    records = evidence.get("records")
+    issues: list[str] = []
+    if not isinstance(records, dict) or set(records) != {"on", "off"}:
+        issues.append("appearance-state-set")
+        records = records if isinstance(records, dict) else {}
+    for state, effects_value in (("on", "On"), ("off", "Off")):
+        actual = records.get(state)
+        if not isinstance(actual, dict):
+            issues.append(f"appearance-{state}:missing")
+            continue
+        expected = [*expected_rows, ["Visual effects", effects_value]]
+        if actual.get("projection_rows") != expected:
+            issues.append(f"appearance-{state}:projection-rows")
+        if actual.get("painted_rows") != expected:
+            issues.append(f"appearance-{state}:painted-rows")
+        if actual.get("painted") is not True:
+            issues.append(f"appearance-{state}:painted")
+    if evidence.get("final_state") != "on":
+        issues.append("appearance-final-state")
+    if evidence.get("draft_dirty_before") is not False:
+        issues.append("appearance-draft-before")
+    if evidence.get("draft_dirty_after") is not False:
+        issues.append("appearance-draft-after")
+    if evidence.get("draft_payload_unchanged") is not True:
+        issues.append("appearance-draft-payload")
+    if evidence.get("garden_name_draft_unchanged") is not True:
+        issues.append("appearance-name-draft")
+    if evidence.get("reversible") is not True:
+        issues.append("appearance-fixture-reversible")
+    if evidence.get("passed") is not True:
+        issues.append("appearance-state-matrix-not-passed")
+    return tuple(dict.fromkeys(issues))
+
+
+def settings_name_preview_absence_issue_codes(
+    evidence: Any,
+) -> tuple[str, ...]:
+    """Independently reject a duplicate Settings Garden-name preview."""
+
+    if not isinstance(evidence, dict):
+        return ("missing-settings-name-preview-absence",)
+    issues: list[str] = []
+    if evidence.get("attribute_present") is not False:
+        issues.append("settings-name-preview-attribute-present")
+    if evidence.get("candidate_count") != 0:
+        issues.append("settings-name-preview-candidate-count")
+    if evidence.get("visible_candidate_count") != 0:
+        issues.append("settings-name-preview-visible-candidate")
+    if evidence.get("visible_copy") != []:
+        issues.append("settings-name-preview-visible-copy")
+    if evidence.get("draft_echo_count") != 0:
+        issues.append("settings-name-preview-draft-echo")
+    if evidence.get("issues") != []:
+        issues.append("settings-name-preview-audit-issues")
+    if evidence.get("passed") is not True:
+        issues.append("settings-name-preview-not-passed")
     return tuple(dict.fromkeys(issues))
 
 
@@ -3107,8 +4753,8 @@ def reviewer_reward_dock_issue_codes(
         and bundle.get("active_plant_identity_suppressed") is True
         and bool(str(bundle.get("projected_hero_subtitle", "")).strip())
         and bundle.get("visible_summary_labels") == [
-            "1 Garden Find",
-            "2 new discoveries",
+            "1 Standard Find",
+            "Garden discoveries",
         ]
         and bundle.get("visible_summary_reward_types") == [
             "garden_find",
@@ -3235,6 +4881,44 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             and all(isinstance(component, int) for component in value)
             and value[2] > 0
             and value[3] > 0
+        )
+
+    def answer_controls_exclusion_passed(
+        row: dict[str, Any],
+        *,
+        measured_required: bool,
+    ) -> bool:
+        evidence = row.get("answer_controls_exclusion")
+        if not isinstance(evidence, dict) or evidence.get("passed") is not True:
+            return False
+        if evidence.get("measured_required") is not measured_required:
+            return False
+        if not measured_required:
+            return bool(
+                evidence.get("measured_passed") is True
+                or evidence.get("fallback_passed") is True
+            )
+        rectangles = evidence.get("control_rectangles")
+        return bool(
+            evidence.get("measured") is True
+            and evidence.get("measured_passed") is True
+            and evidence.get("fallback_passed") is False
+            and evidence.get("source") == "webengine-dom"
+            and evidence.get("telemetry_state") == "measured"
+            and evidence.get("schema_version") == 1
+            and int(evidence.get("matched_nodes", 0) or 0) >= 1
+            and evidence.get("viewport_matches") is True
+            and evidence.get("rect_in_viewport") is True
+            and evidence.get("rectangles_intersect") is False
+            and isinstance(rectangles, list)
+            and len(rectangles) == 1
+            and valid_bounds(rectangles[0].get("bounds"))
+            and rectangles[0].get("source") == "webengine-dom"
+            and int(evidence.get("hud_bottom", -1))
+            <= int(evidence.get("controls_top", -2))
+            and int(evidence.get("reported_clearance", -1)) >= 0
+            and evidence.get("hud_answer_controls_source")
+            == "webengine-dom"
         )
 
     def effect_geometry_passed(
@@ -3487,13 +5171,13 @@ def reviewer_hud_acceptance_matrix_issue_codes(
         if not isinstance(find_row, dict) or not isinstance(discovery_row, dict):
             return False
         return bool(
-            find_row.get("label") == "1 Garden Find"
+            find_row.get("label") == "1 Standard Find"
             and find_row.get("reward_type") == "garden_find"
             and bool(str(find_row.get("artwork_ref", "")).strip())
             and find_row.get("uses_item_art") is True
             and find_row.get("icon_present") is True
             and find_row.get("icon_kind") == "item-art"
-            and discovery_row.get("label") == "2 new discoveries"
+            and discovery_row.get("label") == "Garden discoveries"
             and discovery_row.get("reward_type") == "environment_discovery"
             and discovery_row.get("uses_item_art") is False
             and discovery_row.get("icon_present") is True
@@ -3678,12 +5362,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             "early-stage-art": lambda row: stage_art_passed(
                 row,
                 stage_key="sprout",
-                stage_copy="Sprout · Stage 1 of 5",
+                stage_copy="Sprout · 2 of 6 stages",
             ),
             "mature-stage-art": lambda row: stage_art_passed(
                 row,
                 stage_key="mature",
-                stage_copy="Mature · Stage 3 of 5",
+                stage_copy="Mature · 4 of 6 stages",
             ),
             "zero-effects": lambda row: (
                 row.get("visible_effect_count") == 0
@@ -3863,12 +5547,12 @@ def reviewer_hud_acceptance_matrix_issue_codes(
             ),
             "one-garden-find": lambda row: (
                 row.get("find_count") == 1
-                and row.get("footer_copy") == "1 find"
+                and row.get("footer_copy") == "1 Standard Find"
             ),
             "discovery-new-wording": lambda row: (
                 row.get("visible_summary_labels")
-                == ["1 Garden Find", "2 new discoveries"]
-                and row.get("discovery_summary") == "2 new discoveries"
+                == ["1 Standard Find", "Garden discoveries"]
+                and row.get("discovery_summary") == "Garden discoveries"
             ),
             "full-bloom": lambda row: (
                 row.get("eyebrow") == "MILESTONE REACHED"
@@ -3880,7 +5564,10 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
                 and row.get("settled_copy")
-                == "Future growth will be shared or stored."
+                == (
+                    "Future Growth will go to other planted plants. "
+                    "Any remainder will be stored."
+                )
                 and row.get("select_another_visible") is True
                 and row.get("select_another_copy") == "Choose next plant ›"
                 and row.get("art_scale") == 1.0
@@ -3901,7 +5588,10 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 row.get("settled") is True
                 and row.get("temporary_gold_cleared") is True
                 and row.get("settled_copy")
-                == "Future growth will be shared or stored."
+                == (
+                    "Future Growth will go to other planted plants. "
+                    "Any remainder will be stored."
+                )
                 and row.get("select_another_visible") is True
                 and row.get("select_another_copy") == "Choose next plant ›"
                 and row.get("art_scale") == 1.0
@@ -3924,8 +5614,8 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and str(row.get("hero_subtitle", "")).strip() == ""
                 and row.get("active_plant_identity_suppressed") is True
                 and row.get("visible_summary_labels") == [
-                    "1 Garden Find",
-                    "2 new discoveries",
+                    "1 Standard Find",
+                    "Garden discoveries",
                 ]
                 and compact_reward_summary_passed(row)
                 and row.get("details_action_copy") == "Details ›"
@@ -3983,7 +5673,7 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and row.get("footer_coins") == row.get("live_coins") == 14
                 and row.get("footer_finds") == row.get("live_finds") == 1
                 and row.get("footer_copy")
-                == ["+40 growth", "+14 coins", "1 find"]
+                == ["+40 growth", "+14 coins", "1 Standard Find"]
             ),
             "reward-reveal-lifecycle": lambda row: (
                 row.get("celebrating") == "celebrating"
@@ -4054,6 +5744,15 @@ def reviewer_hud_acceptance_matrix_issue_codes(
                 and isinstance(record, dict)
             ):
                 issues.append("reviewer-hud-viewport-state-not-passed")
+            if any(
+                not answer_controls_exclusion_passed(
+                    record,
+                    measured_required=(name != "1280x800-collapsed"),
+                )
+                for name, record in viewport.items()
+                if name in expected_rows and isinstance(record, dict)
+            ):
+                issues.append("reviewer-hud-answer-control-exclusion-not-passed")
     elif label == "reviewer-reward-dock-bundle":
         expected_interactions = {
             "collapsed-unseen-reward",
@@ -4313,7 +6012,7 @@ def _visual_contract_record_issues(
         if label == "selected-plant-nurtured":
             plant_actions = visual.get("plant_action_geometry")
             expected_actions = [
-                "Use growth charge",
+                "Get growth charges",
                 "Apply fertilizer",
                 "Move",
                 "Plant story",
@@ -4374,46 +6073,11 @@ def _visual_contract_record_issues(
                     reject("selected plant popover is not anchored or aligned")
         if label == "starter-nursery-plants":
             starter_geometry = visual.get("starter_card_geometry")
-            if not isinstance(starter_geometry, dict):
-                reject("starter Nursery card geometry is missing")
-            else:
-                starter_records = starter_geometry.get("records")
-                footer = starter_geometry.get("footer")
-                if not (
-                    starter_geometry.get("applicable") is True
-                    and starter_geometry.get("passed") is True
-                    and type(starter_geometry.get("dialog_height")) is int
-                    and 340 <= starter_geometry["dialog_height"] <= 360
-                    and isinstance(starter_records, list)
-                    and len(starter_records) == 4
-                    and all(
-                        isinstance(record, dict)
-                        and bool(str(record.get("item_id", "")).strip())
-                        and record.get("passed") is True
-                        and isinstance(record.get("card_size"), list)
-                        and len(record["card_size"]) == 2
-                        and 88 <= record["card_size"][1] <= 92
-                        and isinstance(record.get("seed_badge_bounds"), list)
-                        and len(record["seed_badge_bounds"]) == 4
-                        and 44 <= record["seed_badge_bounds"][2] <= 64
-                        and 22 <= record["seed_badge_bounds"][3] <= 26
-                        and isinstance(record.get("choose_bounds"), list)
-                        and len(record["choose_bounds"]) == 4
-                        and 64 <= record["choose_bounds"][2] <= 100
-                        and 34 <= record["choose_bounds"][3] <= 36
-                        and isinstance(record.get("details_bounds"), list)
-                        and len(record["details_bounds"]) == 4
-                        for record in starter_records
-                    )
-                    and isinstance(footer, dict)
-                    and footer.get("contained") is True
-                    and footer.get("action_text") == "Skip for now"
-                    and footer.get("action_contained") is True
-                    and isinstance(footer.get("bounds"), list)
-                    and len(footer["bounds"]) == 4
-                    and 36 <= footer["bounds"][3] <= 48
-                ):
-                    reject("starter Nursery must use compact Seed chips and cards")
+            if starter_nursery_geometry_issue_codes(starter_geometry):
+                reject(
+                    "starter Nursery must show all compact Seed cards "
+                    "inside its unscrolled content-fit viewport"
+                )
         if label == "fertilizer-active":
             fertilizer_status = visual.get("fertilizer_status_geometry")
             if not isinstance(fertilizer_status, dict):
@@ -4424,7 +6088,10 @@ def _visual_contract_record_issues(
                 and fertilizer_status.get("target") == "Applying to Rose Plant"
                 and fertilizer_status.get("title") == "Basic Fertilizer"
                 and fertilizer_status.get("summary")
-                == "+1 Growth per card · 1 hour remaining"
+                == (
+                    "+1 Growth per eligible card answer · "
+                    "1 hour remaining"
+                )
                 and fertilizer_status.get("balance_text") == "Balance: 500"
                 and fertilizer_status.get("balance_icon_present") is True
                 and fertilizer_status.get("extend_text")
@@ -4457,7 +6124,7 @@ def _visual_contract_record_issues(
     if state_kind in {"home", "reviewer", "reviewer_hud"}:
         web_root_overflow = audit_object("web_root_overflow")
         for issue in web_root_overflow_issue_codes(web_root_overflow):
-            reject(f"HTML root overflow: {issue}")
+            reject(f"HTML roots overflow: {issue}")
 
     required_pixel_keys = RENDERED_PIXEL_EVIDENCE_KEYS.get(label, ())
     if required_pixel_keys:
@@ -4585,36 +6252,23 @@ def _visual_contract_record_issues(
 
     if label == "growth-nonzero":
         stage_records = audit.get("growth_stage_records")
-        upcoming = (
-            [
-                record
-                for record in stage_records
-                if isinstance(record, dict)
-                and record.get("state") == "upcoming"
-            ]
-            if isinstance(stage_records, list) else
-            []
-        )
-        if not (
-            audit.get("future_stage_muting_passed") is True
-            and isinstance(stage_records, list)
-            and len(stage_records) == 6
-            and sum(
-                isinstance(record, dict)
-                and record.get("state") == "current"
-                for record in stage_records
-            ) == 1
-            and bool(upcoming)
-            and all(
-                record.get("preview_enabled") is True
-                and record.get("label_enabled") is True
-                and record.get("preview_future_treatment") is True
-                and record.get("label_future_treatment") is True
-                and record.get("extra_text") == []
-                for record in upcoming
-            )
+        if audit.get("reference_size") != [940, 501]:
+            reject("Growth reference size is not the content-fit 940×501 contract")
+        if audit.get("rendered_size") != [940, 501]:
+            reject("Growth did not render at the content-fit 940×501 contract")
+        if audit.get("reference_size_passed") is not True:
+            reject("Growth content-fit reference size did not pass")
+        if audit.get("no_vertical_scroll") is not True:
+            reject("Growth content-fit surface unexpectedly scrolls")
+        strip_issues = growth_stage_strip_issue_codes(stage_records)
+        if audit.get("growth_stage_strip_issues") != list(strip_issues):
+            reject("Growth stage-strip runtime issue record is inconsistent")
+        if audit.get("future_stage_muting_passed") is not bool(
+            not strip_issues
         ):
-            reject("future Growth stages are not visibly muted and label-only")
+            reject("Growth stage-strip runtime result is inconsistent")
+        for issue in strip_issues:
+            reject(f"Growth stage strip: {issue}")
 
     if label == "streak-active":
         streak_fold = audit_object("streak_fold_geometry")
@@ -4713,6 +6367,7 @@ def _visual_contract_record_issues(
 
     if label == "collection-loadout-detail":
         catalog = audit_object("catalog_geometry")
+        state_matrix = audit_object("collection_loadout_state_matrix")
         tile_records = catalog.get("tile_records")
         if not (
             catalog.get("passed") is True
@@ -4742,11 +6397,16 @@ def _visual_contract_record_issues(
             reject(
                 "Collection loadout must use a local complete-row catalogue with fixed preview"
             )
+        for issue in collection_loadout_state_matrix_issue_codes(
+            state_matrix
+        ):
+            reject(f"Collection loadout state matrix: {issue}")
 
     if label == "nursery-fertilizer-booster":
         first_fold = audit_object("first_fold_geometry")
+        supplement_matrix = audit_object("supplement_state_matrix")
         visible_cards = first_fold.get("visible_cards")
-        expected_ids = {"fertilizer_basic", "basic"}
+        expected_ids = {"fertilizer_basic", "fertilizer_quality"}
         if not (
             first_fold.get("passed") is True
             and first_fold.get("scroll_name")
@@ -4772,6 +6432,24 @@ def _visual_contract_record_issues(
             reject(
                 "Nursery Fertilizer first fold contains a partial row or action"
             )
+        for issue in nursery_supplement_state_matrix_issue_codes(
+            supplement_matrix
+        ):
+            reject(f"Nursery Fertilizer state matrix: {issue}")
+
+    if label == "nursery-garden-decorations-scenery":
+        environment_fixture = audit_object(
+            "garden_decoration_scenery_fixture"
+        )
+        for issue in nursery_environment_fixture_issue_codes(
+            environment_fixture
+        ):
+            reject(f"Nursery appearance fixture: {issue}")
+
+    if label == "nursery-garden-spaces":
+        bed_state = audit_object("nursery_bed_incomplete_state")
+        for issue in nursery_bed_incomplete_state_issue_codes(bed_state):
+            reject(f"Nursery bed incomplete state: {issue}")
 
     if label == "settings-display-advanced-open":
         display = audit_object("display_geometry")
@@ -4805,6 +6483,16 @@ def _visual_contract_record_issues(
             reject(
                 "Settings Display must fit its compact preview and expanded controls without scrolling"
             )
+        appearance_matrix = audit_object("appearance_state_matrix")
+        for issue in appearance_state_matrix_issue_codes(appearance_matrix):
+            reject(f"Settings Appearance state matrix: {issue}")
+        name_preview_absence = audit_object(
+            "garden_name_preview_absence"
+        )
+        for issue in settings_name_preview_absence_issue_codes(
+            name_preview_absence
+        ):
+            reject(f"Settings Garden-name preview absence: {issue}")
 
     if label == "nursery-item-owned":
         owned = audit_object("owned_item_visual")
@@ -4849,6 +6537,48 @@ def _visual_contract_record_issues(
         if audit.get("required_overlay_pixels_present") is not True:
             reject("Reviewer card is absent from captured pixels")
     if label in {"reviewer-hud-expanded", "reviewer-reward-dock-bundle"}:
+        hud_geometry = audit_object("reviewer_hud_geometry")
+        answer_controls = hud_geometry.get("answer_controls_exclusion")
+        control_rectangles = (
+            answer_controls.get("control_rectangles")
+            if isinstance(answer_controls, dict) else
+            None
+        )
+        if not (
+            hud_geometry.get("safe_area_passed") is True
+            and isinstance(answer_controls, dict)
+            and answer_controls.get("passed") is True
+            and answer_controls.get("measured_required") is True
+            and answer_controls.get("measured") is True
+            and answer_controls.get("measured_passed") is True
+            and answer_controls.get("fallback_passed") is False
+            and answer_controls.get("source") == "webengine-dom"
+            and answer_controls.get("telemetry_state") == "measured"
+            and answer_controls.get("schema_version") == 1
+            and int(answer_controls.get("matched_nodes", 0) or 0) >= 1
+            and answer_controls.get("viewport_matches") is True
+            and answer_controls.get("rect_in_viewport") is True
+            and answer_controls.get("rectangles_intersect") is False
+            and isinstance(control_rectangles, list)
+            and len(control_rectangles) == 1
+            and isinstance(control_rectangles[0], dict)
+            and control_rectangles[0].get("source") == "webengine-dom"
+            and isinstance(control_rectangles[0].get("bounds"), list)
+            and len(control_rectangles[0]["bounds"]) == 4
+            and all(
+                type(component) is int
+                for component in control_rectangles[0]["bounds"]
+            )
+            and control_rectangles[0]["bounds"][2] > 0
+            and control_rectangles[0]["bounds"][3] > 0
+            and int(answer_controls.get("hud_bottom", -1))
+            <= int(answer_controls.get("controls_top", -2))
+            and answer_controls.get("hud_answer_controls_source")
+            == "webengine-dom"
+        ):
+            reject(
+                "Reviewer HUD lacks measured answer-control exclusion rectangles"
+            )
         viewport = (
             audit_object("reviewer_hud_viewport_matrix")
             if label == "reviewer-hud-expanded"
@@ -4880,6 +6610,20 @@ def _visual_contract_record_issues(
             reject(f"Reviewer reward-dock capture: {issue}")
         if audit.get("required_overlay_pixels_present") is not True:
             reject("Reviewer reward dock is absent from captured pixels")
+
+    if label == "diagnostics-warning":
+        diagnostics_matrix = audit_object("diagnostics_state_matrix")
+        for issue in diagnostics_state_matrix_issue_codes(diagnostics_matrix):
+            reject(f"Diagnostics state matrix: {issue}")
+
+    if label == "sync-rewards-summary":
+        discovery_matrix = audit_object(
+            "sync_reward_discovery_state_matrix"
+        )
+        for issue in sync_reward_discovery_state_matrix_issue_codes(
+            discovery_matrix
+        ):
+            reject(f"Sync reward discovery state matrix: {issue}")
 
     if label == "missing-artwork-graphical-fallback":
         matrix = audit_object("missing_artwork_matrix")
@@ -5236,6 +6980,49 @@ def _unpainted_client_record_issues(
                 problems.append("raw capture contains excess contact-sheet cream pixels")
     except (OSError, UnidentifiedImageError, ValueError) as error:
         problems.append(f"could not inspect unpainted client pixels: {error}")
+    return list(dict.fromkeys(problems))
+
+
+def _native_progress_bar_record_issues(
+    *,
+    label: str,
+    record: dict[str, Any],
+    audit: dict[str, Any] | None,
+) -> list[str]:
+    """Bind independent progress validation across record, audit, and fixture."""
+
+    problems: list[str] = []
+    evidence = record.get("native_progress_bar_evidence")
+    for issue in native_progress_bar_evidence_issue_codes(evidence):
+        problems.append(issue)
+    if audit is None or audit.get("native_progress_bars") != evidence:
+        problems.append("native-progress-audit-record-mismatch")
+    fixture = record.get("fixture_validation")
+    postcondition = (
+        fixture.get("postcondition")
+        if isinstance(fixture, dict) else None
+    )
+    if (
+        not isinstance(postcondition, dict)
+        or postcondition.get("native_progress_bar_evidence") != evidence
+    ):
+        problems.append("native-progress-postcondition-record-mismatch")
+    acceptance = record.get("capture_acceptance")
+    gross_checks = (
+        acceptance.get("gross_checks")
+        if isinstance(acceptance, dict) else None
+    )
+    if (
+        not isinstance(gross_checks, dict)
+        or gross_checks.get("native_progress_bar_evidence") is not True
+    ):
+        problems.append("native-progress-hard-gate-missing")
+    expected_root = f"capture.{label}"
+    if (
+        isinstance(evidence, dict)
+        and evidence.get("root_semantic_id") != expected_root
+    ):
+        problems.append("native-progress-root-label-mismatch")
     return list(dict.fromkeys(problems))
 
 
@@ -5863,6 +7650,14 @@ def validate_capture_manifest(
             else:
                 valid_manifest_pngs.add(screenshot_path)
                 visual_labels.setdefault(png_evidence.visual_digest, []).append(label)
+                if contract.version >= 26:
+                    issues.extend(
+                        f"capture {index:03d} {label}: {issue}"
+                        for issue in _raw_scenario_metadata_issues(
+                            screenshot_path,
+                            scenario_contract,
+                        )
+                    )
                 if (
                     png_evidence.sampled_color_count < 4
                     or png_evidence.dominant_sample_ratio > 0.985
@@ -5883,6 +7678,12 @@ def validate_capture_manifest(
             issues.append(f"capture {index:03d} {label}: capture_id must be {index}")
         if record.get("label") != label:
             issues.append(f"capture {index:03d} {label}: record label is out of contract order")
+        for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+            if record.get(identity_field) != scenario_contract[identity_field]:
+                issues.append(
+                    f"capture {index:03d} {label}: {identity_field} does not match "
+                    "the scenario contract"
+                )
         record_path = _resolved_evidence_path(record.get("path"), session_dir)
         if record_path != screenshot_path:
             issues.append(f"capture {index:03d} {label}: record path does not match screenshots")
@@ -5899,6 +7700,14 @@ def validate_capture_manifest(
         if not isinstance(surface_inputs, dict):
             issues.append(f"capture {index:03d} {label}: render inputs are missing")
         else:
+            for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+                if surface_inputs.get(identity_field) != scenario_contract[
+                    identity_field
+                ]:
+                    issues.append(
+                        f"capture {index:03d} {label}: render-input {identity_field} "
+                        "does not match the scenario contract"
+                    )
             if record.get("render_input_digest") != surface_inputs.get("digest"):
                 issues.append(f"capture {index:03d} {label}: render-input digest does not match")
             if record.get("render_input_count") != surface_inputs.get("input_count"):
@@ -6217,16 +8026,21 @@ def validate_capture_manifest(
         else:
             record_scroll_audits[label] = scroll_audit
             strict_no_scroll = scroll_audit.get("require_no_scroll") is True
+            scroll_findings = (
+                issues
+                if contract.version >= 26 or strict_no_scroll
+                else advisories
+            )
             if type(scroll_audit.get("applicable")) is not bool:
                 issues.append(
                     f"capture {index:03d} {label}: dialog scroll applicable must be boolean"
                 )
             if scroll_audit.get("passed") is not True:
-                (issues if strict_no_scroll else advisories).append(
+                scroll_findings.append(
                     f"capture {index:03d} {label}: dialog scroll audit did not pass"
                 )
             if scroll_audit.get("issues") != []:
-                (issues if strict_no_scroll else advisories).append(
+                scroll_findings.append(
                     f"capture {index:03d} {label}: dialog scroll issues must be empty"
                 )
             expected_scroll = dialog_scroll_by_label.get(label)
@@ -6237,12 +8051,12 @@ def validate_capture_manifest(
                     expected_surface=surface,
                     expected_page_semantic=semantic,
                 ):
-                    (issues if strict_no_scroll else advisories).append(
+                    scroll_findings.append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
             elif scroll_audit.get("applicable") is True:
                 for issue in dialog_scroll_audit_issue_codes(scroll_audit):
-                    (issues if strict_no_scroll else advisories).append(
+                    scroll_findings.append(
                         f"capture {index:03d} {label}: dialog scroll {issue}"
                     )
 
@@ -6261,7 +8075,12 @@ def validate_capture_manifest(
                 )
             else:
                 gross_checks = acceptance.get("gross_checks")
-                if acceptance.get("policy") != "gross-failures-only":
+                expected_acceptance_policy = (
+                    V26_CAPTURE_ACCEPTANCE_POLICY
+                    if contract.version >= 26 else
+                    LEGACY_CAPTURE_ACCEPTANCE_POLICY
+                )
+                if acceptance.get("policy") != expected_acceptance_policy:
                     issues.append(
                         f"capture {index:03d} {label}: capture acceptance policy is invalid"
                     )
@@ -6269,46 +8088,91 @@ def validate_capture_manifest(
                     not isinstance(gross_checks, dict)
                     or not gross_checks
                     or any(value is not True for value in gross_checks.values())
-                    or acceptance.get("passed") is not True
+                    or (
+                        contract.version < 26
+                        and acceptance.get("passed") is not True
+                    )
                 ):
                     issues.append(
                         f"capture {index:03d} {label}: gross capture acceptance did not pass"
                     )
+                if (
+                    contract.version >= 26
+                    and acceptance.get("gross_passed") is not True
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: gross capture result did not pass"
+                    )
+                if (
+                    contract.version >= 26
+                    and acceptance.get("semantic_audit_passed") is not True
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: semantic capture acceptance did not pass"
+                    )
+                if (
+                    contract.version >= 26
+                    and acceptance.get("passed") is not True
+                ):
+                    issues.append(
+                        f"capture {index:03d} {label}: capture acceptance did not pass"
+                    )
+        if contract.version >= 26:
+            for semantic_issue in v26_capture_semantic_gate_issue_codes(record):
+                issues.append(
+                    f"capture {index:03d} {label}: {semantic_issue}"
+                )
         fixture = record.get("fixture_validation")
         if not isinstance(fixture, dict):
             issues.append(f"capture {index:03d} {label}: fixture_validation is missing")
             continue
         if fixture.get("passed") is not True:
             issues.append(f"capture {index:03d} {label}: fixture validation did not pass")
+        if (
+            contract.version >= 26
+            and fixture.get("semantic_audit_passed") is not True
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: fixture semantic audit did not pass"
+            )
         if type(fixture.get("capture_id")) is not int or fixture.get("capture_id") != index:
             issues.append(f"capture {index:03d} {label}: fixture capture_id must be {index}")
-        if fixture.get("fixture_id") != label:
-            issues.append(f"capture {index:03d} {label}: fixture_id does not match label")
+        if fixture.get("surface_id") != label:
+            issues.append(f"capture {index:03d} {label}: fixture surface_id does not match label")
+        for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+            if fixture.get(identity_field) != scenario_contract[identity_field]:
+                issues.append(
+                    f"capture {index:03d} {label}: fixture {identity_field} does not "
+                    "match the scenario contract"
+                )
         if fixture.get("fixture_source") != fixture_source:
             issues.append(f"capture {index:03d} {label}: fixture sources disagree")
         if fixture.get("state_profile") != label:
             advisories.append(
                 f"capture {index:03d} {label}: state_profile must match the capture label"
             )
+        postcondition_findings = (
+            issues if contract.version >= 26 else advisories
+        )
         postcondition = fixture.get("postcondition")
         if not isinstance(postcondition, dict):
-            advisories.append(
+            postcondition_findings.append(
                 f"capture {index:03d} {label}: postcondition must be an object"
             )
         else:
             if postcondition.get("profile_id") != label:
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition profile_id must match label"
                 )
             kind = postcondition.get("kind")
             if kind != state_contract["kind"]:
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition kind must be "
                     f"{state_contract['kind']!r}"
                 )
             facts = postcondition.get("facts")
             if not isinstance(facts, dict) or not facts:
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition facts must be nonempty"
                 )
             elif set(facts) != set(state_contract["required_facts"]):
@@ -6318,7 +8182,7 @@ def validate_capture_manifest(
                 extra_facts = sorted(
                     set(facts) - set(state_contract["required_facts"])
                 )
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition fact schema mismatch "
                     f"(missing={missing_facts!r}, extra={extra_facts!r})"
                 )
@@ -6327,7 +8191,7 @@ def validate_capture_manifest(
                     "expected_fact_values"
                 ].items():
                     if facts.get(fact_name) != expected_value:
-                        advisories.append(
+                        postcondition_findings.append(
                             f"capture {index:03d} {label}: postcondition fact "
                             f"{fact_name!r} must be {expected_value!r}"
                         )
@@ -6346,7 +8210,7 @@ def validate_capture_manifest(
                         or not isinstance(cleared.get("focus_owner"), str)
                         or cleared.get("progress_button_has_focus") is not False
                     ):
-                        advisories.append(
+                        postcondition_findings.append(
                             f"capture {index:03d} {label}: postcondition fact "
                             "'keyboard_focus_fixture_cleared' must prove the "
                             "Progress button does not own focus"
@@ -6354,7 +8218,7 @@ def validate_capture_manifest(
             if label in resize_layout_modes:
                 expected_kind = str(expected_state_profile.get("kind", ""))
                 if kind != expected_kind:
-                    advisories.append(
+                    postcondition_findings.append(
                         f"capture {index:03d} {label}: resize postcondition kind must be "
                         f"{expected_kind}"
                     )
@@ -6362,7 +8226,7 @@ def validate_capture_manifest(
                     not isinstance(facts, dict)
                     or facts.get("layout_mode") != resize_layout_modes[label]
                 ):
-                    advisories.append(
+                    postcondition_findings.append(
                         f"capture {index:03d} {label}: resize layout_mode fact must be "
                         f"{resize_layout_modes[label]!r}"
                     )
@@ -6375,16 +8239,16 @@ def validate_capture_manifest(
                     not isinstance(facts, dict)
                     or facts.get("geometry_acceptance") != geometry_acceptance
                 ):
-                    advisories.append(
+                    postcondition_findings.append(
                         f"capture {index:03d} {label}: postcondition geometry acceptance "
                         "does not match the record"
                     )
             if postcondition.get("issues") != []:
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition issues must be empty"
                 )
             if postcondition.get("passed") is not True:
-                advisories.append(
+                postcondition_findings.append(
                     f"capture {index:03d} {label}: postcondition did not pass"
                 )
         expected_family = fixture.get("expected_window_family")
@@ -6404,8 +8268,39 @@ def validate_capture_manifest(
             issues.append(f"capture {index:03d} {label}: audit is missing or did not pass")
         elif audit.get("fixture_identity") != fixture:
             issues.append(f"capture {index:03d} {label}: audit fixture identity disagrees")
+        if (
+            contract.version >= 26
+            and (
+                not isinstance(audit, dict)
+                or audit.get("semantic_audit_passed") is not True
+            )
+        ):
+            issues.append(
+                f"capture {index:03d} {label}: audit semantic result did not pass"
+            )
         if isinstance(audit, dict):
             record_audits[label] = audit
+        if contract.version >= 26:
+            for progress_issue in _native_progress_bar_record_issues(
+                label=label,
+                record=record,
+                audit=audit if isinstance(audit, dict) else None,
+            ):
+                issues.append(
+                    f"capture {index:03d} {label}: {progress_issue}"
+                )
+        if label == "move-mode":
+            move_hover = (
+                audit.get("move_occupied_hover")
+                if isinstance(audit, dict) else None
+            )
+            for move_issue in move_occupied_hover_issue_codes(move_hover):
+                issues.append(
+                    f"capture {index:03d} {label}: {move_issue}"
+                )
+        native_layout_findings = (
+            issues if contract.version >= 26 else advisories
+        )
         for telemetry_issue in _native_layout_telemetry_record_issues(
             label=label,
             window_family=renderer_families[label],
@@ -6415,7 +8310,7 @@ def validate_capture_manifest(
             button_heights=button_heights,
             tabular_labels=tabular_labels,
         ):
-            advisories.append(
+            native_layout_findings.append(
                 f"capture {index:03d} {label}: {telemetry_issue}"
             )
         for visual_issue in _visual_contract_record_issues(
@@ -6442,6 +8337,41 @@ def validate_capture_manifest(
                 logical_size[1],
                 dpr,
                 renderer_families[label],
+            )
+
+    fertilizer_flow_labels = {
+        "fertilizer-active",
+        "purchase-confirmation-fertilizer-queue",
+    }
+    if fertilizer_flow_labels.issubset(set(expected_labels)):
+        source_audit = record_audits.get("fertilizer-active", {})
+        queue_audit = record_audits.get(
+            "purchase-confirmation-fertilizer-queue",
+            {},
+        )
+        source = source_audit.get("fertilizer_flow_source")
+        confirmation = queue_audit.get("fertilizer_queue_confirmation")
+        continuity = (
+            confirmation.get("plant_state_continuity")
+            if isinstance(confirmation, dict) else
+            None
+        )
+        embedded_records = (
+            continuity.get("records")
+            if isinstance(continuity, dict) else
+            None
+        )
+        cross_surface_records = (
+            dict(embedded_records)
+            if isinstance(embedded_records, dict) else
+            {}
+        )
+        cross_surface_records["source"] = source
+        for flow_issue in fertilizer_flow_continuity_issue_codes(
+            cross_surface_records
+        ):
+            issues.append(
+                "fertilizer_queue scenario continuity: " + flow_issue
             )
 
     _validate_dialog_scroll_summary(
@@ -6544,6 +8474,11 @@ def validate_contact_sheet_set(
             "contact-sheet capture profile is invalid",
         ))
     contract = load_capture_contract(capture_source, profile=capture_profile)
+    scenario_contracts = (
+        load_capture_scenario_contracts(capture_source, contract=contract)
+        if contract.version >= 26 else
+        {}
+    )
     expected_count = len(contract.labels)
     expected_group_names = [name for name, _labels in contract.groups]
     expected_pages = expected_contact_sheet_pages(contract)
@@ -6563,6 +8498,20 @@ def validate_contact_sheet_set(
                 continue
             label = record["label"]
             manifest_record_labels.append(label)
+            if contract.version >= 26:
+                scenario_contract = scenario_contracts.get(label, {})
+                for identity_field in (
+                    "scenario_id",
+                    "fixture_id",
+                    "scenario_step",
+                ):
+                    if record.get(identity_field) != scenario_contract.get(
+                        identity_field
+                    ):
+                        issues.append(
+                            "capture manifest record scenario identity does not "
+                            f"match the contract for {label}: {identity_field}"
+                        )
             path = _resolved_evidence_path(record.get("path"), manifest_path.parent)
             if path is not None:
                 capture_paths[label] = path
@@ -6639,6 +8588,26 @@ def validate_contact_sheet_set(
         )
         expected_page_groups = [name for name, _count in expected_page]
         expected_page_count = sum(count for _name, count in expected_page)
+        expected_surface_identity_map = (
+            _surface_scenario_identity_map(
+                [
+                    label
+                    for _group_name, labels in expected_label_page
+                    for label in labels
+                ],
+                scenario_contracts,
+            )
+            if contract.version >= 26 else
+            {}
+        )
+        expected_surface_ids = list(expected_surface_identity_map)
+        expected_identity_field_maps = {
+            identity_field: {
+                label: identity.get(identity_field)
+                for label, identity in expected_surface_identity_map.items()
+            }
+            for identity_field in ("scenario_id", "fixture_id", "scenario_step")
+        }
         expected_filename = (
             f"{page_index:02d}-{_contact_sheet_slug(expected_page_groups)}.png"
             if expected_page else
@@ -6685,6 +8654,7 @@ def validate_contact_sheet_set(
                             manifest_path=manifest_path,
                             capture_profile=capture_profile,
                             capture_contract_digest=contract.digest,
+                            surface_identity_map=expected_surface_identity_map,
                         )
                     )
             if expected_filename and page_path.name != expected_filename:
@@ -6702,6 +8672,26 @@ def validate_contact_sheet_set(
                 issues.append(
                     f"contact-sheet page {page_index}: surface_count must be {expected_page_count}"
                 )
+
+        if contract.version >= 26:
+            if page.get("surface_ids") != expected_surface_ids:
+                issues.append(
+                    f"contact-sheet page {page_index}: surface_ids do not match "
+                    "the deterministic page order"
+                )
+            if page.get("surface_identity_map") != expected_surface_identity_map:
+                issues.append(
+                    f"contact-sheet page {page_index}: surface_identity_map does "
+                    "not match the v26 scenario contract"
+                )
+            for identity_field, expected_field_map in (
+                expected_identity_field_maps.items()
+            ):
+                if page.get(identity_field) != expected_field_map:
+                    issues.append(
+                        f"contact-sheet page {page_index}: {identity_field} map "
+                        "does not match the v26 scenario contract"
+                    )
 
         groups = page.get("groups")
         if not isinstance(groups, list) or not groups:

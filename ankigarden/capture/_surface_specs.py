@@ -1,11 +1,12 @@
-"""Authoritative v25 UI-surface registry data.
+"""Authoritative v26 UI-surface registry data.
 
 Each stable ID is declared exactly once. Add a surface by appending one row;
 remove a surface by setting ``active`` false, clearing placements, and recording
 a permanent retirement reason. Profile ordering is presentation metadata and
 does not participate in a surface pixel digest.
 
-The v25 topology was aggressively pruned after visual review: only structurally
+The v26 topology retains the aggressively pruned v25 surface set while adding
+explicit multi-step scenario identity. Only structurally
 distinct, high-value surfaces remain active. Behavioral variants belong in
 focused parameterized tests rather than duplicate screenshots. This module is
 deliberately Qt-free.
@@ -13,8 +14,10 @@ deliberately Qt-free.
 
 from __future__ import annotations
 
+from copy import deepcopy
 
-SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home',
+
+_V25_SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home',
   'active': True,
   'placements': (('full', 'First run', 0, 0, 0),),
   'executor': '_capture_starter_deck_browser',
@@ -1126,7 +1129,8 @@ SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home
                                         'canonical_development_plant_ids',
                                         'canonical_development_generated_names',
                                         'progress_page',
-                                        'representative_collection_summary'),
+                                        'representative_collection_summary',
+                                        'collection_filter_roundtrip'),
                      'expected_fact_values': {'ordered_fixture_label': 'progress-collection',
                                               'state_profile_declared': 'progress-collection',
                                               'window_family': 'GardenProgressDialog',
@@ -1317,7 +1321,8 @@ SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home
                                         'state_profile_declared',
                                         'window_family',
                                         'nursery_tab',
-                                        'starter_mode'),
+                                        'starter_mode',
+                                        'canonical_collection_counts'),
                      'expected_fact_values': {'ordered_fixture_label': 'nursery-plants',
                                               'state_profile_declared': 'nursery-plants',
                                               'window_family': 'NurseryDialog',
@@ -1610,7 +1615,8 @@ SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home
                                         'state_profile_declared',
                                         'window_family',
                                         'settings_tab',
-                                        'warning_diagnostics'),
+                                        'warning_diagnostics',
+                                        'diagnostics_state_matrix'),
                      'expected_fact_values': {'ordered_fixture_label': 'diagnostics-warning',
                                               'state_profile_declared': 'diagnostics-warning',
                                               'window_family': 'GardenSettingsDialog',
@@ -5376,3 +5382,204 @@ SURFACE_ROWS: tuple[dict[str, object], ...] = ({'id': 'starter-deck-browser-home
                                               'state_profile_declared': 'growth-charge-success-stage-reward',
                                               'window_family': 'GrowthChargeConfirmationDialog'},
                      'fact_constraints': {}}})
+
+
+_V26_RENAMED_SURFACE = "nursery-garden-decorations-scenery"
+_V26_RETIRED_SURFACE = "nursery-weather-scenery"
+_V26_SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {
+    "starter-deck-browser-home": ("first_run", 1),
+    "starter-garden-onboarding": ("first_run", 2),
+    "starter-nursery-plants": ("first_run", 3),
+    "starter-placement": ("first_run", 4),
+    "fertilizer-active": ("fertilizer_queue", 1),
+    "purchase-confirmation-fertilizer-queue": ("fertilizer_queue", 2),
+    "reviewer-hud-expanded": ("reviewer_hud_base", 1),
+    "session-summary-after-review": ("session_summary", 1),
+    "sync-rewards-summary": ("sync_rewards", 1),
+    "reviewer-reward-dock-bundle": ("reviewer_hud_full_bloom", 1),
+    "growth-charge-use-ready": ("growth_charge_transition", 1),
+    "growth-charge-success-stage-reward": ("growth_charge_transition", 2),
+}
+_V26_REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
+    "fertilizer-active": (
+        "fertilizer_flow_source",
+    ),
+    "starter-garden-onboarding": (
+        "onboarding_step",
+    ),
+    "starter-nursery-plants": (
+        "onboarding_step",
+    ),
+    "starter-placement": (
+        "first_run_sequential_species",
+    ),
+    "move-mode": (
+        "move_occupied_hover",
+    ),
+    "selected-plant-nurtured": (
+        "zero_inventory_growth_charge_route",
+    ),
+    "active-deck-browser-home-after-nurture": (
+        "home_progress_fractions",
+    ),
+    "streak-active": (
+        "thirty_day_next_reward",
+    ),
+    "coins-activity": (
+        "coin_activity_state_matrix",
+    ),
+    "progress-achievements": (
+        "achievement_filter_state_matrix",
+        "thirty_day_completed_reward_cross_surface",
+    ),
+    "collection-loadout-detail": (
+        "collection_loadout_state_matrix",
+    ),
+    "settings-display-advanced-open": (
+        "appearance_state_matrix",
+        "garden_name_preview_absence",
+    ),
+    "session-summary-after-review": (
+        "home_progress_fractions",
+        "session_daily_totals_distinct",
+    ),
+    "sync-rewards-summary": (
+        "home_progress_fractions",
+        "sync_reward_discovery_state_matrix",
+    ),
+    "purchase-confirmation-growth-charge": (
+        "growth_charge_purchase_state_matrix",
+    ),
+    "nursery-garden-spaces": (
+        "nursery_bed_incomplete_state",
+    ),
+    "growth-charge-success-stage-reward": (
+        "growth_charge_no_transition_and_reward_free_success",
+    ),
+    _V26_RENAMED_SURFACE: (
+        "garden_decoration_scenery_fixture",
+    ),
+}
+
+_V26_EXPECTED_FACT_VALUES: dict[str, dict[str, object]] = {
+    "starter-garden-onboarding": {
+        "onboarding_step": "introduction",
+    },
+    "starter-nursery-plants": {
+        "onboarding_step": "nursery",
+    },
+}
+
+
+def _with_v26_scenario_identity(row: dict[str, object]) -> dict[str, object]:
+    stable_id = str(row["id"])
+    scenario_id, scenario_step = _V26_SCENARIO_OVERRIDES.get(
+        stable_id,
+        (stable_id, 1),
+    )
+    row.update({
+        "scenario_id": scenario_id,
+        "fixture_id": f"{scenario_id}-v1",
+        "scenario_step": scenario_step,
+    })
+    return row
+
+
+def _with_v26_required_facts(row: dict[str, object]) -> dict[str, object]:
+    additions = _V26_REQUIRED_FACTS.get(str(row["id"]), ())
+    expected_additions = _V26_EXPECTED_FACT_VALUES.get(
+        str(row["id"]),
+        {},
+    )
+    if not additions and not expected_additions:
+        return row
+    state_contract = dict(row["state_contract"])  # type: ignore[arg-type]
+    required = tuple(state_contract.get("required_facts", ()))
+    state_contract["required_facts"] = tuple(dict.fromkeys((
+        *required,
+        *additions,
+    )))
+    expected = dict(state_contract.get("expected_fact_values", {}))
+    expected.update(expected_additions)
+    state_contract["expected_fact_values"] = expected
+    row["state_contract"] = state_contract
+    return row
+
+
+def _with_v26_first_run_topology(row: dict[str, object]) -> dict[str, object]:
+    if str(row["id"]) != "starter-placement":
+        return row
+    row.update({
+        "checkpoint_cohort": "starter",
+        "checkpoint": "fresh-first-run",
+        "internal_setups": ("fresh-first-run",),
+    })
+    return row
+
+
+def _with_v26_shared_flow_topology(row: dict[str, object]) -> dict[str, object]:
+    """Bind every step in a sequential flow to its seeded checkpoint lineage."""
+
+    if str(row["id"]) != "purchase-confirmation-fertilizer-queue":
+        return row
+    row.update({
+        "checkpoint_cohort": "nurtured",
+        "checkpoint": "nurtured-active",
+        "internal_setups": ("nurtured-active", "transaction-snapshot"),
+    })
+    return row
+
+
+def _v26_surface_rows() -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    for original in _V25_SURFACE_ROWS:
+        row = deepcopy(original)
+        if row["id"] != _V26_RETIRED_SURFACE:
+            rows.append(_with_v26_scenario_identity(
+                _with_v26_shared_flow_topology(
+                    _with_v26_first_run_topology(
+                        _with_v26_required_facts(row)
+                    )
+                )
+            ))
+            continue
+
+        retired = deepcopy(row)
+        retired.update({
+            "active": False,
+            "placements": (),
+            "retired_reason": (
+                "Renamed in v26 to nursery-garden-decorations-scenery; "
+                "the prior stable ID remains permanently reserved."
+            ),
+        })
+        rows.append(_with_v26_scenario_identity(retired))
+
+        replacement = deepcopy(row)
+        replacement.update({
+            "id": _V26_RENAMED_SURFACE,
+            "executor": "_capture_nursery_garden_decorations_scenery",
+        })
+        state_contract = dict(replacement["state_contract"])  # type: ignore[arg-type]
+        profile = dict(state_contract["profile"])  # type: ignore[arg-type]
+        expected = dict(state_contract["expected_fact_values"])  # type: ignore[arg-type]
+        profile.update({
+            "profile_id": _V26_RENAMED_SURFACE,
+            "state": _V26_RENAMED_SURFACE,
+        })
+        expected.update({
+            "ordered_fixture_label": _V26_RENAMED_SURFACE,
+            "state_profile_declared": _V26_RENAMED_SURFACE,
+        })
+        state_contract.update({
+            "profile": profile,
+            "expected_fact_values": expected,
+        })
+        replacement["state_contract"] = state_contract
+        rows.append(_with_v26_scenario_identity(
+            _with_v26_required_facts(replacement)
+        ))
+    return tuple(rows)
+
+
+SURFACE_ROWS: tuple[dict[str, object], ...] = _v26_surface_rows()

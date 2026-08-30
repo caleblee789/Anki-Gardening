@@ -31,6 +31,7 @@ from ..config import DEFAULT_CONFIG
 from ..environment import (
     DEFAULT_GARDEN_FEATURE_ID,
     GARDEN_FEATURE_CATALOG,
+    SCENERY_CATALOG,
     canonical_garden_feature_id,
 )
 from .copy import HOME_ACTIVE_ACTION, REDUCED_MOTION_DESCRIPTION, REDUCED_MOTION_LABEL
@@ -53,7 +54,7 @@ STUDIO_TEXT = {
     "asset_quality_label": "Artwork detail",
     "home_widget_label": "Show garden card on Anki home",
     "reviewer_hud_label": "Show Garden panel while reviewing",
-    "progress_notifications_label": "Show review rewards",
+    "progress_notifications_label": "Show review reward updates",
     "sync_rewards_label": "Show rewards after syncing",
 }
 
@@ -239,6 +240,10 @@ class HomeGardenPreview(QFrame):
         self.progress_copy.setMinimumWidth(0)
         self.progress_copy.setAccessibleName("Home preview plant progress")
         self.progress_track = QProgressBar()
+        self.progress_track.setProperty(
+            "semanticId",
+            "settings.home-preview.plant-progress",
+        )
         self.progress_track.setProperty("previewProgressTrack", True)
         self.progress_track.setTextVisible(False)
         self.progress_track.setFixedHeight(4)
@@ -469,7 +474,7 @@ class GardenStudioWidget(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        self.theme_card.setFixedHeight(56)
+        self.theme_card.setMinimumHeight(112)
         theme_layout = QHBoxLayout(self.theme_card)
         theme_layout.setContentsMargins(8, 8, 8, 8)
         theme_layout.setSpacing(10)
@@ -478,20 +483,45 @@ class GardenStudioWidget(QWidget):
         self.theme_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.theme_thumbnail.setAccessibleName("Verdant Twilight preview")
         self.theme_thumbnail.setStyleSheet("background:#0b2926; border-radius:7px;")
-        self.theme_title = QLabel("Verdant Twilight")
+        self.theme_title = QLabel("Garden appearance")
         self.theme_title.setProperty("settingsHeading", True)
         self.theme_title.setWordWrap(True)
         self.theme_title.setMinimumWidth(0)
-        self.theme_summary = QLabel(
-            "Seedling Sign · Garden Decoration"
-        )
+        # Keep the legacy label as a nonvisual accessibility summary while the
+        # visible card uses explicit label-value rows for the four independent
+        # appearance facts.
+        self.theme_summary = QLabel("")
         self.theme_summary.setProperty("settingsNote", True)
         self.theme_summary.setWordWrap(True)
         self.theme_summary.setMinimumWidth(0)
+        self.theme_summary.hide()
+        self.appearance_grid = QGridLayout()
+        self.appearance_grid.setContentsMargins(0, 0, 0, 0)
+        self.appearance_grid.setHorizontalSpacing(12)
+        self.appearance_grid.setVerticalSpacing(2)
+        self.appearance_grid.setColumnStretch(0, 0)
+        self.appearance_grid.setColumnStretch(1, 1)
+        self.appearance_values: dict[str, QLabel] = {}
+        for row, (key, caption) in enumerate((
+            ("scenery", "Scenery"),
+            ("displayed_decoration", "Displayed decoration"),
+            ("active_bonus", "Active garden bonus"),
+            ("visual_effects", "Visual effects"),
+        )):
+            label = QLabel(caption)
+            label.setProperty("settingsNote", True)
+            value = QLabel("")
+            value.setProperty("settingValueText", True)
+            value.setWordWrap(True)
+            value.setMinimumWidth(0)
+            self.appearance_grid.addWidget(label, row, 0)
+            self.appearance_grid.addWidget(value, row, 1)
+            self.appearance_values[key] = value
         theme_copy = QVBoxLayout()
         theme_copy.setContentsMargins(0, 0, 0, 0)
         theme_copy.setSpacing(3)
         theme_copy.addWidget(self.theme_title)
+        theme_copy.addLayout(self.appearance_grid)
         theme_copy.addWidget(self.theme_summary)
         self.manage_environment = QToolButton()
         self.manage_environment.setText("Edit appearance")
@@ -952,9 +982,66 @@ class GardenStudioWidget(QWidget):
             if decoration is not None
             else GARDEN_FEATURE_CATALOG[DEFAULT_GARDEN_FEATURE_ID].name
         )
-        self.theme_summary.setText(
-            f"{decoration_label} · Garden Decoration"
+        scenery_id = str(snapshot.get("background") or self.preview["theme"])
+        scenery = SCENERY_CATALOG.get(scenery_id)
+        scenery_label = (
+            scenery.name
+            if scenery is not None
+            else scenery_id.replace("_", " ").title()
         )
+        bonus_id = canonical_garden_feature_id(
+            snapshot.get("active_bonus_garden_feature")
+            or snapshot.get("garden_feature")
+            or DEFAULT_GARDEN_FEATURE_ID
+        )
+        bonus = GARDEN_FEATURE_CATALOG.get(bonus_id)
+        bonus_label = (
+            bonus.name
+            if bonus is not None
+            else GARDEN_FEATURE_CATALOG[DEFAULT_GARDEN_FEATURE_ID].name
+        )
+        effects_label = "On" if bool(snapshot.get("visual_effects_enabled", True)) else "Off"
+        shared_rows = snapshot.get("appearance_rows")
+        shared_values = (
+            {
+                str(caption): str(value)
+                for caption, value in shared_rows
+            }
+            if isinstance(shared_rows, (list, tuple))
+            and all(
+                isinstance(row, (list, tuple)) and len(row) == 2
+                for row in shared_rows
+            )
+            else {}
+        )
+        expected_captions = (
+            "Scenery",
+            "Displayed decoration",
+            "Active garden bonus",
+            "Visual effects",
+        )
+        if set(shared_values) == set(expected_captions):
+            scenery_label = shared_values["Scenery"]
+            decoration_label = shared_values["Displayed decoration"]
+            bonus_label = shared_values["Active garden bonus"]
+            effects_label = shared_values["Visual effects"]
+        values = {
+            "scenery": scenery_label,
+            "displayed_decoration": decoration_label,
+            "active_bonus": bonus_label,
+            "visual_effects": effects_label,
+        }
+        for key, value in values.items():
+            self.appearance_values[key].setText(value)
+        summary = "; ".join((
+            f"Scenery {scenery_label}",
+            f"displayed decoration {decoration_label}",
+            f"active garden bonus {bonus_label}",
+            f"visual effects {effects_label}",
+        ))
+        self.theme_summary.setText(summary)
+        self.theme_card.setAccessibleName("Current Garden appearance")
+        self.theme_card.setAccessibleDescription(summary)
         quality = "balanced"
         asset_paths: dict[str, Any] = {}
         if self.asset_resolver:

@@ -51,32 +51,62 @@ def _summary(**changes) -> SyncRewardSummary:
     return SyncRewardSummary(**payload)
 
 
-def test_geometry_is_centered_and_viewport_bounded() -> None:
-    assert sync_reward_summary_geometry(900, 700, 300) == (222, 22, 456, 300)
-    assert sync_reward_summary_geometry(900, 700, 900) == (222, 22, 456, 640)
+def test_geometry_is_upper_right_and_viewport_bounded() -> None:
+    assert sync_reward_summary_geometry(900, 700, 300) == (420, 24, 456, 300)
+    assert sync_reward_summary_geometry(900, 700, 900) == (420, 24, 456, 640)
 
     x, y, width, height = sync_reward_summary_geometry(420, 260, 500)
-    assert (x, y, width, height) == (24, 22, 372, 212)
+    assert (x, y, width, height) == (24, 24, 372, 212)
     assert x + width <= 420
     assert y + height <= 260
 
 
-def test_metric_plan_has_two_required_tiles_and_conditional_third() -> None:
+def test_metric_plan_keeps_standard_finds_and_discoveries_separate() -> None:
     assert sync_reward_metric_plan(_summary()) == (
         ("42", "Card answers", "sync_review_cards"),
         ("+520", "Growth", "growth_resource"),
         ("+12", "Garden Coins", "garden_coin"),
     )
     assert len(sync_reward_metric_plan(_summary(garden_coin_delta=0))) == 2
-    find_summary = _summary(
-        garden_coin_delta=0,
-        finds=({
-            "reward_id": "small_charge",
-            "display_name": "Small Charge",
-            "quantity": 3,
-        },),
+    find_rows = ({
+        "reward_id": "small_charge",
+        "event_id": "standard-find:event-1",
+        "display_name": "Small Charge",
+        "quantity": 3,
+    },)
+    discovery_rows = (
+        {
+            "environment_id": "firefly_lantern",
+            "event_id": "garden-discovery:event-1",
+            "display_name": "Firefly Lantern",
+        },
+        {
+            "environment_id": "moon_gate",
+            "event_id": "garden-discovery:event-2",
+            "display_name": "Moon Gate",
+        },
     )
-    assert sync_reward_metric_plan(find_summary)[-1] == ("+3", "Finds", "find")
+    reward_summary = _summary(
+        garden_coin_delta=12,
+        finds=find_rows,
+        environment_discoveries=discovery_rows,
+    )
+
+    assert sync_reward_metric_plan(reward_summary) == (
+        ("42", "Card answers", "sync_review_cards"),
+        ("+520", "Growth", "growth_resource"),
+        ("+12", "Garden Coins", "garden_coin"),
+        ("+3", "Standard Finds", "standard_find"),
+        ("+2", "Garden discoveries", "garden_discovery"),
+    )
+    restored = SyncRewardSummary.from_dict(reward_summary.to_dict())
+
+    assert restored is not None
+    assert restored.finds[0]["reward_id"] == "small_charge"
+    assert restored.finds[0]["event_id"] == "standard-find:event-1"
+    assert tuple(
+        row["event_id"] for row in restored.environment_discoveries
+    ) == ("garden-discovery:event-1", "garden-discovery:event-2")
 
 
 def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
@@ -107,12 +137,12 @@ def test_visibility_uses_one_disclosure_and_keeps_full_bloom_visible() -> None:
     )
 
     collapsed = sync_reward_visibility_plan(summary)
-    assert len(collapsed.plant_growth) == 4
+    assert len(collapsed.plant_growth) == 3
     assert len(collapsed.environment_discoveries) == 2
     assert len(collapsed.finds) == 3
     assert any(row.get("full_bloom") for row in collapsed.plant_growth)
     assert collapsed.progression_events == ()
-    assert collapsed.hidden_count == 4
+    assert collapsed.hidden_count == 5
 
     expanded = sync_reward_visibility_plan(summary, expanded=True)
     assert expanded.hidden_count == 0
@@ -183,16 +213,25 @@ def test_native_card_shell_when_qt_is_available(monkeypatch: pytest.MonkeyPatch)
     )
     card.show()
     application.processEvents()
+    application.processEvents()
 
     assert card.parentWidget() is parent
     assert card.property("summaryNonmodal") is True
-    assert card.property("summaryCentered") is True
+    assert card.property("summaryCentered") is False
+    assert card.property("summaryDock") == "upper-right"
     assert card.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
     assert len(card.findChildren(QScrollArea)) == 1
     assert card.findChildren(QScrollArea)[0].property("syncBodyScrollOwner") is True
-    assert card.x() == (parent.width() - card.width()) // 2
+    assert card.x() == parent.width() - card.width() - 24
     assert 400 <= card.width() <= 480
     assert card.height() <= 640
+    assert (card.x(), card.y(), card.width(), card.height()) == (
+        sync_reward_summary_geometry(
+            parent.width(),
+            parent.height(),
+            card._natural_height(),
+        )
+    )
 
     texts = {label.text() for label in card.findChildren(QLabel)}
     assert "SYNC REWARDS" in texts
@@ -240,7 +279,7 @@ def test_presentation_model_round_trip_is_normalized_and_bounded() -> None:
     assert SyncRewardSummary.from_dict(restored.to_dict()) == restored
 
 
-def test_v1_rows_are_grouped_by_plant_in_the_v2_presentation_contract() -> None:
+def test_v1_rows_are_grouped_and_superseded_checkpoints_are_removed() -> None:
     raw = _summary(
         progression_events=(
             {
@@ -268,9 +307,8 @@ def test_v1_rows_are_grouped_by_plant_in_the_v2_presentation_contract() -> None:
     assert restored is not None
     assert restored.model_version == SYNC_REWARD_MODEL_VERSION
     grouped = {row.plant_id: row for row in restored.grouped_plant_results}
-    assert grouped["bluebell"].checkpoints[0].display_text == (
-        "75% toward Flowering reached"
-    )
+    assert grouped["bluebell"].checkpoints == ()
+    assert grouped["bluebell"].primary_milestone.kind == "stage_change"
     assert grouped["wisteria"].full_bloom
     assert restored.to_dict()["model_version"] == SYNC_REWARD_MODEL_VERSION
     assert len(restored.to_dict()["plant_results"]) == 2

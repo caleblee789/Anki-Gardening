@@ -1,10 +1,12 @@
-"""Compile and independently validate the immutable v25 capture contract."""
+"""Compile and independently validate the immutable v26 capture contract."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
@@ -12,10 +14,33 @@ from typing import Any, Mapping
 from .registry import REGISTRY, SurfaceRegistry
 
 
-CONTRACT_VERSION = 25
-CONTRACT_SCHEMA_VERSION = 1
-SCENARIO_SCHEMA_VERSION = 2
-CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v25.json")
+CONTRACT_VERSION = 26
+CONTRACT_SCHEMA_VERSION = 2
+SCENARIO_SCHEMA_VERSION = 3
+CAPTURE_CONTRACT_PATH = Path(__file__).with_name("capture-contract-v26.json")
+
+_IDENTITY_ID = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
+_EXPECTED_PROFILE_TOTALS = {
+    "representative": (18, 2),
+    "full": (34, 5),
+}
+_EXPECTED_ACTIVE_SURFACE_COUNT = 34
+_RENAMED_SURFACE = "nursery-garden-decorations-scenery"
+_RETIRED_SURFACE = "nursery-weather-scenery"
+_SCENARIO_OVERRIDES: dict[str, tuple[str, int]] = {
+    "starter-deck-browser-home": ("first_run", 1),
+    "starter-garden-onboarding": ("first_run", 2),
+    "starter-nursery-plants": ("first_run", 3),
+    "starter-placement": ("first_run", 4),
+    "fertilizer-active": ("fertilizer_queue", 1),
+    "purchase-confirmation-fertilizer-queue": ("fertilizer_queue", 2),
+    "reviewer-hud-expanded": ("reviewer_hud_base", 1),
+    "session-summary-after-review": ("session_summary", 1),
+    "sync-rewards-summary": ("sync_rewards", 1),
+    "reviewer-reward-dock-bundle": ("reviewer_hud_full_bloom", 1),
+    "growth-charge-use-ready": ("growth_charge_transition", 1),
+    "growth-charge-success-stage-reward": ("growth_charge_transition", 2),
+}
 
 
 class ContractValidationError(ValueError):
@@ -37,6 +62,28 @@ def contract_digest(payload: Mapping[str, Any]) -> str:
     normalized = dict(payload)
     normalized.pop("contract_digest", None)
     return hashlib.sha256(_canonical_bytes(normalized)).hexdigest()
+
+
+def _contact_sheet_page_count(groups: list[Any]) -> int:
+    capacity = 2 * 5
+    pages = 0
+    used_rows = 0
+    for group in groups:
+        labels = group.get("labels", ()) if isinstance(group, dict) else ()
+        if not isinstance(labels, list) or not labels:
+            continue
+        if len(labels) > capacity:
+            if used_rows:
+                pages += 1
+                used_rows = 0
+            pages += math.ceil(len(labels) / capacity)
+            continue
+        rows = math.ceil(len(labels) / 2)
+        if used_rows and used_rows + rows > 5:
+            pages += 1
+            used_rows = 0
+        used_rows += rows
+    return pages + bool(used_rows)
 
 
 def compile_contract(registry: SurfaceRegistry = REGISTRY) -> dict[str, Any]:
@@ -79,7 +126,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
     if payload.get("schema_version") != CONTRACT_SCHEMA_VERSION:
         issues.append("unsupported capture-contract schema version")
     if payload.get("contract_version") != CONTRACT_VERSION:
-        issues.append("capture contract is not v25")
+        issues.append("capture contract is not v26")
     if payload.get("scenario_schema_version") != SCENARIO_SCHEMA_VERSION:
         issues.append("unsupported scenario schema version")
     surfaces = payload.get("surfaces")
@@ -95,8 +142,12 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
     active_ids: set[str] = set()
     retired_ids: set[str] = set()
     surface_by_id: dict[str, Mapping[str, Any]] = {}
+    active_scenario_steps: dict[str, list[int]] = {}
+    scenario_fixtures: dict[str, str] = {}
+    scenario_seeded_checkpoints: dict[str, tuple[object, object, object]] = {}
     required_surface_fields = {
         "id", "active", "retired_reason", "placements", "executor", "arguments",
+        "scenario_id", "fixture_id", "scenario_step",
         "renderer_family", "acquisition_policy", "allow_foreground_fallback",
         "checkpoint_cohort", "checkpoint", "prerequisites", "internal_setups",
         "readiness", "cleanup", "evidence_requirements", "owned_dependency_groups",
@@ -118,8 +169,64 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             continue
         ids.append(stable_id)
         surface_by_id[stable_id] = raw
+        scenario_id = raw.get("scenario_id")
+        fixture_id = raw.get("fixture_id")
+        scenario_step = raw.get("scenario_step")
+        if (
+            not isinstance(scenario_id, str)
+            or _IDENTITY_ID.fullmatch(scenario_id) is None
+        ):
+            issues.append(f"surface {stable_id!r} has an invalid scenario ID")
+        if (
+            not isinstance(fixture_id, str)
+            or _IDENTITY_ID.fullmatch(fixture_id) is None
+        ):
+            issues.append(f"surface {stable_id!r} has an invalid fixture ID")
+        elif isinstance(scenario_id, str) and fixture_id != f"{scenario_id}-v1":
+            issues.append(f"surface {stable_id!r} has a noncanonical fixture ID")
+        if type(scenario_step) is not int or scenario_step < 1:
+            issues.append(f"surface {stable_id!r} has an invalid scenario step")
         if raw.get("active") is True:
             active_ids.add(stable_id)
+            if isinstance(scenario_id, str) and isinstance(fixture_id, str):
+                prior_fixture = scenario_fixtures.setdefault(scenario_id, fixture_id)
+                if prior_fixture != fixture_id:
+                    issues.append(
+                        f"scenario {scenario_id!r} has multiple fixture IDs"
+                    )
+            internal_setups = raw.get("internal_setups")
+            first_internal_setup = (
+                internal_setups[0]
+                if isinstance(internal_setups, list) and internal_setups
+                else None
+            )
+            if isinstance(scenario_id, str):
+                seeded_checkpoint = (
+                    raw.get("checkpoint_cohort"),
+                    raw.get("checkpoint"),
+                    first_internal_setup,
+                )
+                prior_seeded_checkpoint = scenario_seeded_checkpoints.setdefault(
+                    scenario_id,
+                    seeded_checkpoint,
+                )
+                if prior_seeded_checkpoint != seeded_checkpoint:
+                    issues.append(
+                        f"scenario {scenario_id!r} has multiple seeded "
+                        "checkpoint lineages"
+                    )
+            if isinstance(scenario_id, str) and type(scenario_step) is int:
+                active_scenario_steps.setdefault(scenario_id, []).append(
+                    scenario_step
+                )
+            expected_scenario, expected_step = _SCENARIO_OVERRIDES.get(
+                stable_id,
+                (stable_id, 1),
+            )
+            if scenario_id != expected_scenario or scenario_step != expected_step:
+                issues.append(
+                    f"surface {stable_id!r} has unexpected v26 scenario identity"
+                )
             if raw.get("retired_reason"):
                 issues.append(f"active surface {stable_id!r} has a retirement reason")
         elif raw.get("active") is False:
@@ -134,6 +241,7 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             **{
                 key: raw[key]
                 for key in (
+                    "scenario_id", "fixture_id", "scenario_step",
                     "executor", "arguments", "renderer_family", "acquisition_policy",
                     "allow_foreground_fallback", "checkpoint_cohort", "checkpoint",
                     "prerequisites", "internal_setups", "readiness", "cleanup",
@@ -148,8 +256,24 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
         issues.append("capture contract repeats a stable ID")
     if payload.get("surface_count") != len(active_ids):
         issues.append("capture contract active surface count is stale")
+    if len(active_ids) != _EXPECTED_ACTIVE_SURFACE_COUNT:
+        issues.append(
+            f"v26 must contain exactly {_EXPECTED_ACTIVE_SURFACE_COUNT} active surfaces"
+        )
     if set(payload.get("retired_ids", ())) != retired_ids:
         issues.append("capture contract retired ID ledger is stale")
+    if _RETIRED_SURFACE not in retired_ids:
+        issues.append(f"v26 must permanently retire {_RETIRED_SURFACE!r}")
+    if _RENAMED_SURFACE not in active_ids:
+        issues.append(f"v26 is missing renamed surface {_RENAMED_SURFACE!r}")
+    for scenario_id, steps in active_scenario_steps.items():
+        if sorted(steps) != list(range(1, len(steps) + 1)):
+            issues.append(
+                f"scenario {scenario_id!r} steps are not unique and contiguous"
+            )
+
+    if set(profiles) != set(_EXPECTED_PROFILE_TOTALS):
+        issues.append("v26 capture profiles must be representative and full")
 
     for profile, raw_profile in profiles.items():
         if not isinstance(profile, str) or not isinstance(raw_profile, dict):
@@ -188,6 +312,20 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
                     )
         if raw_profile.get("surface_count") != len(labels):
             issues.append(f"profile {profile!r} surface count is stale")
+        expected_totals = _EXPECTED_PROFILE_TOTALS.get(profile)
+        if expected_totals is not None and len(labels) != expected_totals[0]:
+            issues.append(
+                f"profile {profile!r} must contain exactly "
+                f"{expected_totals[0]} surfaces"
+            )
+        page_count = _contact_sheet_page_count(groups)
+        if raw_profile.get("contact_sheet_page_count") != page_count:
+            issues.append(f"profile {profile!r} contact-sheet page count is stale")
+        if expected_totals is not None and page_count != expected_totals[1]:
+            issues.append(
+                f"profile {profile!r} must produce exactly "
+                f"{expected_totals[1]} contact-sheet pages"
+            )
         topology = {"profile": profile, "groups": groups}
         if raw_profile.get("topology_digest") != hashlib.sha256(
             _canonical_bytes(topology)
@@ -195,14 +333,17 @@ def validate_contract_payload(payload: Mapping[str, Any]) -> None:
             issues.append(f"profile {profile!r} topology digest is stale")
     full = profiles.get("full") if isinstance(profiles, dict) else None
     if isinstance(full, dict):
-        full_ids = {
+        full_labels = [
             str(label)
             for group in full.get("groups", ())
             if isinstance(group, dict)
             for label in group.get("labels", ())
-        }
+        ]
+        full_ids = set(full_labels)
         if full_ids != active_ids:
             issues.append("full profile does not exactly cover active surfaces")
+        if len(full_labels) >= 24 and full_labels[23] != _RENAMED_SURFACE:
+            issues.append("full profile surface 24 is not the v26 nursery scenery surface")
     if payload.get("contract_digest") != contract_digest(payload):
         issues.append("capture contract digest is stale")
     if issues:

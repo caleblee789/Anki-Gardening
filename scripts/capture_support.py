@@ -12,7 +12,6 @@ import math
 import os
 import pickle
 import re
-import shutil
 import signal
 import sqlite3
 import subprocess
@@ -121,11 +120,11 @@ def archive_package(
         required_capture_entries = {
             "capture_ui_faces.py",
             "capture/runtime.py",
-            "capture/capture-contract-v25.json",
+            "capture/capture-contract-v26.json",
         }
         if not required_capture_entries.issubset(names):
             raise CaptureError(
-                "The built package does not contain the complete v25 capture runtime"
+                "The built package does not contain the complete v26 capture runtime"
             )
     package_id = str(manifest.get("package", "")).strip()
     if not package_id or any(part in package_id for part in ("/", "\\", "..")):
@@ -462,6 +461,52 @@ def _page_slug(page_groups: list[tuple[str, list[str]]]) -> str:
     return re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-") or "ui-surfaces"
 
 
+def _canonical_json_text(value: Any) -> str:
+    """Serialize provenance metadata without whitespace or ordering drift."""
+
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def _contact_page_surface_identity_map(
+    page: list[tuple[str, list[str]]],
+    records: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Return the exact v26 scenario identity for every surface on one page."""
+
+    identity_map: dict[str, dict[str, Any]] = {}
+    for _group_name, labels in page:
+        for label in labels:
+            record = records.get(label)
+            if record is None:
+                raise CaptureError(f"Contact-sheet record disappeared: {label}")
+            scenario_id = record.get("scenario_id")
+            fixture_id = record.get("fixture_id")
+            scenario_step = record.get("scenario_step")
+            if not isinstance(scenario_id, str) or not scenario_id.strip():
+                raise CaptureError(
+                    f"Contact-sheet record has no scenario_id: {label}"
+                )
+            if not isinstance(fixture_id, str) or not fixture_id.strip():
+                raise CaptureError(
+                    f"Contact-sheet record has no fixture_id: {label}"
+                )
+            if type(scenario_step) is not int or scenario_step < 1:
+                raise CaptureError(
+                    f"Contact-sheet record has an invalid scenario_step: {label}"
+                )
+            identity_map[label] = {
+                "scenario_id": scenario_id,
+                "fixture_id": fixture_id,
+                "scenario_step": scenario_step,
+            }
+    return identity_map
+
+
 def render_contact_sheets(
     *,
     payload: dict[str, Any],
@@ -541,6 +586,15 @@ def render_contact_sheets(
     page_index_records: list[dict[str, Any]] = []
 
     for page_number, page in enumerate(page_groups, start=1):
+        surface_identity_map = _contact_page_surface_identity_map(page, records)
+        surface_ids = list(surface_identity_map)
+        identity_field_maps = {
+            identity_field: {
+                label: identity[identity_field]
+                for label, identity in surface_identity_map.items()
+            }
+            for identity_field in ("scenario_id", "fixture_id", "scenario_step")
+        }
         total_height = header_height + margin
         for _name, labels in page:
             total_height += group_header_height
@@ -666,6 +720,16 @@ def render_contact_sheets(
         metadata.add_text("Package SHA-256", package_sha256)
         metadata.add_text("Capture manifest", str(payload.get("manifest", "")))
         metadata.add_text("Contact sheet page", f"{page_number} of {len(page_groups)}")
+        metadata.add_text("surface_ids", _canonical_json_text(surface_ids))
+        metadata.add_text(
+            "surface_identity_map",
+            _canonical_json_text(surface_identity_map),
+        )
+        for identity_field in ("scenario_id", "fixture_id", "scenario_step"):
+            metadata.add_text(
+                identity_field,
+                _canonical_json_text(identity_field_maps[identity_field]),
+            )
         sheet.save(output, format="PNG", optimize=True, pnginfo=metadata)
         with Image.open(output) as rendered:
             rendered.verify()
@@ -675,6 +739,9 @@ def render_contact_sheets(
                 "file": output.name,
                 "groups": [name for name, _labels in page],
                 "page": page_number,
+                **identity_field_maps,
+                "surface_identity_map": surface_identity_map,
+                "surface_ids": surface_ids,
                 "surface_count": page_surface_count,
             }
         )
@@ -812,7 +879,13 @@ def enforce_contact_sheet_retention(
     *,
     keep: int = CONTACT_SHEET_RETENTION,
 ) -> tuple[list[Path], list[Path]]:
-    contact_root = contact_dir.resolve()
+    """Inventory complete sheet sets without deleting presentation evidence.
+
+    Superseded sets are removed only by the explicit, evidence-backed release
+    cleanup after the replacement full set has passed independent validation.
+    """
+
+    del keep
     candidates: list[tuple[str, Path]] = []
     for path in contact_dir.iterdir():
         stamp = _complete_contact_sheet_stamp(path)
@@ -823,21 +896,8 @@ def enforce_contact_sheet_retention(
         key=lambda item: (item[0], item[1].name),
         reverse=True,
     )
-    retained = [path for _stamp, path in newest_first[: max(0, int(keep))]]
-    pruned = [path for _stamp, path in newest_first[max(0, int(keep)) :]]
-    for path in pruned:
-        resolved = path.resolve()
-        if (
-            path.is_symlink()
-            or resolved.parent != contact_root
-            or _complete_contact_sheet_stamp(path) is None
-        ):
-            raise CaptureError(f"Refusing to prune unexpected contact-sheet path: {path}")
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
-    return retained, pruned
+    retained = [path for _stamp, path in newest_first]
+    return retained, []
 
 
 def stop_process(process: subprocess.Popen[str]) -> None:
@@ -958,11 +1018,9 @@ def enforce_capture_retention(
     output_root: Path,
     keep: int = CONTACT_SHEET_RETENTION,
 ) -> tuple[list[Path], list[Path], list[Path]]:
-    """Retain the newest complete capture runs and their matching ZIPs.
+    """Inventory complete capture runs while preserving every raw artifact."""
 
-    Partial or malformed runs are intentionally preserved for diagnosis. Only
-    skill-owned directories with a completed report are eligible for pruning.
-    """
+    del keep
 
     complete: list[tuple[str, Path]] = []
     for path in output_root.iterdir():
@@ -975,31 +1033,8 @@ def enforce_capture_retention(
         key=lambda item: (item[0], item[1].name),
         reverse=True,
     )
-    retained = [path for _stamp, path in newest_first[: max(0, int(keep))]]
-    pruned = [path for _stamp, path in newest_first[max(0, int(keep)) :]]
-    pruned_archives: list[Path] = []
-    root = output_root.resolve()
-    for path in pruned:
-        resolved = path.resolve()
-        stamp = _complete_capture_stamp(path, output_root)
-        if path.is_symlink() or resolved.parent != root or stamp is None:
-            raise CaptureError(f"Refusing to prune unexpected capture path: {path}")
-        archive = output_root / f"{CAPTURE_ARCHIVE_PREFIX}{stamp}.zip"
-        if archive.is_symlink():
-            raise CaptureError(f"Refusing to prune symlinked capture archive: {archive}")
-        if archive.is_file():
-            archive_resolved = archive.resolve()
-            if (
-                archive_resolved.parent != root
-                or archive.name != f"{CAPTURE_ARCHIVE_PREFIX}{stamp}.zip"
-            ):
-                raise CaptureError(f"Refusing to prune unexpected capture archive: {archive}")
-            archive.unlink()
-            pruned_archives.append(archive)
-        elif archive.exists():
-            raise CaptureError(f"Refusing to prune non-file capture archive: {archive}")
-        shutil.rmtree(path)
-    return retained, pruned, pruned_archives
+    retained = [path for _stamp, path in newest_first]
+    return retained, [], []
 
 
 def main() -> int:
@@ -1249,7 +1284,7 @@ def main() -> int:
 
 
 def _repository_owned_main() -> int:
-    """Delegate orchestration to the checked-in v25 runner, or fail closed."""
+    """Delegate orchestration to the checked-in v26 runner, or fail closed."""
 
     repo = Path.cwd()
     for index, argument in enumerate(sys.argv[1:], start=1):
@@ -1262,7 +1297,7 @@ def _repository_owned_main() -> int:
     delegate = repo.expanduser().resolve() / "scripts" / "capture_sequence.py"
     if not delegate.is_file():
         raise CaptureError(
-            "The repository-owned v25 capture runner is required: "
+            "The repository-owned v26 capture runner is required: "
             f"{delegate}"
         )
     os.environ["ANKI_GARDEN_CAPTURE_SKILL_RUNNER"] = str(Path(__file__).resolve())

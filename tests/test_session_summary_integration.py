@@ -34,6 +34,9 @@ from ankigarden.ui.session_summary import (
     TodayCardsSnapshot,
     project_session_day,
 )
+from ankigarden.ui.transient_summary_coordinator import (
+    TransientSummaryCoordinator,
+)
 
 
 DAY = "2026-08-28"
@@ -1736,6 +1739,42 @@ def test_dismissed_summary_generation_cannot_replay_a_newer_payload(monkeypatch)
 
     assert handler._pending_session_summary is newer_payload
     assert handler._session_summary_render_scheduled is True
+
+
+def test_session_summary_escape_is_modal_guarded_and_coordinator_owned(monkeypatch):
+    reviewer_module = _load_reviewer_module(monkeypatch)
+
+    class _Coordinator:
+        def __init__(self) -> None:
+            self.active_kind = "session"
+            self.dismissed: list[str] = []
+
+        def owns(self, kind: str) -> bool:
+            return self.active_kind == kind
+
+        def dismiss(self, reason: str) -> bool:
+            self.dismissed.append(reason)
+            return True
+
+    coordinator = _Coordinator()
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(),
+        SimpleNamespace(state=SimpleNamespace()),
+        summary_coordinator=coordinator,
+    )
+
+    monkeypatch.setattr(reviewer_module, "reviewer_modal_active", lambda _mw: True)
+    handler._dismiss_session_summary_on_escape()
+    assert coordinator.dismissed == []
+
+    monkeypatch.setattr(reviewer_module, "reviewer_modal_active", lambda _mw: False)
+    coordinator.active_kind = "sync"
+    handler._dismiss_session_summary_on_escape()
+    assert coordinator.dismissed == []
+
+    coordinator.active_kind = "session"
+    handler._dismiss_session_summary_on_escape()
+    assert coordinator.dismissed == ["escape"]
 
 
 def test_recovery_rows_admit_only_one_unambiguous_current_window_answer(monkeypatch):

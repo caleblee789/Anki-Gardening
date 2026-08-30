@@ -14,6 +14,7 @@ import pytest
 
 from ankigarden.game import GardenGameEngine
 from ankigarden.models.state import GardenState, OnboardingStep, Plant, PlantMemory
+from ankigarden.presentation import PlantIdentity
 from ankigarden.purchases import PurchaseKind
 from ankigarden.ui.home_widget import HomeWidgetData, HomeWidgetSnapshot, render_home_widget
 from ankigarden.ui.plant_display import (
@@ -748,7 +749,25 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
         DASHBOARD_PATH,
         "GardenDashboard",
         "_settings_scene_snapshot",
-        {"growth_display": lambda _points: SimpleNamespace(progress=0.37)},
+        {
+            "growth_display": lambda _points: SimpleNamespace(progress=0.37),
+            "project_garden_appearance": lambda _state: SimpleNamespace(
+                active_bonus_decoration_id="watering_station",
+                visual_effects_enabled=True,
+                to_dict=lambda: {
+                    "scenery_id": "default",
+                    "displayed_decoration_id": "seedling_sign",
+                    "active_bonus_decoration_id": "watering_station",
+                    "visual_effects_enabled": True,
+                },
+                summary_rows=(
+                    ("Scenery", "Verdant Twilight"),
+                    ("Displayed decoration", "Seedling Sign"),
+                    ("Active garden bonus", "Watering Station"),
+                    ("Visual effects", "On"),
+                ),
+            ),
+        },
     )
     active = SimpleNamespace(growth_points=2_700)
     state = SimpleNamespace(
@@ -781,7 +800,16 @@ def test_settings_snapshot_and_preview_resolver_keep_real_weather_plants_and_slo
 
     payload = snapshot(dashboard)
 
+    assert payload["appearance_rows"] == [
+        ("Scenery", "Verdant Twilight"),
+        ("Displayed decoration", "Seedling Sign"),
+        ("Active garden bonus", "Watering Station"),
+        ("Visual effects", "On"),
+    ]
+
     assert payload["garden_feature"] == "gentle_rain"
+    assert payload["active_bonus_garden_feature"] == "watering_station"
+    assert payload["visual_effects_enabled"] is True
     assert payload["unlocked_slots"] == 5
     assert payload["growth"] == 0.37
     assert payload["streak_days"] == 14
@@ -2184,7 +2212,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
         "_begin_move",
         {
             "QTimer": Timer,
-            "format_status_label": lambda value: str(value).replace("_", " ").title(),
+            "PlantIdentity": PlantIdentity,
         },
     )
     finish_failed = _compiled_method(
@@ -2305,7 +2333,7 @@ def test_starting_new_move_clears_the_previous_popup_before_new_failure() -> Non
     assert rearrange.visible is True
     assert rearrange.failed is True
     assert rearrange.retry.focused is True
-    assert rearrange.heading == "Move Bonsai Plant"
+    assert rearrange.heading == "Move Aster"
     assert rearrange.instruction == (
         "Select a destination bed. Occupied beds will swap plants."
     )

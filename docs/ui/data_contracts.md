@@ -34,6 +34,25 @@ Mutable state and caches never enter the distributable archive.
   finalized days, purchase requests, and Growth Charge requests remain the
   idempotency authorities.
 
+## Renderer-neutral projections
+
+UI surfaces consume shared presentation contracts rather than deriving labels
+or counts locally:
+
+- `PlantIdentity(plant_id, display_name, species_name)` preserves the durable
+  instance and default display names such as **Bonsai Plant**.
+- The canonical stage projection contains Seed, Sprout, Young, Mature,
+  Flowering, and Full Bloom. Persisted `rare` remains the internal final-stage
+  key; compact copy is `Sprout · 2 of 6 stages`.
+- The collection projection keeps species, owned plant instances, and complete
+  registry entries separate. Its canonical completion copy is
+  `10 of 10 species discovered` and
+  `30 of 39 collection entries discovered`.
+- The appearance projection independently exposes Scenery, Displayed
+  decoration, Active garden bonus, and Visual effects.
+- Standard Finds and Garden discoveries retain their existing ledger/event IDs
+  while using distinct visible terms.
+
 ## Growth transaction
 
 One eligible completed card creates one engine-owned transaction:
@@ -63,6 +82,11 @@ Instant Growth uses the same router without modifiers or Shared fan-out. Find
 weights stay constant when no target exists; the complete reward becomes Stored
 Growth when necessary. Growth Charges never consume paid value without routing
 or storing the full amount.
+
+The canonical Small Growth Charge projection is 450→550 total Growth,
+Seed→Sprout, two charges→one, and 50/2,000 toward Young. No-transition and
+no-stage-reward outcomes are separate successful projections; Full Bloom
+rejection and overflow conservation remain engine decisions.
 
 ## Milestones and Full Bloom
 
@@ -136,6 +160,11 @@ card, start, end, and source identity:
   both durations.
 - Elapsed time continues outside the reviewer.
 
+Selection, quote, confirmation, and the committed active or queued period carry
+the same immutable source `plant_id`. UI disposition labels are **Apply** or
+**Queue** for owned inventory and **Buy and apply** or **Buy and queue** for a
+purchase. **Extend** is reserved for the existing active same-tier extension.
+
 `CardEffectBatch` is the Booster authority. It stores `effect_id`, derived
 `growth_per_card_units`, activated and remaining card counts, activation
 timestamp, and source event key.
@@ -187,6 +216,10 @@ rows and distinct answer events for the same card to apply exactly once.
   rewards nor creates a second receipt. A successful mount clears only the
   matching durable payload; **Close** and **Open Garden** act on the visible
   in-memory receipt.
+- Visible milestone priority is Full Bloom, stage change, the highest valid
+  checkpoint in the resulting stage, then ordinary Growth. Superseded
+  checkpoints do not paint, and sync-created transitions do not enter normal
+  Home banners. The canonical Growth total reconciles `420 + 80 + 20 = 520`.
 
 The receipt is presentation only and never drives reward calculation. The local
 review-session accumulator and Session Summary exclude background sync rewards.
@@ -222,6 +255,11 @@ cards. It shows:
 - one integrated major-reward reveal keyed by a stable committed event ID;
 - a live footer from the local-session accumulator.
 
+The expanded safe area is 296 px wide, top 44 px, and right 16 px. Its lower
+edge uses measured answer-control clearance with a 72 px fallback; a narrow
+viewport collapses the HUD. The canonical count projections reconcile
+`176 + 18 = 194` in the HUD and `126 + 19 = 145` in Session Summary.
+
 It does not persist raw Growth routing, Shared Growth math, environment names,
 Find cap/protection state, or irrelevant Stored Growth. Routine completion
 updates exact plant and session values in place. One committed answer produces
@@ -234,6 +272,10 @@ Growth, Coins, Finds, crossings, Today’s Cards state, remaining Fertilizer tim
 and remaining Booster cards. It
 is in-memory only and excludes background sync catch-up.
 
+Session Summary and Sync Rewards use one shared coordinator for mutual
+exclusion, Escape ownership, safe focus restoration, and upper-right Sync
+docking.
+
 ## Achievements and legacy policy
 
 Clear Recall, Perfect Canopy, and No-Again Day do not exist. No reward depends
@@ -242,6 +284,10 @@ Cards completion.
 
 Historical badges are consolidated into one Legacy Harvest. Historical economy
 is capped at 500 Coins and grants no consumables.
+
+The 30-Day Anki Streak presentation always projects **100 Garden Coins + 1
+Small Growth Charge**. Achievement cards, reward receipts, and summaries use
+that same shared reward component list.
 
 ## Beds and collection
 
@@ -254,6 +300,9 @@ aggregate value.
 
 Species, personality, names, planter styling, and placement do not change
 Growth or rewards. Every species card states that Growth rules are identical.
+All 60 species-stage placement records serialize `visual_scale_correction` and
+a calibrated thumbnail scale, and validation exercises each record in all six
+bed positions.
 
 ## Configuration and privacy
 
@@ -286,3 +335,20 @@ Decorations, split displayed artwork from the active Garden Bonus, add
 independent Anki-day Bonus locking, and add the durable pending sync receipt.
 All supported schema-10–24 JSON/SQLite paths converge on schema 25. Unsupported
 or unreadable state is preserved before recovery.
+
+## v26 evidence boundary
+
+Capture contract v26 is independent from persisted schema 25. It uses contract
+schema 2 and scenario schema 3 with 18 representative/34 full surfaces and
+two/five contact-sheet pages. All evidence layers require `scenario_id`,
+`fixture_id`, and one-based `scenario_step`; shared fixture IDs preserve
+sequential lineage, and v25 evidence is rejected.
+
+Hard gates cover deprecated visible copy, root/DOM overflow, progress
+fractions, asset mappings, Reviewer exclusion rectangles, four-state scroll
+coverage, and lineage. Current run paths, archive and capture hashes, artifact
+sizes, and validation totals are recorded only in the
+[final 2.1.0 UI audit](final-ui-audit-2.1.0.md). Automated evidence retains
+`quality_status: review-required` and `release_ready: false`; manual macOS,
+Windows/Linux, mixed-DPI, forced-colors, screen-reader, broader-keyboard, and
+human approval remain open.

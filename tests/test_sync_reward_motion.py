@@ -62,9 +62,14 @@ def test_initial_motion_plan_counts_from_zero_and_emphasizes_full_bloom_once() -
     assert metrics["Growth"].decimal_places == 1
     assert metrics["Growth"].show_plus is True
     assert metrics["Garden Coins"].final_text == "+12"
-    assert plan.plant_progress[0].plant_key == "bluebell"
-    assert plan.plant_progress[0].start_value == 55
-    assert plan.plant_progress[0].start_stage == "mature"
+    assert [motion.plant_key for motion in plan.plant_progress] == [
+        "wisteria",
+        "bluebell",
+    ]
+    assert plan.plant_progress[0].start_value == 0
+    assert plan.plant_progress[0].start_stage == ""
+    assert plan.plant_progress[1].start_value == 55
+    assert plan.plant_progress[1].start_stage == "mature"
     assert plan.full_bloom_event_keys == frozenset({"wisteria:bloom"})
 
 

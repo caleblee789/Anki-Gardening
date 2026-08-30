@@ -10,7 +10,7 @@ assets.
 from __future__ import annotations
 
 from collections import OrderedDict
-from math import isfinite
+from math import isfinite, sqrt
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,28 @@ except Exception as exc:  # pragma: no cover - only outside Anki.
 
 _PIXMAP_CACHE_LIMIT = 72
 _PIXMAP_CACHE: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
+
+THUMBNAIL_STAGE_FILL: dict[str, float] = {
+    "seed": 0.66,
+    "sprout": 0.73,
+    "young": 0.80,
+    "mature": 0.87,
+    "flowering": 0.91,
+    "rare": 1.00,
+}
+
+# Optical correction may enlarge a small authored silhouette, but each stage
+# still owns a stable compact-canvas envelope.  Without this second bound a
+# scene-calibrated early plant can grow larger than the next stage in Reviewer
+# and Nursery thumbnails even though the surrounding canvas never changes.
+THUMBNAIL_STAGE_MAX_FILL: dict[str, float] = {
+    "seed": 0.76,
+    "sprout": 0.73,
+    "young": 0.90,
+    "mature": 0.96,
+    "flowering": 0.98,
+    "rare": 1.00,
+}
 
 
 def _require_qt() -> None:
@@ -92,6 +114,40 @@ def _number(value: Any, default: float) -> float:
         return default
 
 
+def calibrated_thumbnail_scale(placement: Any) -> float:
+    """Return an explicit thumbnail scale or a bounded optical calibration.
+
+    ``visual_scale_correction`` is authored for soil-plane scene layout. When
+    a raw manifest row has no independent thumbnail scale, invert only the
+    square root of that scene correction. This preserves species character
+    while preventing compact early-stage art from becoming an unreadable dot.
+    """
+
+    explicit = _placement_value(placement, "thumbnail_scale", None)
+    if explicit is not None:
+        return max(0.5, min(1.5, _number(explicit, 1.0)))
+    visual = max(
+        0.5,
+        min(
+            1.5,
+            _number(
+                _placement_value(placement, "visual_scale_correction", 1.0),
+                1.0,
+            ),
+        ),
+    )
+    return max(0.85, min(1.20, 1.0 / sqrt(visual)))
+
+
+def calibrated_thumbnail_fill(stage: Any, placement: Any) -> float:
+    """Combine authored optical scale with the canonical stage envelope."""
+
+    stage_key = str(stage or "").lower()
+    base_fill = THUMBNAIL_STAGE_FILL.get(stage_key, 0.92)
+    maximum_fill = THUMBNAIL_STAGE_MAX_FILL.get(stage_key, 1.00)
+    return min(maximum_fill, base_fill * calibrated_thumbnail_scale(placement))
+
+
 def _placement_fingerprint(placement: Any) -> tuple[Any, ...]:
     return tuple(
         repr(_placement_value(placement, key, None))
@@ -102,6 +158,7 @@ def _placement_fingerprint(placement: Any) -> tuple[Any, ...]:
             "thumbnail_optical_center",
             "focal_point",
             "thumbnail_scale",
+            "visual_scale_correction",
             "max_visible_width",
             "max_visible_height",
             "thumbnail_safe_padding",
@@ -181,22 +238,10 @@ def normalized_plant_pixmap(
         cropped = source
         left, top, width, height = (0.0, 0.0, 1.0, 1.0)
 
-    stage_fill = {
-        # Reviewer art uses a stable 136px logical canvas. Early stages receive
-        # a small optical correction inside that unchanged canvas so the plant
-        # remains the focus without moving the surrounding layout.
-        "seed": 0.66,
-        "sprout": 0.73,
-        "young": 0.80,
-        "mature": 0.87,
-        "flowering": 0.91,
-        "rare": 1.00,
-    }.get(str(stage or "").lower(), 0.92)
-    content_scale = max(
-        0.5,
-        min(1.5, _number(_placement_value(placement, "thumbnail_scale", 1.0), 1.0)),
-    )
-    target = max(16, min(logical_size, round(logical_size * stage_fill * content_scale)))
+    # Reviewer art uses a stable logical canvas. Stage fill and per-asset
+    # optical calibration change only the art inside that unchanged region.
+    stage_fill = calibrated_thumbnail_fill(stage, placement)
+    target = max(16, min(logical_size, round(logical_size * stage_fill)))
     max_visible_width = max(
         0.1,
         min(1.0, _number(_placement_value(placement, "max_visible_width", 1.0), 1.0)),
@@ -261,6 +306,10 @@ def normalized_plant_pixmap(
 
 
 __all__ = [
+    "THUMBNAIL_STAGE_FILL",
+    "THUMBNAIL_STAGE_MAX_FILL",
+    "calibrated_thumbnail_fill",
+    "calibrated_thumbnail_scale",
     "clear_plant_art_cache",
     "normalized_plant_pixmap",
     "padded_preview_bounds",

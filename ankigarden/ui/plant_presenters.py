@@ -31,7 +31,7 @@ def fertilizer_status(
     *,
     now: float,
     description: str = (
-        "Fertilizer adds Growth per card for a limited time."
+        "Fertilizer adds Growth per eligible card answer for a limited time."
     ),
 ) -> FertilizerStatus:
     """Project one fertilizer into stable visible and accessible fields."""
@@ -60,7 +60,7 @@ def fertilizer_status(
     spec = getattr(engine, "FERTILIZERS", {}).get(tier)
     name = str(getattr(spec, "name", "") or _label(tier) or "Fertilizer")
     growth = max(0, int(getattr(fertilizer, "growth_per_answer", 0) or 0))
-    effect = f"+{growth:,} Growth per card"
+    effect = f"+{growth:,} Growth per eligible card answer"
     effective_end = float(getattr(fertilizer, "expires_at", 0) or 0)
     # Consecutive doses of the same tier are one visible extension even though
     # their separate windows remain persisted for dose-cap accounting.

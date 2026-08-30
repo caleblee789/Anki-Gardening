@@ -29,6 +29,11 @@ from .garden_finds import (
     standard_find_artwork_ref,
 )
 from .models.state import Achievement, GardenFindOutcome, GardenState, RewardReceipt
+from .presentation import (
+    GARDEN_DISCOVERY_INTERNAL_ID,
+    STANDARD_FIND_INTERNAL_ID,
+    visible_reward_term,
+)
 from .ui.formatters import format_quantity
 from .ui.session_summary import CommittedSessionEvent, format_growth_units
 
@@ -719,7 +724,7 @@ _COMPACT_EYEBROWS = {
     RewardHero.FULL_BLOOM: "MILESTONE REACHED",
     RewardHero.STAGE_CHANGE: "NEW GROWTH STAGE",
     RewardHero.ENVIRONMENT_DISCOVERY: "NEW DISCOVERY",
-    RewardHero.GARDEN_FIND: "GARDEN FIND",
+    RewardHero.GARDEN_FIND: "STANDARD FIND",
     RewardHero.CHECKPOINT: "CHECKPOINT REACHED",
     RewardHero.COIN_OR_BOOSTER: "REWARD EARNED",
     RewardHero.ROUTINE_GROWTH: "GROWTH APPLIED",
@@ -1056,7 +1061,7 @@ def _session_history_row(item: RewardItemProjection) -> RewardDetailRow:
             else "Checkpoint reached"
         )
     elif item.kind is RewardHero.GARDEN_FIND:
-        category = "Garden Find"
+        category = "Standard Find"
     elif item.kind is RewardHero.ENVIRONMENT_DISCOVERY:
         category = "Discovery"
 
@@ -1217,7 +1222,10 @@ def _project_compact_reward(
     if find_items:
         ranked_summaries.append((min(item.sequence for item in find_items), _compact_summary(
             key="garden_finds",
-            label=format_quantity(len(find_items), "Garden Find"),
+            label=visible_reward_term(STANDARD_FIND_INTERNAL_ID).label(
+                len(find_items),
+                include_quantity=True,
+            ),
             items=find_items,
             reward_type="garden_find",
         )))
@@ -1227,10 +1235,8 @@ def _project_compact_reward(
         discovery_label = (
             discovery_items[0].title
             if len(discovery_items) == 1
-            else format_quantity(
-                len(discovery_items),
-                "new discovery",
-                "new discoveries",
+            else visible_reward_term(GARDEN_DISCOVERY_INTERNAL_ID).label(
+                len(discovery_items)
             )
         )
         ranked_summaries.append((
@@ -1404,8 +1410,8 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=find.event_id,
             kind=RewardHero.GARDEN_FIND,
-            title=find.find_name or "Garden Find",
-            category_label="Garden Find",
+            title=find.find_name or "Standard Find",
+            category_label="Standard Find",
             occurred_at=find.occurred_at or event.occurred_at,
             growth_units=growth_units,
             garden_coins=coins,
@@ -1423,8 +1429,8 @@ def project_committed_reward_bundle(
             items.append(RewardItemProjection(
                 event_id=f"{find.event_id}:occurrence:{occurrence}",
                 kind=RewardHero.GARDEN_FIND,
-                title=find.find_name or "Garden Find",
-                category_label="Garden Find",
+                title=find.find_name or "Standard Find",
+                category_label="Standard Find",
                 occurred_at=find.occurred_at or event.occurred_at,
                 rarity=find.rarity,
                 artwork_ref=find.art_asset,
@@ -1441,8 +1447,8 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=f"{bundle_id}:find:unitemized:{occurrence}",
             kind=RewardHero.GARDEN_FIND,
-            title="Garden Find",
-            category_label="Garden Find",
+            title="Standard Find",
+            category_label="Standard Find",
             occurred_at=event.occurred_at,
             detail="Details unavailable",
             sequence=len(items),
@@ -1454,8 +1460,8 @@ def project_committed_reward_bundle(
         items.append(RewardItemProjection(
             event_id=discovery.event_id,
             kind=RewardHero.ENVIRONMENT_DISCOVERY,
-            title=discovery.environment_name or "Environment discovered",
-            category_label="Environment discovery",
+            title=discovery.environment_name or "Garden discovery",
+            category_label="Garden discovery",
             occurred_at=discovery.occurred_at or event.occurred_at,
             rarity=discovery.rarity,
             artwork_ref=discovery.art_asset,
@@ -1509,10 +1515,10 @@ def project_committed_reward_bundle(
             category = "Full Bloom"
         elif sources.intersection({"garden_find_environment", "environment_discovery"}) or environment_items:
             kind = RewardHero.ENVIRONMENT_DISCOVERY
-            category = "Environment discovery"
+            category = "Garden discovery"
         elif "garden_find" in sources:
             kind = RewardHero.GARDEN_FIND
-            category = "Garden Find"
+            category = "Standard Find"
         elif event_key in milestone_event_ids:
             # Numeric milestone values already live on the richer typed item.
             continue
@@ -1809,7 +1815,7 @@ def _environment_item_name(item_id: str) -> str:
         item = catalog.get(normalized)
         if item is not None:
             return item.name
-    return _identifier_name(normalized or "environment item")
+    return _identifier_name(normalized or "garden discovery")
 
 
 def _environment_item_destination(item_id: str) -> str:
@@ -1819,7 +1825,7 @@ def _environment_item_destination(item_id: str) -> str:
     for kind, catalog in ENVIRONMENT_CATALOG.items():
         if normalized not in catalog:
             continue
-        return "Garden Decorations" if kind == "garden_feature" else "Scenery"
+        return "Garden decorations" if kind == "garden_feature" else "Scenery"
     return "Collection"
 
 
@@ -1941,7 +1947,7 @@ def lookup(
             item_id=outcome.item_id or environment.item_id,
             display_name=environment.display_name,
             description=(
-                "Added to Garden Decorations"
+                "Added to Garden decorations"
                 if environment.environment_kind == "garden_feature"
                 else "Added to Scenery"
             ),

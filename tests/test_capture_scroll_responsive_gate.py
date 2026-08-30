@@ -6,9 +6,16 @@ from typing import Any
 
 import pytest
 
+from scripts.capture_evidence import (
+    DIALOG_SCROLL_FOUR_STATE_NAMES as ASSEMBLER_SCROLL_STATES,
+    _dialog_scroll_summary,
+)
 from scripts.validate_ui_capture import (
     CaptureValidationError,
+    DIALOG_SCROLL_FOUR_STATE_NAMES as VALIDATOR_SCROLL_STATES,
+    _validate_dialog_scroll_summary,
     dialog_scroll_audit_issue_codes,
+    dialog_scroll_state_matrix_issue_codes,
     load_dialog_scroll_capture_coverage,
 )
 
@@ -48,7 +55,12 @@ def _compiled_functions(*names: str) -> dict[str, Any]:
         names=[ast.alias(name="annotations")],
         level=0,
     )
-    namespace: dict[str, Any] = {"Any": Any}
+    namespace: dict[str, Any] = {
+        "Any": Any,
+        "DIALOG_SCROLL_FOUR_STATE_NAMES": _literal_assignment(
+            "DIALOG_SCROLL_FOUR_STATE_NAMES"
+        ),
+    }
     exec(
         compile(
             ast.fix_missing_locations(ast.Module(body=[future, *selected], type_ignores=[])),
@@ -142,6 +154,50 @@ def _valid_progress_scroll_audit() -> dict[str, Any]:
     }
 
 
+def _valid_scroll_state_observation(state: str) -> dict[str, Any]:
+    row_count = 1 if state == "one-row-list" else 4
+    scroll_maximum = (
+        300
+        if state in {
+            "enough-rows-to-scroll",
+            "final-item-at-maximum-scroll",
+        }
+        else 0
+    )
+    scroll_value = (
+        scroll_maximum
+        if state == "final-item-at-maximum-scroll" else
+        0
+    )
+    record = {
+        "state": state,
+        "painted": True,
+        "paint_digest": "a" * 64,
+        "paint_size": [800, 300],
+        "row_count": row_count,
+        "scroll_minimum": 0,
+        "scroll_maximum": scroll_maximum,
+        "scroll_value": scroll_value,
+        "vertical_scrollbar_visible": False,
+        "horizontal_scroll_minimum": 0,
+        "horizontal_scroll_maximum": 0,
+        "horizontal_scrollbar_visible": False,
+        "content_width": 800,
+        "viewport_width": 800,
+        "viewport_height": 300,
+        "fixed_region_intrusions": [],
+        "final_item_bounds": (
+            [12, 214, 760, 80]
+            if state == "final-item-at-maximum-scroll" else
+            []
+        ),
+        "final_item_visible": state == "final-item-at-maximum-scroll",
+        "issues": [],
+        "passed": True,
+    }
+    return record
+
+
 def test_scroll_geometry_accepts_short_and_reachable_long_content() -> None:
     check = _compiled_functions("dialog_scroll_geometry_issue_codes")[
         "dialog_scroll_geometry_issue_codes"
@@ -163,6 +219,105 @@ def test_scroll_geometry_accepts_short_and_reachable_long_content() -> None:
         "last_body_child_bottom_at_scroll_end": 340,
     })
     assert check(**long) == ()
+
+
+def test_four_state_scroll_matrix_rejects_missing_state_and_restore_drift() -> None:
+    states = _literal_assignment("DIALOG_SCROLL_FOUR_STATE_NAMES")
+    matrix = {
+        "observations": [
+            _valid_scroll_state_observation(state)
+            for state in states[:-1]
+        ],
+        "canonical_scroll_value_before": 18,
+        "canonical_scroll_value_after": 0,
+        "canonical_scroll_restored": False,
+        "issues": [],
+        "passed": True,
+    }
+
+    issues = dialog_scroll_state_matrix_issue_codes(
+        matrix,
+        require_complete=True,
+    )
+    assert "missing-scroll-state:final-item-at-maximum-scroll" in issues
+    assert "canonical-scroll-not-restored" in issues
+    assert "canonical-scroll-value-mismatch" in issues
+
+
+def test_assembled_full_scroll_summary_preserves_required_matrix() -> None:
+    assert ASSEMBLER_SCROLL_STATES == VALIDATOR_SCROLL_STATES
+    observations = [
+        _valid_scroll_state_observation(state)
+        for state in VALIDATOR_SCROLL_STATES
+    ]
+    local_matrix = {
+        "observations": observations,
+        "canonical_scroll_value_before": 37,
+        "canonical_scroll_value_after": 37,
+        "canonical_scroll_restored": True,
+        "issues": [],
+        "passed": True,
+    }
+    audit = {
+        "surface": "Garden Progress",
+        "actual_page_semantic": "GardenProgressDialog:collection",
+        "registered_count": 4,
+        "active_count": 1,
+        "footer_height": 64,
+        "viewport_height": 300,
+        "declared_clearance": 64,
+        "layout_clearance": 64,
+        "required_content_height": 600,
+        "reachable_content_height": 600,
+        "last_body_child_bottom": 600,
+        "last_body_child_bottom_at_scroll_end": 300,
+        "four_state_scroll_matrix": local_matrix,
+        "issues": [],
+        "passed": True,
+    }
+    contract = {
+        "Garden Progress": {
+            "progress-collection": "GardenProgressDialog:collection",
+        },
+    }
+    summary = _dialog_scroll_summary(
+        profile="full",
+        records={
+            "progress-collection": {"dialog_scroll_audit": audit},
+        },
+        contract=contract,
+    )
+
+    assert summary["required"] is True
+    assert summary["required_count"] == 1
+    assert summary["attempted_count"] == 1
+    assert summary["aggregate_complete"] is True
+    assert summary["records"][0]["four_state_scroll_matrix"] == local_matrix
+    aggregate = summary["four_state_scroll_matrix"]
+    assert aggregate["required"] is True
+    assert aggregate["required_states"] == list(VALIDATOR_SCROLL_STATES)
+    assert aggregate["witness_labels"] == {
+        state: "progress-collection"
+        for state in VALIDATOR_SCROLL_STATES
+    }
+    assert dialog_scroll_state_matrix_issue_codes(
+        aggregate,
+        require_complete=True,
+    ) == ()
+    assert summary["passed"] is True
+
+    issues: list[str] = []
+    _validate_dialog_scroll_summary(
+        {
+            "dialog_scroll_audits_complete": True,
+            "dialog_scroll_audits": summary,
+        },
+        contract,
+        {"progress-collection": audit},
+        issues,
+        required=True,
+    )
+    assert issues == []
 
 
 def test_scroll_geometry_does_not_treat_preferred_height_as_mandatory() -> None:

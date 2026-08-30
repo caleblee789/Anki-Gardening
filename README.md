@@ -29,7 +29,7 @@ achievement, and economy rules, see the
 - Hidden progress pages render lazily, wall-time refresh timers run only while visible timed status exists, static scene animation timers stop, and bounded per-widget caches reuse scene layout and raster work without changing learner state.
 - Runtime artwork now uses manifest-owned, pixel-lossless WebP files while preserving the approved V6 geometry, masks, transparent edges, and code-native missing-art fallbacks.
 - Runtime asset checks use bounded container reads and a path/size/mtime cache, avoiding repeated multi-megabyte reads and ordinary metadata writes without changing selection or fallback behavior.
-- Capture contract v25 compiles one Qt-free surface registry into an immutable manifest. The current representative/full profiles contain 18/34 structurally distinct surfaces and two/five generated sheets, including the clean content-driven Reviewer HUD, its seven-event integrated reward bundle, the post-review Session Summary, the nonmodal sync-reward summary, and the full profile's default Today’s Cards page. Removed or behavioral-only IDs remain permanently reserved, including the retired starter-confirmation and detached Reviewer-stack IDs. No watering-can surface is active. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Visual telemetry independently recomputes Web-root overflow, visible-action containment and overlap, first-fold card geometry, Growth Charge carryover, HUD geometry, reward-dock containment, bundle composition, and session-footer identity rather than trusting renderer pass flags. Only gross acquisition or lifecycle defects reject a PNG; detailed semantic, copy, layout, scroll, and duplicate-view audits remain visible review advisories. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
+- Capture contract v26 uses contract schema 2 and scenario schema 3 to compile one Qt-free surface registry into an immutable manifest. The representative/full profiles contain 18/34 structurally distinct surfaces and two/five generated sheets. Every v26 surface records `scenario_id`, `fixture_id`, and one-based `scenario_step`; the shared lineages are `first_run` 01–04, `fertilizer_queue` 09–10, and `growth_charge_transition` 33–34, while 27–30 use named single-surface scenarios and all other surfaces default to their stable ID, fixture `v1`, and step 1. V25 evidence is frozen but rejected for v26 reuse. Native dialogs use fail-closed `QWidget.grab()` acquisition; Home and Reviewer prefer a verified app-owned Qt/WebView image and permit a compositor fallback only after exact process, window, geometry, DPR, semantic identity, overlay, and crop checks. Deprecated visible copy, DOM/root overflow, progress fractions, asset mapping, Reviewer exclusion rectangles, four-state scrolling, acquisition, lifecycle, and lineage are hard gates. A normal profile opens one disposable Anki process, captures every selected surface with checkpoint restoration between surfaces, and records clean shutdown from that same process. Memory-leak probing is not part of capture.
 
 ## Gameplay terms
 
@@ -61,6 +61,7 @@ achievement, and economy rules, see the
   plant remains unfinished.
 - The current Anki streak adds a transparent Growth bonus: day 1 gives 0%; days 7, 14, 30, 100, and 365 unlock +5%, +10%, +15%, +20%, and +25% respectively. Missing an Anki day resets the next streak to day 1.
 - Plants use Seed, Sprout, Young, Mature, Flowering, and player-facing **Full Bloom** stages. The thresholds remain `0`, `500`, `2,500`, `8,000`, `20,000`, and `50,000` Growth.
+- Shared progression projections preserve internal `rare` state while displaying **Full Bloom**. Compact status identifies both stage and position, for example `Sprout · 2 of 6 stages`.
 - Each stage pool pays at 25%, 50%, 75%, and completion. Full Bloom also grants one Small Growth Charge, a permanent collection record, and automatic continuation to the next planted unfinished plant.
 - Growth never disappears at a plant cap or when no plant is selected. It continues to another eligible plant or enters Stored Growth until the learner chooses a plant.
 - After activation, each eligible newly processed card independently checks the Standard and unowned-environment Garden Find pools. At most three Standard Finds may be earned per Anki day. A Standard Find and an environment discovery may stack with other rewards from the same card.
@@ -89,6 +90,11 @@ the number left alongside reviewed/starting progress. Completion becomes `All
 cards complete`, the exact Coin reward, and `176 reviewed today`. Find caps,
 pity state, `Daily limit reached`, and an `ALL DECKS` control are never persistent
 Reviewer copy.
+
+The canonical reconciled displays keep their scopes explicit: the HUD renders
+`176 + 18 = 194` cards due at the start, Session Summary renders
+`126 + 19 = 145` cards complete, and Sync Rewards renders
+`420 + 80 + 20 = 520` Growth. Session totals never replace daily totals.
 
 Before a normal sync, Garden reconciles review history already present on the
 desktop to establish a clean boundary. After sync, every previously unseen,
@@ -199,6 +205,11 @@ hard guarantees at 5,000, 20,000, and 50,000 eligible cards respectively.
 
 The configured roster contains ten direct-soil species—Bonsai, Rose, Sunflower, Lavender, Hydrangea, Peony, Foxglove, Japanese Maple, Wisteria, and Dahlia—and up to six garden spaces. The Nursery lists a species only after its complete six-stage Verdant Twilight line is release-ready; all ten configured species are ready in the current bundle. Existing owned species remain usable even when they are not currently stocked. Moving a plant to Collection preserves its Growth and story. Species cost 100–600 Garden Coins, and spaces three through six cost 150, 300, 500, and 800 Garden Coins.
 
+Collection reports species and catalog coverage separately: the canonical
+fixture shows `10 of 10 species discovered` and
+`30 of 39 collection entries discovered`. The latter is never labeled as a
+plant count.
+
 | Species | Garden Coins |
 |---|---:|
 | Bonsai | 100 |
@@ -233,6 +244,10 @@ backed up before migration. Failed reads or writes remain fail-closed.
 - The watering-can artwork remains bundled and resolvable for compact **Nurtured** badges, but Garden and preview scenes do not place it beside plants.
 - Plant Story clearly separates editable plant name, species, stage, and Growth; it presents memories oldest to newest and a stage-relative **Up next** bar.
 - Reviewer rewards stay inside the HUD: one active major reveal, at most two categorized result chips, an event-ID-backed remainder action, and a zero-free **This session** footer sourced from the exit Summary accumulator.
+- The Reviewer safe area reserves a 296 px HUD width, 44 px from the top and
+  16 px from the right, with measured answer-control clearance and a 72 px
+  fallback. Narrow layouts collapse the shell before it can enter the answer
+  controls.
 - Collection is the collectible browser and Garden loadout manager. It derives categories from the registry, distinguishes explicit mysteries from ordinary locked items, manages plant placement, and owns reversible previews plus atomic equipment and visibility changes.
 - Production Settings keeps only the applicable display/notification choices,
   including **Reduce animations**, **Show reviewer HUD**, **Show reviewer
@@ -270,9 +285,10 @@ switches Spaces or creates a stray top-level window. A capture report whose
 `quality_status` remains `review-required` or whose `release_ready` value is
 `false` is review evidence, not release approval.
 
-The retained v25 manifests, contact sheets, package hashes, and still-open
-acceptance gates are recorded in the
-[current 2.1.0 UI evidence record](docs/ui/final-ui-audit-2.1.0.md).
+The [canonical 2.1.0 UI evidence record](docs/ui/final-ui-audit-2.1.0.md)
+binds the retained v26 manifests, package hashes, validation results, and open
+acceptance gates. Its reviewed five-page presentation set is indexed in the
+[final v26 contact-sheet record](build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-103800/contact-sheet-set.json).
 
 ## Diagnostics
 
@@ -320,7 +336,7 @@ Capture builds cannot overwrite the production artifact.
 # Explicit union of both lanes:
 ./.venv/bin/pytest -q -o addopts=''
 
-# Non-mutating v25 capture diagnostics and registry inspection:
+# Non-mutating v26 capture diagnostics and registry inspection:
 ./.venv/bin/python scripts/capture_sequence.py --doctor
 ./.venv/bin/python scripts/capture_sequence.py --list-surfaces
 ./.venv/bin/python scripts/capture_sequence.py --plan-only --profile representative

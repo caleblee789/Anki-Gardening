@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sys
 from collections import Counter
@@ -14,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.environ.setdefault("ANKI_GARDEN_SKIP_STARTUP", "1")
 
-from ankigarden.asset_manager import AssetManager
+from ankigarden.asset_manager import AssetManager, AssetPlacement
 
 
 ADDON = ROOT / "ankigarden"
@@ -89,6 +90,9 @@ RETINA_SCENERY_MAX_CSS_SIZE = {
     "16:9": (820, 460),
     "home": (440, 100),
 }
+
+THUMBNAIL_SCALE_MIN = 0.85
+THUMBNAIL_SCALE_MAX = 1.20
 
 
 class _AuditConfig:
@@ -214,6 +218,128 @@ def _validate_retina_density(rows: list[dict[str, Any]]) -> None:
             )
 
 
+def _calibrated_thumbnail_scale(visual_scale_correction: float) -> float:
+    """Return the release thumbnail calibration for a scene-scale correction."""
+
+    return max(
+        THUMBNAIL_SCALE_MIN,
+        min(THUMBNAIL_SCALE_MAX, 1.0 / math.sqrt(visual_scale_correction)),
+    )
+
+
+def _validate_bed_anchor_positions(
+    anchors: Any,
+    *,
+    context: str,
+    require_surface_identity: bool,
+) -> None:
+    """Reject incomplete or unusable six-position planting geometry."""
+
+    if not isinstance(anchors, (list, tuple)) or len(anchors) != 6:
+        raise ValueError(f"{context} must expose exactly six bed anchors")
+
+    positions: set[tuple[float, float]] = set()
+    surface_ids: set[str] = set()
+    for index, raw_anchor in enumerate(anchors, start=1):
+        anchor = (
+            raw_anchor.to_dict()
+            if hasattr(raw_anchor, "to_dict")
+            else raw_anchor
+        )
+        if not isinstance(anchor, dict):
+            raise ValueError(f"{context} bed anchor {index} is not an object")
+
+        def finite_number(key: str) -> float:
+            value = anchor.get(key)
+            if isinstance(value, bool):
+                raise ValueError(f"{context} bed anchor {index} has invalid {key}")
+            try:
+                number = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid {key}"
+                ) from exc
+            if not math.isfinite(number):
+                raise ValueError(f"{context} bed anchor {index} has invalid {key}")
+            return number
+
+        x = finite_number("x")
+        y = finite_number("y")
+        depth = finite_number("depth")
+        plant_scale = finite_number("plant_scale")
+        if not (0.0 < x < 1.0 and 0.0 < y < 1.0 and 0.0 <= depth <= 1.0):
+            raise ValueError(f"{context} bed anchor {index} is outside the scene")
+        if not 0.0 < plant_scale <= 2.0:
+            raise ValueError(f"{context} bed anchor {index} has invalid plant scale")
+
+        position = (x, y)
+        if position in positions:
+            raise ValueError(f"{context} bed anchor positions must be unique")
+        positions.add(position)
+
+        for pair_key in ("footprint", "label_anchor"):
+            pair = anchor.get(pair_key)
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid {pair_key}"
+                )
+            try:
+                first, second = (float(value) for value in pair)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid {pair_key}"
+                ) from exc
+            if not all(math.isfinite(value) for value in (first, second)):
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid {pair_key}"
+                )
+            if pair_key == "footprint" and not (
+                0.0 < first <= 1.0 and 0.0 < second <= 1.0
+            ):
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid footprint"
+                )
+            if pair_key == "label_anchor" and not (
+                0.0 <= first <= 1.0 and 0.0 <= second <= 1.0
+            ):
+                raise ValueError(
+                    f"{context} bed anchor {index} has invalid label anchor"
+                )
+
+        if not require_surface_identity:
+            continue
+        surface_id = str(anchor.get("surface_id", ""))
+        if not surface_id or surface_id in surface_ids:
+            raise ValueError(f"{context} bed surface IDs must be unique and non-empty")
+        surface_ids.add(surface_id)
+        if anchor.get("surface_kind") != "soil" or set(
+            anchor.get("allowed_base_types", [])
+        ) != {"direct_soil"}:
+            raise ValueError(
+                f"{context} bed anchor {index} is not a direct-soil surface"
+            )
+        contact_plane = anchor.get("contact_plane")
+        if not isinstance(contact_plane, (list, tuple)) or len(contact_plane) != 4:
+            raise ValueError(
+                f"{context} bed anchor {index} has invalid contact plane"
+            )
+        try:
+            left, top, width, height = (float(value) for value in contact_plane)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{context} bed anchor {index} has invalid contact plane"
+            ) from exc
+        if (
+            not all(math.isfinite(value) for value in (left, top, width, height))
+            or width <= 0.0
+            or height <= 0.0
+            or not (left <= x <= left + width and top <= y <= top + height)
+        ):
+            raise ValueError(
+                f"{context} bed anchor {index} does not sit on its contact plane"
+            )
+
+
 def _validate_background(rows: list[dict[str, Any]]) -> None:
     backgrounds = [row for row in rows if row.get("category") == "backgrounds"]
     expected_ids = [
@@ -226,9 +352,25 @@ def _validate_background(rows: list[dict[str, Any]]) -> None:
     if background.get("release_preferred") is not True:
         raise ValueError("the V6 background must be release preferred")
     expected_profile = json.loads(SURFACE_FIXTURE.read_text(encoding="utf-8"))
-    actual_profile = (background.get("placement") or {}).get("surface_profile")
+    background_placement = background.get("placement") or {}
+    actual_profile = background_placement.get("surface_profile")
     if actual_profile != expected_profile:
         raise ValueError("the runtime V6 surface profile differs from the reviewed fixture")
+    raw_bed_anchors = background_placement.get("bed_anchors")
+    _validate_bed_anchor_positions(
+        raw_bed_anchors,
+        context="the canonical V6 background",
+        require_surface_identity=True,
+    )
+    normalized_background = AssetPlacement.from_manifest(
+        background_placement,
+        category="backgrounds",
+    )
+    _validate_bed_anchor_positions(
+        normalized_background.bed_anchors,
+        context="the normalized canonical V6 background",
+        require_surface_identity=True,
+    )
     expected_sizes = {"4:3": (1280, 960), "16:9": (1672, 941), "home": (1942, 809)}
     source_root = "assets/v6_storybook_gouache/backgrounds/verdant_twilight/soil_master"
     for row, item_id in zip(backgrounds[1:], SCENERY):
@@ -334,6 +476,65 @@ def _validate_plants(rows: list[dict[str, Any]]) -> None:
         }
         if not required.issubset(placement) or placement.get("base_type") != "direct_soil":
             raise ValueError(f"plant placement is incomplete: {species}/{stage}")
+        if "visual_scale_correction" not in placement:
+            raise ValueError(
+                f"plant lacks explicit visual scale correction: {species}/{stage}"
+            )
+        raw_visual_scale = placement.get("visual_scale_correction")
+        if isinstance(raw_visual_scale, bool):
+            raise ValueError(f"plant visual scale correction is invalid: {species}/{stage}")
+        try:
+            visual_scale_correction = float(raw_visual_scale)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"plant visual scale correction is invalid: {species}/{stage}"
+            ) from exc
+        if not (
+            math.isfinite(visual_scale_correction)
+            and 0.5 <= visual_scale_correction <= 1.5
+        ):
+            raise ValueError(f"plant visual scale correction is invalid: {species}/{stage}")
+
+        normalized_placement = AssetPlacement.from_manifest(
+            placement,
+            category="plants",
+        )
+        expected_thumbnail_scale = _calibrated_thumbnail_scale(
+            visual_scale_correction
+        )
+        if not math.isclose(
+            normalized_placement.visual_scale_correction,
+            visual_scale_correction,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                f"plant visual scale correction did not round-trip: {species}/{stage}"
+            )
+        if not math.isclose(
+            normalized_placement.thumbnail_scale,
+            expected_thumbnail_scale,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                f"plant thumbnail scale is not calibrated: {species}/{stage}"
+            )
+        normalized_payload = normalized_placement.to_dict()
+        if not math.isclose(
+            float(normalized_payload.get("thumbnail_scale", 0.0)),
+            expected_thumbnail_scale,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ValueError(
+                f"plant thumbnail scale is not serialized: {species}/{stage}"
+            )
+        _validate_bed_anchor_positions(
+            normalized_payload.get("bed_anchors"),
+            context=f"plant {species}/{stage}",
+            require_surface_identity=False,
+        )
         if placement.get("soil_contact") != placement.get("ground_anchor"):
             raise ValueError(f"plant soil contact drifts from its anchor: {species}/{stage}")
         for point_name in ("soil_contact", "ground_anchor", "visual_center", "shadow_offset"):

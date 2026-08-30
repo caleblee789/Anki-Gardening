@@ -16,6 +16,62 @@ GROWTH_UNITS_PER_POINT = 100
 
 
 @dataclass(frozen=True)
+class StagePresentation:
+    """Canonical user-facing identity for one internal Growth stage."""
+
+    stage_id: str
+    display_name: str
+    display_ordinal: int
+    display_total: int
+    threshold: int
+
+
+_STAGE_DISPLAY_NAMES = {
+    "seed": "Seed",
+    "sprout": "Sprout",
+    "young": "Young",
+    "mature": "Mature",
+    "flowering": "Flowering",
+    # ``rare`` remains the durable engine/artwork identifier. Presentation
+    # code must never expose it as the name of the sixth stage.
+    "rare": "Full Bloom",
+}
+
+CANONICAL_STAGE_PROJECTION = tuple(
+    StagePresentation(
+        stage_id=stage_id,
+        display_name=_STAGE_DISPLAY_NAMES[stage_id],
+        display_ordinal=index + 1,
+        display_total=len(GROWTH_STAGES),
+        threshold=GROWTH_THRESHOLDS[index],
+    )
+    for index, stage_id in enumerate(GROWTH_STAGES)
+)
+
+
+def canonical_stage_projection() -> tuple[StagePresentation, ...]:
+    """Return the six-stage player-facing contract in progression order."""
+
+    return CANONICAL_STAGE_PROJECTION
+
+
+def stage_presentation(value: Any) -> StagePresentation | None:
+    """Resolve an internal or visible stage name without changing its ID."""
+
+    normalized = str(value or "").replace("_", " ").strip().casefold()
+    if normalized == "full bloom":
+        normalized = "rare"
+    return next(
+        (
+            item
+            for item in CANONICAL_STAGE_PROJECTION
+            if item.stage_id == normalized
+        ),
+        None,
+    )
+
+
+@dataclass(frozen=True)
 class StageProgress:
     """One renderer-neutral projection of total and within-stage Growth."""
 
@@ -220,6 +276,112 @@ class GrowthChargeTargetState(str, Enum):
     UNAVAILABLE = "unavailable"
     STORED = "stored"
     FULLY_GROWN = "fully_grown"
+
+
+@dataclass(frozen=True)
+class GrowthChargeProjection:
+    """Pure transaction projection for one attempted Growth Charge use.
+
+    ``applied_growth`` is the portion that fits on the selected plant.
+    ``overflow_growth`` remains available to the engine's normal conserved
+    routing, while a rejected attempt keeps all requested Growth unconsumed.
+    """
+
+    status: GrowthChargeStatus
+    target_state: GrowthChargeTargetState
+    current_growth: int
+    requested_growth: int
+    applied_growth: int
+    overflow_growth: int
+    unconsumed_growth: int
+    projected_growth: int
+    current_stage: str
+    projected_stage: str
+    completed_stages: tuple[str, ...]
+    will_transition: bool
+    inventory_before: int
+    inventory_after: int
+    next_stage: str | None
+    stage_points_after: int
+    stage_goal_after: int
+
+    @property
+    def ready(self) -> bool:
+        return self.status is GrowthChargeStatus.READY
+
+    @property
+    def granted_growth(self) -> int:
+        return self.applied_growth + self.overflow_growth
+
+    @property
+    def conserved(self) -> bool:
+        return self.requested_growth == (
+            self.applied_growth
+            + self.overflow_growth
+            + self.unconsumed_growth
+        )
+
+
+def project_growth_charge_application(
+    current_growth: Any,
+    requested_growth: Any,
+    inventory_before: Any,
+    *,
+    target_state: GrowthChargeTargetState = GrowthChargeTargetState.ELIGIBLE,
+) -> GrowthChargeProjection:
+    """Project one Charge use without mutating inventory or plant state."""
+
+    def nonnegative(value: Any) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 0
+
+    current = nonnegative(current_growth)
+    requested = nonnegative(requested_growth)
+    inventory = nonnegative(inventory_before)
+    try:
+        resolved_target = GrowthChargeTargetState(target_state)
+    except (TypeError, ValueError):
+        resolved_target = GrowthChargeTargetState.UNAVAILABLE
+
+    before = stage_progress(current)
+    if before.fully_grown:
+        resolved_target = GrowthChargeTargetState.FULLY_GROWN
+    if resolved_target is not GrowthChargeTargetState.ELIGIBLE or requested <= 0:
+        status = GrowthChargeStatus.TARGET_INVALID
+    elif inventory <= 0:
+        status = GrowthChargeStatus.EMPTY_INVENTORY
+    else:
+        status = GrowthChargeStatus.READY
+
+    accepted = status is GrowthChargeStatus.READY
+    capacity = max(0, GROWTH_THRESHOLDS[-1] - current)
+    applied = min(requested, capacity) if accepted else 0
+    overflow = max(0, requested - applied) if accepted else 0
+    unconsumed = 0 if accepted else requested
+    projected = current + applied
+    after = stage_progress(projected)
+    transition = stage_progress(current, projected)
+    return GrowthChargeProjection(
+        status=status,
+        target_state=resolved_target,
+        current_growth=current,
+        requested_growth=requested,
+        applied_growth=applied,
+        overflow_growth=overflow,
+        unconsumed_growth=unconsumed,
+        projected_growth=projected,
+        current_stage=before.stage,
+        projected_stage=after.stage,
+        completed_stages=transition.completed_stages,
+        will_transition=transition.will_transition,
+        inventory_before=inventory,
+        inventory_after=max(0, inventory - (1 if accepted else 0)),
+        next_stage=after.next_stage,
+        stage_points_after=after.stage_points,
+        stage_goal_after=after.stage_goal,
+    )
 
 
 @dataclass(frozen=True)

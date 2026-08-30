@@ -8,9 +8,15 @@ from typing import Any, Callable, Literal, Mapping, Optional
 from .formatters import format_quantity
 from .plant_art import normalized_plant_pixmap
 from .reviewer_hud import (
+    FULL_BLOOM_GROWTH_ROUTE_COPY,
+    HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
+    HUD_CONTROLS_CLEARANCE,
+    HUD_HEADER_LEFT_INSET,
+    HUD_HEADER_RIGHT_INSET,
     ReviewerHudProjection,
     format_growth_units,
     reviewer_hud_geometry,
+    reviewer_hud_header_actions_width,
     reviewer_hud_width,
 )
 from .theme import GARDEN_THEME, apply_tabular_numerals
@@ -100,8 +106,11 @@ _SESSION_HIGHLIGHT_MS = 600
 _FULL_BLOOM_PULSE_MS = 680
 _NEXT_PROJECTION_RESTORE_MS = 850
 _ROUTINE_SESSION_RELEASE_MS = _PROJECTION_APPLY_DELAY_MS + _PROGRESS_FILL_MS
+_SESSION_METRIC_FONT_PX = 12
+_SESSION_METRIC_SPACING = 3
 _TODAY_PROGRESS_SCALE = 1_000
 _TODAY_INCOMPLETE_VISUAL_MAX = 985
+_ANSWER_CONTROLS_RESIZE_SETTLE_MS = 180
 
 
 def _require_qt() -> None:
@@ -127,6 +136,43 @@ def _integer(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _property_int_tuple(
+    value: Any,
+    names: tuple[str, ...],
+) -> tuple[int, ...] | None:
+    """Normalize a QVariant list, mapping, or QRect-like host property."""
+
+    raw_values: tuple[Any, ...]
+    if isinstance(value, Mapping):
+        try:
+            raw_values = tuple(value[name] for name in names)
+        except KeyError:
+            aliases = {"x": "left", "y": "top"}
+            try:
+                raw_values = tuple(
+                    value[aliases.get(name, name)] for name in names
+                )
+            except KeyError:
+                return None
+    elif isinstance(value, (tuple, list)) and len(value) == len(names):
+        raw_values = tuple(value)
+    else:
+        resolved: list[Any] = []
+        for name in names:
+            getter = getattr(value, name, None)
+            if getter is None:
+                return None
+            try:
+                resolved.append(getter() if callable(getter) else getter)
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return None
+        raw_values = tuple(resolved)
+    try:
+        return tuple(int(round(float(item))) for item in raw_values)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _call(callback: Callback, *args: Any) -> None:
@@ -225,6 +271,39 @@ def _compact_summary_label(summary: Any) -> str:
     return str(_value(summary, "label", default="") or "").strip()
 
 
+def reward_summary_cell_width_weight(
+    text_width: int,
+    *,
+    icon_width: int = 12,
+    spacing: int = 2,
+    horizontal_inset: int = 4,
+) -> int:
+    """Return a bounded layout weight for one compact reward summary."""
+
+    return max(
+        1,
+        int(text_width or 0)
+        + max(0, int(icon_width or 0))
+        + max(0, int(spacing or 0))
+        + max(0, int(horizontal_inset or 0)),
+    )
+
+
+def session_footer_metric_row_width(
+    metric_widths: tuple[int, ...],
+    *,
+    separator_width: int,
+    spacing: int = _SESSION_METRIC_SPACING,
+) -> int:
+    """Return the rendered width of one complete session-metric row."""
+
+    widths = tuple(max(0, int(width or 0)) for width in metric_widths)
+    if not widths:
+        return 0
+    join_width = max(0, int(separator_width or 0)) + (2 * max(0, int(spacing)))
+    return sum(widths) + ((len(widths) - 1) * join_width)
+
+
 def _compact_visible_summaries(bundle: Any) -> tuple[Any, ...]:
     compact = _compact_projection(bundle)
     values = tuple(_value(compact, "visible_summaries", default=()) or ())
@@ -251,7 +330,7 @@ def _reward_eyebrow(bundle: Any) -> str:
     return {
         "full_bloom": "MILESTONE REACHED",
         "stage_change": "MILESTONE REACHED",
-        "garden_find": "GARDEN FIND",
+        "garden_find": "STANDARD FIND",
         "checkpoint": "CHECKPOINT REACHED",
         "environment_discovery": "DISCOVERY",
     }.get(kind, "REWARD EARNED")
@@ -350,7 +429,7 @@ def _effect_display_text(value: Any) -> str:
     if not text or " · " in text:
         return text
     for prefix in (
-        "Garden Decoration",
+        "Garden decoration",
         "Streak bonus",
         "Fertilizer",
         "Booster",
@@ -496,7 +575,7 @@ def _session_metric_text(index: int, value: Any) -> str:
         return f"{format_growth_units(normalized, signed=True)} growth"
     if index == 1:
         return f"+{format_quantity(normalized, 'coin')}"
-    return format_quantity(normalized, "find")
+    return format_quantity(normalized, "Standard Find")
 
 
 def _session_coin_count(snapshot: Any) -> int:
@@ -1306,6 +1385,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         on_select_plant: Callback = None,
         on_choose_plant: Callback = None,
         on_toggle_collapsed: Callback = None,
+        on_request_answer_controls: Callback = None,
         on_expand_rewards: Callback = None,
         on_effects_overflow: Callback = None,
         on_open_reward: Callback = None,
@@ -1322,6 +1402,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._on_select_plant = on_select_plant
         self._on_choose_plant = on_choose_plant
         self._on_toggle_collapsed = on_toggle_collapsed
+        self._on_request_answer_controls = on_request_answer_controls
+        self._answer_controls_resize_revision = 0
         self._on_expand_rewards = on_expand_rewards
         self._on_effects_overflow = on_effects_overflow
         self._on_open_reward = on_open_reward
@@ -1415,7 +1497,17 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self.setProperty(
             "hudNextProjectionRestoreMs", _NEXT_PROJECTION_RESTORE_MS
         )
-        self.setProperty("reviewerControlClearance", 112)
+        self.setProperty("reviewerControlClearance", HUD_CONTROLS_CLEARANCE)
+        self.setProperty(
+            "hudAnswerControlsSchemaVersion",
+            HUD_ANSWER_CONTROLS_SCHEMA_VERSION,
+        )
+        self.setProperty("hudAnswerControlsRect", None)
+        self.setProperty("hudAnswerControlsTop", None)
+        self.setProperty("hudAnswerControlsClearance", HUD_CONTROLS_CLEARANCE)
+        self.setProperty("hudAnswerControlsSource", "fallback")
+        self.setProperty("hudAnswerControlsMeasured", False)
+        self.setProperty("hudAnswerControlsViewport", None)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -1574,6 +1666,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         on_select_plant: Callback = None,
         on_choose_plant: Callback = None,
         on_toggle_collapsed: Callback = None,
+        on_request_answer_controls: Callback = None,
         on_expand_rewards: Callback = None,
         on_effects_overflow: Callback = None,
         on_open_reward: Callback = None,
@@ -1585,6 +1678,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._on_select_plant = on_select_plant
         self._on_choose_plant = on_choose_plant
         self._on_toggle_collapsed = on_toggle_collapsed
+        self._on_request_answer_controls = on_request_answer_controls
         self._on_expand_rewards = on_expand_rewards
         self._on_effects_overflow = on_effects_overflow
         self._on_open_reward = on_open_reward
@@ -1649,6 +1743,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             "QFrame#reviewerHudCollapsedTab {background:" + t["reviewer_hud_shell"] + ";"
             "border:1px solid " + t["reviewer_hud_border"] + ";border-radius:14px;}"
             "QLabel {color:" + t["text_primary"] + ";font-size:13px;background:transparent;border:0;}"
+            "QLabel[hudSessionMetric='true'] {font-size:"
+            + str(_SESSION_METRIC_FONT_PX)
+            + "px;}"
             "QLabel[hudHeaderTitle='true'] {font-size:15px;font-weight:600;}"
             "QLabel[hudCoin='true'] {color:" + t["reviewer_hud_coin"] + ";font-weight:650;}"
             "QLabel[hudCoinDelta='true'] {color:" + t["reviewer_hud_coin"] + ";font-size:12px;font-weight:700;}"
@@ -1739,7 +1836,12 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._header.setProperty("semanticId", "reviewer.hud.header")
         self._header.setFixedHeight(44)
         header_layout = QHBoxLayout(self._header)
-        header_layout.setContentsMargins(14, 0, 6, 0)
+        header_layout.setContentsMargins(
+            HUD_HEADER_LEFT_INSET,
+            0,
+            HUD_HEADER_RIGHT_INSET,
+            0,
+        )
         header_layout.setSpacing(0)
         self._title_group = QFrame(self._header)
         self._title_group.setObjectName("reviewerHudTitleGroup")
@@ -1763,7 +1865,9 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         header_layout.addStretch(1)
         self._header_actions = QFrame(self._header)
         self._header_actions.setObjectName("reviewerHudHeaderActions")
-        self._header_actions.setFixedWidth(170)
+        title_width = max(0, int(self._title_group.sizeHint().width()))
+        header_actions_width = reviewer_hud_header_actions_width(title_width)
+        self._header_actions.setFixedWidth(header_actions_width)
         _set_decoration(self._header_actions)
         actions_layout = QHBoxLayout(self._header_actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -1776,7 +1880,11 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             QSizePolicy.Policy.Preferred,
         )
         _set_decoration(self._coin_cluster)
-        self.setProperty("hudHeaderBalanceReservedWidth", 170)
+        self.setProperty("hudHeaderTitleNaturalWidth", title_width)
+        self.setProperty(
+            "hudHeaderBalanceReservedWidth",
+            header_actions_width,
+        )
         coin_layout = QHBoxLayout(self._coin_cluster)
         coin_layout.setContentsMargins(0, 0, 0, 0)
         coin_layout.setSpacing(5)
@@ -1873,6 +1981,10 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         layout.addLayout(row)
         self._today_progress = QProgressBar(self._today_card)
         self._today_progress.setObjectName("reviewerHudTodayProgress")
+        self._today_progress.setProperty(
+            "semanticId",
+            "reviewer.hud.today-progress",
+        )
         self._today_progress.setTextVisible(False)
         self._today_progress.setRange(0, _TODAY_PROGRESS_SCALE)
         _set_decoration(self._today_progress)
@@ -2257,7 +2369,8 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._reward_summary_row.setObjectName("reviewerHudRewardSummaryRow")
         summary_layout = QHBoxLayout(self._reward_summary_row)
         summary_layout.setContentsMargins(0, 0, 0, 0)
-        summary_layout.setSpacing(6)
+        summary_layout.setSpacing(4)
+        self._reward_summary_layout = summary_layout
         self._reward_summary_cells: list[Any] = []
         self._reward_summary_icons: list[Any] = []
         self._reward_summary_chips: list[_ElidedLabel] = []
@@ -2269,10 +2382,13 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
             cell.setProperty("hudRewardMetric", True)
             cell.setMinimumHeight(30)
             cell_layout = QHBoxLayout(cell)
-            cell_layout.setContentsMargins(7, 4, 7, 4)
-            cell_layout.setSpacing(5)
+            # The fixed 296px safe area must fit both canonical semantic labels
+            # without abbreviating them.  Keep the icon, but spend compact-chip
+            # width on copy rather than decorative inset.
+            cell_layout.setContentsMargins(2, 4, 2, 4)
+            cell_layout.setSpacing(2)
             icon = QLabel(cell)
-            icon.setFixedSize(14, 14)
+            icon.setFixedSize(12, 12)
             icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             _set_decoration(icon)
             cell_layout.addWidget(icon)
@@ -2410,7 +2526,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         heading_row.addWidget(self._session_history_chevron)
         footer.addLayout(heading_row)
         metrics = QGridLayout()
-        metrics.setHorizontalSpacing(5)
+        metrics.setHorizontalSpacing(_SESSION_METRIC_SPACING)
         metrics.setVerticalSpacing(2)
         self._session_metrics_layout = metrics
         self._session_growth = QLabel("", self._session_footer)
@@ -2435,6 +2551,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         apply_tabular_numerals(self._session_finds)
         _set_decoration(self._session_finds)
         metrics.addWidget(self._session_finds, 0, 4)
+        for metric in (
+            self._session_growth,
+            self._session_growth_separator,
+            self._session_coins,
+            self._session_find_separator,
+            self._session_finds,
+        ):
+            metric.setProperty("hudSessionMetric", True)
         metrics.setColumnStretch(5, 1)
         footer.addLayout(metrics)
         self._session_footer.hide()
@@ -2460,13 +2584,21 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         _set_decoration(name)
         value = QLabel("", row)
         apply_tabular_numerals(value)
+        value.setWordWrap(True)
+        value.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         value.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         _set_decoration(value)
+        # Each field owns a full-width line.  A long milestone value must never
+        # collapse the category/name column to zero; the bounded reward scroll
+        # owns the resulting natural height.
         row_layout.addWidget(category, 0, 0)
         row_layout.addWidget(name, 1, 0)
-        row_layout.addWidget(value, 0, 1, 2, 1)
+        row_layout.addWidget(value, 2, 0)
         row_layout.setColumnStretch(0, 1)
         row.hide()
         detail_layout = self._reward_detail_panel.layout()
@@ -3928,9 +4060,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._next_answer.hide()
         self._effects.hide()
         self._effect_details.hide()
-        self._plant_message.setText(
-            "Future growth will be shared or stored."
-        )
+        self._plant_message.setText(FULL_BLOOM_GROWTH_ROUTE_COPY)
         self._plant_message.show()
         self._select_plant.setVisible(bool(settled))
         self._collapsed_ring.set_progress(100)
@@ -3972,7 +4102,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._next_answer.hide()
         self._effects.hide()
         self._effect_details.hide()
-        self._plant_message.setText("Future growth will be shared or stored.")
+        self._plant_message.setText(FULL_BLOOM_GROWTH_ROUTE_COPY)
         self._plant_message.show()
         self._select_plant.show()
         self._collapsed_ring.set_progress(100)
@@ -4163,18 +4293,23 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         occupied = 0
         separator_width = max(
             separator.sizeHint().width() for separator in separators
-        ) + 5
+        )
+        metric_spacing = max(0, int(layout.horizontalSpacing()))
         for widget, preferred_separator in metric_groups:
             metric_width = max(
                 widget.sizeHint().width(),
                 widget.fontMetrics().horizontalAdvance(widget.text()),
             )
-            join_width = separator_width if occupied else 0
-            if occupied and occupied + join_width + metric_width > available:
+            candidate_width = session_footer_metric_row_width(
+                (occupied, metric_width) if occupied else (metric_width,),
+                separator_width=separator_width,
+                spacing=metric_spacing,
+            )
+            if occupied and candidate_width > available:
                 row += 1
                 column = 0
                 occupied = 0
-                join_width = 0
+                candidate_width = metric_width
             if occupied:
                 separator = preferred_separator or self._session_growth_separator
                 separator.show()
@@ -4182,7 +4317,7 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 column += 1
             layout.addWidget(widget, row, column)
             column += 1
-            occupied += join_width + metric_width
+            occupied = candidate_width
         layout.setColumnStretch(column, 1)
         wrapped = row > 0
         self._session_footer.setFixedHeight(68 if wrapped else 54)
@@ -4299,13 +4434,25 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
 
     def _sync_reward_scroll_height(self) -> None:
         natural = 0
-        if not self._reward_reveal.isHidden():
+        reveal_visible = not self._reward_reveal.isHidden()
+        if reveal_visible:
             natural += max(
                 self._reward_reveal.minimumHeight(),
                 self._reward_reveal.sizeHint().height(),
             )
-        if not self._reward_history_panel.isHidden():
+        history_visible = not self._reward_history_panel.isHidden()
+        if history_visible:
             natural += max(1, self._reward_history_panel.sizeHint().height())
+        if (
+            reveal_visible
+            and not history_visible
+            and not self._reward_details_expanded
+        ):
+            # The compact reveal is intentionally a 130-150px surface.  Give
+            # its viewport the full compact envelope so Qt's post-layout
+            # contents adjustment cannot create a tiny, meaningless scrollbar
+            # for the Details control or semantic summary chips.
+            natural = max(natural, _COMPACT_REWARD_MAX_HEIGHT)
         target = max(1, min(_REWARD_SCROLL_MAX_HEIGHT, natural))
         # The dock's size hint must include the compact disclosure control so
         # the sticky footer cannot cover it. The viewport keeps a one-pixel
@@ -4706,14 +4853,14 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     if use_semantic_discovery_icon
                     else self._effect_art_pixmap(
                         summary if summary is not None else artwork_ref,
-                        14,
+                        12,
                     )
                 )
                 uses_item_art = not item_art.isNull()
                 icon.setPixmap(
                     item_art
                     if uses_item_art
-                    else self._icon_pixmap(icon_name, 14, icon_color)
+                    else self._icon_pixmap(icon_name, 12, icon_color)
                 )
                 icon.setProperty("hudRewardSummaryArtworkRef", artwork_ref)
                 icon.setProperty("hudRewardSummaryArtworkRefs", artwork_refs)
@@ -4733,6 +4880,21 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                 )
                 chip.set_full_text(text)
                 chip.setProperty("metricTone", tone)
+                cell_layout = cell.layout()
+                cell_margins = cell_layout.contentsMargins()
+                width_weight = reward_summary_cell_width_weight(
+                    chip.fontMetrics().horizontalAdvance(text),
+                    icon_width=icon.width(),
+                    spacing=cell_layout.spacing(),
+                    horizontal_inset=(
+                        cell_margins.left() + cell_margins.right()
+                    ),
+                )
+                self._reward_summary_layout.setStretch(index, width_weight)
+                cell.setProperty(
+                    "hudRewardSummaryWidthWeight",
+                    width_weight,
+                )
                 _repolish(chip)
                 chip.setVisible(bool(text))
                 cell.setVisible(bool(text))
@@ -5138,10 +5300,151 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
         self._collapsed_badge.setVisible(count > 0)
         self.setProperty("hudUnseenMajorRewards", count)
 
+    def _host_answer_controls_geometry(
+        self,
+        parent: Any,
+        viewport_width: int,
+        viewport_height: int,
+    ) -> tuple[int | None, tuple[int, int, int, int] | None, int, str]:
+        """Resolve measured host/WebEngine geometry in HUD logical pixels."""
+
+        viewport_width = max(1, int(viewport_width))
+        viewport_height = max(1, int(viewport_height))
+
+        def host_property(key: str) -> Any:
+            try:
+                return parent.property(key)
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                return None
+
+        measured = host_property("reviewerAnswerControlsMeasured")
+        rect = _property_int_tuple(
+            host_property("reviewerAnswerControlsRect"),
+            ("x", "y", "width", "height"),
+        )
+        measured_viewport = _property_int_tuple(
+            host_property("reviewerAnswerControlsViewport"),
+            ("width", "height"),
+        )
+        viewport_matches = bool(
+            measured_viewport is None
+            or (
+                abs(measured_viewport[0] - viewport_width) <= 2
+                and abs(measured_viewport[1] - viewport_height) <= 2
+            )
+        )
+        if measured is not False and rect is not None and viewport_matches:
+            x, top, width, height = rect
+            if (
+                x >= 0
+                and viewport_height // 2 <= top <= viewport_height
+                and width > 0
+                and height > 0
+                and x + width <= viewport_width + 2
+                and top + height <= viewport_height + 2
+            ):
+                source = str(
+                    host_property("reviewerAnswerControlsSource")
+                    or "host-rect-property"
+                )
+                return top, rect, max(0, viewport_height - top), source
+
+        for key in ("reviewerAnswerControlsTop", "answerControlsTop"):
+            try:
+                if key == "reviewerAnswerControlsTop" and (
+                    measured is False or not viewport_matches
+                ):
+                    continue
+                raw = host_property(key)
+                if raw is not None:
+                    value = int(raw)
+                    if 0 < value <= viewport_height:
+                        source = str(
+                            host_property("reviewerAnswerControlsSource")
+                            or "host-top-property"
+                        )
+                        return (
+                            value,
+                            None,
+                            max(0, viewport_height - value),
+                            source,
+                        )
+            except (TypeError, ValueError):
+                pass
+
+        candidates: list[tuple[int, tuple[int, int, int, int]]] = []
+        try:
+            children = parent.findChildren(QWidget)
+        except (AttributeError, RuntimeError, TypeError):
+            children = ()
+        for child in children:
+            try:
+                if child is self or self.isAncestorOf(child) or not child.isVisible():
+                    continue
+                identity = " ".join(
+                    str(value or "")
+                    for value in (
+                        child.objectName(),
+                        child.accessibleName(),
+                        child.text() if callable(getattr(child, "text", None)) else "",
+                    )
+                ).casefold().replace(" ", "")
+                if not any(
+                    marker in identity
+                    for marker in (
+                        "showanswer",
+                        "answerbuttons",
+                        "answerbutton",
+                        "reviewerbottom",
+                        "ease1",
+                        "ease2",
+                        "ease3",
+                        "ease4",
+                    )
+                ):
+                    continue
+                point = child.mapTo(parent, child.rect().topLeft())
+                x = int(point.x())
+                top = int(point.y())
+                width = max(1, int(child.width()))
+                height = max(1, int(child.height()))
+                if viewport_height // 2 <= top <= viewport_height:
+                    candidates.append((top, (x, top, width, height)))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                continue
+        if candidates:
+            top, candidate_rect = min(candidates, key=lambda item: item[0])
+            return (
+                top,
+                candidate_rect,
+                max(0, viewport_height - top),
+                "host-widget",
+            )
+        return None, None, HUD_CONTROLS_CLEARANCE, "fallback"
+
+    def _host_answer_controls_top(
+        self,
+        parent: Any,
+        viewport_height: int,
+    ) -> tuple[int | None, str]:
+        """Compatibility wrapper for callers that only need the top edge."""
+
+        try:
+            viewport_width = max(1, int(parent.width()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            viewport_width = 1
+        top, _rect, _clearance, source = self._host_answer_controls_geometry(
+            parent,
+            viewport_width,
+            viewport_height,
+        )
+        return top, source
+
     def reposition(
         self,
         viewport_width: int | None = None,
         viewport_height: int | None = None,
+        answer_controls_top: int | None = None,
     ) -> tuple[int, int, int, int]:
         parent = self.parentWidget()
         if parent is None:
@@ -5191,34 +5494,97 @@ class ReviewGardenHud(QFrame):  # type: ignore[misc,valid-type]
                     content_height = min(content_height, 660)
                 self.setProperty("hudBodyNaturalHeight", body_height)
                 self.setProperty("hudRewardDockNaturalHeight", reward_height)
+            detected_top = answer_controls_top
+            detected_rect: tuple[int, int, int, int] | None = None
+            detected_clearance = HUD_CONTROLS_CLEARANCE
+            clearance_source = "argument" if detected_top is not None else "fallback"
+            if detected_top is None:
+                (
+                    detected_top,
+                    detected_rect,
+                    detected_clearance,
+                    clearance_source,
+                ) = self._host_answer_controls_geometry(
+                    parent,
+                    width,
+                    height,
+                )
+            else:
+                detected_top = max(1, min(height, int(detected_top)))
+                detected_clearance = max(0, height - detected_top)
             geometry = reviewer_hud_geometry(
                 width,
                 height,
                 collapsed=self._collapsed,
                 dock=self._dock,
                 content_height=content_height,
+                answer_controls_top=detected_top,
             )
             self.setFixedSize(geometry[2], geometry[3])
             self.move(geometry[0], geometry[1])
             self.setProperty("hudContentHeight", int(content_height or geometry[3]))
             self.setProperty("reviewerViewportWidth", width)
             self.setProperty("reviewerViewportHeight", height)
+            self.setProperty("hudAnswerControlsTop", detected_top)
+            self.setProperty(
+                "hudAnswerControlsRect",
+                list(detected_rect) if detected_rect is not None else None,
+            )
+            self.setProperty(
+                "hudAnswerControlsClearance",
+                detected_clearance,
+            )
+            self.setProperty("hudAnswerControlsSource", clearance_source)
+            self.setProperty(
+                "hudAnswerControlsMeasured",
+                detected_top is not None,
+            )
+            self.setProperty("hudAnswerControlsViewport", [width, height])
             self.raise_()
             return geometry
         except (AttributeError, RuntimeError, TypeError, ValueError):
             return (self.x(), self.y(), self.width(), self.height())
+
+    def _schedule_answer_controls_refresh(self) -> None:
+        """Measure immediately and once more after resize geometry settles."""
+
+        self._answer_controls_resize_revision += 1
+        revision = self._answer_controls_resize_revision
+
+        def request_if_current() -> None:
+            if (
+                self._disposed
+                or revision != self._answer_controls_resize_revision
+                or self._viewport_parent is None
+            ):
+                return
+            _call(
+                self._on_request_answer_controls,
+                self._viewport_parent,
+            )
+
+        QTimer.singleShot(0, request_if_current)
+        # WebEngine and the native bottom toolbar settle on separate event
+        # turns. The second, debounced probe replaces any measurement whose
+        # source or target dimensions changed during the immediate callback.
+        QTimer.singleShot(
+            _ANSWER_CONTROLS_RESIZE_SETTLE_MS,
+            request_if_current,
+        )
 
     def eventFilter(self, watched: Any, event: Any) -> bool:
         if watched is self._viewport_parent:
             try:
                 if event.type() in {QEvent.Type.Resize, QEvent.Type.Show}:
                     QTimer.singleShot(0, self.reposition)
+                    self._schedule_answer_controls_refresh()
             except Exception:
                 pass
         return False
 
     def dispose(self) -> None:
         self._disposed = True
+        self._answer_controls_resize_revision += 1
         self._revision += 1
         self._coin_feedback_revision += 1
         self._growth_feedback_revision += 1

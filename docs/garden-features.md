@@ -24,6 +24,8 @@ runtime artwork.
 Names, prices, rarity, acquisition paths, and ownership value are preserved
 from the migrated catalog; the revised recurring effects are authoritative in
 the reward engine. Cards, previews, and summaries display its committed data.
+The shared appearance projection keeps **Scenery**, **Displayed decoration**,
+**Active garden bonus**, and **Visual effects** as four independent facts.
 
 ## One layout contract
 
@@ -111,6 +113,10 @@ not expose Decoration selection or visibility. There is no decoration opacity
 or animation control. Rare and Very Rare reward reveals use the static
 decoration art and Garden Bonus copy. Session Summary uses engine-confirmed
 Growth and Garden Coin totals and does not create an empty decoration section.
+Standard Finds remain a separate player-facing taxonomy from Garden
+discoveries even though both retain their stable internal ledger and event IDs.
+Collection completion reports `10 of 10 species discovered` and separately
+`30 of 39 collection entries discovered`.
 
 ### Tests and evidence
 
@@ -123,3 +129,17 @@ their superseded review sheets were removed. The current retained full UI
 contact-sheet set and its remaining acceptance gates are recorded in the
 [2.1.0 UI evidence record](ui/final-ui-audit-2.1.0.md). It remains review
 evidence rather than release approval.
+
+Capture contract v26 uses contract schema 2 and scenario schema 3. Its
+18-surface representative and 34-surface full profiles render two and five
+sheet pages. Every evidence layer requires `scenario_id`, `fixture_id`, and
+one-based `scenario_step`; v25 evidence cannot be reused. Deprecated visible
+copy, root/DOM overflow, progress fractions, asset mappings, Reviewer exclusion
+rectangles, four-state scroll coverage, and lineage are hard gates.
+
+Current run paths, archive and capture hashes, artifact sizes, and validation
+totals are recorded only in the
+[final 2.1.0 UI audit](ui/final-ui-audit-2.1.0.md). The record remains
+`quality_status: review-required` and `release_ready: false`; manual macOS
+interaction, Windows/Linux, mixed-DPI, forced-colors, screen-reader,
+broader-keyboard, and human approval remain open.
