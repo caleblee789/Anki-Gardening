@@ -390,6 +390,7 @@ def _cosmetic_transaction() -> dict[str, object]:
         "visible_displayed_decoration": "Garden Bench",
         "visible_active_bonus": "Watering Station",
         "owned_once": True,
+        "replay_idempotent": True,
         "preview_painted": True,
         "reversible": True,
         "painted": True,
@@ -595,6 +596,68 @@ def test_runtime_maps_economy_progress_surfaces_to_collection() -> None:
         "landmark-contribution-completion",
         "mastery-rank-completion",
     }.issubset(collection_labels)
+
+
+def test_runtime_maps_active_collectible_details_to_their_contract() -> None:
+    source = (ROOT / "ankigarden/capture/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    function = _runtime_function(source, "expected_capture_state_profile")
+    runtime_labels = next(
+        {
+            value.value
+            for value in node.elts
+            if isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        }
+        for node in ast.walk(function)
+        if isinstance(node, ast.Set)
+        and any(
+            isinstance(value, ast.Constant)
+            and value.value == "collection-loadout-detail"
+            for value in node.elts
+        )
+    )
+    contract = json.loads(
+        (ROOT / "ankigarden/capture/capture-contract-v26.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    active_profiles = {
+        surface["id"]: surface["state_contract"]["profile"]
+        for surface in contract["surfaces"]
+        if surface["active"]
+        and surface["state_contract"]["kind"] == "collectible-detail"
+    }
+    executable = ast.fix_missing_locations(
+        ast.Module(body=[function], type_ignores=[])
+    )
+    runtime_namespace: dict[str, object] = {
+        "Any": object,
+        "expected_capture_window_family": (
+            lambda label: active_profiles[label]["window_family"]
+        ),
+        "_HOME_CAPTURE_LABELS": set(),
+        "_REVIEWER_CAPTURE_LABELS": set(),
+        "_DASHBOARD_CAPTURE_LABELS": set(),
+        "_PROGRESS_CAPTURE_LABELS": set(),
+        "_NURSERY_CAPTURE_LABELS": set(),
+        "_SETTINGS_CAPTURE_LABELS": set(),
+    }
+    exec(compile(executable, "<capture-runtime-profile>", "exec"), runtime_namespace)
+    runtime_profile = runtime_namespace["expected_capture_state_profile"](
+        "cosmetic-purchase-display-independent"
+    )
+
+    assert set(active_profiles).issubset(runtime_labels)
+    expected_profile = {
+        "profile_id": "cosmetic-purchase-display-independent",
+        "window_family": "CollectibleDetailDialog",
+        "kind": "collectible-detail",
+        "state": "cosmetic-purchase-display-independent",
+    }
+    assert active_profiles["cosmetic-purchase-display-independent"] == expected_profile
+    assert runtime_profile == expected_profile
 
 
 def test_economy_collection_targets_drain_reset_before_scrolling() -> None:

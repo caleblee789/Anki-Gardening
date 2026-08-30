@@ -196,6 +196,91 @@ def test_collection_appearance_apply_is_one_engine_transaction() -> None:
     assert engine_calls == ["apply_garden_appearance"]
 
 
+def _appearance_apply_test_dialog(engine: object) -> tuple[SimpleNamespace, list[str]]:
+    messages: list[str] = []
+    failure_copy = _compiled_dashboard_method(
+        "_appearance_apply_failure_copy",
+        {},
+    )
+
+    class PreviewFeedback:
+        def setFocus(self) -> None:
+            return None
+
+        def accessibleDescription(self) -> str:
+            return messages[-1]
+
+    dialog = SimpleNamespace(
+        _loadout_save_pending=False,
+        _loadout_failure=False,
+        _draft_weather="wind_chime",
+        _draft_scenery="verdant_twilight",
+        _draft_visibility={"garden_feature": True, "scenery": True},
+        engine=engine,
+        preview_feedback=PreviewFeedback(),
+        accessibility_announcer=SimpleNamespace(
+            announce=lambda *_args, **_kwargs: None,
+        ),
+        set_dialog_in_flight=lambda _enabled: None,
+        setProperty=lambda _name, _value: None,
+        _sync_dirty_state=lambda: None,
+        _show_preview_feedback=lambda message, **_kwargs: messages.append(message),
+        _appearance_apply_failure_copy=failure_copy,
+    )
+    return dialog, messages
+
+
+def test_collection_appearance_apply_shows_engine_reason_and_rollback_outcome() -> None:
+    apply_draft = _compiled_dashboard_method(
+        "_apply_draft",
+        {
+            "AnnouncementPriority": SimpleNamespace(ASSERTIVE="assertive"),
+            "FeedbackTone": SimpleNamespace(ERROR="error"),
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+        },
+    )
+    reason = "That Display Decoration is not owned."
+    dialog, messages = _appearance_apply_test_dialog(
+        SimpleNamespace(
+            apply_garden_appearance=lambda *_args, **_kwargs: (False, reason),
+        )
+    )
+
+    apply_draft(dialog)
+
+    assert messages == [
+        f"{reason} Your current Garden appearance is unchanged."
+    ]
+    assert dialog._loadout_failure is True
+
+
+def test_collection_appearance_apply_exception_uses_safe_generic_error() -> None:
+    apply_draft = _compiled_dashboard_method(
+        "_apply_draft",
+        {
+            "AnnouncementPriority": SimpleNamespace(ASSERTIVE="assertive"),
+            "FeedbackTone": SimpleNamespace(ERROR="error"),
+            "logger": SimpleNamespace(exception=lambda *_args, **_kwargs: None),
+        },
+    )
+
+    def raise_internal_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("private persistence detail")
+
+    dialog, messages = _appearance_apply_test_dialog(
+        SimpleNamespace(apply_garden_appearance=raise_internal_error)
+    )
+
+    apply_draft(dialog)
+
+    assert messages == [
+        "Could not apply changes. "
+        "Your current Garden appearance is unchanged."
+    ]
+    assert "private persistence detail" not in messages[0]
+    assert dialog._loadout_failure is True
+
+
 def test_endgame_presenters_consume_engine_catalog_summaries() -> None:
     engine = SimpleNamespace(
         landmark_catalog_summary=lambda: {

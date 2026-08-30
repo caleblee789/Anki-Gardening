@@ -20204,6 +20204,32 @@ class CollectibleDetailDialog(GardenDialog):
             self.preview_selection.accessibleDescription()
         )
 
+    @staticmethod
+    def _appearance_apply_failure_copy(message: object) -> str:
+        """Keep an engine-owned reason while stating the rollback outcome."""
+
+        reassurance = "Your current Garden appearance is unchanged."
+        reason = " ".join(str(message or "").split()).strip()
+        if not reason:
+            return f"Could not apply changes. {reassurance}"
+
+        # Persistence failures from the engine already describe the rollback.
+        # Replace that older, broader sentence with the appearance-specific
+        # reassurance so the visible error stays concise rather than repeating
+        # the same outcome twice.
+        for suffix in (
+            "Your current Garden appearance is unchanged.",
+            "Your Garden appearance is unchanged.",
+            "Your garden is unchanged.",
+        ):
+            if reason.casefold().endswith(suffix.casefold()):
+                reason = reason[: -len(suffix)].rstrip()
+                break
+        if not reason:
+            return reassurance
+        separator = " " if reason.endswith((".", "!", "?")) else ". "
+        return f"{reason}{separator}{reassurance}"
+
     def _apply_draft(self) -> None:
         if self._loadout_save_pending:
             return
@@ -20212,6 +20238,7 @@ class CollectibleDetailDialog(GardenDialog):
         self.setProperty("transactionState", "committing")
         self.setProperty("transactionPresentation", "preview-being-committed")
         self._sync_dirty_state()
+        _message: object = ""
         try:
             # Appearance is independent from the snapshotted Garden Bonus and
             # Scenery Effect. Commit the whole preview in one engine-owned
@@ -20235,10 +20262,7 @@ class CollectibleDetailDialog(GardenDialog):
             self.setProperty("transactionState", "persistence-failure")
             self.setProperty("transactionPresentation", "committed-state-unchanged")
             self._sync_dirty_state()
-            failure_copy = (
-                "Could not apply changes. "
-                "Your current Garden appearance is unchanged."
-            )
+            failure_copy = self._appearance_apply_failure_copy(_message)
             self._show_preview_feedback(
                 failure_copy,
                 tone=FeedbackTone.ERROR,

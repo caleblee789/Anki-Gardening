@@ -4261,6 +4261,7 @@ def cosmetic_purchase_display_issue_codes(
         "visible_displayed_decoration": "Garden Bench",
         "visible_active_bonus": "Watering Station",
         "owned_once": True,
+        "replay_idempotent": True,
         "preview_painted": True,
         "reversible": True,
         "painted": True,
@@ -4927,6 +4928,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
         "collection-preview-active",
         "collection-preview-restored",
         "collection-loadout-persistence-error",
+        "cosmetic-purchase-display-independent",
     }:
         profile.update({"kind": "collectible-detail", "state": label})
         return profile

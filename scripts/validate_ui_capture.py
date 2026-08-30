@@ -4819,6 +4819,7 @@ def cosmetic_purchase_display_issue_codes(evidence: Any) -> tuple[str, ...]:
         "visible_displayed_decoration": "Garden Bench",
         "visible_active_bonus": "Watering Station",
         "owned_once": True,
+        "replay_idempotent": True,
         "preview_painted": True,
         "reversible": True,
         "painted": True,
