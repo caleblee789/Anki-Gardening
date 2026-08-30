@@ -110,6 +110,19 @@ def _valid_scroll_geometry() -> dict[str, Any]:
     }
 
 
+def test_capture_learner_copy_matches_qt_banner_normalization() -> None:
+    normalize = _compiled_functions(
+        "_normalized_capture_learner_text"
+    )["_normalized_capture_learner_text"]
+
+    assert normalize("First Canopy · Bed 3 unlocked") == (
+        "First Canopy\nBed 3 unlocked"
+    )
+    assert normalize("  First Canopy  ·  Bed 3 unlocked  ") == (
+        "First Canopy\nBed 3 unlocked"
+    )
+
+
 def _valid_progress_scroll_audit() -> dict[str, Any]:
     return {
         "applicable": True,

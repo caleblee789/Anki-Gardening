@@ -174,7 +174,12 @@ from .theme import (
     set_semantic_role,
 )
 from ..display_telemetry import DISPLAY_TELEMETRY
-from ..balance_catalog import ENVIRONMENT_TIER_BY_ID, MASTERY_RANK_BY_ID
+from ..balance_catalog import (
+    COSMETICS,
+    COSMETIC_BY_ID,
+    ENVIRONMENT_TIER_BY_ID,
+    MASTERY_RANK_BY_ID,
+)
 from ..performance import RUNTIME_PERFORMANCE
 from ..presentation import (
     DiagnosticsProjection,
@@ -19671,6 +19676,42 @@ class CollectibleDetailDialog(GardenDialog):
         converter = getattr(asset, "to_payload", None)
         return converter() if callable(converter) else {"path": str(getattr(asset, "path", ""))}
 
+    @staticmethod
+    def _cosmetic_appearance_items() -> tuple[CatalogItem, ...]:
+        """Project canonical cosmetic definitions into the appearance picker."""
+
+        return tuple(
+            CatalogItem(
+                item_id=str(item.cosmetic_id),
+                name=str(item.display_name),
+                kind="garden_feature",
+                rarity="Common",
+                acquisition=(
+                    "purchase" if item.purchasable else "achievement"
+                ),
+                effect="No gameplay bonus.",
+                how_to_earn=(
+                    "Available in the Nursery."
+                    if item.purchasable else
+                    "Earned from an achievement."
+                ),
+                price=(
+                    None if item.price_coins is None else
+                    int(item.price_coins)
+                ),
+            )
+            for item in COSMETICS
+        )
+
+    def _owns_appearance_item(self, item: CatalogItem) -> bool:
+        """Return ownership across functional and cosmetic decorations."""
+
+        if item.item_id in COSMETIC_BY_ID:
+            return item.item_id in (
+                self.storage.state.inventory.get("cosmetics", ()) or ()
+            )
+        return self.engine.owns_environment(item.kind, item.item_id)
+
     def _thumbnail(self, item: CatalogItem) -> QLabel:
         label = QLabel()
         label.setFixedSize(104, 58)
@@ -19711,7 +19752,7 @@ class CollectibleDetailDialog(GardenDialog):
         return label
 
     def _option_tile(self, item: CatalogItem) -> QPushButton:
-        owned = self.engine.owns_environment(item.kind, item.item_id)
+        owned = self._owns_appearance_item(item)
         equipped = (
             self._persisted_weather == item.item_id
             if item.kind == "garden_feature" else
@@ -19824,12 +19865,18 @@ class CollectibleDetailDialog(GardenDialog):
             (
                 "garden_feature",
                 self.weather_grid,
-                GARDEN_FEATURE_CATALOG,
+                {
+                    **GARDEN_FEATURE_CATALOG,
+                    **{
+                        item.item_id: item
+                        for item in self._cosmetic_appearance_items()
+                    },
+                },
             ),
         ):
             owned_items = [
                 item for item in catalog.values()
-                if self.engine.owns_environment(item.kind, item.item_id)
+                if self._owns_appearance_item(item)
             ]
             for index, item in enumerate(owned_items):
                 grid.addWidget(self._option_tile(item), index // 2, index % 2)
@@ -20104,10 +20151,13 @@ class CollectibleDetailDialog(GardenDialog):
             "plants": plants,
         })
         weather_item = GARDEN_FEATURE_CATALOG.get(self._draft_weather)
+        cosmetic_item = COSMETIC_BY_ID.get(self._draft_weather)
         scenery_item = SCENERY_CATALOG.get(self._draft_scenery)
         weather_name = (
             weather_item.name
             if weather_item is not None
+            else str(cosmetic_item.display_name)
+            if cosmetic_item is not None
             else f"{format_status_label(self._draft_weather)} (Unavailable)"
         )
         scenery_name = (
@@ -20241,6 +20291,15 @@ class CollectibleDetailDialog(GardenDialog):
 
         self.prepare_to_show()
         if category == "garden_feature" and self.engine.owns_environment(category, item_id):
+            self._draft_weather = item_id
+            self.option_tabs.setCurrentWidget(self.weather_page)
+        elif (
+            category == "cosmetic"
+            and item_id in COSMETIC_BY_ID
+            and item_id in (
+                self.storage.state.inventory.get("cosmetics", ()) or ()
+            )
+        ):
             self._draft_weather = item_id
             self.option_tabs.setCurrentWidget(self.weather_page)
         elif category == "scenery" and self.engine.owns_environment(category, item_id):

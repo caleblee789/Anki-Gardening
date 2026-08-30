@@ -2,6 +2,8 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
+from ankigarden.balance_catalog import COSMETICS, COSMETIC_BY_ID
+from ankigarden.environment import CatalogItem
 from ankigarden.models.state import CardEffectBatch, GardenState
 from ankigarden.ui.economy_presenters import (
     bed_unlock_rows,
@@ -102,6 +104,74 @@ def test_cosmetic_projection_keeps_display_separate_from_bonus() -> None:
     assert rows["garden_bench"].displayed
     assert rows["garden_bench"].price == 150
     assert state.loadout.active_garden_bonus_id == "watering_station"
+
+
+def _compiled_dashboard_method(
+    method_name: str,
+    globals_map: dict[str, object],
+):
+    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == method_name
+    )
+    function.decorator_list = []
+    module = ast.Module(body=[function], type_ignores=[])
+    ast.fix_missing_locations(module)
+    namespace = dict(globals_map)
+    exec(compile(module, "<dashboard-method>", "exec"), namespace)
+    return namespace[method_name]
+
+
+def test_collection_appearance_picker_projects_and_owns_cosmetics() -> None:
+    project = _compiled_dashboard_method(
+        "_cosmetic_appearance_items",
+        {"CatalogItem": CatalogItem, "COSMETICS": COSMETICS},
+    )
+    owns = _compiled_dashboard_method(
+        "_owns_appearance_item",
+        {"CatalogItem": CatalogItem, "COSMETIC_BY_ID": COSMETIC_BY_ID},
+    )
+    items = {item.item_id: item for item in project()}
+    state = GardenState()
+    state.inventory["cosmetics"] = ["garden_bench"]
+    dialog = SimpleNamespace(
+        storage=SimpleNamespace(state=state),
+        engine=SimpleNamespace(owns_environment=lambda _kind, _item_id: False),
+    )
+
+    assert set(items) == {str(item.cosmetic_id) for item in COSMETICS}
+    assert items["garden_bench"].name == "Garden Bench"
+    assert items["garden_bench"].kind == "garden_feature"
+    assert owns(dialog, items["garden_bench"]) is True
+    assert owns(dialog, items["birdhouse"]) is False
+
+
+def test_collection_appearance_rebuild_and_preview_use_cosmetic_authority() -> None:
+    source = Path("ankigarden/ui/dashboard.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    methods = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    rebuild_calls = {
+        node.func.attr
+        for node in ast.walk(methods["_rebuild_options"])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+    }
+    preview_names = {
+        node.id
+        for node in ast.walk(methods["_refresh_preview"])
+        if isinstance(node, ast.Name)
+    }
+
+    assert "_cosmetic_appearance_items" in rebuild_calls
+    assert "_owns_appearance_item" in rebuild_calls
+    assert "COSMETIC_BY_ID" in preview_names
 
 
 def test_collection_appearance_apply_is_one_engine_transaction() -> None:

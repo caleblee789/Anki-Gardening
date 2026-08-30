@@ -789,7 +789,10 @@ DIALOG_VIEW_HEIGHT_PROFILES: dict[
         # still owns heights below this semantic ceiling, and the same central
         # scroll owner keeps every later product reachable.
         "fertilizer": DialogHeightProfile(500, 506, 541, 925, 940, 950),
-        "spaces": DialogHeightProfile(300, 325, 330, 925, 940, 950),
+        # Earned-bed progression now shares this page with the Stored Growth
+        # overview. 480 px fits the ordinary page; the 580 px ceiling also
+        # fits the same content beneath a committed-result banner.
+        "spaces": DialogHeightProfile(300, 480, 580, 925, 940, 950),
         # Garden Decoration cards keep one complete product row in view. The
         # active-bonus summary consumes 147 px above the 276 px product row,
         # so the content-fit ceiling must leave the catalogue a complete fold

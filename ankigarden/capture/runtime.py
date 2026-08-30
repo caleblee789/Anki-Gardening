@@ -90,6 +90,17 @@ def _displayed_button_text(button: QAbstractButton) -> str:
     return str(button.text()).replace("&&", "&")
 
 
+def _normalized_capture_learner_text(value: Any) -> str:
+    """Mirror the learner-facing separator normalization used by Qt banners."""
+
+    return "\n".join(
+        segment.strip()
+        for line in str(value or "").splitlines()
+        for segment in line.split(chr(0xB7))
+        if segment.strip()
+    )
+
+
 HOME_CAPTURE_BRAND_RGB = (92, 197, 139)
 HOME_CAPTURE_DARK_RGB = (
     (7, 26, 21),
@@ -4842,9 +4853,11 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "collection" if label in {
                 "progress-collection",
                 "collection-several-discovered",
-            "collection-no-filter-matches",
-            "collection-known-not-collected-overview",
-            "collection-environment-mechanics",
+                "collection-no-filter-matches",
+                "collection-known-not-collected-overview",
+                "collection-environment-mechanics",
+                "landmark-contribution-completion",
+                "mastery-rank-completion",
             } else
             "achievements"
         )
@@ -4877,6 +4890,7 @@ def expected_capture_state_profile(label: str) -> dict[str, Any]:
             "nursery-plants": 0,
             "nursery-fertilizer-booster": 1,
             "nursery-garden-spaces": 2,
+            "earned-bed-unlock-celebration": 2,
             "nursery-garden-decorations-scenery": 3,
             "nursery-item-owned": 0,
             "nursery-item-locked": 1,
@@ -30294,10 +30308,7 @@ class _UiFaceCaptureRunner:
             ),
             None,
         )
-        if row is not None and isinstance(scroll, QScrollArea):
-            scroll.ensureWidgetVisible(row, 0, 24)
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
-        QApplication.processEvents()
+        self._reveal_collection_capture_target(scroll, row)
         if row is not None:
             row.setProperty(
                 "captureEvidenceKey",
@@ -30427,10 +30438,7 @@ class _UiFaceCaptureRunner:
             ),
             None,
         ) if rank_row is not None else None
-        if rank_row is not None and isinstance(scroll, QScrollArea):
-            scroll.ensureWidgetVisible(rank_row, 0, 24)
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
-        QApplication.processEvents()
+        self._reveal_collection_capture_target(scroll, rank_row)
         if rank_row is not None:
             rank_row.setProperty("captureEvidenceKey", "mastery-rank-card")
             rank_row.repaint()
@@ -30498,6 +30506,32 @@ class _UiFaceCaptureRunner:
                     + ", ".join(issues)
                 ),
             })
+
+    @staticmethod
+    def _reveal_collection_capture_target(
+        scroll: Any,
+        target: Any,
+    ) -> None:
+        """Drain Collection's queued reset, then reveal one evidence row."""
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+        QApplication.processEvents()
+        if target is None or not isinstance(scroll, QScrollArea):
+            return
+        content = scroll.widget()
+        if content is not None:
+            origin = target.mapTo(content, target.rect().topLeft())
+            bar = scroll.verticalScrollBar()
+            requested = int(origin.y()) - 24
+            bar.setValue(
+                max(
+                    int(bar.minimum()),
+                    min(int(bar.maximum()), requested),
+                )
+            )
+        scroll.ensureWidgetVisible(target, 0, 24)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.LayoutRequest)
+        QApplication.processEvents()
 
     def _capture_progress_page_after(
         self,
@@ -32107,7 +32141,7 @@ class _UiFaceCaptureRunner:
                         "preview_painted": bool(
                             not preview_probe.isNull()
                             and preview_bounds.get("visible", False)
-                            and preview_bounds.get("contained", False)
+                            and preview_bounds.get("intersects", False)
                         ),
                         "painted": bool(not dialog_probe.isNull()),
                     })
@@ -32348,11 +32382,14 @@ class _UiFaceCaptureRunner:
                     )()
                 ).strip()
                 transaction = dict(base_transaction)
+                expected_status_copy = _normalized_capture_learner_text(
+                    transaction["celebration_copy"]
+                )
                 transaction.update({
                     "celebration_visible": bool(
                         status_banner is not None
                         and status_banner.isVisibleTo(dialog)
-                        and status_copy == transaction["celebration_copy"]
+                        and status_copy == expected_status_copy
                     ),
                     "visible_status": (
                         str(status.text()).strip()
@@ -36387,28 +36424,26 @@ class _UiFaceCaptureRunner:
         label: str,
         dashboard: Any,
     ) -> Callable[[], None]:
-        """Expose one useful partial-catalog state without weakening 30/93.
+        """Expose one reversible partial-catalog state in either profile.
 
-        The representative Collection capture owns the canonical broad state.
-        Nursery needs a different single painting: one owned plant, affordable
-        catalog context, the next bed, and unequipped environment choices. The
-        mutation is fully reversible so later Settings and transaction facts
-        continue to use the canonical development projection.
+        Collection owns the canonical broad state. Nursery needs a different
+        single painting: one owned unfinished plant, affordable catalog
+        context, the next bed, and unequipped environment choices. The
+        mutation is fully reversible so later surfaces continue to use the
+        canonical development projection.
         """
 
         snapshot = self._capture_fixture_state_snapshot(
             label,
             exact_ledger_restore=True,
         )
-        if self._capture_profile != "representative":
-            return lambda: self._restore_capture_fixture_state(snapshot)
         try:
             from ..environment import GROWTH_CHARGES
 
             state = self.app.storage.state
             plants = list(getattr(state, "plants", ()) or ())
             if not plants:
-                raise RuntimeError("representative Nursery requires one plant")
+                raise RuntimeError("partial Nursery requires one plant")
             representative = plants[0]
             representative.slot_index = 0
             state.plants = [representative]

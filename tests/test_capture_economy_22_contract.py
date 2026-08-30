@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -519,6 +520,26 @@ def test_transaction_runtime_uses_fixed_ids_and_exact_ledger_restore() -> None:
         assert f"00000000-0000-0000-0000-00000000{request_suffix}" in source
     assert source.count("exact_ledger_restore=True") >= 4
     assert 'status_message="First Canopy · Bed 3 unlocked"' in source
+    assert '"earned-bed-unlock-celebration": 2' in source
+    assert "status_copy == expected_status_copy" in source
+
+
+def test_full_nursery_uses_the_deterministic_partial_catalog_fixture() -> None:
+    source = (ROOT / "ankigarden/capture/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    fixture_source = source.split(
+        "def _prepare_representative_nursery_fixture(",
+        1,
+    )[1].split(
+        "def _prepare_nursery_plants_fixture(",
+        1,
+    )[0]
+
+    assert 'self._capture_profile != "representative"' not in fixture_source
+    assert "state.plants = [representative]" in fixture_source
+    assert "state.unlocked_slots = 2" in fixture_source
+
 
 
 def test_persistent_landmark_and_mastery_capture_semantics_are_source_owned() -> None:
@@ -539,3 +560,66 @@ def test_persistent_landmark_and_mastery_capture_semantics_are_source_owned() ->
     assert '"landmark-completed-row"' in runtime_source
     assert '"mastery-rank-card"' in runtime_source
     assert '"mastery-bronze" in feature_trace' in runtime_source
+
+
+def _runtime_function(source: str, name: str) -> ast.FunctionDef:
+    tree = ast.parse(source)
+    return next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    )
+
+
+def test_runtime_maps_economy_progress_surfaces_to_collection() -> None:
+    source = (ROOT / "ankigarden/capture/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    function = _runtime_function(source, "expected_capture_state_profile")
+    collection_labels = next(
+        {
+            value.value
+            for value in node.elts
+            if isinstance(value, ast.Constant)
+            and isinstance(value.value, str)
+        }
+        for node in ast.walk(function)
+        if isinstance(node, ast.Set)
+        and any(
+            isinstance(value, ast.Constant)
+            and value.value == "progress-collection"
+            for value in node.elts
+        )
+    )
+    assert {
+        "landmark-contribution-completion",
+        "mastery-rank-completion",
+    }.issubset(collection_labels)
+
+
+def test_economy_collection_targets_drain_reset_before_scrolling() -> None:
+    source = (ROOT / "ankigarden/capture/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    helper = ast.get_source_segment(
+        source,
+        _runtime_function(source, "_reveal_collection_capture_target"),
+    )
+    assert helper is not None
+    first_event_drain = helper.index("QApplication.processEvents()")
+    explicit_scroll = helper.index("bar = scroll.verticalScrollBar()")
+    ensure_visible = helper.index("scroll.ensureWidgetVisible(target, 0, 24)")
+    final_event_drain = helper.rindex("QApplication.processEvents()")
+    assert first_event_drain < explicit_scroll < ensure_visible < final_event_drain
+
+    for name in (
+        "_audit_landmark_transaction_collection",
+        "_audit_mastery_transaction_collection",
+    ):
+        audit = ast.get_source_segment(
+            source,
+            _runtime_function(source, name),
+        )
+        assert audit is not None
+        assert "self._reveal_collection_capture_target(" in audit
+        assert "ensureWidgetVisible" not in audit
