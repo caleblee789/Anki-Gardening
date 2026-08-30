@@ -36,7 +36,7 @@ full Garden, selected-plant card, Nursery, Story, Settings, Sync Rewards, the sc
 studied-today result after real reviews.
 
 Capture contract v26 (contract schema 2, scenario schema 3) registers 18
-representative and 34 full surfaces with two- and five-page sheet output.
+representative and 38 full surfaces with two- and six-page sheet output.
 `scenario_id`, `fixture_id`, and one-based `scenario_step` are required through
 specs, dependencies, runtime records, manifests, PNG metadata, validation, and
 sheet indexes; v25 evidence is rejected. Deprecated visible copy, root/DOM

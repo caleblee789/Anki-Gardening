@@ -268,8 +268,8 @@ or strand focus in the Reviewer.
 
 The reviewer-specific states are covered by capture contract v26 (contract
 schema 2, scenario schema 3) within the 18-surface representative and
-34-surface full topology. Representative output is two contact-sheet pages;
-full output is five. The separate Sync Rewards receipt remains its own
+38-surface full topology. Representative output is two contact-sheet pages;
+full output is six. The separate Sync Rewards receipt remains its own
 registered surface. Every capture record carries `scenario_id`, `fixture_id`,
 and one-based `scenario_step`; v25 evidence is ineligible for reuse. Native
 macOS review at 100 percent scaling exercises these transient states:

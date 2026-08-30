@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from scripts.validate_ui_capture import (
     CONTACT_SHEET_PADDING_RGBA,
     CaptureValidationError,
     _count_aligned_rgba_pixels,
+    _load_current_contract_payload,
     _unpainted_client_record_issues,
     load_capture_contract,
 )
@@ -18,6 +20,25 @@ from scripts.validate_ui_capture import (
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURE_SOURCE = ROOT / "ankigarden" / "capture" / "runtime.py"
 NON_CREAM_RGBA = (9, 19, 29, 255)
+
+
+def test_compiled_v26_contract_reports_current_surface_requirement(
+    tmp_path: Path,
+) -> None:
+    contract_path = ROOT / "ankigarden" / "capture" / "capture-contract-v26.json"
+    payload = json.loads(contract_path.read_text(encoding="utf-8"))
+    payload["surface_count"] = 37
+    stale_path = tmp_path / "capture-contract-v26.json"
+    stale_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CaptureValidationError) as error:
+        _load_current_contract_payload(stale_path)
+
+    assert (
+        "compiled v26 contract must contain 38 active surfaces"
+        in error.value.issues
+    )
+    assert all("34 active surfaces" not in issue for issue in error.value.issues)
 
 
 def _save_rgba(path: Path, image: Image.Image) -> None:

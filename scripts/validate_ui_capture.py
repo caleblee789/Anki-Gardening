@@ -267,7 +267,7 @@ def _load_current_contract_payload(
         active_ids = {str(row.get("id", "")) for row in active}
         retired_ids = set(payload.get("retired_ids", ()))
         if len(active) != 38 or payload.get("surface_count") != 38:
-            issues.append("compiled v26 contract must contain 34 active surfaces")
+            issues.append("compiled v26 contract must contain 38 active surfaces")
         if "nursery-garden-decorations-scenery" not in active_ids:
             issues.append("compiled v26 contract is missing renamed nursery surface")
         if "nursery-weather-scenery" not in retired_ids:
@@ -4561,7 +4561,8 @@ def nursery_supplement_state_matrix_issue_codes(
             "action": "Apply",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 100 cards"
+                "+1 Growth per eligible card answer · "
+                "Lasts 100 eligible cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -4599,7 +4600,8 @@ def nursery_supplement_state_matrix_issue_codes(
             "final_quality_action_disposition": "extend",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 200 cards"
+                "+2 Growth per eligible card answer · "
+                "Lasts 200 eligible cards"
             ),
             "painted": True,
         },

@@ -105,6 +105,52 @@ def test_manifest_resolves_every_new_economy_art_identity() -> None:
             assert resolved.path.is_file()
 
 
+def test_shared_item_resolver_routes_every_new_economy_art_identity() -> None:
+    """Shared cards must not send 2.2 catalog art through UI fallbacks."""
+
+    manager = AssetManager(_Config(), _Storage())
+    engine = SimpleNamespace(assets=manager, config=_Config())
+    expected = {
+        "cosmetics": tuple(
+            (
+                (item.cosmetic_id.value, item.asset_id),
+                item.asset_id,
+            )
+            for item in COSMETICS
+        ),
+        "landmarks": tuple(
+            (
+                (item.landmark_id.value, item.asset_id),
+                item.asset_id,
+            )
+            for item in LANDMARKS
+        ),
+        "mastery": tuple(
+            (
+                (rank.rank_id.value, f"mastery_{rank.rank_id.value}"),
+                f"mastery_{rank.rank_id.value}",
+            )
+            for rank in MASTERY_RANKS
+        ),
+    }
+
+    for category, identities in expected.items():
+        for accepted_keys, asset_id in identities:
+            for key in accepted_keys:
+                resolved = GardenGameEngine.resolve_item_asset(engine, key)
+                assert resolved is not None, (category, key)
+                assert resolved.category == category
+                assert resolved.asset_id == asset_id
+                assert resolved.path.is_file()
+
+    # The new category routing must preserve the existing UI-item contract.
+    resolved = GardenGameEngine.resolve_item_asset(engine, "booster_potion")
+    assert resolved is not None
+    assert resolved.category == "ui"
+    assert resolved.asset_id == "ui_booster_potion"
+    assert GardenGameEngine.resolve_item_asset(engine, "") is None
+
+
 def test_collection_registry_is_complete_and_fertilizer_copy_is_card_counted() -> None:
     rows = collectible_registry()
     assert len(rows) == 93

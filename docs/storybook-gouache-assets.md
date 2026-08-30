@@ -122,7 +122,7 @@ isolated-Anki visual pass.
 ## v26 visual evidence
 
 Capture contract v26 uses contract schema 2 and scenario schema 3 with 18
-representative and 34 full surfaces, producing two and five sheets. Scenario
+representative and 38 full surfaces, producing two and six sheets. Scenario
 ID, fixture ID, and one-based step persist through every evidence layer; v25
 reuse is rejected. Asset mapping, visible-copy, overflow, progress, Reviewer
 exclusion, scroll-state, and lineage checks are hard gates.

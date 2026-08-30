@@ -70,7 +70,8 @@ def _fertilizer_matrix() -> dict[str, object]:
                 "action": "Apply",
                 "action_disposition": "apply",
                 "meta_copy": (
-                    "+1 Growth per eligible card answer · Lasts 100 cards"
+                    "+1 Growth per eligible card answer · "
+                    "Lasts 100 eligible cards"
                 ),
                 "artwork_ref": "rich_compost",
                 "artwork_source_matches": True,
@@ -108,7 +109,8 @@ def _fertilizer_matrix() -> dict[str, object]:
                 "final_quality_action_disposition": "extend",
                 "final_quality_painted": True,
                 "meta_copy": (
-                    "+2 Growth per eligible card answer · Lasts 200 cards"
+                    "+2 Growth per eligible card answer · "
+                    "Lasts 200 eligible cards"
                 ),
                 "painted": True,
             },
@@ -137,6 +139,15 @@ def test_fertilizer_capture_contract_is_card_counted() -> None:
     assert (
         "nursery-supplement-active:status_copy"
         in nursery_supplement_state_matrix_issue_codes(timed_active)
+    )
+
+    ambiguous_allowance = deepcopy(evidence)
+    ambiguous_allowance["records"]["queued"]["meta_copy"] = (
+        "+2 Growth per eligible card answer · Lasts 200 cards"
+    )
+    assert (
+        "nursery-supplement-queued:meta_copy"
+        in nursery_supplement_state_matrix_issue_codes(ambiguous_allowance)
     )
 
 

@@ -735,7 +735,11 @@ def test_named_find_art_uses_the_shared_item_resolver_in_reviewer_ui() -> None:
     assert 'getattr(hero, "artwork_ref", "")' in REVIEWER_HOOK_SOURCE
     assert 'resolver_names = (' in REVIEWER_HOOK_SOURCE
     assert '("resolve_item_asset",)' in REVIEWER_HOOK_SOURCE
-    assert 'asset_category == "ui" and asset_key' in REVIEWER_HOOK_SOURCE
+    assert (
+        'asset_category in {"ui", "cosmetics", "landmarks", "mastery"}'
+        in REVIEWER_HOOK_SOURCE
+    )
+    assert "and asset_key" in REVIEWER_HOOK_SOURCE
     assert 'hero, "reward_type", ""' in REVIEWER_HOOK_SOURCE
     assert '"garden_pouch": "Garden Pouch artwork"' in REVIEWER_HOOK_SOURCE
     assert '"morning_dew": "Morning Dew artwork"' in REVIEWER_HOOK_SOURCE

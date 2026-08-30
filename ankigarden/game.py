@@ -9416,9 +9416,78 @@ class GardenGameEngine:
         )
 
     def resolve_item_asset(self, item_key: str) -> Optional[ResolvedAsset]:
-        """Resolve Nursery item artwork from the bundled asset manifest."""
+        """Resolve catalog item artwork from the bundled asset manifest.
 
-        return self.assets.resolve_ui_asset(item_key, quality_preference="balanced")
+        Most consumables and legacy Nursery items live in the ``ui`` manifest
+        category.  Release 2.2 adds independently rendered cosmetic,
+        Landmark, and Mastery artwork, whose catalog identities must be routed
+        to their own categories instead of being treated as missing UI art.
+        Accept both the logical catalog ID and packaged asset ID because the
+        shared preview surfaces use both forms.
+        """
+
+        normalized = str(item_key or "").strip()
+        if not normalized:
+            return None
+        theme = self.config.value("visual_theme", "verdant_twilight")
+
+        cosmetic = COSMETIC_BY_ID.get(normalized)
+        if cosmetic is None:
+            cosmetic = next(
+                (
+                    definition
+                    for definition in COSMETIC_BY_ID.values()
+                    if definition.asset_id == normalized
+                ),
+                None,
+            )
+        if cosmetic is not None:
+            cosmetic_id = str(cosmetic.cosmetic_id)
+            return self.assets.resolve(
+                "cosmetics",
+                cosmetic.asset_id,
+                f"slot:cosmetics:{cosmetic_id}:item-preview",
+                theme=theme,
+                quality_preference="balanced",
+            )
+
+        landmark = LANDMARK_BY_ID.get(normalized)
+        if landmark is None:
+            landmark = next(
+                (
+                    definition
+                    for definition in LANDMARK_BY_ID.values()
+                    if definition.asset_id == normalized
+                ),
+                None,
+            )
+        if landmark is not None:
+            landmark_id = str(landmark.landmark_id)
+            return self.assets.resolve(
+                "landmarks",
+                landmark_id,
+                f"slot:landmarks:{landmark_id}:item-preview",
+                theme=theme,
+                quality_preference="balanced",
+            )
+
+        mastery_rank_id = normalized.removeprefix("mastery_")
+        if mastery_rank_id in MASTERY_RANK_BY_ID and normalized in {
+            mastery_rank_id,
+            f"mastery_{mastery_rank_id}",
+        }:
+            return self.assets.resolve(
+                "mastery",
+                mastery_rank_id,
+                f"slot:mastery:{mastery_rank_id}:item-preview",
+                theme=theme,
+                quality_preference="balanced",
+            )
+
+        return self.assets.resolve_ui_asset(
+            normalized,
+            quality_preference="balanced",
+        )
 
     def resolve_nurtured_marker_asset(self) -> Optional[ResolvedAsset]:
         """Resolve retained watering-can artwork for compact Nurtured icons."""

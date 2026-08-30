@@ -24,7 +24,7 @@ Nursery button, destination dropdown, Done-to-move action, Settings-based Garden
 timer, exam control, or deck-mapping UI in this release.
 
 The v26 evidence contract (contract schema 2, scenario schema 3) covers 18
-representative and 34 full surfaces with two/five sheet pages. Scenario ID,
+representative and 38 full surfaces with two/six sheet pages. Scenario ID,
 fixture ID, and one-based step are mandatory throughout lineage and v25 reuse
 is rejected. Current run paths, archive and capture hashes, artifact sizes, and
 validation totals are recorded only in the

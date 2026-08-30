@@ -46,7 +46,7 @@ outside this release; the established Garden styling remains unchanged.
 
 ## v26 evidence status
 
-The topology is 18 representative/34 full surfaces and two/five sheets. Every
+The topology is 18 representative/38 full surfaces and two/six sheets. Every
 evidence layer requires scenario ID, fixture ID, and one-based step; v25 reuse
 is rejected, and visible-copy, overflow, progress, asset-map, Reviewer
 exclusion, scroll-state, and lineage assertions are hard gates. Current run

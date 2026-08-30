@@ -220,7 +220,7 @@ Capture contract v26, contract schema 2 and scenario schema 3, has two
 registry-derived ordered evidence tiers under `QT_SCALE_FACTOR=1.0`. The
 `representative` profile is the preflight and the `full` profile is the final
 release authority. The current registry derives an 18-surface/two-sheet
-preflight and a 34-surface/five-sheet full profile after retiring redundant or
+preflight and a 38-surface/six-sheet full profile after retiring redundant or
 behavioral-only IDs, including every watering-can capture and
 `nursery-weather-scenery`. Its ordinal-24 replacement is
 `nursery-garden-decorations-scenery`. These totals remain generated rather than

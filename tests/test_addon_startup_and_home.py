@@ -194,6 +194,52 @@ def _new_app(addon_module):
     return app
 
 
+def test_reviewer_reward_artwork_routes_new_economy_categories(monkeypatch):
+    """Cosmetic, Landmark, and Mastery feedback must use packaged artwork."""
+
+    _install_fake_aqt(monkeypatch)
+    reviewer_module = importlib.reload(
+        importlib.import_module("ankigarden.hooks.reviewer")
+    )
+    resolved_keys: list[str] = []
+
+    def resolve_item_asset(item_key: str):
+        resolved_keys.append(item_key)
+        return SimpleNamespace(path=Path("/packaged-art") / f"{item_key}.webp")
+
+    handler = reviewer_module.ReviewerHookHandler(
+        SimpleNamespace(
+            resolve_item_asset=resolve_item_asset,
+            state=SimpleNamespace(plants=[]),
+        ),
+        SimpleNamespace(),
+    )
+
+    class Pixmap:
+        def __init__(self, path: str):
+            self.path = path
+
+    cases = (
+        ("cosmetics", "cosmetic_garden_bench"),
+        ("landmarks", "mossy_stone_path"),
+        ("mastery", "bronze"),
+    )
+    for category, key in cases:
+        pixmap, bounds = handler._reward_artwork(
+            SimpleNamespace(
+                asset_category=category,
+                asset_key=key,
+                plant_id=None,
+            ),
+            Pixmap,
+        )
+        assert pixmap is not None
+        assert pixmap.path == str(Path("/packaged-art") / f"{key}.webp")
+        assert bounds is None
+
+    assert resolved_keys == [key for _category, key in cases]
+
+
 def test_startup_path_logs_errors(monkeypatch, caplog):
     _install_fake_aqt(monkeypatch)
     ankigarden = importlib.reload(importlib.import_module("ankigarden"))

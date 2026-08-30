@@ -5,14 +5,14 @@ scenario schema 3. The exact ordered source is the Qt-free `SurfaceSpec`
 registry compiled into
 `ankigarden/capture/capture-contract-v26.json`. Inspect it without mutation via
 `python scripts/capture_sequence.py --list-surfaces` or explain one ID with
-`--explain-surface ID`. The current immutable
+`--explain-surface ID`. The frozen 2.1.0
 [full manifest](../build/ui-face-captures/full/capture-sequence-20260830-103800/assembled/manifest.json)
 and [five-page contact-sheet index](../build/ui-face-captures/full/contact-sheets/anki-garden-ui-contact-sheet-2.1.0-20260830-103800/contact-sheet-set.json)
 are bound to the exact package and contract digest in the
 [canonical UI audit](ui/final-ui-audit-2.1.0.md).
 
-The current v26 registry contains 18 representative and 34 full surfaces,
-rendered as two and five sheets. Those values are generated observations, not
+The current v26 registry contains 18 representative and 38 full surfaces,
+rendered as two and six sheets. Those values are generated observations, not
 fixed acceptance constants. Redundant or behavioral-only IDs are permanently
 retired, including the starter-confirmation ID and every watering-can capture.
 `nursery-weather-scenery` is retired; its ordinal-24 replacement is
@@ -93,9 +93,10 @@ screenshot-specific sizing.
 
 A complete v26 `full` run closes the active ordered macOS Qt visual inventory
 for its exact package and compiled contract. The representative run is
-preflight evidence only. The current independent validator found 34 valid
+preflight evidence only. The frozen 2.1.0 independent validator found 34 valid
 surfaces across five pages with no advisories and the automated gate passed;
-34/34 raw PNGs and 5/5 sheets were also visually reviewed. Those results do
+34/34 raw PNGs and 5/5 sheets were also visually reviewed. Those historical
+results do
 not close manual macOS interaction, native Windows/Linux behavior, 125%/150%
 and true OS scaling, mixed-DPI transitions, forced colors, screen-reader,
 broader keyboard, human/device visual, or full end-to-end acceptance. The

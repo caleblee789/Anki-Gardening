@@ -217,7 +217,7 @@ isolated-Anki acceptance pass.
 ## v26 capture evidence boundary
 
 Capture contract v26 uses contract schema 2 and scenario schema 3. It registers
-18 representative surfaces and 34 full surfaces, yielding two and five sheets.
+18 representative surfaces and 38 full surfaces, yielding two and six sheets.
 All evidence layers require `scenario_id`, `fixture_id`, and one-based
 `scenario_step`; shared flows preserve fixture lineage, and reuse of v25
 evidence is rejected. Deprecated visible copy, root/DOM overflow, progress

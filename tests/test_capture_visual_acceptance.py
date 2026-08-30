@@ -221,7 +221,8 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "action": "Apply",
             "action_disposition": "apply",
             "meta_copy": (
-                "+1 Growth per eligible card answer · Lasts 100 cards"
+                "+1 Growth per eligible card answer · "
+                "Lasts 100 eligible cards"
             ),
             "artwork_ref": "rich_compost",
             "artwork_source_matches": True,
@@ -259,7 +260,8 @@ def test_nursery_supplement_matrix_independently_rejects_queue_drift() -> None:
             "final_quality_action_disposition": "extend",
             "final_quality_painted": True,
             "meta_copy": (
-                "+2 Growth per eligible card answer · Lasts 200 cards"
+                "+2 Growth per eligible card answer · "
+                "Lasts 200 eligible cards"
             ),
             "painted": True,
         },

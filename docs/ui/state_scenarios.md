@@ -338,7 +338,7 @@ Exact presentation states:
 ## v26 scenario evidence
 
 Capture contract v26 uses contract schema 2 and scenario schema 3. It registers
-18 representative and 34 full surfaces and produces two and five sheets.
+18 representative and 38 full surfaces and produces two and six sheets.
 `scenario_id`, `fixture_id`, and one-based `scenario_step` are mandatory in
 specs, dependency digests, runtime records, manifests, validators, PNG metadata,
 and sheet indexes. Shared fixture IDs establish sequential lineage for

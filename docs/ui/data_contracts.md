@@ -350,8 +350,8 @@ schema-10–25 JSON/SQLite paths on the current contract:
 ## v26 evidence boundary
 
 Capture contract v26 is independent from persisted schema 26. It uses contract
-schema 2 and scenario schema 3 with 18 representative/34 full surfaces and
-two/five contact-sheet pages. All evidence layers require `scenario_id`,
+schema 2 and scenario schema 3 with 18 representative/38 full surfaces and
+two/six contact-sheet pages. All evidence layers require `scenario_id`,
 `fixture_id`, and one-based `scenario_step`; shared fixture IDs preserve
 sequential lineage, and v25 evidence is rejected.
 

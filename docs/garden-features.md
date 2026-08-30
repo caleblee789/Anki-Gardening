@@ -131,7 +131,7 @@ contact-sheet set and its remaining acceptance gates are recorded in the
 prerequisite review evidence and does not approve 2.2.0.
 
 Capture contract v26 uses contract schema 2 and scenario schema 3. Its
-18-surface representative and 34-surface full profiles render two and five
+18-surface representative and 38-surface full profiles render two and six
 sheet pages. Every evidence layer requires `scenario_id`, `fixture_id`, and
 one-based `scenario_step`; v25 evidence cannot be reused. Deprecated visible
 copy, root/DOM overflow, progress fractions, asset mappings, Reviewer exclusion

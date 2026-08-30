@@ -5421,14 +5421,18 @@ class ReviewerHookHandler:
     def _reward_artwork(self, event: Any, pixmap_type: Any) -> tuple[Any | None, Any | None]:
         asset_key = str(getattr(event, "asset_key", "") or "")
         asset_category = str(getattr(event, "asset_category", "") or "")
-        if asset_category == "ui" and asset_key:
-            asset_key = {
-                "ui_growth_charge_small": "growth_charge_small",
-                "ui_growth_charge_standard": "growth_charge_standard",
-                "ui_fertilizer_basic": "fertilizer_basic",
-                "ui_rich_compost": "rich_compost",
-                "ui_booster_potion": "booster_potion",
-            }.get(asset_key, asset_key)
+        if (
+            asset_category in {"ui", "cosmetics", "landmarks", "mastery"}
+            and asset_key
+        ):
+            if asset_category == "ui":
+                asset_key = {
+                    "ui_growth_charge_small": "growth_charge_small",
+                    "ui_growth_charge_standard": "growth_charge_standard",
+                    "ui_fertilizer_basic": "fertilizer_basic",
+                    "ui_rich_compost": "rich_compost",
+                    "ui_booster_potion": "booster_potion",
+                }.get(asset_key, asset_key)
             resolver = getattr(self.engine, "resolve_item_asset", None)
             try:
                 asset = resolver(asset_key) if callable(resolver) else None
@@ -5436,7 +5440,10 @@ class ReviewerHookHandler:
                 if path:
                     return pixmap_type(str(path)), None
             except Exception:
-                logger.debug("Anki Garden: unable to resolve reward item art", exc_info=True)
+                logger.debug(
+                    "Anki Garden: unable to resolve reward item art",
+                    exc_info=True,
+                )
         if asset_category == "environment" and asset_key:
             for resolver_name in (
                 "resolve_garden_feature_preview_asset",
