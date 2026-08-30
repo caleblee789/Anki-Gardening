@@ -623,3 +623,13 @@ def test_economy_collection_targets_drain_reset_before_scrolling() -> None:
         assert audit is not None
         assert "self._reveal_collection_capture_target(" in audit
         assert "ensureWidgetVisible" not in audit
+
+
+def test_collection_alone_adds_endgame_safe_trailing_padding() -> None:
+    source = (ROOT / "ankigarden/ui/dashboard.py").read_text(
+        encoding="utf-8"
+    )
+    override = "self.collection_list.grid.setContentsMargins(6, 6, 22, 28)"
+    assert source.count(override) == 1
+    assert "self.achievement_list.grid.setContentsMargins(6, 6, 22, 28)" not in source
+    assert "self.grid.setContentsMargins(6, 6, 22, 18)" in source

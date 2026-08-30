@@ -20977,6 +20977,12 @@ class GardenDashboard(DialogShell):
             # in its initial fold without reducing the cards themselves.
             minimum_card_height=160,
         )
+        # Keep the final Collection rows aligned to a complete-row boundary
+        # at the canonical Progress height.  The Landmark and Mastery rows are
+        # taller than catalogue cards; this extra trailing step lets the last
+        # target reach that boundary without leaving the prior row's controls
+        # partially visible beneath the pinned filters.
+        self.collection_list.grid.setContentsMargins(6, 6, 22, 28)
         # Use the shared compact 8 px spacing step. With the grid's 6 px top
         # inset and Qt's 2 px viewport origin, two 160 px interactive rows end
         # at 336 px inside the canonical 337 px scroll viewport.
